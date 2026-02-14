@@ -1,12 +1,12 @@
 // apps/web/src/components/mail/participant-display.tsx
 'use client'
 
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { cn } from '@auxx/ui/lib/utils'
 import { titleize } from '@auxx/utils/strings'
 import { useQueryState } from 'nuqs'
 import React from 'react'
-import { cn } from '@auxx/ui/lib/utils'
 import { ContactHoverCard } from '~/components/contacts/contact-hover-card'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useParticipant } from '~/components/threads/hooks'
 import type { ParticipantMeta } from '~/components/threads/store'
 
@@ -86,9 +86,9 @@ export const ParticipantDisplay: React.FC<ParticipantDisplayProps> = ({
 
       {showDetails &&
         (identifierType === 'EMAIL' ? (
-          <span className="text-muted-foreground">{identifier}</span>
+          <span className='text-muted-foreground'>{identifier}</span>
         ) : (
-          <span className="text-muted-foreground">{formatPhoneNumber(identifier)}</span>
+          <span className='text-muted-foreground'>{formatPhoneNumber(identifier)}</span>
         ))}
     </div>
   )
@@ -115,7 +115,7 @@ function formatPhoneNumber(phone: string): string {
  * Loading skeleton for participant.
  */
 function ParticipantSkeleton() {
-  return <Skeleton className="h-4 w-24" />
+  return <Skeleton className='h-4 w-24' />
 }
 
 /**
@@ -161,11 +161,11 @@ export const ParticipantList: React.FC<ParticipantListProps> = ({ participants, 
       {participants.map((entry) => (
         <div className={cn('flex flex-row gap-1', className)} key={entry.id}>
           {entry.role && (
-            <span className="mr-[4px] shrink-0 text-sm text-muted-foreground">
+            <span className='mr-[4px] shrink-0 text-sm text-muted-foreground'>
               {titleize(entry.role)}:
             </span>
           )}
-          <div className="flex flex-wrap gap-x-2 gap-y-1 truncate">
+          <div className='flex flex-wrap gap-x-2 gap-y-1 truncate'>
             <ParticipantDisplay
               participantId={entry.participantId}
               participant={entry.participant}

@@ -1,7 +1,10 @@
 // apps/web/src/components/custom-fields/ui/actor-options-editor.tsx
 'use client'
 
-import { Switch } from '@auxx/ui/components/switch'
+import type { FieldOptions } from '@auxx/lib/field-values/client'
+import type { ActorFieldOptions } from '@auxx/types/field'
+import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Label } from '@auxx/ui/components/label'
 import {
   Select,
@@ -10,10 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Checkbox } from '@auxx/ui/components/checkbox'
-import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import type { ActorFieldOptions } from '@auxx/types/field'
-import type { FieldOptions } from '@auxx/lib/field-values/client'
+import { Switch } from '@auxx/ui/components/switch'
 
 // Re-export ActorFieldOptions for convenience
 export type { ActorFieldOptions }
@@ -53,10 +53,7 @@ export function ActorOptionsEditor({ options, onChange, mode }: ActorOptionsEdit
   const isEditMode = mode === 'edit'
 
   /** Update a single option field */
-  const updateOption = <K extends keyof ActorFieldOptions>(
-    key: K,
-    value: ActorFieldOptions[K]
-  ) => {
+  const updateOption = <K extends keyof ActorFieldOptions>(key: K, value: ActorFieldOptions[K]) => {
     onChange({ ...options, [key]: value })
   }
 
@@ -76,9 +73,9 @@ export function ActorOptionsEditor({ options, onChange, mode }: ActorOptionsEdit
   }
 
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       {/* Target Selector */}
-      <div className="space-y-2">
+      <div className='space-y-2'>
         <Label>Who can be assigned?</Label>
         <Select
           value={options.target}
@@ -93,31 +90,31 @@ export function ActorOptionsEditor({ options, onChange, mode }: ActorOptionsEdit
           }}
           disabled={isEditMode}>
           <SelectTrigger>
-            <SelectValue placeholder="Select target type" />
+            <SelectValue placeholder='Select target type' />
           </SelectTrigger>
           <SelectContent>
             {TARGET_OPTIONS.map((opt) => (
               <SelectItem key={opt.value} value={opt.value}>
                 <div>
-                  <span className="font-medium">{opt.label}</span>
-                  <span className="text-xs text-muted-foreground ml-2">{opt.description}</span>
+                  <span className='font-medium'>{opt.label}</span>
+                  <span className='text-xs text-muted-foreground ml-2'>{opt.description}</span>
                 </div>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
         {isEditMode && (
-          <p className="text-xs text-muted-foreground">
+          <p className='text-xs text-muted-foreground'>
             Target type cannot be changed after field creation.
           </p>
         )}
       </div>
 
       {/* Multiple Switch */}
-      <div className="flex items-center justify-between rounded-lg border px-4 py-3">
-        <div className="space-y-0.5">
+      <div className='flex items-center justify-between rounded-lg border px-4 py-3'>
+        <div className='space-y-0.5'>
           <Label>Allow Multiple Selection</Label>
-          <p className="text-xs text-muted-foreground">
+          <p className='text-xs text-muted-foreground'>
             {options.multiple
               ? 'Multiple users/groups can be assigned'
               : 'Only one user/group can be assigned'}
@@ -130,7 +127,7 @@ export function ActorOptionsEditor({ options, onChange, mode }: ActorOptionsEdit
         />
       </div>
       {isEditMode && options.multiple !== undefined && (
-        <p className="text-xs text-muted-foreground -mt-2 px-1">
+        <p className='text-xs text-muted-foreground -mt-2 px-1'>
           Selection mode cannot be changed after field creation.
         </p>
       )}
@@ -138,23 +135,19 @@ export function ActorOptionsEditor({ options, onChange, mode }: ActorOptionsEdit
       {/* Roles Filter (optional) */}
       {showRolesFilter && (
         <Card>
-          <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium">
-              Limit to Roles (Optional)
-            </CardTitle>
+          <CardHeader className='py-3 px-4'>
+            <CardTitle className='text-sm font-medium'>Limit to Roles (Optional)</CardTitle>
           </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <p className="text-xs text-muted-foreground mb-3">
-              Leave unchecked to allow all roles
-            </p>
-            <div className="flex flex-wrap gap-4">
+          <CardContent className='px-4 pb-4'>
+            <p className='text-xs text-muted-foreground mb-3'>Leave unchecked to allow all roles</p>
+            <div className='flex flex-wrap gap-4'>
               {ROLE_OPTIONS.map((role) => (
-                <label key={role.value} className="flex items-center gap-2 cursor-pointer">
+                <label key={role.value} className='flex items-center gap-2 cursor-pointer'>
                   <Checkbox
                     checked={options.roles?.includes(role.value) ?? false}
                     onCheckedChange={() => toggleRole(role.value)}
                   />
-                  <span className="text-sm">{role.label}</span>
+                  <span className='text-sm'>{role.label}</span>
                 </label>
               ))}
             </div>
@@ -165,15 +158,13 @@ export function ActorOptionsEditor({ options, onChange, mode }: ActorOptionsEdit
       {/* Groups Filter (optional) - placeholder for future implementation */}
       {showGroupsFilter && (
         <Card>
-          <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium">
-              Limit to Groups (Optional)
-            </CardTitle>
+          <CardHeader className='py-3 px-4'>
+            <CardTitle className='text-sm font-medium'>Limit to Groups (Optional)</CardTitle>
           </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <p className="text-xs text-muted-foreground">
-              Group selection will be available in a future update.
-              Currently, all accessible groups will be available for selection.
+          <CardContent className='px-4 pb-4'>
+            <p className='text-xs text-muted-foreground'>
+              Group selection will be available in a future update. Currently, all accessible groups
+              will be available for selection.
             </p>
             {/* TODO: Add group multi-select picker */}
           </CardContent>

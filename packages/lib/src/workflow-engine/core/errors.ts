@@ -5,9 +5,9 @@
  */
 export enum NodeErrorSource {
   PREPROCESSING = 'preprocessing',
-  EXECUTION = 'execution', 
+  EXECUTION = 'execution',
   VALIDATION = 'validation',
-  CONFIGURATION = 'configuration'
+  CONFIGURATION = 'configuration',
 }
 
 /**

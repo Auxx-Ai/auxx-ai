@@ -1,7 +1,7 @@
 // apps/web/src/providers/extensions/internal-apps-context.tsx
 'use client'
 
-import { createContext, useContext, useRef, type ReactNode } from 'react'
+import { createContext, type ReactNode, useContext, useRef } from 'react'
 import { AppStore } from '~/lib/extensions/app-store'
 
 /**

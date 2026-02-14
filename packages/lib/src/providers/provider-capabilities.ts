@@ -1,6 +1,8 @@
 // packages/lib/src/providers/provider-capabilities.ts
-import type { ProviderCapabilities } from './types'
+
 import { IntegrationProviderType } from '@auxx/database/enums'
+import type { ProviderCapabilities } from './types'
+
 export type { ProviderCapabilities } from './types'
 /**
  * Provider capability presets

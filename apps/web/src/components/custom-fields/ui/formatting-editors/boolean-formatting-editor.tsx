@@ -1,6 +1,9 @@
 // apps/web/src/components/custom-fields/ui/formatting-editors/boolean-formatting-editor.tsx
 'use client'
 
+import type { BooleanFieldOptions } from '@auxx/lib/field-values/client'
+import { Field, FieldGroup, FieldLabel } from '@auxx/ui/components/field'
+import { Input } from '@auxx/ui/components/input'
 import {
   Select,
   SelectContent,
@@ -8,9 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Input } from '@auxx/ui/components/input'
-import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
-import type { BooleanFieldOptions } from '@auxx/lib/field-values/client'
 
 /** Props for BooleanFormattingEditor */
 interface BooleanFormattingEditorProps {
@@ -30,7 +30,7 @@ export function BooleanFormattingEditor({ options, onChange }: BooleanFormatting
   }
 
   return (
-    <FieldGroup className="gap-3">
+    <FieldGroup className='gap-3'>
       <Field>
         <FieldLabel>Display Style</FieldLabel>
         <Select
@@ -39,12 +39,12 @@ export function BooleanFormattingEditor({ options, onChange }: BooleanFormatting
             onChange({ ...current, checkboxStyle: v as BooleanFieldOptions['checkboxStyle'] })
           }>
           <SelectTrigger>
-            <SelectValue placeholder="Select display style" />
+            <SelectValue placeholder='Select display style' />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="icon-text">Icon with text</SelectItem>
-            <SelectItem value="icon">Icon only</SelectItem>
-            <SelectItem value="text">Text only</SelectItem>
+            <SelectItem value='icon-text'>Icon with text</SelectItem>
+            <SelectItem value='icon'>Icon only</SelectItem>
+            <SelectItem value='text'>Text only</SelectItem>
           </SelectContent>
         </Select>
       </Field>
@@ -54,7 +54,7 @@ export function BooleanFormattingEditor({ options, onChange }: BooleanFormatting
         <Input
           value={current.trueLabel ?? 'True'}
           onChange={(e) => onChange({ ...current, trueLabel: e.target.value })}
-          placeholder="True"
+          placeholder='True'
         />
       </Field>
 
@@ -63,7 +63,7 @@ export function BooleanFormattingEditor({ options, onChange }: BooleanFormatting
         <Input
           value={current.falseLabel ?? 'False'}
           onChange={(e) => onChange({ ...current, falseLabel: e.target.value })}
-          placeholder="False"
+          placeholder='False'
         />
       </Field>
     </FieldGroup>

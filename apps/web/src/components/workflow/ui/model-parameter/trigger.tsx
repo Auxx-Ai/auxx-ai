@@ -1,12 +1,12 @@
 // apps/web/src/components/workflow/ui/model-parameter/trigger.tsx
 
+import { cn } from '@auxx/ui/lib/utils'
+import { AlertTriangle, ChevronDown, SlidersHorizontal } from 'lucide-react'
 import type { FC } from 'react'
-import { TriggerProps, MODEL_STATUS_TEXT } from './types'
+import { Tooltip } from '~/components/global/tooltip'
 import ModelIcon from './model-icon'
 import ModelName from './model-name'
-import { cn } from '@auxx/ui/lib/utils'
-import { SlidersHorizontal, AlertTriangle, ChevronDown } from 'lucide-react'
-import { Tooltip } from '~/components/global/tooltip'
+import { MODEL_STATUS_TEXT, type TriggerProps } from './types'
 
 const Trigger: FC<TriggerProps> = ({
   disabled,
@@ -31,7 +31,7 @@ const Trigger: FC<TriggerProps> = ({
       )}>
       {currentProvider && (
         <ModelIcon
-          className="mr-1.5 !h-5 !w-5"
+          className='mr-1.5 !h-5 !w-5'
           provider={currentProvider}
           modelName={currentModel?.modelId}
           modelData={currentModel}
@@ -39,14 +39,14 @@ const Trigger: FC<TriggerProps> = ({
       )}
       {!currentProvider && providerName && (
         <ModelIcon
-          className="mr-1.5 !h-5 !w-5"
+          className='mr-1.5 !h-5 !w-5'
           provider={{ provider: providerName, label: providerName }}
           modelName={modelId}
         />
       )}
       {currentModel && (
         <ModelName
-          className="mr-1.5 text-foreground"
+          className='mr-1.5 text-foreground'
           modelItem={currentModel}
           showMode
           showModelType
@@ -54,7 +54,7 @@ const Trigger: FC<TriggerProps> = ({
         />
       )}
       {!currentModel && modelId && (
-        <div className="mr-1 truncate text-[13px] font-medium text-foreground">{modelId}</div>
+        <div className='mr-1 truncate text-[13px] font-medium text-foreground'>{modelId}</div>
       )}
       {disabled ? (
         <Tooltip
@@ -67,7 +67,7 @@ const Trigger: FC<TriggerProps> = ({
                   : 'Provider not configured'}
             </p>
           }>
-          <AlertTriangle className="size-4 text-bad-400" />
+          <AlertTriangle className='size-4 text-bad-400' />
         </Tooltip>
       ) : (
         <SlidersHorizontal
@@ -78,7 +78,7 @@ const Trigger: FC<TriggerProps> = ({
         />
       )}
       {isInWorkflow && (
-        <ChevronDown className="absolute right-2 top-[9px] h-3.5 w-3.5 text-muted-foreground" />
+        <ChevronDown className='absolute right-2 top-[9px] h-3.5 w-3.5 text-muted-foreground' />
       )}
     </div>
   )

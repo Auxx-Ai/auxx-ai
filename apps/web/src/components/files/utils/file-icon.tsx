@@ -1,7 +1,7 @@
 // apps/web/src/components/files/utils/file-icon.tsx
 
-import { cn } from '@auxx/ui/lib/utils'
 import { getIcon } from '@auxx/ui/components/icons'
+import { cn } from '@auxx/ui/lib/utils'
 
 /** Return type for getFileIconId */
 export interface FileIconInfo {

@@ -2,13 +2,13 @@
 
 'use client'
 
-import { useState } from 'react'
 import { Button } from '@auxx/ui/components/button'
-import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { LucideIcon } from 'lucide-react'
-import * as Icons from 'lucide-react'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import type { ICredentialType, OAuth2Config } from '@auxx/workflow-nodes/types'
+import type { LucideIcon } from 'lucide-react'
+import * as Icons from 'lucide-react'
+import { useState } from 'react'
+import { api } from '~/trpc/react'
 
 interface OAuth2ButtonProps {
   /** Credential type with OAuth2 configuration */
@@ -147,8 +147,8 @@ export function OAuth2Button({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+    <div className='space-y-4'>
+      <div className='flex items-center space-x-2 text-sm text-muted-foreground'>
         <IconComponent />
         <span>
           This will connect to your {credentialType.displayName.replace(' OAuth2', '')} account
@@ -160,20 +160,20 @@ export function OAuth2Button({
         onClick={handleConnect}
         disabled={disabled || isConnecting || !credentialName.trim()}
         loading={isConnecting}
-        loadingText="Connecting..."
-        className="w-full"
-        variant="default">
+        loadingText='Connecting...'
+        className='w-full'
+        variant='default'>
         <IconComponent />
         {displayText}
       </Button>
 
       {credentialType.oauth2Config.scopes.length > 0 && (
-        <div className="text-xs text-muted-foreground">
-          <div className="font-medium mb-1">This credential will have access to:</div>
-          <ul className="space-y-1">
+        <div className='text-xs text-muted-foreground'>
+          <div className='font-medium mb-1'>This credential will have access to:</div>
+          <ul className='space-y-1'>
             {getScopeDescriptions(credentialType.oauth2Config).map((scope, index) => (
-              <li key={index} className="flex items-start space-x-2">
-                <span className="text-green-500 mt-0.5">•</span>
+              <li key={index} className='flex items-start space-x-2'>
+                <span className='text-green-500 mt-0.5'>•</span>
                 <span>{scope}</span>
               </li>
             ))}

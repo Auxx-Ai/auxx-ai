@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -10,8 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Button } from '@auxx/ui/components/button'
 import { Upload } from 'lucide-react'
+import { useState } from 'react'
 import { useFilesystemContext } from './provider/filesystem-provider'
 
 /**
@@ -41,7 +41,7 @@ export function FileUploadDialog({ open, onOpenChange, currentFolderId }: FileUp
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className='sm:max-w-md'>
         <DialogHeader>
           <DialogTitle>Upload Files</DialogTitle>
           <DialogDescription>Select files to upload to the current folder.</DialogDescription>
@@ -65,16 +65,16 @@ export function FileUploadDialog({ open, onOpenChange, currentFolderId }: FileUp
               onOpenChange(false)
             }
           }}>
-          <Upload className="size-10 text-gray-400 mx-auto mb-2" />
-          <p className="text-sm text-gray-600 mb-2">Drag and drop files here, or click to select</p>
-          <Button variant="outline" onClick={() => document.getElementById('file-input')?.click()}>
+          <Upload className='size-10 text-gray-400 mx-auto mb-2' />
+          <p className='text-sm text-gray-600 mb-2'>Drag and drop files here, or click to select</p>
+          <Button variant='outline' onClick={() => document.getElementById('file-input')?.click()}>
             Select Files
           </Button>
           <input
-            id="file-input"
-            type="file"
+            id='file-input'
+            type='file'
             multiple
-            className="hidden"
+            className='hidden'
             onChange={handleFileSelect}
           />
         </div>

@@ -1,9 +1,9 @@
 // apps/web/src/components/file-upload/__tests__/concurrent-uploads.test.tsx
 
-import React from 'react'
-import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import React from 'react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
 
 // Test component that uses file upload with specific config
@@ -31,7 +31,7 @@ function TestUploadComponent({
   return (
     <div data-testid={testId}>
       <input
-        type="file"
+        type='file'
         data-testid={`${testId}-input`}
         multiple={maxFiles ? maxFiles > 1 : true}
         onChange={(e) => {
@@ -41,9 +41,7 @@ function TestUploadComponent({
           }
         }}
       />
-      <div data-testid={`${testId}-selected`}>
-        Selected: {fileSelect.selectedItems.length}
-      </div>
+      <div data-testid={`${testId}-selected`}>Selected: {fileSelect.selectedItems.length}</div>
       <div data-testid={`${testId}-errors`}>
         {fileSelect.errors.map((error, idx) => (
           <div key={idx}>{error}</div>
@@ -72,8 +70,8 @@ describe('Concurrent Uploads Integration', () => {
       <div>
         {/* Avatar: Single image, max 2MB */}
         <TestUploadComponent
-          testId="avatar"
-          entityType="AVATAR"
+          testId='avatar'
+          entityType='AVATAR'
           maxFiles={1}
           maxFileSize={2 * 1024 * 1024}
           fileExtensions={['.jpg', '.png']}
@@ -81,8 +79,8 @@ describe('Concurrent Uploads Integration', () => {
 
         {/* Documents: Multiple files, max 10MB */}
         <TestUploadComponent
-          testId="documents"
-          entityType="FILE"
+          testId='documents'
+          entityType='FILE'
           maxFiles={5}
           maxFileSize={10 * 1024 * 1024}
           fileExtensions={['.pdf', '.doc']}
@@ -90,8 +88,8 @@ describe('Concurrent Uploads Integration', () => {
 
         {/* Messages: Small files, max 1MB */}
         <TestUploadComponent
-          testId="messages"
-          entityType="MESSAGE"
+          testId='messages'
+          entityType='MESSAGE'
           maxFiles={3}
           maxFileSize={1024 * 1024}
         />
@@ -177,8 +175,8 @@ describe('Concurrent Uploads Integration', () => {
 
     render(
       <TestUploadComponent
-        testId="images"
-        entityType="MEDIA"
+        testId='images'
+        entityType='MEDIA'
         maxFiles={2}
         maxFileSize={1024 * 1024}
         fileExtensions={['.jpg', '.png', '.gif']}
@@ -239,15 +237,15 @@ describe('Concurrent Uploads Integration', () => {
     const { rerender } = render(
       <>
         <TestUploadComponent
-          testId="strict"
-          entityType="AVATAR"
+          testId='strict'
+          entityType='AVATAR'
           maxFiles={1}
           maxFileSize={1024} // 1KB
           fileExtensions={['.jpg']}
         />
         <TestUploadComponent
-          testId="permissive"
-          entityType="FILE"
+          testId='permissive'
+          entityType='FILE'
           maxFiles={100}
           maxFileSize={100 * 1024 * 1024} // 100MB
           // No file extension restrictions
@@ -258,7 +256,7 @@ describe('Concurrent Uploads Integration', () => {
     // Add large PDF to permissive component
     const permissiveInput = screen.getByTestId('permissive-input') as HTMLInputElement
     const largePdf = new File(['x'.repeat(10 * 1024)], 'large.pdf', { type: 'application/pdf' })
-    
+
     Object.defineProperty(permissiveInput, 'files', {
       value: [largePdf],
       writable: false,

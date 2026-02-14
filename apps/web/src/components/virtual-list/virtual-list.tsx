@@ -1,9 +1,9 @@
 // apps/web/src/components/virtual-list/virtual-list.tsx
 'use client'
 
-import { createContext, useContext, type ReactNode, useRef, type CSSProperties } from 'react'
-import { useVirtualizer, type VirtualizerOptions } from '@tanstack/react-virtual'
 import { cn } from '@auxx/ui/lib/utils'
+import { useVirtualizer, type VirtualizerOptions } from '@tanstack/react-virtual'
+import { type CSSProperties, createContext, type ReactNode, useContext, useRef } from 'react'
 
 /**
  * Context value for the VirtualList component
@@ -102,7 +102,7 @@ export function VirtualList<T>({
   return (
     <VirtualListContext.Provider value={contextValue}>
       <div
-        data-slot="virtual-list"
+        data-slot='virtual-list'
         className={cn('flex flex-col min-h-0 overflow-y-auto flex-1', className)}>
         {children}
       </div>

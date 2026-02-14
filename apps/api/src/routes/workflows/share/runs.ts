@@ -4,9 +4,9 @@
  * Run status route for shared workflows
  */
 
-import { Hono } from 'hono'
 import { verifyWorkflowPassport } from '@auxx/services/workflow-share'
 import { getWorkflowRun } from '@auxx/services/workflows'
+import { Hono } from 'hono'
 
 const runsRoute = new Hono()
 

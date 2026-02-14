@@ -2,7 +2,7 @@
 
 import { database, schema } from '@auxx/database'
 import { eq, sql } from 'drizzle-orm'
-import { ok, err, type Result } from 'neverthrow'
+import { err, ok, type Result } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { WorkflowShareError } from './errors'
 

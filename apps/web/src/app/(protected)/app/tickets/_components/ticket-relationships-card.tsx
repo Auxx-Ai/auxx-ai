@@ -1,11 +1,11 @@
 // apps/web/src/app/(protected)/app/tickets/_components/ticket-relationships-card.tsx
 'use client'
 
-import { useState } from 'react'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { ArrowUpRight, Link as LinkIcon, X } from 'lucide-react'
 import Link from 'next/link'
+import { useState } from 'react'
 import { api } from '~/trpc/react'
 import { TicketLinkDialog } from './ticket-link-dialog'
 import type { Ticket } from './ticket-types'
@@ -70,64 +70,64 @@ export function TicketRelationshipsCard({ ticketId, className }: TicketRelations
   return (
     <div className={className}>
       {ticket.relatedTickets.length === 0 ? (
-        <div className="bg-primary-100/50 rounded-2xl border py-3 px-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <LinkIcon className="size-4" />
+        <div className='bg-primary-100/50 rounded-2xl border py-3 px-3'>
+          <div className='flex items-center justify-between'>
+            <div className='flex items-center gap-2 text-sm text-muted-foreground'>
+              <LinkIcon className='size-4' />
               <span>No related tickets</span>
             </div>
             <Button
-              variant="outline"
-              size="xs"
+              variant='outline'
+              size='xs'
               onClick={() => setIsAddLinkOpen(true)}
-              className="shrink-0">
-              <LinkIcon className="size-3" />
+              className='shrink-0'>
+              <LinkIcon className='size-3' />
               Link
             </Button>
           </div>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className='space-y-2'>
           {ticket.relatedTickets.map((relation) => (
             <div
               key={relation.id}
-              className="group flex items-center justify-between bg-primary-100/50 rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200">
-              <div className="flex items-center gap-3">
-                <div className="size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0">
-                  <LinkIcon className="size-4 text-muted-foreground" />
+              className='group flex items-center justify-between bg-primary-100/50 rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200'>
+              <div className='flex items-center gap-3'>
+                <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0'>
+                  <LinkIcon className='size-4 text-muted-foreground' />
                 </div>
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" size="xs" className="font-normal">
+                <div className='flex flex-col gap-1'>
+                  <div className='flex items-center gap-2'>
+                    <Badge variant='outline' size='xs' className='font-normal'>
                       {getRelationLabel(relation.relation)}
                     </Badge>
                     <Link
                       href={`/app/tickets/${relation.relatedTicket.id}`}
-                      className="text-sm font-medium hover:underline inline-flex items-center gap-1">
+                      className='text-sm font-medium hover:underline inline-flex items-center gap-1'>
                       #{relation.relatedTicket.number}
-                      <ArrowUpRight className="size-3" />
+                      <ArrowUpRight className='size-3' />
                     </Link>
                   </div>
-                  <div className="text-xs text-muted-foreground line-clamp-1">
+                  <div className='text-xs text-muted-foreground line-clamp-1'>
                     {relation.relatedTicket.title}
                   </div>
                 </div>
               </div>
               <Button
-                variant="ghost"
-                size="icon-sm"
-                className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                variant='ghost'
+                size='icon-sm'
+                className='shrink-0 opacity-0 group-hover:opacity-100 transition-opacity'
                 onClick={() => handleRemoveRelation(relation.id)}>
-                <X className="size-4" />
+                <X className='size-4' />
               </Button>
             </div>
           ))}
           <Button
-            variant="outline"
-            size="sm"
+            variant='outline'
+            size='sm'
             onClick={() => setIsAddLinkOpen(true)}
-            className="w-full border-dashed">
-            <LinkIcon className="size-4" />
+            className='w-full border-dashed'>
+            <LinkIcon className='size-4' />
             Link another ticket
           </Button>
         </div>

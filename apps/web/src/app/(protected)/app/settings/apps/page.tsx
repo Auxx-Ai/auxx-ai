@@ -1,24 +1,24 @@
 'use client'
-// ~/app/(protected)/app/settings/integrations/_components/integration-list.tsx
-import React, { useRef, useState, useEffect, useLayoutEffect } from 'react'
+import { constants } from '@auxx/config/client'
 import { Button } from '@auxx/ui/components/button'
+import { Input } from '@auxx/ui/components/input'
 import {
   BarChart3,
   Bot,
+  ClipboardList,
   CreditCard,
-  Phone,
+  Globe,
   Headphones,
   MessageSquare,
-  ClipboardList,
   Package,
-  Globe,
+  Phone,
 } from 'lucide-react'
 import Link from 'next/link'
-import SettingsPage from '~/components/global/settings-page'
-import { Input } from '@auxx/ui/components/input'
-import { api } from '~/trpc/react'
+// ~/app/(protected)/app/settings/integrations/_components/integration-list.tsx
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AppListCard } from '~/components/apps/app-list-card'
-import { constants } from '@auxx/config/client'
+import SettingsPage from '~/components/global/settings-page'
+import { api } from '~/trpc/react'
 
 /** Icon mapping for app categories */
 const iconMap = {
@@ -203,28 +203,28 @@ export default function IntegrationList() {
   }, [categoriesToDisplay]) // Re-run when categories change
   return (
     <SettingsPage
-      title="Marketplace"
-      description="Manage your external service integrations for email, messaging, and telephony"
+      title='Marketplace'
+      description='Manage your external service integrations for email, messaging, and telephony'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Apps' }]}
       button={<></>}>
-      <div className="flex flex-col flex-1 p-6 space-y-8">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 tracking-tight font-semibold text-foreground text-base">
-              <Globe className="size-4" />
+      <div className='flex flex-col flex-1 p-6 space-y-8'>
+        <div className='space-y-2'>
+          <div className='flex items-center justify-between gap-2'>
+            <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
+              <Globe className='size-4' />
               Installed apps
             </div>
             {hasMoreInstalled && (
-              <Link href="/app/settings/apps/installed">
-                <Button variant="ghost" size="sm">
+              <Link href='/app/settings/apps/installed'>
+                <Button variant='ghost' size='sm'>
                   View all
                 </Button>
               </Link>
             )}
           </div>
-          <div className="w-full @container">
+          <div className='w-full @container'>
             {installedAppsToShow.length > 0 ? (
-              <div className="grid w-full gap-2 @sm:grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3">
+              <div className='grid w-full gap-2 @sm:grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3'>
                 {installedAppsToShow.map(({ app }) => (
                   <AppListCard
                     key={app.id}
@@ -234,35 +234,35 @@ export default function IntegrationList() {
                 ))}
               </div>
             ) : (
-              <div className="border bg-primary-50 w-full p-6 rounded-2xl text-center text-sm text-muted-foreground">
+              <div className='border bg-primary-50 w-full p-6 rounded-2xl text-center text-sm text-muted-foreground'>
                 No apps installed yet
               </div>
             )}
           </div>
         </div>
-        <div className="space-y-6">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 tracking-tight font-semibold text-foreground text-base">
-              <Globe className="size-4" />
+        <div className='space-y-6'>
+          <div className='space-y-1'>
+            <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
+              <Globe className='size-4' />
               Browse apps
             </div>
-            <div className="text-sm text-muted-foreground">
+            <div className='text-sm text-muted-foreground'>
               Discover new apps to help you work better
             </div>
           </div>
-          <div className="flex flex-col gap-6 justify-start w-full">
-            <div className="sticky pt-20 -mt-20  top-0">
-              <div className="grid grid-cols-3">
+          <div className='flex flex-col gap-6 justify-start w-full'>
+            <div className='sticky pt-20 -mt-20  top-0'>
+              <div className='grid grid-cols-3'>
                 <Input
-                  placeholder="Search apps"
-                  className="col-start-2 col-span-2"
+                  placeholder='Search apps'
+                  className='col-start-2 col-span-2'
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
-              <div className="absolute left-0 top-[80px] z-1 pointer-events-none grid grid-cols-3">
-                <div className="pointer-events-auto ">
-                  <div className="flex flex-col space-y-1">
+              <div className='absolute left-0 top-[80px] z-1 pointer-events-none grid grid-cols-3'>
+                <div className='pointer-events-auto '>
+                  <div className='flex flex-col space-y-1'>
                     {categoriesToDisplay.map((category) => {
                       const IconComponent = iconMap[category.icon as keyof typeof iconMap]
                       const isActive = activeCategory === category.value
@@ -270,8 +270,8 @@ export default function IntegrationList() {
                         <Button
                           key={category.value}
                           variant={isActive ? 'default' : 'outline'}
-                          className="justify-start"
-                          size="sm"
+                          className='justify-start'
+                          size='sm'
                           onClick={() => scrollToCategory(category.value)}>
                           {IconComponent && <IconComponent />}
                           {category.label}
@@ -282,12 +282,12 @@ export default function IntegrationList() {
                 </div>
               </div>
             </div>
-            <div className="grid  pt-2 w-full grid-cols-3 gap-4">
-              <div className="flex w-full flex-col justify-start col-start-2 col-end-4 space-y-8">
+            <div className='grid  pt-2 w-full grid-cols-3 gap-4'>
+              <div className='flex w-full flex-col justify-start col-start-2 col-end-4 space-y-8'>
                 {filteredApps.length === 0 && searchQuery.trim() ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <div className="text-base font-medium mb-2">No apps found</div>
-                    <div className="text-sm">
+                  <div className='text-center py-12 text-muted-foreground'>
+                    <div className='text-base font-medium mb-2'>No apps found</div>
+                    <div className='text-sm'>
                       Try adjusting your search query to find what you're looking for
                     </div>
                   </div>
@@ -303,16 +303,16 @@ export default function IntegrationList() {
                           sectionRefs.current[category.value] = el
                         }}
                         data-category={category.value}
-                        className="flex flex-col w-full gap-2">
-                        <div className="text-base font-normal">{category.label}</div>
+                        className='flex flex-col w-full gap-2'>
+                        <div className='text-base font-normal'>{category.label}</div>
                         {hasCategoryApps ? (
-                          <div className="grid w-full gap-2 grid-cols-2">
+                          <div className='grid w-full gap-2 grid-cols-2'>
                             {categoryApps.map((app) => (
                               <AppListCard key={app.id} app={app} />
                             ))}
                           </div>
                         ) : (
-                          <div className="text-sm text-muted-foreground h-100">
+                          <div className='text-sm text-muted-foreground h-100'>
                             No apps in this category yet
                           </div>
                         )}

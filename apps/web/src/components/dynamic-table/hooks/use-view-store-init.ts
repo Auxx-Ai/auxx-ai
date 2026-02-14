@@ -21,7 +21,11 @@ export function useViewStoreInit() {
   const initialized = useDynamicTableStore((state) => state.initialized)
 
   // Fetch all views for the organization
-  const { data: allViews, isLoading, error } = api.tableView.listAll.useQuery(undefined, {
+  const {
+    data: allViews,
+    isLoading,
+    error,
+  } = api.tableView.listAll.useQuery(undefined, {
     enabled: !initialized, // Only fetch if not already initialized
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: false,

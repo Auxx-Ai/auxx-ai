@@ -1,19 +1,19 @@
 // apps/web/src/server/api/routers/aiFeature.ts
 
-import { z } from 'zod'
-import { TRPCError } from '@trpc/server'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { createScopedLogger } from '@auxx/logger'
 import { getAIComposeService } from '@auxx/lib/ai-features/compose'
 import { getAIGeneratorService } from '@auxx/lib/ai-features/generator'
 import {
   AI_OPERATION,
   AI_TONE_TYPE,
-  OUTPUT_FORMAT,
-  COMPOSE_ENTITY_TYPE,
   type AIComposeRequest,
   type AIComposeResponse,
+  COMPOSE_ENTITY_TYPE,
+  OUTPUT_FORMAT,
 } from '@auxx/lib/types'
+import { createScopedLogger } from '@auxx/logger'
+import { TRPCError } from '@trpc/server'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('ai-feature-router')
 

@@ -1,10 +1,10 @@
 // packages/services/src/table-view/set-default-view.ts
 
-import { database, schema, type Database } from '@auxx/database'
+import { type Database, database, schema } from '@auxx/database'
+import type { TableViewEntity } from '@auxx/database/models'
 import { and, eq, ne } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { TableViewEntity } from '@auxx/database/models'
 
 /**
  * Input for setting default view

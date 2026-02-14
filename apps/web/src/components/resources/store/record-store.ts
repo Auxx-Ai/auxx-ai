@@ -1,11 +1,11 @@
 // apps/web/src/components/resources/store/record-store.ts
 
 import '~/lib/immer-config' // Enables Map/Set support for immer
-import { create } from 'zustand'
-import { immer } from 'zustand/middleware/immer'
-import { subscribeWithSelector } from 'zustand/middleware'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { create } from 'zustand'
+import { subscribeWithSelector } from 'zustand/middleware'
+import { immer } from 'zustand/middleware/immer'
 
 // ─────────────────────────────────────────────────────────────────
 // BATCHING CONSTANTS

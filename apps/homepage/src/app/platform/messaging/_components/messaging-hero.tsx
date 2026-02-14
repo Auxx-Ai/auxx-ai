@@ -1,12 +1,12 @@
 // apps/web/src/app/(website)/platform/messaging/_components/messaging-hero.tsx
 'use client'
-import { motion } from 'motion/react'
 import { MessagesSquare } from 'lucide-react'
+import { motion } from 'motion/react'
 import { ImageIllustration } from './image-illustration'
 
 const AnimatedGroup = ({ children, variants }: { children: React.ReactNode; variants: any }) => {
   return (
-    <motion.div initial="hidden" animate="visible" variants={variants}>
+    <motion.div initial='hidden' animate='visible' variants={variants}>
       {children}
     </motion.div>
   )
@@ -14,22 +14,22 @@ const AnimatedGroup = ({ children, variants }: { children: React.ReactNode; vari
 
 export default function MessagingHero() {
   return (
-    <main role="main" className="overflow-hidden border-b">
-      <section className="bg-muted relative">
+    <main role='main' className='overflow-hidden border-b'>
+      <section className='bg-muted relative'>
         <motion.div
           initial={{ opacity: 0, y: -72, filter: 'blur(12px)' }}
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
           transition={{ duration: 2, ease: 'easeInOut' }}
-          className="mask-radial-from-80% mask-radial-at-top-right mask-radial-[100%_85%] absolute inset-0 opacity-75">
+          className='mask-radial-from-80% mask-radial-at-top-right mask-radial-[100%_85%] absolute inset-0 opacity-75'>
           <img
-            src="https://images.unsplash.com/photo-1588345921523-c2dcdb7f1dcd?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
-            alt=""
-            className="size-full -scale-y-100 object-cover"
+            src='https://images.unsplash.com/photo-1588345921523-c2dcdb7f1dcd?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'
+            alt=''
+            className='size-full -scale-y-100 object-cover'
           />
         </motion.div>
 
-        <div className="perspective-dramatic pb-20 pt-24 md:pt-32 lg:py-44">
-          <div className="relative z-10 mx-auto max-w-5xl px-6 text-center">
+        <div className='perspective-dramatic pb-20 pt-24 md:pt-32 lg:py-44'>
+          <div className='relative z-10 mx-auto max-w-5xl px-6 text-center'>
             <AnimatedGroup
               variants={{
                 container: {
@@ -61,13 +61,13 @@ export default function MessagingHero() {
               }}>
               <h1
                 key={1}
-                className="mx-auto mt-8 inline-flex max-w-xl flex-wrap items-center justify-center gap-x-2 text-balance text-3xl font-semibold sm:text-4xl lg:text-5xl">
-                Unified <span className="text-muted-foreground">Customer </span>
-                <MessagesSquare /> <span className="text-muted-foreground">Communication</span> Hub
+                className='mx-auto mt-8 inline-flex max-w-xl flex-wrap items-center justify-center gap-x-2 text-balance text-3xl font-semibold sm:text-4xl lg:text-5xl'>
+                Unified <span className='text-muted-foreground'>Customer </span>
+                <MessagesSquare /> <span className='text-muted-foreground'>Communication</span> Hub
               </h1>
 
-              <div key={2} className="mx-auto mt-4 max-w-md">
-                <p className="text-muted-foreground mb-5 text-balance text-lg">
+              <div key={2} className='mx-auto mt-4 max-w-md'>
+                <p className='text-muted-foreground mb-5 text-balance text-lg'>
                   Manage all customer conversations from a single, intelligent platform. Set up in
                   minutes.
                 </p>

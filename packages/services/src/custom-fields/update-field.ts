@@ -1,28 +1,28 @@
 // packages/services/src/custom-fields/update-field.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
-import type { FieldType } from '@auxx/database/types'
-import type { CustomFieldNotFoundError } from './errors'
 import type { CustomFieldEntity } from '@auxx/database/models'
+import type { FieldType } from '@auxx/database/types'
+import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { and, eq } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
+import { fromDatabase } from '../shared/utils'
+import { checkExistingDuplicates } from './check-unique-value'
+import type { CustomFieldNotFoundError } from './errors'
 import {
-  canFieldBeUnique,
-  type SelectOption,
-  type CurrencyOptions,
-  type FileOptions,
-  type DisplayOptions,
   type ActorOptions,
-  supportsDisplayOptions,
+  type CurrencyOptions,
+  canFieldBeUnique,
+  type DisplayOptions,
+  type FileOptions,
+  getInverseFieldId,
   isDisplayOptions,
   mergeDisplayOptions,
-  getInverseFieldId,
   type RelationshipConfig,
+  type SelectOption,
+  supportsDisplayOptions,
 } from './types'
-import { checkExistingDuplicates } from './check-unique-value'
-import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 
 /**
  * Input for updating a custom field
@@ -35,11 +35,7 @@ export interface UpdateCustomFieldInput {
   required?: boolean
   defaultValue?: string
   /** Field options - select options, file config, currency config, or flat display options */
-  options?:
-    | SelectOption[]
-    | { file: FileOptions }
-    | { currency: CurrencyOptions }
-    | DisplayOptions
+  options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions } | DisplayOptions
   addressComponents?: string[]
   icon?: string
   isCustom?: boolean
@@ -59,7 +55,8 @@ export interface UpdateCustomFieldInput {
  * @returns Result with updated field
  */
 export async function updateCustomField(input: UpdateCustomFieldInput) {
-  const { resourceFieldId, organizationId, options, addressComponents, type, isUnique, ...data } = input
+  const { resourceFieldId, organizationId, options, addressComponents, type, isUnique, ...data } =
+    input
 
   // Parse ResourceFieldId to get components
   const { fieldId: id } = parseResourceFieldId(resourceFieldId)
@@ -225,7 +222,10 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
           .update(schema.CustomField)
           .set(updateData)
           .where(
-            and(eq(schema.CustomField.id, id), eq(schema.CustomField.organizationId, organizationId))
+            and(
+              eq(schema.CustomField.id, id),
+              eq(schema.CustomField.organizationId, organizationId)
+            )
           )
           .returning()
 

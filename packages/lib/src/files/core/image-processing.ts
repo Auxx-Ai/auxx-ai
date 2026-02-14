@@ -3,7 +3,7 @@
 import { fileTypeFromBuffer } from 'file-type'
 import { createScopedLogger } from '../../logger'
 import type { PresetKey, ProcessedThumbnail } from './thumbnail-types'
-import { THUMBNAIL_PRESETS, THUMBNAIL_LIMITS, ALLOWED_IMAGE_TYPES } from './thumbnail-types'
+import { ALLOWED_IMAGE_TYPES, THUMBNAIL_LIMITS, THUMBNAIL_PRESETS } from './thumbnail-types'
 
 const logger = createScopedLogger('image-processing')
 
@@ -90,7 +90,7 @@ export async function processImage(
 
   // Dynamic import sharp only when needed
   const sharp = (await import('sharp')).default
-  
+
   // Create sharp instance
   let pipeline = sharp(buffer, {
     limitInputPixels: THUMBNAIL_LIMITS.maxInputPixels,

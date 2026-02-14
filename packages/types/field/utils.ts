@@ -1,6 +1,6 @@
 // packages/types/field/utils.ts
 
-import type { FieldId, ResourceFieldId, FieldPath, FieldReference } from './index'
+import type { FieldId, FieldPath, FieldReference, ResourceFieldId } from './index'
 
 /**
  * Create a FieldId from a string.
@@ -16,7 +16,7 @@ export function toFieldId(id: string): FieldId {
  */
 export function toResourceFieldId(
   entityDefinitionId: string,
-  fieldId: FieldId | string,
+  fieldId: FieldId | string
 ): ResourceFieldId {
   return `${entityDefinitionId}:${fieldId}` as ResourceFieldId
 }
@@ -30,7 +30,10 @@ export function parseResourceFieldId(resourceFieldId: ResourceFieldId): {
 } {
   const colonIndex = resourceFieldId.indexOf(':')
   if (colonIndex === -1) {
-    console.error('[parseResourceFieldId] Malformed ResourceFieldId (missing colon):', resourceFieldId)
+    console.error(
+      '[parseResourceFieldId] Malformed ResourceFieldId (missing colon):',
+      resourceFieldId
+    )
     return { entityDefinitionId: resourceFieldId, fieldId: '' as FieldId }
   }
   return {
@@ -72,7 +75,7 @@ export function getFieldDefinitionId(resourceFieldId: ResourceFieldId): string {
  */
 export function toResourceFieldIds(
   entityDefinitionId: string,
-  fieldIds: (FieldId | string)[],
+  fieldIds: (FieldId | string)[]
 ): ResourceFieldId[] {
   return fieldIds.map((id) => toResourceFieldId(entityDefinitionId, id))
 }
@@ -114,7 +117,7 @@ export function isFieldPath(ref: FieldReference): ref is FieldPath {
  */
 export function validateFieldPath(
   path: FieldPath,
-  fieldMetadata: Record<ResourceFieldId, { relatedEntityDefinitionId?: string }>,
+  fieldMetadata: Record<ResourceFieldId, { relatedEntityDefinitionId?: string }>
 ): boolean {
   for (let i = 0; i < path.length - 1; i++) {
     const currentResourceFieldId = path[i]

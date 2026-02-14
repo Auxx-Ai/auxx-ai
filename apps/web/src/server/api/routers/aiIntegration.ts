@@ -1,20 +1,25 @@
 // apps/web/src/server/api/routers/aiIntegration.ts
 
-import { z } from 'zod'
+import { schema } from '@auxx/database'
 import { ModelConfigurationModel } from '@auxx/database/models'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { TRPCError } from '@trpc/server'
 import {
+  ProviderConfigurationService,
   ProviderManager,
   ProviderRegistry,
-  ProviderConfigurationService,
-  SystemModelService,
   QuotaService,
+  SystemModelService,
   UsageTrackingService,
 } from '@auxx/lib/ai'
+import {
+  ModelType,
+  PLAN_CREDIT_LIMITS,
+  type PlanTier,
+  ProviderType,
+} from '@auxx/lib/ai/providers/types'
+import { TRPCError } from '@trpc/server'
 import { eq } from 'drizzle-orm'
-import { schema } from '@auxx/database'
-import { ModelType, ProviderType, PLAN_CREDIT_LIMITS, type PlanTier } from '@auxx/lib/ai/providers/types'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 export const aiIntegrationRouter = createTRPCRouter({
   /**

@@ -1,15 +1,15 @@
 // packages/lib/src/files/upload/processors/dataset.ts
 
-import { BaseAssetProcessor } from './base-asset-processor'
-import type { PresignedUploadSession } from '../session-types'
-import type { DatasetAssetMetadata, ProcessorResult } from './types'
-import type { UploadInitConfig, ProcessorConfigResult } from '../init-types'
+import { database as db } from '@auxx/database'
+import type { DocumentEntity } from '@auxx/database/models'
+import { DatasetModel } from '@auxx/database/models'
+import { createScopedLogger } from '@auxx/logger'
 import { DocumentService } from '../../../datasets/services/document-service'
 import { DocumentProcessingQueue } from '../../../datasets/workers/document-processing-queue'
-import { createScopedLogger } from '@auxx/logger'
-import { database as db } from '@auxx/database'
-import { DatasetModel } from '@auxx/database/models'
-import type { DocumentEntity } from '@auxx/database/models'
+import type { ProcessorConfigResult, UploadInitConfig } from '../init-types'
+import type { PresignedUploadSession } from '../session-types'
+import { BaseAssetProcessor } from './base-asset-processor'
+import type { DatasetAssetMetadata, ProcessorResult } from './types'
 
 const logger = createScopedLogger('dataset-asset-processor')
 
@@ -23,7 +23,7 @@ export class DatasetAssetProcessor extends BaseAssetProcessor {
   protected preferredProvider = 'local' // or 's3' based on config
   protected maxFileSize = 50 * 1024 * 1024 // 50MB
   protected assetKind = 'DOCUMENT' as const
-  
+
   /**
    * Override processConfig to ensure datasetId is set in metadata
    */
@@ -34,9 +34,9 @@ export class DatasetAssetProcessor extends BaseAssetProcessor {
       metadata: {
         ...init.metadata,
         datasetId: init.entityId, // Use entityId as datasetId for DATASET uploads
-      }
+      },
     }
-    
+
     // Call parent processConfig with enriched metadata
     return super.processConfig(enrichedInit)
   }
@@ -68,7 +68,7 @@ export class DatasetAssetProcessor extends BaseAssetProcessor {
     'text/x-sql',
     'text/x-log',
     'text/log',
-    
+
     // Microsoft Office
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/msword',
@@ -76,28 +76,28 @@ export class DatasetAssetProcessor extends BaseAssetProcessor {
     'application/vnd.ms-excel',
     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     'application/vnd.ms-powerpoint',
-    
+
     // PDF
     'application/pdf',
-    
+
     // Web formats
     'text/html',
     'application/xhtml+xml',
-    
+
     // Archives
     'application/zip',
     'application/x-zip-compressed',
-    
+
     // Email formats
     'message/rfc822',
     'application/vnd.ms-outlook',
-    
+
     // eBooks
     'application/epub+zip',
-    
+
     // Rich text
     'application/rtf',
-    
+
     // Support for files without extension detection
     '',
     'application/octet-stream',
@@ -115,7 +115,12 @@ export class DatasetAssetProcessor extends BaseAssetProcessor {
     const result = await super.process(session, storageLocationId, opts)
 
     // Now create Document with the same transaction
-    const document = await this.createDocumentRecord(session, storageLocationId, result.assetId!, opts?.tx)
+    const document = await this.createDocumentRecord(
+      session,
+      storageLocationId,
+      result.assetId!,
+      opts?.tx
+    )
 
     return {
       ...result,
@@ -151,18 +156,21 @@ export class DatasetAssetProcessor extends BaseAssetProcessor {
     const documentService = tx ? new DocumentService(tx) : new DocumentService(db)
 
     try {
-      const document = await documentService.createFromFileUpload({
-        title: metadata.documentName || this.extractNameFromFilename(session.fileName),
-        filename: session.fileName,
-        mimeType: session.mimeType,
-        size: session.expectedSize,
-        datasetId: metadata.datasetId,
-        uploadedById: session.userId,
-        mediaAssetId: assetId,
-        checksum: `${session.fileName}-${Date.now()}`,
-        originalPath: session.fileName,
-        processingOptions: metadata.processingOptions as any,
-      }, session.organizationId)
+      const document = await documentService.createFromFileUpload(
+        {
+          title: metadata.documentName || this.extractNameFromFilename(session.fileName),
+          filename: session.fileName,
+          mimeType: session.mimeType,
+          size: session.expectedSize,
+          datasetId: metadata.datasetId,
+          uploadedById: session.userId,
+          mediaAssetId: assetId,
+          checksum: `${session.fileName}-${Date.now()}`,
+          originalPath: session.fileName,
+          processingOptions: metadata.processingOptions as any,
+        },
+        session.organizationId
+      )
 
       // Queue for background processing
       await this.queueDocumentProcessing(document, metadata, session)
@@ -189,7 +197,11 @@ export class DatasetAssetProcessor extends BaseAssetProcessor {
   /**
    * Queue document for background processing
    */
-  private async queueDocumentProcessing(document: any, metadata: DatasetAssetMetadata, session: PresignedUploadSession): Promise<void> {
+  private async queueDocumentProcessing(
+    document: any,
+    metadata: DatasetAssetMetadata,
+    session: PresignedUploadSession
+  ): Promise<void> {
     // Queue document for processing unless explicitly skipped
     if (!metadata.processingOptions?.skipParsing) {
       await DocumentProcessingQueue.queueDocumentProcessing(

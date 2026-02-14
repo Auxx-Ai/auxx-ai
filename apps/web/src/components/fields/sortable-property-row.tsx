@@ -1,17 +1,17 @@
 // apps/web/src/components/fields/sortable-property-row.tsx
 'use client'
 
+import type { RecordId } from '@auxx/lib/resources/client'
+import { Button } from '@auxx/ui/components/button'
+import { Switch } from '@auxx/ui/components/switch'
+import { cn } from '@auxx/ui/lib/utils'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Pencil, Trash2 } from 'lucide-react'
-import PropertyRow from './property-row'
-import { PropertyProvider, usePropertyContext } from './property-provider'
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useFieldNavigationOptional } from './field-navigation-context'
-import { Button } from '@auxx/ui/components/button'
-import { Switch } from '@auxx/ui/components/switch'
-import { useEffect, useRef, useCallback, useMemo, memo } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
-import type { RecordId } from '@auxx/lib/resources/client'
+import { PropertyProvider, usePropertyContext } from './property-provider'
+import PropertyRow from './property-row'
 
 /**
  * Props for SortablePropertyRow component
@@ -156,23 +156,23 @@ export const SortablePropertyRow = memo(function SortablePropertyRow({
           <div
             {...attributes}
             {...listeners}
-            className="items-center self-start flex gap-[4px] h-[24px] shrink-0 cursor-grab active:cursor-grabbing">
-            <div className="shrink-0 size-6 flex items-center justify-center">
-              <GripVertical className="size-4 text-neutral-400 shrink-0" />
+            className='items-center self-start flex gap-[4px] h-[24px] shrink-0 cursor-grab active:cursor-grabbing'>
+            <div className='shrink-0 size-6 flex items-center justify-center'>
+              <GripVertical className='size-4 text-neutral-400 shrink-0' />
             </div>
-            <div className="w-[120px] text-sm text-neutral-400 shrink-0">
-              <div className="truncate">{field.name}</div>
+            <div className='w-[120px] text-sm text-neutral-400 shrink-0'>
+              <div className='truncate'>{field.name}</div>
             </div>
           </div>
           {/* Spacer to push action buttons to the right */}
-          <div className="flex-1" />
-          <div className="flex items-center gap-1">
+          <div className='flex-1' />
+          <div className='flex items-center gap-1'>
             {/* Edit button for custom fields */}
             {onEdit && (
               <Button
-                variant="ghost"
-                size="icon-sm"
-                className="text-muted-foreground hover:text-foreground"
+                variant='ghost'
+                size='icon-sm'
+                className='text-muted-foreground hover:text-foreground'
                 onClick={() => onEdit(field.id, field)}>
                 <Pencil />
               </Button>
@@ -180,9 +180,9 @@ export const SortablePropertyRow = memo(function SortablePropertyRow({
             {/* Delete button for custom fields */}
             {onDelete && (
               <Button
-                variant="ghost"
-                size="icon-sm"
-                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                variant='ghost'
+                size='icon-sm'
+                className='text-muted-foreground hover:text-destructive hover:bg-destructive/10'
                 onClick={() => onDelete(field.id, field.name)}>
                 <Trash2 />
               </Button>
@@ -191,7 +191,7 @@ export const SortablePropertyRow = memo(function SortablePropertyRow({
             {onToggleVisibility && (
               <Switch
                 checked={isVisible}
-                size="sm"
+                size='sm'
                 onCheckedChange={(checked) => onToggleVisibility(resourceFieldId, checked)}
               />
             )}
@@ -210,16 +210,16 @@ export const SortablePropertyRow = memo(function SortablePropertyRow({
           !isVisible && 'opacity-50'
         )}>
         {/* Field name - aligned with sortable fields (padded to match grip width) */}
-        <div className="w-[146px] pl-6 text-sm text-neutral-400 shrink-0">
-          <div className="truncate">{field.name}</div>
+        <div className='w-[146px] pl-6 text-sm text-neutral-400 shrink-0'>
+          <div className='truncate'>{field.name}</div>
         </div>
         {/* Spacer */}
-        <div className="flex-1" />
+        <div className='flex-1' />
         {/* Visibility toggle */}
         {onToggleVisibility && (
           <Switch
             checked={isVisible}
-            size="sm"
+            size='sm'
             onCheckedChange={(checked) => onToggleVisibility(resourceFieldId, checked)}
           />
         )}

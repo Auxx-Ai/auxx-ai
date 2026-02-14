@@ -20,10 +20,7 @@ export function TriggerDataHandler() {
       'surface-trigger-complete',
       ({ triggerId, result }) => {
         if (typeof triggerId !== 'number') {
-          console.error(
-            `[TriggerDataHandler] Invalid triggerId from App(${appId}):`,
-            triggerId
-          )
+          console.error(`[TriggerDataHandler] Invalid triggerId from App(${appId}):`, triggerId)
           return null
         }
 
@@ -44,10 +41,7 @@ export function TriggerDataHandler() {
       'surface-trigger-error',
       ({ triggerId, error }) => {
         if (typeof triggerId !== 'number') {
-          console.error(
-            `[TriggerDataHandler] Invalid triggerId from App(${appId}):`,
-            triggerId
-          )
+          console.error(`[TriggerDataHandler] Invalid triggerId from App(${appId}):`, triggerId)
           return null
         }
 
@@ -56,10 +50,7 @@ export function TriggerDataHandler() {
 
         // Dev logging
         if (isDevLoggingEnabled) {
-          console.error(
-            `[TriggerDataHandler] App(${appId}) failed trigger #${triggerId}:`,
-            error
-          )
+          console.error(`[TriggerDataHandler] App(${appId}) failed trigger #${triggerId}:`, error)
         }
 
         return null

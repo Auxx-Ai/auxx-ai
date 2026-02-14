@@ -1,15 +1,14 @@
 // apps/web/src/server/api/routers/vendorPart.ts
 
-import { TRPCError } from '@trpc/server'
-import { z } from 'zod'
-import { handleVendorPartChange, handleVendorPartDelete } from '@auxx/lib/bom'
-import * as vendorPartDb from '@auxx/services/vendor-parts'
-import * as contactDb from '@auxx/services/contacts'
 import { database as db, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { handleVendorPartChange, handleVendorPartDelete } from '@auxx/lib/bom'
 import { createScopedLogger } from '@auxx/logger'
+import * as contactDb from '@auxx/services/contacts'
+import * as vendorPartDb from '@auxx/services/vendor-parts'
+import { TRPCError } from '@trpc/server'
+import { and, eq } from 'drizzle-orm'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api-vendorPart')
 
@@ -146,7 +145,12 @@ export const vendorPartRouter = createTRPCRouter({
       }
 
       // Handle cost updates
-      await handleVendorPartChange(organizationId, partId, existingVendorPart?.isPreferred, isPreferred!)
+      await handleVendorPartChange(
+        organizationId,
+        partId,
+        existingVendorPart?.isPreferred,
+        isPreferred!
+      )
 
       if (isPreferred) {
         await vendorPartDb.clearOtherPreferred({

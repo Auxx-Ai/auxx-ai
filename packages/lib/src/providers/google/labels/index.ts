@@ -1,7 +1,8 @@
 // packages/lib/src/providers/google/labels/index.ts
-export { getLabels, type GetLabelsInput } from './get-labels'
-export { createLabel, type CreateLabelInput } from './create-label'
-export { updateLabel, type UpdateLabelInput } from './update-label'
-export { deleteLabel, type DeleteLabelInput } from './delete-label'
-export { addLabel, type AddLabelInput } from './add-label'
-export { removeLabel, type RemoveLabelInput } from './remove-label'
+
+export { type AddLabelInput, addLabel } from './add-label'
+export { type CreateLabelInput, createLabel } from './create-label'
+export { type DeleteLabelInput, deleteLabel } from './delete-label'
+export { type GetLabelsInput, getLabels } from './get-labels'
+export { type RemoveLabelInput, removeLabel } from './remove-label'
+export { type UpdateLabelInput, updateLabel } from './update-label'

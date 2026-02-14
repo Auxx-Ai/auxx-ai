@@ -1,6 +1,7 @@
 // ~/hooks/use-integration.ts
-import { api } from '~/trpc/react'
+
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { api } from '~/trpc/react'
 
 /**
  * Custom hook for managing integrations

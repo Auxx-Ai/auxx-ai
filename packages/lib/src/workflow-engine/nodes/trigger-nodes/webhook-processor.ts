@@ -1,9 +1,9 @@
 // packages/lib/src/workflow-engine/nodes/trigger-nodes/webhook-processor.ts
 
-import { BaseNodeProcessor } from '../base-node'
-import type { WorkflowNode, NodeExecutionResult, ValidationResult } from '../../core/types'
-import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import type { ExecutionContextManager } from '../../core/execution-context'
+import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
+import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { BaseNodeProcessor } from '../base-node'
 
 /**
  * Data interface for webhook node

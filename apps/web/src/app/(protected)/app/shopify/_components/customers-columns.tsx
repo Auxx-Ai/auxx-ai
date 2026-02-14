@@ -1,14 +1,15 @@
 'use client'
-import { ColumnDef } from '@tanstack/react-table'
+import type { Customer } from '@auxx/database/types'
 import { Checkbox } from '@auxx/ui/components/checkbox'
+import { pluralize } from '@auxx/utils'
+import type { ColumnDef } from '@tanstack/react-table'
+import Link from 'next/link'
 // import { DataTableRowActions } from './data-table-row-actions'
 import { DataTableColumnHeader } from '~/components/data-table/data-table-column-header'
+import { formatMoney } from '~/utils/strings'
 // import { Customer } from './schema'
 import { DataTableRowActions } from './customers-data-table-row-actions'
-import { formatMoney } from '~/utils/strings'
-import { pluralize } from '@auxx/utils'
-import Link from 'next/link'
-import type { Customer } from '@auxx/database/types'
+
 function renderName(row: Customer) {
   if (!row.firstName && !row.lastName) {
     if (row.email) {
@@ -29,16 +30,16 @@ export const columns: ColumnDef<Customer>[] = [
           table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')
         }
         onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-        aria-label="Select all"
-        className="translate-y-[2px]"
+        aria-label='Select all'
+        className='translate-y-[2px]'
       />
     ),
     cell: ({ row }) => (
       <Checkbox
         checked={row.getIsSelected()}
         onCheckedChange={(value) => row.toggleSelected(!!value)}
-        aria-label="Select row"
-        className="translate-y-[2px]"
+        aria-label='Select row'
+        className='translate-y-[2px]'
       />
     ),
     enableSorting: false,
@@ -57,14 +58,14 @@ export const columns: ColumnDef<Customer>[] = [
     id: 'title',
     minSize: 150,
     maxSize: Number.MAX_SAFE_INTEGER,
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title='Name' />,
     accessorFn: (row) => `${row.firstName} ${row.lastName}`.trim(),
     cell: ({ row }) => {
       return (
-        <div className="flex space-x-2">
+        <div className='flex space-x-2'>
           <Link
             href={`/app/contacts/${row.original.contact.id}`}
-            className="w-full max-w-[1000px] truncate font-medium hover:underline">
+            className='w-full max-w-[1000px] truncate font-medium hover:underline'>
             {renderName(row.original)}
           </Link>
         </div>
@@ -128,12 +129,12 @@ export const columns: ColumnDef<Customer>[] = [
     minSize: 100,
     maxSize: 400,
     accessorKey: 'numberOfOrders',
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Orders" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title='Orders' />,
     cell: ({ row }) => {
       // row.original.numberOfOrders
       const count = row.original.numberOfOrders || 0
       return (
-        <div className="flex space-x-2">
+        <div className='flex space-x-2'>
           {count} {pluralize(count, 'order')}
         </div>
       )
@@ -144,11 +145,11 @@ export const columns: ColumnDef<Customer>[] = [
     minSize: 100,
     maxSize: 400,
     accessorKey: 'amountSpent',
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Amount spent" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title='Amount spent' />,
     cell: ({ row }) => {
       // row.original.numberOfOrders
       return (
-        <div className="flex space-x-2">
+        <div className='flex space-x-2'>
           {formatMoney(row.original.amountSpent || 0, '${{amount_no_decimals}}')}
         </div>
       )

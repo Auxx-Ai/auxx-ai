@@ -24,30 +24,27 @@
  *   - generateEmbeddingsFlowJob (flow job: DocumentFlowJobs.GENERATE_EMBEDDINGS)
  */
 
-import type { Job } from 'bullmq'
 import { database as db } from '@auxx/database'
-import { DocumentModel, DocumentSegmentModel } from '@auxx/database/models'
-import { createScopedLogger } from '@auxx/logger'
-import {
-  DocumentProcessor,
-  EmbeddingProcessor,
-  DocumentProcessingQueue,
-  RedisDocumentExecutionReporter,
-  DocumentEventType,
-  DocumentService,
-} from '@auxx/lib/datasets'
 import { DocumentStatus } from '@auxx/database/enums'
+import { DocumentModel, DocumentSegmentModel } from '@auxx/database/models'
+import {
+  DocumentEventType,
+  DocumentProcessingQueue,
+  DocumentProcessor,
+  DocumentService,
+  EmbeddingProcessor,
+  RedisDocumentExecutionReporter,
+} from '@auxx/lib/datasets'
+import { createScopedLogger } from '@auxx/logger'
+import type { Job } from 'bullmq'
 import type {
+  BatchOperationJobData,
   DocumentProcessingJobData,
   EmbeddingGenerationJobData,
-  BatchOperationJobData,
 } from '../../datasets/types'
-import type { JobContext } from '../types'
-import type {
-  FinalizeDocumentJobData,
-  FlowEmbeddingGenerationJobData,
-} from '../flows'
+import type { FinalizeDocumentJobData, FlowEmbeddingGenerationJobData } from '../flows'
 import { getQueue, Queues } from '../queues'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('dataset-document-jobs')
 
@@ -68,10 +65,14 @@ const logger = createScopedLogger('dataset-document-jobs')
  *
  * Used by: document-processing-worker.ts (queue: 'process-document')
  */
-export const processDocumentJob = async (ctx: JobContext<DocumentProcessingJobData> | Job<DocumentProcessingJobData>) => {
+export const processDocumentJob = async (
+  ctx: JobContext<DocumentProcessingJobData> | Job<DocumentProcessingJobData>
+) => {
   // Handle both legacy Job and new JobContext patterns
   const isJobContext = 'data' in ctx && 'throwIfCancelled' in ctx
-  const job = isJobContext ? (ctx as JobContext<DocumentProcessingJobData>).job : (ctx as Job<DocumentProcessingJobData>)
+  const job = isJobContext
+    ? (ctx as JobContext<DocumentProcessingJobData>).job
+    : (ctx as Job<DocumentProcessingJobData>)
   const data = job.data
   const signal = isJobContext ? (ctx as JobContext<DocumentProcessingJobData>).signal : undefined
 
@@ -129,10 +130,14 @@ export const processDocumentJob = async (ctx: JobContext<DocumentProcessingJobDa
  *
  * Used by: dataset-embedding-worker.ts (queue: 'generate-batch-embeddings')
  */
-export const generateEmbeddingJob = async (ctx: JobContext<EmbeddingGenerationJobData> | Job<EmbeddingGenerationJobData>) => {
+export const generateEmbeddingJob = async (
+  ctx: JobContext<EmbeddingGenerationJobData> | Job<EmbeddingGenerationJobData>
+) => {
   // Handle both legacy Job and new JobContext patterns
   const isJobContext = 'data' in ctx && 'throwIfCancelled' in ctx
-  const job = isJobContext ? (ctx as JobContext<EmbeddingGenerationJobData>).job : (ctx as Job<EmbeddingGenerationJobData>)
+  const job = isJobContext
+    ? (ctx as JobContext<EmbeddingGenerationJobData>).job
+    : (ctx as Job<EmbeddingGenerationJobData>)
   const data = job.data
 
   const { segmentIds, organizationId, datasetId } = data
@@ -179,7 +184,9 @@ export const generateEmbeddingJob = async (ctx: JobContext<EmbeddingGenerationJo
  *
  * Used by: dataset-embedding-worker.ts (flow job: DocumentFlowJobs.GENERATE_EMBEDDINGS)
  */
-export const generateEmbeddingsFlowJob = async (ctx: JobContext<FlowEmbeddingGenerationJobData>) => {
+export const generateEmbeddingsFlowJob = async (
+  ctx: JobContext<FlowEmbeddingGenerationJobData>
+) => {
   const { data, throwIfCancelled, updateProgress, jobId } = ctx
   const {
     documentId,
@@ -200,9 +207,7 @@ export const generateEmbeddingsFlowJob = async (ctx: JobContext<FlowEmbeddingGen
   })
 
   // Create reporter for SSE events if we have documentId
-  const reporter = documentId
-    ? new RedisDocumentExecutionReporter(documentId, datasetId)
-    : null
+  const reporter = documentId ? new RedisDocumentExecutionReporter(documentId, datasetId) : null
 
   try {
     throwIfCancelled()
@@ -465,10 +470,14 @@ export const finalizeDocumentJob = async (ctx: JobContext<FinalizeDocumentJobDat
  * - document-processing-worker.ts (queue: 'batch-operation')
  * - dataset-embedding-worker.ts (queue: 'batch-operation')
  */
-export const batchOperationJob = async (ctx: JobContext<BatchOperationJobData> | Job<BatchOperationJobData>) => {
+export const batchOperationJob = async (
+  ctx: JobContext<BatchOperationJobData> | Job<BatchOperationJobData>
+) => {
   // Handle both legacy Job and new JobContext patterns
   const isJobContext = 'data' in ctx && 'throwIfCancelled' in ctx
-  const job = isJobContext ? (ctx as JobContext<BatchOperationJobData>).job : (ctx as Job<BatchOperationJobData>)
+  const job = isJobContext
+    ? (ctx as JobContext<BatchOperationJobData>).job
+    : (ctx as Job<BatchOperationJobData>)
   const data = job.data
 
   const { operation, targetIds, targetType, datasetId, organizationId } = data
@@ -505,7 +514,12 @@ export const batchOperationJob = async (ctx: JobContext<BatchOperationJobData> |
       case 'reindex':
         // Queue reprocessing for documents
         for (const targetId of targetIds) {
-          await DocumentProcessingQueue.queueDocumentProcessing(targetId, datasetId, organizationId, data.userId)
+          await DocumentProcessingQueue.queueDocumentProcessing(
+            targetId,
+            datasetId,
+            organizationId,
+            data.userId
+          )
         }
         result = { processed: targetIds.length }
         break

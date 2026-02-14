@@ -1,27 +1,27 @@
 // apps/web/src/components/workflow/canvas/workflow-toolbar.tsx
 
-import React, { useState, useCallback } from 'react'
 import { Button } from '@auxx/ui/components/button'
+import { Popover, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Separator } from '@auxx/ui/components/separator'
-import { Save, Play, Plus, Variable, Upload, ClockArrowUp, Settings } from 'lucide-react'
-import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
-import { useCanvasStore } from '~/components/workflow/store/canvas-store'
-import { usePanelStore } from '~/components/workflow/store/panel-store'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { AddNodeTrigger } from '~/components/workflow/ui/add-node-trigger'
+import { ClockArrowUp, Play, Plus, Save, Settings, Upload, Variable } from 'lucide-react'
+import React, { useCallback, useState } from 'react'
+import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
 import { VariableEditorDialog } from '~/components/workflow/dialogs/variable-editor-dialog'
-import WorkflowVersionsPopover from '~/components/workflow/ui/workflow-versions-popover'
-import { WorkflowChecklist } from '~/components/workflow/ui/workflow-checklist'
+import { useNonTriggerDefinitions, useReadOnly } from '~/components/workflow/hooks'
 import { useChecklist } from '~/components/workflow/hooks/use-checklist'
-import { useConfirm } from '~/hooks/use-confirm'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
-import { useReadOnly, useNonTriggerDefinitions } from '~/components/workflow/hooks'
-import { Popover, PopoverTrigger } from '@auxx/ui/components/popover'
 import { RunHistory } from '~/components/workflow/panels/run/run-history'
+import { useCanvasStore } from '~/components/workflow/store/canvas-store'
+import { usePanelStore } from '~/components/workflow/store/panel-store'
+import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
+import { AddNodeTrigger } from '~/components/workflow/ui/add-node-trigger'
+import { WorkflowChecklist } from '~/components/workflow/ui/workflow-checklist'
+import WorkflowVersionsPopover from '~/components/workflow/ui/workflow-versions-popover'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 import { useWorkflowSave } from '../hooks'
-import { DockToggleButton } from '~/components/global/dock-toggle-button'
 
 interface WorkflowToolbarProps {
   className?: string
@@ -162,33 +162,33 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
           'workflow-toolbar flex items-center justify-between gap-1 bg-primary-150 border-b border-primary-300 rounded-t-lg',
           className
         )}>
-        <div className="flex items-center p-1 gap-1 overflow-x-auto overflow-y-visible no-scrollbar shrink-0 flex-1">
+        <div className='flex items-center p-1 gap-1 overflow-x-auto overflow-y-visible no-scrollbar shrink-0 flex-1'>
           {/* File operations */}
           <Tooltip content={isReadOnly ? 'Save disabled in read-only mode' : 'Save (Cmd/Ctrl + S)'}>
             <Button
-              variant="ghost"
-              size="icon-sm"
+              variant='ghost'
+              size='icon-sm'
               onClick={handleSave}
               disabled={!isDirty || isReadOnly}
               loading={isSaving}
-              loadingText="Saving...">
+              loadingText='Saving...'>
               <Save />
             </Button>
           </Tooltip>
 
-          <Separator orientation="vertical" className="h-6" />
+          <Separator orientation='vertical' className='h-6' />
 
           {/* View options */}
           {!isReadOnly && (
             <AddNodeTrigger
-              position="standalone"
+              position='standalone'
               onNodeAdded={handleNodeAdded}
               allowedNodeTypes={availableBlocks}
               open={blockSelectorOpen}
               onOpenChange={setBlockSelectorOpen}>
-              <div className="shrink-0">
-                <Tooltip content="Add Block" shortcut="N">
-                  <Button variant="ghost" size="icon-sm" className=" ">
+              <div className='shrink-0'>
+                <Tooltip content='Add Block' shortcut='N'>
+                  <Button variant='ghost' size='icon-sm' className=' '>
                     <Plus />
                   </Button>
                 </Tooltip>
@@ -196,8 +196,8 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
             </AddNodeTrigger>
           )}
           {isReadOnly && (
-            <Tooltip content="Add Block disabled in read-only mode">
-              <Button variant="ghost" size="icon-sm" disabled>
+            <Tooltip content='Add Block disabled in read-only mode'>
+              <Button variant='ghost' size='icon-sm' disabled>
                 <Plus />
               </Button>
             </Tooltip>
@@ -205,32 +205,32 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
           <Tooltip
             content={isReadOnly ? 'Variables disabled in read-only mode' : 'Environment Variables'}>
             <Button
-              variant="ghost"
-              size="sm"
+              variant='ghost'
+              size='sm'
               onClick={() => setVariableEditorOpen(true)}
               disabled={isReadOnly}
-              className="text-comparison-500 border border-transparent hover:bg-comparison-50 hover:border-comparison-200 hover:text-comparison-600">
+              className='text-comparison-500 border border-transparent hover:bg-comparison-50 hover:border-comparison-200 hover:text-comparison-600'>
               <Variable />
               ENV
             </Button>
           </Tooltip>
 
           {/* <div className="flex-1" /> */}
-          <Separator orientation="vertical" className="h-6" />
+          <Separator orientation='vertical' className='h-6' />
 
           {/* Actions */}
           <WorkflowChecklist />
           <Tooltip content={isReadOnly ? 'Test disabled in read-only mode' : 'Test this workflow'}>
-            <Button size="sm" variant="ghost" onClick={handleTest} disabled={isReadOnly}>
+            <Button size='sm' variant='ghost' onClick={handleTest} disabled={isReadOnly}>
               <Play />
               Test
             </Button>
           </Tooltip>
           <Popover open={historyPopoverOpen} onOpenChange={setHistoryPopoverOpen}>
             <PopoverTrigger asChild>
-              <div className="shrink-0">
-                <Tooltip content="View your run history">
-                  <Button size="sm" variant="ghost" className="shrink-0">
+              <div className='shrink-0'>
+                <Tooltip content='View your run history'>
+                  <Button size='sm' variant='ghost' className='shrink-0'>
                     <ClockArrowUp />
                     History
                   </Button>
@@ -239,19 +239,19 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
             </PopoverTrigger>
             <RunHistory onRunSelect={handleRunSelect} />
           </Popover>
-          <Tooltip content="Workflow settings">
+          <Tooltip content='Workflow settings'>
             <Button
-              size="sm"
+              size='sm'
               variant={settingsPanelOpen ? 'secondary' : 'ghost'}
               onClick={() => (settingsPanelOpen ? closeSettingsPanel() : openSettingsPanel())}>
               <Settings />
               Settings
             </Button>
           </Tooltip>
-          <Separator orientation="vertical" className="h-6" />
+          <Separator orientation='vertical' className='h-6' />
 
           <Tooltip
-            variant="destructive"
+            variant='destructive'
             content={
               errorCount > 0
                 ? `Cannot publish: ${errorCount} error${errorCount > 1 ? 's' : ''} must be fixed`
@@ -262,12 +262,12 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
                     : 'Publish Current Version'
             }>
             <Button
-              variant="ghost"
-              size="sm"
+              variant='ghost'
+              size='sm'
               onClick={handlePublish}
               disabled={publishMutation.isPending || isReadOnly}
               loading={publishMutation.isPending}
-              loadingText="Publishing...">
+              loadingText='Publishing...'>
               <Upload />
               Publish
             </Button>
@@ -279,7 +279,7 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
           />
         </div>
         {/* Dock toggle */}
-        <div className="shrink-0">
+        <div className='shrink-0'>
           <DockToggleButton />
         </div>
       </div>

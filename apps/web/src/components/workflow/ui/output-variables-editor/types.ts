@@ -2,7 +2,7 @@
 
 import type { Node } from '@auxx/lib/workflow-engine/types'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
-import { VariableGroup } from '../../hooks/use-available-variables'
+import type { VariableGroup } from '../../hooks/use-available-variables'
 
 /**
  * Represents a single output variable configuration

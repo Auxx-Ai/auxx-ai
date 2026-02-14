@@ -1,12 +1,6 @@
 // apps/web/src/app/(protected)/app/onboarding/organization/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
-import { motion } from 'motion/react'
 import { CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   Form,
@@ -20,19 +14,26 @@ import {
 import { Input } from '@auxx/ui/components/input'
 import {
   InputGroup,
-  InputGroupInput,
   InputGroupAddon,
+  InputGroupInput,
   InputGroupText,
 } from '@auxx/ui/components/input-group'
-import { OnboardingNavigation } from '../_components/onboarding-navigation'
-import { useOnboarding } from '../_components/onboarding-provider'
 import { toastError } from '@auxx/ui/components/toast'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { Check, Loader2, X } from 'lucide-react'
+import { motion } from 'motion/react'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import {
   useDehydratedOrganization,
   useDehydratedOrganizationId,
 } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
-import { Check, X, Loader2 } from 'lucide-react'
+import { OnboardingNavigation } from '../_components/onboarding-navigation'
+import { useOnboarding } from '../_components/onboarding-provider'
+
 const formSchema = z.object({
   name: z.string().min(1, { error: 'Organization name is required' }),
   handle: z
@@ -206,13 +207,13 @@ export default function OrganizationOnboardingPage() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 w-full">
+    <div className='grid grid-cols-1 md:grid-cols-2 w-full'>
       {/* Left column: Organization form */}
-      <div className="relative md:border-r p-3">
-        <motion.div variants={containerVariants} initial="hidden" animate="visible">
+      <div className='relative md:border-r p-3'>
+        <motion.div variants={containerVariants} initial='hidden' animate='visible'>
           <motion.div variants={itemVariants}>
             <CardHeader>
-              <CardTitle className=" font-normal">Organization Details</CardTitle>
+              <CardTitle className=' font-normal'>Organization Details</CardTitle>
               <CardDescription>
                 Tell us about your organization to personalize your workspace
               </CardDescription>
@@ -221,17 +222,17 @@ export default function OrganizationOnboardingPage() {
 
           <CardContent>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
                 {/* Organization Name */}
                 <motion.div variants={itemVariants}>
                   <FormField
                     control={form.control}
-                    name="name"
+                    name='name'
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Organization Name</FormLabel>
                         <FormControl>
-                          <Input placeholder="Acme Corp" {...field} />
+                          <Input placeholder='Acme Corp' {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -243,18 +244,18 @@ export default function OrganizationOnboardingPage() {
                 <motion.div variants={itemVariants}>
                   <FormField
                     control={form.control}
-                    name="handle"
+                    name='handle'
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Organization Handle</FormLabel>
                         <FormControl>
-                          <div className="relative">
+                          <div className='relative'>
                             <InputGroup>
-                              <InputGroupAddon align="inline-start">
+                              <InputGroupAddon align='inline-start'>
                                 <InputGroupText>auxx.ai /</InputGroupText>
                               </InputGroupAddon>
                               <InputGroupInput
-                                placeholder="acme-corp"
+                                placeholder='acme-corp'
                                 {...field}
                                 onFocus={() => {
                                   // Mark as manually edited when user focuses the field
@@ -267,17 +268,17 @@ export default function OrganizationOnboardingPage() {
                                   setHandleManuallyEdited(true)
                                   field.onChange(e)
                                 }}
-                                className="pr-10"
+                                className='pr-10'
                               />
                             </InputGroup>
                             {watchHandle && watchHandle.length >= 4 && (
-                              <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                              <div className='absolute right-3 top-1/2 -translate-y-1/2'>
                                 {isCheckingAvailability ? (
-                                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                  <Loader2 className='h-4 w-4 animate-spin text-muted-foreground' />
                                 ) : handleAvailable === true ? (
-                                  <Check className="h-4 w-4 text-green-500" />
+                                  <Check className='h-4 w-4 text-green-500' />
                                 ) : handleAvailable === false ? (
-                                  <X className="h-4 w-4 text-destructive" />
+                                  <X className='h-4 w-4 text-destructive' />
                                 ) : null}
                               </div>
                             )}
@@ -294,12 +295,12 @@ export default function OrganizationOnboardingPage() {
                 <motion.div variants={itemVariants}>
                   <FormField
                     control={form.control}
-                    name="website"
+                    name='website'
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Website (optional)</FormLabel>
                         <FormControl>
-                          <Input placeholder="https://example.com" {...field} />
+                          <Input placeholder='https://example.com' {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -325,21 +326,21 @@ export default function OrganizationOnboardingPage() {
       </div>
 
       {/* Right column: Illustration - hidden on mobile */}
-      <div className="hidden md:flex items-center justify-center p-14">
+      <div className='hidden md:flex items-center justify-center p-14'>
         <motion.div
-          className="text-center"
+          className='text-center'
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.6, delay: 0.3, ease: 'easeOut' }}>
           <motion.h2
-            className="text-2xl font-semibold mb-4"
+            className='text-2xl font-semibold mb-4'
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.5 }}>
             Build Your Workspace
           </motion.h2>
           <motion.p
-            className="text-muted-foreground"
+            className='text-muted-foreground'
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.6 }}>

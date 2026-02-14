@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,6 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
 import {
   Select,
   SelectContent,
@@ -20,9 +19,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { api } from '~/trpc/react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { useState } from 'react'
 import { useRecordInvalidation } from '~/components/resources'
+import { api } from '~/trpc/react'
 
 // Enum values
 const TicketStatus = {
@@ -50,7 +50,7 @@ export function MassStatusDialog({
 }: MassStatusDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="sm" position="tc">
+      <DialogContent size='sm' position='tc'>
         <MassStatusDialogContent
           ticketIds={ticketIds}
           onSuccess={onSuccess}
@@ -103,11 +103,11 @@ function MassStatusDialogContent({ ticketIds, onSuccess, onClose }: MassStatusDi
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-1 flex flex-col">
-        <label className="text-sm font-medium">Select Status</label>
+      <div className='space-y-1 flex flex-col'>
+        <label className='text-sm font-medium'>Select Status</label>
         <Select value={status} onValueChange={setStatus} disabled={updateStatus.isPending}>
           <SelectTrigger>
-            <SelectValue placeholder="Select a new status" />
+            <SelectValue placeholder='Select a new status' />
           </SelectTrigger>
           <SelectContent>
             {Object.values(TicketStatus).map((statusOption) => (
@@ -120,22 +120,18 @@ function MassStatusDialogContent({ ticketIds, onSuccess, onClose }: MassStatusDi
       </div>
 
       <DialogFooter>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onClose}
-          disabled={updateStatus.isPending}>
-          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+        <Button variant='ghost' size='sm' onClick={onClose} disabled={updateStatus.isPending}>
+          Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
         </Button>
         <Button
-          variant="outline"
-          size="sm"
+          variant='outline'
+          size='sm'
           onClick={handleSubmit}
           disabled={updateStatus.isPending || !status}
           loading={updateStatus.isPending}
-          loadingText="Updating..."
+          loadingText='Updating...'
           data-dialog-submit>
-          Update Status <KbdSubmit variant="outline" size="sm" />
+          Update Status <KbdSubmit variant='outline' size='sm' />
         </Button>
       </DialogFooter>
     </>

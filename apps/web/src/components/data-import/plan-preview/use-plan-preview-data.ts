@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { api } from '~/trpc/react'
 import type { PlanPreviewRow, StrategyCounts } from './types'
 
@@ -66,7 +66,7 @@ export function usePlanPreviewData(options: UsePlanPreviewDataOptions): UsePlanP
       errors: row.errorMessage ? [row.errorMessage] : [],
     })) ?? []
   const rows = sseRows.length > 0 ? sseRows : dbRows
-  const total = sseRows.length > 0 ? sseRows.length : dbData?.total ?? 0
+  const total = sseRows.length > 0 ? sseRows.length : (dbData?.total ?? 0)
 
   // Calculate strategy counts
   const strategyCounts = rows.reduce<StrategyCounts>(

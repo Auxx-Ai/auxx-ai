@@ -122,7 +122,7 @@ export class AwsS3Credentials implements ICredentialType {
       placeholder: 'my-s3-bucket',
       description: 'Default S3 bucket for file operations (can be overridden per operation)',
       validation: {
-        pattern: /^[a-z0-9][a-z0-9\-\.]{1,61}[a-z0-9]$/,
+        pattern: /^[a-z0-9][a-z0-9\-.]{1,61}[a-z0-9]$/,
         errorMessage:
           'Must be a valid S3 bucket name (3-63 characters, lowercase letters, numbers, hyphens, dots)',
       },

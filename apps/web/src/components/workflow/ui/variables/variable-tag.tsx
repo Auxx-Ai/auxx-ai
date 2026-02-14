@@ -1,7 +1,5 @@
 // apps/web/src/components/workflow/nodes/components/variable-tag.tsx
 
-import React, { useCallback, useMemo } from 'react'
-import { AlertTriangle, Globe, Settings } from 'lucide-react'
 import {
   Tooltip,
   TooltipContent,
@@ -9,14 +7,17 @@ import {
   TooltipTrigger,
 } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
-import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
+import { AlertTriangle, Globe, Settings } from 'lucide-react'
+import type React from 'react'
+import { useCallback, useMemo } from 'react'
 import { useNodeTitle } from '~/components/workflow/hooks'
-import { VarTypeIcon, getVarTypeName } from '~/components/workflow/utils'
+import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
+import { BaseType } from '~/components/workflow/types/unified-types'
+import { getVarTypeName, VarTypeIcon } from '~/components/workflow/utils'
 import {
   getNodeIdFromVariableId,
   getPathFromVariableId,
 } from '~/components/workflow/utils/variable-utils'
-import { BaseType } from '~/components/workflow/types/unified-types'
 
 // apps/web/src/components/workflow/ui/variables/line3-icon.tsx
 
@@ -26,16 +27,16 @@ import { BaseType } from '~/components/workflow/types/unified-types'
  */
 const Slash: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg
-    width="5"
-    height="12"
-    viewBox="0 0 5 12"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    className="mr-0.5 text-divider-deep"
-    data-icon="Line3"
-    aria-hidden="true"
+    width='5'
+    height='12'
+    viewBox='0 0 5 12'
+    fill='none'
+    xmlns='http://www.w3.org/2000/svg'
+    className='mr-0.5 text-divider-deep'
+    data-icon='Line3'
+    aria-hidden='true'
     {...props}>
-    <path id="Line 3" d="M1 11.3545L3.94174 0.645781" stroke="#D0D5DD" strokeLinecap="round" />
+    <path id='Line 3' d='M1 11.3545L3.94174 0.645781' stroke='#D0D5DD' strokeLinecap='round' />
   </svg>
 )
 
@@ -64,7 +65,7 @@ const VariableTag = ({
   // Get the node title for node variables
   const nodeTitle = useNodeTitle(isNodeVar ? variableNodeId : undefined)
   const typeIcon = (
-    <VarTypeIcon type={variable?.type ?? BaseType.STRING} className="mr-0.5 size-3.5 shrink-0" />
+    <VarTypeIcon type={variable?.type ?? BaseType.STRING} className='mr-0.5 size-3.5 shrink-0' />
   )
   const varTypeTitle = getVarTypeName(variable?.type ?? BaseType.STRING)
 
@@ -136,19 +137,19 @@ const VariableTag = ({
                   title={nodeTitle}>
                   {nodeTitle}
                 </div>
-                <Slash className="mx-0.5 size-3 shrink-0 text-muted-foreground group-aria-selected/var:text-white/90" />
+                <Slash className='mx-0.5 size-3 shrink-0 text-muted-foreground group-aria-selected/var:text-white/90' />
               </>
             )}
-            <span title={varTypeTitle} className="shrink-0">
+            <span title={varTypeTitle} className='shrink-0'>
               {typeIcon}
             </span>
           </>
         )}
         {isSystemVar && (
-          <Settings className="mr-0.5 size-3.5 shrink-0 text-gray-500 group-aria-selected/var:text-white/50" />
+          <Settings className='mr-0.5 size-3.5 shrink-0 text-gray-500 group-aria-selected/var:text-white/50' />
         )}
         {isEnvVar && (
-          <Globe className="mr-0.5 size-3.5 shrink-0 text-violet-600 group-aria-selected/var:text-white/50" />
+          <Globe className='mr-0.5 size-3.5 shrink-0 text-violet-600 group-aria-selected/var:text-white/50' />
         )}
         <div
           className={cn(
@@ -164,7 +165,7 @@ const VariableTag = ({
         </div>
 
         {!isValid && (
-          <AlertTriangle className="ml-0.5 size-3 text-destructive group-aria-selected/var:text-white/90" />
+          <AlertTriangle className='ml-0.5 size-3 text-destructive group-aria-selected/var:text-white/90' />
         )}
       </div>
     ),
@@ -176,9 +177,9 @@ const VariableTag = ({
   // If variable not found in store, show error
   if (!variable) {
     return (
-      <div className="inline-flex shrink-0 h-5 max-w-full items-center rounded-md border-[0.5px] border-border bg-background px-1.5 text-xs shadow-xs cursor-pointer group-aria-selected/var:bg-destructive">
-        <AlertTriangle className="mr-0.5 size-3 text-destructive group-aria-selected/var:text-white/90" />
-        <span className="text-destructive group-aria-selected/var:text-white/90">Unknown Var</span>
+      <div className='inline-flex shrink-0 h-5 max-w-full items-center rounded-md border-[0.5px] border-border bg-background px-1.5 text-xs shadow-xs cursor-pointer group-aria-selected/var:bg-destructive'>
+        <AlertTriangle className='mr-0.5 size-3 text-destructive group-aria-selected/var:text-white/90' />
+        <span className='text-destructive group-aria-selected/var:text-white/90'>Unknown Var</span>
       </div>
     )
   }
@@ -197,9 +198,9 @@ const VariableTag = ({
   }
 
   return (
-    <div className="group/variable relative">
-      <div className="flex justify-center">{content}</div>
-      <div className="flex opacity-0 group-hover/variable:opacity-100 pointer-events-none group-hover/variable:pointer-events-auto absolute top-0 left-0 z-[1000]">
+    <div className='group/variable relative'>
+      <div className='flex justify-center'>{content}</div>
+      <div className='flex opacity-0 group-hover/variable:opacity-100 pointer-events-none group-hover/variable:pointer-events-auto absolute top-0 left-0 z-[1000]'>
         {renderContent(false)}
       </div>
     </div>

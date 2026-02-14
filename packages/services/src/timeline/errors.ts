@@ -32,7 +32,4 @@ export type TimelineDeleteError = {
 /**
  * All timeline-specific errors
  */
-export type TimelineError =
-  | TimelineEventNotFoundError
-  | TimelineQueryError
-  | TimelineDeleteError
+export type TimelineError = TimelineEventNotFoundError | TimelineQueryError | TimelineDeleteError

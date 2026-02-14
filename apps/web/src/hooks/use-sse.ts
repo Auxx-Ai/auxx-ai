@@ -1,8 +1,8 @@
 // apps/web/src/hooks/use-sse.ts
 
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { createScopedLogger } from '@auxx/logger'
 import { safeJsonStringify } from '@auxx/lib/workflow-engine/client'
+import { createScopedLogger } from '@auxx/logger'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 const logger = createScopedLogger('use-sse')
 
@@ -195,7 +195,9 @@ export function useSSE(
         // Native error events are Event objects (not MessageEvent) and don't have 'data'
         // We handle them in onerror above, so skip adding listener for 'error' here
         if (eventType === 'error') {
-          logger.warn('Skipping "error" event listener - use a different event name to avoid conflict with native EventSource errors')
+          logger.warn(
+            'Skipping "error" event listener - use a different event name to avoid conflict with native EventSource errors'
+          )
           return
         }
 
@@ -340,7 +342,7 @@ export function useSSE(
       }
 
       const delay = Math.min(
-        (config.reconnectDelay || 1000) * Math.pow(2, attempts),
+        (config.reconnectDelay || 1000) * 2 ** attempts,
         30000 // Max 30 seconds
       )
 

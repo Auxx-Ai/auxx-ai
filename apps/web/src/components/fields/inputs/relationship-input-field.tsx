@@ -1,9 +1,5 @@
 // apps/web/src/components/fields/inputs/relationship-input-field.tsx
 
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
-import { usePropertyContext } from '../property-provider'
-import { useFieldNavigationOptional } from '../field-navigation-context'
-import { toRecordId, getRelationshipStoreState, useResource } from '~/components/resources'
 import {
   extractRelationshipRecordIds,
   getInstanceId,
@@ -11,16 +7,20 @@ import {
   type RecordId,
 } from '@auxx/lib/field-values/client'
 import {
-  getRelatedEntityDefinitionId,
   getInverseFieldId,
+  getRelatedEntityDefinitionId,
   isSelfReferentialRelationship,
   type RelationshipConfig,
 } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
+import { isSingleRelationship } from '@auxx/utils'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { RecordPickerContent } from '~/components/pickers/record-picker'
-import { isSingleRelationship } from '@auxx/utils'
+import { getRelationshipStoreState, toRecordId, useResource } from '~/components/resources'
 import { api } from '~/trpc/react'
+import { useFieldNavigationOptional } from '../field-navigation-context'
+import { usePropertyContext } from '../property-provider'
 
 /**
  * Input component for RELATIONSHIP field type.
@@ -217,11 +217,11 @@ export function RelationshipInputField() {
   )
 
   if (!relatedEntityDefinitionId) {
-    return <span className="text-muted-foreground p-2">Invalid relationship config</span>
+    return <span className='text-muted-foreground p-2'>Invalid relationship config</span>
   }
 
   return (
-    <div className="">
+    <div className=''>
       <RecordPickerContent
         value={localRecordIds}
         onChange={handleChange}
@@ -231,7 +231,7 @@ export function RelationshipInputField() {
         canCreate={canInlineCreate}
         onCreate={handleOpenCreateDialog}
         createLabel={`Create ${relatedResource?.label ?? 'Item'}`}
-        placeholder="Search..."
+        placeholder='Search...'
         excludeIds={excludeRecordIds}
       />
 

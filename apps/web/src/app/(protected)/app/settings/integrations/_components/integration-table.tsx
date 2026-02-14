@@ -1,32 +1,7 @@
 'use client'
-// ~/app/(protected)/app/settings/integrations/_components/integration-table.tsx
-import React from 'react'
-import { useRouter } from 'next/navigation'
-import { format } from 'date-fns'
-import { useIntegration } from '~/hooks/use-integration'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@auxx/ui/components/table'
+import type { ChatWidget } from '@auxx/database/types'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Switch } from '@auxx/ui/components/switch'
-import {
-  MoreHorizontal,
-  RefreshCw,
-  Star,
-  StarOff,
-  Pencil,
-  Trash2,
-  Mail,
-  Facebook,
-  Instagram,
-  MessageSquare, // Added for Chat Widget
-  Phone,
-} from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,17 +10,43 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { Badge } from '@auxx/ui/components/badge'
-import { GoogleIcon, OutlookIcon, FacebookIcon, InstagramIcon } from '~/constants/icons'
-import { Tooltip } from '~/components/global/tooltip'
+import { Switch } from '@auxx/ui/components/switch'
 import {
-  IntegrationStatusIndicator,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@auxx/ui/components/table'
+import { cn } from '@auxx/ui/lib/utils'
+import { format } from 'date-fns'
+import {
+  Facebook,
+  Instagram,
+  Mail,
+  MessageSquare, // Added for Chat Widget
+  MoreHorizontal,
+  Pencil,
+  Phone,
+  RefreshCw,
+  Star,
+  StarOff,
+  Trash2,
+} from 'lucide-react'
+import { useRouter } from 'next/navigation'
+// ~/app/(protected)/app/settings/integrations/_components/integration-table.tsx
+import type React from 'react'
+import {
   getIntegrationStatus,
+  IntegrationStatusIndicator,
 } from '~/components/global/integration-status-indicator'
 import { ReauthBanner } from '~/components/global/reauth-banner'
-import { cn } from '@auxx/ui/lib/utils'
-import type { ChatWidget } from '@auxx/database/types'
+import { Tooltip } from '~/components/global/tooltip'
 import type { InboxItem } from '~/components/threads/hooks'
+import { FacebookIcon, GoogleIcon, InstagramIcon, OutlookIcon } from '~/constants/icons'
+import { useIntegration } from '~/hooks/use-integration'
+
 // Define type for integration (simplified, adjust based on actual API response)
 interface DisplayIntegration {
   id: string
@@ -168,23 +169,23 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
     })
   }
   return (
-    <div className="overflow-auto flex-1 h-full">
-      <table className="w-full caption-bottom text-sm">
+    <div className='overflow-auto flex-1 h-full'>
+      <table className='w-full caption-bottom text-sm'>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[50px]">Type</TableHead>
+            <TableHead className='w-[50px]'>Type</TableHead>
             <TableHead>Name / ID</TableHead>
             <TableHead>Routing To</TableHead>
             <TableHead>Connected</TableHead>
-            <TableHead className="w-[120px]">Status</TableHead>
-            <TableHead className="w-[80px]">Enabled</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
+            <TableHead className='w-[120px]'>Status</TableHead>
+            <TableHead className='w-[80px]'>Enabled</TableHead>
+            <TableHead className='text-right'>Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {integrations.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={8} className="h-24 text-center">
+              <TableCell colSpan={8} className='h-24 text-center'>
                 No integrations found.
               </TableCell>
             </TableRow>
@@ -206,7 +207,7 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
               return (
                 <TableRow
                   key={integration.id}
-                  className="cursor-pointer hover:bg-muted/50"
+                  className='cursor-pointer hover:bg-muted/50'
                   onClick={(e: React.MouseEvent) => handleEdit(e, integration.id)}>
                   <TableCell>
                     <Tooltip content={providerDisplayName}>
@@ -214,30 +215,30 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
                     </Tooltip>
                   </TableCell>
                   <TableCell>
-                    <div className="font-medium">{displayName}</div>
+                    <div className='font-medium'>{displayName}</div>
                     <div
-                      className="text-sm text-muted-foreground truncate line-clamp-1"
+                      className='text-sm text-muted-foreground truncate line-clamp-1'
                       title={integration.identifier || 'Unknown'}>
                       {integration.identifier || 'Unknown'}
                     </div>
                   </TableCell>
                   <TableCell>
                     {connectedInbox ? (
-                      <Badge variant="pill" size="sm" className="truncate">
+                      <Badge variant='pill' size='sm' className='truncate'>
                         {connectedInbox.name}
                       </Badge>
                     ) : (
                       <Badge
-                        variant="pill"
-                        size="sm"
-                        className="bg-yellow-50 text-yellow-800 inline-flex truncate">
+                        variant='pill'
+                        size='sm'
+                        className='bg-yellow-50 text-yellow-800 inline-flex truncate'>
                         Not connected
                       </Badge>
                     )}
                   </TableCell>
                   <TableCell>
                     {integration.updatedAt && (
-                      <span className="text-sm text-muted-foreground">
+                      <span className='text-sm text-muted-foreground'>
                         {format(new Date(integration.updatedAt), 'MMM d, yyyy')}
                       </span>
                     )}
@@ -256,25 +257,25 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
                         integration.lastSyncedAt ? new Date(integration.lastSyncedAt) : undefined
                       }
                       lastError={integration.lastAuthError}
-                      size="sm"
+                      size='sm'
                     />
                   </TableCell>
                   <TableCell>
                     <Switch
-                      data-clickable="true"
-                      size="sm"
+                      data-clickable='true'
+                      size='sm'
                       checked={integration.enabled}
                       onCheckedChange={() => handleToggle(integration.id, integration.enabled)}
                     />
                   </TableCell>
-                  <TableCell className="text-right" data-clickable="true">
+                  <TableCell className='text-right' data-clickable='true'>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
+                        <Button variant='ghost' size='icon'>
                           <MoreHorizontal />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
+                      <DropdownMenuContent align='end'>
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={() => handleEdit(integration.id)}>
@@ -289,7 +290,7 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
-                          variant="destructive"
+                          variant='destructive'
                           onClick={() => handleDisconnect(integration.id)}>
                           <Trash2 />
                           Disconnect

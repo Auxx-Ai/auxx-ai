@@ -1,6 +1,7 @@
 // components/organization/leave-organization-dialog.tsx
 'use client'
 
+import { OrganizationRole as OrganizationRoleEnum } from '@auxx/database/enums'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -10,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { OrganizationRole as OrganizationRoleEnum } from '@auxx/database/enums'
 import type { OrganizationMembership } from './types'
 
 interface LeaveOrganizationDialogProps {
@@ -38,7 +38,7 @@ export function LeaveOrganizationDialog({
             Are you sure you want to leave {organization?.name || 'this organization'}? You will
             lose access.
             {organization?.role === OrganizationRoleEnum.OWNER && (
-              <span className="mt-2 block font-semibold text-destructive">
+              <span className='mt-2 block font-semibold text-destructive'>
                 Warning: You are an Owner. Ensure ownership is transferred if necessary before
                 leaving.
               </span>
@@ -46,10 +46,10 @@ export function LeaveOrganizationDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+          <Button variant='outline' onClick={() => onOpenChange(false)} disabled={isPending}>
             Cancel
           </Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
+          <Button variant='destructive' onClick={onConfirm} disabled={isPending}>
             {isPending ? 'Leaving...' : 'Leave Organization'}
           </Button>
         </DialogFooter>

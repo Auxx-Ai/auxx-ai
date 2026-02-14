@@ -1,18 +1,18 @@
 // apps/web/src/app/(protected)/app/_components/app-layout-wrapper.tsx
 'use client'
 
-import { type ReactNode } from 'react'
+import type { DehydratedOrganization } from '@auxx/lib/dehydration'
+import { TooltipProvider } from '@auxx/ui/components/tooltip'
+import type { ReactNode } from 'react'
+import { FilesystemProvider } from '~/components/files/provider/filesystem-provider'
 import { Dashboard } from '~/components/global/dashboard'
 import KBar from '~/components/kbar'
-import { TooltipProvider } from '@auxx/ui/components/tooltip'
-import { useDehydratedOrganizations } from '~/providers/dehydrated-state-provider'
-import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
-import type { DehydratedOrganization } from '@auxx/lib/dehydration'
-import { SubscriptionEnded } from '~/components/subscriptions/subscription-ended'
 import { SimpleLayout } from '~/components/layouts/simple-layout'
 import { ResourceProvider } from '~/components/resources'
-import { FilesystemProvider } from '~/components/files/provider/filesystem-provider'
+import { SubscriptionEnded } from '~/components/subscriptions/subscription-ended'
 import { ThreadDataProvider } from '~/components/threads'
+import { useDehydratedOrganizations } from '~/providers/dehydrated-state-provider'
+import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
 import { PusherProvider } from '~/providers/pusher-provider'
 
 interface AppLayoutWrapperProps {
@@ -41,7 +41,7 @@ export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
   const { organizationId: currentOrgId } = useOrganizationIdContext()
 
   const currentOrg = organizations.find((org) => org.id === currentOrgId)
-  
+
   const subscriptionExpired = isSubscriptionExpired(currentOrg?.subscription ?? null)
   const trialExpired = isTrialExpired(currentOrg?.subscription ?? null)
 

@@ -1,6 +1,6 @@
 // packages/services/src/app-versions/recalculate-app-status.ts
 
-import { database, App } from '@auxx/database'
+import { App, database } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { fromDatabase } from '../shared/utils'
 
@@ -42,9 +42,7 @@ export async function recalculateAppStatus(appId: string): Promise<{
   const allVersions = allVersionsResult.value
 
   // Determine publication status
-  const hasPublishedVersion = allVersions.some(
-    v => v.publicationStatus === 'published'
-  )
+  const hasPublishedVersion = allVersions.some((v) => v.publicationStatus === 'published')
   const newPublicationStatus = hasPublishedVersion ? 'published' : 'unpublished'
 
   // Determine review status priority:
@@ -53,11 +51,11 @@ export async function recalculateAppStatus(appId: string): Promise<{
   // 3. If any version is approved → app is approved
   // 4. Otherwise → null
   let newReviewStatus: string | null = null
-  if (allVersions.some(v => v.reviewStatus === 'in-review')) {
+  if (allVersions.some((v) => v.reviewStatus === 'in-review')) {
     newReviewStatus = 'in-review'
-  } else if (allVersions.some(v => v.reviewStatus === 'pending-review')) {
+  } else if (allVersions.some((v) => v.reviewStatus === 'pending-review')) {
     newReviewStatus = 'pending-review'
-  } else if (allVersions.some(v => v.reviewStatus === 'approved')) {
+  } else if (allVersions.some((v) => v.reviewStatus === 'approved')) {
     newReviewStatus = 'approved'
   }
 
@@ -76,10 +74,7 @@ export async function recalculateAppStatus(appId: string): Promise<{
   const app = appResult.value
 
   // Update app if either status changed
-  if (
-    app.publicationStatus !== newPublicationStatus ||
-    app.reviewStatus !== newReviewStatus
-  ) {
+  if (app.publicationStatus !== newPublicationStatus || app.reviewStatus !== newReviewStatus) {
     await fromDatabase(
       database
         .update(App)

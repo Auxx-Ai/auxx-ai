@@ -1,18 +1,19 @@
 // apps/web/src/components/datasets/segments/document-segments.tsx
 'use client'
+import type { Document } from '@auxx/database/types'
 import { Button } from '@auxx/ui/components/button'
-import { useConfirm } from '~/hooks/use-confirm'
-import { DocumentSegmentItem } from './document-segment-item'
-import { useSegments } from './use-segments'
 import { toastError } from '@auxx/ui/components/toast'
 import {
   VirtualList,
-  VirtualListHeader,
   VirtualListContent,
-  VirtualListItems,
   VirtualListFooter,
+  VirtualListHeader,
+  VirtualListItems,
 } from '~/components/virtual-list'
-import type { Document } from '@auxx/database/types'
+import { useConfirm } from '~/hooks/use-confirm'
+import { DocumentSegmentItem } from './document-segment-item'
+import { useSegments } from './use-segments'
+
 interface DocumentSegmentsTabProps {
   document: Document & {
     _count?: {
@@ -118,20 +119,20 @@ export function DocumentSegmentsTab({ document, datasetId }: DocumentSegmentsTab
         estimateSize={150} // Estimated height of each segment item
         overscan={5} // Number of items to render outside visible area
         getItemKey={(segment) => segment.id}
-        className="">
+        className=''>
         <VirtualListHeader
-          searchPlaceholder="Search segments by content or position..."
-          selectAllLabel="Select all segments">
+          searchPlaceholder='Search segments by content or position...'
+          selectAllLabel='Select all segments'>
           {/* Batch action buttons */}
           {selectedSegments.size > 0 && (
-            <div className="flex gap-2">
-              <Button size="sm" variant="ghost" onClick={handleBatchEnable}>
+            <div className='flex gap-2'>
+              <Button size='sm' variant='ghost' onClick={handleBatchEnable}>
                 Enable Selected
               </Button>
-              <Button size="sm" variant="ghost" onClick={handleBatchDisable}>
+              <Button size='sm' variant='ghost' onClick={handleBatchDisable}>
                 Disable Selected
               </Button>
-              <Button size="sm" variant="ghost" onClick={handleBatchDelete}>
+              <Button size='sm' variant='ghost' onClick={handleBatchDelete}>
                 Delete Selected
               </Button>
             </div>
@@ -142,10 +143,10 @@ export function DocumentSegmentsTab({ document, datasetId }: DocumentSegmentsTab
           emptyMessage={
             searchQuery ? `No segments match "${searchQuery}"` : 'No segments available'
           }
-          loadingMessage="Loading segments...">
+          loadingMessage='Loading segments...'>
           <VirtualListItems
             renderItem={(segment) => (
-              <div className="px-4 py-2">
+              <div className='px-4 py-2'>
                 <DocumentSegmentItem
                   segment={{
                     ...segment,
@@ -166,8 +167,8 @@ export function DocumentSegmentsTab({ document, datasetId }: DocumentSegmentsTab
         </VirtualListContent>
 
         <VirtualListFooter showItemCount={false}>
-          <div className="flex justify-between items-center w-full">
-            <span className="text-sm text-muted-foreground">
+          <div className='flex justify-between items-center w-full'>
+            <span className='text-sm text-muted-foreground'>
               {searchQuery ? (
                 <>Found {filteredSegments.length} matches</>
               ) : (
@@ -178,7 +179,7 @@ export function DocumentSegmentsTab({ document, datasetId }: DocumentSegmentsTab
               {isFetchingNextPage && ' (loading more...)'}
             </span>
             {searchQuery && (
-              <Button variant="link" size="sm" onClick={handleSearchClear}>
+              <Button variant='link' size='sm' onClick={handleSearchClear}>
                 Clear search
               </Button>
             )}

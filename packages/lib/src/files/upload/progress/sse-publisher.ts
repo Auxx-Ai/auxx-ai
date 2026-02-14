@@ -1,17 +1,17 @@
 // packages/lib/src/files/events/file-upload-event-publisher.ts
 
-import { getRedisClient } from '@auxx/redis'
 import { createScopedLogger } from '@auxx/logger'
+import { getRedisClient } from '@auxx/redis'
 import { safeJsonStringify } from '../../../workflow-engine/utils/serialization'
 import {
-  FileUploadEvent,
-  FileUploadEventType,
+  type ErrorData,
   FileUploadChannels,
-  UploadProgressData,
-  ProcessingProgressData,
-  JobUpdateData,
-  ErrorData,
-  SessionEventData as SessionData,
+  type FileUploadEvent,
+  FileUploadEventType,
+  type JobUpdateData,
+  type ProcessingProgressData,
+  type SessionEventData as SessionData,
+  type UploadProgressData,
 } from '../../types'
 import { FileUploadEventSchemaValidator } from './event-schemas'
 
@@ -31,10 +31,10 @@ export class FileUploadEventPublisher {
    * Get singleton instance
    */
   static getInstance(): FileUploadEventPublisher {
-    if (!this.instance) {
-      this.instance = new FileUploadEventPublisher()
+    if (!FileUploadEventPublisher.instance) {
+      FileUploadEventPublisher.instance = new FileUploadEventPublisher()
     }
-    return this.instance
+    return FileUploadEventPublisher.instance
   }
 
   /**

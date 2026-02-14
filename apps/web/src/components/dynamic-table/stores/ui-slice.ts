@@ -1,7 +1,7 @@
 // apps/web/src/components/dynamic-table/stores/ui-slice.ts
 
-import type { SliceCreator, UISlice, TableUIConfig } from './store-types'
 import type { KanbanViewConfig } from '../types'
+import type { SliceCreator, TableUIConfig, UISlice } from './store-types'
 import { DEFAULT_UI_CONFIG } from './store-types'
 
 /** Creates the UI slice for managing visual/layout config */
@@ -11,7 +11,9 @@ export const createUISlice: SliceCreator<UISlice> = (set, get) => ({
   sessionConfigs: {},
 
   setViewConfig: (viewId, config) => {
-    set((state) => { state.viewConfigs[viewId] = config })
+    set((state) => {
+      state.viewConfigs[viewId] = config
+    })
   },
 
   updateViewConfig: (viewId, changes) => {
@@ -40,7 +42,9 @@ export const createUISlice: SliceCreator<UISlice> = (set, get) => ({
   },
 
   resetToSaved: (viewId) => {
-    set((state) => { delete state.pendingConfigs[viewId] })
+    set((state) => {
+      delete state.pendingConfigs[viewId]
+    })
   },
 
   getSessionConfig: (tableId) => get().sessionConfigs[tableId] ?? DEFAULT_UI_CONFIG,

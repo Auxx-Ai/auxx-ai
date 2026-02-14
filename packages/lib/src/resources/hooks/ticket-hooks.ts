@@ -1,7 +1,7 @@
 // packages/lib/src/resources/hooks/ticket-hooks.ts
 
-import { ticketNumbering } from '../../tickets/ticket-numbering'
 import { publisher } from '../../events/publisher'
+import { ticketNumbering } from '../../tickets/ticket-numbering'
 import type { SystemHook, SystemHookRegistry } from './types'
 
 // ═══════════════════════════════════════════════════════════════════════════

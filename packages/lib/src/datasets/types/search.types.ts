@@ -1,8 +1,8 @@
 // packages/lib/src/datasets/types/search.types.ts
 
 import type {
-  DocumentSegmentEntity as DocumentSegment,
   DocumentEntity as Document,
+  DocumentSegmentEntity as DocumentSegment,
 } from '@auxx/database/types'
 
 /**

@@ -2,22 +2,23 @@
 
 'use client'
 
-import React, { memo, useCallback } from 'react'
+import { DocumentTypeValues } from '@auxx/database/enums'
 import { produce } from 'immer'
-import { type DatasetNodeData } from './types'
-import { BasePanel } from '../../shared/base/base-panel'
+import type React from 'react'
+import { memo, useCallback } from 'react'
 import { useNodeCrud } from '~/components/workflow/hooks'
-import Section from '~/components/workflow/ui/section'
+import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import Field from '~/components/workflow/ui/field'
-import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import {
   VarEditor,
   VarEditorField,
   VarEditorFieldRow,
 } from '~/components/workflow/ui/input-editor/var-editor'
-import { VAR_MODE, BaseType } from '~/components/workflow/types'
+import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import Section from '~/components/workflow/ui/section'
+import { BasePanel } from '../../shared/base/base-panel'
 import { getDatasetOutputVariables } from './output-variables'
-import { DocumentTypeValues } from '@auxx/database/enums'
+import type { DatasetNodeData } from './types'
 
 interface DatasetPanelProps {
   nodeId: string
@@ -94,12 +95,12 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
   return (
     <BasePanel nodeId={nodeId} data={nodeData}>
       {/* Target Section - Dataset and Chunks */}
-      <Section title="Target">
-        <Field title="Dataset" description="Select the dataset to add chunks to">
-          <VarEditorField className="p-0">
+      <Section title='Target'>
+        <Field title='Dataset' description='Select the dataset to add chunks to'>
+          <VarEditorField className='p-0'>
             <VarEditorFieldRow
-              title="Dataset"
-              description="Target dataset for storing chunks"
+              title='Dataset'
+              description='Target dataset for storing chunks'
               type={BaseType.RELATION}
               isRequired>
               <VarEditor
@@ -110,7 +111,7 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
                 fieldOptions={{ fieldReference: 'dataset' }}
                 allowedTypes={['dataset' as BaseType, BaseType.STRING]}
                 mode={VAR_MODE.PICKER}
-                placeholder="Select dataset"
+                placeholder='Select dataset'
                 allowConstant
                 isConstantMode={nodeData.fieldModes?.['datasetId'] ?? true}
               />
@@ -118,11 +119,11 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
           </VarEditorField>
         </Field>
 
-        <Field title="Chunks" description="Chunked content from Chunker node">
-          <VarEditorField className="p-0">
+        <Field title='Chunks' description='Chunked content from Chunker node'>
+          <VarEditorField className='p-0'>
             <VarEditorFieldRow
-              title="Chunks"
-              description="Array of document chunks to store"
+              title='Chunks'
+              description='Array of document chunks to store'
               type={BaseType.ARRAY}
               isRequired>
               <VarEditor
@@ -132,7 +133,7 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
                 varType={BaseType.ARRAY}
                 allowedTypes={[BaseType.ARRAY]}
                 mode={VAR_MODE.PICKER}
-                placeholder="Select chunks from Chunker node"
+                placeholder='Select chunks from Chunker node'
                 allowConstant={false}
                 isConstantMode={false}
               />
@@ -142,11 +143,11 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
       </Section>
 
       {/* Document Settings Section */}
-      <Section title="Document Settings" initialOpen={true}>
-        <VarEditorField className="p-0">
+      <Section title='Document Settings' initialOpen={true}>
+        <VarEditorField className='p-0'>
           <VarEditorFieldRow
-            title="Document Title"
-            description="Title for the document entry"
+            title='Document Title'
+            description='Title for the document entry'
             type={BaseType.STRING}
             isRequired>
             <VarEditor
@@ -156,16 +157,16 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
               varType={BaseType.STRING}
               allowedTypes={[BaseType.STRING]}
               mode={VAR_MODE.RICH}
-              placeholder="Enter document title"
-              placeholderConstant="Workflow Document"
+              placeholder='Enter document title'
+              placeholderConstant='Workflow Document'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['documentTitle'] ?? true}
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
-            title="Document Type"
-            description="Type of document (PDF, TXT, etc.)"
+            title='Document Type'
+            description='Type of document (PDF, TXT, etc.)'
             type={BaseType.ENUM}>
             <VarEditor
               nodeId={nodeId}
@@ -175,15 +176,15 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
               allowedTypes={[BaseType.ENUM, BaseType.STRING]}
               fieldOptions={{ enum: documentTypeOptions }}
               mode={VAR_MODE.PICKER}
-              placeholder="Select document type"
-              placeholderConstant="TXT"
+              placeholder='Select document type'
+              placeholderConstant='TXT'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['documentType'] ?? true}
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
-            title="Mime Type"
+            title='Mime Type'
             description="Content mime type (e.g., 'text/plain', 'application/pdf')"
             type={BaseType.STRING}>
             <VarEditor
@@ -193,16 +194,16 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
               varType={BaseType.STRING}
               allowedTypes={[BaseType.STRING]}
               mode={VAR_MODE.RICH}
-              placeholder="text/plain"
-              placeholderConstant="text/plain"
+              placeholder='text/plain'
+              placeholderConstant='text/plain'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['mimeType'] ?? true}
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
-            title="Source URL"
-            description="Original source URL for reference"
+            title='Source URL'
+            description='Original source URL for reference'
             type={BaseType.URL}>
             <VarEditor
               nodeId={nodeId}
@@ -211,15 +212,15 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
               varType={BaseType.URL}
               allowedTypes={[BaseType.URL, BaseType.STRING]}
               mode={VAR_MODE.RICH}
-              placeholder="https://example.com/source"
+              placeholder='https://example.com/source'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['sourceUrl'] ?? true}
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
-            title="File Reference"
-            description="Link to source file (MediaAsset) if available"
+            title='File Reference'
+            description='Link to source file (MediaAsset) if available'
             type={BaseType.FILE}>
             <VarEditor
               nodeId={nodeId}
@@ -228,7 +229,7 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
               varType={BaseType.FILE}
               allowedTypes={[BaseType.FILE]}
               mode={VAR_MODE.PICKER}
-              placeholder="Select source file"
+              placeholder='Select source file'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['fileId'] ?? false}
               fieldOptions={{ allowMultiple: false }}
@@ -238,12 +239,12 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
       </Section>
 
       {/* Processing Options Section */}
-      <Section title="Processing Options" initialOpen={false}>
-        <VarEditorField className="p-0">
+      <Section title='Processing Options' initialOpen={false}>
+        <VarEditorField className='p-0'>
           <VarEditorFieldRow
-            className="pe-2"
-            title="Skip Embedding"
-            description="Skip embedding generation (chunks will not be searchable)"
+            className='pe-2'
+            title='Skip Embedding'
+            description='Skip embedding generation (chunks will not be searchable)'
             type={BaseType.BOOLEAN}>
             <VarEditor
               nodeId={nodeId}

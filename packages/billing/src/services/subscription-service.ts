@@ -5,22 +5,22 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { eq, and, or } from 'drizzle-orm'
-import { stripeClient } from './stripe-client'
-import { CustomerService } from './customer-service'
-import { PlanService } from './plan-service'
+import { createScopedLogger } from '@auxx/logger'
+import { and, eq, or } from 'drizzle-orm'
+import type Stripe from 'stripe'
 import type {
-  UpgradeSubscriptionInput,
   CancelSubscriptionInput,
   RestoreSubscriptionInput,
   SubscriptionWithPlan,
   UpdateSubscriptionDirectInput,
   UpdateSubscriptionDirectResult,
+  UpgradeSubscriptionInput,
 } from '../types'
 import { BillingError, ErrorCode } from '../utils/error-codes'
 import { buildUrl } from '../utils/url-helpers'
-import { createScopedLogger } from '@auxx/logger'
-import type Stripe from 'stripe'
+import { CustomerService } from './customer-service'
+import { PlanService } from './plan-service'
+import { stripeClient } from './stripe-client'
 
 /** Scoped logger for subscription service operations. */
 const logger = createScopedLogger('subscription-service')
@@ -685,9 +685,7 @@ export class SubscriptionService {
             // Phase 4: Provide manual proration calculation as fallback
             if (isSeatIncrease || isSeatDecrease) {
               const daysRemaining = subscription.periodEnd
-                ? Math.ceil(
-                    (subscription.periodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-                  )
+                ? Math.ceil((subscription.periodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
                 : 30
               const totalDaysInCycle = input.billingCycle === 'MONTHLY' ? 30 : 365
               const seatDelta = Math.abs(input.seats - (subscription.seats || 0))
@@ -874,7 +872,11 @@ export class SubscriptionService {
             .returning()
             .then((rows) => rows[0]!))
 
-      await this.detachPreviousPaymentMethod(stripe, input.previousPaymentMethodId, input.paymentMethodId)
+      await this.detachPreviousPaymentMethod(
+        stripe,
+        input.previousPaymentMethodId,
+        input.paymentMethodId
+      )
 
       // Record subscription history (reactivation or new subscription)
       const changeType = currentSubscription ? 'reactivation' : 'new_subscription'

@@ -1,12 +1,12 @@
 // apps/web/src/app/api/workflows/route.ts
 
-import { NextRequest, NextResponse } from 'next/server'
+import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import { TRPCError } from '@trpc/server'
+import { headers } from 'next/headers'
+import { type NextRequest, NextResponse } from 'next/server'
 import { auth } from '~/auth/server'
 import { appRouter } from '~/server/api/root'
 import { createTRPCContext } from '~/server/api/trpc'
-import { TRPCError } from '@trpc/server'
-import { headers } from 'next/headers'
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
 /**
  * GET /api/workflows - Get all workflows
  */

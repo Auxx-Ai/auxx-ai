@@ -1,10 +1,6 @@
 // infra/env-config.ts
-import { domain, subdomain, getAppDomain, getHomepageDomain } from './dns'
-import {
-  publicBucketName,
-  privateBucketName,
-  publicCdnUrl,
-} from './storage'
+import { domain, getAppDomain, getHomepageDomain, subdomain } from './dns'
+import { privateBucketName, publicBucketName, publicCdnUrl } from './storage'
 
 export type AppType = 'web' | 'homepage' | 'docs' | 'worker' | 'api'
 

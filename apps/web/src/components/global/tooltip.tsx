@@ -1,15 +1,15 @@
 'use client'
 
-import React, { useCallback, useState } from 'react'
 import {
   Tooltip as ShadcnTooltip,
   TooltipContent,
-  TooltipTrigger,
   type TooltipContentProps,
+  TooltipTrigger,
 } from '@auxx/ui/components/tooltip'
-import { HelpCircleIcon } from 'lucide-react'
-import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { HelpCircleIcon } from 'lucide-react'
+import React, { useCallback, useState } from 'react'
 
 /** Check if we're on a touch device - computed once at module load */
 const isTouchDevice =
@@ -114,20 +114,20 @@ export const Tooltip = ({
         variant={variant}
         onPointerDownOutside={handlePointerDownOutside}>
         {contentComponent || (
-          <div className="max-w-xs">
+          <div className='max-w-xs'>
             {content}
             {shortcut && (
-              <span className="ml-1 inline-flex items-center gap-1">
+              <span className='ml-1 inline-flex items-center gap-1'>
                 {Array.isArray(shortcut) ? (
                   shortcut.map((key, index) => (
                     <span
                       key={index}
-                      className="text-xs tracking-widest p-0.5 px-1 opacity-60 bg-primary-50 rounded-sm ring-1 ring-primary-300">
+                      className='text-xs tracking-widest p-0.5 px-1 opacity-60 bg-primary-50 rounded-sm ring-1 ring-primary-300'>
                       {key}
                     </span>
                   ))
                 ) : (
-                  <span className="text-xs tracking-widest p-0.5 px-1 opacity-60 bg-primary-50 rounded-sm ring-1 ring-primary-300">
+                  <span className='text-xs tracking-widest p-0.5 px-1 opacity-60 bg-primary-50 rounded-sm ring-1 ring-primary-300'>
                     {shortcut}
                   </span>
                 )}

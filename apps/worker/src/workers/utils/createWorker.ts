@@ -1,11 +1,11 @@
 // apps/worker/src/workers/utils/createWorker.ts
 
-import { Worker, type WorkerOptions } from 'bullmq'
-import { Queues } from '@auxx/lib/queues/types'
-import { createJobHandler } from './createJobHandler'
-import { getConnectionOptions } from '@auxx/redis'
-import { createScopedLogger } from '@auxx/logger'
 import type { JobHandler, LegacyJobHandler } from '@auxx/lib/jobs'
+import type { Queues } from '@auxx/lib/queues/types'
+import { createScopedLogger } from '@auxx/logger'
+import { getConnectionOptions } from '@auxx/redis'
+import { Worker, type WorkerOptions } from 'bullmq'
+import { createJobHandler } from './createJobHandler'
 
 const logger = createScopedLogger('worker')
 

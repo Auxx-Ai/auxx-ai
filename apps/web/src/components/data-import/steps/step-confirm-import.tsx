@@ -2,16 +2,16 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Play } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
+import { Play } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { api } from '~/trpc/react'
+import { useImportSSE } from '../hooks/use-import-sse'
+import type { PreviewColumnMapping } from '../plan-preview'
 import { ImportPlanSummary, PlanPreviewTable, usePlanPreviewData } from '../plan-preview'
 import { ImportCompleteCard } from '../plan-preview/import-complete-card'
 import { ExecutionProgress } from '../progress/execution-progress'
-import { useImportSSE } from '../hooks/use-import-sse'
-import type { PreviewColumnMapping } from '../plan-preview'
 
 interface StepConfirmImportProps {
   jobId: string
@@ -129,12 +129,12 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
 
   // Show plan summary with preview table
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className='flex flex-col flex-1 min-h-0'>
       {/* Plan Summary - fixed at top */}
       {plan && <ImportPlanSummary plan={plan} />}
 
       {/* Preview Table - scrolls independently with sticky header */}
-      <div className="flex-1 min-h-0">
+      <div className='flex-1 min-h-0'>
         <PlanPreviewTable
           rows={previewRows}
           mappings={mappings}
@@ -145,15 +145,17 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
 
       {/* Start Import Footer */}
       {!isPlanning && job?.status === 'ready' && (
-        <div className="flex items-center justify-between px-2 py-1 border-t bg-muted">
-          <div className="flex items-center gap-3 min-w-0">
-            <EntityIcon iconId="upload" variant="muted" />
-            <div className="min-w-0">
-              <p className="font-medium text-sm">Ready to Import</p>
-              <p className="text-sm text-muted-foreground">{job?.importMapping.relatedEntityDefinitionId}</p>
+        <div className='flex items-center justify-between px-2 py-1 border-t bg-muted'>
+          <div className='flex items-center gap-3 min-w-0'>
+            <EntityIcon iconId='upload' variant='muted' />
+            <div className='min-w-0'>
+              <p className='font-medium text-sm'>Ready to Import</p>
+              <p className='text-sm text-muted-foreground'>
+                {job?.importMapping.relatedEntityDefinitionId}
+              </p>
             </div>
           </div>
-          <Button onClick={handleConfirmImport} variant="default" size="sm">
+          <Button onClick={handleConfirmImport} variant='default' size='sm'>
             <Play />
             Start Import
           </Button>

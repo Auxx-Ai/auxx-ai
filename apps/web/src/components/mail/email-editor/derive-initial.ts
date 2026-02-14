@@ -1,13 +1,13 @@
+import { ParticipantRole } from '@auxx/database/enums'
 import type {
-  EditorMode,
-  RecipientState,
-  EditorThread,
-  MessageType,
   DraftMessageType,
   DraftMetadata,
+  EditorMode,
   EditorPresetValues,
+  EditorThread,
+  MessageType,
+  RecipientState,
 } from './types'
-import { ParticipantRole } from '@auxx/database/enums'
 
 /**
  * Deduplicate recipients by identifier to prevent duplicate entries
@@ -24,9 +24,7 @@ function deduplicateRecipients(recipients: RecipientState[]): RecipientState[] {
 /**
  * Validate and sanitize preset values to ensure data integrity
  */
-function validatePresetValues(
-  presetValues?: EditorPresetValues
-): EditorPresetValues | undefined {
+function validatePresetValues(presetValues?: EditorPresetValues): EditorPresetValues | undefined {
   if (!presetValues) return undefined
 
   const sanitized: EditorPresetValues = {}

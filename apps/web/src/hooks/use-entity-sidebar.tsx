@@ -1,8 +1,9 @@
 // apps/web/src/hooks/use-entity-sidebar.tsx
-import { useState, useMemo, useCallback, useRef } from 'react'
-import { useSettings } from '~/hooks/use-settings'
-import { useResources } from '~/components/resources/hooks'
+
 import type { CustomResource } from '@auxx/lib/resources/client'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { useResources } from '~/components/resources/hooks'
+import { useSettings } from '~/hooks/use-settings'
 
 /** Setting keys for entity sidebar */
 const ENTITY_ORDER_SETTING_KEY = 'sidebar.entities.order'

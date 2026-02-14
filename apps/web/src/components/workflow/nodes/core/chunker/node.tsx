@@ -2,13 +2,13 @@
 
 'use client'
 
+import { Scissors } from 'lucide-react'
 import { memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
-import { type ChunkerNode as ChunkerNodeType } from './types'
-import { Scissors } from 'lucide-react'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
 import { isNodeVariable } from '~/components/workflow/utils/variable-utils'
+import type { ChunkerNode as ChunkerNodeType } from './types'
 
 /**
  * Chunker node component for the workflow canvas
@@ -37,53 +37,53 @@ export const ChunkerNode = memo<ChunkerNodeType>(({ id, data, selected }) => {
   const delimiterValue = data.delimiter || '\\n\\n'
 
   return (
-    <BaseNode id={id} data={data} selected={selected} width={244} height="auto">
-      <NodeTargetHandle id={id} data={{ ...data, selected }} handleId="target" />
-      <div className="space-y-1 pb-2">
-        <div className="relative px-2">
+    <BaseNode id={id} data={data} selected={selected} width={244} height='auto'>
+      <NodeTargetHandle id={id} data={{ ...data, selected }} handleId='target' />
+      <div className='space-y-1 pb-2'>
+        <div className='relative px-2'>
           {hasContent ? (
-            <div className="space-y-1 mt-1">
+            <div className='space-y-1 mt-1'>
               {/* Chunk size */}
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <div className='flex items-center gap-1 text-xs text-muted-foreground'>
                 <span>Size:</span>
                 {isChunkSizeVariable ? (
                   <VariableTag variableId={data.chunkSize as string} nodeId={id} />
                 ) : (
-                  <span className="font-mono text-primary-600">{chunkSizeValue}</span>
+                  <span className='font-mono text-primary-600'>{chunkSizeValue}</span>
                 )}
               </div>
 
               {/* Chunk overlap */}
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <div className='flex items-center gap-1 text-xs text-muted-foreground'>
                 <span>Overlap:</span>
                 {isChunkOverlapVariable ? (
                   <VariableTag variableId={data.chunkOverlap as string} nodeId={id} />
                 ) : (
-                  <span className="font-mono text-primary-600">{chunkOverlapValue}</span>
+                  <span className='font-mono text-primary-600'>{chunkOverlapValue}</span>
                 )}
               </div>
 
               {/* Delimiter */}
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <div className='flex items-center gap-1 text-xs text-muted-foreground'>
                 <span>Delimiter:</span>
                 {isDelimiterVariable ? (
                   <VariableTag variableId={data.delimiter as string} nodeId={id} />
                 ) : (
-                  <span className="font-mono text-primary-600 truncate max-w-[120px]">
+                  <span className='font-mono text-primary-600 truncate max-w-[120px]'>
                     {delimiterValue}
                   </span>
                 )}
               </div>
             </div>
           ) : (
-            <div className="text-xs text-primary-400 mt-1">Not configured</div>
+            <div className='text-xs text-primary-400 mt-1'>Not configured</div>
           )}
 
           <NodeSourceHandle
-            handleId="source"
+            handleId='source'
             id={id}
             data={{ ...data, selected }}
-            handleClassName="!bottom-5"
+            handleClassName='!bottom-5'
             handleIndex={0}
             handleTotal={1}
           />

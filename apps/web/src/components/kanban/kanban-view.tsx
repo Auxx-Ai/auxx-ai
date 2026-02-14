@@ -1,49 +1,49 @@
 // apps/web/src/components/kanban/kanban-view.tsx
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
+import { FieldType } from '@auxx/database/enums'
+import { formatToRawValue } from '@auxx/lib/field-values/client'
+import { getModelType, toRecordId } from '@auxx/lib/resources/client'
+import type { SelectOption as RawSelectOption, RelationshipConfig } from '@auxx/types/custom-field'
+import { toResourceFieldId } from '@auxx/types/field'
+import { Button } from '@auxx/ui/components/button'
+import { ScrollArea, ScrollBar } from '@auxx/ui/components/scroll-area'
 import {
   DndContext,
+  type DragEndEvent,
+  type DragOverEvent,
   DragOverlay,
-  pointerWithin,
+  type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
+  pointerWithin,
   useSensor,
   useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
-  type DragOverEvent,
 } from '@dnd-kit/core'
-import { SortableContext, horizontalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
-import { ScrollArea, ScrollBar } from '@auxx/ui/components/scroll-area'
-import { Button } from '@auxx/ui/components/button'
+import { arrayMove, horizontalListSortingStrategy, SortableContext } from '@dnd-kit/sortable'
 import { Plus } from 'lucide-react'
-import { KanbanColumn } from './kanban-column'
-import { KanbanCard } from './kanban-card'
-import { KanbanColumnSettings } from './kanban-column-settings'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFieldSelectOptionMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+import {
+  buildFieldValueKey,
+  type FieldReference,
+  toRecordId as toRecordIdForKey,
+  useFieldValueStore,
+} from '~/components/resources/store/field-value-store'
 import { showCelebrationConfetti } from '~/components/subscriptions/show-confetti'
 import { useStackedDragOverlay } from '~/hooks/use-stacked-drag-overlay'
 import {
-  NO_STATUS_COLUMN_ID,
-  type KanbanViewConfig,
-  type KanbanRow,
-  type KanbanSelectOption,
   type CustomField,
   type KanbanDragItemType,
+  type KanbanRow,
+  type KanbanSelectOption,
+  type KanbanViewConfig,
+  NO_STATUS_COLUMN_ID,
 } from '../dynamic-table/types'
-import type { SelectOption as RawSelectOption, RelationshipConfig } from '@auxx/types/custom-field'
-import {
-  useFieldValueStore,
-  buildFieldValueKey,
-  toRecordId as toRecordIdForKey,
-  type FieldReference,
-} from '~/components/resources/store/field-value-store'
-import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
-import { getModelType, toRecordId } from '@auxx/lib/resources/client'
-import { formatToRawValue } from '@auxx/lib/field-values/client'
-import { FieldType } from '@auxx/database/enums'
-import { toResourceFieldId } from '@auxx/types/field'
+import { KanbanCard } from './kanban-card'
+import { KanbanColumn } from './kanban-column'
+import { KanbanColumnSettings } from './kanban-column-settings'
 
 /**
  * Extract raw value from TypedFieldValue using centralized formatter.
@@ -131,22 +131,22 @@ function KanbanDragOverlay<TData extends KanbanRow>({
   if (activeItem.type === 'card' && draggedCards.length > 0) {
     return (
       <DragOverlay dropAnimation={null}>
-        <div className="relative cursor-grabbing">
+        <div className='relative cursor-grabbing'>
           {showBadge && (
             <span
-              className="absolute z-10 inline-flex size-5 items-center justify-center rounded-full bg-info text-[10px] font-medium leading-none text-white"
+              className='absolute z-10 inline-flex size-5 items-center justify-center rounded-full bg-info text-[10px] font-medium leading-none text-white'
               style={{ right: '-8px', top: '-8px' }}>
               {totalCount}
             </span>
           )}
-          <div className="relative">
+          <div className='relative'>
             {indices.map((itemIndex, renderIndex) => {
               const card = draggedCards[itemIndex]
               if (!card) return null
               return (
                 <div
                   key={card.id}
-                  className="pointer-events-none"
+                  className='pointer-events-none'
                   style={{
                     ...getItemStyle(renderIndex),
                     width: activeItem?.dragWidth,
@@ -514,17 +514,17 @@ export function KanbanView<TData extends KanbanRow>({
 
   if (isLoading) {
     return (
-      <div className="flex gap-4 p-2 overflow-x-auto h-full">
+      <div className='flex gap-4 p-2 overflow-x-auto h-full'>
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="w-64 shrink-0 rounded-lg border bg-muted/30 p-3 animate-pulse">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="size-3 rounded-full bg-muted" />
-              <div className="h-4 w-20 bg-muted rounded" />
-              <div className="h-4 w-6 bg-muted rounded" />
+          <div key={i} className='w-64 shrink-0 rounded-lg border bg-muted/30 p-3 animate-pulse'>
+            <div className='flex items-center gap-2 mb-4'>
+              <div className='size-3 rounded-full bg-muted' />
+              <div className='h-4 w-20 bg-muted rounded' />
+              <div className='h-4 w-6 bg-muted rounded' />
             </div>
-            <div className="space-y-2">
-              <div className="h-20 bg-muted rounded" />
-              <div className="h-20 bg-muted rounded" />
+            <div className='space-y-2'>
+              <div className='h-20 bg-muted rounded' />
+              <div className='h-20 bg-muted rounded' />
             </div>
           </div>
         ))}
@@ -533,7 +533,7 @@ export function KanbanView<TData extends KanbanRow>({
   }
 
   return (
-    <div className="flex flex-col min-h-0 flex-1 relative">
+    <div className='flex flex-col min-h-0 flex-1 relative'>
       <DndContext
         sensors={sensors}
         collisionDetection={pointerWithin}
@@ -541,8 +541,8 @@ export function KanbanView<TData extends KanbanRow>({
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}>
-        <ScrollArea className="h-full">
-          <div ref={containerRef} className="flex p-2 min-w-max flex-1 h-full">
+        <ScrollArea className='h-full'>
+          <div ref={containerRef} className='flex p-2 min-w-max flex-1 h-full'>
             {/* Sortable columns */}
             <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
               {/* No Status column (always first, not sortable) */}
@@ -606,18 +606,18 @@ export function KanbanView<TData extends KanbanRow>({
             </SortableContext>
 
             {/* Add Stage button with create dropdown */}
-            <div className="shrink-0">
-              <KanbanColumnSettings mode="create" onCreate={handleColumnCreate}>
+            <div className='shrink-0'>
+              <KanbanColumnSettings mode='create' onCreate={handleColumnCreate}>
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 rounded-xl border border-dashed hover:border-primary-300 hover:bg-primary-100">
-                  <Plus className="size-5 text-muted-foreground" />
+                  variant='ghost'
+                  size='icon'
+                  className='size-8 rounded-xl border border-dashed hover:border-primary-300 hover:bg-primary-100'>
+                  <Plus className='size-5 text-muted-foreground' />
                 </Button>
               </KanbanColumnSettings>
             </div>
           </div>
-          <ScrollBar orientation="horizontal" />
+          <ScrollBar orientation='horizontal' />
         </ScrollArea>
 
         {/* Drag overlay */}

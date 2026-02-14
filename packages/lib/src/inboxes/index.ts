@@ -2,12 +2,12 @@
 
 export { InboxService } from './inbox-service'
 export type {
-  Inbox,
-  InboxIntegration,
-  InboxWithIntegrations,
-  InboxVisibility,
-  InboxStatus,
   CreateInboxInput,
-  UpdateInboxInput,
+  Inbox,
   InboxAccessInput,
+  InboxIntegration,
+  InboxStatus,
+  InboxVisibility,
+  InboxWithIntegrations,
+  UpdateInboxInput,
 } from './types'

@@ -1,8 +1,8 @@
 // packages/lib/src/import/execution/build-record-data.ts
 
+import { hashValue } from '../hashing/hash-value'
 import type { ImportMappingProperty } from '../types/mapping'
 import type { ValueResolution } from '../types/resolution'
-import { hashValue } from '../hashing/hash-value'
 
 /**
  * Build record data from raw row values using mappings and resolutions.

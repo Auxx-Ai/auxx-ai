@@ -1,5 +1,5 @@
 // src/components/editor/mention-utils.tsx
-import { type MentionItem } from './mention-popover'
+import type { MentionItem } from './mention-popover'
 
 /**
  * Mock function to fetch users/members for mention suggestions

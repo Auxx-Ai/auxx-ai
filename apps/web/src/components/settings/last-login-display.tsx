@@ -13,16 +13,16 @@ interface LastLoginDisplayProps {
  */
 export function LastLoginDisplay({ lastLoginAt, timezone = 'UTC' }: LastLoginDisplayProps) {
   if (!lastLoginAt) {
-    return <div className="text-sm text-muted-foreground">No login history available</div>
+    return <div className='text-sm text-muted-foreground'>No login history available</div>
   }
 
   const relativeTime = formatRelativeTime(lastLoginAt)
   const absoluteTime = formatInTimezone(lastLoginAt, timezone, 'PPpp')
 
   return (
-    <div className="space-y-1">
-      <div className="text-sm font-medium">Last Login</div>
-      <div className="text-sm text-muted-foreground">
+    <div className='space-y-1'>
+      <div className='text-sm font-medium'>Last Login</div>
+      <div className='text-sm text-muted-foreground'>
         {relativeTime} ({absoluteTime})
       </div>
     </div>

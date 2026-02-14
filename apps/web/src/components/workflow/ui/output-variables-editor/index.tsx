@@ -2,13 +2,14 @@
 
 'use client'
 
-import React, { useCallback, useMemo } from 'react'
-import { Input } from '@auxx/ui/components/input'
 import { Button } from '@auxx/ui/components/button'
-import VariableInput from '~/components/workflow/ui/variables/variable-input'
-import { Plus, Trash2 } from 'lucide-react'
+import { Input } from '@auxx/ui/components/input'
 import { cn } from '@auxx/ui/lib/utils'
 import { produce } from 'immer'
+import { Plus, Trash2 } from 'lucide-react'
+import type React from 'react'
+import { useCallback, useMemo } from 'react'
+import VariableInput from '~/components/workflow/ui/variables/variable-input'
 import type { OutputVariablesProps } from './types'
 import { generateDefaultVariableName, getVariableNameError } from './utils'
 
@@ -118,14 +119,14 @@ export const OutputVariablesEditor: React.FC<OutputVariablesProps> = ({
   const canAddMore = !maxOutputs || outputs.length < maxOutputs
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
+    <div className='space-y-4'>
+      <div className='space-y-2'>
         {outputs.map((item, index) => {
           const error = validateVariable(item.variable, index)
 
           return (
             <div key={index}>
-              <div className="flex items-center gap-2">
+              <div className='flex items-center gap-2'>
                 <Input
                   className={cn('w-[120px]', error && 'border-red-500')}
                   disabled={isReadOnly}
@@ -133,18 +134,18 @@ export const OutputVariablesEditor: React.FC<OutputVariablesProps> = ({
                   onChange={handleVarNameChange(index)}
                   placeholder={placeholder}
                 />
-                <div className="flex-1">
+                <div className='flex-1'>
                   {isReadOnly ? (
                     <Input
                       value={item.value_selector.join('.')}
                       disabled
-                      placeholder="Select value"
+                      placeholder='Select value'
                     />
                   ) : (
                     <VariableInput
                       value={item.value_selector}
                       availableNodes={nodes}
-                      placeholder="Select value"
+                      placeholder='Select value'
                       variables={variables}
                       groups={groups}
                       onChange={handleVarSelectorChange(index)}
@@ -155,29 +156,29 @@ export const OutputVariablesEditor: React.FC<OutputVariablesProps> = ({
                 </div>
                 {!isReadOnly && (
                   <Button
-                    size="sm"
-                    variant="ghost"
+                    size='sm'
+                    variant='ghost'
                     onClick={handleVarRemove(index)}
-                    className="h-8 w-8 p-0">
-                    <Trash2 className="h-4 w-4" />
+                    className='h-8 w-8 p-0'>
+                    <Trash2 className='h-4 w-4' />
                   </Button>
                 )}
               </div>
-              {error && <p className="text-xs text-red-500 mt-1 ml-1">{error}</p>}
+              {error && <p className='text-xs text-red-500 mt-1 ml-1'>{error}</p>}
             </div>
           )
         })}
       </div>
 
       {!isReadOnly && canAddMore && (
-        <Button size="sm" variant="outline" onClick={handleAddOutput} className="w-full">
-          <Plus className="h-4 w-4 mr-2" />
+        <Button size='sm' variant='outline' onClick={handleAddOutput} className='w-full'>
+          <Plus className='h-4 w-4 mr-2' />
           {addButtonLabel}
         </Button>
       )}
 
       {outputs.length === 0 && (
-        <div className="text-sm text-muted-foreground text-center py-4">{emptyStateMessage}</div>
+        <div className='text-sm text-muted-foreground text-center py-4'>{emptyStateMessage}</div>
       )}
     </div>
   )

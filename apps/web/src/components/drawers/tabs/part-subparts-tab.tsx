@@ -1,11 +1,17 @@
 // apps/web/src/components/drawers/tabs/part-subparts-tab.tsx
 'use client'
 
-import { useState, useCallback } from 'react'
-import Link from 'next/link'
-import { Package, MoreHorizontal, Edit, Trash2, PlusCircle } from 'lucide-react'
+import type { SubpartEntity as Subpart } from '@auxx/database/models'
+import { parseRecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { Section } from '@auxx/ui/components/section'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
   Table,
   TableBody,
@@ -14,20 +20,14 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
+import { Edit, MoreHorizontal, Package, PlusCircle, Trash2 } from 'lucide-react'
+import Link from 'next/link'
+import { useCallback, useState } from 'react'
+import { SubpartDialog } from '~/components/manufacturing/parts/subpart-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
-import { parseRecordId } from '@auxx/lib/resources/client'
 import { api } from '~/trpc/react'
 import { formatMoney } from '~/utils/strings'
-import { SubpartDialog } from '~/components/manufacturing/parts/subpart-dialog'
-import type { SubpartEntity as Subpart } from '@auxx/database/models'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /** Subparts tab content for parts drawer */
@@ -41,10 +41,7 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
   const { entityInstanceId: partId } = parseRecordId(recordId)
 
   // Fetch part data
-  const { data: part, isLoading } = api.part.byId.useQuery(
-    { id: partId },
-    { enabled: !!partId }
-  )
+  const { data: part, isLoading } = api.part.byId.useQuery({ id: partId }, { enabled: !!partId })
 
   // Delete subpart mutation
   const deleteSubpart = api.subpart.delete.useMutation({
@@ -92,15 +89,15 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
 
   if (isLoading) {
     return (
-      <div className="p-4 space-y-4">
-        <Skeleton className="h-6 w-32" />
-        <Skeleton className="h-40 w-full" />
+      <div className='p-4 space-y-4'>
+        <Skeleton className='h-6 w-32' />
+        <Skeleton className='h-40 w-full' />
       </div>
     )
   }
 
   if (!part) {
-    return <div className="p-4 text-center text-muted-foreground">Part not found</div>
+    return <div className='p-4 text-center text-muted-foreground'>Part not found</div>
   }
 
   const subparts = part.subparts ?? []
@@ -113,45 +110,45 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
         title={`Subparts (${subparts.length})`}
         initialOpen
         actions={
-          <Button variant="ghost" size="xs" onClick={() => setIsSubpartDialogOpen(true)}>
+          <Button variant='ghost' size='xs' onClick={() => setIsSubpartDialogOpen(true)}>
             <PlusCircle />
             Add Subpart
           </Button>
         }>
         {subparts.length === 0 ? (
-          <div className="flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30">
-            <Package className="mb-2 h-6 w-6 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">No subparts added yet</p>
-            <p className="text-xs text-muted-foreground">Add components that make up this part</p>
+          <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>
+            <Package className='mb-2 h-6 w-6 text-muted-foreground' />
+            <p className='text-sm text-muted-foreground'>No subparts added yet</p>
+            <p className='text-xs text-muted-foreground'>Add components that make up this part</p>
           </div>
         ) : (
-          <div className="rounded-md border">
+          <div className='rounded-md border'>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Part</TableHead>
-                  <TableHead className="text-right">Qty</TableHead>
-                  <TableHead className="text-right">Cost</TableHead>
-                  <TableHead className="w-10"></TableHead>
+                  <TableHead className='text-right'>Qty</TableHead>
+                  <TableHead className='text-right'>Cost</TableHead>
+                  <TableHead className='w-10'></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {subparts.map((subpart: any) => (
                   <TableRow key={subpart.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex flex-col">
+                    <TableCell className='font-medium'>
+                      <div className='flex flex-col'>
                         <Link
                           href={`/app/parts?p=${subpart.childPartId}&tab=subparts`}
-                          className="truncate hover:underline">
+                          className='truncate hover:underline'>
                           {subpart.childPart?.title ?? 'Unknown'}
                         </Link>
-                        <span className="text-xs text-muted-foreground">
+                        <span className='text-xs text-muted-foreground'>
                           {subpart.childPart?.sku}
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-right font-medium">{subpart.quantity}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className='text-right font-medium'>{subpart.quantity}</TableCell>
+                    <TableCell className='text-right'>
                       {subpart.childPart?.cost
                         ? formatMoney(subpart.childPart.cost, '${{amount}}')
                         : '—'}
@@ -159,17 +156,17 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon-sm">
+                          <Button variant='ghost' size='icon-sm'>
                             <MoreHorizontal />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                        <DropdownMenuContent align='end'>
                           <DropdownMenuItem onClick={() => handleEditSubpart(subpart)}>
                             <Edit />
                             Edit
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            variant="destructive"
+                            variant='destructive'
                             onClick={() => handleDeleteSubpart(subpart)}>
                             <Trash2 />
                             Remove
@@ -188,30 +185,30 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
       {/* Parent Parts Section */}
       {parentParts.length > 0 && (
         <Section title={`Used In (${parentParts.length})`} initialOpen>
-          <div className="rounded-md border">
+          <div className='rounded-md border'>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Assembly</TableHead>
-                  <TableHead className="text-right">Qty Used</TableHead>
+                  <TableHead className='text-right'>Qty Used</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {parentParts.map((parentPart: any) => (
                   <TableRow key={parentPart.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex flex-col">
+                    <TableCell className='font-medium'>
+                      <div className='flex flex-col'>
                         <Link
                           href={`/app/parts?p=${parentPart.parentPartId}&tab=subparts`}
-                          className="truncate hover:underline">
+                          className='truncate hover:underline'>
                           {parentPart.parentPart?.title ?? 'Unknown'}
                         </Link>
-                        <span className="text-xs text-muted-foreground">
+                        <span className='text-xs text-muted-foreground'>
                           {parentPart.parentPart?.sku}
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-right font-medium">{parentPart.quantity}</TableCell>
+                    <TableCell className='text-right font-medium'>{parentPart.quantity}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

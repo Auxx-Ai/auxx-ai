@@ -2,6 +2,8 @@
 
 'use client'
 
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -10,12 +12,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Button } from '@auxx/ui/components/button'
-import { api } from '~/trpc/react'
-import { AlertTriangle } from 'lucide-react'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { AlertTriangle } from 'lucide-react'
 import { useRecordInvalidation } from '~/components/resources'
+import { api } from '~/trpc/react'
 
 interface MassDeleteDialogProps {
   open: boolean
@@ -50,7 +50,7 @@ export function MassDeleteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="sm" position="tc">
+      <DialogContent size='sm' position='tc'>
         <DialogHeader>
           <DialogTitle>Delete Tickets</DialogTitle>
           <DialogDescription>
@@ -58,7 +58,7 @@ export function MassDeleteDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Alert variant="destructive">
+        <Alert variant='destructive'>
           <AlertTriangle />
           <AlertTitle>Warning</AlertTitle>
           <AlertDescription>
@@ -69,18 +69,18 @@ export function MassDeleteDialog({
 
         <DialogFooter>
           <Button
-            variant="outline"
-            size="sm"
+            variant='outline'
+            size='sm'
             onClick={() => onOpenChange(false)}
             disabled={deleteTickets.isPending}>
             Cancel
           </Button>
           <Button
-            size="sm"
-            variant="destructive"
+            size='sm'
+            variant='destructive'
             onClick={handleDelete}
             loading={deleteTickets.isPending}
-            loadingText="Deleting...">
+            loadingText='Deleting...'>
             Delete Tickets
           </Button>
         </DialogFooter>

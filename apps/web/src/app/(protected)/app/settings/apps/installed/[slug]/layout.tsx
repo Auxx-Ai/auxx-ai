@@ -1,10 +1,11 @@
 // apps/web/src/app/(protected)/app/settings/apps/installed/[slug]/layout.tsx
-import React from 'react'
+
 import { Globe } from 'lucide-react'
+import type React from 'react'
+import AppInstallButton from '~/components/apps/app-install-button'
+import { InstalledAppTabs } from '~/components/apps/installed-app-tabs'
 import SettingsPage from '~/components/global/settings-page'
 import { api } from '~/trpc/server'
-import { InstalledAppTabs } from '~/components/apps/installed-app-tabs'
-import AppInstallButton from '~/components/apps/app-install-button'
 
 /**
  * Props for InstalledAppLayout
@@ -28,8 +29,8 @@ export default async function InstalledAppLayout({ children, params }: Props) {
     <SettingsPage
       title={appData.app.title}
       icon={
-        <div className="size-10 border rounded-xl flex items-center justify-center bg-primary-100">
-          <Globe className="size-4" />
+        <div className='size-10 border rounded-xl flex items-center justify-center bg-primary-100'>
+          <Globe className='size-4' />
         </div>
       }
       description={appData.app.description ?? 'App description'}

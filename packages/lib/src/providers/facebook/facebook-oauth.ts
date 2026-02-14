@@ -1,10 +1,10 @@
 // src/lib/email/providers/facebook-oauth.ts
 import { env, WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
-import { eq, and } from 'drizzle-orm'
-import crypto from 'crypto'
 import { InboxService } from '@auxx/lib/inboxes'
+import { createScopedLogger } from '@auxx/logger'
+import crypto from 'crypto'
+import { and, eq } from 'drizzle-orm'
 
 const logger = createScopedLogger('facebook-oauth')
 const API_VERSION = env.FACEBOOK_GRAPH_API_VERSION || 'v19.0' // Use a recent, stable version
@@ -233,15 +233,18 @@ export class FacebookOAuthService {
 
       // 7. Store or update integration in the database
       // Find existing based on provider and pageId in metadata
-      const existingIntegrations = await db.select()
+      const existingIntegrations = await db
+        .select()
         .from(schema.Integration)
-        .where(and(
-          eq(schema.Integration.organizationId, orgId),
-          eq(schema.Integration.provider, 'facebook')
-        ))
+        .where(
+          and(
+            eq(schema.Integration.organizationId, orgId),
+            eq(schema.Integration.provider, 'facebook')
+          )
+        )
 
       // Filter by metadata in application code since Drizzle doesn't support JSON path queries elegantly
-      const existingIntegration = existingIntegrations.find(integration => {
+      const existingIntegration = existingIntegrations.find((integration) => {
         const metadata = integration.metadata as any
         return metadata?.pageId === pageId
       })
@@ -249,7 +252,8 @@ export class FacebookOAuthService {
       let integration
       if (existingIntegration) {
         // Update existing integration
-        const [updatedIntegration] = await db.update(schema.Integration)
+        const [updatedIntegration] = await db
+          .update(schema.Integration)
           .set({
             // Update tokens and metadata
             refreshToken: longLivedUserToken || 'N/A', // Store L-L User Token here for potential revoke/refresh
@@ -264,7 +268,8 @@ export class FacebookOAuthService {
         integration = updatedIntegration
       } else {
         // Create new integration
-        const [newIntegration] = await db.insert(schema.Integration)
+        const [newIntegration] = await db
+          .insert(schema.Integration)
           .values({
             organizationId: orgId,
             provider: 'facebook',
@@ -368,7 +373,8 @@ export class FacebookOAuthService {
     logger.info(
       `'refreshTokens' called for Facebook integration ${integrationId}. Checking token validity.`
     )
-    const [integration] = await db.select()
+    const [integration] = await db
+      .select()
       .from(schema.Integration)
       .where(eq(schema.Integration.id, integrationId))
       .limit(1)
@@ -396,7 +402,8 @@ export class FacebookOAuthService {
           { debugData }
         )
         // Mark integration as disabled? Requires re-auth.
-        await db.update(schema.Integration)
+        await db
+          .update(schema.Integration)
           .set({ enabled: false, accessToken: null }) // Clear invalid token
           .where(eq(schema.Integration.id, integrationId))
         throw new Error('Facebook token is invalid. Re-authentication required.')
@@ -416,7 +423,8 @@ export class FacebookOAuthService {
       }
 
       // Return the potentially updated integration data (even if only expiry changed)
-      const [refreshedIntegration] = await db.select()
+      const [refreshedIntegration] = await db
+        .select()
         .from(schema.Integration)
         .where(eq(schema.Integration.id, integrationId))
         .limit(1)
@@ -434,7 +442,8 @@ export class FacebookOAuthService {
    */
   public async revokeAccess(integrationId: string): Promise<boolean> {
     try {
-      const [integration] = await db.select()
+      const [integration] = await db
+        .select()
         .from(schema.Integration)
         .where(eq(schema.Integration.id, integrationId))
         .limit(1)
@@ -488,7 +497,8 @@ export class FacebookOAuthService {
       }
 
       // 3. Update integration record in DB: disable and clear tokens/metadata
-      await db.update(schema.Integration)
+      await db
+        .update(schema.Integration)
         .set({
           enabled: false,
           accessToken: null,
@@ -510,13 +520,14 @@ export class FacebookOAuthService {
    * Returns the Page Access Token needed for API calls.
    */
   public async getPageAccessToken(integrationId: string): Promise<string | null> {
-    const [integration] = await db.select({
-      accessToken: schema.Integration.accessToken,
-      enabled: schema.Integration.enabled
-    })
-    .from(schema.Integration)
-    .where(eq(schema.Integration.id, integrationId))
-    .limit(1)
+    const [integration] = await db
+      .select({
+        accessToken: schema.Integration.accessToken,
+        enabled: schema.Integration.enabled,
+      })
+      .from(schema.Integration)
+      .where(eq(schema.Integration.id, integrationId))
+      .limit(1)
     // Optionally add validity check here using refreshTokens logic if needed
     if (integration?.enabled && integration.accessToken) {
       return integration.accessToken
@@ -532,12 +543,13 @@ export class FacebookOAuthService {
    * Helper to get Page ID from stored metadata.
    */
   public async getPageId(integrationId: string): Promise<string | null> {
-    const [integration] = await db.select({
-      metadata: schema.Integration.metadata
-    })
-    .from(schema.Integration)
-    .where(eq(schema.Integration.id, integrationId))
-    .limit(1)
+    const [integration] = await db
+      .select({
+        metadata: schema.Integration.metadata,
+      })
+      .from(schema.Integration)
+      .where(eq(schema.Integration.id, integrationId))
+      .limit(1)
     if (integration?.metadata) {
       const metadata = integration.metadata as unknown as Partial<FacebookIntegrationMetadata>
       return metadata.pageId ?? null

@@ -2,21 +2,21 @@
 
 'use client'
 
-import React, { useState, useMemo } from 'react'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { BASE_TYPE_GROUPS, type BaseType } from '@auxx/lib/workflow-engine/types'
+import { Button } from '@auxx/ui/components/button'
 import {
   Command,
-  CommandInput,
-  CommandList,
   CommandEmpty,
-  CommandItem,
   CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
 } from '@auxx/ui/components/command'
-import { Button } from '@auxx/ui/components/button'
-import { Check, ChevronDown } from 'lucide-react'
-import { VarTypeIcon, getVarTypeName } from '~/components/workflow/utils/icon-helper'
-import { BaseType, BASE_TYPE_GROUPS } from '@auxx/lib/workflow-engine/types'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
+import { Check, ChevronDown } from 'lucide-react'
+import React, { useMemo, useState } from 'react'
+import { getVarTypeName, VarTypeIcon } from '~/components/workflow/utils/icon-helper'
 
 /**
  * Props for InputTypePicker component
@@ -71,34 +71,34 @@ export function InputTypePicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant="transparent"
-          role="combobox"
-          size="sm"
+          variant='transparent'
+          role='combobox'
+          size='sm'
           aria-expanded={open}
           className={cn('w-full justify-between px-0 py-0', className)}
           disabled={disabled}>
-          <div className="flex items-center gap-2">
-            <VarTypeIcon type={value} className="size-4" />
+          <div className='flex items-center gap-2'>
+            <VarTypeIcon type={value} className='size-4' />
             <span>{getVarTypeName(value)}</span>
           </div>
-          <ChevronDown className=" shrink-0 opacity-50" />
+          <ChevronDown className=' shrink-0 opacity-50' />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[240px] p-0" align="start">
+      <PopoverContent className='w-[240px] p-0' align='start'>
         <Command>
           <CommandInput
-            placeholder="Search types..."
+            placeholder='Search types...'
             value={searchQuery}
             onValueChange={setSearchQuery}
           />
-          <CommandList className="max-h-[300px]">
+          <CommandList className='max-h-[300px]'>
             <CommandEmpty>No type found.</CommandEmpty>
             {Object.entries(filteredGroups).map(([group, types]) => (
               <CommandGroup key={group} heading={group}>
                 {types.map((type) => (
                   <CommandItem key={type} value={type} onSelect={() => handleSelect(type)}>
-                    <div className="flex items-center gap-2 flex-1">
-                      <VarTypeIcon type={type} className="size-4" />
+                    <div className='flex items-center gap-2 flex-1'>
+                      <VarTypeIcon type={type} className='size-4' />
                       <span>{getVarTypeName(type)}</span>
                     </div>
                     <Check

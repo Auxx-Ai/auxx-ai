@@ -1,15 +1,15 @@
 // packages/lib/src/ai/providers/groq/groq-client.ts
 
+import type { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
 import { ProviderClient } from '../base/provider-client'
 import {
-  ValidationResult,
-  ConnectionTestResult,
-  ProviderCredentials,
-  CredentialValidationError,
   ConnectionTestError,
+  type ConnectionTestResult,
+  CredentialValidationError,
+  type ProviderCredentials,
+  type ValidationResult,
 } from '../base/types'
-import { ModelCapabilities, ModelType } from '../types'
-import { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
+import type { ModelCapabilities, ModelType } from '../types'
 import { GROQ_CAPABILITIES, GROQ_MODELS } from './groq-defaults'
 
 /**

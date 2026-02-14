@@ -1,8 +1,8 @@
 // apps/web/src/app/(protected)/app/custom/[slug]/import/[jobId]/page.tsx
 
+import { notFound } from 'next/navigation'
 import { ImportPage } from '~/components/data-import/import-page'
 import { api } from '~/trpc/server'
-import { notFound } from 'next/navigation'
 
 interface PageProps {
   params: Promise<{ slug: string; jobId: string }>

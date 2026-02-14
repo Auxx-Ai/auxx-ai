@@ -1,17 +1,18 @@
 // apps/web/src/components/signatures/ui/signature-picker.tsx
 'use client'
 
-import { useState, useMemo, useCallback, type ComponentProps } from 'react'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { Button } from '@auxx/ui/components/button'
-import { useRouter } from 'next/navigation'
-import { cn } from '@auxx/ui/lib/utils'
-import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import type { SelectOption } from '@auxx/types/custom-field'
-import { useSignatures, type SignatureItem } from '../hooks'
+import { Button } from '@auxx/ui/components/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { cn } from '@auxx/ui/lib/utils'
+import { useRouter } from 'next/navigation'
+import { type ComponentProps, useCallback, useMemo, useState } from 'react'
+import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
+import { type SignatureItem, useSignatures } from '../hooks'
 
 /** Props for SignaturePicker component */
-interface SignaturePickerProps extends Pick<ComponentProps<typeof PopoverContent>, 'align' | 'side' | 'sideOffset'> {
+interface SignaturePickerProps
+  extends Pick<ComponentProps<typeof PopoverContent>, 'align' | 'side' | 'sideOffset'> {
   open?: boolean
   onOpenChange?: (open: boolean) => void
   selected?: string | null
@@ -77,7 +78,7 @@ export function SignaturePicker({
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild disabled={disabled}>
-        {children ?? <Button variant="outline">Select Signature</Button>}
+        {children ?? <Button variant='outline'>Select Signature</Button>}
       </PopoverTrigger>
       <PopoverContent className={cn('w-[250px] p-0', className)} {...popoverContentProps}>
         <MultiSelectPicker
@@ -85,12 +86,12 @@ export function SignaturePicker({
           value={selected ? [selected] : []}
           onChange={handleChange}
           onSelectSingle={handleSelectSingle}
-          placeholder="Search signatures..."
+          placeholder='Search signatures...'
           canManage={false}
           canAdd={false}
           multi={false}
           onCreate={handleCreate}
-          createLabel="Add New Signature"
+          createLabel='Add New Signature'
           disabled={disabled}
         />
       </PopoverContent>

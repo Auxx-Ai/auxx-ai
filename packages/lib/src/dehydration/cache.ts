@@ -28,10 +28,7 @@ export class DehydrationCacheService extends BaseCacheService {
    */
   async setState(userId: string, state: DehydratedState): Promise<void> {
     const key = this.buildKey('user', userId)
-    const tags = [
-      `user:${userId}`,
-      ...state.organizations.map((org) => `org:${org.id}`),
-    ]
+    const tags = [`user:${userId}`, ...state.organizations.map((org) => `org:${org.id}`)]
 
     await this.set(key, state, { tags })
   }

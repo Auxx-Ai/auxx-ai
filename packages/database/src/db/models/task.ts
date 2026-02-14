@@ -15,7 +15,12 @@ export type UpdateTaskInput = Partial<CreateTaskInput>
  * TaskModel encapsulates CRUD for the Task table.
  * Org-scoped via organizationId when provided to the constructor.
  */
-export class TaskModel extends BaseModel<typeof Task, CreateTaskInput, TaskEntity, UpdateTaskInput> {
+export class TaskModel extends BaseModel<
+  typeof Task,
+  CreateTaskInput,
+  TaskEntity,
+  UpdateTaskInput
+> {
   /** Drizzle table */
   get table() {
     return Task

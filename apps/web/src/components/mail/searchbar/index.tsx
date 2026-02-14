@@ -1,29 +1,30 @@
 // apps/web/src/components/mail/searchbar/index.tsx
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
-import { Filter, Loader2, Search, X } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
+import {
+  getDefaultOperatorForField,
+  MAIL_VIEW_FIELD_DEFINITIONS,
+} from '@auxx/lib/mail-views/client'
+import type { AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
-
-import { SearchFilterInput } from './search-filter-input'
-import type { AutosizeInputRef } from '@auxx/ui/components/autosize-input'
-import { SearchSuggestionsList, type SearchSuggestion } from './search-suggestions-list'
-import { AdvancedFilterMode } from './advanced-filter-mode'
-import { useSearchSuggestions, useSaveSearchQuery } from './_hooks/use-search-suggestions'
+import { cn } from '@auxx/ui/lib/utils'
+import { Filter, Loader2, Search, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ConditionProvider } from '~/components/conditions/condition-context'
-import { MAIL_VIEW_FIELD_DEFINITIONS } from '@auxx/lib/mail-views/client'
+import { useSaveSearchQuery, useSearchSuggestions } from './_hooks/use-search-suggestions'
+import { AdvancedFilterMode } from './advanced-filter-mode'
+import { SearchFilterInput } from './search-filter-input'
+import { type SearchSuggestion, SearchSuggestionsList } from './search-suggestions-list'
 import {
-  useSearchStore,
-  selectHasActiveConditions,
+  buildFilterChips,
+  type SearchCondition,
   selectConditionCount,
   selectDisplayText,
-  buildFilterChips,
+  selectHasActiveConditions,
   useSearchActions,
-  type SearchCondition,
+  useSearchStore,
 } from './store'
-import { getDefaultOperatorForField } from '@auxx/lib/mail-views/client'
 
 /**
  * Props for MailSearchBar component
@@ -284,7 +285,7 @@ export function MailSearchBar({
               ? 'rounded-t-2xl bg-background border border-b-0 border-foreground/15'
               : 'rounded-full border-transparent'
           )}>
-          <Search className="size-4 shrink-0 opacity-50 ml-3 mr-2" />
+          <Search className='size-4 shrink-0 opacity-50 ml-3 mr-2' />
 
           <SearchFilterInput
             inputRef={inputRef}
@@ -292,43 +293,43 @@ export function MailSearchBar({
             onInputChange={setInputValue}
             onInputKeyDown={handleInputKeyDown}
             onFocus={handleInputFocus}
-            placeholder="Search..."
-            className="flex-1"
+            placeholder='Search...'
+            className='flex-1'
           />
 
           {/* Loading indicator */}
           {(isLoading || suggestionsLoading) && (
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-1" />
+            <Loader2 className='h-4 w-4 animate-spin text-muted-foreground mr-1' />
           )}
 
           {/* Clear button */}
           {(inputValue || hasActiveConditions) && (
             <Button
-              variant="ghost"
-              size="icon"
-              className="size-6 rounded-full shrink-0 bg-primary-50 hover:bg-primary-100 [&_svg]:opacity-50 hover:[&_svg]:opacity-100"
+              variant='ghost'
+              size='icon'
+              className='size-6 rounded-full shrink-0 bg-primary-50 hover:bg-primary-100 [&_svg]:opacity-50 hover:[&_svg]:opacity-100'
               onClick={handleClear}>
-              <X className="size-4 shrink-0" />
+              <X className='size-4 shrink-0' />
             </Button>
           )}
 
           {/* Filter button */}
           <Button
             ref={filterButtonRef}
-            variant="ghost"
+            variant='ghost'
             aria-selected={showAdvanced ? 'true' : 'false'}
             className={cn('size-6 rounded-full aria-[selected=true]:bg-primary-200')}
             onClick={handleFilterClick}>
-            <Filter className="size-4 shrink-0 opacity-50" />
+            <Filter className='size-4 shrink-0 opacity-50' />
           </Button>
         </div>
 
         {/* Popover for dropdown - anchored below input */}
         <Popover open={isOpen} onOpenChange={handleOpenChange}>
-          <PopoverAnchor className="w-full flex-1" />
+          <PopoverAnchor className='w-full flex-1' />
           <PopoverContent
-            className="rounded-t-none rounded-b-2xl border-t-0 p-0 shadow-lg"
-            align="start"
+            className='rounded-t-none rounded-b-2xl border-t-0 p-0 shadow-lg'
+            align='start'
             sideOffset={0}
             // onOpenAutoFocus={(e) => e.preventDefault()}
             onInteractOutside={(e) => {

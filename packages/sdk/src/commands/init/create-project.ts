@@ -4,12 +4,12 @@ import { existsSync } from 'fs'
 import { access, constants } from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import type z from 'zod'
+import type { appInfoSchema } from '../../api/schemas.js'
+import { complete, errored, isErrored } from '../../errors.js'
 import { copyWithTransform } from '../../util/copy-with-transform.js'
 import { createDirectory } from '../../util/create-directory.js'
 import { spinnerify } from '../../util/spinner.js'
-import { complete, errored, isErrored } from '../../errors.js'
-import { appInfoSchema } from '../../api/schemas.js'
-import z from 'zod'
 
 export type CreateProjectError =
   | { code: 'DIRECTORY_ALREADY_EXISTS'; path: string }

@@ -1,7 +1,8 @@
 // apps/web/src/components/fields/displays/display-single-select.tsx
-import DisplayWrapper from './display-wrapper'
+
+import { resolveTagLabels, TagsView } from '~/components/ui/tags-view'
 import { useFieldContext } from './display-field'
-import { TagsView, resolveTagLabels } from '~/components/ui/tags-view'
+import DisplayWrapper from './display-wrapper'
 
 /**
  * DisplaySingleSelect component
@@ -15,7 +16,7 @@ export function DisplaySingleSelect() {
 
   return (
     <DisplayWrapper copyValue={copyText || null}>
-      <TagsView value={value} options={options} variant="pill" />
+      <TagsView value={value} options={options} variant='pill' />
     </DisplayWrapper>
   )
 }

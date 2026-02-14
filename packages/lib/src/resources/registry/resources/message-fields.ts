@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/resources/registry/resources/message-fields.ts
 
+import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
-import { toFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField } from '../field-types'
 // Note: MessageType import removed - messageType field no longer exists in schema
 

@@ -33,7 +33,7 @@ export class RedisFallback {
     score: number,
     member: string
   ): Promise<number> {
-    if (this.hasSortedSetSupport(redis) && redis.zadd) {
+    if (RedisFallback.hasSortedSetSupport(redis) && redis.zadd) {
       return await redis.zadd(key, score, member)
     }
 
@@ -42,7 +42,7 @@ export class RedisFallback {
     const result = await redis.set(fallbackKey, score.toString())
 
     // Set expiration if supported
-    if (this.hasTTLSupport(redis) && redis.expire) {
+    if (RedisFallback.hasTTLSupport(redis) && redis.expire) {
       await redis.expire(fallbackKey, 7 * 24 * 60 * 60) // 7 days
     }
 
@@ -54,7 +54,7 @@ export class RedisFallback {
    * Remove item from sorted set with fallback
    */
   static async zrem(redis: RedisClient, key: string, ...members: string[]): Promise<number> {
-    if (this.hasSortedSetSupport(redis) && redis.zrem) {
+    if (RedisFallback.hasSortedSetSupport(redis) && redis.zrem) {
       return await redis.zrem(key, ...members)
     }
 
@@ -79,7 +79,7 @@ export class RedisFallback {
     start: number,
     stop: number
   ): Promise<string[]> {
-    if (this.hasSortedSetSupport(redis) && redis.zrevrange) {
+    if (RedisFallback.hasSortedSetSupport(redis) && redis.zrevrange) {
       return await redis.zrevrange(key, start, stop)
     }
 
@@ -114,7 +114,7 @@ export class RedisFallback {
    * Get sorted set cardinality with fallback
    */
   static async zcard(redis: RedisClient, key: string): Promise<number> {
-    if (this.hasSortedSetSupport(redis) && redis.zcard) {
+    if (RedisFallback.hasSortedSetSupport(redis) && redis.zcard) {
       return await redis.zcard(key)
     }
 
@@ -133,7 +133,7 @@ export class RedisFallback {
    * Get TTL with fallback
    */
   static async ttl(redis: RedisClient, key: string): Promise<number> {
-    if (this.hasTTLSupport(redis) && redis.ttl) {
+    if (RedisFallback.hasTTLSupport(redis) && redis.ttl) {
       return await redis.ttl(key)
     }
 
@@ -159,8 +159,8 @@ export class RedisFallback {
    * Log capabilities information for debugging
    */
   static logCapabilities(redis: RedisClient): void {
-    const sortedSets = this.hasSortedSetSupport(redis)
-    const ttl = this.hasTTLSupport(redis)
+    const sortedSets = RedisFallback.hasSortedSetSupport(redis)
+    const ttl = RedisFallback.hasTTLSupport(redis)
 
     logger.info('Redis capabilities detected', {
       sortedSets,

@@ -1,7 +1,7 @@
 // packages/database/src/db/schema/import-mapping.ts
 
-import { pgTable, index, text, timestamp, type AnyPgColumn } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, index, pgTable, text, timestamp } from './_shared'
 import { Organization } from './organization'
 import { User } from './user'
 
@@ -52,8 +52,14 @@ export const ImportMapping = pgTable(
     }),
   },
   (table) => [
-    index('ImportMapping_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
-    index('ImportMapping_entityDefinitionId_idx').using('btree', table.entityDefinitionId.asc().nullsLast()),
+    index('ImportMapping_organizationId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast()
+    ),
+    index('ImportMapping_entityDefinitionId_idx').using(
+      'btree',
+      table.entityDefinitionId.asc().nullsLast()
+    ),
   ]
 )
 

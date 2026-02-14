@@ -2,10 +2,10 @@
 
 export { EntityDefinitionService } from './entity-definition-service'
 export {
-  createEntityDefinitionSchema,
-  updateEntityDefinitionSchema,
   type CreateEntityDefinitionInput,
-  type UpdateEntityDefinitionInput,
+  createEntityDefinitionSchema,
   type EntityType,
   type StandardType,
+  type UpdateEntityDefinitionInput,
+  updateEntityDefinitionSchema,
 } from './types'

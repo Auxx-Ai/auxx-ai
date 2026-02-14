@@ -1,7 +1,9 @@
 // apps/web/src/components/datasets/documents/document-utils.tsx
-import { FileText, AlertCircle, CheckCircle, Clock, Upload, Archive } from 'lucide-react'
-import { Badge, type Variant, type BadgeProps } from '@auxx/ui/components/badge'
+
 import type { DocumentStatusType } from '@auxx/database/types'
+import { Badge, type BadgeProps, type Variant } from '@auxx/ui/components/badge'
+import { AlertCircle, Archive, CheckCircle, Clock, FileText, Upload } from 'lucide-react'
+
 /**
  * Configuration for document status styling and icons
  */

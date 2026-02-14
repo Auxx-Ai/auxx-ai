@@ -1,21 +1,20 @@
 // packages/lib/src/workflows/oauth2-workflow.service.ts
 
 import { env, WEBAPP_URL } from '@auxx/config/server'
+// import { CredentialService } from '../workflow-engine/services/credential-service'
+import { CredentialService, CredentialTypeRegistry } from '@auxx/credentials' //'../credentials/credential-type-registry'
+import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { URLTemplateService } from '@auxx/workflow-nodes/server'
 import type {
+  OAuth2CallbackResult,
   OAuth2Config,
+  OAuth2CredentialData,
+  OAuth2InitiationResponse,
   OAuth2State,
   OAuth2Tokens,
-  OAuth2InitiationResponse,
-  OAuth2CallbackResult,
-  OAuth2CredentialData,
 } from '@auxx/workflow-nodes/types'
-import { URLTemplateService } from '@auxx/workflow-nodes/server'
-// import { CredentialService } from '../workflow-engine/services/credential-service'
-import { CredentialTypeRegistry } from '@auxx/credentials' //'../credentials/credential-type-registry'
-import { CredentialService } from '@auxx/credentials'
-import { database as db, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 
 const logger = createScopedLogger('oauth2-workflow')
 
@@ -401,7 +400,6 @@ export class OAuth2WorkflowService {
     }
   }
 
-
   /**
    * Get user info from OAuth2 provider
    */
@@ -685,7 +683,7 @@ export class OAuth2WorkflowService {
       client_secret: clientSecret,
     }
 
-    let headers: Record<string, string> = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     }
 

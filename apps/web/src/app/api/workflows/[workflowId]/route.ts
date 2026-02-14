@@ -1,11 +1,11 @@
 // apps/web/src/app/api/workflows/[workflowId]/route.ts
 
-import { NextRequest, NextResponse } from 'next/server'
+import { TRPCError } from '@trpc/server'
+import { headers } from 'next/headers'
+import { type NextRequest, NextResponse } from 'next/server'
 import { auth } from '~/auth/server'
 import { appRouter } from '~/server/api/root'
 import { createTRPCContext } from '~/server/api/trpc'
-import { TRPCError } from '@trpc/server'
-import { headers } from 'next/headers'
 
 interface RouteParams {
   params: Promise<{ workflowId: string }>

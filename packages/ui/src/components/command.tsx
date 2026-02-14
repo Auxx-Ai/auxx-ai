@@ -1,44 +1,43 @@
 // packages/ui/src/components/command.tsx
 'use client'
 
-import * as React from 'react'
-import { type DialogProps } from 'radix-ui'
-import { Command as CommandPrimitive } from 'cmdk'
+import { Button } from '@auxx/ui/components/button'
+import { Checkbox } from '@auxx/ui/components/checkbox'
+import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Switch } from '@auxx/ui/components/switch'
+import { cn } from '@auxx/ui/lib/utils'
 import {
-  Search,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  Check,
-  Circle,
-  GripVertical,
-  Loader2,
-} from 'lucide-react'
-import {
-  DndContext,
   closestCenter,
+  DndContext,
+  type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
 } from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
   useSortable,
+  verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-
-import { cn } from '@auxx/ui/lib/utils'
-import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Button } from '@auxx/ui/components/button'
-import { Checkbox } from '@auxx/ui/components/checkbox'
-import { Switch } from '@auxx/ui/components/switch'
+import { Command as CommandPrimitive } from 'cmdk'
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Circle,
+  GripVertical,
+  Loader2,
+  Search,
+  X,
+} from 'lucide-react'
+import type { DialogProps } from 'radix-ui'
+import * as React from 'react'
 import { radioGroupVariants } from './radio-group'
 import { Spinner } from './spinner'
 
@@ -262,15 +261,15 @@ function CommandBreadcrumb({
   return (
     <div className={cn('flex items-center border-b px-2 py-1 text-sm shrink-0', className)}>
       {showBackButton && (
-        <Button variant="ghost" size="icon-xs" onClick={pop}>
+        <Button variant='ghost' size='icon-xs' onClick={pop}>
           <ChevronLeft />
-          <span className="sr-only">Back</span>
+          <span className='sr-only'>Back</span>
         </Button>
       )}
 
-      <ScrollArea orientation="horizontal" className="flex-1">
-        <div className="flex items-center">
-          <Button variant="ghost" size="xs" className="" onClick={reset}>
+      <ScrollArea orientation='horizontal' className='flex-1'>
+        <div className='flex items-center'>
+          <Button variant='ghost' size='xs' className='' onClick={reset}>
             {rootLabel}
           </Button>
 
@@ -278,12 +277,12 @@ function CommandBreadcrumb({
             const isLast = index === stack.length - 1
             const label = renderItem ? renderItem(item, index, isLast) : item.label
             return (
-              <div key={item.id} className="flex items-center shrink-0">
-                <ChevronRight className="size-3.5 shrink-0 opacity-50" />
+              <div key={item.id} className='flex items-center shrink-0'>
+                <ChevronRight className='size-3.5 shrink-0 opacity-50' />
                 {isLast ? (
-                  <span className="text-xs font-medium select-none shrink-0  px-2">{label}</span>
+                  <span className='text-xs font-medium select-none shrink-0  px-2'>{label}</span>
                 ) : (
-                  <Button variant="ghost" size="xs" className="" onClick={() => navigateTo(index)}>
+                  <Button variant='ghost' size='xs' className='' onClick={() => navigateTo(index)}>
                     {label}
                   </Button>
                 )}
@@ -308,8 +307,8 @@ function Command({ className, ...props }: React.ComponentProps<typeof CommandPri
 function CommandDialog({ children, ...props }: DialogProps & { children?: React.ReactNode }) {
   return (
     <Dialog {...props}>
-      <DialogContent className="overflow-hidden p-0">
-        <Command className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">
+      <DialogContent className='overflow-hidden p-0'>
+        <Command className='[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5'>
           {children}
         </Command>
       </DialogContent>
@@ -338,12 +337,12 @@ function CommandInput({
   }, [onValueChange])
   return (
     <div
-      className="flex items-center border-b border-border/50 dark:border-[#323842]/80 ps-3 pe-1"
-      cmdk-input-wrapper="">
+      className='flex items-center border-b border-border/50 dark:border-[#323842]/80 ps-3 pe-1'
+      cmdk-input-wrapper=''>
       {loading ? (
-        <Loader2 className="mr-2 size-4 shrink-0 opacity-50 animate-spin" />
+        <Loader2 className='mr-2 size-4 shrink-0 opacity-50 animate-spin' />
       ) : (
-        <Search className="mr-2 size-4 shrink-0 opacity-50" />
+        <Search className='mr-2 size-4 shrink-0 opacity-50' />
       )}
       <CommandPrimitive.Input
         className={cn(
@@ -359,8 +358,8 @@ function CommandInput({
       {value && (
         <a
           onClick={resetInput}
-          className="rounded-full cursor-default flex items-center justify-center hover:bg-bad-100 hover:text-bad-500 size-5 bg-primary-100 shrink-0 ">
-          <X className="size-3" />
+          className='rounded-full cursor-default flex items-center justify-center hover:bg-bad-100 hover:text-bad-500 size-5 bg-primary-100 shrink-0 '>
+          <X className='size-3' />
         </a>
       )}
     </div>
@@ -379,7 +378,7 @@ function CommandList({ className, ...props }: React.ComponentProps<typeof Comman
 function CommandEmpty(props: React.ComponentProps<typeof CommandPrimitive.Empty>) {
   return (
     <CommandPrimitive.Empty
-      className="relative flex cursor-default select-none items-center gap-2 rounded-full px-3 py-2 text-sm outline-hidden text-primary-400"
+      className='relative flex cursor-default select-none items-center gap-2 rounded-full px-3 py-2 text-sm outline-hidden text-primary-400'
       {...props}
     />
   )
@@ -489,8 +488,8 @@ function CommandNavigableItem<T extends NavigationItem>({
 
   return (
     <CommandItem value={value || item.id} onSelect={handleSelect} className={cn('', className)}>
-      <div className="flex items-center flex-row gap-1 flex-1">{children}</div>
-      {hasChildren && <ChevronRight className="size-4 text-muted-foreground" />}
+      <div className='flex items-center flex-row gap-1 flex-1'>{children}</div>
+      {hasChildren && <ChevronRight className='size-4 text-muted-foreground' />}
     </CommandItem>
   )
 }
@@ -539,15 +538,15 @@ function CommandCheckboxItem({
     switch (variant) {
       case 'check':
         return checked ? (
-          <Check className="size-4 text-primary-500" />
+          <Check className='size-4 text-primary-500' />
         ) : (
-          <span className="size-4" /> // Spacer to maintain alignment
+          <span className='size-4' /> // Spacer to maintain alignment
         )
       case 'switch':
-        return <Switch checked={checked} size="xs" className="pointer-events-none" />
+        return <Switch checked={checked} size='xs' className='pointer-events-none' />
       case 'checkbox':
       default:
-        return <Checkbox checked={checked} className="pointer-events-none" />
+        return <Checkbox checked={checked} className='pointer-events-none' />
     }
   }
 
@@ -691,16 +690,16 @@ function CommandSortableItem({
       {/* Grip handle on LEFT */}
       {!hideGrip && (
         <span
-          className="shrink-0 cursor-grab touch-none text-muted-foreground hover:text-foreground"
+          className='shrink-0 cursor-grab touch-none text-muted-foreground hover:text-foreground'
           onClick={(e) => e.stopPropagation()}
           {...attributes}
           {...listeners}>
-          <GripVertical className="size-4" />
+          <GripVertical className='size-4' />
         </span>
       )}
 
       {/* Item content */}
-      <div className="min-w-0 flex-1 flex flex-row">{children}</div>
+      <div className='min-w-0 flex-1 flex flex-row'>{children}</div>
     </CommandItem>
   )
 }
@@ -794,7 +793,7 @@ function CommandRadioItem({
   const renderIndicator = () => {
     switch (variant) {
       case 'check':
-        return isSelected ? <Check className="size-4 text-info" /> : <span className="size-4" />
+        return isSelected ? <Check className='size-4 text-info' /> : <span className='size-4' />
       case 'radio':
       default:
         return (
@@ -804,7 +803,7 @@ function CommandRadioItem({
               'flex items-center justify-center '
               // !isSelected && 'border-muted-foreground'
             )}>
-            {isSelected && <Circle className="size-2!" />}
+            {isSelected && <Circle className='size-2!' />}
           </span>
         )
     }
@@ -817,7 +816,7 @@ function CommandRadioItem({
       disabled={disabled}
       className={cn('flex cursor-pointer items-center justify-between', className)}>
       {children}
-      <span className="pointer-events-none">{renderIndicator()}</span>
+      <span className='pointer-events-none'>{renderIndicator()}</span>
     </CommandItem>
   )
 }

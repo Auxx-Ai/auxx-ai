@@ -1,7 +1,7 @@
-import { Node, mergeAttributes } from '@tiptap/core'
-import { ReactNodeViewRenderer } from '@tiptap/react'
+import { mergeAttributes, Node } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
-import { EditorView } from '@tiptap/pm/view'
+import type { EditorView } from '@tiptap/pm/view'
+import { ReactNodeViewRenderer } from '@tiptap/react'
 import FileNodeView from './file-node-view'
 // FileNodeView
 export const FileNode = Node.create({

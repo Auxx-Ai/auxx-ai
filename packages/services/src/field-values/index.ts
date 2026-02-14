@@ -1,26 +1,25 @@
 // packages/services/src/field-values/index.ts
 
-// Types
-export type {
-  FieldNotFoundError,
-  FieldValueNotFoundError,
-  EntityNotFoundError,
-  FieldValueError,
-  GetFieldWithDefinitionInput,
-  FieldWithDefinition,
-  GetExistingValueInput,
-  ExistingFieldValueRow,
-  InsertFieldValueInput,
-  UpdateFieldValueInput,
-  DeleteFieldValuesInput,
-  UpdateDisplayNameInput,
-  FieldValueRow,
-} from './types'
-
+export { deleteFieldValueById, deleteFieldValues } from './delete-values'
+export { getExistingFieldValue } from './get-existing-value'
 // Queries
 export { getFieldWithDefinition } from './get-field-with-definition'
-export { getExistingFieldValue } from './get-existing-value'
-export { insertFieldValue, batchInsertFieldValues } from './insert-value'
-export { updateFieldValue } from './update-value'
-export { deleteFieldValues, deleteFieldValueById } from './delete-values'
+export { batchInsertFieldValues, insertFieldValue } from './insert-value'
+// Types
+export type {
+  DeleteFieldValuesInput,
+  EntityNotFoundError,
+  ExistingFieldValueRow,
+  FieldNotFoundError,
+  FieldValueError,
+  FieldValueNotFoundError,
+  FieldValueRow,
+  FieldWithDefinition,
+  GetExistingValueInput,
+  GetFieldWithDefinitionInput,
+  InsertFieldValueInput,
+  UpdateDisplayNameInput,
+  UpdateFieldValueInput,
+} from './types'
 export { updateEntityDisplayName } from './update-display-name'
+export { updateFieldValue } from './update-value'

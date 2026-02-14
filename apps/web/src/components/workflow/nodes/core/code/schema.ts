@@ -2,16 +2,16 @@
 
 import { z } from 'zod'
 import {
-  type NodeDefinition,
-  NodeCategory,
-  type ValidationResult,
-  type UnifiedVariable,
   BaseType,
+  NodeCategory,
+  type NodeDefinition,
   NodeType,
+  type UnifiedVariable,
+  type ValidationResult,
 } from '~/components/workflow/types'
-import { type CodeNodeData } from './types'
-import { CodePanel } from './panel'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
+import { CodePanel } from './panel'
+import type { CodeNodeData } from './types'
 
 /**
  * Zod schema for code configuration

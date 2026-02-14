@@ -1,11 +1,7 @@
 // packages/lib/src/files/upload/strategies/presigned-upload.ts
 
+import type { ProgressContext, UploadRequest, UploadResult } from '../enhanced-types'
 import { BaseUploadStrategy } from './base-strategy'
-import type { 
-  UploadRequest, 
-  UploadResult, 
-  ProgressContext
-} from '../enhanced-types'
 
 /**
  * Presigned upload strategy for client-side uploads
@@ -31,22 +27,22 @@ export class PresignedUploadStrategy extends BaseUploadStrategy {
   async execute(request: UploadRequest, progress: ProgressContext): Promise<UploadResult> {
     this.validateRequest(request)
     this.logStrategyStart(request, 'presigned')
-    
+
     const uploadId = this.generateUploadId()
     const startTime = Date.now()
-    
+
     try {
       // Stage 1: Initialize
       progress.updateStage('initializing', 'Preparing presigned upload...')
-      
+
       // Stage 2: Generate storage key
       progress.updateStage('preparing', 'Generating presigned URL...')
       const storageKey = this.generateStorageKey(request)
       const fileSize = request.size || this.getFileSize(request.content, request.size)
-      
+
       // Stage 3: Generate presigned upload URL
       progress.updateStage('uploading', 'Creating presigned upload URL...')
-      
+
       const presignedUpload = await this.storageManager.generatePresignedUploadUrl({
         provider: request.provider!,
         key: storageKey,
@@ -56,10 +52,10 @@ export class PresignedUploadStrategy extends BaseUploadStrategy {
         metadata: request.metadata,
         credentialId: request.credentialId,
       })
-      
+
       // Stage 4: Create storage location record
       progress.updateStage('finalizing', 'Creating storage record...')
-      
+
       const storageLocation = await this.storageManager.createStorageLocation({
         provider: request.provider!,
         externalId: storageKey,
@@ -74,22 +70,21 @@ export class PresignedUploadStrategy extends BaseUploadStrategy {
         },
         visibility: request.visibility,
       })
-      
+
       const uploadDuration = Date.now() - startTime
       const result = this.buildUploadResult(storageLocation, request, uploadDuration, uploadId)
-      
+
       // Add presigned URL information to result
       result.presignedUpload = {
         url: presignedUpload.url,
         fields: presignedUpload.fields,
         expiresAt: presignedUpload.expiresAt,
       }
-      
+
       progress.updateStage('completed', 'Presigned upload URL generated')
-      
+
       this.logStrategyComplete(result, 'presigned')
       return result
-      
     } catch (error) {
       this.handleUploadError(error, 'preparing', 'presigned upload')
     }
@@ -109,7 +104,7 @@ export class PresignedUploadStrategy extends BaseUploadStrategy {
   }> {
     const storageKey = this.generateStorageKey(request)
     const fileSize = request.size || this.getFileSize(request.content, request.size)
-    
+
     // Start multipart upload
     const multipartUpload = await this.storageManager.startMultipartUpload({
       provider: request.provider!,
@@ -118,18 +113,17 @@ export class PresignedUploadStrategy extends BaseUploadStrategy {
       metadata: request.metadata,
       credentialId: request.credentialId,
     })
-    
+
     // Calculate number of parts
     const chunkSize = 5 * 1024 * 1024 // 5MB chunks
     const totalParts = Math.ceil(fileSize / chunkSize)
     const partUrls: Array<{ partNumber: number; url: string }> = []
-    
+
     // Generate presigned URL for each part
     for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
-      const partSize = partNumber === totalParts 
-        ? fileSize - (partNumber - 1) * chunkSize
-        : chunkSize
-      
+      const partSize =
+        partNumber === totalParts ? fileSize - (partNumber - 1) * chunkSize : chunkSize
+
       const partUpload = await this.storageManager.generatePartUploadUrl({
         provider: request.provider!,
         key: storageKey,
@@ -138,18 +132,18 @@ export class PresignedUploadStrategy extends BaseUploadStrategy {
         size: partSize,
         credentialId: request.credentialId,
       })
-      
+
       partUrls.push({
         partNumber,
         url: partUpload.url,
       })
-      
+
       progress.updateProgress(
         (partNumber / totalParts) * 0.5, // 50% progress for URL generation
         `Generated presigned URL for part ${partNumber}/${totalParts}`
       )
     }
-    
+
     // Create storage location record
     const storageLocation = await this.storageManager.createStorageLocation({
       provider: request.provider!,
@@ -165,7 +159,7 @@ export class PresignedUploadStrategy extends BaseUploadStrategy {
       },
       visibility: request.visibility,
     })
-    
+
     return {
       uploadId: multipartUpload.uploadId,
       partUrls,
@@ -185,9 +179,9 @@ export class PresignedUploadStrategy extends BaseUploadStrategy {
   ): Promise<UploadResult> {
     const startTime = Date.now()
     const storageKey = this.generateStorageKey(request)
-    
+
     progress.updateStage('finalizing', 'Completing multipart upload...')
-    
+
     const storageLocation = await this.storageManager.completeMultipartUpload({
       provider: request.provider!,
       key: storageKey,
@@ -195,12 +189,12 @@ export class PresignedUploadStrategy extends BaseUploadStrategy {
       parts,
       credentialId: request.credentialId,
     })
-    
+
     const uploadDuration = Date.now() - startTime
     const result = this.buildUploadResult(storageLocation, request, uploadDuration, uploadId)
-    
+
     progress.updateStage('completed', 'Multipart upload completed')
-    
+
     return result
   }
 }

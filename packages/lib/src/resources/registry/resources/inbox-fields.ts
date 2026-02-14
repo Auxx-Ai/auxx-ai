@@ -1,10 +1,10 @@
 // packages/lib/src/resources/registry/resources/inbox-fields.ts
 
 import { FieldType } from '@auxx/database/enums'
-import { BaseType } from '../../types'
 import { toFieldId } from '@auxx/types/field'
-import type { ResourceField } from '../field-types'
+import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
+import type { ResourceField } from '../field-types'
 
 /**
  * Field definitions for the Inbox resource

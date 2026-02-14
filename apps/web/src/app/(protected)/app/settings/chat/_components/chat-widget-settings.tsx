@@ -1,8 +1,17 @@
 // src/app/(protected)/app/settings/chat/_components/chat-widget-settings.tsx
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { useForm } from 'react-hook-form'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@auxx/ui/components/alert-dialog'
 import { Button } from '@auxx/ui/components/button'
 import {
   Card,
@@ -12,6 +21,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@auxx/ui/components/card'
+import { ColorPicker } from '@auxx/ui/components/color-picker'
 import {
   Form,
   FormControl,
@@ -31,25 +41,15 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { Separator } from '@auxx/ui/components/separator'
+import { Switch } from '@auxx/ui/components/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { Textarea } from '@auxx/ui/components/textarea'
-import { Switch } from '@auxx/ui/components/switch'
-import { ColorPicker } from '@auxx/ui/components/color-picker'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@auxx/ui/components/alert-dialog'
-import { Plus, X, Save, Globe, Trash2 } from 'lucide-react'
-import { toast } from 'sonner'
-import { useWidget, widgetSchema, type WidgetFormValues } from '~/hooks/use-widget'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { Globe, Plus, Save, Trash2, X } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { toast } from 'sonner'
+import { useWidget, type WidgetFormValues, widgetSchema } from '~/hooks/use-widget'
 
 interface ChatWidgetSettingsProps {
   widgetId?: string
@@ -125,17 +125,17 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">
+      <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6'>
+        <div className='flex items-center justify-between'>
+          <h1 className='text-2xl font-bold'>
             {widgetId ? 'Edit Chat Widget' : 'Create Chat Widget'}
           </h1>
 
           {widgetId && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive" type="button">
-                  <Trash2 className="mr-2 h-4 w-4" />
+                <Button variant='destructive' type='button'>
+                  <Trash2 className='mr-2 h-4 w-4' />
                   Delete Widget
                 </Button>
               </AlertDialogTrigger>
@@ -150,7 +150,7 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                   <AlertDialogAction
                     onClick={deleteWidget}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    className='bg-destructive text-destructive-foreground hover:bg-destructive/90'>
                     Delete
                   </AlertDialogAction>
                 </AlertDialogFooter>
@@ -167,28 +167,28 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
             </CardDescription>
           </CardHeader>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className='w-full'>
             <CardContent>
-              <TabsList className="grid w-full grid-cols-5">
-                <TabsTrigger value="general">General</TabsTrigger>
-                <TabsTrigger value="appearance">Appearance</TabsTrigger>
-                <TabsTrigger value="behavior">Behavior</TabsTrigger>
-                <TabsTrigger value="domains">Domains</TabsTrigger>
-                <TabsTrigger value="ai">AI</TabsTrigger>
+              <TabsList className='grid w-full grid-cols-5'>
+                <TabsTrigger value='general'>General</TabsTrigger>
+                <TabsTrigger value='appearance'>Appearance</TabsTrigger>
+                <TabsTrigger value='behavior'>Behavior</TabsTrigger>
+                <TabsTrigger value='domains'>Domains</TabsTrigger>
+                <TabsTrigger value='ai'>AI</TabsTrigger>
               </TabsList>
             </CardContent>
 
             {/* General Settings */}
-            <TabsContent value="general" className="p-6 pt-0">
-              <div className="space-y-6">
+            <TabsContent value='general' className='p-6 pt-0'>
+              <div className='space-y-6'>
                 <FormField
                   control={form.control}
-                  name="name"
+                  name='name'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Widget Name</FormLabel>
                       <FormControl>
-                        <Input placeholder="Support Chat Widget" {...field} disabled={isLoading} />
+                        <Input placeholder='Support Chat Widget' {...field} disabled={isLoading} />
                       </FormControl>
                       <FormDescription>
                         This name is only used internally to identify the widget
@@ -200,13 +200,13 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
 
                 <FormField
                   control={form.control}
-                  name="description"
+                  name='description'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Description</FormLabel>
                       <FormControl>
                         <Textarea
-                          placeholder="Optional description of this widget"
+                          placeholder='Optional description of this widget'
                           {...field}
                           disabled={isLoading}
                         />
@@ -221,11 +221,11 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
 
                 <FormField
                   control={form.control}
-                  name="isActive"
+                  name='isActive'
                   render={({ field }) => (
-                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                      <div className="space-y-0.5">
-                        <FormLabel className="text-base">Active</FormLabel>
+                    <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                      <div className='space-y-0.5'>
+                        <FormLabel className='text-base'>Active</FormLabel>
                         <FormDescription>
                           When active, the widget will appear on your website
                         </FormDescription>
@@ -245,17 +245,17 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
             </TabsContent>
 
             {/* Appearance Settings */}
-            <TabsContent value="appearance" className="p-6 pt-0">
-              <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
+            <TabsContent value='appearance' className='p-6 pt-0'>
+              <div className='space-y-6'>
+                <div className='grid grid-cols-2 gap-4'>
                   <FormField
                     control={form.control}
-                    name="title"
+                    name='title'
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Widget Title</FormLabel>
                         <FormControl>
-                          <Input placeholder="Chat Support" {...field} disabled={isLoading} />
+                          <Input placeholder='Chat Support' {...field} disabled={isLoading} />
                         </FormControl>
                         <FormDescription>The title displayed in the widget header</FormDescription>
                         <FormMessage />
@@ -265,13 +265,13 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
 
                   <FormField
                     control={form.control}
-                    name="subtitle"
+                    name='subtitle'
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Subtitle</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="We typically reply within a few minutes"
+                            placeholder='We typically reply within a few minutes'
                             {...field}
                             disabled={isLoading}
                           />
@@ -285,19 +285,19 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className='grid grid-cols-2 gap-4'>
                   <FormField
                     control={form.control}
-                    name="primaryColor"
+                    name='primaryColor'
                     render={({ field }) => (
-                      <FormItem className="flex flex-col space-y-2">
+                      <FormItem className='flex flex-col space-y-2'>
                         <FormLabel>Primary Color</FormLabel>
-                        <div className="flex items-center gap-2">
+                        <div className='flex items-center gap-2'>
                           <ColorPicker value={field.value || '#4F46E5'} onChange={field.onChange} />
                           <Input
                             value={field.value || ''}
                             onChange={(e) => field.onChange(e.target.value)}
-                            className="w-24 font-mono"
+                            className='w-24 font-mono'
                             disabled={isLoading}
                           />
                         </div>
@@ -309,13 +309,13 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
 
                   <FormField
                     control={form.control}
-                    name="logoUrl"
+                    name='logoUrl'
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Logo URL</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="https://example.com/logo.png"
+                            placeholder='https://example.com/logo.png'
                             {...field}
                             disabled={isLoading}
                           />
@@ -331,9 +331,9 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
 
                 <FormField
                   control={form.control}
-                  name="position"
+                  name='position'
                   render={({ field }) => (
-                    <FormItem className="space-y-1">
+                    <FormItem className='space-y-1'>
                       <FormLabel>Widget Position</FormLabel>
                       <FormDescription>
                         Choose where the widget will appear on your website
@@ -342,31 +342,31 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
                         <RadioGroup
                           onValueChange={field.onChange}
                           defaultValue={field.value}
-                          className="grid grid-cols-2 gap-4 pt-2"
+                          className='grid grid-cols-2 gap-4 pt-2'
                           disabled={isLoading}>
-                          <FormItem className="flex items-center space-x-3 space-y-0">
+                          <FormItem className='flex items-center space-x-3 space-y-0'>
                             <FormControl>
-                              <RadioGroupItem value="BOTTOM_RIGHT" />
+                              <RadioGroupItem value='BOTTOM_RIGHT' />
                             </FormControl>
-                            <FormLabel className="font-normal">Bottom Right</FormLabel>
+                            <FormLabel className='font-normal'>Bottom Right</FormLabel>
                           </FormItem>
-                          <FormItem className="flex items-center space-x-3 space-y-0">
+                          <FormItem className='flex items-center space-x-3 space-y-0'>
                             <FormControl>
-                              <RadioGroupItem value="BOTTOM_LEFT" />
+                              <RadioGroupItem value='BOTTOM_LEFT' />
                             </FormControl>
-                            <FormLabel className="font-normal">Bottom Left</FormLabel>
+                            <FormLabel className='font-normal'>Bottom Left</FormLabel>
                           </FormItem>
-                          <FormItem className="flex items-center space-x-3 space-y-0">
+                          <FormItem className='flex items-center space-x-3 space-y-0'>
                             <FormControl>
-                              <RadioGroupItem value="TOP_RIGHT" />
+                              <RadioGroupItem value='TOP_RIGHT' />
                             </FormControl>
-                            <FormLabel className="font-normal">Top Right</FormLabel>
+                            <FormLabel className='font-normal'>Top Right</FormLabel>
                           </FormItem>
-                          <FormItem className="flex items-center space-x-3 space-y-0">
+                          <FormItem className='flex items-center space-x-3 space-y-0'>
                             <FormControl>
-                              <RadioGroupItem value="TOP_LEFT" />
+                              <RadioGroupItem value='TOP_LEFT' />
                             </FormControl>
-                            <FormLabel className="font-normal">Top Left</FormLabel>
+                            <FormLabel className='font-normal'>Top Left</FormLabel>
                           </FormItem>
                         </RadioGroup>
                       </FormControl>
@@ -378,17 +378,17 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
             </TabsContent>
 
             {/* Behavior Settings */}
-            <TabsContent value="behavior" className="p-6 pt-0">
-              <div className="space-y-6">
+            <TabsContent value='behavior' className='p-6 pt-0'>
+              <div className='space-y-6'>
                 <FormField
                   control={form.control}
-                  name="welcomeMessage"
+                  name='welcomeMessage'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Welcome Message</FormLabel>
                       <FormControl>
                         <Textarea
-                          placeholder="Hi there! How can we help you today?"
+                          placeholder='Hi there! How can we help you today?'
                           {...field}
                           disabled={isLoading}
                         />
@@ -401,14 +401,14 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
                   )}
                 />
 
-                <div className="grid grid-cols-1 gap-6">
+                <div className='grid grid-cols-1 gap-6'>
                   <FormField
                     control={form.control}
-                    name="autoOpen"
+                    name='autoOpen'
                     render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-base">Auto Open</FormLabel>
+                      <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                        <div className='space-y-0.5'>
+                          <FormLabel className='text-base'>Auto Open</FormLabel>
                           <FormDescription>
                             Automatically open the chat when the page loads
                           </FormDescription>
@@ -427,11 +427,11 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
 
                   <FormField
                     control={form.control}
-                    name="mobileFullScreen"
+                    name='mobileFullScreen'
                     render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-base">Full Screen on Mobile</FormLabel>
+                      <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                        <div className='space-y-0.5'>
+                          <FormLabel className='text-base'>Full Screen on Mobile</FormLabel>
                           <FormDescription>
                             Take up the entire screen when opened on mobile devices
                           </FormDescription>
@@ -450,11 +450,11 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
 
                   <FormField
                     control={form.control}
-                    name="collectUserInfo"
+                    name='collectUserInfo'
                     render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-base">Collect User Information</FormLabel>
+                      <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                        <div className='space-y-0.5'>
+                          <FormLabel className='text-base'>Collect User Information</FormLabel>
                           <FormDescription>
                             Ask visitors for their name and email before starting a chat
                           </FormDescription>
@@ -474,7 +474,7 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
 
                 <FormField
                   control={form.control}
-                  name="offlineMessage"
+                  name='offlineMessage'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Offline Message</FormLabel>
@@ -496,56 +496,56 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
             </TabsContent>
 
             {/* Domain Settings */}
-            <TabsContent value="domains" className="p-6 pt-0">
-              <div className="space-y-6">
+            <TabsContent value='domains' className='p-6 pt-0'>
+              <div className='space-y-6'>
                 <div>
-                  <h3 className="text-base font-medium">Allowed Domains</h3>
-                  <p className="mb-4 text-sm text-muted-foreground">
+                  <h3 className='text-base font-medium'>Allowed Domains</h3>
+                  <p className='mb-4 text-sm text-muted-foreground'>
                     Restrict which domains can load your chat widget. Leave empty to allow all
                     domains.
                   </p>
 
-                  <div className="mb-4 flex items-center space-x-2">
+                  <div className='mb-4 flex items-center space-x-2'>
                     <Input
-                      placeholder="example.com"
+                      placeholder='example.com'
                       value={newDomain}
                       onChange={(e) => setNewDomain(e.target.value)}
-                      className="flex-1"
+                      className='flex-1'
                       disabled={isLoading}
                     />
                     <Button
-                      type="button"
+                      type='button'
                       onClick={handleAddDomain}
                       disabled={isLoading || !newDomain}>
-                      <Plus className="mr-2 h-4 w-4" />
+                      <Plus className='mr-2 h-4 w-4' />
                       Add
                     </Button>
                   </div>
 
                   {domains.length > 0 ? (
-                    <div className="mt-2 space-y-2">
+                    <div className='mt-2 space-y-2'>
                       {domains.map((domain) => (
                         <div
                           key={domain}
-                          className="flex items-center justify-between rounded-md border px-3 py-2">
-                          <div className="flex items-center">
-                            <Globe className="mr-2 h-4 w-4 text-muted-foreground" />
+                          className='flex items-center justify-between rounded-md border px-3 py-2'>
+                          <div className='flex items-center'>
+                            <Globe className='mr-2 h-4 w-4 text-muted-foreground' />
                             <span>{domain}</span>
                           </div>
                           <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
+                            type='button'
+                            variant='ghost'
+                            size='sm'
                             onClick={() => removeDomain(domain)}
                             disabled={isLoading}>
-                            <X className="h-4 w-4" />
+                            <X className='h-4 w-4' />
                           </Button>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="rounded-md border bg-muted/50 p-4 text-center">
-                      <p className="text-sm text-muted-foreground">
+                    <div className='rounded-md border bg-muted/50 p-4 text-center'>
+                      <p className='text-sm text-muted-foreground'>
                         No domains added. The widget will be available on any website.
                       </p>
                     </div>
@@ -555,15 +555,15 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
             </TabsContent>
 
             {/* AI Settings */}
-            <TabsContent value="ai" className="p-6 pt-0">
-              <div className="space-y-6">
+            <TabsContent value='ai' className='p-6 pt-0'>
+              <div className='space-y-6'>
                 <FormField
                   control={form.control}
-                  name="useAi"
+                  name='useAi'
                   render={({ field }) => (
-                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                      <div className="space-y-0.5">
-                        <FormLabel className="text-base">Enable AI Responses</FormLabel>
+                    <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                      <div className='space-y-0.5'>
+                        <FormLabel className='text-base'>Enable AI Responses</FormLabel>
                         <FormDescription>
                           Use AI to automatically respond to common questions
                         </FormDescription>
@@ -584,7 +584,7 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
                   <>
                     <FormField
                       control={form.control}
-                      name="aiModel"
+                      name='aiModel'
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>AI Model</FormLabel>
@@ -594,18 +594,18 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
                             disabled={isLoading}>
                             <FormControl>
                               <SelectTrigger>
-                                <SelectValue placeholder="Select an AI model" />
+                                <SelectValue placeholder='Select an AI model' />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="gpt-4o">OpenAI GPT-4o</SelectItem>
-                              <SelectItem value="claude-3-opus-20240229">
+                              <SelectItem value='gpt-4o'>OpenAI GPT-4o</SelectItem>
+                              <SelectItem value='claude-3-opus-20240229'>
                                 Anthropic Claude 3 Opus
                               </SelectItem>
-                              <SelectItem value="claude-3-haiku-20240307">
+                              <SelectItem value='claude-3-haiku-20240307'>
                                 Anthropic Claude 3 Haiku
                               </SelectItem>
-                              <SelectItem value="gemini-pro">Google Gemini Pro</SelectItem>
+                              <SelectItem value='gemini-pro'>Google Gemini Pro</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormDescription>
@@ -618,16 +618,16 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
 
                     <FormField
                       control={form.control}
-                      name="aiInstructions"
+                      name='aiInstructions'
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>AI Instructions</FormLabel>
                           <FormControl>
                             <Textarea
-                              placeholder="You are a helpful customer support agent for our company. Answer questions accurately and concisely, and ask for more information if needed."
+                              placeholder='You are a helpful customer support agent for our company. Answer questions accurately and concisely, and ask for more information if needed.'
                               {...field}
                               disabled={isLoading}
-                              className="min-h-32"
+                              className='min-h-32'
                             />
                           </FormControl>
                           <FormDescription>
@@ -643,13 +643,13 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
             </TabsContent>
           </Tabs>
 
-          <CardFooter className="border-t px-6 py-4">
-            <Button type="submit" disabled={isLoading} className="ml-auto">
+          <CardFooter className='border-t px-6 py-4'>
+            <Button type='submit' disabled={isLoading} className='ml-auto'>
               {isLoading ? (
                 <>Saving...</>
               ) : (
                 <>
-                  <Save className="mr-2 h-4 w-4" />
+                  <Save className='mr-2 h-4 w-4' />
                   Save Widget
                 </>
               )}

@@ -1,9 +1,9 @@
 // packages/config/src/env.ts
 import { createEnv } from '@t3-oss/env-nextjs'
-import { z } from 'zod'
 import * as dotenv from 'dotenv'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { z } from 'zod'
 import { createEnvProxy } from './env-proxy'
 
 /** Resolves the module filename and dirname in both ESM and CJS runtimes. */

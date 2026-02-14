@@ -1,10 +1,12 @@
 // apps/web/src/server/api/routers/document.ts
+
+import { ChunkingStrategyValues, DocumentStatus } from '@auxx/database/enums'
+import { DocumentModel } from '@auxx/database/models'
+import { DocumentService } from '@auxx/lib/datasets'
+import { createScopedLogger } from '@auxx/logger'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { createScopedLogger } from '@auxx/logger'
-import { DocumentService } from '@auxx/lib/datasets'
-import { DocumentModel } from '@auxx/database/models'
-import { DocumentStatus, ChunkingStrategyValues } from '@auxx/database/enums'
+
 const logger = createScopedLogger('api/document')
 
 /** Preprocessing options schema for chunk settings */

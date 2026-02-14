@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/nodes/core/list/hooks/use-sort-field-resolver.ts
 
-import { useMemo } from 'react'
-import { useFilterFieldResolver } from './use-filter-field-resolver'
 import { BaseType } from '@auxx/lib/workflow-engine/client'
+import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { useMemo } from 'react'
 import type { FieldDefinition } from '~/components/conditions'
 import { useResourceStore } from '~/components/resources/store/resource-store'
-import { parseResourceFieldId, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { useFilterFieldResolver } from './use-filter-field-resolver'
 
 /**
  * Sortable field types (direct)
@@ -30,10 +30,7 @@ interface UseSortFieldResolverOptions {
  * Hook to extract sortable field definitions from an array variable.
  * Supports sorting by relation subfields (e.g., "contact.name").
  */
-export function useSortFieldResolver({
-  nodeId,
-  inputListValue,
-}: UseSortFieldResolverOptions) {
+export function useSortFieldResolver({ nodeId, inputListValue }: UseSortFieldResolverOptions) {
   // Reuse the filter field resolver for basic field detection
   const { fieldDefinitions, hasFields, isEmpty } = useFilterFieldResolver({
     nodeId,
@@ -63,14 +60,13 @@ export function useSortFieldResolver({
         const resource = useResourceStore.getState().resourceMap.get(targetTable)
         if (resource) {
           resource.fields
-            .filter((subField) =>
-              subField.capabilities.sortable &&
-              SORTABLE_TYPES.includes(subField.type)
+            .filter(
+              (subField) => subField.capabilities.sortable && SORTABLE_TYPES.includes(subField.type)
             )
             .forEach((subField) => {
               result.push({
-                id: `${field.id}.${subField.key}`,  // Nested path: "contact.name"
-                label: `${field.label} → ${subField.label}`,  // "Contact → Name"
+                id: `${field.id}.${subField.key}`, // Nested path: "contact.name"
+                label: `${field.label} → ${subField.label}`, // "Contact → Name"
                 type: subField.type,
                 operators: [], // Not needed for sorting
                 description: `Sort by ${field.label}'s ${subField.label}`,
@@ -87,14 +83,13 @@ export function useSortFieldResolver({
         const resource = useResourceStore.getState().resourceMap.get(targetTable)
         if (resource) {
           resource.fields
-            .filter((subField) =>
-              subField.capabilities.sortable &&
-              SORTABLE_TYPES.includes(subField.type)
+            .filter(
+              (subField) => subField.capabilities.sortable && SORTABLE_TYPES.includes(subField.type)
             )
             .forEach((subField) => {
               result.push({
-                id: `${field.id}.${subField.key}`,  // Nested path: "contact.name"
-                label: `${field.label} → ${subField.label}`,  // "Contact → Name"
+                id: `${field.id}.${subField.key}`, // Nested path: "contact.name"
+                label: `${field.label} → ${subField.label}`, // "Contact → Name"
                 type: subField.type,
                 operators: [], // Not needed for sorting
                 description: `Sort by ${field.label}'s ${subField.label}`,

@@ -1,21 +1,20 @@
 // apps/web/src/components/datasets/settings/sections/chunking-settings-section.tsx
 'use client'
-import { useForm } from 'react-hook-form'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import { z } from 'zod'
+import type { DatasetEntity as Dataset } from '@auxx/database/models'
+import type { ChunkSettings } from '@auxx/database/types'
+import { BaseType } from '@auxx/lib/workflow-engine/types'
 import { Button } from '@auxx/ui/components/button'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@auxx/ui/components/form'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
-import { Layers, Scissors, FileText, Brain, Book } from 'lucide-react'
-import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { Book, Brain, FileText, Layers, Scissors } from 'lucide-react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
-import { BaseType } from '@auxx/lib/workflow-engine/types'
-import type { ChunkSettings } from '@auxx/database/types'
-import type { DatasetEntity as Dataset } from '@auxx/database/models'
+import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { api } from '~/trpc/react'
 
 interface ChunkingSettingsSectionProps {
   dataset: Dataset
@@ -32,7 +31,10 @@ const preprocessingSchema = z.object({
 /** Chunk settings form schema */
 const chunkingSettingsSchema = z.object({
   strategy: z.enum(['FIXED_SIZE', 'SEMANTIC', 'SENTENCE', 'PARAGRAPH', 'DOCUMENT'] as const),
-  size: z.number().min(100, 'Chunk size must be at least 100').max(5000, 'Chunk size cannot exceed 5000'),
+  size: z
+    .number()
+    .min(100, 'Chunk size must be at least 100')
+    .max(5000, 'Chunk size cannot exceed 5000'),
   overlap: z.number().min(0, 'Overlap cannot be negative').max(1000, 'Overlap cannot exceed 1000'),
   delimiter: z.string().max(50).nullable().optional(),
   preprocessing: preprocessingSchema,
@@ -147,21 +149,21 @@ export function ChunkingSettingsSection({
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
         {/* Two Column Layout */}
-        <div className="flex flex-col lg:flex-row">
+        <div className='flex flex-col lg:flex-row'>
           {/* Left Column - Strategy Selection */}
-          <div className="flex-1 p-6 lg:pr-6">
-            <div className="space-y-1 mb-6">
-              <div className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
-                <Layers className="size-4" /> Chunking Strategy
+          <div className='flex-1 p-6 lg:pr-6'>
+            <div className='space-y-1 mb-6'>
+              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
+                <Layers className='size-4' /> Chunking Strategy
               </div>
-              <p className="text-sm text-muted-foreground">
+              <p className='text-sm text-muted-foreground'>
                 Choose how your documents will be split into chunks.
               </p>
             </div>
 
             <FormField
               control={form.control}
-              name="strategy"
+              name='strategy'
               render={({ field }) => (
                 <FormItem>
                   <FormControl>
@@ -193,62 +195,62 @@ export function ChunkingSettingsSection({
           </div>
 
           {/* Right Column - Strategy Specific Options */}
-          <div className="flex-1 border-t lg:border-t-0 lg:border-l p-6 lg:pl-6">
-            <div className="space-y-1 mb-6">
-              <div className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
-                <StrategyIcon className="size-4" /> {strategyInfo?.label} Parameters
+          <div className='flex-1 border-t lg:border-t-0 lg:border-l p-6 lg:pl-6'>
+            <div className='space-y-1 mb-6'>
+              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
+                <StrategyIcon className='size-4' /> {strategyInfo?.label} Parameters
               </div>
-              <p className="text-sm text-muted-foreground">
+              <p className='text-sm text-muted-foreground'>
                 Configure chunk size and overlap settings.
               </p>
             </div>
 
-            <VarEditorField className="p-0 [&_[data-slot=field-row-label]]:w-60">
+            <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-60'>
               <VarEditorFieldRow
-                title="Chunk Size"
-                description="Target size for each chunk in characters (100-5000)"
+                title='Chunk Size'
+                description='Target size for each chunk in characters (100-5000)'
                 type={BaseType.NUMBER}
                 showIcon={true}>
                 <ConstantInputAdapter
                   value={form.watch('size') ?? ''}
                   onChange={(_, val) => form.setValue('size', val)}
                   varType={BaseType.NUMBER}
-                  placeholder="1000"
+                  placeholder='1000'
                   disabled={readOnly}
                 />
               </VarEditorFieldRow>
 
               <VarEditorFieldRow
-                title="Chunk Overlap"
-                description="Overlapping characters between adjacent chunks (0-1000)"
+                title='Chunk Overlap'
+                description='Overlapping characters between adjacent chunks (0-1000)'
                 type={BaseType.NUMBER}
                 showIcon={true}>
                 <ConstantInputAdapter
                   value={form.watch('overlap') ?? ''}
                   onChange={(_, val) => form.setValue('overlap', val)}
                   varType={BaseType.NUMBER}
-                  placeholder="200"
+                  placeholder='200'
                   disabled={readOnly}
                 />
               </VarEditorFieldRow>
 
               <VarEditorFieldRow
-                title="Custom Delimiter"
-                description="Split text at this delimiter. Default is double newline (paragraph breaks)."
+                title='Custom Delimiter'
+                description='Split text at this delimiter. Default is double newline (paragraph breaks).'
                 type={BaseType.STRING}
                 showIcon={true}>
                 <ConstantInputAdapter
                   value={form.watch('delimiter') ?? ''}
                   onChange={(_, val) => form.setValue('delimiter', val || '\n\n')}
                   varType={BaseType.STRING}
-                  placeholder="\n\n"
+                  placeholder='\n\n'
                   disabled={readOnly}
                 />
               </VarEditorFieldRow>
 
               <VarEditorFieldRow
-                title="Normalize Whitespace"
-                description="Replace consecutive spaces, newlines, and tabs with single characters"
+                title='Normalize Whitespace'
+                description='Replace consecutive spaces, newlines, and tabs with single characters'
                 type={BaseType.BOOLEAN}
                 showIcon={true}>
                 <ConstantInputAdapter
@@ -261,8 +263,8 @@ export function ChunkingSettingsSection({
               </VarEditorFieldRow>
 
               <VarEditorFieldRow
-                title="Remove URLs & Emails"
-                description="Delete all URLs and email addresses from content before chunking"
+                title='Remove URLs & Emails'
+                description='Delete all URLs and email addresses from content before chunking'
                 type={BaseType.BOOLEAN}
                 showIcon={true}>
                 <ConstantInputAdapter
@@ -275,61 +277,59 @@ export function ChunkingSettingsSection({
               </VarEditorFieldRow>
             </VarEditorField>
 
-            <div className="space-y-4 mt-4">
+            <div className='space-y-4 mt-4'>
               {/* Overlap validation warning */}
               {overlap >= size * 0.5 && (
-                <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
-                  <div className="flex items-center gap-2 text-orange-600">
-                    <span className="text-sm font-medium">High overlap warning</span>
+                <div className='p-3 rounded-lg bg-orange-50 border border-orange-200'>
+                  <div className='flex items-center gap-2 text-orange-600'>
+                    <span className='text-sm font-medium'>High overlap warning</span>
                   </div>
-                  <p className="text-sm text-orange-600 mt-1">
-                    Overlap is {Math.round((overlap / size) * 100)}% of chunk size.
-                    Consider reducing overlap to improve efficiency.
+                  <p className='text-sm text-orange-600 mt-1'>
+                    Overlap is {Math.round((overlap / size) * 100)}% of chunk size. Consider
+                    reducing overlap to improve efficiency.
                   </p>
                 </div>
               )}
 
               {/* Chunking Preview */}
-              <div className="space-y-2 pt-4">
-                <h4 className="text-sm font-medium">Preview</h4>
+              <div className='space-y-2 pt-4'>
+                <h4 className='text-sm font-medium'>Preview</h4>
 
-                <div className="grid grid-cols-3 rounded-2xl border">
-                  <div className="p-3 rounded-l-2xl bg-primary-100 text-center border-r">
-                    <div className="text-xs font-medium mb-1">Effective Size</div>
-                    <div className="text-lg font-bold">{size - overlap}</div>
-                    <div className="text-xs text-muted-foreground">chars</div>
+                <div className='grid grid-cols-3 rounded-2xl border'>
+                  <div className='p-3 rounded-l-2xl bg-primary-100 text-center border-r'>
+                    <div className='text-xs font-medium mb-1'>Effective Size</div>
+                    <div className='text-lg font-bold'>{size - overlap}</div>
+                    <div className='text-xs text-muted-foreground'>chars</div>
                   </div>
 
-                  <div className="p-3 bg-primary-100 text-center">
-                    <div className="text-xs font-medium mb-1">Overlap</div>
-                    <div className="text-lg font-bold">
-                      {Math.round((overlap / size) * 100)}%
-                    </div>
-                    <div className="text-xs text-muted-foreground">ratio</div>
+                  <div className='p-3 bg-primary-100 text-center'>
+                    <div className='text-xs font-medium mb-1'>Overlap</div>
+                    <div className='text-lg font-bold'>{Math.round((overlap / size) * 100)}%</div>
+                    <div className='text-xs text-muted-foreground'>ratio</div>
                   </div>
 
-                  <div className="p-3 rounded-r-2xl bg-primary-100 text-center border-l">
-                    <div className="text-xs font-medium mb-1">Est. Chunks</div>
-                    <div className="text-lg font-bold">{estimateChunksPerDocument()}</div>
-                    <div className="text-xs text-muted-foreground">per doc</div>
+                  <div className='p-3 rounded-r-2xl bg-primary-100 text-center border-l'>
+                    <div className='text-xs font-medium mb-1'>Est. Chunks</div>
+                    <div className='text-lg font-bold'>{estimateChunksPerDocument()}</div>
+                    <div className='text-xs text-muted-foreground'>per doc</div>
                   </div>
                 </div>
 
                 {/* Visual chunk representation */}
-                <div className="space-y-2 pt-4">
-                  <div className="text-sm font-medium">Visualization</div>
-                  <div className="flex items-center gap-0.5">
+                <div className='space-y-2 pt-4'>
+                  <div className='text-sm font-medium'>Visualization</div>
+                  <div className='flex items-center gap-0.5'>
                     <div
-                      className="bg-blue-500 h-5 rounded-l-2xl rounded-r-md flex items-center justify-center text-white text-xs font-medium"
+                      className='bg-blue-500 h-5 rounded-l-2xl rounded-r-md flex items-center justify-center text-white text-xs font-medium'
                       style={{ width: `${Math.max(80, (size - overlap) / 25)}px` }}>
                       Chunk 1
                     </div>
                     <div
-                      className="bg-purple-500 h-5 rounded-sm flex items-center justify-center text-white text-xs font-medium"
+                      className='bg-purple-500 h-5 rounded-sm flex items-center justify-center text-white text-xs font-medium'
                       style={{ width: `${Math.max(16, overlap / 25)}px` }}
                     />
                     <div
-                      className="bg-blue-500 h-5 rounded-r-2xl rounded-l-md flex items-center justify-center text-white text-xs font-medium"
+                      className='bg-blue-500 h-5 rounded-r-2xl rounded-l-md flex items-center justify-center text-white text-xs font-medium'
                       style={{ width: `${Math.max(80, (size - overlap) / 25)}px` }}>
                       Chunk 2
                     </div>
@@ -341,21 +341,21 @@ export function ChunkingSettingsSection({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-end gap-2 border-t px-4 py-4">
+        <div className='flex justify-end gap-2 border-t px-4 py-4'>
           <Button
-            type="button"
-            variant="ghost"
-            size="sm"
+            type='button'
+            variant='ghost'
+            size='sm'
             onClick={() => form.reset()}
             disabled={readOnly}>
             Reset
           </Button>
           <Button
-            type="submit"
-            size="sm"
-            variant="outline"
+            type='submit'
+            size='sm'
+            variant='outline'
             loading={updateDataset.isPending}
-            loadingText="Saving..."
+            loadingText='Saving...'
             disabled={readOnly}>
             Save Configuration
           </Button>

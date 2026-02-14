@@ -1,13 +1,13 @@
 // apps/web/src/components/tag-input/tag-input.tsx
 'use client'
 
-import React, { useMemo, useCallback } from 'react'
-import { Input } from '@auxx/ui/components/input'
 import { Button } from '@auxx/ui/components/button'
-import { type VariantProps } from 'class-variance-authority'
-import { Tag, tagVariants } from './tag'
+import { Input } from '@auxx/ui/components/input'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils/generateId'
+import type { VariantProps } from 'class-variance-authority'
+import React, { useCallback, useMemo } from 'react'
+import { Tag, type tagVariants } from './tag'
 
 export enum Delimiter {
   Comma = ',',
@@ -392,7 +392,7 @@ function TagInput(props: TagInputProps) {
         <Input
           ref={inputRef}
           id={id}
-          type="text"
+          type='text'
           placeholder={isInputDisabled ? placeholderWhenFull : placeholder}
           value={inputValue}
           onChange={handleInputChange}
@@ -407,7 +407,7 @@ function TagInput(props: TagInputProps) {
             'w-full h-full px-1 flex-1 border-0 bg-transparent! shadow-none focus-visible:ring-0 focus-visible:ring-offset-0',
             styleClasses?.input
           )}
-          autoComplete="off"
+          autoComplete='off'
           disabled={isInputDisabled}
           readOnly={readOnly}
         />
@@ -415,8 +415,8 @@ function TagInput(props: TagInputProps) {
 
       {/* Optional Count Display */}
       {showCount && maxTags && (
-        <div className="ml-auto mt-1 text-right">
-          <span className="text-sm text-muted-foreground">
+        <div className='ml-auto mt-1 text-right'>
+          <span className='text-sm text-muted-foreground'>
             {`${tags.length}`}/{`${maxTags}`}
           </span>
         </div>
@@ -425,9 +425,9 @@ function TagInput(props: TagInputProps) {
       {/* Optional Clear All Button */}
       {clearAll && tags.length > 0 && !readOnly && (
         <Button
-          type="button"
-          variant="ghost"
-          size="sm"
+          type='button'
+          variant='ghost'
+          size='sm'
           onClick={handleClearAll}
           disabled={disabled}
           className={cn('mt-2 text-sm', styleClasses?.clearAllButton)}>

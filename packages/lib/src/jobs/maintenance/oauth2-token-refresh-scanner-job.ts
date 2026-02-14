@@ -1,11 +1,11 @@
 // packages/lib/src/jobs/maintenance/oauth2-token-refresh-scanner-job.ts
 
-import type { Job } from 'bullmq'
-import { createScopedLogger } from '@auxx/logger'
-import { database as db, schema } from '@auxx/database'
-import { eq, and, isNotNull, or, lt, sql } from 'drizzle-orm'
-import { getQueue, Queues } from '../queues'
 import { CredentialService } from '@auxx/credentials'
+import { database as db, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import type { Job } from 'bullmq'
+import { and, eq, isNotNull, lt, or, sql } from 'drizzle-orm'
+import { getQueue, Queues } from '../queues'
 
 const logger = createScopedLogger('oauth2-token-refresh-scanner-job')
 
@@ -43,9 +43,7 @@ interface ScannerStats {
  * - Calculate if refresh is due based on schedule or expiration
  * - Enqueue individual refresh jobs to oauth2RefreshQueue
  */
-export const oauth2TokenRefreshScannerJob = async (
-  job: Job<OAuth2TokenRefreshScannerJobData>
-) => {
+export const oauth2TokenRefreshScannerJob = async (job: Job<OAuth2TokenRefreshScannerJobData>) => {
   const { dryRun = false, batchSize = 50 } = job.data
 
   logger.info('Starting OAuth2 token refresh scanner', {

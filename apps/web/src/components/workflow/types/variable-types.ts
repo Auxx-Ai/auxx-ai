@@ -1,10 +1,9 @@
 // apps/web/src/components/workflow/types/variable-types.ts
 
-import type { ValidationRules } from './unified-types'
-import { BaseType } from './unified-types'
-import type { ResourceFieldId } from '@auxx/types/field'
 import type { FieldOptions } from '@auxx/lib/field-values/converters'
 import type { TableId } from '@auxx/lib/workflow-engine/client'
+import type { ResourceFieldId } from '@auxx/types/field'
+import type { BaseType, ValidationRules } from './unified-types'
 
 export { BaseType } from './unified-types'
 

@@ -2,7 +2,8 @@
 
 'use client'
 
-import { useState } from 'react'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -12,9 +13,6 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
-import { api } from '~/trpc/react'
-import { toast } from 'sonner'
 import {
   Select,
   SelectContent,
@@ -22,10 +20,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Badge } from '@auxx/ui/components/badge'
-import { X } from 'lucide-react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { X } from 'lucide-react'
+import { useState } from 'react'
+import { toast } from 'sonner'
 import { useRecordInvalidation } from '~/components/resources'
+import { api } from '~/trpc/react'
 
 interface MassAssignDialogProps {
   open: boolean
@@ -46,7 +46,7 @@ export function MassAssignDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleDialogClose}>
-      <DialogContent size="sm" position="tc">
+      <DialogContent size='sm' position='tc'>
         <MassAssignDialogContent
           ticketIds={ticketIds}
           onSuccess={onSuccess}
@@ -118,14 +118,14 @@ function MassAssignDialogContent({ ticketIds, onSuccess, onClose }: MassAssignDi
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-4">
-        <div className="space-y-1 flex flex-col">
-          <label className="text-sm font-medium">Select Agents</label>
+      <div className='space-y-4'>
+        <div className='space-y-1 flex flex-col'>
+          <label className='text-sm font-medium'>Select Agents</label>
           <Select
             disabled={agentsLoading || updateAssignmentMutation.isPending}
             onValueChange={handleAgentSelect}>
             <SelectTrigger>
-              <SelectValue placeholder="Select an agent" />
+              <SelectValue placeholder='Select an agent' />
             </SelectTrigger>
             <SelectContent>
               {agents?.map((agent) => (
@@ -141,16 +141,16 @@ function MassAssignDialogContent({ ticketIds, onSuccess, onClose }: MassAssignDi
         </div>
 
         {selectedAgentIds.length > 0 && (
-          <div className="space-y-1 flex flex-col">
-            <label className="text-sm font-medium">Selected Agents</label>
-            <div className="flex flex-wrap gap-2">
+          <div className='space-y-1 flex flex-col'>
+            <label className='text-sm font-medium'>Selected Agents</label>
+            <div className='flex flex-wrap gap-2'>
               {selectedAgentIds.map((agentId) => {
                 const agent = agents?.find((a) => a.id === agentId)
                 return (
-                  <Badge key={agentId} variant="secondary" className="flex items-center gap-1">
+                  <Badge key={agentId} variant='secondary' className='flex items-center gap-1'>
                     {agent ? agent.name || agent.email : agentId}
                     <X
-                      className="h-3 w-3 cursor-pointer"
+                      className='h-3 w-3 cursor-pointer'
                       onClick={() => handleRemoveAgent(agentId)}
                     />
                   </Badge>
@@ -163,21 +163,21 @@ function MassAssignDialogContent({ ticketIds, onSuccess, onClose }: MassAssignDi
 
       <DialogFooter>
         <Button
-          variant="ghost"
-          size="sm"
+          variant='ghost'
+          size='sm'
           onClick={onClose}
           disabled={updateAssignmentMutation.isPending}>
-          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+          Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
         </Button>
         <Button
-          variant="outline"
-          size="sm"
+          variant='outline'
+          size='sm'
           onClick={handleSubmit}
           disabled={updateAssignmentMutation.isPending || selectedAgentIds.length === 0}
           loading={updateAssignmentMutation.isPending}
-          loadingText="Assigning..."
+          loadingText='Assigning...'
           data-dialog-submit>
-          Assign Tickets <KbdSubmit variant="outline" size="sm" />
+          Assign Tickets <KbdSubmit variant='outline' size='sm' />
         </Button>
       </DialogFooter>
     </>

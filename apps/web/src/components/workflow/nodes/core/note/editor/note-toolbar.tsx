@@ -1,16 +1,16 @@
 // apps/web/src/components/workflow/nodes/core/note/editor/note-toolbar.tsx
 
-import React from 'react'
-import { Editor } from '@tiptap/react'
+import type { Editor } from '@tiptap/react'
+import type React from 'react'
+import type { NoteTheme } from '../types'
 import {
   ColorPicker,
   FontSizeSelector,
   FormattingButton,
-  ToolbarDivider,
-  OperatorButtons,
   formattingIcons,
+  OperatorButtons,
+  ToolbarDivider,
 } from './toolbar-components'
-import { NoteTheme } from '../types'
 
 interface NoteToolbarProps {
   editor: Editor | null
@@ -42,29 +42,29 @@ export const NoteToolbar: React.FC<NoteToolbarProps> = ({
   }
 
   return (
-    <div className="inline-flex items-center rounded-lg border-[0.5px] border-components-actionbar-border bg-components-actionbar-bg p-0.5 shadow-sm">
+    <div className='inline-flex items-center rounded-lg border-[0.5px] border-components-actionbar-border bg-components-actionbar-bg p-0.5 shadow-sm'>
       <ColorPicker theme={theme} onThemeChange={onThemeChange} />
       <ToolbarDivider />
       <FontSizeSelector fontSize={fontSize} onFontSizeChange={onFontSizeChange} />
       <ToolbarDivider />
-      <div className="flex items-center space-x-0.5">
+      <div className='flex items-center space-x-0.5'>
         <FormattingButton
           icon={formattingIcons.bold}
           isActive={editor.isActive('bold')}
           onClick={() => editor.chain().focus().toggleBold().run()}
-          tooltip="Bold"
+          tooltip='Bold'
         />
         <FormattingButton
           icon={formattingIcons.italic}
           isActive={editor.isActive('italic')}
           onClick={() => editor.chain().focus().toggleItalic().run()}
-          tooltip="Italic"
+          tooltip='Italic'
         />
         <FormattingButton
           icon={formattingIcons.strikethrough}
           isActive={editor.isActive('strike')}
           onClick={() => editor.chain().focus().toggleStrike().run()}
-          tooltip="Strikethrough"
+          tooltip='Strikethrough'
         />
         <FormattingButton
           icon={formattingIcons.link}
@@ -75,13 +75,13 @@ export const NoteToolbar: React.FC<NoteToolbarProps> = ({
               editor.chain().focus().setLink({ href: url }).run()
             }
           }}
-          tooltip="Link"
+          tooltip='Link'
         />
         <FormattingButton
           icon={formattingIcons.bulletList}
           isActive={editor.isActive('bulletList')}
           onClick={() => editor.chain().focus().toggleBulletList().run()}
-          tooltip="Bullet List"
+          tooltip='Bullet List'
         />
       </div>
       <ToolbarDivider />

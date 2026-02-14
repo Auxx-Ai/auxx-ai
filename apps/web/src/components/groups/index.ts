@@ -1,47 +1,44 @@
 // apps/web/src/components/groups/index.ts
 
+// Hooks
+export {
+  useGroup,
+  useGroupMembers,
+  useGroupMutations,
+  useGroupPermissions,
+  useGroups,
+  useGroupsForEntity,
+  useGroupsForUser,
+  useMyGroupPermission,
+} from './hooks'
 // Provider
 export { GroupsProvider, useGroupsContext } from './providers'
 
-// Hooks
-export {
-  useGroups,
-  useGroup,
-  useGroupMembers,
-  useGroupPermissions,
-  useMyGroupPermission,
-  useGroupsForEntity,
-  useGroupsForUser,
-  useGroupMutations,
-} from './hooks'
-
 // Store utilities
-export { useGroupsStore, getGroupsStoreState } from './store'
-
-// Utilities
-export {
-  canViewGroup,
-  canEditGroup,
-  canManageMembers,
-  canAdminGroup,
-  getGroupMetadata,
-  formatMemberType,
-  getMemberDisplayInfo,
-  getInitials,
-  type GroupMetadata,
-} from './utils'
-
+export { getGroupsStoreState, useGroupsStore } from './store'
 // UI Components
 export {
-  GroupItem,
-  GroupsList,
+  EntityMemberList,
+  FormGroupPicker,
   GroupBadge,
   GroupDetailDialog,
-  MemberList,
-  UserMemberList,
-  EntityMemberList,
-  PermissionsPanel,
-  GroupPicker,
-  FormGroupPicker,
+  GroupItem,
   type GroupOption,
+  GroupPicker,
+  GroupsList,
+  MemberList,
+  PermissionsPanel,
+  UserMemberList,
 } from './ui'
+// Utilities
+export {
+  canAdminGroup,
+  canEditGroup,
+  canManageMembers,
+  canViewGroup,
+  formatMemberType,
+  type GroupMetadata,
+  getGroupMetadata,
+  getInitials,
+  getMemberDisplayInfo,
+} from './utils'

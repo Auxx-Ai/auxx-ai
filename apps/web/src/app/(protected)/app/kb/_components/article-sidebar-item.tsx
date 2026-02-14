@@ -1,24 +1,5 @@
 // ~/components/knowledge-base/article-sidebar-item.tsx
-import React, { useMemo, useState } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
-import Link from 'next/link'
-import {
-  BookCopy,
-  ChevronRight,
-  EyeOff,
-  Files,
-  FileText,
-  FolderClosed,
-  FolderOpen,
-  MoreVertical,
-  Pencil,
-  Trash2,
-  TypeOutline,
-  GripVertical,
-} from 'lucide-react'
-import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { Article } from './kb-sidebar'
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,13 +8,33 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { Tooltip } from '~/components/global/tooltip'
-import { ArticleRenameDialog } from './article-rename-dialog'
-import { api } from '~/trpc/react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { useKnowledgeBase } from './kb-context'
+import { cn } from '@auxx/ui/lib/utils'
 import { useDroppable } from '@dnd-kit/core'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import {
+  BookCopy,
+  ChevronRight,
+  EyeOff,
+  Files,
+  FileText,
+  FolderClosed,
+  FolderOpen,
+  GripVertical,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  TypeOutline,
+} from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import React, { useMemo, useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
+import { api } from '~/trpc/react'
+import { ArticleRenameDialog } from './article-rename-dialog'
+import { useKnowledgeBase } from './kb-context'
+import type { Article } from './kb-sidebar'
 
 interface ArticleSidebarItemProps {
   article: Article
@@ -101,12 +102,12 @@ const ArticleSidebarItem = ({ article, isOpen = false, onToggleOpen }: ArticleSi
   // Determine the icon based on article type and open state
   const icon = isCategory ? (
     isOpen ? (
-      <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
+      <FolderOpen className='size-4 shrink-0 text-muted-foreground' />
     ) : (
-      <FolderClosed className="size-4 shrink-0 text-muted-foreground" />
+      <FolderClosed className='size-4 shrink-0 text-muted-foreground' />
     )
   ) : (
-    <FileText className="size-4 shrink-0 text-muted-foreground" />
+    <FileText className='size-4 shrink-0 text-muted-foreground' />
   )
 
   // Format the display name with emoji if present
@@ -121,7 +122,7 @@ const ArticleSidebarItem = ({ article, isOpen = false, onToggleOpen }: ArticleSi
   }
 
   return (
-    <div className="relative">
+    <div className='relative'>
       <div ref={topSetNodeRef} className={cn('absolute left-0 right-0 h-6')}>
         <div className={cn('h-1 bg-transparent', { 'bg-blue-500': topIsOver })}></div>
       </div>
@@ -167,26 +168,26 @@ const ArticleSidebarItem = ({ article, isOpen = false, onToggleOpen }: ArticleSi
         <div className='absolute left-0 right-0 h-[2px] peer-hover:bg-blue-500'></div>
       </div> */}
 
-        <div className="group/line absolute -bottom-px left-0 right-0 z-10 h-[12px]">
+        <div className='group/line absolute -bottom-px left-0 right-0 z-10 h-[12px]'>
           <button
             onClick={() => addArticle(article.parentId, 'after')}
-            className="peer absolute bottom-[-8px] left-[-8px] z-1 inline-flex rounded-full p-1 text-muted-foreground opacity-0 hover:bg-blue-500 hover:text-white group-hover/line:opacity-100"
-            type="button"
-            aria-label="Add item after">
+            className='peer absolute bottom-[-8px] left-[-8px] z-1 inline-flex rounded-full p-1 text-muted-foreground opacity-0 hover:bg-blue-500 hover:text-white group-hover/line:opacity-100'
+            type='button'
+            aria-label='Add item after'>
             <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 16 16"
-              preserveAspectRatio="xMidYMid meet"
-              width="10"
-              height="10"
+              xmlns='http://www.w3.org/2000/svg'
+              fill='none'
+              viewBox='0 0 16 16'
+              preserveAspectRatio='xMidYMid meet'
+              width='10'
+              height='10'
               style={{ verticalAlign: 'middle' }}>
               <path
-                fill="currentColor"
-                d="M8.6 3a.6.6 0 0 0-1.2 0v4.4H3a.6.6 0 0 0 0 1.2h4.4V13a.6.6 0 1 0 1.2 0V8.6H13a.6.6 0 1 0 0-1.2H8.6V3Z"></path>
+                fill='currentColor'
+                d='M8.6 3a.6.6 0 0 0-1.2 0v4.4H3a.6.6 0 0 0 0 1.2h4.4V13a.6.6 0 1 0 1.2 0V8.6H13a.6.6 0 1 0 0-1.2H8.6V3Z'></path>
             </svg>
           </button>
-          <div className="absolute bottom-0 left-0 right-0 h-[2px] peer-hover:bg-blue-500"></div>
+          <div className='absolute bottom-0 left-0 right-0 h-[2px] peer-hover:bg-blue-500'></div>
         </div>
 
         {/* Main item container */}
@@ -202,10 +203,10 @@ const ArticleSidebarItem = ({ article, isOpen = false, onToggleOpen }: ArticleSi
           data-is-category={isCategory ? 'true' : 'false'}>
           {/* Drag handle */}
           <div
-            className="flex cursor-grab items-center px-1 opacity-0 group-hover:opacity-100"
+            className='flex cursor-grab items-center px-1 opacity-0 group-hover:opacity-100'
             {...attributes}
             {...listeners}>
-            <GripVertical className="size-4 text-muted-foreground" />
+            <GripVertical className='size-4 text-muted-foreground' />
           </div>
 
           {/* Item content */}
@@ -224,10 +225,10 @@ const ArticleSidebarItem = ({ article, isOpen = false, onToggleOpen }: ArticleSi
             )}>
             {/* Expand/collapse button for categories */}
             {/* Item icon */}
-            <span className="mr-2 flex items-center">{icon}</span>
-            <div className="flex flex-1 items-center">
+            <span className='mr-2 flex items-center'>{icon}</span>
+            <div className='flex flex-1 items-center'>
               {/* Item title */}
-              <span className="">{displayName}</span>
+              <span className=''>{displayName}</span>
               {isCategory && (
                 <button
                   onClick={(e) => {
@@ -235,7 +236,7 @@ const ArticleSidebarItem = ({ article, isOpen = false, onToggleOpen }: ArticleSi
                     e.stopPropagation()
                     onToggleOpen?.(article.id)
                   }}
-                  className="ml-1 rounded-sm p-0.5 hover:bg-accent/50"
+                  className='ml-1 rounded-sm p-0.5 hover:bg-accent/50'
                   aria-label={isOpen ? 'Collapse' : 'Expand'}>
                   <ChevronRight
                     className={cn(
@@ -255,25 +256,25 @@ const ArticleSidebarItem = ({ article, isOpen = false, onToggleOpen }: ArticleSi
           )}
 
           {/* More actions dropdown */}
-          <div className="ml-1 mr-2 opacity-0 transition-opacity group-hover:opacity-100">
+          <div className='ml-1 mr-2 opacity-0 transition-opacity group-hover:opacity-100'>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  type="button"
-                  className="hover: rounded-md p-1 hover:bg-primary/5 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                  aria-label="More options">
-                  <MoreVertical className="size-4 text-muted-foreground" />
+                  type='button'
+                  className='hover: rounded-md p-1 hover:bg-primary/5 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring'
+                  aria-label='More options'>
+                  <MoreVertical className='size-4 text-muted-foreground' />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuContent align='end' className='w-56'>
                 <DropdownMenuGroup>
-                  <DropdownMenuItem onClick={() => addArticle(article.id, 'child')} className="">
+                  <DropdownMenuItem onClick={() => addArticle(article.id, 'child')} className=''>
                     <Files /> Add Sub-item
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setIsRenameDialogOpen(true)} className="">
+                  <DropdownMenuItem onClick={() => setIsRenameDialogOpen(true)} className=''>
                     <TypeOutline /> Rename
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => duplicateArticle(article)} className="">
+                  <DropdownMenuItem onClick={() => duplicateArticle(article)} className=''>
                     <BookCopy /> Duplicate
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
@@ -290,7 +291,7 @@ const ArticleSidebarItem = ({ article, isOpen = false, onToggleOpen }: ArticleSi
                 </DropdownMenuGroup>
                 <DropdownMenuGroup>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => deleteArticle(article.id)} variant="destructive">
+                  <DropdownMenuItem onClick={() => deleteArticle(article.id)} variant='destructive'>
                     <Trash2 /> Delete
                   </DropdownMenuItem>
                 </DropdownMenuGroup>

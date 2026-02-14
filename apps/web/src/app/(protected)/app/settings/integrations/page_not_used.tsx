@@ -1,6 +1,3 @@
-import Link from 'next/link'
-import React from 'react'
-import SettingsPage from '~/components/global/settings-page'
 import {
   Card,
   CardContent,
@@ -9,6 +6,9 @@ import {
   CardHeader,
   CardTitle,
 } from '@auxx/ui/components/card'
+import Link from 'next/link'
+import React from 'react'
+import SettingsPage from '~/components/global/settings-page'
 import { ShopifyIcon } from '~/constants/menu'
 
 type Props = {}
@@ -31,21 +31,21 @@ const INTEGRATION_PROVIDERS = [
 function IntegrationsPage({}: Props) {
   return (
     <SettingsPage
-      title="Integrations"
-      description="View all your integrations"
-      backLink="/app/settings"
+      title='Integrations'
+      description='View all your integrations'
+      backLink='/app/settings'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Integrations' }]}>
-      <div className="flex flex-col gap-y-5 pt-5">
+      <div className='flex flex-col gap-y-5 pt-5'>
         {INTEGRATION_PROVIDERS.map((integration) => (
           <Link href={`/app/settings/integrations/${integration.slug}`} key={integration.title}>
             <Card>
               <CardHeader>
-                <div className="flex justify-between">
+                <div className='flex justify-between'>
                   <div>
                     <CardTitle>{integration.title}</CardTitle>
                     <CardDescription>{integration.description}</CardDescription>
                   </div>
-                  <div className="">{integration.icon}</div>
+                  <div className=''>{integration.icon}</div>
                 </div>
               </CardHeader>
             </Card>

@@ -2,12 +2,12 @@
 
 'use client'
 
-import { useCallback } from 'react'
-import { useInlinePicker } from './use-inline-picker'
-import { ActorBadge } from '~/components/resources/ui/actor-badge'
-import { cn } from '@auxx/ui/lib/utils'
 import type { ActorId } from '@auxx/types/actor'
+import { cn } from '@auxx/ui/lib/utils'
 import type { Editor, JSONContent } from '@tiptap/react'
+import { useCallback } from 'react'
+import { ActorBadge } from '~/components/resources/ui/actor-badge'
+import { useInlinePicker } from './use-inline-picker'
 
 /** Options for useMentionEditor hook */
 interface UseMentionEditorOptions {

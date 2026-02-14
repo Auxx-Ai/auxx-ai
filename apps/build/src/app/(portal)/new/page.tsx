@@ -1,27 +1,27 @@
 // apps/build/src/app/(portal)/new/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldSet,
+} from '@auxx/ui/components/field'
 import { Input } from '@auxx/ui/components/input'
-import { Spinner } from '@auxx/ui/components/spinner'
 import {
   InputGroup,
-  InputGroupInput,
   InputGroupAddon,
+  InputGroupInput,
   InputGroupText,
 } from '@auxx/ui/components/input-group'
-import {
-  FieldGroup,
-  FieldSet,
-  FieldDescription,
-  Field,
-  FieldLabel,
-} from '@auxx/ui/components/field'
-import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import { api } from '~/trpc/react'
+import { Spinner } from '@auxx/ui/components/spinner'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { toastError } from '~/components/global/toast'
+import { api } from '~/trpc/react'
 
 /** Slugify helper function */
 function slugify(text: string): string {
@@ -102,23 +102,23 @@ export default function NewPage() {
   const slugValid = slug.length >= 3 && !slugCheck?.exists
 
   return (
-    <div className="flex items-center flex-col flex-1 min-h-0 h-full">
+    <div className='flex items-center flex-col flex-1 min-h-0 h-full'>
       <form onSubmit={handleSubmit}>
-        <div className="mx-auto min-w-md max-w-xl p-6 space-y-3">
-          <Card className="shadow-md shadow-black/20 border-transparent">
+        <div className='mx-auto min-w-md max-w-xl p-6 space-y-3'>
+          <Card className='shadow-md shadow-black/20 border-transparent'>
             <CardHeader>
-              <CardTitle className="text-2xl mb-0">Create a developer account</CardTitle>
+              <CardTitle className='text-2xl mb-0'>Create a developer account</CardTitle>
             </CardHeader>
-            <CardContent className="">
-              <div className="w-full max-w-md">
+            <CardContent className=''>
+              <div className='w-full max-w-md'>
                 <FieldGroup>
                   <FieldSet>
                     <FieldGroup>
                       <Field>
-                        <FieldLabel htmlFor="account-name">Account name</FieldLabel>
+                        <FieldLabel htmlFor='account-name'>Account name</FieldLabel>
                         <Input
-                          id="account-name"
-                          placeholder="Evil Rabbit"
+                          id='account-name'
+                          placeholder='Evil Rabbit'
                           required
                           value={title}
                           onChange={(e) => setTitle(e.target.value)}
@@ -128,12 +128,12 @@ export default function NewPage() {
                         </FieldDescription>
                       </Field>
                       <Field>
-                        <FieldLabel htmlFor="slug">Slug</FieldLabel>
+                        <FieldLabel htmlFor='slug'>Slug</FieldLabel>
                         <InputGroup>
                           <InputGroupInput
-                            id="slug"
-                            placeholder="evil-rabbit"
-                            className="!pl-0"
+                            id='slug'
+                            placeholder='evil-rabbit'
+                            className='!pl-0'
                             value={slug}
                             onChange={(e) => {
                               setSlug(slugify(e.target.value))
@@ -145,18 +145,18 @@ export default function NewPage() {
                             <InputGroupText>build.auxx.ai/</InputGroupText>
                           </InputGroupAddon>
                           {slug.length >= 3 && (
-                            <InputGroupAddon align="inline-end">
+                            <InputGroupAddon align='inline-end'>
                               {isCheckingSlug ? (
                                 <Spinner />
                               ) : slugValid ? (
-                                <span className="text-green-600">✓</span>
+                                <span className='text-green-600'>✓</span>
                               ) : slugError ? (
-                                <span className="text-red-600">✗</span>
+                                <span className='text-red-600'>✗</span>
                               ) : null}
                             </InputGroupAddon>
                           )}
                         </InputGroup>
-                        {slugError && <p className="text-sm text-red-600 mt-1">{slugError}</p>}
+                        {slugError && <p className='text-sm text-red-600 mt-1'>{slugError}</p>}
                         <FieldDescription>
                           Slug is a unique identifier for your account
                         </FieldDescription>
@@ -168,12 +168,12 @@ export default function NewPage() {
             </CardContent>
           </Card>
 
-          <div className="flex items-center justify-between w-full">
+          <div className='flex items-center justify-between w-full'>
             <Button
-              type="submit"
-              className="w-full"
+              type='submit'
+              className='w-full'
               loading={createAccount.isPending}
-              loadingText="Creating..."
+              loadingText='Creating...'
               disabled={!title || !slug || slug.length < 3 || slugCheck?.exists || isCheckingSlug}>
               Continue
             </Button>

@@ -1,10 +1,14 @@
 // apps/web/src/app/api/files/download/[fileId]/route.ts
 
-import { NextRequest } from 'next/server'
-import { createFileService, createFileDownloadResponse, parseRangeHeader } from '@auxx/lib/files/server'
-import { auth } from '~/auth/server'
+import {
+  createFileDownloadResponse,
+  createFileService,
+  parseRangeHeader,
+} from '@auxx/lib/files/server'
 import { createScopedLogger } from '@auxx/logger'
 import { headers } from 'next/headers'
+import type { NextRequest } from 'next/server'
+import { auth } from '~/auth/server'
 
 const logger = createScopedLogger('api-files-download')
 

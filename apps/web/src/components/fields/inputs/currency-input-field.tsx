@@ -1,17 +1,17 @@
 // apps/web/src/components/fields/inputs/currency-input-field.tsx
 'use client'
 
-import { usePropertyContext } from '../property-provider'
-import { useFieldNavigationOptional } from '../field-navigation-context'
-import { useMemo, useCallback, useRef, useEffect } from 'react'
 import {
-  CurrencyInput,
   CurrencyInputField as BaseCurrencyInputField,
+  CurrencyInput,
 } from '@auxx/ui/components/input-currency'
 import { InputGroup } from '@auxx/ui/components/input-group'
-import type { CurrencyDisplayOptions } from '@auxx/utils'
-import { cn } from '@auxx/ui/lib/utils'
 import { NumberInputArrows } from '@auxx/ui/components/input-number'
+import { cn } from '@auxx/ui/lib/utils'
+import type { CurrencyDisplayOptions } from '@auxx/utils'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useFieldNavigationOptional } from '../field-navigation-context'
+import { usePropertyContext } from '../property-provider'
 
 /**
  * CurrencyInputField
@@ -107,9 +107,9 @@ export function CurrencyInputField() {
         <BaseCurrencyInputField
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
-          placeholder="0.00"
+          placeholder='0.00'
           autoFocus
-          className="text-left pl-0!"
+          className='text-left pl-0!'
         />
       </InputGroup>
       {/* </InputGroup> */}

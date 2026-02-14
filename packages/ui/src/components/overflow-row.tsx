@@ -1,18 +1,18 @@
 // packages/ui/src/components/overflow-row.tsx
 'use client'
 
+import { cn } from '@auxx/ui/lib/utils'
 import {
-  useRef,
-  useState,
-  useMemo,
-  useLayoutEffect,
-  useEffect,
   Children,
   isValidElement,
-  type ReactNode,
   type ReactElement,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
 
 /** Props for the OverflowRow component */
 interface OverflowRowProps {
@@ -193,7 +193,7 @@ export function OverflowRow({
 
   /** Default overflow indicator badge */
   const defaultOverflow = (count: number) => (
-    <span className="inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded-md border bg-muted text-muted-foreground shrink-0">
+    <span className='inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded-md border bg-muted text-muted-foreground shrink-0'>
       +{count}
     </span>
   )
@@ -208,7 +208,7 @@ export function OverflowRow({
       {/* Hidden measurement container - full width */}
       <div
         ref={fullMeasureRef}
-        aria-hidden="true"
+        aria-hidden='true'
         style={{
           position: 'absolute',
           visibility: 'hidden',
@@ -225,7 +225,7 @@ export function OverflowRow({
       <div
         ref={collapsedMeasureRef}
         data-overflow-collapsed
-        aria-hidden="true"
+        aria-hidden='true'
         style={{
           position: 'absolute',
           visibility: 'hidden',
@@ -241,10 +241,10 @@ export function OverflowRow({
       {/* Wrapper with relative positioning for width measurement */}
       <div className={cn('relative min-w-0 flex-1', className)}>
         {/* Width measurement target */}
-        <div ref={containerRef} className="absolute inset-0 pointer-events-none" aria-hidden />
+        <div ref={containerRef} className='absolute inset-0 pointer-events-none' aria-hidden />
 
         {/* Visible container */}
-        <div className="flex items-center  justify-end" style={{ gap }}>
+        <div className='flex items-center  justify-end' style={{ gap }}>
           {childArray.map((child, i) => {
             if (i >= hiddenStartIndex) return null
 

@@ -3,11 +3,11 @@
  * Webhook handler for subscription updates.
  */
 
-import type Stripe from 'stripe'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { eq, and, or } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
+import { and, eq, or } from 'drizzle-orm'
+import type Stripe from 'stripe'
 
 /**
  * Scoped logger used to emit structured subscription synchronization events.
@@ -180,13 +180,17 @@ async function syncStripeSubscription(
   const updatePayload: Partial<typeof schema.PlanSubscription.$inferInsert> = {
     status: stripeSubscription.status,
     stripeSubscriptionId: stripeSubscription.id,
-    seats: shouldApplyScheduledChange ? localSubscription.scheduledSeats ?? firstItem?.quantity ?? 1 : firstItem?.quantity ?? 1,
+    seats: shouldApplyScheduledChange
+      ? (localSubscription.scheduledSeats ?? firstItem?.quantity ?? 1)
+      : (firstItem?.quantity ?? 1),
     cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end ?? false,
     updatedAt: new Date(),
     // Clear scheduled change fields if applying
     scheduledPlanId: shouldApplyScheduledChange ? null : localSubscription.scheduledPlanId,
     scheduledPlan: shouldApplyScheduledChange ? null : localSubscription.scheduledPlan,
-    scheduledBillingCycle: shouldApplyScheduledChange ? null : localSubscription.scheduledBillingCycle,
+    scheduledBillingCycle: shouldApplyScheduledChange
+      ? null
+      : localSubscription.scheduledBillingCycle,
     scheduledSeats: shouldApplyScheduledChange ? null : localSubscription.scheduledSeats,
     scheduledChangeAt: shouldApplyScheduledChange ? null : localSubscription.scheduledChangeAt,
   }

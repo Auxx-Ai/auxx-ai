@@ -1,10 +1,10 @@
 'use client'
-// ~/app/(protected)/app/settings/integrations/_components/integration-card.tsx
-import React from 'react'
-import { useRouter } from 'next/navigation'
-import { CardContent, CardDescription, CardTitle } from '@auxx/ui/components/card'
 import { Button } from '@auxx/ui/components/button'
+import { CardContent, CardDescription, CardTitle } from '@auxx/ui/components/card'
 import { ExternalLink } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+// ~/app/(protected)/app/settings/integrations/_components/integration-card.tsx
+import type React from 'react'
 
 interface IntegrationCardProps {
   type: string
@@ -15,6 +15,7 @@ interface IntegrationCardProps {
   disabledReason?: string
   comingSoon?: boolean
 }
+
 import { getIntegrationProviderIcon } from './integration-table'
 
 /**
@@ -60,33 +61,33 @@ export default function IntegrationCard({
   return (
     <div
       className={`overflow-hidden rounded-xl border bg-card text-card-foreground shadow-xs ${comingSoon ? 'opacity-70' : ''}`}>
-      <div className="flex flex-col space-y-1.5 p-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+      <div className='flex flex-col space-y-1.5 p-3'>
+        <div className='flex items-center justify-between'>
+          <div className='flex items-center space-x-2'>
             {icon || getIntegrationProviderIcon(type, 'size-8')}
             <CardTitle>{title}</CardTitle>
           </div>
           {comingSoon && (
-            <div className="shrink-0 rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">
+            <div className='shrink-0 rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800'>
               Coming soon
             </div>
           )}
         </div>
-        <CardDescription className="line-clamp-2 h-10">{description}</CardDescription>
+        <CardDescription className='line-clamp-2 h-10'>{description}</CardDescription>
       </div>
-      <CardContent className="pb-2">
+      <CardContent className='pb-2'>
         {disabled && disabledReason && (
-          <p className="text-sm text-muted-foreground">{disabledReason}</p>
+          <p className='text-sm text-muted-foreground'>{disabledReason}</p>
         )}
       </CardContent>
-      <div className="flex items-center p-3 pt-0">
+      <div className='flex items-center p-3 pt-0'>
         <Button
           onClick={handleConnect}
           disabled={disabled || comingSoon}
-          className="w-full"
+          className='w-full'
           variant={comingSoon ? 'outline' : 'outline'}>
           {comingSoon ? 'Coming Soon' : 'Connect'}
-          {!comingSoon && <ExternalLink className="ml-2 h-4 w-4" />}
+          {!comingSoon && <ExternalLink className='ml-2 h-4 w-4' />}
         </Button>
       </div>
     </div>

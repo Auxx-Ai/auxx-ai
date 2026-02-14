@@ -1,18 +1,17 @@
 // components/global/sidebar/nav-main.tsx
 'use client'
 
-import { usePathname } from 'next/navigation'
-
 import {
   SidebarGroup,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuSubItem,
 } from '@auxx/ui/components/sidebar'
-import { type SidebarProps } from '~/constants/menu'
+import { usePathname } from 'next/navigation'
+import type { SidebarProps } from '~/constants/menu'
 import { CollapsibleSidebarSection } from './collapsible-sidebar-section'
-import { SidebarItem } from './sidebar-item'
 import { SidebarGroupHeader } from './sidebar-group-header'
+import { SidebarItem } from './sidebar-item'
 import { useSidebarStateContext } from './sidebar-state-context'
 
 type Menu = { title: string; route: string; items: SidebarProps[] }
@@ -74,9 +73,9 @@ export function NavMain({ menu }: Props) {
   }
 
   return (
-    <SidebarGroup className="group">
+    <SidebarGroup className='group'>
       <SidebarGroupHeader
-        title="Configurations"
+        title='Configurations'
         isEditMode={false}
         onToggleEditMode={() => {}}
         isOpen={isOpen}
@@ -84,7 +83,7 @@ export function NavMain({ menu }: Props) {
         hideEditOption
       />
       {isOpen && (
-        <SidebarMenu className="gap-0">
+        <SidebarMenu className='gap-0'>
           {menu.items.map((item) => (
             <div key={item.id}>
               {item.items?.length ? (
@@ -119,7 +118,7 @@ export function NavMain({ menu }: Props) {
                     href={item.url!}
                     icon={item.icon}
                     isActive={isActive(item)}
-                    className="ps-[30px]"
+                    className='ps-[30px]'
                   />
                 </SidebarMenuItem>
               )}

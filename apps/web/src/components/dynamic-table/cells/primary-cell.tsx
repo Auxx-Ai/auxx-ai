@@ -7,8 +7,8 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { MoreVertical } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
+import { MoreVertical } from 'lucide-react'
 import { CellSelectionOverlay } from '../components/cell-selection-overlay'
 
 /**
@@ -56,7 +56,7 @@ export function PrimaryCell({
 
   return (
     <>
-      <div className="flex items-center justify-between w-full pl-3 pr-2 text-sm group/primary">
+      <div className='flex items-center justify-between w-full pl-3 pr-2 text-sm group/primary'>
         <button
           className={cn(
             'flex items-center gap-2 text-left underline decoration-muted-foreground/50 hover:decoration-primary truncate max-w-[calc(100%-40px)]',
@@ -68,24 +68,24 @@ export function PrimaryCell({
             onTitleClick()
           }}>
           {prefixIcon}
-          <span className="truncate">{displayValue}</span>
+          <span className='truncate'>{displayValue}</span>
         </button>
 
-        <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+        <div onClick={(e) => e.stopPropagation()} className='shrink-0'>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                variant="ghost"
-                size="icon-sm"
-                className="opacity-0 group-hover/primary:opacity-100 transition-opacity data-[state=open]:opacity-100! rounded-full">
+                variant='ghost'
+                size='icon-sm'
+                className='opacity-0 group-hover/primary:opacity-100 transition-opacity data-[state=open]:opacity-100! rounded-full'>
                 <MoreVertical />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">{children}</DropdownMenuContent>
+            <DropdownMenuContent align='end'>{children}</DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
-      <div className="hidden [.cell-selected:not(.cell-editing)_&]:flex">
+      <div className='hidden [.cell-selected:not(.cell-editing)_&]:flex'>
         <CellSelectionOverlay isSelected isEditing={false} />
       </div>
     </>

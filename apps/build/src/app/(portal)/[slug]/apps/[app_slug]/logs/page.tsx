@@ -1,5 +1,15 @@
 'use client'
 
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { type DateRange, DateRangePicker } from '@auxx/ui/components/date-range-picker'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@auxx/ui/components/empty'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import {
   Select,
@@ -16,23 +26,12 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
-import { DateRangePicker, type DateRange } from '@auxx/ui/components/date-range-picker'
-import {
-  Empty,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-  EmptyDescription,
-} from '@auxx/ui/components/empty'
-import { addDays, startOfDay, endOfDay, format } from 'date-fns'
+import { addDays, endOfDay, format, startOfDay } from 'date-fns'
+import { FileSearch, Loader2, RefreshCw } from 'lucide-react'
 import { useParams } from 'next/navigation'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useApp, useOrganizations } from '~/components/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
-import { FileSearch, Loader2, RefreshCw } from 'lucide-react'
-
-import React, { useCallback, useState, useMemo, useEffect } from 'react'
 
 /**
  * Logs filter state
@@ -209,17 +208,17 @@ function LogsPage({}: Props) {
   }, [refetch])
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
-      <div className="flex flex-col items-start flex-1 h-full w-full">
-        <div className="flex items-center flex-row w-full justify-stretch wrap p-3 gap-2 border-b">
-          <div className="flex items-center justify-start min-w-[240px]">
+    <div className='flex flex-col flex-1 overflow-hidden'>
+      <div className='flex flex-col items-start flex-1 h-full w-full'>
+        <div className='flex items-center flex-row w-full justify-stretch wrap p-3 gap-2 border-b'>
+          <div className='flex items-center justify-start min-w-[240px]'>
             <Select
               value={filter.organizationSlug}
               onValueChange={(value) =>
                 setFilter((prev) => ({ ...prev, organizationSlug: value }))
               }>
-              <SelectTrigger className="w-full" size="sm">
-                <SelectValue placeholder="Select organization" />
+              <SelectTrigger className='w-full' size='sm'>
+                <SelectValue placeholder='Select organization' />
               </SelectTrigger>
               <SelectContent>
                 {organizations.map((org) => (
@@ -230,7 +229,7 @@ function LogsPage({}: Props) {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-center justify-start w-[250px]">
+          <div className='flex items-center justify-start w-[250px]'>
             <DateRangePicker
               value={{
                 from: filter.startTimestamp
@@ -240,11 +239,11 @@ function LogsPage({}: Props) {
               }}
               onChange={handleDateChange}
               showShortLabel
-              triggerClassName="w-full"
-              triggerVariant="outline"
+              triggerClassName='w-full'
+              triggerVariant='outline'
             />
           </div>
-          <div className="flex items-center justify-start w-[180px]">
+          <div className='flex items-center justify-start w-[180px]'>
             {/* Version selector - versions endpoint TODO */}
             <Select
               value={filter.appVersionId || 'all'}
@@ -254,43 +253,43 @@ function LogsPage({}: Props) {
                   appVersionId: value === 'all' ? undefined : value,
                 }))
               }>
-              <SelectTrigger className="w-full" size="sm">
-                <SelectValue placeholder="All versions" />
+              <SelectTrigger className='w-full' size='sm'>
+                <SelectValue placeholder='All versions' />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All versions</SelectItem>
+                <SelectItem value='all'>All versions</SelectItem>
                 {/* TODO: Fetch and display actual versions from api.versions.list */}
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-center justify-start min-w-[240px] flex-1">
+          <div className='flex items-center justify-start min-w-[240px] flex-1'>
             <InputSearch
-              placeholder="Search"
+              placeholder='Search'
               value={filter.query || ''}
               onChange={(e) => setFilter((prev) => ({ ...prev, query: e.target.value }))}
             />
           </div>
-          <div className="flex items-center justify-end shrink-0 ">
+          <div className='flex items-center justify-end shrink-0 '>
             <Button
-              variant="outline"
-              size="icon-sm"
+              variant='outline'
+              size='icon-sm'
               onClick={handleRefresh}
               loading={isLoading || isRefetching}>
               <RefreshCw />
             </Button>
           </div>
         </div>
-        <div className="flex flex-1 flex-col overflow-hidden w-full">
-          {error && <div className="text-red-600 mb-4">Error loading logs: {error.message}</div>}
+        <div className='flex flex-1 flex-col overflow-hidden w-full'>
+          {error && <div className='text-red-600 mb-4'>Error loading logs: {error.message}</div>}
 
           {flattenedLogs.length > 0 ? (
-            <div className="flex flex-col flex-1 overflow-y-auto w-full">
-              <table className="w-full caption-bottom text-sm max-w-full table-fixed">
-                <TableHeader className="sticky top-0 bg-background z-10">
+            <div className='flex flex-col flex-1 overflow-y-auto w-full'>
+              <table className='w-full caption-bottom text-sm max-w-full table-fixed'>
+                <TableHeader className='sticky top-0 bg-background z-10'>
                   <TableRow>
-                    <TableHead className="w-[200px]">Timestamp</TableHead>
-                    <TableHead className="flex-1">Message</TableHead>
-                    <TableHead className="w-[40px]">Ver</TableHead>
+                    <TableHead className='w-[200px]'>Timestamp</TableHead>
+                    <TableHead className='flex-1'>Message</TableHead>
+                    <TableHead className='w-[40px]'>Ver</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -298,19 +297,19 @@ function LogsPage({}: Props) {
                     const badge = getLogTypeBadge(log.logType)
                     const versionDisplay = log.appVersionId ? log.appVersionId.slice(-4) : 'N/A'
                     return (
-                      <TableRow key={log.id} className=" w-full">
-                        <TableCell className="font-mono text-xs w-[200px]">
-                          <div className="flex items-center gap-2">
-                            <Badge variant={badge.variant} size="xs">
+                      <TableRow key={log.id} className=' w-full'>
+                        <TableCell className='font-mono text-xs w-[200px]'>
+                          <div className='flex items-center gap-2'>
+                            <Badge variant={badge.variant} size='xs'>
                               {badge.label}
                             </Badge>
                             <span>{format(log.timestamp, 'MMM dd, HH:mm:ss')}</span>
                           </div>
                         </TableCell>
-                        <TableCell className="flex-1 font-mono overflow-hidden min-w-0">
-                          <div className="break-words">{log.message}</div>
+                        <TableCell className='flex-1 font-mono overflow-hidden min-w-0'>
+                          <div className='break-words'>{log.message}</div>
                         </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground w-[40px]">
+                        <TableCell className='font-mono text-xs text-muted-foreground w-[40px]'>
                           {versionDisplay}
                         </TableCell>
                       </TableRow>
@@ -320,31 +319,31 @@ function LogsPage({}: Props) {
               </table>
 
               {logsData?.hasMore && (
-                <div className="flex justify-center py-4">
+                <div className='flex justify-center py-4'>
                   <Button
-                    variant="outline"
+                    variant='outline'
                     onClick={handleLoadMore}
                     loading={isLoading}
-                    loadingText="Loading...">
+                    loadingText='Loading...'>
                     Load More
                   </Button>
                 </div>
               )}
             </div>
           ) : isLoading ? (
-            <Empty className="border-0 flex-1">
+            <Empty className='border-0 flex-1'>
               <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <Loader2 className="animate-spin" />
+                <EmptyMedia variant='icon'>
+                  <Loader2 className='animate-spin' />
                 </EmptyMedia>
                 <EmptyTitle>Loading logs...</EmptyTitle>
                 <EmptyDescription>Fetching console logs from your application</EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (
-            <Empty className="border-0 flex-1">
+            <Empty className='border-0 flex-1'>
               <EmptyHeader>
-                <EmptyMedia variant="icon">
+                <EmptyMedia variant='icon'>
                   <FileSearch />
                 </EmptyMedia>
                 <EmptyTitle>No logs found</EmptyTitle>

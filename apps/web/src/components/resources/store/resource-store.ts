@@ -1,13 +1,12 @@
 // apps/web/src/components/resources/store/resource-store.ts
 
+import type { CustomResource, Resource, ResourceField } from '@auxx/lib/resources/client'
+import { isCustomResource } from '@auxx/lib/resources/client'
+import type { ResourceFieldId } from '@auxx/types/field'
+import { parseResourceFieldId, toResourceFieldId } from '@auxx/types/field'
+import { deepEqual, shallowEqual } from '@auxx/utils/objects'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import type { Resource, CustomResource } from '@auxx/lib/resources/client'
-import { isCustomResource } from '@auxx/lib/resources/client'
-import type { ResourceField } from '@auxx/lib/resources/client'
-import type { ResourceFieldId } from '@auxx/types/field'
-import { toResourceFieldId, parseResourceFieldId } from '@auxx/types/field'
-import { shallowEqual, deepEqual } from '@auxx/utils/objects'
 
 /**
  * Pending optimistic field update state
@@ -150,7 +149,11 @@ interface ResourceStoreState {
   addOptimisticField: (key: ResourceFieldId, field: ResourceField) => void
 
   /** Confirm field creation succeeded */
-  confirmFieldCreate: (tempKey: ResourceFieldId, serverKey: ResourceFieldId, serverField: ResourceField) => void
+  confirmFieldCreate: (
+    tempKey: ResourceFieldId,
+    serverKey: ResourceFieldId,
+    serverField: ResourceField
+  ) => void
 
   /** Rollback field creation on error */
   rollbackFieldCreate: (key: ResourceFieldId) => void
@@ -277,7 +280,9 @@ function buildEffectiveFieldMap(
   const newFieldMap: Record<ResourceFieldId, ResourceField> = {}
 
   // Apply server fields with pending updates overlaid
-  for (const [key, serverField] of Object.entries(serverFieldMap) as Array<[ResourceFieldId, ResourceField]>) {
+  for (const [key, serverField] of Object.entries(serverFieldMap) as Array<
+    [ResourceFieldId, ResourceField]
+  >) {
     // Skip if deleted
     if (optimisticDeletedFields.has(key)) continue
 
@@ -301,7 +306,9 @@ function buildEffectiveFieldMap(
   }
 
   // Add optimistically created fields
-  for (const [key, field] of Object.entries(optimisticNewFields) as Array<[ResourceFieldId, ResourceField]>) {
+  for (const [key, field] of Object.entries(optimisticNewFields) as Array<
+    [ResourceFieldId, ResourceField]
+  >) {
     if (!optimisticDeletedFields.has(key)) {
       newFieldMap[key] = field
     }
@@ -391,7 +398,9 @@ export const useResourceStore = create<ResourceStoreState>()(
 
       // Clean up pending updates that match server state
       const newPendingFieldUpdates = { ...state.pendingFieldUpdates }
-      for (const [key, pending] of Object.entries(newPendingFieldUpdates) as Array<[ResourceFieldId, PendingFieldUpdate]>) {
+      for (const [key, pending] of Object.entries(newPendingFieldUpdates) as Array<
+        [ResourceFieldId, PendingFieldUpdate]
+      >) {
         const serverField = serverFieldMap[key]
         if (serverField) {
           const mergedField = { ...pending.original, ...pending.optimistic }
@@ -546,7 +555,9 @@ export const useResourceStore = create<ResourceStoreState>()(
       }
 
       // Add optimistic new fields for this resource
-      for (const [key, field] of Object.entries(state.optimisticNewFields) as Array<[ResourceFieldId, ResourceField]>) {
+      for (const [key, field] of Object.entries(state.optimisticNewFields) as Array<
+        [ResourceFieldId, ResourceField]
+      >) {
         const { entityDefinitionId: fieldDefId } = parseResourceFieldId(key)
         if (fieldDefId === entityDefinitionId && !state.optimisticDeletedFields.has(key)) {
           effectiveFields.push(field)
@@ -740,7 +751,10 @@ export const useResourceStore = create<ResourceStoreState>()(
         // Add the new field to the resource's fields array
         const { entityDefinitionId } = parseResourceFieldId(serverKey)
         const newResources = state.resources.map((resource) => {
-          if (resource.id !== entityDefinitionId && resource.entityDefinitionId !== entityDefinitionId) {
+          if (
+            resource.id !== entityDefinitionId &&
+            resource.entityDefinitionId !== entityDefinitionId
+          ) {
             return resource
           }
           // Check if field already exists (avoid duplicates)
@@ -830,7 +844,10 @@ export const useResourceStore = create<ResourceStoreState>()(
         // Remove the field from the resource's fields array
         const { entityDefinitionId } = parseResourceFieldId(key)
         const newResources = state.resources.map((resource) => {
-          if (resource.id !== entityDefinitionId && resource.entityDefinitionId !== entityDefinitionId) {
+          if (
+            resource.id !== entityDefinitionId &&
+            resource.entityDefinitionId !== entityDefinitionId
+          ) {
             return resource
           }
           return {
@@ -919,7 +936,9 @@ export const useResourceStore = create<ResourceStoreState>()(
 
         // Update resources array
         const newResources = state.resources.map((r) =>
-          r.entityDefinitionId === entityDefinitionId || r.id === entityDefinitionId ? updatedResource : r
+          r.entityDefinitionId === entityDefinitionId || r.id === entityDefinitionId
+            ? updatedResource
+            : r
         )
 
         // Update customResources if applicable
@@ -954,7 +973,9 @@ export const useResourceStore = create<ResourceStoreState>()(
           }
 
           const newResources = state.resources.map((r) =>
-            r.entityDefinitionId === entityDefinitionId || r.id === entityDefinitionId ? serverResource : r
+            r.entityDefinitionId === entityDefinitionId || r.id === entityDefinitionId
+              ? serverResource
+              : r
           )
 
           const newCustomResources = isCustomResource(serverResource)
@@ -993,7 +1014,9 @@ export const useResourceStore = create<ResourceStoreState>()(
         }
 
         const newResources = state.resources.map((r) =>
-          r.entityDefinitionId === entityDefinitionId || r.id === entityDefinitionId ? pending.original : r
+          r.entityDefinitionId === entityDefinitionId || r.id === entityDefinitionId
+            ? pending.original
+            : r
         )
 
         const newCustomResources = isCustomResource(pending.original)
@@ -1060,7 +1083,9 @@ export const useResourceStore = create<ResourceStoreState>()(
 
         const newCustomResources = isCustomResource(serverResource)
           ? state.customResources.map((r) =>
-              r.entityDefinitionId === tempId || r.id === tempId ? (serverResource as CustomResource) : r
+              r.entityDefinitionId === tempId || r.id === tempId
+                ? (serverResource as CustomResource)
+                : r
             )
           : state.customResources.filter((r) => r.entityDefinitionId !== tempId && r.id !== tempId)
 

@@ -1,18 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import {
-  FileQuestion,
-  ArrowRight,
-  Loader2,
-  X,
-  Check,
-  AlertCircle,
-  Download,
-  FileSpreadsheet,
-} from 'lucide-react'
-
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -22,7 +10,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { Input } from '@auxx/ui/components/input'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { Label } from '@auxx/ui/components/label'
+import { Progress } from '@auxx/ui/components/progress'
 import {
   Select,
   SelectContent,
@@ -38,11 +29,19 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import { Input } from '@auxx/ui/components/input'
-import { Label } from '@auxx/ui/components/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-import { Progress } from '@auxx/ui/components/progress'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import {
+  AlertCircle,
+  ArrowRight,
+  Check,
+  Download,
+  FileQuestion,
+  FileSpreadsheet,
+  Loader2,
+  X,
+} from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 // Move this outside the component to prevent recreation on each render
 // Sample field definitions - replace with your actual field definitions
@@ -406,7 +405,7 @@ export function CSVColumnMapper({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="sm:max-w-[700px]">
+        <DialogContent className='sm:max-w-[700px]'>
           <DialogHeader>
             <DialogTitle>Import Subparts from CSV</DialogTitle>
             <DialogDescription>
@@ -414,60 +413,60 @@ export function CSVColumnMapper({
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="map" disabled={!csvData}>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className='w-full'>
+            <TabsList className='grid w-full grid-cols-2'>
+              <TabsTrigger value='map' disabled={!csvData}>
                 Map Columns
               </TabsTrigger>
-              <TabsTrigger value="preview" disabled={!isMappingComplete || !csvData}>
+              <TabsTrigger value='preview' disabled={!isMappingComplete || !csvData}>
                 Preview & Validate
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="map" className="space-y-4 py-4">
+            <TabsContent value='map' className='space-y-4 py-4'>
               {step === 1 ? (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+                <div className='space-y-4'>
+                  <div className='flex items-center justify-between'>
                     <div>
-                      <h3 className="text-sm font-medium">Upload CSV File</h3>
-                      <p className="text-sm text-muted-foreground">
+                      <h3 className='text-sm font-medium'>Upload CSV File</h3>
+                      <p className='text-sm text-muted-foreground'>
                         Select a CSV file with subpart information
                       </p>
                     </div>
                     <Button
-                      variant="outline"
-                      size="sm"
+                      variant='outline'
+                      size='sm'
                       onClick={downloadTemplate}
-                      className="flex items-center gap-1">
-                      <Download className="h-3 w-3" />
+                      className='flex items-center gap-1'>
+                      <Download className='h-3 w-3' />
                       Template
                     </Button>
                   </div>
 
-                  <div className="flex w-full items-center justify-center">
+                  <div className='flex w-full items-center justify-center'>
                     <Label
-                      htmlFor="csv-file"
-                      className="flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed bg-muted/30 hover:bg-muted/50">
-                      <div className="flex flex-col items-center justify-center pb-6 pt-5">
-                        <FileSpreadsheet className="mb-3 h-8 w-8 text-muted-foreground" />
-                        <p className="mb-2 text-sm text-muted-foreground">
-                          <span className="font-semibold">Click to upload</span> or drag and drop
+                      htmlFor='csv-file'
+                      className='flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed bg-muted/30 hover:bg-muted/50'>
+                      <div className='flex flex-col items-center justify-center pb-6 pt-5'>
+                        <FileSpreadsheet className='mb-3 h-8 w-8 text-muted-foreground' />
+                        <p className='mb-2 text-sm text-muted-foreground'>
+                          <span className='font-semibold'>Click to upload</span> or drag and drop
                         </p>
-                        <p className="text-xs text-muted-foreground">CSV files only</p>
+                        <p className='text-xs text-muted-foreground'>CSV files only</p>
                       </div>
                       <Input
-                        id="csv-file"
+                        id='csv-file'
                         ref={fileInputRef}
-                        type="file"
-                        accept=".csv"
-                        className="hidden"
+                        type='file'
+                        accept='.csv'
+                        className='hidden'
                         onChange={handleFileUpload}
                       />
                     </Label>
                   </div>
 
                   <Alert>
-                    <FileQuestion className="h-4 w-4" />
+                    <FileQuestion className='h-4 w-4' />
                     <AlertTitle>CSV Format</AlertTitle>
                     <AlertDescription>
                       Your CSV should include columns for Subpart SKU, Quantity, and optional Notes.
@@ -477,44 +476,44 @@ export function CSVColumnMapper({
                   </Alert>
                 </div>
               ) : step === 2 ? (
-                <div className="space-y-4">
-                  <div className="flex items-start justify-between">
+                <div className='space-y-4'>
+                  <div className='flex items-start justify-between'>
                     <div>
-                      <h3 className="text-sm font-medium">Map CSV Columns</h3>
-                      <p className="text-sm text-muted-foreground">
+                      <h3 className='text-sm font-medium'>Map CSV Columns</h3>
+                      <p className='text-sm text-muted-foreground'>
                         Match your CSV columns to the required fields
                       </p>
                     </div>
 
-                    <Button size="sm" disabled={!isMappingComplete} onClick={validateAndPreview}>
+                    <Button size='sm' disabled={!isMappingComplete} onClick={validateAndPreview}>
                       Continue to Preview
-                      <ArrowRight className="ml-2 h-4 w-4" />
+                      <ArrowRight className='ml-2 h-4 w-4' />
                     </Button>
                   </div>
 
-                  <div className="overflow-x-auto rounded-md border">
+                  <div className='overflow-x-auto rounded-md border'>
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-[180px]">CSV Column</TableHead>
-                          <TableHead className="w-[180px]">Map To Field</TableHead>
+                          <TableHead className='w-[180px]'>CSV Column</TableHead>
+                          <TableHead className='w-[180px]'>Map To Field</TableHead>
                           <TableHead>Sample Values</TableHead>
-                          <TableHead className="w-[50px]"></TableHead>
+                          <TableHead className='w-[50px]'></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {headers.map((header, index) => (
                           <TableRow key={index}>
-                            <TableCell className="font-medium">{header}</TableCell>
+                            <TableCell className='font-medium'>{header}</TableCell>
                             <TableCell>
                               <Select
                                 value={columnMappings[index] || ''}
                                 onValueChange={(value) => updateMapping(index, value)}>
                                 <SelectTrigger>
-                                  <SelectValue placeholder="Select field" />
+                                  <SelectValue placeholder='Select field' />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="no-mapping">-- Not Mapped --</SelectItem>
+                                  <SelectItem value='no-mapping'>-- Not Mapped --</SelectItem>
                                   {FIELD_DEFINITIONS.map((field) => (
                                     <SelectItem key={field.id} value={field.id}>
                                       {field.label} {field.required && '*'}
@@ -523,12 +522,12 @@ export function CSVColumnMapper({
                                 </SelectContent>
                               </Select>
                             </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">
-                              <div className="max-w-[200px] overflow-hidden text-ellipsis">
+                            <TableCell className='text-xs text-muted-foreground'>
+                              <div className='max-w-[200px] overflow-hidden text-ellipsis'>
                                 {sampleRows.map((row, i) => (
-                                  <div key={i} className="truncate">
+                                  <div key={i} className='truncate'>
                                     {row[index] || (
-                                      <span className="italic text-muted-foreground">empty</span>
+                                      <span className='italic text-muted-foreground'>empty</span>
                                     )}
                                   </div>
                                 ))}
@@ -537,10 +536,10 @@ export function CSVColumnMapper({
                             <TableCell>
                               {columnMappings[index] && (
                                 <Button
-                                  variant="ghost"
-                                  size="icon"
+                                  variant='ghost'
+                                  size='icon'
                                   onClick={() => removeMapping(index)}>
-                                  <X className="h-4 w-4" />
+                                  <X className='h-4 w-4' />
                                 </Button>
                               )}
                             </TableCell>
@@ -550,9 +549,9 @@ export function CSVColumnMapper({
                     </Table>
                   </div>
 
-                  <div className="space-y-2 text-sm">
-                    <div className="font-medium">Required Fields:</div>
-                    <div className="flex flex-wrap gap-2">
+                  <div className='space-y-2 text-sm'>
+                    <div className='font-medium'>Required Fields:</div>
+                    <div className='flex flex-wrap gap-2'>
                       {FIELD_DEFINITIONS.filter((f) => f.required).map((field) => {
                         const isMapped = Object.values(columnMappings).includes(field.id)
                         return (
@@ -564,9 +563,9 @@ export function CSVColumnMapper({
                                 : 'bg-amber-100 text-amber-800'
                             }`}>
                             {isMapped ? (
-                              <Check className="mr-1 h-3 w-3" />
+                              <Check className='mr-1 h-3 w-3' />
                             ) : (
-                              <AlertCircle className="mr-1 h-3 w-3" />
+                              <AlertCircle className='mr-1 h-3 w-3' />
                             )}
                             {field.label}
                           </div>
@@ -578,32 +577,32 @@ export function CSVColumnMapper({
               ) : null}
             </TabsContent>
 
-            <TabsContent value="preview" className="space-y-4 py-4">
+            <TabsContent value='preview' className='space-y-4 py-4'>
               {isProcessing ? (
-                <div className="space-y-4 py-8">
-                  <div className="text-center">
-                    <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin" />
-                    <h3 className="font-medium">Processing CSV Data</h3>
-                    <p className="text-sm text-muted-foreground">
+                <div className='space-y-4 py-8'>
+                  <div className='text-center'>
+                    <Loader2 className='mx-auto mb-4 h-8 w-8 animate-spin' />
+                    <h3 className='font-medium'>Processing CSV Data</h3>
+                    <p className='text-sm text-muted-foreground'>
                       Validating rows and checking for errors...
                     </p>
                   </div>
-                  <Progress value={progressValue} className="w-full" />
+                  <Progress value={progressValue} className='w-full' />
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <div className="flex items-start justify-between">
+                <div className='space-y-4'>
+                  <div className='flex items-start justify-between'>
                     <div>
-                      <h3 className="text-sm font-medium">Preview Import Data</h3>
-                      <p className="text-sm text-muted-foreground">
+                      <h3 className='text-sm font-medium'>Preview Import Data</h3>
+                      <p className='text-sm text-muted-foreground'>
                         Review the data before importing
                       </p>
                     </div>
                   </div>
 
                   {validationErrors.length > 0 ? (
-                    <Alert variant="destructive">
-                      <AlertCircle className="h-4 w-4" />
+                    <Alert variant='destructive'>
+                      <AlertCircle className='h-4 w-4' />
                       <AlertTitle>Validation Errors Found</AlertTitle>
                       <AlertDescription>
                         There are {validationErrors.length} row(s) with errors that need to be fixed
@@ -611,17 +610,17 @@ export function CSVColumnMapper({
                       </AlertDescription>
                     </Alert>
                   ) : (
-                    <Alert variant="default" className="border-green-200 bg-green-50">
-                      <Check className="h-4 w-4 text-green-600" />
-                      <AlertTitle className="text-green-800">Ready to Import</AlertTitle>
-                      <AlertDescription className="text-green-700">
+                    <Alert variant='default' className='border-green-200 bg-green-50'>
+                      <Check className='h-4 w-4 text-green-600' />
+                      <AlertTitle className='text-green-800'>Ready to Import</AlertTitle>
+                      <AlertDescription className='text-green-700'>
                         No validation errors were found. You can proceed with the import.
                       </AlertDescription>
                     </Alert>
                   )}
 
                   {validationErrors.length > 0 && (
-                    <div className="overflow-hidden rounded-md border">
+                    <div className='overflow-hidden rounded-md border'>
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -636,7 +635,7 @@ export function CSVColumnMapper({
                               <TableRow key={`${i}-${j}`}>
                                 <TableCell>{error.row}</TableCell>
                                 <TableCell>{fieldError.field}</TableCell>
-                                <TableCell className="text-red-600">{fieldError.message}</TableCell>
+                                <TableCell className='text-red-600'>{fieldError.message}</TableCell>
                               </TableRow>
                             ))
                           )}
@@ -650,18 +649,22 @@ export function CSVColumnMapper({
           </Tabs>
 
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setIsOpen(false)} disabled={isProcessing}>
-              Cancel <Kbd shortcut="esc" variant="outline" size="sm" />
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => setIsOpen(false)}
+              disabled={isProcessing}>
+              Cancel <Kbd shortcut='esc' variant='outline' size='sm' />
             </Button>
 
             {activeTab === 'preview' && (
               <Button
-                size="sm"
+                size='sm'
                 onClick={processImport}
                 disabled={isProcessing || validationErrors.length > 0}
                 loading={isProcessing}
-                loadingText="Processing...">
-                Import Data <KbdSubmit variant="default" size="sm" />
+                loadingText='Processing...'>
+                Import Data <KbdSubmit variant='default' size='sm' />
               </Button>
             )}
           </DialogFooter>

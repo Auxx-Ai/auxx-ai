@@ -2,11 +2,6 @@
 
 'use client'
 
-import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
-
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -16,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
   FormControl,
@@ -26,6 +20,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Select,
   SelectContent,
@@ -33,8 +28,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { api } from '~/trpc/react'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { useRecordInvalidation } from '~/components/resources'
+import { api } from '~/trpc/react'
 
 // Supported ticket priorities presented in the selector
 const ticketPriorityOptions = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const
@@ -64,7 +63,7 @@ export function MassPriorityDialog({
 }: MassPriorityDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="sm" position="tc">
+      <DialogContent size='sm' position='tc'>
         <MassPriorityDialogContent
           ticketIds={ticketIds}
           onSuccess={onSuccess}
@@ -130,7 +129,7 @@ function MassPriorityDialogContent({
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <FormField
             control={form.control}
-            name="priority"
+            name='priority'
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Select Priority</FormLabel>
@@ -140,7 +139,7 @@ function MassPriorityDialogContent({
                   disabled={disableActions}>
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a new priority" />
+                      <SelectValue placeholder='Select a new priority' />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
@@ -161,21 +160,21 @@ function MassPriorityDialogContent({
 
           <DialogFooter>
             <Button
-              variant="ghost"
-              size="sm"
-              type="button"
+              variant='ghost'
+              size='sm'
+              type='button'
               onClick={onClose}
               disabled={disableActions}>
-              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
             <Button
-              variant="outline"
-              size="sm"
-              type="submit"
+              variant='outline'
+              size='sm'
+              type='submit'
               disabled={disableSubmit}
               loading={disableActions}
-              loadingText="Updating...">
-              Update Priority <KbdSubmit variant="outline" size="sm" />
+              loadingText='Updating...'>
+              Update Priority <KbdSubmit variant='outline' size='sm' />
             </Button>
           </DialogFooter>
         </form>

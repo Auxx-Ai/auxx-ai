@@ -2,8 +2,6 @@
 
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -13,15 +11,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { IconPicker, type IconPickerValue } from '@auxx/ui/components/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { Input } from '@auxx/ui/components/input'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { Textarea } from '@auxx/ui/components/textarea'
-import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
-import { EntityIcon } from '@auxx/ui/components/icons'
-import { IconPicker, type IconPickerValue } from '@auxx/ui/components/icon-picker'
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
+import { useRouter } from 'next/navigation'
+import type React from 'react'
+import { useEffect, useState } from 'react'
+import { api } from '~/trpc/react'
 
 /**
  * Props type for WorkflowFormDialog using discriminated union
@@ -165,66 +166,66 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]" position="tc">
+      <DialogContent className='sm:max-w-[425px]' position='tc'>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{dialogTitle}</DialogTitle>
             <DialogDescription>{dialogDescription}</DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name">Name</Label>
+          <div className='grid gap-4'>
+            <div className='grid gap-2'>
+              <Label htmlFor='name'>Name</Label>
               <InputGroup>
-                <InputGroupAddon align="inline-start" className="ml-1">
+                <InputGroupAddon align='inline-start' className='ml-1'>
                   <IconPicker
                     value={iconValue}
                     onChange={setIconValue}
-                    className="size-6"></IconPicker>
+                    className='size-6'></IconPicker>
                 </InputGroupAddon>
                 <InputGroupInput
-                  id="name"
-                  autoComplete="off"
+                  id='name'
+                  autoComplete='off'
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter workflow name"
+                  placeholder='Enter workflow name'
                   disabled={isPending}
                   required
                   autoFocus
                 />
               </InputGroup>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="description">Description</Label>
+            <div className='grid gap-2'>
+              <Label htmlFor='description'>Description</Label>
               <Textarea
-                id="description"
+                id='description'
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Enter workflow description (optional)"
-                className="min-h-[250px]"
+                placeholder='Enter workflow description (optional)'
+                className='min-h-[250px]'
                 disabled={isPending}
                 rows={3}
               />
             </div>
-            {error && <div className="text-sm text-destructive">{error.message}</div>}
+            {error && <div className='text-sm text-destructive'>{error.message}</div>}
           </div>
 
           <DialogFooter>
             <Button
-              type="button"
-              variant="ghost"
-              size="sm"
+              type='button'
+              variant='ghost'
+              size='sm'
               onClick={handleCancel}
               disabled={isPending}>
-              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
             <Button
-              type="submit"
-              variant="outline"
-              size="sm"
+              type='submit'
+              variant='outline'
+              size='sm'
               loading={isPending}
               loadingText={loadingText}>
-              {submitButtonText} <KbdSubmit variant="outline" size="sm" />
+              {submitButtonText} <KbdSubmit variant='outline' size='sm' />
             </Button>
           </DialogFooter>
         </form>

@@ -2,10 +2,10 @@
 
 'use client'
 
-import { ChevronRight, Home } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
-import { useDroppable } from '@dnd-kit/core'
 import { cn } from '@auxx/ui/lib/utils'
+import { useDroppable } from '@dnd-kit/core'
+import { ChevronRight, Home } from 'lucide-react'
 import { useFilesystemContext } from './provider/filesystem-provider'
 
 /**
@@ -47,11 +47,11 @@ function BreadcrumbItem({
   })
 
   return (
-    <div ref={setNodeRef} className="flex items-center rounded-sm">
-      {index > 0 && <ChevronRight className="h-4 w-4 mx-1" />}
+    <div ref={setNodeRef} className='flex items-center rounded-sm'>
+      {index > 0 && <ChevronRight className='h-4 w-4 mx-1' />}
       <Button
-        variant="ghost"
-        size="sm"
+        variant='ghost'
+        size='sm'
         onClick={() => onNavigate(crumb.id)}
         className={cn(
           'px-1 font-normal border border-transparent hover:text-foreground transition-colors',
@@ -78,7 +78,7 @@ export function FilesBreadcrumb({
   const { breadcrumbs, navigateToFolder } = useFilesystemContext()
 
   return (
-    <nav className="flex items-center space-x-1 text-sm text-muted-foreground">
+    <nav className='flex items-center space-x-1 text-sm text-muted-foreground'>
       {breadcrumbs.map((crumb, index) => {
         const id = crumb.id || 'root'
         const isAllowed = !!draggingItems?.length && allowedBreadcrumbIds.has(id)

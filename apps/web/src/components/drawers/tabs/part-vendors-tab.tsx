@@ -1,12 +1,19 @@
 // apps/web/src/components/drawers/tabs/part-vendors-tab.tsx
 'use client'
 
-import { useState, useCallback } from 'react'
-import Link from 'next/link'
-import { Store, MoreHorizontal, Edit, Trash2, Star } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
-import { Section } from '@auxx/ui/components/section'
+import type { VendorPartEntity as VendorPart } from '@auxx/database/models'
+import { parseRecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import { Section } from '@auxx/ui/components/section'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
   Table,
   TableBody,
@@ -15,23 +22,16 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
+import { getContactDisplayName, pluralize } from '@auxx/utils'
+import { Edit, MoreHorizontal, Star, Store, Trash2 } from 'lucide-react'
+import Link from 'next/link'
+import { useCallback, useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
+import { VendorPartDialog } from '~/components/manufacturing/parts/vendor-part-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
-import { parseRecordId } from '@auxx/lib/resources/client'
 import { api } from '~/trpc/react'
 import { formatMoney } from '~/utils/strings'
-import { pluralize, getContactDisplayName } from '@auxx/utils'
-import { VendorPartDialog } from '~/components/manufacturing/parts/vendor-part-dialog'
-import type { VendorPartEntity as VendorPart } from '@auxx/database/models'
-import { Tooltip } from '~/components/global/tooltip'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /** Vendors tab content for parts drawer */
@@ -45,10 +45,7 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
   const { entityInstanceId: partId } = parseRecordId(recordId)
 
   // Fetch part data
-  const { data: part, isLoading } = api.part.byId.useQuery(
-    { id: partId },
-    { enabled: !!partId }
-  )
+  const { data: part, isLoading } = api.part.byId.useQuery({ id: partId }, { enabled: !!partId })
 
   // Delete vendor part mutation
   const deleteVendorPart = api.vendorPart.delete.useMutation({
@@ -120,15 +117,15 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
 
   if (isLoading) {
     return (
-      <div className="p-4 space-y-4">
-        <Skeleton className="h-6 w-32" />
-        <Skeleton className="h-40 w-full" />
+      <div className='p-4 space-y-4'>
+        <Skeleton className='h-6 w-32' />
+        <Skeleton className='h-40 w-full' />
       </div>
     )
   }
 
   if (!part) {
-    return <div className="p-4 text-center text-muted-foreground">Part not found</div>
+    return <div className='p-4 text-center text-muted-foreground'>Part not found</div>
   }
 
   const vendorParts = part.vendorParts ?? []
@@ -139,74 +136,74 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
         title={`Suppliers (${vendorParts.length})`}
         initialOpen
         actions={
-          <Button variant="ghost" size="xs" onClick={() => setIsVendorDialogOpen(true)}>
+          <Button variant='ghost' size='xs' onClick={() => setIsVendorDialogOpen(true)}>
             <Store />
             Add Supplier
           </Button>
         }>
         {vendorParts.length === 0 ? (
-          <div className="flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30">
-            <Store className="mb-2 h-6 w-6 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">No suppliers added yet</p>
-            <p className="text-xs text-muted-foreground">Add contacts as suppliers for this part</p>
+          <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>
+            <Store className='mb-2 h-6 w-6 text-muted-foreground' />
+            <p className='text-sm text-muted-foreground'>No suppliers added yet</p>
+            <p className='text-xs text-muted-foreground'>Add contacts as suppliers for this part</p>
           </div>
         ) : (
-          <div className="rounded-md border">
+          <div className='rounded-md border'>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Supplier</TableHead>
                   <TableHead>SKU</TableHead>
-                  <TableHead className="text-right">Price</TableHead>
-                  <TableHead className="text-right">Lead Time</TableHead>
-                  <TableHead className="w-10"></TableHead>
+                  <TableHead className='text-right'>Price</TableHead>
+                  <TableHead className='text-right'>Lead Time</TableHead>
+                  <TableHead className='w-10'></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {vendorParts.map((vendorPart: any) => (
                   <TableRow key={vendorPart.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
+                    <TableCell className='font-medium'>
+                      <div className='flex items-center gap-2'>
                         <Link
                           href={`/app/contacts?c=${vendorPart.contactId}&tab=parts`}
-                          className="truncate hover:underline">
+                          className='truncate hover:underline'>
                           {getContactDisplayName(vendorPart.contact) ?? 'Unknown'}
                         </Link>
                         {vendorPart.isPreferred && (
-                          <Tooltip content="Preferred Supplier">
+                          <Tooltip content='Preferred Supplier'>
                             <Badge
-                              variant="green"
-                              size="sm"
-                              className="size-5 flex items-center justify-center">
-                              <Star className="size-3 fill-current" />
+                              variant='green'
+                              size='sm'
+                              className='size-5 flex items-center justify-center'>
+                              <Star className='size-3 fill-current' />
                             </Badge>
                           </Tooltip>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="font-mono text-sm">{vendorPart.vendorSku}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className='font-mono text-sm'>{vendorPart.vendorSku}</TableCell>
+                    <TableCell className='text-right'>
                       {vendorPart.unitPrice ? (
                         formatMoney(vendorPart.unitPrice)
                       ) : (
-                        <span className="text-muted-foreground">—</span>
+                        <span className='text-muted-foreground'>—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className='text-right'>
                       {vendorPart.leadTime ? (
                         `${vendorPart.leadTime} ${pluralize(vendorPart.leadTime, 'day')}`
                       ) : (
-                        <span className="text-muted-foreground">—</span>
+                        <span className='text-muted-foreground'>—</span>
                       )}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon-sm">
+                          <Button variant='ghost' size='icon-sm'>
                             <MoreHorizontal />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                        <DropdownMenuContent align='end'>
                           <DropdownMenuItem onClick={() => handleEditVendorPart(vendorPart)}>
                             <Edit />
                             Edit
@@ -219,7 +216,7 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
                           )}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
-                            variant="destructive"
+                            variant='destructive'
                             onClick={() => handleDeleteVendorPart(vendorPart)}>
                             <Trash2 />
                             Remove

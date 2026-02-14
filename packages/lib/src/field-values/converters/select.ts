@@ -1,7 +1,11 @@
 // packages/lib/src/field-values/converters/select.ts
 
-import type { TypedFieldValueInput, TypedFieldValue, OptionFieldValue } from '@auxx/types/field-value'
-import type { FieldValueConverter, ConverterOptions, SelectFieldOptions } from './index'
+import type {
+  OptionFieldValue,
+  TypedFieldValue,
+  TypedFieldValueInput,
+} from '@auxx/types/field-value'
+import type { ConverterOptions, FieldValueConverter, SelectFieldOptions } from './index'
 
 /**
  * Converter for select-based field types:

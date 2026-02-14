@@ -1,7 +1,7 @@
 // apps/web/src/lib/workflow/utils/index.ts
 
 export {
-  mapFieldTypeToBaseType,
   convertFieldToOutputVariable,
   convertOutputFieldsToVariables,
+  mapFieldTypeToBaseType,
 } from './type-mapping'

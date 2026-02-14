@@ -15,7 +15,7 @@ export abstract class CredentialError extends Error {
     super(message)
     this.name = this.constructor.name
     this.context = context
-    
+
     // Maintains proper stack trace for where our error was thrown (only available on V8)
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, this.constructor)
@@ -45,10 +45,10 @@ export class CredentialNotFoundError extends CredentialError {
   readonly credentialId?: string
 
   constructor(providerId: string, credentialId?: string) {
-    const message = credentialId 
+    const message = credentialId
       ? `Credential '${credentialId}' not found for provider '${providerId}'`
       : `No credentials found for provider '${providerId}'`
-    
+
     super(message)
     this.providerId = providerId
     this.credentialId = credentialId
@@ -94,7 +94,7 @@ export class CredentialValidationError extends CredentialError {
   readonly validationErrors: Array<{ field: string; message: string }>
 
   constructor(providerId: string, validationErrors: Array<{ field: string; message: string }>) {
-    const errorMessages = validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')
+    const errorMessages = validationErrors.map((e) => `${e.field}: ${e.message}`).join(', ')
     super(`Credential validation failed for provider '${providerId}': ${errorMessages}`)
     this.providerId = providerId
     this.validationErrors = validationErrors
@@ -113,7 +113,7 @@ export class CredentialConnectionError extends CredentialError {
     const message = credentialId
       ? `Connection test failed for credential '${credentialId}' (provider: ${providerId}): ${originalError.message}`
       : `Connection test failed for provider '${providerId}': ${originalError.message}`
-    
+
     super(message)
     this.providerId = providerId
     this.credentialId = credentialId
@@ -129,7 +129,9 @@ export class CredentialTransformError extends CredentialError {
   readonly providerId: string
 
   constructor(providerId: string, transformType: 'org' | 'system', originalError: Error) {
-    super(`Failed to transform ${transformType} credential for provider '${providerId}': ${originalError.message}`)
+    super(
+      `Failed to transform ${transformType} credential for provider '${providerId}': ${originalError.message}`
+    )
     this.providerId = providerId
     this.context = { transformType, originalError: originalError.message }
   }
@@ -155,10 +157,10 @@ export class RequiredEnvironmentVariableError extends CredentialError {
   readonly envVarName: string
 
   constructor(envVarName: string, purpose?: string) {
-    const message = purpose 
+    const message = purpose
       ? `Required environment variable '${envVarName}' is not set (needed for: ${purpose})`
       : `Required environment variable '${envVarName}' is not set`
-    
+
     super(message)
     this.envVarName = envVarName
     this.context = { purpose }
@@ -182,9 +184,9 @@ export function getCredentialErrorDetails(error: CredentialError): Record<string
     message: error.message,
     context: error.context,
     // Include provider-specific fields if available
-    ...(('providerId' in error) && { providerId: error.providerId }),
-    ...(('credentialId' in error) && { credentialId: error.credentialId }),
-    ...(('missingEnvVars' in error) && { missingEnvVars: error.missingEnvVars }),
-    ...(('validationErrors' in error) && { validationErrors: error.validationErrors }),
+    ...('providerId' in error && { providerId: error.providerId }),
+    ...('credentialId' in error && { credentialId: error.credentialId }),
+    ...('missingEnvVars' in error && { missingEnvVars: error.missingEnvVars }),
+    ...('validationErrors' in error && { validationErrors: error.validationErrors }),
   }
 }

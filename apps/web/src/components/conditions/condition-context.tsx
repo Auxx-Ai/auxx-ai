@@ -2,19 +2,20 @@
 
 'use client'
 
-import React, { createContext, useContext, useCallback, useMemo } from 'react'
 import { produce } from 'immer'
+import type React from 'react'
+import { createContext, useCallback, useContext, useMemo } from 'react'
+import { v4 as generateId } from 'uuid'
 import type {
   Condition,
+  ConditionContextValue,
   ConditionGroup,
   ConditionGroupMetadata,
   ConditionSystemConfig,
-  ConditionContextValue,
   FieldDefinition,
   OperatorDefinition,
 } from './types'
-import { getOperatorsForFieldType, getOperatorDefinition } from './types'
-import { v4 as generateId } from 'uuid'
+import { getOperatorDefinition, getOperatorsForFieldType } from './types'
 
 const ConditionContext = createContext<ConditionContextValue | null>(null)
 
@@ -343,7 +344,8 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
         logicalOperator: groups.length > 0 ? 'AND' : 'OR',
         order: groups.length,
         metadata: {
-          name: metadata?.name || (newGroupCount > 1 ? `${defaultName} ${newGroupCount}` : defaultName),
+          name:
+            metadata?.name || (newGroupCount > 1 ? `${defaultName} ${newGroupCount}` : defaultName),
           description: metadata?.description || '',
           subtext: metadata?.subtext || '',
           collapsed: metadata?.collapsed || false,

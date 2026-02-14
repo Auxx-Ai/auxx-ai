@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 
 // import { database as db } from '@auxx/database'
 // import { Redis } from 'ioredis'

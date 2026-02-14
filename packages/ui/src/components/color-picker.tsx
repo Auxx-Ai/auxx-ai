@@ -1,11 +1,13 @@
 // components/ui/color-picker.tsx
-import React, { useState, useEffect } from 'react'
+
 import { Button } from '@auxx/ui/components/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
-import { Check } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
+import { Check } from 'lucide-react'
+import type React from 'react'
+import { useEffect, useState } from 'react'
 
 // Predefined color palette for organizational groups
 const colorPalette = [
@@ -120,30 +122,30 @@ export function ColorPicker({ value, onChange, disabled = false, className }: Co
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant="outline"
+          variant='outline'
           className={cn('h-10 justify-between px-3', className)}
           disabled={disabled}>
-          <div className="mr-2 h-6 w-6 rounded" style={{ backgroundColor: value }} />
-          <span className="text-xs">{value}</span>
+          <div className='mr-2 h-6 w-6 rounded' style={{ backgroundColor: value }} />
+          <span className='text-xs'>{value}</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-64 p-3" align="start">
-        <div className="space-y-3">
+      <PopoverContent className='w-64 p-3' align='start'>
+        <div className='space-y-3'>
           {/* Color preview */}
-          <div className="flex items-center">
+          <div className='flex items-center'>
             <div
-              className="mr-3 h-10 w-10 rounded"
+              className='mr-3 h-10 w-10 rounded'
               style={{ backgroundColor: isValidHex(customColor) ? customColor : value }}
             />
             <div>
-              <Label htmlFor="custom-color">Custom Color</Label>
+              <Label htmlFor='custom-color'>Custom Color</Label>
               <Input
-                id="custom-color"
+                id='custom-color'
                 value={customColor}
                 onChange={handleCustomColorChange}
                 onBlur={applyCustomColor}
                 onKeyDown={handleInputKeyDown}
-                className="mt-1 h-8"
+                className='mt-1 h-8'
                 maxLength={7}
               />
             </div>
@@ -151,8 +153,8 @@ export function ColorPicker({ value, onChange, disabled = false, className }: Co
 
           {/* Color grid */}
           <div>
-            <Label className="mb-2 block text-xs text-muted-foreground">Predefined Colors</Label>
-            <div className="grid grid-cols-5 gap-2">
+            <Label className='mb-2 block text-xs text-muted-foreground'>Predefined Colors</Label>
+            <div className='grid grid-cols-5 gap-2'>
               {colorPalette.map((color) => (
                 <button
                   key={color}
@@ -163,7 +165,7 @@ export function ColorPicker({ value, onChange, disabled = false, className }: Co
                   style={{ backgroundColor: color }}
                   onClick={() => handleColorSelect(color)}>
                   {value.toLowerCase() === color.toLowerCase() && (
-                    <Check className="h-4 w-4 text-white" />
+                    <Check className='h-4 w-4 text-white' />
                   )}
                 </button>
               ))}

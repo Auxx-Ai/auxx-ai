@@ -5,21 +5,20 @@
  * Exports session classes, types, and utilities
  */
 
-// Session class
-export { FileUploadSession } from './upload-session-service'
+// Shared types (exported from shared-types via session-types)
+export type {
+  CreateSessionOptions,
+  EntityType,
+  FileInfo,
+  SessionConfig,
+  SessionData,
+  SessionInfo,
+  SessionProgress,
+  SessionStatus,
+  UploadFile,
+} from '../types'
 
 // Session manager
 export { SessionManager } from './session-manager'
-
-// Shared types (exported from shared-types via session-types)
-export type {
-  EntityType,
-  FileInfo,
-  UploadFile,
-  SessionStatus,
-  SessionInfo,
-  SessionData,
-  CreateSessionOptions,
-  SessionProgress,
-  SessionConfig,
-} from '../types'
+// Session class
+export { FileUploadSession } from './upload-session-service'

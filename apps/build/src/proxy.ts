@@ -1,8 +1,8 @@
 // apps/build/src/proxy.ts
 
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
 import { WEBAPP_URL } from '@auxx/config/urls'
+import type { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
 
 /**
  * Proxy to protect routes and redirect to login

@@ -1,9 +1,10 @@
 // apps/web/src/lib/extensions/components/workflow/inputs/string-input.tsx
 
+import { Field, FieldContent, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
 import { Input } from '@auxx/ui/components/input'
 import { Textarea } from '@auxx/ui/components/textarea'
-import { Field, FieldContent, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
-import React, { useState, useEffect } from 'react'
+import type React from 'react'
+import { useEffect, useState } from 'react'
 import { useDebouncedCallback } from './use-debounced-callback'
 
 /**
@@ -71,7 +72,7 @@ export const StringInput = ({
         <Input
           id={name}
           name={name}
-          type="text"
+          type='text'
           value={localValue}
           onChange={handleChange}
           placeholder={placeholder}

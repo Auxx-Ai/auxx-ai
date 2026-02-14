@@ -1,8 +1,8 @@
 // packages/lib/src/providers/__tests__/provider-capabilities.test.ts
 
-import { describe, it, expect, vi } from 'vitest'
 import { IntegrationProviderType } from '@auxx/database/enums'
-import { PROVIDER_CAPABILITIES, getProviderCapabilities } from '../provider-capabilities'
+import { describe, expect, it, vi } from 'vitest'
+import { getProviderCapabilities, PROVIDER_CAPABILITIES } from '../provider-capabilities'
 import { ProviderRegistryService } from '../provider-registry-service'
 
 // Mock the database for ProviderRegistryService
@@ -276,7 +276,9 @@ describe('Provider Capabilities', () => {
       })
 
       it('should return default minimal capabilities for unknown provider', () => {
-        const capabilities = getProviderCapabilities('unknown' as keyof typeof IntegrationProviderType)
+        const capabilities = getProviderCapabilities(
+          'unknown' as keyof typeof IntegrationProviderType
+        )
         expect(capabilities).toBeDefined()
         expect(capabilities.canSend).toBe(false)
         expect(capabilities.labelScope).toBe('none')
@@ -344,7 +346,10 @@ describe('Provider Capabilities', () => {
       commonActions.forEach((action) => {
         Object.keys(PROVIDER_CAPABILITIES).forEach((providerType) => {
           expect(() => {
-            providerRegistry.isActionSupportedByProvider(action, providerType as keyof typeof IntegrationProviderType)
+            providerRegistry.isActionSupportedByProvider(
+              action,
+              providerType as keyof typeof IntegrationProviderType
+            )
           }).not.toThrow()
         })
       })

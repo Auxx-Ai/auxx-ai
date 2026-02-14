@@ -1,9 +1,9 @@
 // apps/api/src/services/organization-members/verify-org-membership.ts
 
 import { database } from '@auxx/database'
-import { type Result, ok, err } from 'neverthrow'
-import type { OrganizationMemberError } from './errors'
+import { err, ok, type Result } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
+import type { OrganizationMemberError } from './errors'
 
 /**
  * Verify that a user is a member of an organization

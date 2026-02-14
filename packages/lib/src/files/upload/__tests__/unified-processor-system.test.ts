@@ -4,18 +4,18 @@
  * Basic validation tests for the unified processor system
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import type { EntityType } from '../../types/entities'
 import type { UploadInitConfig, UploadPreparedConfig } from '../init-types'
+import { ProcessorRegistry } from '../processors/processor-registry'
 import {
   clamp,
-  sanitizeFileName,
   deriveStorageKey,
-  normalizeMimeType,
-  shouldUseMultipart,
   getDefaultKeyPrefix,
+  normalizeMimeType,
+  sanitizeFileName,
+  shouldUseMultipart,
 } from '../util'
-import { ProcessorRegistry } from '../processors/processor-registry'
-import type { EntityType } from '../../types/entities'
 
 describe('Unified Processor System', () => {
   describe('Utility Functions', () => {
@@ -54,7 +54,7 @@ describe('Unified Processor System', () => {
     it('should generate default key prefix (legacy - used for policy validation only)', () => {
       // NOTE: This prefix is only used for policy validation, not actual key generation
       // Actual keys now use format: {orgId}/{entity-type}/{entityId}/{timestamp}_{filename}
-    expect(getDefaultKeyPrefix('org123')).toBe('org123/')
+      expect(getDefaultKeyPrefix('org123')).toBe('org123/')
     })
   })
 

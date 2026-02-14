@@ -1,39 +1,39 @@
 // packages/lib/src/workflow-engine/nodes/transform-nodes/date-time-processor.ts
 
-import { BaseNodeProcessor } from '../base-node'
-import type {
-  WorkflowNode,
-  NodeExecutionResult,
-  ValidationResult,
-  PreprocessedNodeData,
-} from '../../core/types'
-import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
+import type { Duration } from 'date-fns'
 import {
-  format,
-  parse,
   add,
-  sub,
   differenceInMilliseconds,
-  startOfDay,
   endOfDay,
-  startOfMonth,
-  endOfMonth,
-  startOfWeek,
-  endOfWeek,
-  startOfYear,
-  endOfYear,
-  startOfHour,
   endOfHour,
-  startOfMinute,
   endOfMinute,
-  startOfSecond,
+  endOfMonth,
   endOfSecond,
+  endOfWeek,
+  endOfYear,
+  format,
   formatRelative,
   isValid,
+  parse,
+  startOfDay,
+  startOfHour,
+  startOfMinute,
+  startOfMonth,
+  startOfSecond,
+  startOfWeek,
+  startOfYear,
+  sub,
 } from 'date-fns'
-import type { Duration } from 'date-fns'
 import { enUS } from 'date-fns/locale'
+import type { ExecutionContextManager } from '../../core/execution-context'
+import type {
+  NodeExecutionResult,
+  PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
+} from '../../core/types'
+import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { BaseNodeProcessor } from '../base-node'
 
 /**
  * Date time operation types
@@ -405,9 +405,15 @@ export class DateTimeProcessor extends BaseNodeProcessor {
         inputDateInfo.originalValue.includes('{{') &&
         inputDateInfo.originalValue.includes('}}')
       ) {
-        currentInputValue = await this.interpolateVariables(inputDateInfo.originalValue, contextManager)
+        currentInputValue = await this.interpolateVariables(
+          inputDateInfo.originalValue,
+          contextManager
+        )
       } else {
-        currentInputValue = await this.resolveVariablePath(inputDateInfo.originalValue, contextManager)
+        currentInputValue = await this.resolveVariablePath(
+          inputDateInfo.originalValue,
+          contextManager
+        )
       }
 
       inputDate = this.parseDate(currentInputValue)
@@ -700,12 +706,13 @@ export class DateTimeProcessor extends BaseNodeProcessor {
       case 'up':
         return funcs.end(date)
 
-      case 'nearest':
+      case 'nearest': {
         const start = funcs.start(date)
         const end = funcs.end(date)
         const startDiff = Math.abs(date.getTime() - start.getTime())
         const endDiff = Math.abs(date.getTime() - end.getTime())
         return startDiff < endDiff ? start : end
+      }
 
       default:
         throw new Error(`Unknown round direction: ${direction}`)
@@ -758,7 +765,7 @@ export class DateTimeProcessor extends BaseNodeProcessor {
           parsedDate = parse(dateString, customFormat, new Date())
           break
 
-        default:
+        default: {
           // Use predefined format
           const formatString = this.getParseFormatString(formatType)
           if (!formatString) {
@@ -766,6 +773,7 @@ export class DateTimeProcessor extends BaseNodeProcessor {
           }
           parsedDate = parse(dateString, formatString, new Date())
           break
+        }
       }
 
       if (!isValid(parsedDate)) {
@@ -1465,12 +1473,13 @@ export class DateTimeProcessor extends BaseNodeProcessor {
       case 'up':
         return funcs.end(date)
 
-      case 'nearest':
+      case 'nearest': {
         const start = funcs.start(date)
         const end = funcs.end(date)
         const startDiff = Math.abs(date.getTime() - start.getTime())
         const endDiff = Math.abs(date.getTime() - end.getTime())
         return startDiff < endDiff ? start : end
+      }
 
       default:
         throw new Error(`Unknown round direction: ${direction}`)

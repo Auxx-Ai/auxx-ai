@@ -1,11 +1,12 @@
 'use client'
+
 // apps/web/src/components/fields/displays/field-option-button.tsx
 
-import { useCallback } from 'react'
-import type { MouseEvent, ReactNode } from 'react'
-import { Tooltip } from '~/components/global/tooltip'
 import { Button, type ButtonProps } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
+import type { MouseEvent, ReactNode } from 'react'
+import { useCallback } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
 
 /**
  * FieldOptionButtonProps interface
@@ -62,8 +63,8 @@ export function FieldOptionButton({
     <Button
       {...restButtonProps}
       asChild={Boolean(href) || Boolean(asChild)}
-      size="icon-xs"
-      variant="ghost"
+      size='icon-xs'
+      variant='ghost'
       className={cn(
         baseButtonClass,
         'size-5 border border-black/4 bg-primary-150 hover:bg-primary-300/40 rounded-md',

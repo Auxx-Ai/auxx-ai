@@ -1,7 +1,6 @@
 // apps/web/src/app/(protected)/app/onboarding/_components/onboarding-progress.tsx
 'use client'
 
-import { useOnboarding } from './onboarding-provider'
 import {
   Stepper,
   StepperIndicator,
@@ -10,6 +9,7 @@ import {
   StepperTitle,
   StepperTrigger,
 } from '@auxx/ui/components/stepper'
+import { useOnboarding } from './onboarding-provider'
 
 /**
  * Step configuration
@@ -29,22 +29,22 @@ export function OnboardingProgress() {
   const { currentStep, completedSteps } = state
 
   return (
-    <div className="w-full pt-4 px-6">
+    <div className='w-full pt-4 px-6'>
       <Stepper value={currentStep}>
         {steps.map(({ step, title }, index) => (
           <StepperItem
             key={step}
             step={step}
             completed={completedSteps.includes(step) && step < currentStep}
-            className="not-last:flex-1 max-md:items-start">
-            <StepperTrigger className="rounded max-md:flex-col pointer-events-none">
-              <StepperIndicator className="data-[state=completed]:bg-foreground" />
-              <div className="hidden md:block text-center md:text-left">
-                <StepperTitle className="text-sm">{title}</StepperTitle>
+            className='not-last:flex-1 max-md:items-start'>
+            <StepperTrigger className='rounded max-md:flex-col pointer-events-none'>
+              <StepperIndicator className='data-[state=completed]:bg-foreground' />
+              <div className='hidden md:block text-center md:text-left'>
+                <StepperTitle className='text-sm'>{title}</StepperTitle>
               </div>
             </StepperTrigger>
             {index < steps.length - 1 && (
-              <StepperSeparator className="max-md:mt-3 md:mx-4 group-data-[state=completed]/step:bg-foreground" />
+              <StepperSeparator className='max-md:mt-3 md:mx-4 group-data-[state=completed]/step:bg-foreground' />
             )}
           </StepperItem>
         ))}

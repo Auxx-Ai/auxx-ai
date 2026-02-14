@@ -1,10 +1,10 @@
 'use client'
 
 import { Extension } from '@tiptap/core'
-import { ReactRenderer } from '@tiptap/react'
+import type { Node } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
-import { Node } from '@tiptap/pm/model'
+import { ReactRenderer } from '@tiptap/react'
 import tippy, { type Instance } from 'tippy.js'
 import { MentionPopover } from './mention-popover'
 

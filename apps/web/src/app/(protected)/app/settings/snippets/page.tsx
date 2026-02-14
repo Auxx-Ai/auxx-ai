@@ -1,16 +1,16 @@
 'use client'
 
-import React, { useRef, useEffect } from 'react'
-import { PlusIcon } from 'lucide-react'
-import { SnippetFolders } from './_components/snippet-folders'
-import { SnippetTable } from './_components/snippet-table'
-import { SnippetForm } from './_components/snippet-form'
 import { Button } from '@auxx/ui/components/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
-import SettingsPage from '~/components/global/settings-page'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@auxx/ui/components/resizable'
-import { SnippetProvider, useSnippetContext } from '~/contexts/snippet-context'
+import { PlusIcon } from 'lucide-react'
+import React, { useEffect, useRef } from 'react'
 import type { ImperativePanelHandle } from 'react-resizable-panels'
+import SettingsPage from '~/components/global/settings-page'
+import { SnippetProvider, useSnippetContext } from '~/contexts/snippet-context'
+import { SnippetFolders } from './_components/snippet-folders'
+import { SnippetForm } from './_components/snippet-form'
+import { SnippetTable } from './_components/snippet-table'
 
 /**
  * Content component that uses the snippet context
@@ -75,17 +75,17 @@ function SnippetsPageContent() {
 
   return (
     <SettingsPage
-      title="Snippets"
-      description="Manage all the fields you need for adding and updating contacts."
+      title='Snippets'
+      description='Manage all the fields you need for adding and updating contacts.'
       breadcrumbs={breadcrumbs}
       button={
-        <Button variant="outline" size="sm" onClick={() => openCreateDialog()}>
+        <Button variant='outline' size='sm' onClick={() => openCreateDialog()}>
           <PlusIcon />
           New Snippet
         </Button>
       }>
-      <div className="flex h-full w-full overflow-hidden">
-        <ResizablePanelGroup direction="horizontal">
+      <div className='flex h-full w-full overflow-hidden'>
+        <ResizablePanelGroup direction='horizontal'>
           <ResizablePanel
             ref={folderPanelRef}
             defaultSize={folderPanelState.isCollapsed ? 0 : folderPanelState.defaultSize}
@@ -112,8 +112,8 @@ function SnippetsPageContent() {
 
       {/* Create Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={(open) => !open && closeDialogs()}>
-        <DialogContent className="max-h-[90vh] overflow-auto">
-          <DialogHeader className="mb-4">
+        <DialogContent className='max-h-[90vh] overflow-auto'>
+          <DialogHeader className='mb-4'>
             <DialogTitle>{editingSnippet ? 'Copy Snippet' : 'Create Snippet'}</DialogTitle>
           </DialogHeader>
           <SnippetForm
@@ -129,8 +129,8 @@ function SnippetsPageContent() {
 
       {/* Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={(open) => !open && closeDialogs()}>
-        <DialogContent className="max-h-[90vh] overflow-auto">
-          <DialogHeader className="mb-4">
+        <DialogContent className='max-h-[90vh] overflow-auto'>
+          <DialogHeader className='mb-4'>
             <DialogTitle>Edit Snippet</DialogTitle>
           </DialogHeader>
           {editingSnippet && (

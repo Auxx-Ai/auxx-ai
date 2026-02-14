@@ -2,9 +2,9 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { WorkflowTriggerType, type WorkflowVersion } from './types'
+import { and, eq } from 'drizzle-orm'
 import { ScheduledTriggerService } from './scheduled-trigger-service'
-import { eq, and } from 'drizzle-orm'
+import { WorkflowTriggerType, type WorkflowVersion } from './types'
 
 const logger = createScopedLogger('workflow-version-service')
 

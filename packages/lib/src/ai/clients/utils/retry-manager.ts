@@ -1,8 +1,8 @@
 // packages/lib/src/ai/clients/utils/retry-manager.ts
 
-import { createScopedLogger, Logger } from '@auxx/logger'
-import { CircuitBreaker } from './circuit-breaker'
+import { createScopedLogger, type Logger } from '@auxx/logger'
 import type { OperationContext } from '../base/types'
+import type { CircuitBreaker } from './circuit-breaker'
 
 interface RetryConfig {
   maxAttempts: number
@@ -115,7 +115,7 @@ export class RetryManager {
 
     switch (strategy) {
       case 'exponential':
-        delay = Math.min(this.config.baseDelay * Math.pow(2, attempt), this.config.maxDelay)
+        delay = Math.min(this.config.baseDelay * 2 ** attempt, this.config.maxDelay)
         break
       case 'linear':
         delay = Math.min(this.config.baseDelay * (attempt + 1), this.config.maxDelay)

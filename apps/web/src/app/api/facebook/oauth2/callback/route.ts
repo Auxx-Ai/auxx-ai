@@ -1,10 +1,10 @@
 // src/app/api/facebook/oauth2/callback/route.ts
 
-import { type NextRequest } from 'next/server'
 import { env, WEBAPP_URL } from '@auxx/config/server'
-import { FacebookOAuthService } from '@auxx/lib/providers'
 import type { FacebookIntegrationMetadata } from '@auxx/lib/providers'
+import { FacebookOAuthService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
+import type { NextRequest } from 'next/server'
 
 const logger = createScopedLogger('facebook-oauth-callback')
 

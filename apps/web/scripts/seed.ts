@@ -1,7 +1,8 @@
-import { seedNewUserDatabase } from '@auxx/lib/seed'
 import { database as db, schema } from '@auxx/database'
-import { auth } from '~/auth/server'
+import { seedNewUserDatabase } from '@auxx/lib/seed'
 import { eq } from 'drizzle-orm'
+import { auth } from '~/auth/server'
+
 // seedNewUserDatabase
 async function main() {
   console.log('🌱 Starting database seeding...')

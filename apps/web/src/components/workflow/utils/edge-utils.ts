@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/utils/edge-utils.ts
 
-import type { Node, Edge } from '@xyflow/react'
-import type { FlowNode, FlowEdge } from '../types'
+import type { Edge, Node } from '@xyflow/react'
+import type { FlowEdge, FlowNode } from '../types'
 
 type ConnectedSourceOrTargetNodesChange = { type: string; edge: Edge }[]
 

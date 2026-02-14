@@ -2,13 +2,13 @@
 
 'use client'
 
-import { Check, Mail } from 'lucide-react'
-import { CommandItem } from '@auxx/ui/components/command'
-import { Avatar, AvatarImage } from '@auxx/ui/components/avatar'
-import { Checkbox } from '@auxx/ui/components/checkbox'
-import { Badge } from '@auxx/ui/components/badge'
 import type { Actor, ActorId } from '@auxx/types/actor'
+import { Avatar, AvatarImage } from '@auxx/ui/components/avatar'
+import { Badge } from '@auxx/ui/components/badge'
+import { Checkbox } from '@auxx/ui/components/checkbox'
+import { CommandItem } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
+import { Check, Mail } from 'lucide-react'
 
 /**
  * Props for ActorItem display component
@@ -36,44 +36,43 @@ export function ActorItem({ actor, isSelected, onToggle, multi = true }: ActorIt
       key={actor.actorId}
       value={actor.actorId}
       onSelect={handleSelect}
-      className="flex items-center gap-2">
+      className='flex items-center gap-2'>
       {actor.avatarUrl ? (
-        <Avatar className="size-5">
+        <Avatar className='size-5'>
           <AvatarImage src={actor.avatarUrl} />
         </Avatar>
       ) : (
         <EntityIcon
           iconId={iconId}
           color={'gray'}
-          size="sm"
+          size='sm'
           inverse
-          className="-ms-0.5 inset-shadow-xs inset-shadow-black/20"
+          className='-ms-0.5 inset-shadow-xs inset-shadow-black/20'
         />
       )}
-      <div className="flex items-center gap-1.5 flex-1 min-w-0">
-        <span className="truncate">
-          {actor.name ||
-            (actor.type === 'user' && actor.email) || (
-              <em className="text-muted-foreground">Unknown</em>
-            )}
+      <div className='flex items-center gap-1.5 flex-1 min-w-0'>
+        <span className='truncate'>
+          {actor.name || (actor.type === 'user' && actor.email) || (
+            <em className='text-muted-foreground'>Unknown</em>
+          )}
         </span>
         {actor.type === 'user' && actor.name && actor.email && (
           <span title={actor.email}>
-            <Mail className="size-3.5 text-muted-foreground shrink-0" />
+            <Mail className='size-3.5 text-muted-foreground shrink-0' />
           </span>
         )}
         {actor.type === 'group' && actor.memberCount !== undefined && actor.memberCount > 0 && (
-          <Badge variant="secondary" className="text-xs shrink-0">
+          <Badge variant='secondary' className='text-xs shrink-0'>
             {actor.memberCount}
           </Badge>
         )}
       </div>
       {multi ? (
-        <Checkbox checked={isSelected} className="pointer-events-none" />
+        <Checkbox checked={isSelected} className='pointer-events-none' />
       ) : (
         isSelected && (
-          <div className="rounded-full size-4 bg-info flex items-center justify-center border border-blue-800">
-            <Check className="size-2.5! text-white" strokeWidth={4} />
+          <div className='rounded-full size-4 bg-info flex items-center justify-center border border-blue-800'>
+            <Check className='size-2.5! text-white' strokeWidth={4} />
           </div>
         )
       )}

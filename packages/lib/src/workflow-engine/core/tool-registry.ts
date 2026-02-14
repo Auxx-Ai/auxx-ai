@@ -2,7 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import type { NodeProcessorRegistry } from './node-processor-registry'
-import { WorkflowNodeType, type Workflow } from './types'
+import { type Workflow, WorkflowNodeType } from './types'
 
 const logger = createScopedLogger('tool-registry')
 

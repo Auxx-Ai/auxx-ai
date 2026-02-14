@@ -1,6 +1,6 @@
 // packages/lib/src/ai/providers/anthropic/anthropic-defaults.ts
 
-import { type ProviderCapabilities, type ModelCapabilities, ModelType, FetchFrom } from '../types'
+import { FetchFrom, type ModelCapabilities, ModelType, type ProviderCapabilities } from '../types'
 
 export const ANTHROPIC_CAPABILITIES: ProviderCapabilities = {
   id: 'anthropic',

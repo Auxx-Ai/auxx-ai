@@ -69,7 +69,7 @@ const findMainFunction = (
 
       // Extract parameter positions
       const paramsMatch = /\(([^)]*)\)/.exec(match[0])
-      let paramsInfo = undefined
+      let paramsInfo
       if (paramsMatch) {
         const paramsStart = match.index + match[0].indexOf('(') + 1
         const paramsEnd = paramsStart + paramsMatch[1].length
@@ -93,7 +93,7 @@ const findMainFunction = (
         const functionBody = code.substring(bodyStart, bodyEnd)
         const returnMatch = /return\s*\{[^}]*\}(?:\s*;?)$/m.exec(functionBody.trim())
 
-        let returnInfo = undefined
+        let returnInfo
         if (returnMatch) {
           const returnStart = bodyStart + functionBody.lastIndexOf(returnMatch[0])
           const returnEnd = returnStart + returnMatch[0].length

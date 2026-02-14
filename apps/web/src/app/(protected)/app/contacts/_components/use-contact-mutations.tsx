@@ -1,7 +1,8 @@
 // ~/app/(protected)/app/contacts/_components/use-contact-mutations.tsx
-import { api } from '~/trpc/react'
+
 import { toastError } from '@auxx/ui/components/toast'
 import { useRecordInvalidation } from '~/components/resources'
+import { api } from '~/trpc/react'
 
 interface UseContactMutationsOptions {
   onSuccess?: () => void

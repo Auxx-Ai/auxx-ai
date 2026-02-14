@@ -1,17 +1,17 @@
 // apps/web/src/components/workflow/hooks/use-workflow-shortcuts.ts
 
-import React from 'react'
 import { useReactFlow, useStoreApi } from '@xyflow/react'
-import { useInteractionStore } from '../store/interaction-store'
+import React from 'react'
 import { useCanvasStore } from '../store/canvas-store'
-import { useHistoryManager } from '../store/workflow-store-provider'
-import { useWorkflowOrganize } from './use-workflow-organize'
+import { useInteractionStore } from '../store/interaction-store'
 import { usePanelStore } from '../store/panel-store'
-import { useWorkflowSave } from './use-workflow-save'
-import { useNodesInteractions } from './use-node-interactions'
-import { useEdgeInteractions } from './use-edge-interactions'
-import { useNodesReadOnly } from './use-read-only'
+import { useHistoryManager } from '../store/workflow-store-provider'
 import { hasActiveTextSelection } from '../utils/keyboard-utils'
+import { useEdgeInteractions } from './use-edge-interactions'
+import { useNodesInteractions } from './use-node-interactions'
+import { useNodesReadOnly } from './use-read-only'
+import { useWorkflowOrganize } from './use-workflow-organize'
+import { useWorkflowSave } from './use-workflow-save'
 
 /**
  * Centralized hook for handling all keyboard shortcuts in the workflow editor
@@ -48,8 +48,14 @@ export function useWorkflowShortcuts() {
   const { handleBulkEdgeDelete } = useEdgeInteractions()
 
   // Node interactions (copy/paste/delete)
-  const { handleCopyNode, handleNodesPaste, handleDeleteNode, handleSelectAll, handleNodeDisable, handleToggleCollapse } =
-    useNodesInteractions()
+  const {
+    handleCopyNode,
+    handleNodesPaste,
+    handleDeleteNode,
+    handleSelectAll,
+    handleNodeDisable,
+    handleToggleCollapse,
+  } = useNodesInteractions()
 
   // Node operations (keep these for now)
   // const duplicateNodes = useNodeStore((state) => state.duplicateNodes)
@@ -135,7 +141,7 @@ export function useWorkflowShortcuts() {
 
         // === SELECTION OPERATIONS ===
         // Select All: Cmd/Ctrl + A
-        case isCmd && key === 'a':
+        case isCmd && key === 'a': {
           // Check if target is a text element where select all should work natively
           const targetElement = event.target as HTMLElement
           const isTextElement =
@@ -155,10 +161,11 @@ export function useWorkflowShortcuts() {
           event.preventDefault()
           handleSelectAll(true)
           break
+        }
 
         // === NODE OPERATIONS ===
         // Copy: Cmd/Ctrl + C
-        case isCmd && key === 'c':
+        case isCmd && key === 'c': {
           // If user has text selected, allow native browser copy
           if (hasActiveTextSelection()) {
             // Don't prevent default - let browser handle text copy
@@ -171,6 +178,7 @@ export function useWorkflowShortcuts() {
             handleCopyNode() // Will copy all selected nodes
           }
           break
+        }
 
         // Paste: Cmd/Ctrl + V
         case isCmd && key === 'v':
@@ -179,16 +187,17 @@ export function useWorkflowShortcuts() {
           break
 
         // Duplicate: Cmd/Ctrl + D
-        case isCmd && key === 'd':
+        case isCmd && key === 'd': {
           event.preventDefault()
           const nodesToDuplicate = getSelectedNodeIds()
           if (nodesToDuplicate.length > 0) {
             // duplicateNodes(nodesToDuplicate)
           }
           break
+        }
 
         // Delete: Delete or Backspace
-        case key === 'delete' || key === 'backspace':
+        case key === 'delete' || key === 'backspace': {
           event.preventDefault()
           if (getNodesReadOnly()) return
 
@@ -209,6 +218,7 @@ export function useWorkflowShortcuts() {
           // setNodes(nodes.map((node) => ({ ...node, selected: false })))
           // setEdges(edges.map((edge) => ({ ...edge, selected: false })))
           break
+        }
 
         // === ZOOM OPERATIONS ===
         // Zoom In: Cmd/Ctrl + Plus/Equals

@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/constants/nodes/ai.ts
-import { createRangeValidator } from '../validation'
+
 import type { NodeConstants } from '../types'
+import { createRangeValidator } from '../validation'
 
 /**
  * Constants for AI-related nodes (AI, Text Classifier, Information Extractor)

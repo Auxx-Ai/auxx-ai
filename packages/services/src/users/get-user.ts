@@ -1,7 +1,7 @@
 // packages/services/src/users/get-user.ts
 
 import { database } from '@auxx/database'
-import { type Result, ok, err } from 'neverthrow'
+import { err, ok, type Result } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { UserError } from './errors'
 

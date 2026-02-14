@@ -2,7 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import type { ValueResolution, ResolvedValue } from '../../types/resolution'
+import type { ResolvedValue, ValueResolution } from '../../types/resolution'
 import type { ResolutionStatus } from '../get-unique-values-with-status'
 
 /** Input for caching a single resolution */

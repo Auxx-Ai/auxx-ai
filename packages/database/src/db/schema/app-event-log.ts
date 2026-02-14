@@ -1,19 +1,11 @@
 // packages/database/src/db/schema/app-event-log.ts
 // Drizzle table for app event log
 
-import {
-  pgTable,
-  text,
-  timestamp,
-  jsonb,
-  integer,
-  index,
-  type AnyPgColumn,
-} from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, index, integer, jsonb, pgTable, text, timestamp } from './_shared'
 import { App } from './app'
-import { Organization } from './organization'
 import { AppVersion } from './app-version'
+import { Organization } from './organization'
 
 /** Drizzle table for AppEventLog */
 export const AppEventLog = pgTable(

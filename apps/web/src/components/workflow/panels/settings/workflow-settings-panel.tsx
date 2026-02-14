@@ -1,9 +1,9 @@
 // apps/web/src/components/workflow/panels/settings/workflow-settings-panel.tsx
 
-import React, { memo, useCallback, useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { MoreHorizontal, Trash2, Copy, Info } from 'lucide-react'
+import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Button } from '@auxx/ui/components/button'
+import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import {
   DropdownMenu,
@@ -12,28 +12,29 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { usePanelStore } from '~/components/workflow/store/panel-store'
-import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
-import { useDockStore } from '~/stores/dock-store'
-import { useDockPortal } from '~/components/global/dock-portal-provider'
-import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import { IconPicker, type IconPickerValue } from '@auxx/ui/components/icon-picker'
-import { Tooltip } from '~/components/global/tooltip'
-import { useConfirm } from '~/hooks/use-confirm'
-import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { DuplicateWorkflowDialog } from '~/components/workflow/dialogs/duplicate-workflow-dialog'
-import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
-import { cn } from '@auxx/ui/lib/utils'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { Input } from '@auxx/ui/components/input'
-import CollapseWrap from '~/components/workflow/ui/collapse-wrap'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
+import { Copy, Info, MoreHorizontal, Trash2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import type React from 'react'
+import { memo, useCallback, useEffect, useState } from 'react'
+import { useDockPortal } from '~/components/global/dock-portal-provider'
+import { Tooltip } from '~/components/global/tooltip'
+import { DuplicateWorkflowDialog } from '~/components/workflow/dialogs/duplicate-workflow-dialog'
 import { useWorkflowSave } from '~/components/workflow/hooks/use-workflow-save'
 import { useWorkflowTrigger } from '~/components/workflow/hooks/use-workflow-trigger'
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
-import { WorkflowAccessSettings } from './workflow-access-settings'
+import { usePanelStore } from '~/components/workflow/store/panel-store'
+import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
+import CollapseWrap from '~/components/workflow/ui/collapse-wrap'
+import { useConfirm } from '~/hooks/use-confirm'
+import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
+import { useDockStore } from '~/stores/dock-store'
+import { api } from '~/trpc/react'
 import Section from '../../ui/section'
+import { WorkflowAccessSettings } from './workflow-access-settings'
 
 interface WorkflowSettingsPanelProps {
   className?: string
@@ -282,22 +283,22 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
         onWidthChange={handleWidthChange}
         minWidth={minWidth}
         maxWidth={maxWidth}
-        title="Workflow Settings"
+        title='Workflow Settings'
         portalTarget={portalRef}
-        panelType="settings">
+        panelType='settings'>
         {/* Header */}
         <DrawerHeader
-          icon={<EntityIcon iconId="settings" color="gray" className="size-6" />}
-          title="Workflow Settings"
+          icon={<EntityIcon iconId='settings' color='gray' className='size-6' />}
+          title='Workflow Settings'
           onClose={closeSettingsPanel}
           actions={
             <>
               {/* Enable/Disable Toggle */}
               <Tooltip content={workflow?.enabled ? 'Disable workflow' : 'Enable workflow'}>
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  className="rounded-full gap-1.5 text-xs"
+                  variant='ghost'
+                  size='sm'
+                  className='rounded-full gap-1.5 text-xs'
                   onClick={handleToggleEnabled}
                   disabled={toggleWorkflow.isPending}
                   tabIndex={-1}>
@@ -311,17 +312,17 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
               {/* More Actions Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" className="rounded-full" tabIndex={-1}>
+                  <Button variant='ghost' size='icon-sm' className='rounded-full' tabIndex={-1}>
                     <MoreHorizontal />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align='end'>
                   <DropdownMenuItem onClick={() => setDuplicateDialogOpen(true)}>
                     <Copy />
                     Duplicate
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleDelete} variant="destructive">
+                  <DropdownMenuItem onClick={handleDelete} variant='destructive'>
                     <Trash2 />
                     Delete
                   </DropdownMenuItem>
@@ -331,13 +332,13 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
           }
         />
         {/* Content */}
-        <div className="flex-1 flex-col flex overflow-y-auto">
+        <div className='flex-1 flex-col flex overflow-y-auto'>
           <CollapseWrap
             minHeight={80}
             isCollapsed={isDescriptionCollapsed}
             onCollapsedChange={setIsDescriptionCollapsed}
-            className="sticky top-0 z-10 border-b bg-primary-50/90 backdrop-blur-sm">
-            <div className="relative flex flex-row gap-1 px-2 py-1.5">
+            className='sticky top-0 z-10 border-b bg-primary-50/90 backdrop-blur-sm'>
+            <div className='relative flex flex-row gap-1 px-2 py-1.5'>
               <IconPicker
                 value={
                   localIcon
@@ -346,23 +347,23 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
                 }
                 onChange={handleIconChange}>
                 <button
-                  type="button"
-                  className="rounded-md p-0.5 hover:bg-primary-100 transition-colors">
+                  type='button'
+                  className='rounded-md p-0.5 hover:bg-primary-100 transition-colors'>
                   <EntityIcon
                     iconId={localIcon?.iconId ?? 'text'}
                     color={localIcon?.color ?? 'blue'}
-                    className="size-6"
+                    className='size-6'
                   />
                 </button>
               </IconPicker>
               <Input
-                id="title"
-                variant="transparent"
+                id='title'
+                variant='transparent'
                 value={localTitle}
                 onChange={handleTitleChange}
                 onBlur={handleTitleBlur}
                 onKeyDown={handleTitleKeyDown}
-                placeholder="Enter workflow title"
+                placeholder='Enter workflow title'
                 tabIndex={-1}
                 className={cn(
                   'h-7 min-w-0 w-full appearance-none rounded-md border px-1 outline-none focus-visible:ring-1 focus-visible:ring-blue-500',
@@ -371,26 +372,26 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
                 )}
               />
               {titleError && (
-                <div className="absolute left-9 top-full z-20 mt-0.5 text-xs text-red-500">
+                <div className='absolute left-9 top-full z-20 mt-0.5 text-xs text-red-500'>
                   Title cannot be empty
                 </div>
               )}
             </div>
-            <div className="leading-0 group flex rounded-lg px-2 py-[5px]">
+            <div className='leading-0 group flex rounded-lg px-2 py-[5px]'>
               <AutosizeTextarea
-                id="description"
+                id='description'
                 minHeight={1}
                 value={localDescription}
                 onChange={handleDescriptionChange}
                 onKeyDown={handleDescriptionKeyDown}
                 onFocus={() => setIsDescriptionCollapsed(false)}
                 onBlur={() => setIsDescriptionCollapsed(true)}
-                className="w-full resize-none appearance-none border-none py-1 px-2 bg-transparent text-xs leading-[18px] caret-[#295EFF] outline-none dark:bg-transparent"
-                placeholder="Enter workflow description"
+                className='w-full resize-none appearance-none border-none py-1 px-2 bg-transparent text-xs leading-[18px] caret-[#295EFF] outline-none dark:bg-transparent'
+                placeholder='Enter workflow description'
               />
             </div>
           </CollapseWrap>
-          <div className="flex-1">
+          <div className='flex-1'>
             {workflowAppId && isManualTrigger && (
               <WorkflowAccessSettings
                 workflowAppId={workflowAppId}
@@ -403,12 +404,12 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
               />
             )}
             {workflowAppId && !isManualTrigger && (
-              <Section title="Sharing" collapsible={false}>
-                <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-                  <Info className="size-5 text-muted-foreground shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">Sharing not available</p>
-                    <p className="text-xs text-muted-foreground">
+              <Section title='Sharing' collapsible={false}>
+                <div className='flex items-start gap-3 p-3 bg-muted/50 rounded-lg'>
+                  <Info className='size-5 text-muted-foreground shrink-0 mt-0.5' />
+                  <div className='space-y-1'>
+                    <p className='text-sm font-medium'>Sharing not available</p>
+                    <p className='text-xs text-muted-foreground'>
                       Only workflows with a Manual trigger can be shared publicly. Change the
                       trigger type to Manual to enable sharing.
                     </p>

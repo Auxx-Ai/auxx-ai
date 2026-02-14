@@ -1,11 +1,11 @@
 // packages/services/src/app-connections/resolve-app-connection-for-runtime.ts
 
-import { database } from '@auxx/database'
 import { CredentialService } from '@auxx/credentials'
+import { database } from '@auxx/database'
 import { err, ok, type Result } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import { logger } from './utils'
 import type { DecryptedConnectionData, RuntimeConnectionData } from './types'
+import { logger } from './utils'
 
 /**
  * Resolve app connections for runtime execution
@@ -142,8 +142,8 @@ export async function resolveAppConnectionForRuntime(input: {
   const userConnDef = userConnDefResult.value
   const orgConnDef = orgConnDefResult.value
 
-  let userConnection: RuntimeConnectionData | undefined = undefined
-  let organizationConnection: RuntimeConnectionData | undefined = undefined
+  let userConnection: RuntimeConnectionData | undefined
+  let organizationConnection: RuntimeConnectionData | undefined
 
   // 2. Fetch user connection (if app has user-scoped definition)
   if (userConnDef) {

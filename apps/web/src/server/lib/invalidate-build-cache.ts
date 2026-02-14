@@ -1,9 +1,9 @@
 // apps/web/src/server/lib/invalidate-build-cache.ts
 
 import { database } from '@auxx/database'
-import { eq } from 'drizzle-orm'
-import { getRedisClient } from '@auxx/redis'
 import { createScopedLogger } from '@auxx/logger'
+import { getRedisClient } from '@auxx/redis'
+import { eq } from 'drizzle-orm'
 
 const logger = createScopedLogger('invalidate-build-cache')
 const CACHE_PREFIX = 'build-dehydrated'
@@ -15,7 +15,7 @@ const CACHE_PREFIX = 'build-dehydrated'
  * @param developerAccountId - The developer account ID whose members' caches should be invalidated
  */
 export async function invalidateBuildCacheForDeveloperAccount(
-  developerAccountId: string,
+  developerAccountId: string
 ): Promise<void> {
   try {
     // Get all members of the developer account

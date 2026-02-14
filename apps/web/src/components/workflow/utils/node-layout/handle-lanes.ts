@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/utils/node-layout/handle-lanes.ts
 
-import type { FlowNode, FlowEdge } from '~/components/workflow/types'
+import type { FlowEdge, FlowNode } from '~/components/workflow/types'
 import { LAYOUT_SPACING, NODE_ADDITION_CONFIG } from '../layout-constants'
 
 /**

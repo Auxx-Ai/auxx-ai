@@ -2,9 +2,10 @@
 
 import type { FC } from 'react'
 import { z } from 'zod'
-import ModelIcon from './model-icon'
-import ModelDisplay from './model-display'
 import { AiModelMode } from '../../nodes/core/ai'
+import ModelDisplay from './model-display'
+import ModelIcon from './model-icon'
+
 // import { AiModelMode } from '~/lib/workflow/core/nodes/ai/config'
 
 // Schema for completion params
@@ -61,12 +62,12 @@ const ModelNodeView: FC<ModelNodeViewProps> = ({ model }) => {
   }
 
   return (
-    <div className="group flex h-6 items-center gap-0.5 rounded-md bg-primary-100 p-1">
-      <div className="flex items-center gap-1">
+    <div className='group flex h-6 items-center gap-0.5 rounded-md bg-primary-100 p-1'>
+      <div className='flex items-center gap-1'>
         <ModelIcon
           provider={{ provider, label: provider }}
           modelName={modelName}
-          className="!h-4 !w-4"
+          className='!h-4 !w-4'
         />
         <ModelDisplay modelId={displayName} />
       </div>

@@ -1,5 +1,5 @@
 // ~/components/customers/group-management-dialog.tsx
-import { useState, useEffect } from 'react'
+
 import {
   Dialog,
   DialogContent,
@@ -8,9 +8,10 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
+import { useEffect, useState } from 'react'
 import { api } from '~/trpc/react'
-import ExistingGroupsTab from './existing-groups-tab'
 import CreateGroupTab from './create-group-tab'
+import ExistingGroupsTab from './existing-groups-tab'
 
 interface GroupManagementDialogProps {
   open: boolean
@@ -48,7 +49,7 @@ export default function GroupManagementDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="md" position="tc">
+      <DialogContent size='md' position='tc'>
         <DialogHeader>
           <DialogTitle>Manage Customer Groups</DialogTitle>
           <DialogDescription>
@@ -61,10 +62,10 @@ export default function GroupManagementDialog({
         <RadioTab
           value={activeTab}
           onValueChange={setActiveTab}
-          className="mb-4 w-full p-0.5 border"
-          radioGroupClassName="w-full">
-          <RadioTabItem value="existing">Existing Groups</RadioTabItem>
-          <RadioTabItem value="new">Create New Group</RadioTabItem>
+          className='mb-4 w-full p-0.5 border'
+          radioGroupClassName='w-full'>
+          <RadioTabItem value='existing'>Existing Groups</RadioTabItem>
+          <RadioTabItem value='new'>Create New Group</RadioTabItem>
         </RadioTab>
 
         {activeTab === 'existing' && (

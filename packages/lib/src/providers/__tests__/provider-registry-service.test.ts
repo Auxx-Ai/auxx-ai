@@ -1,7 +1,7 @@
 // packages/lib/src/providers/__tests__/provider-registry-service.test.ts
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { IntegrationProviderType } from '@auxx/database/enums'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProviderRegistryService } from '../provider-registry-service'
 
 // Mock the database

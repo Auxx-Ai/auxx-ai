@@ -1,10 +1,10 @@
 // apps/homepage/src/app/terms-of-service/page.tsx
-import React from 'react'
-import type { Metadata } from 'next'
-import Header from '../_components/main/header'
-import FooterSection from '../_components/main/footer-section'
 
+import type { Metadata } from 'next'
+import React from 'react'
 import { config } from '~/lib/config'
+import FooterSection from '../_components/main/footer-section'
+import Header from '../_components/main/header'
 
 export const metadata: Metadata = {
   title: `Terms of Service | ${config.shortName}`,
@@ -13,22 +13,22 @@ export const metadata: Metadata = {
 
 export default function TermsOfServicePage() {
   return (
-    <div id="root" className="relative overflow-y-auto h-screen">
+    <div id='root' className='relative overflow-y-auto h-screen'>
       <Header />
-      <main className="mt-20">
-        <section className="relative border-foreground/10 border-y">
-          <div className="relative z-10 mx-auto max-w-6xl border-x px-3">
-            <div className="border-x">
+      <main className='mt-20'>
+        <section className='relative border-foreground/10 border-y'>
+          <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
+            <div className='border-x'>
               <div
                 aria-hidden
-                className="h-3 w-full bg-[repeating-linear-gradient(-45deg,var(--color-black),var(--color-black)_1px,transparent_1px,transparent_4px)] opacity-15"
+                className='h-3 w-full bg-[repeating-linear-gradient(-45deg,var(--color-black),var(--color-black)_1px,transparent_1px,transparent_4px)] opacity-15'
               />
-              <div className="py-16 md:py-24 px-6">
-                <h1 className="mb-8 text-4xl font-bold">Terms of Service</h1>
+              <div className='py-16 md:py-24 px-6'>
+                <h1 className='mb-8 text-4xl font-bold'>Terms of Service</h1>
 
-                <div className="prose prose-gray dark:prose-invert max-w-none space-y-8">
+                <div className='prose prose-gray dark:prose-invert max-w-none space-y-8'>
                   <section>
-                    <h2 className="text-2xl font-semibold">1. Acceptance of Terms</h2>
+                    <h2 className='text-2xl font-semibold'>1. Acceptance of Terms</h2>
                     <p>
                       By accessing or using {config.shortName} ("the Service"), you agree to be
                       bound by these Terms of Service. If you disagree with any part of these terms,
@@ -37,7 +37,7 @@ export default function TermsOfServicePage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">2. Description of Service</h2>
+                    <h2 className='text-2xl font-semibold'>2. Description of Service</h2>
                     <p>
                       {config.shortName} provides an AI-powered email support ticket answer service
                       for Shopify businesses. Our platform integrates email services (Gmail and
@@ -46,7 +46,7 @@ export default function TermsOfServicePage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">3. User Accounts</h2>
+                    <h2 className='text-2xl font-semibold'>3. User Accounts</h2>
                     <p>
                       To use our Service, you must register for an account. You are responsible for
                       maintaining the confidentiality of your account credentials and for all
@@ -56,7 +56,7 @@ export default function TermsOfServicePage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">4. Subscription and Payment Terms</h2>
+                    <h2 className='text-2xl font-semibold'>4. Subscription and Payment Terms</h2>
                     <p>
                       Some features of the Service require a subscription. Billing cycles are
                       monthly or annual, starting on the date of subscription. Payment is charged at
@@ -69,7 +69,7 @@ export default function TermsOfServicePage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">5. Data Processing</h2>
+                    <h2 className='text-2xl font-semibold'>5. Data Processing</h2>
                     <p>
                       Our Service processes your email and Shopify data to provide automated
                       customer support. By using the Service, you grant us permission to access,
@@ -79,7 +79,7 @@ export default function TermsOfServicePage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">6. Intellectual Property Rights</h2>
+                    <h2 className='text-2xl font-semibold'>6. Intellectual Property Rights</h2>
                     <p>
                       The Service and its original content, features, and functionality are owned by
                       {config.shortName} and are protected by international copyright, trademark,
@@ -88,7 +88,7 @@ export default function TermsOfServicePage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">7. User Conduct</h2>
+                    <h2 className='text-2xl font-semibold'>7. User Conduct</h2>
                     <p>
                       You agree not to use the Service for any illegal purposes or to conduct any
                       unlawful activity. This includes but is not limited to: fraud, phishing,
@@ -98,7 +98,7 @@ export default function TermsOfServicePage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">8. Limitation of Liability</h2>
+                    <h2 className='text-2xl font-semibold'>8. Limitation of Liability</h2>
                     <p>
                       In no event shall {config.shortName}, nor its directors, employees, partners,
                       agents, suppliers, or affiliates, be liable for any indirect, incidental,
@@ -109,7 +109,7 @@ export default function TermsOfServicePage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">9. Termination</h2>
+                    <h2 className='text-2xl font-semibold'>9. Termination</h2>
                     <p>
                       We may terminate or suspend your account and bar access to the Service
                       immediately, without prior notice or liability, under our sole discretion, for
@@ -118,7 +118,7 @@ export default function TermsOfServicePage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">10. Changes to Terms</h2>
+                    <h2 className='text-2xl font-semibold'>10. Changes to Terms</h2>
                     <p>
                       We reserve the right to modify or replace these Terms at any time. If a
                       revision is material, we will provide at least 30 days' notice prior to any
@@ -128,14 +128,14 @@ export default function TermsOfServicePage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">11. Contact Us</h2>
+                    <h2 className='text-2xl font-semibold'>11. Contact Us</h2>
                     <p>If you have any questions about these Terms, please contact us at:</p>
-                    <p className="mt-2">
+                    <p className='mt-2'>
                       <strong>Email:</strong> {config.emails.support}
                     </p>
                   </section>
 
-                  <div className="pt-6 text-sm text-gray-500">
+                  <div className='pt-6 text-sm text-gray-500'>
                     <p>Last updated: May 6, 2025</p>
                   </div>
                 </div>

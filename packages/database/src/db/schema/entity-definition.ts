@@ -1,19 +1,19 @@
 // packages/database/src/db/schema/entity-definition.ts
 // Drizzle table for EntityDefinition
 
+import { createId } from '@paralleldrive/cuid2'
 import {
-  pgTable,
-  uniqueIndex,
+  type AnyPgColumn,
+  boolean,
   index,
+  pgTable,
+  sql,
   text,
   timestamp,
-  boolean,
-  type AnyPgColumn,
-  sql,
+  uniqueIndex,
 } from './_shared'
-import { createId } from '@paralleldrive/cuid2'
-import { Organization } from './organization'
 import { CustomField } from './custom-field'
+import { Organization } from './organization'
 
 /**
  * EntityDefinition table for storing custom entity type definitions
@@ -27,9 +27,7 @@ export const EntityDefinition = pgTable(
       .primaryKey()
       .notNull()
       .$defaultFn(() => createId()),
-    createdAt: timestamp({ precision: 3 })
-      .default(sql`CURRENT_TIMESTAMP`)
-      .notNull(),
+    createdAt: timestamp({ precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
     updatedAt: timestamp({ precision: 3 })
       .notNull()
       .$onUpdate(() => new Date()),

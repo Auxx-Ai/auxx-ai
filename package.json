@@ -15,10 +15,10 @@
     "sst:remove": "sst remove --stage=${STAGE:-dev}",
     "sso": "aws sso login --sso-session=auxxai",
     "clean": "turbo run clean && rm -rf node_modules .turbo out pnpm-lock.yaml",
-    "lint": "turbo lint",
-    "lint:fix": "turbo lint:fix",
+    "lint": "biome check --diagnostic-level=error .",
+    "lint:fix": "biome check --write .",
     "typecheck:dirs": "node scripts/typecheck-dirs.mjs",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "format": "biome format --write .",
     "setup:dev": "node scripts/setup-s3-cdn-secure.js development direct-s3",
     "setup:cloudfront": "node scripts/setup-cloudfront-secure.js production",
     "test": "vitest",
@@ -57,6 +57,7 @@
     "@aws-sdk/client-s3": "catalog:",
     "@aws-sdk/client-ssm": "3.799.0",
     "@aws-sdk/client-sts": "^3.893.0",
+    "@biomejs/biome": "^2.3.15",
     "@commitlint/cli": "^20.4.1",
     "@commitlint/config-conventional": "^20.4.1",
     "@types/node": "catalog:",
@@ -64,9 +65,8 @@
     "@types/react-dom": "catalog:",
     "@vitest/ui": "catalog:",
     "dotenv-cli": "^8.0.0",
-    "eslint": "catalog:",
     "husky": "^9.1.7",
-    "prettier": "catalog:",
+    "lint-staged": "^16.2.7",
     "rimraf": "catalog:",
     "sst": "3.17.38",
     "tsx": "catalog:",
@@ -78,6 +78,11 @@
   "packageManager": "pnpm@10.17.0",
   "engines": {
     "node": ">=22.0.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json}": [
+      "biome check --write --no-errors-on-unmatched"
+    ]
   },
   "pnpm": {
     "onlyBuiltDependencies": [

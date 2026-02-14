@@ -1,14 +1,14 @@
 // // packages/sdk/src/util/copy-with-transform.ts
 
-import { Dirent, promises as fs } from 'fs'
+import { type Dirent, promises as fs } from 'fs'
 import path from 'path'
 import {
+  type CreateProjectError,
   combineAsync,
   complete,
-  CreateProjectError,
   errored,
   isErrored,
-  Result,
+  type Result,
 } from '../errors.js'
 
 /**

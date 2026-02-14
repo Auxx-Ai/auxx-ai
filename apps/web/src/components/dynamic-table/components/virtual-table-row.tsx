@@ -2,13 +2,13 @@
 
 'use client'
 
-import { type Row } from '@tanstack/react-table'
-import { type VirtualItem, type Virtualizer } from '@tanstack/react-virtual'
-import { useCallback, memo } from 'react'
-import { VirtualTableCell } from './virtual-table-cell'
-import { SelectableTableCell } from './selectable-table-cell'
 import { cn } from '@auxx/ui/lib/utils'
+import type { Row } from '@tanstack/react-table'
+import type { VirtualItem, Virtualizer } from '@tanstack/react-virtual'
+import { memo, useCallback } from 'react'
 import { ROW_HEIGHT } from '../utils/constants'
+import { SelectableTableCell } from './selectable-table-cell'
+import { VirtualTableCell } from './virtual-table-cell'
 
 const CELL_DEFAULT =
   'group/tablecell h-full bg-primary-50/80 dark:bg-background group-hover/tablerow:bg-primary-100/80 group-hover/tablerow:dark:bg-primary-100/80'
@@ -114,22 +114,23 @@ function VirtualTableRowInner<TData>({
     }
   }
 
-  const cellClassName = cn(CELL_DEFAULT, isSelected && CELL_SELECTED, isLastClicked && CELL_LAST_CLICKED)
+  const cellClassName = cn(
+    CELL_DEFAULT,
+    isSelected && CELL_SELECTED,
+    isLastClicked && CELL_LAST_CLICKED
+  )
   const pinnedCellClassName = cn(cellClassName, 'backdrop-blur-sm')
 
   return (
-    <div
-      ref={mergedRef}
-      data-index={virtualRow.index}
-      className="absolute w-full"
-      style={style}>
+    <div ref={mergedRef} data-index={virtualRow.index} className='absolute w-full' style={style}>
       <div
         data-state={isSelected && 'selected'}
         aria-selected={isSelected}
         className={cn(
           'flex group/tablerow w-full border-y border-background rounded-md',
           'bg-primary-50 dark:bg-background hover:bg-primary-150/80 dark:hover:bg-primary-50/80',
-          isSelected && 'bg-accent-50 hover:bg-accent-100 dark:bg-accent-50 dark:hover:bg-accent-100',
+          isSelected &&
+            'bg-accent-50 hover:bg-accent-100 dark:bg-accent-50 dark:hover:bg-accent-100',
           isLastClicked && 'bg-primary-150 hover:bg-primary-200',
           isDragging && 'opacity-50',
           isBulkMode && enableCheckbox && 'cursor-pointer',
@@ -154,10 +155,7 @@ function VirtualTableRowInner<TData>({
 
         {/* Pinned left cells */}
         {pinnedLeftCells.map((cell) => (
-          <div
-            key={cell.id}
-            className="sticky z-19"
-            style={{ left: cell.column.getStart('left') }}>
+          <div key={cell.id} className='sticky z-19' style={{ left: cell.column.getStart('left') }}>
             {cellSelectionEnabled ? (
               <SelectableTableCell
                 cell={cell}
@@ -166,7 +164,11 @@ function VirtualTableRowInner<TData>({
                 className={pinnedCellClassName}
               />
             ) : (
-              <VirtualTableCell cell={cell} columnId={cell.column.id} className={pinnedCellClassName} />
+              <VirtualTableCell
+                cell={cell}
+                columnId={cell.column.id}
+                className={pinnedCellClassName}
+              />
             )}
           </div>
         ))}
@@ -182,7 +184,12 @@ function VirtualTableRowInner<TData>({
               className={cellClassName}
             />
           ) : (
-            <VirtualTableCell key={cell.id} cell={cell} columnId={cell.column.id} className={cellClassName} />
+            <VirtualTableCell
+              key={cell.id}
+              cell={cell}
+              columnId={cell.column.id}
+              className={cellClassName}
+            />
           )
         )}
       </div>
@@ -224,4 +231,7 @@ function areRowPropsEqual<TData>(
 }
 
 /** Memoized VirtualTableRow with column signature support */
-export const VirtualTableRow = memo(VirtualTableRowInner, areRowPropsEqual) as typeof VirtualTableRowInner
+export const VirtualTableRow = memo(
+  VirtualTableRowInner,
+  areRowPropsEqual
+) as typeof VirtualTableRowInner

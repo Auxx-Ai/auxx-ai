@@ -1,19 +1,19 @@
 // apps/web/src/components/mail-views/mail-view-filter-builder.tsx
 'use client'
 
-import { useMemo, useCallback } from 'react'
-import { useFormContext } from 'react-hook-form'
-import { AlertCircle } from 'lucide-react'
-import { Alert, AlertDescription } from '@auxx/ui/components/alert'
-import {
-  ConditionProvider,
-  ConditionContainer,
-  type ConditionSystemConfig,
-  type Condition,
-  type ConditionGroup,
-} from '~/components/conditions'
 import { MAIL_VIEW_FIELD_DEFINITIONS } from '@auxx/lib/mail-views/client'
-import { type MailViewFormValues } from './mail-view-dialog'
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
+import { AlertCircle } from 'lucide-react'
+import { useCallback, useMemo } from 'react'
+import { useFormContext } from 'react-hook-form'
+import {
+  type Condition,
+  ConditionContainer,
+  type ConditionGroup,
+  ConditionProvider,
+  type ConditionSystemConfig,
+} from '~/components/conditions'
+import type { MailViewFormValues } from './mail-view-dialog'
 
 /**
  * Component for building the filter logic for a mail view.
@@ -136,7 +136,7 @@ export function MailViewFilterBuilder() {
   // Validate that we have valid filter groups
   if (!filterGroups && filterGroups !== undefined) {
     return (
-      <Alert variant="destructive">
+      <Alert variant='destructive'>
         <AlertCircle />
         <AlertDescription>Filter data is missing or invalid.</AlertDescription>
       </Alert>
@@ -144,7 +144,7 @@ export function MailViewFilterBuilder() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       <ConditionProvider
         conditions={allConditions}
         groups={normalizedGroups}
@@ -154,11 +154,11 @@ export function MailViewFilterBuilder() {
         getAvailableFields={getAvailableFields}
         getFieldDefinition={getFieldDefinition}>
         <ConditionContainer
-          emptyStateText="No filters added yet. Add conditions to filter threads."
+          emptyStateText='No filters added yet. Add conditions to filter threads.'
           showAddButton
           showGrouping
-          addConditionText="Add Condition"
-          addGroupText="Add Group"
+          addConditionText='Add Condition'
+          addGroupText='Add Group'
         />
       </ConditionProvider>
     </div>

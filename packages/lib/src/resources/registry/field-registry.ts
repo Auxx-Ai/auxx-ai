@@ -1,18 +1,18 @@
 // packages/lib/src/resources/registry/field-registry.ts
 
-import type { ResourceFieldRegistry, ResourceTableDefinition, ResourceField } from './field-types'
-import { TICKET_FIELDS } from './resources/ticket-fields'
-import { CONTACT_FIELDS } from './resources/contact-fields'
-import { USER_FIELDS } from './resources/user-fields'
-import { INBOX_FIELDS } from './resources/inbox-fields'
-import { PARTICIPANT_FIELDS } from './resources/participant-fields'
-import { THREAD_FIELDS } from './resources/thread-fields'
-import { MESSAGE_FIELDS } from './resources/message-fields'
-import { DATASET_FIELDS } from './resources/dataset-fields'
-import { PART_FIELDS } from './resources/part-fields'
-import { SIGNATURE_FIELDS } from './resources/signature-fields'
-import { ModelTypeValues, ModelTypeMeta, type ModelType } from '@auxx/database/enums'
+import { type ModelType, ModelTypeMeta, ModelTypeValues } from '@auxx/database/enums'
 import type { FieldId } from '@auxx/types/field'
+import type { ResourceField, ResourceFieldRegistry, ResourceTableDefinition } from './field-types'
+import { CONTACT_FIELDS } from './resources/contact-fields'
+import { DATASET_FIELDS } from './resources/dataset-fields'
+import { INBOX_FIELDS } from './resources/inbox-fields'
+import { MESSAGE_FIELDS } from './resources/message-fields'
+import { PART_FIELDS } from './resources/part-fields'
+import { PARTICIPANT_FIELDS } from './resources/participant-fields'
+import { SIGNATURE_FIELDS } from './resources/signature-fields'
+import { THREAD_FIELDS } from './resources/thread-fields'
+import { TICKET_FIELDS } from './resources/ticket-fields'
+import { USER_FIELDS } from './resources/user-fields'
 
 /**
  * Resource types to exclude from the table registry.

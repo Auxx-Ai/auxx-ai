@@ -1,18 +1,19 @@
 // File: packages/lib/src/jobs/messages/sync-all-messages-job.ts
-import type { Job } from 'bullmq'
+
 import { database as db, schema } from '@auxx/database'
-import { and, eq, inArray } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
-import { getQueue, Queues } from '../queues'
+import type { Job } from 'bullmq'
+import { and, eq, inArray } from 'drizzle-orm'
+import type { IntegrationProviderType } from '../../email/message-service'
 import { publisher } from '../../events/publisher'
-import {
-  MessageSyncProcessingEvent,
+import type {
   MessageSyncCompleteEvent, // Need this for 0 integrations case
   MessageSyncFailedEvent,
+  MessageSyncProcessingEvent,
 } from '../../events/types'
-import { IntegrationProviderType } from '../../email/message-service'
-import { type SyncSingleIntegrationMessagesJobData } from './sync-single-integration-messages-job'
-import { MonitorMessageSyncJobData } from './monitor-message-sync-job'
+import { getQueue, Queues } from '../queues'
+import type { MonitorMessageSyncJobData } from './monitor-message-sync-job'
+import type { SyncSingleIntegrationMessagesJobData } from './sync-single-integration-messages-job'
 
 const logger = createScopedLogger('job:message-sync-orchestrator')
 

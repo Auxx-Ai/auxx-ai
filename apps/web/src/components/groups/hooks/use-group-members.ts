@@ -1,9 +1,9 @@
 // apps/web/src/components/groups/hooks/use-group-members.ts
 'use client'
 
+import { useEffect } from 'react'
 import { api } from '~/trpc/react'
 import { useGroupsStore } from '../store'
-import { useEffect } from 'react'
 
 /** Options for the useGroupMembers hook */
 interface UseGroupMembersOptions {

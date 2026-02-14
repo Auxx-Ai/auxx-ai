@@ -1,8 +1,8 @@
 // apps/web/src/components/inbox/inbox-list.tsx
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import type { Inbox } from '@auxx/lib/inboxes'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   Table,
@@ -13,13 +13,13 @@ import {
   TableRow,
 } from '@auxx/ui/components/table'
 import { InboxIcon, PlusIcon, RefreshCw } from 'lucide-react'
-import { api } from '~/trpc/react'
-import { Badge } from '@auxx/ui/components/badge'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
 import { useUser } from '~/hooks/use-user'
-import { EmptyState } from '~/components/global/empty-state'
+import { api } from '~/trpc/react'
 import { InboxDialog } from './inbox-dialog'
-import type { Inbox } from '@auxx/lib/inboxes'
 
 /** Component for displaying the list of inboxes */
 export function InboxList() {
@@ -41,11 +41,11 @@ export function InboxList() {
   const getStatusBadge = (status: Inbox['status']) => {
     switch (status) {
       case 'ACTIVE':
-        return <Badge variant="green">Active</Badge>
+        return <Badge variant='green'>Active</Badge>
       case 'ARCHIVED':
-        return <Badge variant="gray">Archived</Badge>
+        return <Badge variant='gray'>Archived</Badge>
       case 'PAUSED':
-        return <Badge variant="yellow">Paused</Badge>
+        return <Badge variant='yellow'>Paused</Badge>
       default:
         return <Badge>{status}</Badge>
     }
@@ -82,29 +82,29 @@ export function InboxList() {
 
   return (
     <SettingsPage
-      title="Inboxes"
-      description="Manage your shared inboxes and their settings."
+      title='Inboxes'
+      description='Manage your shared inboxes and their settings.'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Inboxes' }]}
       button={
-        <Button variant="outline" size="sm" onClick={handleCreateInbox}>
+        <Button variant='outline' size='sm' onClick={handleCreateInbox}>
           <PlusIcon />
           Create Inbox
         </Button>
       }>
-      <div className="flex h-full">
+      <div className='flex h-full'>
         {isLoadingInboxes ? (
           <EmptyState
             icon={RefreshCw}
-            iconClassName="animate-spin"
-            title="Loading inboxes..."
+            iconClassName='animate-spin'
+            title='Loading inboxes...'
             description={<>Hang on tight while we load your inboxes...</>}
-            button={<div className="h-12"></div>}
+            button={<div className='h-12'></div>}
           />
         ) : inboxes && inboxes.length ? (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[300px]">Inbox</TableHead>
+                <TableHead className='w-[300px]'>Inbox</TableHead>
                 <TableHead>Access</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
@@ -114,20 +114,20 @@ export function InboxList() {
                 <TableRow
                   key={inbox.id}
                   onClick={() => handleRowClick(inbox.id)}
-                  className="cursor-pointer hover:bg-muted">
+                  className='cursor-pointer hover:bg-muted'>
                   <TableCell>
-                    <div className="flex items-center space-x-3">
+                    <div className='flex items-center space-x-3'>
                       {/* Colored dot based on inbox color */}
                       <div
-                        className="h-3 w-3 rounded-full"
+                        className='h-3 w-3 rounded-full'
                         style={{
                           backgroundColor: inbox.color || '#4F46E5',
                         }}
                       />
                       <div>
-                        <div className="font-medium">{inbox.name}</div>
+                        <div className='font-medium'>{inbox.name}</div>
                         {inbox.description && (
-                          <div className="text-sm text-muted-foreground">{inbox.description}</div>
+                          <div className='text-sm text-muted-foreground'>{inbox.description}</div>
                         )}
                       </div>
                     </div>
@@ -141,10 +141,10 @@ export function InboxList() {
         ) : (
           <EmptyState
             icon={InboxIcon}
-            title="Create your first inbox"
+            title='Create your first inbox'
             description={<>Inboxes help you organize your messages.</>}
             button={
-              <Button size="sm" variant="outline" onClick={handleCreateInbox}>
+              <Button size='sm' variant='outline' onClick={handleCreateInbox}>
                 <PlusIcon />
                 Create Inbox
               </Button>

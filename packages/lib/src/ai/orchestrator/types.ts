@@ -1,12 +1,12 @@
 // packages/lib/src/ai/orchestrator/types.ts
 
 import type {
-  Message,
-  Tool,
-  ToolCall,
-  ModelParameters,
   LLMResponse,
   LLMStreamChunk,
+  Message,
+  ModelParameters,
+  Tool,
+  ToolCall,
   UsageMetrics,
 } from '../clients/base/types'
 
@@ -18,7 +18,7 @@ export interface LLMInvocationRequest {
   provider: string
   messages: Message[]
   parameters?: ModelParameters
-  
+
   // Context
   organizationId: string
   userId: string
@@ -117,7 +117,11 @@ export interface UsageTrackingRequest {
 
 export interface UsageTrackingService {
   trackUsage(request: UsageTrackingRequest): Promise<void>
-  checkQuotaAvailable?(organizationId: string, provider: string, estimatedTokens: number): Promise<{
+  checkQuotaAvailable?(
+    organizationId: string,
+    provider: string,
+    estimatedTokens: number
+  ): Promise<{
     available: boolean
     reason?: string
   }>
@@ -207,12 +211,7 @@ export class ToolExecutionError extends Error {
   public readonly toolCallId: string
   public readonly originalError?: Error
 
-  constructor(
-    message: string,
-    toolName: string,
-    toolCallId: string,
-    originalError?: Error
-  ) {
+  constructor(message: string, toolName: string, toolCallId: string, originalError?: Error) {
     super(message)
     this.name = 'ToolExecutionError'
     this.toolName = toolName
@@ -226,12 +225,7 @@ export class QuotaExceededError extends Error {
   public readonly organizationId: string
   public readonly estimatedTokens: number
 
-  constructor(
-    message: string,
-    provider: string,
-    organizationId: string,
-    estimatedTokens: number
-  ) {
+  constructor(message: string, provider: string, organizationId: string, estimatedTokens: number) {
     super(message)
     this.name = 'QuotaExceededError'
     this.provider = provider

@@ -1,9 +1,9 @@
 // apps/api/src/middleware/organization.ts
 
+import { verifyOrganizationAccess } from '@auxx/services/organizations'
 import { createMiddleware } from 'hono/factory'
 import { errorResponse } from '../lib/response'
 import type { AppContext } from '../types/context'
-import { verifyOrganizationAccess } from '@auxx/services/organizations'
 
 /**
  * Organization middleware

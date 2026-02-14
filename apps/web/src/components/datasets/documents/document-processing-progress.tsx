@@ -1,9 +1,9 @@
 // apps/web/src/components/datasets/documents/document-processing-progress.tsx
 'use client'
 
-import { CheckCircle, Circle, Loader2 } from 'lucide-react'
 import { Progress } from '@auxx/ui/components/progress'
 import { cn } from '@auxx/ui/lib/utils'
+import { CheckCircle, Circle, Loader2 } from 'lucide-react'
 import type { DocumentProcessingState } from '../hooks/use-document-processing'
 
 /**
@@ -61,8 +61,8 @@ export function DocumentProcessingProgress({
   if (compact) {
     return (
       <div className={cn('flex items-center gap-2', className)}>
-        <Loader2 className="h-3 w-3 animate-spin text-yellow-600" />
-        <span className="text-xs text-muted-foreground">
+        <Loader2 className='h-3 w-3 animate-spin text-yellow-600' />
+        <span className='text-xs text-muted-foreground'>
           {step ? `${capitalize(step)}...` : 'Processing...'}
         </span>
       </div>
@@ -72,17 +72,17 @@ export function DocumentProcessingProgress({
   return (
     <div className={cn('space-y-3 w-full max-w-xs', className)}>
       {/* Step indicators */}
-      <div className="flex items-center justify-between">
+      <div className='flex items-center justify-between'>
         {steps.map((s) => {
           const stepStatus = getStepStatus(s.key)
           return (
-            <div key={s.key} className="flex items-center gap-1.5">
+            <div key={s.key} className='flex items-center gap-1.5'>
               {stepStatus === 'completed' ? (
-                <CheckCircle className="h-4 w-4 text-green-600" />
+                <CheckCircle className='h-4 w-4 text-green-600' />
               ) : stepStatus === 'active' ? (
-                <Loader2 className="h-4 w-4 animate-spin text-yellow-600" />
+                <Loader2 className='h-4 w-4 animate-spin text-yellow-600' />
               ) : (
-                <Circle className="h-4 w-4 text-muted-foreground/40" />
+                <Circle className='h-4 w-4 text-muted-foreground/40' />
               )}
               <span
                 className={cn(
@@ -99,11 +99,13 @@ export function DocumentProcessingProgress({
       </div>
 
       {/* Progress bar */}
-      <Progress value={overallProgress} className="h-1.5" />
+      <Progress value={overallProgress} className='h-1.5' />
 
       {/* Status text */}
-      <p className="text-xs text-muted-foreground text-center">
-        {status === 'completed' ? 'Complete' : getStatusText(step, progress, segmentCount, currentSegment)}
+      <p className='text-xs text-muted-foreground text-center'>
+        {status === 'completed'
+          ? 'Complete'
+          : getStatusText(step, progress, segmentCount, currentSegment)}
       </p>
     </div>
   )
@@ -122,7 +124,7 @@ function calculateOverallProgress(
     chunking: 33,
     embedding: 66,
   }
-  const base = step ? stepWeights[step] ?? 0 : 0
+  const base = step ? (stepWeights[step] ?? 0) : 0
   return Math.min(100, base + (stepProgress / 100) * 33)
 }
 

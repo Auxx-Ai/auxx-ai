@@ -33,7 +33,6 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@auxx/eslint-config": "workspace:*",
     "@auxx/typescript-config": "workspace:*",
     "@types/node": "catalog:",
     "esbuild": "^0.25.11",

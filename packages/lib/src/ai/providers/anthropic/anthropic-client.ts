@@ -1,19 +1,19 @@
 // packages/lib/src/ai/providers/anthropic/anthropic-client.ts
 
 import Anthropic from '@anthropic-ai/sdk'
+import type { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
+import { DEFAULT_CLIENT_CONFIG } from '../../clients/base/types'
 import { ProviderClient } from '../base/provider-client'
 import {
-  ValidationResult,
-  ConnectionTestResult,
-  ProviderCredentials,
+  type ConnectionTestResult,
   CredentialValidationError,
+  type ProviderCredentials,
+  type ValidationResult,
 } from '../base/types'
-import { ModelCapabilities, ModelType } from '../types'
+import { type ModelCapabilities, ModelType } from '../types'
 import { ANTHROPIC_CAPABILITIES, ANTHROPIC_MODELS } from './anthropic-defaults'
-import { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
 import { AnthropicLLMClient } from './anthropic-llm-client'
 import { VoyageEmbeddingClient } from './voyage-embedding-client'
-import { DEFAULT_CLIENT_CONFIG } from '../../clients/base/types'
 
 /**
  * Anthropic provider client implementation
@@ -21,7 +21,7 @@ import { DEFAULT_CLIENT_CONFIG } from '../../clients/base/types'
 export class AnthropicClient extends ProviderClient {
   private llmClient?: AnthropicLLMClient
   private embeddingClient?: VoyageEmbeddingClient
-  
+
   constructor(organizationId: string, userId: string, cache?: any) {
     super(ANTHROPIC_CAPABILITIES, organizationId, userId, cache)
   }
@@ -88,16 +88,16 @@ export class AnthropicClient extends ProviderClient {
     try {
       const extractedCreds = this.extractCredentials(credentials)
       const anthropic = this.getApiClient(extractedCreds)
-      
+
       const testModel = model || 'claude-3-5-sonnet-20240620'
-      
+
       // Test with minimal message to verify API access
       await anthropic.messages.create({
         model: testModel,
         max_tokens: 1,
-        messages: [{ role: 'user', content: 'Hi' }]
+        messages: [{ role: 'user', content: 'Hi' }],
       })
-      
+
       const responseTime = Date.now() - startTime
 
       this.logOperationSuccess('testConnection', {
@@ -167,7 +167,7 @@ export class AnthropicClient extends ProviderClient {
           )
         }
         return this.llmClient
-      
+
       case ModelType.TEXT_EMBEDDING:
         if (!this.embeddingClient) {
           // Voyage AI requires separate API key - check for voyage_api_key in credentials
@@ -179,7 +179,7 @@ export class AnthropicClient extends ProviderClient {
           )
         }
         return this.embeddingClient
-      
+
       default:
         throw new Error(`Unsupported model type: ${modelType}`)
     }

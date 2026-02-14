@@ -1,16 +1,16 @@
 // packages/lib/src/datasets/search/hybrid-search.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { VectorSearchService } from './vector-search'
-import { FullTextSearchService } from './full-text-search'
 import type {
-  SearchQuery,
-  SearchResult,
+  DatasetConfig,
   HybridSearchOptions,
   SearchPerformanceMetrics,
-  DatasetConfig,
+  SearchQuery,
+  SearchResult,
 } from '../types/search.types'
 import { SearchError } from '../types/search.types'
+import { FullTextSearchService } from './full-text-search'
+import { VectorSearchService } from './vector-search'
 
 const logger = createScopedLogger('hybrid-search')
 
@@ -92,11 +92,15 @@ export class HybridSearchService {
       }
 
       // Combine and rank results
-      const combinedResults = this.combineSearchResults(vectorResults, textResults, hybridOptions)
+      const combinedResults = HybridSearchService.combineSearchResults(
+        vectorResults,
+        textResults,
+        hybridOptions
+      )
 
       // Apply filters if provided
       const filteredResults = query.filters
-        ? this.applyFilters(combinedResults, query.filters)
+        ? HybridSearchService.applyFilters(combinedResults, query.filters)
         : combinedResults
 
       // Apply pagination limits
@@ -182,7 +186,7 @@ export class HybridSearchService {
       const textResult = textMap.get(segmentId)
 
       if (combineMethod === 'weighted_sum') {
-        const combinedResult = this.combineByWeightedSum(
+        const combinedResult = HybridSearchService.combineByWeightedSum(
           vectorResult,
           textResult,
           vectorWeight,
@@ -193,13 +197,13 @@ export class HybridSearchService {
         }
       } else if (combineMethod === 'rrf') {
         // Reciprocal Rank Fusion
-        const combinedResult = this.combineByRRF(vectorResult, textResult)
+        const combinedResult = HybridSearchService.combineByRRF(vectorResult, textResult)
         if (combinedResult) {
           combinedResults.push(combinedResult)
         }
       } else {
         // Linear combination (default fallback)
-        const combinedResult = this.combineByLinearCombination(
+        const combinedResult = HybridSearchService.combineByLinearCombination(
           vectorResult,
           textResult,
           vectorWeight,
@@ -299,8 +303,12 @@ export class HybridSearchService {
     const baseResult = vectorResult || textResult!
 
     // Normalize scores to 0-1 range before combining
-    const vectorScore = vectorResult ? this.normalizeScore(vectorResult.score || 0, 'vector') : 0
-    const textScore = textResult ? this.normalizeScore(textResult.score || 0, 'text') : 0
+    const vectorScore = vectorResult
+      ? HybridSearchService.normalizeScore(vectorResult.score || 0, 'vector')
+      : 0
+    const textScore = textResult
+      ? HybridSearchService.normalizeScore(textResult.score || 0, 'text')
+      : 0
 
     const combinedScore = vectorScore * vectorWeight + textScore * textWeight
     const highlights = textResult?.highlights || []
@@ -441,7 +449,7 @@ export class HybridSearchService {
     const scores = results.map((r) => r.score || 0)
     const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length
     const scoreVariance =
-      scores.reduce((acc, score) => acc + Math.pow(score - avgScore, 2), 0) / scores.length
+      scores.reduce((acc, score) => acc + (score - avgScore) ** 2, 0) / scores.length
     const hasHighlights = results.some((r) => r.highlights && r.highlights.length > 0)
 
     const suggestions: string[] = []

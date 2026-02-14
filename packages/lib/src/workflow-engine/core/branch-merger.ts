@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/core/branch-merger.ts
 
-import type { BranchResult, MergeStrategy } from './types'
 import type { ExecutionContextManager } from './execution-context'
+import type { BranchResult, MergeStrategy } from './types'
 
 /**
  * Handles branch result merging at join points
@@ -31,7 +31,7 @@ export class BranchMerger {
 
     // Apply merge strategy
     switch (strategy.type) {
-      case 'last-write':
+      case 'last-write': {
         // Last branch to complete wins
         const sortedByTime = allChanges.sort((a, b) => {
           const timeA = branchResults[a.branch]!.completedAt.getTime()
@@ -43,8 +43,9 @@ export class BranchMerger {
           Object.assign(merged, changes)
         }
         break
+      }
 
-      case 'first-write':
+      case 'first-write': {
         // First branch to complete wins
         const sortedByTimeReverse = allChanges.sort((a, b) => {
           const timeA = branchResults[a.branch]!.completedAt.getTime()
@@ -56,8 +57,9 @@ export class BranchMerger {
           Object.assign(merged, changes)
         }
         break
+      }
 
-      case 'merge-all':
+      case 'merge-all': {
         // Detect conflicts and merge intelligently
         const variableValues = new Map<string, any[]>()
 
@@ -98,6 +100,7 @@ export class BranchMerger {
           }
         }
         break
+      }
 
       case 'custom':
         if (strategy.customMerger) {

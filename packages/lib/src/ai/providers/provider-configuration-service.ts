@@ -1,41 +1,41 @@
 // packages/lib/src/ai/providers/provider-configuration-service.ts
 import { type Database, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
-import {
-  type ModelConfigurationEntity as ModelConfigurationModel,
-  type ProviderConfigurationEntity as ProviderConfigurationModel,
-  type LoadBalancingConfigEntity as LoadBalancingConfigModel,
-  type ProviderPreferenceEntity as ProviderPreferenceModel,
+import type {
+  LoadBalancingConfigEntity as LoadBalancingConfigModel,
+  ModelConfigurationEntity as ModelConfigurationModel,
+  ProviderConfigurationEntity as ProviderConfigurationModel,
+  ProviderPreferenceEntity as ProviderPreferenceModel,
 } from '@auxx/database/models'
+import { and, eq } from 'drizzle-orm'
 import { createScopedLogger } from '../../logger'
-import { ProviderRegistry } from './provider-registry'
 import { UsageTrackingService } from '../usage/usage-tracking-service'
+import { ProviderRegistry } from './provider-registry'
 import {
-  type ProviderConfiguration,
-  type CustomConfiguration,
-  type SystemConfiguration,
-  type ModelSettings,
-  ProviderType,
-  ModelType,
-  ProviderQuotaType,
-  QuotaUnit,
-  type CustomProviderConfiguration,
-  type CustomModelConfiguration,
-  type ModelLoadBalancingConfiguration,
+  type CredentialsResponse,
   CredentialValidationError,
-  ProviderConfigurationError,
-  type ProviderCredentials,
-  type ModelCredentials,
-  type ValidationOptions,
-  type ProviderConfigurations,
-  type ProviderCapabilities,
-  type ModelData,
-  type ProviderStatusInfo,
+  type CustomConfiguration,
+  type CustomModelConfiguration,
+  type CustomProviderConfiguration,
   FetchFrom,
   type ModelCapabilities,
-  type CredentialsResponse,
+  type ModelCredentials,
+  type ModelData,
+  type ModelLoadBalancingConfiguration,
+  type ModelSettings,
+  type ModelType,
+  type ProviderCapabilities,
+  type ProviderConfiguration,
+  ProviderConfigurationError,
+  type ProviderConfigurations,
+  type ProviderCredentials,
+  type ProviderQuotaType,
+  type ProviderStatusInfo,
+  ProviderType,
+  QuotaUnit,
+  type SystemConfiguration,
+  type ValidationOptions,
 } from './types'
-import { obfuscateCredentials, obfuscateToken, mergeCredentialsWithHidden } from './utils'
+import { mergeCredentialsWithHidden, obfuscateCredentials, obfuscateToken } from './utils'
 
 const logger = createScopedLogger('ProviderConfigurationService')
 
@@ -1689,9 +1689,12 @@ export class ProviderConfigurationService {
       providerRecords.find((r) => r.credentials && Object.keys(r.credentials).length > 0)
 
     // Check if there is a custom provider configuration with actual credentials
-    let customProvider: CustomProviderConfiguration | undefined = undefined
+    let customProvider: CustomProviderConfiguration | undefined
 
-    if (customProviderRecord?.credentials && Object.keys(customProviderRecord.credentials).length > 0) {
+    if (
+      customProviderRecord?.credentials &&
+      Object.keys(customProviderRecord.credentials).length > 0
+    ) {
       customProvider = {
         credentials: await this._decryptCredentials(customProviderRecord.credentials),
       }
@@ -1794,9 +1797,7 @@ export class ProviderConfigurationService {
       return true
     }
     // Check model-specific credentials
-    return customConfig.models.some(
-      (m) => m.credentials && Object.keys(m.credentials).length > 0
-    )
+    return customConfig.models.some((m) => m.credentials && Object.keys(m.credentials).length > 0)
   }
 
   /**

@@ -1,20 +1,20 @@
 // packages/database/src/db/schema/import-job.ts
 
-import {
-  pgTable,
-  index,
-  text,
-  integer,
-  boolean,
-  timestamp,
-  jsonb,
-  type AnyPgColumn,
-  importJobStatus,
-} from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import {
+  type AnyPgColumn,
+  boolean,
+  importJobStatus,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+} from './_shared'
+import { ImportMapping } from './import-mapping'
 import { Organization } from './organization'
 import { User } from './user'
-import { ImportMapping } from './import-mapping'
 
 /**
  * ImportJob - Individual import job instance
@@ -38,7 +38,10 @@ export const ImportJob = pgTable(
     // The mapping template used
     importMappingId: text()
       .notNull()
-      .references((): AnyPgColumn => ImportMapping.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
+      .references((): AnyPgColumn => ImportMapping.id, {
+        onUpdate: 'cascade',
+        onDelete: 'cascade',
+      }),
 
     // Original file name
     sourceFileName: text().notNull(),

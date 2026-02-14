@@ -1,9 +1,9 @@
 // apps/api/src/lib/jwt-validator.ts
 
-import { BETTER_AUTH_USERINFO_URL } from '../config'
-import { createScopedLogger } from '@auxx/logger'
 import { database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
+import { BETTER_AUTH_USERINFO_URL } from '../config'
 
 const logger = createScopedLogger('jwt-validator')
 

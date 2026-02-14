@@ -1,8 +1,8 @@
 // packages/services/src/entity-definitions/update-entity-definition.ts
 
 import { database, EntityDefinition } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
+import { and, eq } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import { getEntityDefinition } from './get-entity-definition'
 

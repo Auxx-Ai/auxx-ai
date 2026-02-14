@@ -9,7 +9,7 @@ import {
 } from '@auxx/ui/components/select'
 import { formatDistanceToNowStrict } from 'date-fns'
 import { useThreadList } from '~/components/threads/hooks'
-import type { ThreadMeta, MessageMeta, ParticipantMeta } from '~/components/threads/store'
+import type { MessageMeta, ParticipantMeta, ThreadMeta } from '~/components/threads/store'
 import type { NodeInputProps } from './base-node-input'
 
 /**
@@ -27,29 +27,26 @@ export function ThreadInput({ inputs, onChange, isLoading }: NodeInputProps) {
   const selectedThread = threads.find((t) => t.id === selectedThreadId)
 
   return (
-    <div className="space-y-2">
+    <div className='space-y-2'>
       <Select
         value={inputs.threadId || ''}
         onValueChange={(value) => onChange('threadId', value)}
         disabled={threadsLoading || isLoading}>
-        <SelectTrigger id="threadId">
-          <SelectValue
-            placeholder={threadsLoading ? 'Loading threads...' : 'Select a thread'}>
+        <SelectTrigger id='threadId'>
+          <SelectValue placeholder={threadsLoading ? 'Loading threads...' : 'Select a thread'}>
             <div>{selectedThread && (selectedThread.subject || 'No subject')}</div>
           </SelectValue>
         </SelectTrigger>
-        <SelectContent className="max-w-100">
+        <SelectContent className='max-w-100'>
           {threads.map((thread) => {
             const dateStr = thread.lastMessageAt
               ? formatDistanceToNowStrict(new Date(thread.lastMessageAt), { addSuffix: true })
               : ''
             return (
               <SelectItem key={thread.id} value={thread.id}>
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium line-clamp-1">
-                    {thread.subject || 'No subject'}
-                  </span>
-                  <span className="text-sm text-muted-foreground line-clamp-1">
+                <div className='flex flex-col gap-1'>
+                  <span className='font-medium line-clamp-1'>{thread.subject || 'No subject'}</span>
+                  <span className='text-sm text-muted-foreground line-clamp-1'>
                     {thread.messageCount} message{thread.messageCount !== 1 ? 's' : ''} · {dateStr}
                   </span>
                 </div>

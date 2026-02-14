@@ -1,12 +1,7 @@
 // packages/lib/src/ai/clients/base/moderation-client.ts
 
 import { BaseSpecializedClient } from './base-specialized-client'
-import type {
-  ClientConfig,
-  ModerationParams,
-  ModerationResponse,
-  ModerationResult,
-} from './types'
+import type { ClientConfig, ModerationParams, ModerationResponse, ModerationResult } from './types'
 
 /**
  * Abstract base class for content moderation clients
@@ -52,7 +47,7 @@ export abstract class ModerationClient extends BaseSpecializedClient {
    * Check if any results are flagged
    */
   protected hasAnyFlagged(results: ModerationResult[]): boolean {
-    return results.some(result => result.flagged)
+    return results.some((result) => result.flagged)
   }
 
   /**
@@ -60,7 +55,7 @@ export abstract class ModerationClient extends BaseSpecializedClient {
    */
   protected getHighestSeverityScore(results: ModerationResult[]): number {
     let highest = 0
-    
+
     for (const result of results) {
       const scores = Object.values(result.category_scores)
       const maxScore = Math.max(...scores)
@@ -94,7 +89,7 @@ export abstract class ModerationClient extends BaseSpecializedClient {
     results: ModerationResult[],
     threshold: number = 0.5
   ): ModerationResult[] {
-    return results.filter(result => {
+    return results.filter((result) => {
       const maxScore = Math.max(...Object.values(result.category_scores))
       return maxScore >= threshold
     })
@@ -110,20 +105,20 @@ export abstract class ModerationClient extends BaseSpecializedClient {
     highestSeverity: number
     averageSeverity: number
   } {
-    const flaggedInputs = results.filter(r => r.flagged).length
+    const flaggedInputs = results.filter((r) => r.flagged).length
     const flaggedCategories = this.getFlaggedCategories(results)
     const highestSeverity = this.getHighestSeverityScore(results)
-    
+
     // Calculate average severity across all category scores
     let totalScores = 0
     let scoreCount = 0
-    
+
     for (const result of results) {
       const scores = Object.values(result.category_scores)
       totalScores += scores.reduce((sum, score) => sum + score, 0)
       scoreCount += scores.length
     }
-    
+
     const averageSeverity = scoreCount > 0 ? totalScores / scoreCount : 0
 
     return {
@@ -159,7 +154,7 @@ export abstract class ModerationClient extends BaseSpecializedClient {
    */
   protected normalizeCategories(categories: Record<string, boolean>): Record<string, boolean> {
     const normalized: Record<string, boolean> = {}
-    
+
     Object.entries(categories).forEach(([category, flagged]) => {
       // Convert to lowercase and replace underscores with forward slashes
       const standardCategory = category.toLowerCase().replace(/_/g, '/')

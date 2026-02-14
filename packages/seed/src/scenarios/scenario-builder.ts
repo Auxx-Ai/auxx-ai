@@ -1,6 +1,12 @@
 // packages/seed/src/scenarios/scenario-builder.ts
 // Scenario builder that resolves definitions and prepares drizzle-seed refinements
 
+import { RelationalDomainBuilder } from '../builders/relational-domain-builder'
+import { AiDomain } from '../domains/ai.domain'
+import { CommerceDomain } from '../domains/commerce.domain'
+import { CommunicationDomain } from '../domains/communication.domain'
+import { OrganizationDomain } from '../domains/organization.domain'
+import { WorkflowDomain } from '../domains/workflow.domain'
 import type {
   DomainRefinementMap,
   ScenarioScales,
@@ -8,18 +14,12 @@ import type {
   SeedingScenario,
   SeedingScenarioName,
 } from '../types'
-import { developmentScenario } from './development.scenario'
-import { testingScenario } from './testing.scenario'
-import { screenshotScenario } from './screenshot.scenario'
-import { performanceScenario } from './performance.scenario'
-import { demoScenario } from './demo.scenario'
-import { CommerceDomain } from '../domains/commerce.domain'
-import { CommunicationDomain } from '../domains/communication.domain'
-import { OrganizationDomain } from '../domains/organization.domain'
-import { AiDomain } from '../domains/ai.domain'
-import { WorkflowDomain } from '../domains/workflow.domain'
 import { IdPoolManager } from '../utils/id-pool-manager'
-import { RelationalDomainBuilder } from '../builders/relational-domain-builder'
+import { demoScenario } from './demo.scenario'
+import { developmentScenario } from './development.scenario'
+import { performanceScenario } from './performance.scenario'
+import { screenshotScenario } from './screenshot.scenario'
+import { testingScenario } from './testing.scenario'
 
 /** RelationalSeedingScenario extends SeedingScenario with multi-phase capabilities. */
 export interface RelationalSeedingScenario extends SeedingScenario {
@@ -95,7 +95,7 @@ export class ScenarioBuilder {
     name: SeedingScenarioName,
     overrides?: Partial<ScenarioScales>
   ): RelationalSeedingScenario {
-    const baseScenario = this.build(name, overrides)
+    const baseScenario = ScenarioBuilder.build(name, overrides)
     const idPoolManager = new IdPoolManager(baseScenario)
     const relationalBuilder = new RelationalDomainBuilder(baseScenario, idPoolManager)
 
@@ -103,7 +103,10 @@ export class ScenarioBuilder {
       ...baseScenario,
       idPoolManager,
       relationalBuilder,
-      buildPhaseRefinements(phase: 1 | 2 | 3 | 4 | 5, context?: SeedingContext): DomainRefinementMap {
+      buildPhaseRefinements(
+        phase: 1 | 2 | 3 | 4 | 5,
+        context?: SeedingContext
+      ): DomainRefinementMap {
         console.log(`🔄 Building Phase ${phase} refinements`)
 
         switch (phase) {
@@ -123,7 +126,8 @@ export class ScenarioBuilder {
             // Phase 4: Business Entities (Thread, Product, Customer)
             return (helpers: unknown) => {
               const commerceRefinements = relationalBuilder.buildCommerceRefinements(context)
-              const communicationRefinements = relationalBuilder.buildCommunicationRefinements(context)
+              const communicationRefinements =
+                relationalBuilder.buildCommunicationRefinements(context)
 
               // Merge refinements from both domains
               const commerce = commerceRefinements(helpers)
@@ -177,11 +181,11 @@ export class ScenarioBuilder {
    */
   static getAllPhaseDescriptions(): Record<number, string> {
     return {
-      1: this.getPhaseDescription(1),
-      2: this.getPhaseDescription(2),
-      3: this.getPhaseDescription(3),
-      4: this.getPhaseDescription(4),
-      5: this.getPhaseDescription(5),
+      1: ScenarioBuilder.getPhaseDescription(1),
+      2: ScenarioBuilder.getPhaseDescription(2),
+      3: ScenarioBuilder.getPhaseDescription(3),
+      4: ScenarioBuilder.getPhaseDescription(4),
+      5: ScenarioBuilder.getPhaseDescription(5),
     }
   }
 
@@ -202,12 +206,12 @@ export class ScenarioBuilder {
 
     if (requestedPhase in prerequisites) {
       const required = prerequisites[requestedPhase as keyof typeof prerequisites]
-      const missing = required.filter(pool => !poolSizes[pool] || poolSizes[pool] === 0)
+      const missing = required.filter((pool) => !poolSizes[pool] || poolSizes[pool] === 0)
 
       if (missing.length > 0) {
         throw new Error(
           `Phase ${requestedPhase} requires ${missing.join(', ')} ID pools from previous phases. ` +
-          `Run earlier phases first.`
+            `Run earlier phases first.`
         )
       }
     }

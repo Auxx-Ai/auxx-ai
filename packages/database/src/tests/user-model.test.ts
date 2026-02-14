@@ -1,7 +1,8 @@
 // packages/database/src/tests/user-model.test.ts
-import { describe, it, expect } from 'vitest'
-import { UserModel } from '../db/models/user'
+
 import { desc } from 'drizzle-orm'
+import { describe, expect, it } from 'vitest'
+import { UserModel } from '../db/models/user'
 import { User } from '../db/schema/user'
 
 const HAS_DB = !!process.env.DATABASE_URL

@@ -2,14 +2,14 @@
 
 'use client'
 
-import { memo, useMemo } from 'react'
-import { ChevronRight, Check } from 'lucide-react'
+import type { FieldType } from '@auxx/database/types'
+import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { CommandItem } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
+import { Check, ChevronRight } from 'lucide-react'
+import { memo, useMemo } from 'react'
 import { useResourceProperty } from '~/components/resources'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
-import type { FieldType } from '@auxx/database/types'
 import type { FieldItemProps } from './types'
 
 /**
@@ -39,22 +39,18 @@ export const FieldItem = memo(function FieldItem({
   // Determine icon based on field type
   const getIcon = () => {
     if (isSelected) {
-      return <Check className="size-4" />
+      return <Check className='size-4' />
     }
 
     if (isRelationship && targetResourceProps) {
       return (
-        <EntityIcon
-          iconId={targetResourceProps.icon}
-          color={targetResourceProps.color}
-          size="xs"
-        />
+        <EntityIcon iconId={targetResourceProps.icon} color={targetResourceProps.color} size='xs' />
       )
     }
 
     // Regular field - use fieldType icon
     const iconId = fieldTypeOptions[field.fieldType as FieldType]?.iconId ?? 'circle'
-    return <EntityIcon iconId={iconId} size="xs" className="text-muted-foreground" />
+    return <EntityIcon iconId={iconId} size='xs' className='text-muted-foreground' />
   }
 
   /**
@@ -72,12 +68,12 @@ export const FieldItem = memo(function FieldItem({
     <CommandItem
       value={field.resourceFieldId ?? field.id}
       onSelect={handleSelect}
-      className="flex items-center justify-between">
-      <div className="flex items-center gap-2">
+      className='flex items-center justify-between'>
+      <div className='flex items-center gap-2'>
         {getIcon()}
         <span>{field.label}</span>
       </div>
-      {canDrillDown && <ChevronRight className="size-4 opacity-50" />}
+      {canDrillDown && <ChevronRight className='size-4 opacity-50' />}
     </CommandItem>
   )
 })

@@ -1,12 +1,13 @@
 // apps/web/src/app/(protected)/app/settings/aiModels/_components/model-toggle.tsx
 
 'use client'
-import React, { useState, useEffect } from 'react'
-import { Switch } from '@auxx/ui/components/switch'
 import { Label } from '@auxx/ui/components/label'
-import { Loader2 } from 'lucide-react'
-import { api } from '~/trpc/react'
+import { Switch } from '@auxx/ui/components/switch'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { Loader2 } from 'lucide-react'
+import type React from 'react'
+import { useEffect, useState } from 'react'
+import { api } from '~/trpc/react'
 
 interface ModelToggleProps {
   provider: string
@@ -68,10 +69,10 @@ export const ModelToggle: React.FC<ModelToggleProps> = ({
 
   return (
     <div className={`flex items-center space-x-2 ${className || ''}`}>
-      {toggleModel.isPending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+      {toggleModel.isPending && <Loader2 className='h-3 w-3 animate-spin text-muted-foreground' />}
       <Switch
         checked={localEnabled}
-        size="sm"
+        size='sm'
         onCheckedChange={handleToggle}
         disabled={disabled || toggleModel.isPending}
         id={`toggle-${provider}-${model}`}

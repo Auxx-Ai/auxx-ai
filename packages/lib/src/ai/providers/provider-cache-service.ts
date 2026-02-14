@@ -1,7 +1,13 @@
 // packages/lib/src/ai/providers/provider-cache-service.ts
 
 import { BaseCacheService, type CacheOptions } from '../../cache/base-cache-service'
-import type { ProviderConfiguration, ProviderConfigurations, DefaultModelEntity, ModelType, CredentialsResponse } from './types'
+import type {
+  CredentialsResponse,
+  DefaultModelEntity,
+  ModelType,
+  ProviderConfiguration,
+  ProviderConfigurations,
+} from './types'
 
 export class ProviderCacheService extends BaseCacheService {
   constructor() {
@@ -39,7 +45,13 @@ export class ProviderCacheService extends BaseCacheService {
     modelType: ModelType,
     obfuscate: boolean = true
   ): Promise<CredentialsResponse | null> {
-    const key = this.buildCurrentCredentialsKey(organizationId, provider, model, modelType, obfuscate)
+    const key = this.buildCurrentCredentialsKey(
+      organizationId,
+      provider,
+      model,
+      modelType,
+      obfuscate
+    )
     return await this.get<CredentialsResponse>(key)
   }
   async setCurrentCredentials(
@@ -51,7 +63,13 @@ export class ProviderCacheService extends BaseCacheService {
     options?: CacheOptions,
     obfuscate: boolean = true
   ): Promise<void> {
-    const key = this.buildCurrentCredentialsKey(organizationId, provider, model, modelType, obfuscate)
+    const key = this.buildCurrentCredentialsKey(
+      organizationId,
+      provider,
+      model,
+      modelType,
+      obfuscate
+    )
     const tags = [
       `org:${organizationId}`,
       `provider:${provider}`,
@@ -73,7 +91,14 @@ export class ProviderCacheService extends BaseCacheService {
     modelType: ModelType,
     obfuscate: boolean = true
   ): string {
-    return this.buildKey('current_credentials', organizationId, provider, model, modelType, obfuscate.toString())
+    return this.buildKey(
+      'current_credentials',
+      organizationId,
+      provider,
+      model,
+      modelType,
+      obfuscate.toString()
+    )
   }
 
   async getAllProviderConfigs(organizationId: string): Promise<ProviderConfigurations | null> {
@@ -183,9 +208,9 @@ export class ProviderCacheService extends BaseCacheService {
   private static instance: ProviderCacheService
 
   static getInstance(): ProviderCacheService {
-    if (!this.instance) {
-      this.instance = new ProviderCacheService()
+    if (!ProviderCacheService.instance) {
+      ProviderCacheService.instance = new ProviderCacheService()
     }
-    return this.instance
+    return ProviderCacheService.instance
   }
 }

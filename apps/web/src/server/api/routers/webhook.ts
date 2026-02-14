@@ -1,9 +1,8 @@
+import { SubscriptionModel } from '@auxx/database/models'
+import { WebhookService } from '@auxx/lib/webhooks'
+import { WEBHOOK_EVENT_TYPES } from '@auxx/lib/webhooks/types'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { WebhookService } from '@auxx/lib/webhooks'
-import { SubscriptionModel } from '@auxx/database/models'
-
-import { WEBHOOK_EVENT_TYPES } from '@auxx/lib/webhooks/types'
 
 // Create a zod schema for validating event types
 const eventTypeSchema = z.enum([...(Object.values(WEBHOOK_EVENT_TYPES) as [string, ...string[]])])

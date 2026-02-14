@@ -1,9 +1,9 @@
 // apps/web/src/providers/extensions/extension-data-handler-context.tsx
 'use client'
 
-import { createContext, useContext, type ReactNode } from 'react'
-import { useMessageClient } from '~/lib/extensions/use-message-client'
+import { createContext, type ReactNode, useContext } from 'react'
 import type { MessageClient } from '~/lib/extensions/message-client'
+import { useMessageClient } from '~/lib/extensions/use-message-client'
 
 /**
  * Extension data handler context value.
@@ -53,8 +53,7 @@ export function ExtensionDataHandlerContextProvider({
 
   return (
     <ExtensionDataHandlerContext.Provider
-      value={{ appId, appInstallationId, messageClient, isDevLoggingEnabled }}
-    >
+      value={{ appId, appInstallationId, messageClient, isDevLoggingEnabled }}>
       {children}
     </ExtensionDataHandlerContext.Provider>
   )

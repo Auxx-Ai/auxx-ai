@@ -1,7 +1,8 @@
 // apps/web/src/components/ui/stat-card.tsx
-import React from 'react'
-import { cn } from '@auxx/ui/lib/utils'
+
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { cn } from '@auxx/ui/lib/utils'
+import type React from 'react'
 
 /**
  * StatCard component for displaying a stat with icon, title, value, and description.
@@ -46,17 +47,17 @@ export function StatCard({
           { 'border-l': !first },
           className
         )}>
-        <div className="pt-3 px-3 pb-0">
-          <div className="leading-none tracking-tight text-sm font-medium flex items-center gap-2">
-            <Skeleton className="h-4 w-20" />
+        <div className='pt-3 px-3 pb-0'>
+          <div className='leading-none tracking-tight text-sm font-medium flex items-center gap-2'>
+            <Skeleton className='h-4 w-20' />
           </div>
         </div>
-        <div className="pt-1 px-3 pb-3">
-          <div className="text-2xl font-bold">
-            <Skeleton className="h-8 w-12" />
+        <div className='pt-1 px-3 pb-3'>
+          <div className='text-2xl font-bold'>
+            <Skeleton className='h-8 w-12' />
           </div>
-          <div className="pt-2 text-xs text-muted-foreground">
-            <Skeleton className="h-3 w-24" />
+          <div className='pt-2 text-xs text-muted-foreground'>
+            <Skeleton className='h-3 w-24' />
           </div>
         </div>
       </div>
@@ -81,9 +82,9 @@ export function StatCard({
         </div>
         {iconPosition === 'right' && icon}
       </div>
-      <div className="pt-1 px-3 pb-3">
-        <div className="text-2xl font-bold">{body}</div>
-        <div className="text-xs text-muted-foreground">{description}</div>
+      <div className='pt-1 px-3 pb-3'>
+        <div className='text-2xl font-bold'>{body}</div>
+        <div className='text-xs text-muted-foreground'>{description}</div>
       </div>
     </div>
   )

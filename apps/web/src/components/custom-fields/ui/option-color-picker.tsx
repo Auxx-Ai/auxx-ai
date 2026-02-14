@@ -2,19 +2,19 @@
 'use client'
 
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-} from '@auxx/ui/components/dropdown-menu'
-import { Button } from '@auxx/ui/components/button'
-import { cn } from '@auxx/ui/lib/utils'
-import {
-  OPTION_COLORS,
   DEFAULT_SELECT_OPTION_COLOR,
+  OPTION_COLORS,
   type SelectOptionColor,
 } from '@auxx/lib/custom-fields/client'
+import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import { cn } from '@auxx/ui/lib/utils'
 
 interface OptionColorPickerProps {
   /** Current color value */
@@ -39,7 +39,7 @@ export function OptionColorPicker({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild disabled={disabled}>
-        <Button variant="ghost" size="icon-sm" className="size-6" aria-label="Select color">
+        <Button variant='ghost' size='icon-sm' className='size-6' aria-label='Select color'>
           <div
             className={cn(
               'size-4 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/10',
@@ -48,12 +48,12 @@ export function OptionColorPicker({
           />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-36">
+      <DropdownMenuContent align='start' className='w-36'>
         <DropdownMenuRadioGroup
           value={value}
           onValueChange={(v) => onChange(v as SelectOptionColor)}>
           {OPTION_COLORS.map((color) => (
-            <DropdownMenuRadioItem key={color.id} value={color.id} className="pl-1.5">
+            <DropdownMenuRadioItem key={color.id} value={color.id} className='pl-1.5'>
               <div
                 className={cn(
                   'size-3 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/10 mr-2',

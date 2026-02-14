@@ -2,13 +2,13 @@
 
 'use client'
 
-import { useController, type Control } from 'react-hook-form'
-import { Button } from '@auxx/ui/components/button'
-import { FormControl, FormField, FormItem, FormMessage, FormLabel } from '@auxx/ui/components/form'
-import { Plus } from 'lucide-react'
-import { ActorPicker } from './actor-picker'
-import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import type { ActorId } from '@auxx/types/actor'
+import { Button } from '@auxx/ui/components/button'
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@auxx/ui/components/form'
+import { Plus } from 'lucide-react'
+import { type Control, useController } from 'react-hook-form'
+import { ActorBadge } from '~/components/resources/ui/actor-badge'
+import { ActorPicker } from './actor-picker'
 
 interface ActorFormFieldProps {
   /** Field name in form */
@@ -63,9 +63,9 @@ export function ActorFormField({
         <FormItem>
           {label && <FormLabel>{label}</FormLabel>}
           <FormControl>
-            <div className="space-y-3">
+            <div className='space-y-3'>
               {/* Selected items - uses ActorBadge with onRemove */}
-              <div className="flex flex-wrap gap-2">
+              <div className='flex flex-wrap gap-2'>
                 {selectedActorIds.map((actorId) => (
                   <ActorBadge
                     key={actorId}
@@ -74,7 +74,7 @@ export function ActorFormField({
                   />
                 ))}
                 {selectedActorIds.length === 0 && (
-                  <span className="text-sm text-muted-foreground">No selection</span>
+                  <span className='text-sm text-muted-foreground'>No selection</span>
                 )}
               </div>
 
@@ -84,7 +84,7 @@ export function ActorFormField({
                 onChange={handleChange}
                 target={target}
                 disabled={disabled}>
-                <Button type="button" variant="outline" size="sm" disabled={disabled}>
+                <Button type='button' variant='outline' size='sm' disabled={disabled}>
                   <Plus />
                   {placeholder}
                 </Button>

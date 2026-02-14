@@ -1,19 +1,19 @@
 // apps/web/src/components/workflow/nodes/core/webhook/schema.ts
 
+import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
 import { z } from 'zod'
 import {
-  type NodeDefinition,
   NodeCategory,
+  type NodeDefinition,
   type ValidationResult,
 } from '~/components/workflow/types'
-import { type WebhookNodeData } from './types'
 import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
-import { WebhookPanel } from './panel'
 import { NodeType } from '~/components/workflow/types/node-types'
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
-import { type UnifiedVariable, BaseType } from '~/components/workflow/types/variable-types'
-import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
+import { BaseType, type UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { schemaToUnifiedVariable } from '~/components/workflow/utils/schema-to-variable'
+import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
+import { WebhookPanel } from './panel'
+import type { WebhookNodeData } from './types'
 
 /**
  * Zod schema for webhook node data (flattened structure)

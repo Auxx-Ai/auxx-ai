@@ -19,8 +19,7 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCode.SUBSCRIPTION_NOT_FOUND]: 'Subscription not found',
   [ErrorCode.ALREADY_SUBSCRIBED]: 'Already subscribed to this plan',
   [ErrorCode.SUBSCRIPTION_NOT_ACTIVE]: 'Subscription is not active',
-  [ErrorCode.NOT_SCHEDULED_FOR_CANCELLATION]:
-    'Subscription is not scheduled for cancellation',
+  [ErrorCode.NOT_SCHEDULED_FOR_CANCELLATION]: 'Subscription is not scheduled for cancellation',
   [ErrorCode.NO_CUSTOMER_FOUND]: 'No Stripe customer found for this organization',
   [ErrorCode.PRICE_NOT_CONFIGURED]: 'Price not configured for this plan',
   [ErrorCode.STRIPE_ERROR]: 'Stripe API error',

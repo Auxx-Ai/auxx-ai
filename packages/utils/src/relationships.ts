@@ -46,4 +46,3 @@ export function isMultiRelationship(relationshipType?: RelationshipType | string
 export function isSingleRelationship(relationshipType?: RelationshipType | string): boolean {
   return relationshipType === 'belongs_to' || relationshipType === 'has_one'
 }
-

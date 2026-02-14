@@ -4,9 +4,9 @@
  *
  * @file packages/lib/src/providers/openphone/openphone-service.ts
  */
-import { database as db, schema, type Database } from '@auxx/database'
-import { eq, and, sql } from 'drizzle-orm'
-import { MessageType } from '@auxx/database/types'
+import { type Database, database as db, schema } from '@auxx/database'
+import type { MessageType } from '@auxx/database/types'
+import { and, eq, sql } from 'drizzle-orm'
 /**
  * Metadata for OpenPhone integration.
  */

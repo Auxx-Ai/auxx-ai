@@ -1,14 +1,17 @@
 // apps/web/src/lib/workflow/workflow-block-registry.ts
 
-import type { NodeDefinition, ValidationResult } from '~/components/workflow/types/registry'
+import type { ComponentType } from 'react'
+import type {
+  NodeDefinition,
+  NodePanelProps,
+  ValidationResult,
+} from '~/components/workflow/types/registry'
 import { NodeCategory } from '~/components/workflow/types/registry'
-import type { WorkflowBlock, WorkflowVariable } from './types'
+import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
+import { convertOutputFieldsToVariables } from '~/lib/workflow/utils/type-mapping'
 // import { AppWorkflowNode } from './components/app-workflow-node'
 import { AppWorkflowPanel } from './components/app-workflow-panel'
-import type { ComponentType } from 'react'
-import type { NodePanelProps } from '~/components/workflow/types/registry'
-import { convertOutputFieldsToVariables } from '~/lib/workflow/utils/type-mapping'
-import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
+import type { WorkflowBlock, WorkflowVariable } from './types'
 
 // In-memory cache for loaded blocks
 const schemaCache = new Map<string, WorkflowBlock[]>()
@@ -31,11 +34,7 @@ export class WorkflowBlockRegistry {
   /**
    * Register workflow blocks from an app and cache them
    */
-  registerBlocks(
-    appId: string,
-    installationId: string,
-    blocks: WorkflowBlock[]
-  ): NodeDefinition[] {
+  registerBlocks(appId: string, installationId: string, blocks: WorkflowBlock[]): NodeDefinition[] {
     // Cache the blocks
     const cacheKey = `${appId}:${installationId}`
     schemaCache.set(cacheKey, blocks)
@@ -56,7 +55,6 @@ export class WorkflowBlockRegistry {
 
     return nodeDefinitions
   }
-
 
   /**
    * Unregister workflow blocks from an app
@@ -102,8 +100,8 @@ export class WorkflowBlockRegistry {
   ): NodeDefinition {
     return {
       id: `${appId}:${block.id}`,
-      category: NodeCategory.INTEGRATION,  // Force all app blocks to INTEGRATION (Apps tab)
-      subcategory: block.category,          // Preserve original category for grouping
+      category: NodeCategory.INTEGRATION, // Force all app blocks to INTEGRATION (Apps tab)
+      subcategory: block.category, // Preserve original category for grouping
       displayName: block.label,
       description: block.description || '',
       icon: block.icon || '🔌',

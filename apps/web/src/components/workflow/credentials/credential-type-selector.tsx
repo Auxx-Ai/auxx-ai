@@ -1,17 +1,17 @@
 // apps/web/src/app/(protected)/app/workflows/_components/credentials/credential-type-selector.tsx
 'use client'
 
-import React, { useState } from 'react'
-import { Search } from 'lucide-react'
-import { Input } from '@auxx/ui/components/input'
-import { Button } from '@auxx/ui/components/button'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { Input } from '@auxx/ui/components/input'
+import { Search } from 'lucide-react'
+import React, { useState } from 'react'
 import {
-  CREDENTIAL_REGISTRY,
   CREDENTIAL_CATEGORIES,
-  searchCredentialTypes,
-  getCredentialsByCategory,
+  CREDENTIAL_REGISTRY,
   type CredentialTypeMetadata,
+  getCredentialsByCategory,
+  searchCredentialTypes,
 } from './credential-registry'
 
 interface CredentialTypeSelectorProps {
@@ -37,20 +37,20 @@ function CredentialTypeCard({
   return (
     <Button
       variant={isSelected ? 'default' : 'outline'}
-      className="h-auto p-2 flex flex-col items-start gap-1 text-left hover:shadow-md transition-shadow"
+      className='h-auto p-2 flex flex-col items-start gap-1 text-left hover:shadow-md transition-shadow'
       onClick={onSelect}>
-      <div className="flex gap-1 w-full">
+      <div className='flex gap-1 w-full'>
         {/* <div className={`p-2 h-8 rounded-lg ${isSelected ? 'bg-white/20' : 'bg-muted'}`}> */}
-        <Icon className="size-6!" />
+        <Icon className='size-6!' />
         {/* </div> */}
-        <div className="flex-1 ml-1 flex items-center flex-row justify-between min-w-0">
-          <h3 className="font-medium truncate">{credential.displayName}</h3>
-          <Badge variant="secondary" className="text-xs mt-1">
+        <div className='flex-1 ml-1 flex items-center flex-row justify-between min-w-0'>
+          <h3 className='font-medium truncate'>{credential.displayName}</h3>
+          <Badge variant='secondary' className='text-xs mt-1'>
             {CREDENTIAL_CATEGORIES[credential.category]}
           </Badge>
         </div>
       </div>
-      <p className="truncate text-wrap text-sm opacity-50">{credential.description}</p>
+      <p className='truncate text-wrap text-sm opacity-50'>{credential.description}</p>
     </Button>
   )
 }
@@ -72,11 +72,11 @@ function CategorySection({
   if (credentials.length === 0) return null
 
   return (
-    <div className="space-y-3">
-      <h3 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+    <div className='space-y-3'>
+      <h3 className='font-medium text-sm text-muted-foreground uppercase tracking-wide'>
         {CREDENTIAL_CATEGORIES[category]}
       </h3>
-      <div className="grid gap-3 ">
+      <div className='grid gap-3 '>
         {credentials.map((credential) => (
           <CredentialTypeCard
             key={credential.id}
@@ -134,28 +134,28 @@ export function CredentialTypeSelector({
   }
 
   return (
-    <div className="space-y-6">
+    <div className='space-y-6'>
       {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <div className='relative'>
+        <Search className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground' />
         <Input
-          placeholder="Search credential types..."
+          placeholder='Search credential types...'
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
+          className='pl-10'
         />
       </div>
 
       {/* No results */}
       {filteredCredentials.length === 0 && (
-        <div className="text-center py-8 text-muted-foreground">
+        <div className='text-center py-8 text-muted-foreground'>
           <p>No credential types found matching "{searchQuery}"</p>
         </div>
       )}
 
       {/* Categories */}
       {filteredCredentials.length > 0 && (
-        <div className="space-y-8">
+        <div className='space-y-8'>
           {(Object.keys(categorizedCredentials) as Array<keyof typeof categorizedCredentials>).map(
             (category) => (
               <CategorySection

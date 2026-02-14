@@ -1,3 +1,4 @@
+import { TicketPriority, TicketType } from '@auxx/database/enums'
 import {
   BadgeAlert,
   Book,
@@ -9,7 +10,6 @@ import {
   TicketX,
   Truck,
 } from 'lucide-react'
-import { TicketPriority, TicketType } from '@auxx/database/enums'
 export const TicketTypeIcons = {
   [TicketType.GENERAL]: <Book size={16} />,
   [TicketType.MISSING_ITEM]: <BookX size={16} />,

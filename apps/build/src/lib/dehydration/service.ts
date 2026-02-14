@@ -1,24 +1,24 @@
 // apps/build/src/lib/dehydration/service.ts
 
-import { database as ddb, type Database } from '@auxx/database'
-import { BuildDehydrationCacheService } from './cache'
-import { createScopedLogger } from '@auxx/logger'
 import { DEV_PORTAL_URL, WEBAPP_URL } from '@auxx/config/client'
-import { getUser } from '@auxx/services/users'
-import {
-  listDeveloperAccounts,
-  listDeveloperAccountMembers,
-} from '@auxx/services/developer-accounts'
+import { type Database, database as ddb } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { listAppsForUser } from '@auxx/services/apps'
+import {
+  listDeveloperAccountMembers,
+  listDeveloperAccounts,
+} from '@auxx/services/developer-accounts'
 import { listUserOrganizations } from '@auxx/services/organization-members'
+import { getUser } from '@auxx/services/users'
+import { BuildDehydrationCacheService } from './cache'
 import type {
   BuildDehydratedState,
+  DehydratedApp,
+  DehydratedBuildEnvironment,
   DehydratedBuildUser,
   DehydratedDeveloperAccount,
-  DehydratedApp,
-  DehydratedOrganization,
   DehydratedDeveloperAccountInvitation,
-  DehydratedBuildEnvironment,
+  DehydratedOrganization,
 } from './types'
 
 const logger = createScopedLogger('build-dehydration-service')

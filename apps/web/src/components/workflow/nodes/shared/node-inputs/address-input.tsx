@@ -2,8 +2,8 @@
 
 import { useCallback } from 'react'
 import {
-  AddressStructFields,
   type AddressStruct,
+  AddressStructFields,
 } from '~/components/fields/inputs/address-struct-input-field'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
@@ -58,7 +58,7 @@ export const AddressInput = createNodeInput<AddressInputProps>(
         value={value}
         onChange={handleChange}
         disabled={isLoading}
-        className="flex w-full flex-col gap-1 pe-2 py-1"
+        className='flex w-full flex-col gap-1 pe-2 py-1'
       />
     )
   }

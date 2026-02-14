@@ -2,21 +2,21 @@
 
 'use client'
 
-import { useMemo, useCallback, useState, useRef } from 'react'
-import { Filter, X } from 'lucide-react'
-import { Button, buttonVariants } from '@auxx/ui/components/button'
-import { Switch } from '@auxx/ui/components/switch'
-import { Badge } from '@auxx/ui/components/badge'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import {
-  ConditionProvider,
-  ConditionContainer,
-  type ConditionSystemConfig,
-  type Condition,
-} from '~/components/conditions'
-import { TASK_FILTER_FIELDS } from '@auxx/lib/tasks/client'
-import { TaskSortSelect } from './task-sort-select'
 import type { TaskSortConfig } from '@auxx/lib/tasks/client'
+import { TASK_FILTER_FIELDS } from '@auxx/lib/tasks/client'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button, buttonVariants } from '@auxx/ui/components/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Switch } from '@auxx/ui/components/switch'
+import { Filter, X } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import {
+  type Condition,
+  ConditionContainer,
+  ConditionProvider,
+  type ConditionSystemConfig,
+} from '~/components/conditions'
+import { TaskSortSelect } from './task-sort-select'
 
 /**
  * Props for TaskFilterBar component
@@ -131,32 +131,32 @@ export function TaskFilterBar({
   const hasFilters = filterCount > 0
 
   return (
-    <div className="flex items-center border-b gap-1.5 py-2 px-3 bg-background overflow-x-auto no-scrollbar w-full">
+    <div className='flex items-center border-b gap-1.5 py-2 px-3 bg-background overflow-x-auto no-scrollbar w-full'>
       {/* Filter Popover */}
       <Popover open={isFilterOpen} onOpenChange={handleFilterOpenChange}>
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="sm" disabled={disabled}>
+          <Button variant='ghost' size='sm' disabled={disabled}>
             <Filter />
-            <span className="hidden sm:inline">Filter</span>
+            <span className='hidden sm:inline'>Filter</span>
             {hasFilters && (
-              <Badge variant="secondary" className="ml-1 h-4 px-1">
+              <Badge variant='secondary' className='ml-1 h-4 px-1'>
                 {filterCount}
               </Badge>
             )}
           </Button>
         </PopoverTrigger>
 
-        <PopoverContent className="w-[400px] max-h-[400px] overflow-auto p-2" align="start">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Filters</span>
+        <PopoverContent className='w-[400px] max-h-[400px] overflow-auto p-2' align='start'>
+          <div className='space-y-2'>
+            <div className='flex items-center justify-between'>
+              <span className='text-sm font-medium'>Filters</span>
               {hasFilters && (
                 <Button
-                  variant="ghost"
-                  size="sm"
+                  variant='ghost'
+                  size='sm'
                   onClick={handleClearAll}
-                  className="h-6 px-2 text-xs">
-                  <X className="mr-1 size-3" />
+                  className='h-6 px-2 text-xs'>
+                  <X className='mr-1 size-3' />
                   Clear all
                 </Button>
               )}
@@ -172,7 +172,7 @@ export function TaskFilterBar({
               getAvailableFields={() => fieldDefinitions}
               getFieldDefinition={(id) => fieldDefinitions.find((f) => f.id === id)}>
               <ConditionContainer
-                emptyStateText="Add a filter to start"
+                emptyStateText='Add a filter to start'
                 showAddButton
                 showGrouping={false}
               />
@@ -185,7 +185,7 @@ export function TaskFilterBar({
       <TaskSortSelect value={sort} onChange={onSortChange} disabled={disabled} />
 
       {/* Spacer */}
-      <div className="flex-1" />
+      <div className='flex-1' />
 
       {/* Show Completed Toggle */}
       <label
@@ -194,9 +194,9 @@ export function TaskFilterBar({
           size: 'sm',
           className: `gap-2 ${disabled ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`,
         })}>
-        <span className="text-muted-foreground text-xs">Show completed</span>
+        <span className='text-muted-foreground text-xs'>Show completed</span>
         <Switch
-          size="sm"
+          size='sm'
           checked={includeCompleted}
           onCheckedChange={onIncludeCompletedChange}
           disabled={disabled}

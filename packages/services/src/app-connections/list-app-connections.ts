@@ -1,11 +1,11 @@
 // packages/services/src/app-connections/list-app-connections.ts
 
+import { CredentialService } from '@auxx/credentials'
 import { database } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { ok, type Result } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { AppConnection, DecryptedConnectionData } from './types'
-import { CredentialService } from '@auxx/credentials'
-import { createScopedLogger } from '@auxx/logger'
 
 const logger = createScopedLogger('list-app-connections')
 
@@ -101,7 +101,7 @@ export async function listAppConnections(organizationId: string, userId?: string
   const connections: AppConnection[] = credentials.map((cred) => {
     // Determine status by checking expiration
     let status: 'connected' | 'not_connected' | 'expired' = 'connected'
-    let expiresAt: Date | undefined = undefined
+    let expiresAt: Date | undefined
 
     // Check if OAuth2 token is expired
     try {

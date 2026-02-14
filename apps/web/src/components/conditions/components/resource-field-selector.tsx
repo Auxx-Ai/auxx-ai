@@ -2,13 +2,13 @@
 
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
-import { Variable } from 'lucide-react'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
-import type { FieldSelectorProps, FieldDefinition } from '../types'
 import type { SelectOption } from '@auxx/types/custom-field'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Variable } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { VAR_TYPE_ICON_MAP } from '~/components/workflow/utils'
+import type { FieldDefinition, FieldSelectorProps } from '../types'
 
 /**
  * Props for ResourceFieldSelector, extends base FieldSelectorProps with available fields
@@ -84,21 +84,21 @@ const ResourceFieldSelector = ({
         {renderTrigger ? (
           renderTrigger({ isOpen, onClick: () => setIsOpen(!isOpen) })
         ) : (
-          <div className="cursor-pointer">
+          <div className='cursor-pointer'>
             {value && selectedField ? (
-              <div className="flex justify-start">
-                <div className="inline-flex h-6 max-w-full items-center rounded-md border-[0.5px] border-border bg-background px-1.5 text-primary-500 shadow-xs">
-                  <Variable className="size-3.5 shrink-0 text-accent-500" />
-                  <div className="ml-0.5 truncate text-xs font-medium">{selectedField.label}</div>
+              <div className='flex justify-start'>
+                <div className='inline-flex h-6 max-w-full items-center rounded-md border-[0.5px] border-border bg-background px-1.5 text-primary-500 shadow-xs'>
+                  <Variable className='size-3.5 shrink-0 text-accent-500' />
+                  <div className='ml-0.5 truncate text-xs font-medium'>{selectedField.label}</div>
                 </div>
               </div>
             ) : (
-              <span className="text-muted-foreground">{placeholder}</span>
+              <span className='text-muted-foreground'>{placeholder}</span>
             )}
           </div>
         )}
       </PopoverTrigger>
-      <PopoverContent className="min-w-[200px] p-0" align="start">
+      <PopoverContent className='min-w-[200px] p-0' align='start'>
         <MultiSelectPicker
           options={options}
           value={value ? [value] : []}
@@ -107,7 +107,7 @@ const ResourceFieldSelector = ({
           multi={false}
           canManage={false}
           canAdd={false}
-          placeholder="Search fields..."
+          placeholder='Search fields...'
           disabled={disabled}
         />
       </PopoverContent>

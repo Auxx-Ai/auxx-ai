@@ -1,7 +1,7 @@
 import { complete, errored, isErrored } from '../../../errors.js'
-import { prepareBuildContext } from '../../dev/prepare-build-context.js'
 import { compileAndExtractSettingsSchema } from '../../../util/compile-and-extract-settings.js'
-import { type SettingsSchema } from '../../../util/extract-settings-schema.js'
+import type { SettingsSchema } from '../../../util/extract-settings-schema.js'
+import { prepareBuildContext } from '../../dev/prepare-build-context.js'
 
 /**
  * Bundle result with client/server bundles and optional settings schema

@@ -1,10 +1,11 @@
 // apps/web/src/components/workflow/hooks/run-hooks/use-run-workflow-failed.ts
+
+import { WorkflowRunStatus } from '@auxx/database/enums'
+import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
-import { useRunStore } from '../../store/run-store'
 import { useCanvasStore } from '../../store/canvas-store'
 import type { ExecutionEvent } from '../../store/run-store'
-import { toastError } from '@auxx/ui/components/toast'
-import { WorkflowRunStatus } from '@auxx/database/enums'
+import { useRunStore } from '../../store/run-store'
 export const useRunWorkflowFailed = () => {
   const setIsRunning = useRunStore((state) => state.setIsRunning)
   const setConnectionStatus = useRunStore((state) => state.setConnectionStatus)

@@ -1,9 +1,17 @@
 // packages/sdk/src/build/platform-runtime/build.ts
 
-import * as esbuild from 'esbuild'
 import { createHash } from 'crypto'
-import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs'
-import { join, dirname } from 'path'
+import * as esbuild from 'esbuild'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'fs'
+import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 
 const __filename = fileURLToPath(import.meta.url)

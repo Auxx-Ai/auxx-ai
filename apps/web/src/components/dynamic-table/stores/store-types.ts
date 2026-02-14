@@ -1,15 +1,15 @@
 // apps/web/src/components/dynamic-table/stores/store-types.ts
 
-import type { StateCreator } from 'zustand'
+import type { ConditionGroup, ViewContextType } from '@auxx/lib/conditions/client'
 import type {
+  ColumnOrderState,
+  ColumnPinningState,
+  ColumnSizingState,
   SortingState,
   VisibilityState,
-  ColumnOrderState,
-  ColumnSizingState,
-  ColumnPinningState,
 } from '@tanstack/react-table'
-import type { ConditionGroup, ViewContextType } from '@auxx/lib/conditions/client'
-import type { TableView, ViewConfig, KanbanViewConfig, ColumnFormatting } from '../types'
+import type { StateCreator } from 'zustand'
+import type { ColumnFormatting, KanbanViewConfig, TableView, ViewConfig } from '../types'
 
 // ============================================================================
 // UI CONFIG TYPE (everything except filters)
@@ -57,7 +57,10 @@ export interface ViewSlice {
   setError: (error: Error | null) => void
   addView: (view: TableView) => void
   removeView: (viewId: string, tableId: string) => void
-  updateViewMeta: (viewId: string, meta: Partial<Pick<TableView, 'name' | 'isDefault' | 'isShared'>>) => void
+  updateViewMeta: (
+    viewId: string,
+    meta: Partial<Pick<TableView, 'name' | 'isDefault' | 'isShared'>>
+  ) => void
   startSaving: (viewId: string) => void
   finishSaving: (viewId: string) => void
   /** Toggle field visibility in a field view (optimistic update) */
@@ -128,10 +131,7 @@ export interface SharedSlice {
 export type DynamicTableStore = ViewSlice & UISlice & FilterSlice & SharedSlice
 
 /** Middleware types for slice creators */
-type Middlewares = [
-  ['zustand/subscribeWithSelector', never],
-  ['zustand/immer', never]
-]
+type Middlewares = [['zustand/subscribeWithSelector', never], ['zustand/immer', never]]
 
 /** Slice creator type with middleware support */
 export type SliceCreator<T> = StateCreator<DynamicTableStore, Middlewares, [], T>

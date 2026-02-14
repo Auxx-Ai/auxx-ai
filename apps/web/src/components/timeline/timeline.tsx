@@ -1,16 +1,16 @@
 // apps/web/src/components/timeline/timeline.tsx
 'use client'
 
-import { useState, useMemo } from 'react'
-import { Button } from '@auxx/ui/components/button'
 import {
   groupTimelineEventsByPeriod,
   type PeriodType,
   type TimelineItem,
 } from '@auxx/lib/timeline/client'
-import { TimelinePeriodHeader } from './timeline-period-header'
+import { Button } from '@auxx/ui/components/button'
+import { useMemo, useState } from 'react'
 import { TimelineEventItem } from './timeline-event-item'
 import { TimelineGroupedItem } from './timeline-grouped-item'
+import { TimelinePeriodHeader } from './timeline-period-header'
 
 /**
  * Props for the Timeline component
@@ -58,7 +58,7 @@ export function Timeline({ events, onLoadMore, hasMore, isLoading }: TimelinePro
   }
 
   return (
-    <div className="timeline-events relative w-full">
+    <div className='timeline-events relative w-full'>
       {groupedData.map((yearGroup) => (
         <div key={yearGroup.year}>
           {yearGroup.periods.map((period, periodIndex) => {
@@ -99,13 +99,13 @@ export function Timeline({ events, onLoadMore, hasMore, isLoading }: TimelinePro
       ))}
 
       {hasMore && (
-        <div className="flex justify-center py-4">
+        <div className='flex justify-center py-4'>
           <Button
             onClick={onLoadMore}
-            variant="ghost"
-            size="sm"
+            variant='ghost'
+            size='sm'
             loading={isLoading}
-            loadingText="Loading...">
+            loadingText='Loading...'>
             Load more
           </Button>
         </div>

@@ -1,29 +1,29 @@
 // apps/web/src/components/workflow/hooks/use-node-addition.ts
 
-import { useCallback } from 'react'
+import { toastError } from '@auxx/ui/components/toast'
 import { useStoreApi } from '@xyflow/react'
-import type { FlowNode, FlowEdge } from '~/components/workflow/types'
+import { useCallback } from 'react'
+import type { FlowEdge, FlowNode } from '~/components/workflow/types'
 import { NodeType } from '~/components/workflow/types'
-import { useWorkflowSave } from './use-workflow-save'
-import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'
+import { LOOP_HANDLES } from '../nodes/core/loop/constants'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
 import { storeEventBus } from '../store/event-bus'
-import { LOOP_HANDLES } from '../nodes/core/loop/constants'
-import { toastError } from '@auxx/ui/components/toast'
-import {
-  NodeFactory,
-  PositionCalculator,
-  NodeMover,
-  EdgeManager,
-  applyLaneShifts,
-  type Point,
-  type Size,
-  type PositionResult,
-} from '../utils/node-layout'
-import { LAYOUT_SPACING } from '../utils/layout-constants'
-import { checkParentNeedsResize, createResizedParentNode } from '../utils/node-resize-utils'
-import { useWorkflowStore } from '../store/workflow-store'
 import { useVarStore } from '../store/use-var-store'
+import { useWorkflowStore } from '../store/workflow-store'
+import { LAYOUT_SPACING } from '../utils/layout-constants'
+import {
+  applyLaneShifts,
+  EdgeManager,
+  NodeFactory,
+  NodeMover,
+  type Point,
+  PositionCalculator,
+  type PositionResult,
+  type Size,
+} from '../utils/node-layout'
+import { checkParentNeedsResize, createResizedParentNode } from '../utils/node-resize-utils'
+import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'
+import { useWorkflowSave } from './use-workflow-save'
 // Variable syncing now handled automatically by VarStoreSyncProvider
 
 export interface NodeAdditionContext {

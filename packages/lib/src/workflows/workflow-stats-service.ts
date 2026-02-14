@@ -1,34 +1,34 @@
 // packages/lib/src/workflows/workflow-stats-service.ts
 
 import { type Database, schema } from '@auxx/database'
-import { and, eq, gte, lte, count, isNotNull, desc, asc } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
 import {
-  type TimeRange,
-  type WorkflowStats,
-  type WorkflowRun,
-  type DetailedTimeRange,
-  type CustomDateRange,
-  type WorkflowDetailedStats,
-  type TimeSeriesDataPoint,
-} from './types'
-import {
+  addDays,
+  addHours,
+  addWeeks,
+  differenceInDays,
+  eachDayOfInterval,
+  eachHourOfInterval,
+  eachWeekOfInterval,
+  format,
   startOfDay,
   startOfMonth,
   startOfQuarter,
   startOfYear,
   subDays,
-  subWeeks,
   subMonths,
-  format,
-  addHours,
-  addDays,
-  addWeeks,
-  eachHourOfInterval,
-  eachDayOfInterval,
-  eachWeekOfInterval,
-  differenceInDays,
+  subWeeks,
 } from 'date-fns'
+import { and, asc, count, desc, eq, gte, isNotNull, lte } from 'drizzle-orm'
+import type {
+  CustomDateRange,
+  DetailedTimeRange,
+  TimeRange,
+  TimeSeriesDataPoint,
+  WorkflowDetailedStats,
+  WorkflowRun,
+  WorkflowStats,
+} from './types'
 
 const logger = createScopedLogger('workflow-stats-service')
 
@@ -59,7 +59,10 @@ export class WorkflowStatsService {
 
       // Get WorkflowApp to find the published workflow
       const workflowApp = await this.db.query.WorkflowApp.findFirst({
-        where: and(eq(schema.WorkflowApp.id, workflowId), eq(schema.WorkflowApp.organizationId, organizationId)),
+        where: and(
+          eq(schema.WorkflowApp.id, workflowId),
+          eq(schema.WorkflowApp.organizationId, organizationId)
+        ),
         with: {
           publishedWorkflow: true,
         },
@@ -94,33 +97,39 @@ export class WorkflowStatsService {
         this.db
           .select({ count: count() })
           .from(schema.WorkflowRun)
-          .where(and(
-            eq(schema.WorkflowRun.workflowId, publishedWorkflowId),
-            gte(schema.WorkflowRun.createdAt, startDate)
-          ))
-          .then(result => result[0]?.count || 0),
+          .where(
+            and(
+              eq(schema.WorkflowRun.workflowId, publishedWorkflowId),
+              gte(schema.WorkflowRun.createdAt, startDate)
+            )
+          )
+          .then((result) => result[0]?.count || 0),
 
         // Success count
         this.db
           .select({ count: count() })
           .from(schema.WorkflowRun)
-          .where(and(
-            eq(schema.WorkflowRun.workflowId, publishedWorkflowId),
-            eq(schema.WorkflowRun.status, 'SUCCEEDED'),
-            gte(schema.WorkflowRun.createdAt, startDate)
-          ))
-          .then(result => result[0]?.count || 0),
+          .where(
+            and(
+              eq(schema.WorkflowRun.workflowId, publishedWorkflowId),
+              eq(schema.WorkflowRun.status, 'SUCCEEDED'),
+              gte(schema.WorkflowRun.createdAt, startDate)
+            )
+          )
+          .then((result) => result[0]?.count || 0),
 
         // Failure count
         this.db
           .select({ count: count() })
           .from(schema.WorkflowRun)
-          .where(and(
-            eq(schema.WorkflowRun.workflowId, publishedWorkflowId),
-            eq(schema.WorkflowRun.status, 'FAILED'),
-            gte(schema.WorkflowRun.createdAt, startDate)
-          ))
-          .then(result => result[0]?.count || 0),
+          .where(
+            and(
+              eq(schema.WorkflowRun.workflowId, publishedWorkflowId),
+              eq(schema.WorkflowRun.status, 'FAILED'),
+              gte(schema.WorkflowRun.createdAt, startDate)
+            )
+          )
+          .then((result) => result[0]?.count || 0),
 
         // Average execution time (calculate from createdAt and finishedAt)
         this.db.query.WorkflowRun.findMany({
@@ -176,7 +185,10 @@ export class WorkflowStatsService {
     try {
       // Verify WorkflowApp exists and belongs to organization
       const workflowApp = await this.db.query.WorkflowApp.findFirst({
-        where: and(eq(schema.WorkflowApp.id, workflowAppId), eq(schema.WorkflowApp.organizationId, organizationId)),
+        where: and(
+          eq(schema.WorkflowApp.id, workflowAppId),
+          eq(schema.WorkflowApp.organizationId, organizationId)
+        ),
       })
 
       if (!workflowApp) {
@@ -227,7 +239,10 @@ export class WorkflowStatsService {
 
       // Get WorkflowApp to find the published workflow
       const workflowApp = await this.db.query.WorkflowApp.findFirst({
-        where: and(eq(schema.WorkflowApp.id, workflowId), eq(schema.WorkflowApp.organizationId, organizationId)),
+        where: and(
+          eq(schema.WorkflowApp.id, workflowId),
+          eq(schema.WorkflowApp.organizationId, organizationId)
+        ),
         with: {
           publishedWorkflow: true,
         },
@@ -247,7 +262,10 @@ export class WorkflowStatsService {
 
         // Try to get draft workflow instead
         const workflowAppWithDraft = await this.db.query.WorkflowApp.findFirst({
-          where: and(eq(schema.WorkflowApp.id, workflowId), eq(schema.WorkflowApp.organizationId, organizationId)),
+          where: and(
+            eq(schema.WorkflowApp.id, workflowId),
+            eq(schema.WorkflowApp.organizationId, organizationId)
+          ),
           with: {
             draftWorkflow: true,
           },

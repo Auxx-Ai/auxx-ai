@@ -1,8 +1,8 @@
 // packages/lib/src/resources/hooks/system-hooks.ts
 
+import { COMMON_HOOKS } from './common-hooks'
 import { CONTACT_HOOKS } from './contact-hooks'
 import { TICKET_HOOKS } from './ticket-hooks'
-import { COMMON_HOOKS } from './common-hooks'
 import type { SystemHook, SystemHookRegistry } from './types'
 
 /**

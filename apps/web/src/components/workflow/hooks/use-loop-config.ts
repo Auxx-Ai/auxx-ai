@@ -2,7 +2,7 @@ import { useStoreApi } from '@xyflow/react'
 import { produce } from 'immer'
 import { useCallback } from 'react'
 import { LAYOUT_SPACING } from '~/components/workflow/utils/layout-constants'
-import { FlowNode } from '../types'
+import type { FlowNode } from '../types'
 
 export const useLoopConfig = () => {
   const store = useStoreApi()

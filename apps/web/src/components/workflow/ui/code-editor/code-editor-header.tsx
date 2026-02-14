@@ -2,15 +2,23 @@
 
 'use client'
 
-import React, { useState } from 'react'
-import { Clipboard, ClipboardCheck, Maximize2, Minimize2, Code2, Download, Sparkles } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
-import { useCodeEditorContext } from './code-editor-context'
+import {
+  Clipboard,
+  ClipboardCheck,
+  Code2,
+  Download,
+  Maximize2,
+  Minimize2,
+  Sparkles,
+} from 'lucide-react'
+import React, { useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
-import { CodeLanguage } from './types'
-import { ActionButton } from '~/components/workflow/ui/action-button'
 import { GenerateContentDialog } from '~/components/workflow/dialogs/generate-content-dialog'
 import { useWorkflowStore } from '~/components/workflow/store'
+import { ActionButton } from '~/components/workflow/ui/action-button'
+import { useCodeEditorContext } from './code-editor-context'
+import { CodeLanguage } from './types'
 
 /**
  * Toggle expand button component
@@ -21,7 +29,7 @@ const ToggleExpandBtn: React.FC<{
   onExpandChange: (expanded: boolean) => void
 }> = ({ isExpand, onExpandChange }) => (
   <ActionButton onClick={() => onExpandChange(!isExpand)}>
-    {isExpand ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+    {isExpand ? <Minimize2 className='size-4' /> : <Maximize2 className='size-4' />}
   </ActionButton>
 )
 
@@ -32,7 +40,7 @@ const LanguageBadge: React.FC<{ language: CodeLanguage }> = ({ language }) => {
   const displayName = language === CodeLanguage.javascript ? 'JS' : 'JSON'
 
   return (
-    <span className="inline-flex items-center rounded bg-primary-100 px-1.5 py-0.5 text-xs font-medium text-primary-700">
+    <span className='inline-flex items-center rounded bg-primary-100 px-1.5 py-0.5 text-xs font-medium text-primary-700'>
       {displayName}
     </span>
   )
@@ -93,37 +101,37 @@ const CodeEditorHeader: React.FC = () => {
         isExpanded ? 'h-10' : 'h-7'
       )}>
       {/* Title section with language badge */}
-      <div className="flex items-center gap-2">
-        <div className="text-xs font-semibold uppercase text-primary-500">{title || 'CODE'}</div>
+      <div className='flex items-center gap-2'>
+        <div className='text-xs font-semibold uppercase text-primary-500'>{title || 'CODE'}</div>
         <LanguageBadge language={language} />
       </div>
 
       {/* Operations section */}
       <div
-        className="flex items-center"
+        className='flex items-center'
         onClick={(e) => {
           e.nativeEvent.stopImmediatePropagation()
           e.stopPropagation()
         }}>
         {/* Line count */}
-        <div className="text-xs font-medium leading-[18px] text-primary-500">
+        <div className='text-xs font-medium leading-[18px] text-primary-500'>
           {lineCount} {lineCount === 1 ? 'line' : 'lines'}
         </div>
 
         {/* Divider */}
-        <div className="mx-2 h-3 w-px bg-primary-200"></div>
+        <div className='mx-2 h-3 w-px bg-primary-200'></div>
 
         {/* Operation buttons */}
-        <div className="flex items-center">
+        <div className='flex items-center'>
           {/* Custom header right content */}
           {headerRight}
 
           {/* Generate code button */}
           {!readOnly && workflowId && nodeId && (
-            <Tooltip content="Generate Code">
+            <Tooltip content='Generate Code'>
               <div>
-                <ActionButton className="ml-1" onClick={() => setIsGenerateDialogOpen(true)}>
-                  <Sparkles className="size-4" />
+                <ActionButton className='ml-1' onClick={() => setIsGenerateDialogOpen(true)}>
+                  <Sparkles className='size-4' />
                 </ActionButton>
               </div>
             </Tooltip>
@@ -131,10 +139,10 @@ const CodeEditorHeader: React.FC = () => {
 
           {/* Format code button */}
           {!readOnly && (
-            <Tooltip content="Format code">
+            <Tooltip content='Format code'>
               <div>
-                <ActionButton className="ml-1" onClick={handleFormat}>
-                  <Code2 className="size-4" />
+                <ActionButton className='ml-1' onClick={handleFormat}>
+                  <Code2 className='size-4' />
                 </ActionButton>
               </div>
             </Tooltip>
@@ -143,11 +151,11 @@ const CodeEditorHeader: React.FC = () => {
           {/* Copy button */}
           <Tooltip content={isCopied ? 'Copied!' : 'Copy code'}>
             <div>
-              <ActionButton className="ml-1" onClick={handleCopy}>
+              <ActionButton className='ml-1' onClick={handleCopy}>
                 {!isCopied ? (
-                  <Clipboard className="size-4 cursor-pointer" />
+                  <Clipboard className='size-4 cursor-pointer' />
                 ) : (
-                  <ClipboardCheck className="size-4" />
+                  <ClipboardCheck className='size-4' />
                 )}
               </ActionButton>
             </div>
@@ -155,10 +163,10 @@ const CodeEditorHeader: React.FC = () => {
 
           {/* Download button - only show if download is enabled */}
           {downloadFilename && (
-            <Tooltip content="Download">
+            <Tooltip content='Download'>
               <div>
-                <ActionButton className="ml-1" onClick={handleDownload}>
-                  <Download className="size-4" />
+                <ActionButton className='ml-1' onClick={handleDownload}>
+                  <Download className='size-4' />
                 </ActionButton>
               </div>
             </Tooltip>
@@ -166,7 +174,7 @@ const CodeEditorHeader: React.FC = () => {
 
           {/* Expand/collapse button */}
           <Tooltip content={isExpanded ? 'Close' : 'Expand'}>
-            <div className="ml-1">
+            <div className='ml-1'>
               <ToggleExpandBtn isExpand={isExpanded} onExpandChange={setIsExpanded} />
             </div>
           </Tooltip>
@@ -180,7 +188,7 @@ const CodeEditorHeader: React.FC = () => {
           onOpenChange={setIsGenerateDialogOpen}
           nodeId={nodeId}
           workflowId={workflowId}
-          generationType="code"
+          generationType='code'
           language={getLanguageForDialog()}
           currentContentValue={value}
           codeInputs={codeInputs}

@@ -1,20 +1,20 @@
 'use client'
-// ~/app/(protected)/app/settings/integrations/_components/integration-tabs.tsx
-import React, { useState } from 'react'
-import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { useIntegration } from '~/hooks/use-integration'
-import IntegrationRouting from './integration-routing'
-import { ArrowLeft } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import IntegrationSettingsAdvanced from './integration-settings-advanced'
-import SettingsPage from '~/components/global/settings-page'
-import { ReauthBanner } from '~/components/global/reauth-banner'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
+import { ArrowLeft } from 'lucide-react'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
+// ~/app/(protected)/app/settings/integrations/_components/integration-tabs.tsx
+import React, { useState } from 'react'
 import {
-  IntegrationStatusIndicator,
   getIntegrationStatus,
+  IntegrationStatusIndicator,
 } from '~/components/global/integration-status-indicator'
+import { ReauthBanner } from '~/components/global/reauth-banner'
+import SettingsPage from '~/components/global/settings-page'
+import { useIntegration } from '~/hooks/use-integration'
+import IntegrationRouting from './integration-routing'
+import IntegrationSettingsAdvanced from './integration-settings-advanced'
 
 /**
  * IntegrationTabs component
@@ -53,8 +53,8 @@ export default function IntegrationTabs() {
           { title: 'Integrations', href: '/app/settings/integrations' },
           { title: 'Loading...' },
         ]}>
-        <div className="space-y-6 p-6">
-          <Skeleton className="h-64 w-full" />
+        <div className='space-y-6 p-6'>
+          <Skeleton className='h-64 w-full' />
         </div>
       </SettingsPage>
     )
@@ -63,17 +63,17 @@ export default function IntegrationTabs() {
   // Error state - integration not found
   if (!integration) {
     return (
-      <div className="space-y-6">
-        <Button variant="outline" size="sm" onClick={handleBack}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
+      <div className='space-y-6'>
+        <Button variant='outline' size='sm' onClick={handleBack}>
+          <ArrowLeft className='mr-2 h-4 w-4' />
           Back to Integrations
         </Button>
-        <div className="rounded-md border p-8 text-center">
-          <h2 className="text-xl font-bold">Integration not found</h2>
-          <p className="mt-2 text-muted-foreground">
+        <div className='rounded-md border p-8 text-center'>
+          <h2 className='text-xl font-bold'>Integration not found</h2>
+          <p className='mt-2 text-muted-foreground'>
             The requested integration could not be found. It may have been removed.
           </p>
-          <Button className="mt-4" onClick={handleBack}>
+          <Button className='mt-4' onClick={handleBack}>
             Return to Integrations List
           </Button>
         </div>
@@ -92,7 +92,7 @@ export default function IntegrationTabs() {
   })
 
   return (
-    <Tabs defaultValue={activeTab} onValueChange={handleTabChange} className="w-full">
+    <Tabs defaultValue={activeTab} onValueChange={handleTabChange} className='w-full'>
       <SettingsPage
         title={title}
         description={integration.identifier || 'Manage your integration settings'}
@@ -102,20 +102,20 @@ export default function IntegrationTabs() {
           { title },
         ]}
         button={
-          <div className="flex items-center gap-3">
+          <div className='flex items-center gap-3'>
             <IntegrationStatusIndicator
               status={integrationStatus}
               lastSyncAt={integration.lastSyncedAt}
               lastError={integration.lastAuthError}
-              size="sm"
+              size='sm'
             />
             <TabsList>
-              <TabsTrigger value="routing">Routing</TabsTrigger>
-              <TabsTrigger value="settings">Settings</TabsTrigger>
+              <TabsTrigger value='routing'>Routing</TabsTrigger>
+              <TabsTrigger value='settings'>Settings</TabsTrigger>
             </TabsList>
           </div>
         }>
-        <div className="space-y-4">
+        <div className='space-y-4'>
           {/* Re-authentication Banner */}
           {requiresReauth && (
             <ReauthBanner
@@ -131,11 +131,11 @@ export default function IntegrationTabs() {
             />
           )}
 
-          <TabsContent value="routing" className="space-y-4">
+          <TabsContent value='routing' className='space-y-4'>
             <IntegrationRouting integration={integration} />
           </TabsContent>
 
-          <TabsContent value="settings" className="space-y-4">
+          <TabsContent value='settings' className='space-y-4'>
             <IntegrationSettingsAdvanced integration={integration} />
           </TabsContent>
         </div>

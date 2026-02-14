@@ -1,10 +1,10 @@
 // packages/services/src/timeline/create-timeline-event.ts
 
 import { database, schema } from '@auxx/database'
+import type { TimelineEventEntity } from '@auxx/database/models'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { TimelineEventEntity } from '@auxx/database/models'
-import { parseRecordId, toRecordId, type RecordId } from '@auxx/types/resource'
 
 /**
  * Input for creating a timeline event

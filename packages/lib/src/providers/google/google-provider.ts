@@ -1,41 +1,42 @@
 // src/lib/providers/google/google-provider.ts
-import { google, gmail_v1 as GmailV1 } from 'googleapis'
+
+import { database as db, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import { and, eq } from 'drizzle-orm'
+import { type Common, type gmail_v1 as GmailV1, google } from 'googleapis'
+import { MessageStorageService } from '../../email/email-storage'
+import {
+  CircuitBreakerError,
+  createThrottler,
+  RateLimitError,
+  type UniversalThrottler,
+} from '../../utils/rate-limiter'
+import type {
+  IntegrationProvider,
+  MessageStatus,
+  SendMessageOptions,
+} from '../integration-provider.interface'
 import {
   BaseMessageProvider,
   type MessageProvider,
   type ProviderLabel,
 } from '../message-provider-interface'
-import { type ProviderCapabilities, getProviderCapabilities } from '../provider-capabilities'
-import {
-  type IntegrationProvider,
-  type SendMessageOptions,
-  MessageStatus,
-} from '../integration-provider.interface'
-import { database as db, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import {
-  createThrottler,
-  type UniversalThrottler,
-  RateLimitError,
-  CircuitBreakerError,
-} from '../../utils/rate-limiter'
-import { MessageStorageService } from '../../email/email-storage'
-import { createScopedLogger } from '@auxx/logger'
-import { GoogleOAuthService, type GoogleIntegration } from './google-oauth'
-import { Common } from 'googleapis'
-type GaxiosError = Common.GaxiosError
-import { IntegrationProviderType } from '@auxx/database/enums'
+import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
+import { type GoogleIntegration, GoogleOAuthService } from './google-oauth'
 
+type GaxiosError = Common.GaxiosError
+
+import { IntegrationProviderType } from '@auxx/database/enums'
+import { createGmailDraft, sendGmailDraft, updateGmailDraft } from './drafts'
+import { addLabel, createLabel, deleteLabel, getLabels, removeLabel, updateLabel } from './labels'
 // Import modular functions
 import { createEmailMessage } from './messages/create-message'
 import { sendGmailMessage } from './messages/send-message'
 import { syncGmailMessages } from './messages/sync-messages'
-import { createGmailDraft, updateGmailDraft, sendGmailDraft } from './drafts'
-import { getLabels, createLabel, updateLabel, deleteLabel, addLabel, removeLabel } from './labels'
-import { getThread, updateThreadStatus, moveThread } from './threads'
-import { archive, markAsSpam, trash, restore } from './operations'
-import { setupWebhook, removeWebhook } from './webhooks'
+import { archive, markAsSpam, restore, trash } from './operations'
 import { executeWithThrottle } from './shared/utils'
+import { getThread, moveThread, updateThreadStatus } from './threads'
+import { removeWebhook, setupWebhook } from './webhooks'
 
 const logger = createScopedLogger('google-provider')
 
@@ -624,11 +625,7 @@ export class GoogleProvider
       }))
   }
 
-  async createLabel(options: {
-    name: string
-    color?: string
-    visible?: boolean
-  }): Promise<any> {
+  async createLabel(options: { name: string; color?: string; visible?: boolean }): Promise<any> {
     await this.ensureInitialized()
 
     return createLabel({

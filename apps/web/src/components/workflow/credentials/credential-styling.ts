@@ -1,8 +1,8 @@
 // apps/web/src/app/(protected)/app/workflows/_components/credentials/credential-styling.ts
 
+import { hasOAuth2Config } from '@auxx/workflow-nodes/types'
 // import * as lucideIcons from 'lucide-react'
 import { getCredentialType } from './credential-registry'
-import { hasOAuth2Config } from '@auxx/workflow-nodes/types'
 
 /**
  * Credential styling information

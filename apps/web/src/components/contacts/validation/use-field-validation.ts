@@ -1,7 +1,8 @@
 // ~/components/contacts/fields/validation/useFieldValidation.ts
+
+import { FieldType } from '@auxx/database/enums'
 import { useCallback } from 'react'
 import { z } from 'zod'
-import { FieldType } from '@auxx/database/enums'
 // Helper to create dynamic validation schema based on field type
 export const useFieldValidation = () => {
   const generateValidationSchema = useCallback((field: any) => {

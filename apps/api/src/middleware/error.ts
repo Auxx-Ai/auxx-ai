@@ -1,9 +1,9 @@
 // apps/api/src/middleware/error.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import { createMiddleware } from 'hono/factory'
 import { HTTPException } from 'hono/http-exception'
 import { ZodError } from 'zod'
-import { createScopedLogger } from '@auxx/logger'
 import { errorResponse } from '../lib/response'
 
 const logger = createScopedLogger('error-handler')

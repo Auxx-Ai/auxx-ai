@@ -1,17 +1,17 @@
 // apps/web/src/app/admin/users/[id]/page.tsx
 'use client'
 
-import { use } from 'react'
-import { useRouter } from 'next/navigation'
-import { api } from '~/trpc/react'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import { ArrowLeft, Mail, Phone, Shield, Trash2, User, Calendar, Book } from 'lucide-react'
+import {
+  MainPage,
+  MainPageBreadcrumb,
+  MainPageBreadcrumbItem,
+  MainPageContent,
+  MainPageHeader,
+} from '@auxx/ui/components/main-page'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { formatDistanceToNow } from 'date-fns'
-import { useConfirm } from '~/hooks/use-confirm'
-import { toastError } from '@auxx/ui/components/toast'
-import { Badge } from '@auxx/ui/components/badge'
 import {
   Table,
   TableBody,
@@ -20,13 +20,13 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import {
-  MainPage,
-  MainPageBreadcrumb,
-  MainPageBreadcrumbItem,
-  MainPageContent,
-  MainPageHeader,
-} from '@auxx/ui/components/main-page'
+import { toastError } from '@auxx/ui/components/toast'
+import { formatDistanceToNow } from 'date-fns'
+import { ArrowLeft, Book, Calendar, Mail, Phone, Shield, Trash2, User } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { use } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 /**
  * User detail page for admin
@@ -141,16 +141,16 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
       <MainPage loading>
         <MainPageHeader>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title="Admin" href="/admin" />
-            <MainPageBreadcrumbItem title="Users" href="/admin/users" />
-            <MainPageBreadcrumbItem title="Loading..." href="#" last />
+            <MainPageBreadcrumbItem title='Admin' href='/admin' />
+            <MainPageBreadcrumbItem title='Users' href='/admin/users' />
+            <MainPageBreadcrumbItem title='Loading...' href='#' last />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className="flex flex-col gap-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Skeleton className="h-64" />
-              <Skeleton className="h-64" />
+          <div className='flex flex-col gap-4'>
+            <div className='grid gap-4 md:grid-cols-2'>
+              <Skeleton className='h-64' />
+              <Skeleton className='h-64' />
             </div>
           </div>
         </MainPageContent>
@@ -163,15 +163,15 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
       <MainPage>
         <MainPageHeader>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title="Admin" href="/admin" />
-            <MainPageBreadcrumbItem title="Users" href="/admin/users" />
-            <MainPageBreadcrumbItem title="Not Found" href="#" last />
+            <MainPageBreadcrumbItem title='Admin' href='/admin' />
+            <MainPageBreadcrumbItem title='Users' href='/admin/users' />
+            <MainPageBreadcrumbItem title='Not Found' href='#' last />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className="flex flex-col gap-4 items-center justify-center h-full py-12">
-            <p className="text-muted-foreground">User not found</p>
-            <Button variant="outline" onClick={() => router.push('/admin/users')}>
+          <div className='flex flex-col gap-4 items-center justify-center h-full py-12'>
+            <p className='text-muted-foreground'>User not found</p>
+            <Button variant='outline' onClick={() => router.push('/admin/users')}>
               <ArrowLeft />
               Back to Users
             </Button>
@@ -188,8 +188,8 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
         <MainPageHeader
           action={
             <Button
-              size="sm"
-              variant="destructive"
+              size='sm'
+              variant='destructive'
               onClick={handleDelete}
               loading={deleteUser.isPending}>
               <Trash2 />
@@ -197,46 +197,46 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
             </Button>
           }>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title="Admin" href="/admin" />
-            <MainPageBreadcrumbItem title="Users" href="/admin/users" />
+            <MainPageBreadcrumbItem title='Admin' href='/admin' />
+            <MainPageBreadcrumbItem title='Users' href='/admin/users' />
             <MainPageBreadcrumbItem title={getDisplayName()} href={`/admin/users/${id}`} last />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className="flex flex-col">
+          <div className='flex flex-col'>
             {/* Cards */}
-            <div className="grid  md:grid-cols-2">
+            <div className='grid  md:grid-cols-2'>
               {/* User Information */}
-              <Card className="border-none rounded-none shadow-none">
+              <Card className='border-none rounded-none shadow-none'>
                 <CardHeader>
                   <CardTitle>User Information</CardTitle>
                   <CardDescription>Personal details and contact information</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="overflow-hidden rounded-md border bg-background">
+                  <div className='overflow-hidden rounded-md border bg-background'>
                     <Table>
                       <TableBody>
-                        <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                          <TableCell className="bg-muted/50 py-2 font-medium flex items-center gap-1">
-                            <User className="size-3.5 text-muted-foreground" />
+                        <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                          <TableCell className='bg-muted/50 py-2 font-medium flex items-center gap-1'>
+                            <User className='size-3.5 text-muted-foreground' />
                             Name
                           </TableCell>
-                          <TableCell className="py-2">
+                          <TableCell className='py-2'>
                             {user.firstName || '-'} {user.lastName || '-'}
                           </TableCell>
                         </TableRow>
-                        <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                          <TableCell className="bg-muted/50 py-2 font-medium">
-                            <div className="flex items-center gap-1">
-                              <Mail className="size-3.5 text-muted-foreground" />
+                        <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                          <TableCell className='bg-muted/50 py-2 font-medium'>
+                            <div className='flex items-center gap-1'>
+                              <Mail className='size-3.5 text-muted-foreground' />
                               Email
                             </div>
                           </TableCell>
-                          <TableCell className="py-2">
-                            <div className="flex items-center gap-2">
+                          <TableCell className='py-2'>
+                            <div className='flex items-center gap-2'>
                               <span>{user.email || '-'}</span>
                               {user.emailVerified && (
-                                <Badge variant="secondary" className="text-xs">
+                                <Badge variant='secondary' className='text-xs'>
                                   Verified
                                 </Badge>
                               )}
@@ -244,18 +244,18 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                           </TableCell>
                         </TableRow>
                         {user.phoneNumber && (
-                          <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                            <TableCell className="bg-muted/50 py-2 font-medium">
-                              <div className="flex items-center gap-1">
-                                <Phone className="size-3.5 text-muted-foreground" />
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>
+                              <div className='flex items-center gap-1'>
+                                <Phone className='size-3.5 text-muted-foreground' />
                                 Phone
                               </div>
                             </TableCell>
-                            <TableCell className="py-2">
-                              <div className="flex items-center gap-2">
+                            <TableCell className='py-2'>
+                              <div className='flex items-center gap-2'>
                                 <span>{user.phoneNumber}</span>
                                 {user.phoneNumberVerified && (
-                                  <Badge variant="outline" className="text-xs">
+                                  <Badge variant='outline' className='text-xs'>
                                     Verified
                                   </Badge>
                                 )}
@@ -263,28 +263,28 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                             </TableCell>
                           </TableRow>
                         )}
-                        <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                          <TableCell className="bg-muted/50 py-2 font-medium flex items-center gap-1">
-                            <Book className="size-3.5 text-muted-foreground" />
+                        <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                          <TableCell className='bg-muted/50 py-2 font-medium flex items-center gap-1'>
+                            <Book className='size-3.5 text-muted-foreground' />
                             About
                           </TableCell>
-                          <TableCell className="py-2">{user.about}</TableCell>
+                          <TableCell className='py-2'>{user.about}</TableCell>
                         </TableRow>
-                        <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                          <TableCell className="bg-muted/50 py-2 font-medium flex items-center gap-1">
-                            <Calendar className="size-3.5 text-muted-foreground" />
+                        <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                          <TableCell className='bg-muted/50 py-2 font-medium flex items-center gap-1'>
+                            <Calendar className='size-3.5 text-muted-foreground' />
                             Created
                           </TableCell>
-                          <TableCell className="py-2">
+                          <TableCell className='py-2'>
                             {formatDistanceToNow(user.createdAt, { addSuffix: true })}
                           </TableCell>
                         </TableRow>
-                        <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                          <TableCell className="bg-muted/50 py-2 font-medium flex items-center gap-1">
-                            <Calendar className="size-3.5 text-muted-foreground" />
+                        <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                          <TableCell className='bg-muted/50 py-2 font-medium flex items-center gap-1'>
+                            <Calendar className='size-3.5 text-muted-foreground' />
                             Last Active
                           </TableCell>
-                          <TableCell className="py-2">
+                          <TableCell className='py-2'>
                             {user.lastActiveAt
                               ? formatDistanceToNow(user.lastActiveAt, { addSuffix: true })
                               : 'Never'}
@@ -297,67 +297,67 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
               </Card>
 
               {/* Security & Settings */}
-              <Card className="border-none rounded-none shadow-none">
+              <Card className='border-none rounded-none shadow-none'>
                 <CardHeader>
                   <CardTitle>Security & Settings</CardTitle>
                   <CardDescription>Account security and preferences</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="overflow-hidden rounded-md border bg-background">
+                  <div className='overflow-hidden rounded-md border bg-background'>
                     <Table>
                       <TableBody>
-                        <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                          <TableCell className="bg-muted/50 py-2 font-medium">
+                        <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                          <TableCell className='bg-muted/50 py-2 font-medium'>
                             Email Verified
                           </TableCell>
-                          <TableCell className="py-2">
+                          <TableCell className='py-2'>
                             <Badge variant={user.emailVerified ? 'default' : 'outline'}>
                               {user.emailVerified ? 'Yes' : 'No'}
                             </Badge>
                           </TableCell>
                         </TableRow>
-                        <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                          <TableCell className="bg-muted/50 py-2 font-medium">
+                        <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                          <TableCell className='bg-muted/50 py-2 font-medium'>
                             Two-Factor Authentication
                           </TableCell>
-                          <TableCell className="py-2">
+                          <TableCell className='py-2'>
                             <Badge variant={user.twoFactorEnabled ? 'default' : 'outline'}>
                               {user.twoFactorEnabled ? 'Enabled' : 'Disabled'}
                             </Badge>
                           </TableCell>
                         </TableRow>
-                        <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                          <TableCell className="bg-muted/50 py-2 font-medium">
+                        <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                          <TableCell className='bg-muted/50 py-2 font-medium'>
                             Onboarding Completed
                           </TableCell>
-                          <TableCell className="py-2">
+                          <TableCell className='py-2'>
                             <Badge variant={user.completedOnboarding ? 'default' : 'outline'}>
                               {user.completedOnboarding ? 'Yes' : 'No'}
                             </Badge>
                           </TableCell>
                         </TableRow>
-                        <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                          <TableCell className="bg-muted/50 py-2 font-medium">
+                        <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                          <TableCell className='bg-muted/50 py-2 font-medium'>
                             Super Admin
                           </TableCell>
-                          <TableCell className="py-2">
-                            <div className="flex flex-col gap-2">
-                              <div className="flex items-center gap-2 justify-between">
+                          <TableCell className='py-2'>
+                            <div className='flex flex-col gap-2'>
+                              <div className='flex items-center gap-2 justify-between'>
                                 <Badge variant={user.isSuperAdmin ? 'destructive' : 'outline'}>
                                   {user.isSuperAdmin ? 'Yes' : 'No'}
                                 </Badge>
                                 <Button
                                   variant={user.isSuperAdmin ? 'outline' : 'destructive'}
                                   loading={setSuperAdmin.isPending}
-                                  size="sm"
-                                  loadingText="Saving..."
+                                  size='sm'
+                                  loadingText='Saving...'
                                   onClick={handleToggleSuperAdmin}>
                                   <Shield />
                                   {user.isSuperAdmin ? 'Revoke' : 'Grant'}
                                 </Button>
                               </div>
                               {!user.isSuperAdmin && (
-                                <p className="text-xs text-muted-foreground">
+                                <p className='text-xs text-muted-foreground'>
                                   Granting super admin access provides full visibility and control
                                   across the platform.
                                 </p>
@@ -373,38 +373,38 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
             </div>
 
             {/* Metrics */}
-            <Card className="border-none rounded-none shadow-none">
+            <Card className='border-none rounded-none shadow-none'>
               <CardHeader>
                 <CardTitle>Metrics</CardTitle>
                 <CardDescription>User activity and statistics</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-3 gap-4">
+                <div className='grid grid-cols-3 gap-4'>
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Organizations</p>
-                    <p className="text-2xl font-bold">{user.metrics.organizationCount}</p>
+                    <p className='text-sm font-medium text-muted-foreground'>Organizations</p>
+                    <p className='text-2xl font-bold'>{user.metrics.organizationCount}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Messages</p>
-                    <p className="text-2xl font-bold">{user.metrics.messageCount}</p>
+                    <p className='text-sm font-medium text-muted-foreground'>Messages</p>
+                    <p className='text-2xl font-bold'>{user.metrics.messageCount}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Tickets</p>
-                    <p className="text-2xl font-bold">{user.metrics.ticketCount}</p>
+                    <p className='text-sm font-medium text-muted-foreground'>Tickets</p>
+                    <p className='text-2xl font-bold'>{user.metrics.ticketCount}</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* Organizations */}
-            <Card className="border-none rounded-none shadow-none">
+            <Card className='border-none rounded-none shadow-none'>
               <CardHeader>
                 <CardTitle>Organizations</CardTitle>
                 <CardDescription>Organizations this user is a member of</CardDescription>
               </CardHeader>
               <CardContent>
                 {user.organizations.length > 0 ? (
-                  <div className="border rounded-md">
+                  <div className='border rounded-md'>
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -418,16 +418,16 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                         {user.organizations.map((org) => (
                           <TableRow
                             key={org.id}
-                            className="hover:bg-muted/50 cursor-pointer"
+                            className='hover:bg-muted/50 cursor-pointer'
                             onClick={() => handleOrgClick(org.id)}>
-                            <TableCell className="font-medium">{org.name || '-'}</TableCell>
-                            <TableCell className="text-muted-foreground">
+                            <TableCell className='font-medium'>{org.name || '-'}</TableCell>
+                            <TableCell className='text-muted-foreground'>
                               {org.handle || '-'}
                             </TableCell>
                             <TableCell>
                               <Badge variant={getRoleBadgeVariant(org.role)}>{org.role}</Badge>
                             </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
+                            <TableCell className='text-sm text-muted-foreground'>
                               {formatDistanceToNow(org.joinedAt, { addSuffix: true })}
                             </TableCell>
                           </TableRow>
@@ -436,7 +436,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                     </Table>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground text-center py-8">
+                  <p className='text-sm text-muted-foreground text-center py-8'>
                     This user is not a member of any organizations
                   </p>
                 )}

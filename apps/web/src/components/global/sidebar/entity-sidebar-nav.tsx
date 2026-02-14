@@ -1,47 +1,46 @@
 // apps/web/src/components/global/sidebar/entity-sidebar-nav.tsx
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
-import { Archive, Pencil, Plus, Settings, Settings2 } from 'lucide-react'
 import type { CustomResource } from '@auxx/lib/resources/client'
+import { Button } from '@auxx/ui/components/button'
+import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
+import { EntityIcon } from '@auxx/ui/components/icons'
 
 import {
   SidebarGroup,
   SidebarMenu,
+  SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSkeleton,
-  SidebarMenuButton,
 } from '@auxx/ui/components/sidebar'
-import { Button } from '@auxx/ui/components/button'
-import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
-import { SidebarItem } from './sidebar-item'
-import { EditableSidebarItem } from './editable-sidebar-item'
-import { useSidebarStateContext } from './sidebar-state-context'
-import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
-import { EntityIcon } from '@auxx/ui/components/icons'
-import { EntityDefinitionDialog } from '~/components/custom-fields/ui/entity-definition-dialog'
-import { useConfirm } from '~/hooks/use-confirm'
-import { useEntityDefinitionMutations, useResources } from '~/components/resources/hooks'
-import { useEntitySidebar, type ProcessedEntity } from '~/hooks/use-entity-sidebar'
 import { toastError } from '@auxx/ui/components/toast'
-
 import {
-  DndContext,
   closestCenter,
+  DndContext,
+  type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
 } from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import { Archive, Pencil, Plus, Settings, Settings2 } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { useCallback, useEffect, useState } from 'react'
+import { EntityDefinitionDialog } from '~/components/custom-fields/ui/entity-definition-dialog'
+import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
+import { useEntityDefinitionMutations, useResources } from '~/components/resources/hooks'
+import { useConfirm } from '~/hooks/use-confirm'
+import { type ProcessedEntity, useEntitySidebar } from '~/hooks/use-entity-sidebar'
+import { EditableSidebarItem } from './editable-sidebar-item'
+import { SidebarItem } from './sidebar-item'
+import { useSidebarStateContext } from './sidebar-state-context'
 
 /** Entity ID type for sidebar state */
 type EntityDefinitionId = string
@@ -174,9 +173,9 @@ export function EntitySidebarNav() {
       <EntityIcon
         iconId={iconId}
         color={color ?? 'gray'}
-        size="sm"
+        size='sm'
         inverse
-        className="-ms-0.5 inset-shadow-xs inset-shadow-black/20"
+        className='-ms-0.5 inset-shadow-xs inset-shadow-black/20'
       />
     )
   }
@@ -216,7 +215,7 @@ export function EntitySidebarNav() {
         </DropdownMenuItem>
         {!isSystemEntity && <DropdownMenuSeparator />}
         {!isSystemEntity && (
-          <DropdownMenuItem onClick={() => handleArchiveEntity(resource)} variant="destructive">
+          <DropdownMenuItem onClick={() => handleArchiveEntity(resource)} variant='destructive'>
             <Archive /> Archive
           </DropdownMenuItem>
         )}
@@ -229,7 +228,7 @@ export function EntitySidebarNav() {
     if (entities.length === 0) {
       return (
         <SidebarMenuItem>
-          <div className="px-2 py-1.5 text-sm text-muted-foreground">No entities to edit</div>
+          <div className='px-2 py-1.5 text-sm text-muted-foreground'>No entities to edit</div>
         </SidebarMenuItem>
       )
     }
@@ -242,7 +241,7 @@ export function EntitySidebarNav() {
         modifiers={[restrictToVerticalAxis]}>
         <SortableContext items={allEntityIds} strategy={verticalListSortingStrategy}>
           {entities.map((entity) => (
-            <SidebarMenuItem key={entity.id} className="p-0">
+            <SidebarMenuItem key={entity.id} className='p-0'>
               <EditableSidebarItem
                 id={entity.id}
                 name={entity.isStatic ? entity.plural : entity.plural}
@@ -290,9 +289,9 @@ export function EntitySidebarNav() {
 
   return (
     <>
-      <SidebarGroup className="group">
+      <SidebarGroup className='group'>
         <SidebarGroupHeader
-          title="Records"
+          title='Records'
           isEditMode={isEditMode}
           onToggleEditMode={toggleEditMode}
           isOpen={isOpen}
@@ -322,7 +321,7 @@ export function EntitySidebarNav() {
 
         {/* Empty state when all items hidden (but group is visible) */}
         {allItemsHidden && !isEditMode && isOpen && isGroupVisible && (
-          <SidebarMenu className="gap-0">
+          <SidebarMenu className='gap-0'>
             <SidebarMenuItem>
               <SidebarMenuButton onClick={toggleEditMode}>
                 <Settings2 />
@@ -334,21 +333,21 @@ export function EntitySidebarNav() {
 
         {/* Entity list - only show when group is visible or in edit mode */}
         {(isEditMode || (isOpen && isGroupVisible)) && !allItemsHidden && (
-          <SidebarMenu className="gap-0">
+          <SidebarMenu className='gap-0'>
             {isEditMode ? renderEditModeList() : renderNormalModeList()}
           </SidebarMenu>
         )}
 
         {/* Edit mode list when all items are hidden */}
         {isEditMode && allItemsHidden && (
-          <SidebarMenu className="gap-0">{renderEditModeList()}</SidebarMenu>
+          <SidebarMenu className='gap-0'>{renderEditModeList()}</SidebarMenu>
         )}
       </SidebarGroup>
 
       {/* Done button footer for edit mode */}
       {isEditMode && (
-        <div className="flex shrink-0 items-center justify-end gap-2 border-t p-2">
-          <Button className="w-full rounded-md" size="sm" onClick={toggleEditMode}>
+        <div className='flex shrink-0 items-center justify-end gap-2 border-t p-2'>
+          <Button className='w-full rounded-md' size='sm' onClick={toggleEditMode}>
             Done
           </Button>
         </div>

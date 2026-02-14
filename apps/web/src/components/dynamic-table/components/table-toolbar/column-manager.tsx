@@ -2,10 +2,26 @@
 
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
-import { Columns, Plus, MoreHorizontal, EyeOff, Pencil, Settings2 } from 'lucide-react'
+import type { FieldPath, FieldReference } from '@auxx/types/field'
+import { isFieldPath, toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import {
+  Command,
+  CommandBreadcrumb,
+  CommandDescription,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandNavigableItem,
+  CommandNavigation,
+  CommandSeparator,
+  CommandSortable,
+  CommandSortableItem,
+  type NavigationItem,
+  useCommandNavigation,
+} from '@auxx/ui/components/command'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,54 +29,37 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSortable,
-  CommandSortableItem,
-  CommandSeparator,
-  CommandNavigation,
-  CommandNavigableItem,
-  CommandBreadcrumb,
-  useCommandNavigation,
-  type NavigationItem,
-  CommandDescription,
-} from '@auxx/ui/components/command'
-import { SmartBreadcrumb, type BreadcrumbSegment } from '@auxx/ui/components/smart-breadcrumb'
-
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { type BreadcrumbSegment, SmartBreadcrumb } from '@auxx/ui/components/smart-breadcrumb'
+import type { Column } from '@tanstack/react-table'
+import { Columns, EyeOff, MoreHorizontal, Pencil, Plus, Settings2 } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
+import { Tooltip } from '~/components/global/tooltip'
+import type { ResourcePickerNavigationItem } from '~/components/pickers/resource-picker'
+import { ResourcePickerInnerContent } from '~/components/pickers/resource-picker'
+import { useFields } from '~/components/resources/hooks/use-field'
 import { useTableConfig } from '../../context/table-config-context'
 import { useTableInstance } from '../../context/table-instance-context'
 import {
-  useActiveView,
-  useColumnLabels,
-  useColumnVisibility,
-  useColumnOrder,
-  useColumnFormatting,
-} from '../../stores/store-selectors'
-import {
-  useSetColumnVisibility,
-  useSetColumnOrder,
-  useSetColumnLabel,
   useSetColumnFormatting,
+  useSetColumnLabel,
+  useSetColumnOrder,
+  useSetColumnVisibility,
 } from '../../stores/store-actions'
-import { Tooltip } from '~/components/global/tooltip'
-import { EditColumnLabelDialog } from '../dialogs/edit-column-label-dialog'
-import { EditColumnFormattingDialog } from '../dialogs/edit-column-formatting-dialog'
-import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
-import { ResourcePickerInnerContent } from '~/components/pickers/resource-picker'
-import { decodeColumnId, encodeFieldPathColumnId } from '../../utils/column-id'
-import { doesColumnFieldExist } from '../../utils/field-exists'
-import { useFields } from '~/components/resources/hooks/use-field'
-import type { ResourcePickerNavigationItem } from '~/components/pickers/resource-picker'
-import type { Column } from '@tanstack/react-table'
+import {
+  useActiveView,
+  useColumnFormatting,
+  useColumnLabels,
+  useColumnOrder,
+  useColumnVisibility,
+} from '../../stores/store-selectors'
 import type { ExtendedColumnDef, FormattableFieldType } from '../../types'
 import { FORMATTABLE_FIELD_TYPES } from '../../types'
-import { toResourceFieldId, toFieldId, isFieldPath } from '@auxx/types/field'
-import type { FieldReference, FieldPath } from '@auxx/types/field'
+import { decodeColumnId, encodeFieldPathColumnId } from '../../utils/column-id'
+import { doesColumnFieldExist } from '../../utils/field-exists'
+import { EditColumnFormattingDialog } from '../dialogs/edit-column-formatting-dialog'
+import { EditColumnLabelDialog } from '../dialogs/edit-column-label-dialog'
 
 /** Base navigation item for "Add column" action */
 interface AddColumnNavigationItem extends NavigationItem {
@@ -129,11 +128,10 @@ function RootStack<TData = any>() {
         const decoded = decodeColumnId(col.id)
         return decoded.type === 'path'
       })
-      .map((col) => {
+      .flatMap((col) => {
         const decoded = decodeColumnId(col.id)
         return decoded.type === 'path' ? decoded.fieldPath : []
       })
-      .flat()
   }, [visibleColumns])
 
   // Get field metadata for all path fields (for breadcrumb labels)
@@ -202,7 +200,7 @@ function RootStack<TData = any>() {
   return (
     <CommandList>
       {/* Visible Columns Group - Sortable */}
-      <CommandGroup heading="Visible Columns">
+      <CommandGroup heading='Visible Columns'>
         {validVisibleColumns.length === 0 ? (
           <CommandDescription>No visible columns</CommandDescription>
         ) : (
@@ -211,14 +209,14 @@ function RootStack<TData = any>() {
               const display = getColumnDisplay(column)
 
               return (
-                <CommandSortableItem key={column.id} id={column.id} className="py-0 pe-0.5">
-                  <span className="truncate flex-1 flex items-center">
+                <CommandSortableItem key={column.id} id={column.id} className='py-0 pe-0.5'>
+                  <span className='truncate flex-1 flex items-center'>
                     {display.type === 'breadcrumb' ? (
                       <SmartBreadcrumb
                         segments={display.segments}
-                        mode="display"
-                        size="sm"
-                        className="flex-1 min-w-0"
+                        mode='display'
+                        size='sm'
+                        className='flex-1 min-w-0'
                       />
                     ) : (
                       display.label
@@ -286,14 +284,14 @@ function ColumnOptionsDropdown<TData = any>({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            type="button"
+            type='button'
             onClick={(e) => e.stopPropagation()}
-            className="shrink-0 size-6.5 flex items-center justify-center rounded-md hover:bg-accent transition-colors">
-            <MoreHorizontal className="size-3.5" />
+            className='shrink-0 size-6.5 flex items-center justify-center rounded-md hover:bg-accent transition-colors'>
+            <MoreHorizontal className='size-3.5' />
           </button>
         </DropdownMenuTrigger>
 
-        <DropdownMenuContent align="end" className="w-[180px]">
+        <DropdownMenuContent align='end' className='w-[180px]'>
           <DropdownMenuItem onClick={onRemove}>
             <EyeOff />
             Hide this column
@@ -427,11 +425,11 @@ function AddColumnStack({ onCreateField }: { onCreateField: () => void }) {
     <ResourcePickerInnerContent
       entityDefinitionId={entityDefinitionId}
       excludeFields={visibleColumnIds}
-      mode="single"
+      mode='single'
       closeOnSelect={false} // We handle navigation via pop()
       onSelect={handleSelectField}
       onCreateField={onCreateField}
-      searchPlaceholder="Search fields..."
+      searchPlaceholder='Search fields...'
       externalNavigation={externalNavigation}
     />
   )
@@ -519,7 +517,7 @@ function LegacyAddColumnStack<TData = any>({ onCreateField }: { onCreateField: (
   return (
     <>
       <CommandInput
-        placeholder="Search columns..."
+        placeholder='Search columns...'
         value={search}
         onValueChange={setSearch}
         autoFocus={true}
@@ -603,18 +601,18 @@ export function ColumnManager<TData = any>() {
         <PopoverTrigger asChild>
           <div>
             <Tooltip content={tooltipContent}>
-              <Button variant="ghost" size="sm">
-                <Columns className="size-3" />
-                <span className="hidden @lg/controls:block">Columns</span>
+              <Button variant='ghost' size='sm'>
+                <Columns className='size-3' />
+                <span className='hidden @lg/controls:block'>Columns</span>
               </Button>
             </Tooltip>
           </div>
         </PopoverTrigger>
 
-        <PopoverContent className="w-[280px] p-0" align="start">
+        <PopoverContent className='w-[280px] p-0' align='start'>
           <CommandNavigation<ColumnNavigationItem>>
             <Command shouldFilter={false}>
-              <CommandBreadcrumb rootLabel="Columns" />
+              <CommandBreadcrumb rootLabel='Columns' />
               <ColumnManagerContent<TData> onCreateField={handleCreateFieldClick} />
             </Command>
           </CommandNavigation>

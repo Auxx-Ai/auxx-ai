@@ -1,5 +1,11 @@
-import { callOrReturn, getExtensionField, mergeAttributes, Node, ParentConfig } from '@tiptap/core'
-import { DOMOutputSpec, Node as ProseMirrorNode } from '@tiptap/pm/model'
+import {
+  callOrReturn,
+  getExtensionField,
+  mergeAttributes,
+  Node,
+  type ParentConfig,
+} from '@tiptap/core'
+import type { DOMOutputSpec, Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { TextSelection } from '@tiptap/pm/state'
 import {
   addColumnAfter,
@@ -20,7 +26,7 @@ import {
   toggleHeader,
   toggleHeaderCell,
 } from '@tiptap/pm/tables'
-import { EditorView, NodeView } from '@tiptap/pm/view'
+import type { EditorView, NodeView } from '@tiptap/pm/view'
 
 import { TableView } from './table-view'
 import { createColGroup } from './utilities/createColGroup'
@@ -247,7 +253,7 @@ declare module '@tiptap/core' {
 export const Table = Node.create<TableOptions>({
   name: 'table',
 
-  // @ts-ignore
+  // @ts-expect-error
   addOptions() {
     return {
       HTMLAttributes: {},
@@ -404,7 +410,7 @@ export const Table = Node.create<TableOptions>({
           if (dispatch) {
             const selection = CellSelection.create(tr.doc, position.anchorCell, position.headCell)
 
-            // @ts-ignore
+            // @ts-expect-error
             tr.setSelection(selection)
           }
 

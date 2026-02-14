@@ -1,11 +1,12 @@
 // packages/services/src/table-view/create-view.ts
 
 import { database, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
 import type { TableViewEntity } from '@auxx/database/models'
+import { and, eq } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
+import { fromDatabase } from '../shared/utils'
 import type { ViewAlreadyExistsError } from './errors'
+
 /** View context type for table views */
 type ViewContextType = 'table' | 'kanban' | 'panel' | 'dialog_create' | 'dialog_edit'
 
@@ -29,7 +30,16 @@ export interface CreateViewInput {
  * Create a new view
  */
 export async function createView(input: CreateViewInput) {
-  const { tableId, name, config, isShared, userId, organizationId, contextType = 'table', isDefault = false } = input
+  const {
+    tableId,
+    name,
+    config,
+    isShared,
+    userId,
+    organizationId,
+    contextType = 'table',
+    isDefault = false,
+  } = input
 
   // Check for duplicate name within same context type
   const existingResult = await fromDatabase(
@@ -50,13 +60,27 @@ export async function createView(input: CreateViewInput) {
 
   if (existingResult.isErr()) return existingResult
   if (existingResult.value.length > 0) {
-    return err<ViewAlreadyExistsError>({ code: 'VIEW_ALREADY_EXISTS', message: 'A view with this name already exists', name })
+    return err<ViewAlreadyExistsError>({
+      code: 'VIEW_ALREADY_EXISTS',
+      message: 'A view with this name already exists',
+      name,
+    })
   }
 
   const dbResult = await fromDatabase(
     database
       .insert(schema.TableView)
-      .values({ tableId, name, config, isShared, isDefault, userId, organizationId, contextType, updatedAt: new Date() })
+      .values({
+        tableId,
+        name,
+        config,
+        isShared,
+        isDefault,
+        userId,
+        organizationId,
+        contextType,
+        updatedAt: new Date(),
+      })
       .returning(),
     'create-view'
   )

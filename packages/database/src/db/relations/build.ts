@@ -3,21 +3,21 @@
 
 import { relations } from 'drizzle-orm/relations'
 import {
-  User,
-  DeveloperAccount,
-  DeveloperAccountMember,
-  DeveloperAccountInvite,
   App,
+  AppEventLog,
+  AppInstallation,
+  AppMarketplaceImage,
+  AppSetting,
   AppVersion,
   AppVersionBundle,
-  AppInstallation,
-  AppSetting,
   AppWebhookHandler,
-  AppMarketplaceImage,
   ConnectionDefinition,
-  AppEventLog,
+  DeveloperAccount,
+  DeveloperAccountInvite,
+  DeveloperAccountMember,
   Organization,
   oauthApplication,
+  User,
   WorkflowCredentials,
 } from '../schema'
 
@@ -31,17 +31,20 @@ export const developerAccountRelations = relations(DeveloperAccount, ({ many }) 
 }))
 
 /** Relations for DeveloperAccountMember */
-export const developerAccountMemberRelations = relations(DeveloperAccountMember, ({ one, many }) => ({
-  developerAccount: one(DeveloperAccount, {
-    fields: [DeveloperAccountMember.developerAccountId],
-    references: [DeveloperAccount.id],
-  }),
-  user: one(User, {
-    fields: [DeveloperAccountMember.userId],
-    references: [User.id],
-  }),
-  createdVersions: many(AppVersion),
-}))
+export const developerAccountMemberRelations = relations(
+  DeveloperAccountMember,
+  ({ one, many }) => ({
+    developerAccount: one(DeveloperAccount, {
+      fields: [DeveloperAccountMember.developerAccountId],
+      references: [DeveloperAccount.id],
+    }),
+    user: one(User, {
+      fields: [DeveloperAccountMember.userId],
+      references: [User.id],
+    }),
+    createdVersions: many(AppVersion),
+  })
+)
 
 /** Relations for DeveloperAccountInvite */
 export const developerAccountInviteRelations = relations(DeveloperAccountInvite, ({ one }) => ({

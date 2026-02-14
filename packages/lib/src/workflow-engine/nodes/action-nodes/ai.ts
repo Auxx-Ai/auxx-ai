@@ -1,15 +1,15 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/ai.ts
 
-import { BaseNodeProcessor } from '../base-node'
+import OpenAI from 'openai'
+import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
-  WorkflowNode,
   NodeExecutionResult,
-  ValidationResult,
   PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
-import OpenAI from 'openai'
+import { BaseNodeProcessor } from '../base-node'
 
 /**
  * AI node that generates content using AI models
@@ -35,14 +35,10 @@ export class AIProcessor extends BaseNodeProcessor {
 
     // Validate required fields
     if (!data.prompt) {
-      throw this.createProcessingError(
-        'Prompt is required for AI node',
-        node,
-        {
-          nodeData: data,
-          missingField: 'prompt'
-        }
-      )
+      throw this.createProcessingError('Prompt is required for AI node', node, {
+        nodeData: data,
+        missingField: 'prompt',
+      })
     }
 
     // 1. Interpolate prompts with variables (expensive operation - do once)
@@ -63,15 +59,11 @@ export class AIProcessor extends BaseNodeProcessor {
 
     // Validate model
     if (modelConfig.model && !this.isValidModel(modelConfig.model)) {
-      throw this.createProcessingError(
-        `Unsupported model: ${modelConfig.model}`,
-        node,
-        {
-          modelConfig,
-          providedModel: modelConfig.model,
-          supportedModels: this.getSupportedModels()
-        }
-      )
+      throw this.createProcessingError(`Unsupported model: ${modelConfig.model}`, node, {
+        modelConfig,
+        providedModel: modelConfig.model,
+        supportedModels: this.getSupportedModels(),
+      })
     }
 
     // 3. Build messages array (ready for API call)
@@ -84,8 +76,8 @@ export class AIProcessor extends BaseNodeProcessor {
     const outputVariable = data.outputVariable || `${node.nodeId}.text`
 
     // 5. Get organization context for API keys
-    const organizationId = await contextManager.getVariable('sys.organizationId') as string
-    const userId = await contextManager.getVariable('sys.userId') as string
+    const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
+    const userId = (await contextManager.getVariable('sys.userId')) as string
 
     // 6. Estimate token usage for monitoring
     const estimatedTokens = this.estimateTokenUsage(resolvedPrompt, resolvedSystemPrompt)
@@ -223,15 +215,11 @@ export class AIProcessor extends BaseNodeProcessor {
     const maxTokens = data.maxTokens
 
     if (!prompt) {
-      throw this.createExecutionError(
-        'No prompt specified for AI node',
-        node,
-        {
-          nodeData: data,
-          resolvedPrompt: prompt,
-          executionPhase: 'prompt_validation'
-        }
-      )
+      throw this.createExecutionError('No prompt specified for AI node', node, {
+        nodeData: data,
+        resolvedPrompt: prompt,
+        executionPhase: 'prompt_validation',
+      })
     }
 
     contextManager.log('INFO', node.name, 'Generating AI response', {
@@ -287,7 +275,7 @@ export class AIProcessor extends BaseNodeProcessor {
       contextManager.log('ERROR', node.name, 'Failed to generate AI response', {
         error: error instanceof Error ? error.message : String(error),
       })
-      
+
       // Wrap in execution error with AI-specific context
       throw this.createExecutionError(
         `AI model execution failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -299,7 +287,7 @@ export class AIProcessor extends BaseNodeProcessor {
           promptLength: resolvedPrompt?.length,
           errorType: error.constructor.name,
           originalError: error instanceof Error ? error.message : String(error),
-          executionPhase: 'ai_api_call'
+          executionPhase: 'ai_api_call',
         },
         error
       )

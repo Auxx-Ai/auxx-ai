@@ -1,18 +1,19 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/visual-editor/edit-card/index.tsx
-import React, { type FC, useCallback, useMemo, useRef, useState, useEffect } from 'react'
-import type { SchemaEnumType } from '../../types'
-import { ArrayType, Type, JSON_SCHEMA_MAX_DEPTH } from '../../types'
-import type { TypeItem } from './type-selector'
-import TypeSelector from './type-selector'
+
+import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { Separator } from '@auxx/ui/components/separator'
 import { Switch } from '@auxx/ui/components/switch'
+import { cn } from '@auxx/ui/lib/utils'
+import React, { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { SchemaEnumType } from '../../types'
+import { ArrayType, JSON_SCHEMA_MAX_DEPTH, Type } from '../../types'
+import { useEventEmitter } from '../context'
+import { useVisualEditorStore } from '../store'
 import Actions from './actions'
 import AdvancedActions from './advanced-actions'
 import AdvancedOptions, { type AdvancedOptionsType } from './advanced-options'
-import { cn } from '@auxx/ui/lib/utils'
-import { useVisualEditorStore } from '../store'
-import { useEventEmitter } from '../context'
-import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
+import type { TypeItem } from './type-selector'
+import TypeSelector from './type-selector'
 
 export type EditData = {
   name: string
@@ -349,13 +350,13 @@ const EditCard: FC<EditCardProps> = ({ fields, depth, path, parentPath }) => {
   }, [fields, path, parentPath, emit, setFocusedFieldPath]) // Dependencies for cleanup
 
   return (
-    <div className="flex flex-col rounded-lg bg-background py-0.5 shadow-sm">
-      <div className="flex h-7 items-center pl-1 pr-0.5">
-        <div className="flex grow items-center gap-x-1">
+    <div className='flex flex-col rounded-lg bg-background py-0.5 shadow-sm'>
+      <div className='flex h-7 items-center pl-1 pr-0.5'>
+        <div className='flex grow items-center gap-x-1'>
           <AutosizeInput
             ref={nameInputRef}
             value={currentFields.name}
-            placeholder="Field name"
+            placeholder='Field name'
             minWidth={80}
             maxWidth={300}
             onChange={handlePropertyNameChange}
@@ -365,30 +366,30 @@ const EditCard: FC<EditCardProps> = ({ fields, depth, path, parentPath }) => {
               setFocusedFieldPath(path.join('.'))
             }}
             onBlur={handlePropertyNameBlur}
-            inputClassName="font-semibold text-sm h-5 rounded-[5px] border border-transparent px-1 py-px text-primary-500 caret-[#295EFF] outline-none placeholder:text-primary-400 hover:bg-state-base-hover focus:border-components-input-border-active focus:bg-components-input-bg-active focus:shadow-xs"
+            inputClassName='font-semibold text-sm h-5 rounded-[5px] border border-transparent px-1 py-px text-primary-500 caret-[#295EFF] outline-none placeholder:text-primary-400 hover:bg-state-base-hover focus:border-components-input-border-active focus:bg-components-input-bg-active focus:shadow-xs'
           />
           <TypeSelector
             currentValue={getBaseType(currentFields.type)}
             items={maximumDepthReached ? MAXIMUM_DEPTH_TYPE_OPTIONS : TYPE_OPTIONS}
             onSelect={handleTypeChange}
-            popupClassName="z-[1000]"
+            popupClassName='z-[1000]'
           />
           {/* Array toggle switch */}
-          <div className="flex items-center gap-x-1 rounded-[5px] border border-divider-subtle px-1.5 py-1">
-            <span className="uppercase text-[10px] font-normal">Array</span>
-            <Switch size="sm" checked={isArray} onCheckedChange={handleArrayToggle} />
+          <div className='flex items-center gap-x-1 rounded-[5px] border border-divider-subtle px-1.5 py-1'>
+            <span className='uppercase text-[10px] font-normal'>Array</span>
+            <Switch size='sm' checked={isArray} onCheckedChange={handleArrayToggle} />
           </div>
           {currentFields.required && (
-            <div className="text-[10px] uppercase font-normal px-1 py-0.5 text-bad-500">
+            <div className='text-[10px] uppercase font-normal px-1 py-0.5 text-bad-500'>
               Required
             </div>
           )}
         </div>
-        <div className="flex items-center gap-x-1 rounded-[5px] border border-divider-subtle px-1.5 py-1">
-          <span className="uppercase text-[10px] font-normal">Required</span>
-          <Switch size="sm" checked={!!currentFields.required} onCheckedChange={toggleRequired} />
+        <div className='flex items-center gap-x-1 rounded-[5px] border border-divider-subtle px-1.5 py-1'>
+          <span className='uppercase text-[10px] font-normal'>Required</span>
+          <Switch size='sm' checked={!!currentFields.required} onCheckedChange={toggleRequired} />
         </div>
-        <Separator orientation="vertical" className="h-3" />
+        <Separator orientation='vertical' className='h-3' />
         {isAdvancedEditing ? (
           <AdvancedActions
             isConfirmDisabled={currentFields.name === ''}
@@ -410,8 +411,8 @@ const EditCard: FC<EditCardProps> = ({ fields, depth, path, parentPath }) => {
           <input
             ref={descriptionInputRef}
             value={currentFields.description || ''}
-            className="text-xs h-4 w-full p-0 text-primary-500 caret-[#295EFF] outline-none placeholder:text-primary-400"
-            placeholder="Description"
+            className='text-xs h-4 w-full p-0 text-primary-500 caret-[#295EFF] outline-none placeholder:text-primary-400'
+            placeholder='Description'
             onChange={handleDescriptionChange}
             onFocus={() => {
               isEditingRef.current = true

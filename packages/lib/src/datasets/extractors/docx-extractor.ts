@@ -1,9 +1,9 @@
 // packages/lib/src/datasets/extractors/docx-extractor.ts
 
 import mammoth from 'mammoth'
+import type { ExtractionResult, ExtractorCapabilities } from '../types/extractor.types'
 import { BaseExtractor } from './base-extractor'
 import { ExtractorRegistry } from './extractor-registry'
-import type { ExtractionResult, ExtractorCapabilities } from '../types/extractor.types'
 
 /**
  * DOCX extractor using mammoth library

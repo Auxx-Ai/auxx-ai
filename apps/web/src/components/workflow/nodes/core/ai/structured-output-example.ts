@@ -5,7 +5,7 @@
  * This file demonstrates how the feature would be implemented when added to AiConfig
  */
 
-import { OutputVariable } from '../../../types'
+import type { OutputVariable } from '../../../types'
 
 // Example of extended AiConfig with structured_output
 interface AiConfigWithStructuredOutput {

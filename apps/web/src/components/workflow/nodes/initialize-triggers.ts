@@ -1,13 +1,13 @@
 // apps/web/src/components/workflow/nodes/initialize-triggers.ts
 
 import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
-import { registerTriggerInput } from './trigger-registry'
-import { ThreadInput } from './shared/node-inputs'
-import { WebhookTriggerInput } from './shared/webhook-trigger-input'
-import { ScheduledTriggerInput } from './shared/scheduled-trigger-input'
-import { ResourceTriggerInput } from './shared/resource-trigger-input'
-import { ManualTriggerInput } from './shared/manual-trigger-input'
 import type { ValidationResult } from '../types'
+import { ManualTriggerInput } from './shared/manual-trigger-input'
+import { ThreadInput } from './shared/node-inputs'
+import { ResourceTriggerInput } from './shared/resource-trigger-input'
+import { ScheduledTriggerInput } from './shared/scheduled-trigger-input'
+import { WebhookTriggerInput } from './shared/webhook-trigger-input'
+import { registerTriggerInput } from './trigger-registry'
 
 // Track if triggers have been initialized to prevent duplicate registration
 let triggersInitialized = false

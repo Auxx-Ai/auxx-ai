@@ -167,29 +167,45 @@ class HostManager {
           result
             .then((res) => {
               if (request.requestId) {
-                this.sendMessage('response', {
-                  result: res,
-                }, request.requestId)
+                this.sendMessage(
+                  'response',
+                  {
+                    result: res,
+                  },
+                  request.requestId
+                )
               }
             })
             .catch((error) => {
               if (request.requestId) {
-                this.sendMessage('response', {
-                  error: error.message || 'Unknown error',
-                }, request.requestId)
+                this.sendMessage(
+                  'response',
+                  {
+                    error: error.message || 'Unknown error',
+                  },
+                  request.requestId
+                )
               }
             })
         } else if (request.requestId) {
-          this.sendMessage('response', {
-            result,
-          }, request.requestId)
+          this.sendMessage(
+            'response',
+            {
+              result,
+            },
+            request.requestId
+          )
         }
       } catch (error: any) {
         console.error('[Host] Handler error:', error)
         if (request.requestId) {
-          this.sendMessage('response', {
-            error: error.message || 'Unknown error',
-          }, request.requestId)
+          this.sendMessage(
+            'response',
+            {
+              error: error.message || 'Unknown error',
+            },
+            request.requestId
+          )
         }
       }
     }

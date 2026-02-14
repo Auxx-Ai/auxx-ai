@@ -3,51 +3,51 @@
 'use client'
 
 import {
-  useReactTable,
+  type ColumnDef,
+  type ColumnFiltersState,
+  type ColumnOrderState,
+  type ColumnPinningState,
   getCoreRowModel,
-  getSortedRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
-  type ColumnFiltersState,
+  getSortedRowModel,
   type RowSelectionState,
-  type ColumnOrderState,
-  type ColumnDef,
-  type ColumnPinningState,
+  useReactTable,
 } from '@tanstack/react-table'
-import { useQueryStates, parseAsString } from 'nuqs'
-import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from 'react'
-import type { DynamicTableProps } from '../types'
+import { parseAsString, useQueryStates } from 'nuqs'
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckboxCell } from '../components/checkbox-cell'
 import { CheckboxHeaderCell } from '../components/checkbox-header-cell'
-import { computeInitialViewConfig } from '../utils/view-config'
+import { useSetActiveDragItems, useSetRowSelection } from '../hooks/use-table-actions'
+import { useActiveDragItems, useRowSelection } from '../hooks/use-table-selectors'
 import { useDynamicTableStore } from '../stores/dynamic-table-store'
 import { useSelectionStore } from '../stores/selection-store'
 import {
-  useTableViews,
+  useSetColumnLabel,
+  useSetColumnOrder,
+  useSetColumnPinning,
+  useSetColumnSizing,
+  useSetColumnVisibility,
+  useSetFilters,
+  useSetPinnedColumn,
+  useSetSingleColumnFormatting,
+  useSetSorting,
+} from '../stores/store-actions'
+import {
   useActiveView,
+  useColumnFormatting,
+  useColumnLabels,
+  useColumnOrder,
+  useColumnPinning,
+  useColumnSizing,
+  useColumnVisibility,
   useTableFilters,
   useTableSorting,
-  useColumnVisibility,
-  useColumnOrder,
-  useColumnSizing,
-  useColumnPinning,
-  useColumnLabels,
-  useColumnFormatting,
+  useTableViews,
   useViewStoreInitialized,
 } from '../stores/store-selectors'
-import { useRowSelection, useActiveDragItems } from '../hooks/use-table-selectors'
-import {
-  useSetFilters,
-  useSetSorting,
-  useSetColumnVisibility,
-  useSetColumnOrder,
-  useSetColumnSizing,
-  useSetColumnPinning,
-  useSetColumnLabel,
-  useSetSingleColumnFormatting,
-  useSetPinnedColumn,
-} from '../stores/store-actions'
-import { useSetRowSelection, useSetActiveDragItems } from '../hooks/use-table-actions'
+import type { DynamicTableProps } from '../types'
+import { computeInitialViewConfig } from '../utils/view-config'
 import { useViewStorePersistence } from './use-view-store-persistence'
 
 /**

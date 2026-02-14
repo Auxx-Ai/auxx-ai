@@ -1,14 +1,18 @@
 // packages/types/custom-field/index.ts
 
+import {
+  ActorTargetValues,
+  FieldType as FieldTypeEnum,
+  OrganizationRoleValues,
+} from '@auxx/database/enums'
+import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { z } from 'zod'
-import { FieldType as FieldTypeEnum, ActorTargetValues, OrganizationRoleValues } from '@auxx/database/enums'
-import { type ResourceFieldId, parseResourceFieldId } from '@auxx/types/field'
 
 // =============================================================================
 // RE-EXPORT MODEL TYPES FROM DATABASE
 // =============================================================================
 
-export { ModelTypes, ModelTypeMeta, ModelTypeValues, type ModelType } from '@auxx/database/enums'
+export { type ModelType, ModelTypeMeta, ModelTypes, ModelTypeValues } from '@auxx/database/enums'
 
 // =============================================================================
 // SELECT OPTION COLORS
@@ -443,10 +447,7 @@ export const UNIQUEABLE_FIELD_TYPES = new Set<string>([
  * @param relationshipType - For RELATIONSHIP fields, the cardinality
  * @returns True if the field type can be marked as unique
  */
-export function canFieldBeUnique(
-  type: string,
-  relationshipType?: RelationshipType
-): boolean {
+export function canFieldBeUnique(type: string, relationshipType?: RelationshipType): boolean {
   if (type === FieldTypeEnum.RELATIONSHIP) {
     return relationshipType === 'has_one'
   }

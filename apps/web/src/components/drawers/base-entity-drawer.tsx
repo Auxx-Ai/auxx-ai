@@ -1,33 +1,33 @@
 // apps/web/src/components/drawers/base-entity-drawer.tsx
 'use client'
 
-import * as React from 'react'
+import { getEntityDrawerConfig, parseRecordId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/types/resource'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
-import { OverflowTabsList, Tabs, TabsContent } from '@auxx/ui/components/tabs'
-import {
-  HouseIcon,
-  Clock,
-  MessagesSquare,
-  ListTodo,
-  Ticket,
-  ShoppingBag,
-  Mail,
-  Package,
-  Layers,
-  Truck,
-} from 'lucide-react'
-import { getEntityDrawerConfig, parseRecordId } from '@auxx/lib/resources/client'
-import { getTabComponent } from './drawer-tab-registry'
-import { useResource, useRecord } from '~/components/resources'
-import EntityFields from '~/components/fields/entity-fields'
-import DrawerComments from '~/components/global/comments/drawer-comments'
-import { TimelineTab } from '~/components/timeline'
-import { TasksSection } from '~/components/tasks/ui/tasks-section'
-import { useQueryState } from 'nuqs'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
-import { type RecordId } from '@auxx/types/resource'
+import { OverflowTabsList, Tabs, TabsContent } from '@auxx/ui/components/tabs'
+import {
+  Clock,
+  HouseIcon,
+  Layers,
+  ListTodo,
+  Mail,
+  MessagesSquare,
+  Package,
+  ShoppingBag,
+  Ticket,
+  Truck,
+} from 'lucide-react'
+import { useQueryState } from 'nuqs'
+import * as React from 'react'
+import EntityFields from '~/components/fields/entity-fields'
+import DrawerComments from '~/components/global/comments/drawer-comments'
+import { useRecord, useResource } from '~/components/resources'
+import { TasksSection } from '~/components/tasks/ui/tasks-section'
+import { TimelineTab } from '~/components/timeline'
+import { getTabComponent } from './drawer-tab-registry'
 
 interface BaseEntityDrawerProps {
   /** RecordId in format "entityDefinitionId:entityInstanceId" */
@@ -162,44 +162,44 @@ export function BaseEntityDrawer({
         actions={headerActions}
       />
 
-      <div className="flex-1 overflow-y-auto">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full">
-          <div className="w-full h-full flex gap-0">
-            <div className="w-full h-full flex flex-col overflow-auto justify-start">
+      <div className='flex-1 overflow-y-auto'>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className='w-full h-full'>
+          <div className='w-full h-full flex gap-0'>
+            <div className='w-full h-full flex flex-col overflow-auto justify-start'>
               <OverflowTabsList
                 tabs={tabs}
                 value={activeTab}
                 onValueChange={setActiveTab}
-                variant="outline"
+                variant='outline'
               />
 
               {/* Card content (person card, entity card, etc.) */}
               {cardContent}
 
-              <div className="flex flex-1 overflow-hidden">
+              <div className='flex flex-1 overflow-hidden'>
                 {/* Base tabs - static */}
-                <TabsContent value="overview" className="w-full">
-                  <ScrollArea className="flex-1">
+                <TabsContent value='overview' className='w-full'>
+                  <ScrollArea className='flex-1'>
                     <Section
-                      title="Details"
+                      title='Details'
                       initialOpen
                       collapsible={false}
-                      icon={<HouseIcon className="size-4" />}>
+                      icon={<HouseIcon className='size-4' />}>
                       <EntityFields recordId={recordId} />
                     </Section>
                   </ScrollArea>
                 </TabsContent>
 
-                <TabsContent value="timeline" className="w-full h-full mt-0">
-                  <ScrollArea className="flex-1">
-                    <div className="p-3 flex-1 flex-col flex">
+                <TabsContent value='timeline' className='w-full h-full mt-0'>
+                  <ScrollArea className='flex-1'>
+                    <div className='p-3 flex-1 flex-col flex'>
                       <TimelineTab recordId={recordId} />
                     </div>
                   </ScrollArea>
                 </TabsContent>
 
-                <TabsContent value="comments" className="w-full h-full mt-0">
-                  <ScrollArea className="flex-1">
+                <TabsContent value='comments' className='w-full h-full mt-0'>
+                  <ScrollArea className='flex-1'>
                     <DrawerComments
                       recordId={recordId}
                       focusComposerTrigger={focusComposerTrigger}
@@ -207,14 +207,14 @@ export function BaseEntityDrawer({
                   </ScrollArea>
                 </TabsContent>
 
-                <TabsContent value="tasks" className="w-full h-full mt-0">
+                <TabsContent value='tasks' className='w-full h-full mt-0'>
                   <TasksSection recordId={recordId} />
                 </TabsContent>
 
                 {/* Dynamic tabs from registry */}
                 {drawerConfig.additionalTabs.map((tab) => (
-                  <TabsContent key={tab.value} value={tab.value} className="w-full">
-                    <ScrollArea className="flex-1">
+                  <TabsContent key={tab.value} value={tab.value} className='w-full'>
+                    <ScrollArea className='flex-1'>
                       <LazyTabComponent
                         entityType={entityType}
                         tabValue={tab.value}
@@ -253,7 +253,7 @@ function LazyTabComponent({
   const componentLoader = getTabComponent(entityType, tabValue)
 
   if (!componentLoader) {
-    return <div className="p-4 text-sm text-muted-foreground">Tab component not found</div>
+    return <div className='p-4 text-sm text-muted-foreground'>Tab component not found</div>
   }
 
   const [Component, setComponent] = React.useState<React.ComponentType<any> | null>(null)
@@ -263,7 +263,7 @@ function LazyTabComponent({
   }, [componentLoader])
 
   if (!Component) {
-    return <div className="p-4">Loading...</div>
+    return <div className='p-4'>Loading...</div>
   }
 
   return <Component entityInstanceId={entityInstanceId} recordId={recordId} record={record} />

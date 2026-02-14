@@ -1,15 +1,15 @@
 // apps/web/src/components/workflow/nodes/core/if-else/panel.tsx
 
-import React, { memo, useCallback, useRef } from 'react'
-import { type IfElseNodeData } from './types'
-import { BasePanel } from '../../shared/base/base-panel'
-import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import { OutputVariablesDisplay } from '../../../ui/output-variables'
-import { ifElseDefinition } from './schema'
-import { ConditionProvider, ConditionContainer } from '~/components/conditions'
-import { useIfElseConditionAdapter } from './adapters/condition-adapter'
-import { useAvailableVariables } from '~/components/workflow/hooks'
+import type React from 'react'
+import { memo, useCallback, useRef } from 'react'
+import { ConditionContainer, ConditionProvider } from '~/components/conditions'
+import { useAvailableVariables, useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { getVariableFieldDefinition } from '~/components/workflow/utils/variable-utils'
+import { OutputVariablesDisplay } from '../../../ui/output-variables'
+import { BasePanel } from '../../shared/base/base-panel'
+import { useIfElseConditionAdapter } from './adapters/condition-adapter'
+import { ifElseDefinition } from './schema'
+import type { IfElseNodeData } from './types'
 
 interface IfElsePanelProps {
   nodeId: string
@@ -52,7 +52,7 @@ const IfElsePanelComponent: React.FC<IfElsePanelProps> = ({ nodeId, data }) => {
   }, [])
 
   return (
-    <BasePanel title="IF/ELSE Configuration" nodeId={nodeId} data={data} showNextStep={true}>
+    <BasePanel title='IF/ELSE Configuration' nodeId={nodeId} data={data} showNextStep={true}>
       <ConditionProvider
         conditions={[]}
         groups={groups}
@@ -62,7 +62,7 @@ const IfElsePanelComponent: React.FC<IfElsePanelProps> = ({ nodeId, data }) => {
         nodeId={nodeId}
         readOnly={isReadOnly}
         getFieldDefinition={getFieldDefinition}>
-        <div className="p-3 pe-1 relative">
+        <div className='p-3 pe-1 relative'>
           <ConditionContainer
             showGrouping
             showAddButton

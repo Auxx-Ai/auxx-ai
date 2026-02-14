@@ -3,10 +3,10 @@
 
 import { Badge } from '@auxx/ui/components/badge'
 import { Checkbox } from '@auxx/ui/components/checkbox'
-import { GripVertical } from 'lucide-react'
-import { type ReactNode, type HTMLAttributes } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { GripVertical } from 'lucide-react'
+import type { HTMLAttributes, ReactNode } from 'react'
 
 interface EditableSidebarItemProps {
   id: string
@@ -54,35 +54,32 @@ export function EditableSidebarItem({
       className={`flex h-7 w-full items-center justify-between px-2 text-sm ${
         isDragging ? 'shadow-lg' : ''
       } ${className}`}>
-      <div className="flex items-center">
+      <div className='flex items-center'>
         {isDraggable && !isLocked ? (
           // Draggable handle (only if draggable and not locked)
-          <div
-            className="mr-2 cursor-move touch-none"
-            {...attributes}
-            {...listeners}>
-            <GripVertical className="size-4 text-muted-foreground" />
+          <div className='mr-2 cursor-move touch-none' {...attributes} {...listeners}>
+            <GripVertical className='size-4 text-muted-foreground' />
           </div>
         ) : (
           // For locked items, show icon in place of drag handle
-          icon && <span className="mr-2">{icon}</span>
+          icon && <span className='mr-2'>{icon}</span>
         )}
         <span>{name}</span>
       </div>
 
       {/* Locked items can't be toggled */}
       {isLocked ? (
-        <div className="flex items-center space-x-2 opacity-50">
+        <div className='flex items-center space-x-2 opacity-50'>
           {/* Show count even if locked? */}
-          {count ? <Badge variant="secondary">{count}</Badge> : null}
+          {count ? <Badge variant='secondary'>{count}</Badge> : null}
           <Checkbox checked={true} disabled />
         </div>
       ) : (
-        <div className="flex items-center space-x-2">
-          {count ? <Badge variant="secondary">{count}</Badge> : null}
+        <div className='flex items-center space-x-2'>
+          {count ? <Badge variant='secondary'>{count}</Badge> : null}
           <Checkbox
             checked={isVisible}
-            className="border-blue-500 data-[state=checked]:border-info data-[state=checked]:bg-info"
+            className='border-blue-500 data-[state=checked]:border-info data-[state=checked]:bg-info'
             onCheckedChange={() => onToggleVisibility(id)}
             disabled={isDragging} // Disable checkbox while dragging
           />

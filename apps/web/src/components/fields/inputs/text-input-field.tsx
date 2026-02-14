@@ -1,8 +1,9 @@
 // apps/web/src/components/fields/inputs/text-input-field.tsx
-import { usePropertyContext } from '../property-provider'
-import { useRef, useEffect, useState } from 'react'
+
 import { AutosizeField } from '@auxx/ui/components/autosize-field'
+import { useEffect, useRef, useState } from 'react'
 import { useIsInlineEditor } from '~/components/dynamic-table/components/inline-cell-editor'
+import { usePropertyContext } from '../property-provider'
 
 /**
  * TextInputField

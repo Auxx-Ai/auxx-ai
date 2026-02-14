@@ -1,8 +1,9 @@
 import fs from 'fs/promises'
 import path from 'path'
 import { z } from 'zod'
-import { complete, errored, fromPromise, fromThrowable, isErrored } from '../errors.js'
 import { HIDDEN_AUXX_DIRECTORY } from '../constants/hidden-auxx-directory.js'
+import { complete, errored, fromPromise, fromThrowable, isErrored } from '../errors.js'
+
 const tsconfigSchema = z
   .object({
     include: z.array(z.string()),

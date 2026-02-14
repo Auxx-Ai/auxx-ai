@@ -1,9 +1,8 @@
 'use client'
 
+import { cn } from '@auxx/ui/lib/utils'
 import * as React from 'react'
 import * as RechartsPrimitive from 'recharts'
-
-import { cn } from '@auxx/ui/lib/utils'
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: '', dark: '.dark' } as const
@@ -152,7 +151,7 @@ function ChartTooltipContent({
         className
       )}>
       {!nestLabel ? tooltipLabel : null}
-      <div className="grid gap-1.5">
+      <div className='grid gap-1.5'>
         {payload.map((item, index) => {
           const key = `${nameKey || item.name || item.dataKey || 'value'}`
           const itemConfig = getPayloadConfigFromPayload(config, item, key)
@@ -198,14 +197,14 @@ function ChartTooltipContent({
                       'flex flex-1 justify-between leading-none',
                       nestLabel ? 'items-end' : 'items-center'
                     )}>
-                    <div className="grid gap-1.5">
+                    <div className='grid gap-1.5'>
                       {nestLabel ? tooltipLabel : null}
-                      <span className="text-muted-foreground">
+                      <span className='text-muted-foreground'>
                         {itemConfig?.label || item.name}
                       </span>
                     </div>
                     {item.value && (
-                      <span className="font-mono font-medium tabular-nums text-foreground">
+                      <span className='font-mono font-medium tabular-nums text-foreground'>
                         {item.value.toLocaleString()}
                       </span>
                     )}
@@ -260,7 +259,7 @@ function ChartLegendContent({
               <itemConfig.icon />
             ) : (
               <div
-                className="h-2 w-2 shrink-0 rounded-[2px]"
+                className='h-2 w-2 shrink-0 rounded-[2px]'
                 style={{ backgroundColor: item.color }}
               />
             )}

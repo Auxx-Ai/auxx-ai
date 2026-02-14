@@ -1,10 +1,11 @@
 // apps/web/src/components/workflow/store/workflow-store-provider.tsx
 
-import React, { createContext, useContext, useEffect, useMemo } from 'react'
-import { type WorkflowStores, getWorkflowStores, initializeStores } from './index'
-import { historyManager } from './history-manager'
-import { useCanvasStore } from './canvas-store'
 import type { Viewport } from '@xyflow/react'
+import type React from 'react'
+import { createContext, useContext, useEffect, useMemo } from 'react'
+import { useCanvasStore } from './canvas-store'
+import { historyManager } from './history-manager'
+import { getWorkflowStores, initializeStores, type WorkflowStores } from './index'
 
 interface WorkflowStoreContextValue {
   stores: WorkflowStores

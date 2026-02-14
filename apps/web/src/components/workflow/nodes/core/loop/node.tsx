@@ -1,41 +1,41 @@
 // apps/web/src/components/workflow/nodes/core/loop/node.tsx
 
-import { type FC, memo, useEffect } from 'react'
-import { type LoopNode as LoopNodeType } from './types'
-import { LOOP_HANDLES } from './constants'
-import {
-  useNodeStatus,
-  useLoopProgress,
-  useAvailableBlocks,
-  useNodeDimensions,
-  useLoopConfig,
-} from '~/components/workflow/hooks'
-import { NodeTargetHandle, NodeSourceHandle } from '~/components/workflow/ui/node-handle'
-import { AddNodeTrigger } from '~/components/workflow/ui/add-node-trigger'
-import { Check, Clock, Home, Plus, XCircle } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
-import { NodeResizer } from '~/components/workflow/ui/node-resizer'
-import { useNodesInitialized, useStoreApi } from '@xyflow/react'
-import { unifiedNodeRegistry } from '../../unified-registry'
-import { NodeRunningStatus, NodeType } from '~/components/workflow/types'
-import { Tooltip } from '~/components/global/tooltip'
 import { Button } from '@auxx/ui/components/button'
+import { cn } from '@auxx/ui/lib/utils'
+import { useNodesInitialized, useStoreApi } from '@xyflow/react'
+import { Check, Clock, Home, Plus, XCircle } from 'lucide-react'
+import { type FC, memo, useEffect } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
+import {
+  useAvailableBlocks,
+  useLoopConfig,
+  useLoopProgress,
+  useNodeDimensions,
+  useNodeStatus,
+} from '~/components/workflow/hooks'
+import { NodeRunningStatus, NodeType } from '~/components/workflow/types'
+import { AddNodeTrigger } from '~/components/workflow/ui/add-node-trigger'
+import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
+import { NodeResizer } from '~/components/workflow/ui/node-resizer'
+import { unifiedNodeRegistry } from '../../unified-registry'
+import { LOOP_HANDLES } from './constants'
+import type { LoopNode as LoopNodeType } from './types'
 
 type LoopStartProps = Pick<LoopNodeType, 'id' | 'data'>
 
 const LoopStart: FC<LoopStartProps> = memo(({ id, data }) => {
   return (
-    <div className="absolute top-12 left-2 nodrag group mt-1 flex size-10 items-center justify-center rounded-2xl border  bg-background">
-      <Tooltip content="Start of Loop">
-        <div className="flex size-6 items-center justify-center rounded-full border-[0.5px] border-info bg-info">
-          <Home className="size-4 text-white" />
+    <div className='absolute top-12 left-2 nodrag group mt-1 flex size-10 items-center justify-center rounded-2xl border  bg-background'>
+      <Tooltip content='Start of Loop'>
+        <div className='flex size-6 items-center justify-center rounded-full border-[0.5px] border-info bg-info'>
+          <Home className='size-4 text-white' />
         </div>
       </Tooltip>
       <NodeSourceHandle
         id={id}
         data={{ ...data, isInLoop: true, loopId: id, _isLoopStart: true }}
         handleId={LOOP_HANDLES.LOOP_START}
-        handleClassName="top-[50%]! right-[0]! z-[1009] w-1"
+        handleClassName='top-[50%]! right-[0]! z-[1009] w-1'
       />
     </div>
   )
@@ -43,17 +43,17 @@ const LoopStart: FC<LoopStartProps> = memo(({ id, data }) => {
 
 const LoopEnd: FC<LoopStartProps> = memo(({ id, data }) => {
   return (
-    <div className="absolute right-2 bottom-2 nodrag group mt-1 flex size-10 items-center justify-center rounded-2xl border  bg-background">
-      <Tooltip content="Loop Back">
-        <div className="flex size-6 items-center justify-center rounded-full border-[0.5px] border-info bg-info">
-          <Home className="size-4 text-white" />
+    <div className='absolute right-2 bottom-2 nodrag group mt-1 flex size-10 items-center justify-center rounded-2xl border  bg-background'>
+      <Tooltip content='Loop Back'>
+        <div className='flex size-6 items-center justify-center rounded-full border-[0.5px] border-info bg-info'>
+          <Home className='size-4 text-white' />
         </div>
       </Tooltip>
       <NodeTargetHandle
         id={id}
         data={data}
         handleId={LOOP_HANDLES.LOOP_BACK}
-        handleClassName="top-[50%] !left-0 w-1"
+        handleClassName='top-[50%] !left-0 w-1'
       />
     </div>
   )
@@ -113,55 +113,55 @@ export const LoopNode: FC<LoopNodeType> = memo((props) => {
           )}
         />
       )}
-      <div className="flex items-center gap-2 pt-3 px-3 pb-2 bg-background rounded-t-2xl border-b">
+      <div className='flex items-center gap-2 pt-3 px-3 pb-2 bg-background rounded-t-2xl border-b'>
         {icon && (
           <div
-            className="flex-shrink-0 border rounded-md bg-primary-50 size-7 flex items-center justify-center"
+            className='flex-shrink-0 border rounded-md bg-primary-50 size-7 flex items-center justify-center'
             style={{ color }}>
             {icon}
           </div>
         )}
         <div
           title={data.title}
-          className="font-semibold text-sm mr-1 flex grow items-center truncate">
-          <div className="">{data.title}</div>
+          className='font-semibold text-sm mr-1 flex grow items-center truncate'>
+          <div className=''>{data.title}</div>
         </div>
         {nodeStatus === NodeRunningStatus.Succeeded ? (
-          <div className="me-3 rounded-full border p-0.5 border-good-500 bg-good-50">
-            <Check className="size-3 text-green-500" />
+          <div className='me-3 rounded-full border p-0.5 border-good-500 bg-good-50'>
+            <Check className='size-3 text-green-500' />
           </div>
         ) : nodeStatus === NodeRunningStatus.Failed ? (
-          <div className="me-3 rounded-full border p-0.5 border-destructive-500 bg-destructive-50">
-            <XCircle className="size-3 text-destructive-500" />
+          <div className='me-3 rounded-full border p-0.5 border-destructive-500 bg-destructive-50'>
+            <XCircle className='size-3 text-destructive-500' />
           </div>
         ) : nodeStatus === NodeRunningStatus.Running ? (
-          <div className="me-3 rounded-full border p-0.5 border-warning-500 bg-warning-50">
-            <Clock className="size-3 text-warning-500" />
+          <div className='me-3 rounded-full border p-0.5 border-warning-500 bg-warning-50'>
+            <Clock className='size-3 text-warning-500' />
           </div>
         ) : null}
       </div>
       <LoopStart id={id} data={data} />
 
       {/* Input - where flow enters the loop */}
-      <div className="relative top-0 left-0">
-        <NodeTargetHandle id={id} data={data} handleId="target" handleClassName="!top-[20%]" />
+      <div className='relative top-0 left-0'>
+        <NodeTargetHandle id={id} data={data} handleId='target' handleClassName='!top-[20%]' />
       </div>
 
       {/* Output - where flow exits the loop after completion */}
-      <NodeSourceHandle id={id} data={data} handleId="source" />
+      <NodeSourceHandle id={id} data={data} handleId='source' />
 
       {/* Loop content area */}
-      <div className="absolute top-15 left-16">
+      <div className='absolute top-15 left-16'>
         {!hasChildNodes && (
           <AddNodeTrigger
             anchorNode={{ id, type: 'loop', position: props.position, data }}
-            position="inside"
+            position='inside'
             parentNodeId={id}
             allowedNodeTypes={availableNextBlocks}
             onNodeAdded={(nodeId) => {
               console.log('Added node inside loop:', nodeId)
             }}>
-            <Button variant="outline" size="sm" className="z-10">
+            <Button variant='outline' size='sm' className='z-10'>
               <Plus />
               Add node inside loop
             </Button>
@@ -170,17 +170,17 @@ export const LoopNode: FC<LoopNodeType> = memo((props) => {
       </div>
       <LoopEnd id={id} data={data} />
       {/* Loop information display */}
-      <div className="absolute inset-x-0 bottom-0 p-4">
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <div className='absolute inset-x-0 bottom-0 p-4'>
+        <div className='flex items-center justify-between text-sm text-muted-foreground'>
           {/* Progress indicator during execution */}
           {loopProgress && loopProgress.status === 'running' && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-mono">
+            <div className='flex items-center gap-2'>
+              <span className='text-xs font-mono'>
                 {loopProgress.currentIteration + 1}/{loopProgress.totalIterations}
               </span>
-              <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div className='w-20 h-2 bg-gray-200 rounded-full overflow-hidden'>
                 <div
-                  className="h-full bg-purple-600 transition-all duration-300"
+                  className='h-full bg-purple-600 transition-all duration-300'
                   style={{
                     width: `${((loopProgress.currentIteration + 1) / loopProgress.totalIterations) * 100}%`,
                   }}

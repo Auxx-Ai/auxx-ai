@@ -1,10 +1,10 @@
 // packages/services/src/timeline/delete-timeline-events.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
+import { and, eq } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import { parseRecordId, type RecordId } from '@auxx/types/resource'
 
 /**
  * Input for deleting timeline events

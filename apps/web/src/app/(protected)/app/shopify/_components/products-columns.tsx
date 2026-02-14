@@ -1,21 +1,19 @@
 'use client'
 
-import { type ColumnDef } from '@tanstack/react-table'
+import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 
 import { Badge } from '@auxx/ui/components/badge'
-import { Checkbox } from '@auxx/ui/components/checkbox'
-
-import { getProductStatusBadge, labels } from '~/constants/products'
-import { DataTableColumnHeader } from '~/components/data-table/data-table-column-header'
-import { type Product } from './schema'
-import { DataTableRowActions } from './products-data-table-row-actions'
-import { titleize, pluralize } from '@auxx/utils'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
-import React from 'react'
-
 import { Button } from '@auxx/ui/components/button'
-import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import { cn } from '@auxx/ui/lib/utils'
+import { pluralize, titleize } from '@auxx/utils'
+import type { ColumnDef } from '@tanstack/react-table'
+import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
+import React from 'react'
+import { DataTableColumnHeader } from '~/components/data-table/data-table-column-header'
+import { getProductStatusBadge, labels } from '~/constants/products'
+import { DataTableRowActions } from './products-data-table-row-actions'
+import type { Product } from './schema'
 
 export const columns: ColumnDef<Product>[] = [
   {
@@ -37,9 +35,9 @@ export const columns: ColumnDef<Product>[] = [
             variant: 'ghost',
           }}>
           {row.getIsExpanded() ? (
-            <ChevronUpIcon className="opacity-60" size={16} aria-hidden="true" />
+            <ChevronUpIcon className='opacity-60' size={16} aria-hidden='true' />
           ) : (
-            <ChevronDownIcon className="opacity-60" size={16} aria-hidden="true" />
+            <ChevronDownIcon className='opacity-60' size={16} aria-hidden='true' />
           )}
         </Button>
       ) : undefined
@@ -56,16 +54,16 @@ export const columns: ColumnDef<Product>[] = [
           table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')
         }
         onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-        aria-label="Select all"
-        className="translate-y-[2px]"
+        aria-label='Select all'
+        className='translate-y-[2px]'
       />
     ),
     cell: ({ row }) => (
       <Checkbox
         checked={row.getIsSelected()}
         onCheckedChange={(value) => row.toggleSelected(!!value)}
-        aria-label="Select row"
-        className="translate-y-[2px]"
+        aria-label='Select row'
+        className='translate-y-[2px]'
       />
     ),
     enableSorting: false,
@@ -85,9 +83,9 @@ export const columns: ColumnDef<Product>[] = [
       }
 
       return (
-        <Avatar className="rounded-md">
+        <Avatar className='rounded-md'>
           {img ? <AvatarImage src={img} alt={row.original.title} /> : null}
-          <AvatarFallback className="rounded-md">{row.original.title[0]}</AvatarFallback>
+          <AvatarFallback className='rounded-md'>{row.original.title[0]}</AvatarFallback>
         </Avatar>
       )
     },
@@ -108,14 +106,14 @@ export const columns: ColumnDef<Product>[] = [
   {
     minSize: 200,
     accessorKey: 'title',
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Title" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title='Title' />,
     cell: ({ row }) => {
       const label = labels.find((label) => label.value === row.original.title)
 
       return (
-        <div className="flex space-x-2">
-          {label && <Badge variant="outline">{label.label}</Badge>}
-          <span className="truncate text-sm">{row.getValue('title')}</span>
+        <div className='flex space-x-2'>
+          {label && <Badge variant='outline'>{label.label}</Badge>}
+          <span className='truncate text-sm'>{row.getValue('title')}</span>
         </div>
       )
     },
@@ -124,9 +122,9 @@ export const columns: ColumnDef<Product>[] = [
     minSize: 100,
     maxSize: 100,
     accessorKey: 'status',
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title='Status' />,
     cell: ({ row }) => (
-      <div className="truncate text-sm">{getProductStatusBadge(row.getValue('status'))}</div>
+      <div className='truncate text-sm'>{getProductStatusBadge(row.getValue('status'))}</div>
     ),
     // enableSorting: false,
     // enableHiding: false,
@@ -136,7 +134,7 @@ export const columns: ColumnDef<Product>[] = [
     minSize: 100,
     // maxSize: 100,
     // accessorKey: 'status',
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Inventory" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title='Inventory' />,
     cell: ({ row }) => {
       let text: string = ''
       let color: string = ''
@@ -158,15 +156,15 @@ export const columns: ColumnDef<Product>[] = [
   {
     minSize: 100,
     accessorKey: 'vendor',
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Vendor" />,
-    cell: ({ row }) => <div className="truncate text-sm">{row.getValue('vendor')}</div>,
+    header: ({ column }) => <DataTableColumnHeader column={column} title='Vendor' />,
+    cell: ({ row }) => <div className='truncate text-sm'>{row.getValue('vendor')}</div>,
     // enableSorting: false,
     // enableHiding: false,
   },
   {
     accessorKey: 'productType',
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Product Type" />,
-    cell: ({ row }) => <Badge variant="outline">{row.getValue('productType')}</Badge>,
+    header: ({ column }) => <DataTableColumnHeader column={column} title='Product Type' />,
+    cell: ({ row }) => <Badge variant='outline'>{row.getValue('productType')}</Badge>,
     // enableSorting: false,
     // enableHiding: false,
   },
@@ -174,11 +172,11 @@ export const columns: ColumnDef<Product>[] = [
     minSize: 100,
     accessorKey: 'tags',
     enableSorting: false,
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Tags" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title='Tags' />,
     cell: ({ row }) => {
       return (
-        <div className="w-full">
-          <div className="space-x-2">
+        <div className='w-full'>
+          <div className='space-x-2'>
             {(() => {
               const tags = row.getValue<string[]>('tags') || []
               const maxTags = 2 // Show maximum of 2 tags
@@ -186,14 +184,14 @@ export const columns: ColumnDef<Product>[] = [
               const remaining = tags.length - maxTags
 
               return (
-                <div className="flex items-center overflow-x-auto whitespace-nowrap">
+                <div className='flex items-center overflow-x-auto whitespace-nowrap'>
                   {visibleTags.map((tag: string) => (
-                    <Badge key={tag} variant="outline" className="mr-2 shrink-0">
+                    <Badge key={tag} variant='outline' className='mr-2 shrink-0'>
                       {titleize(tag)}
                     </Badge>
                   ))}
                   {remaining > 0 && (
-                    <Badge variant="secondary" className="shrink-0">
+                    <Badge variant='secondary' className='shrink-0'>
                       +{remaining} more
                     </Badge>
                   )}

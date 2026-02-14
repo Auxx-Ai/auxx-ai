@@ -1,21 +1,21 @@
 // packages/lib/src/workflow-engine/nodes/dataset/dataset.ts
 
-import { createScopedLogger } from '@auxx/logger'
 import { database as db, schema } from '@auxx/database'
+import { DocumentTypeValues, IndexStatus } from '@auxx/database/enums'
+import type { DocumentChunk } from '@auxx/lib/datasets'
+import { createDocumentProcessingFlow } from '@auxx/lib/jobs/flows'
+import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
-import { BaseNodeProcessor } from '../base-node'
+import { z } from 'zod'
+import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
-  WorkflowNode,
   NodeExecutionResult,
-  ValidationResult,
   PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowActionType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
-import { z } from 'zod'
-import { IndexStatus, DocumentTypeValues } from '@auxx/database/enums'
-import { createDocumentProcessingFlow } from '@auxx/lib/jobs/flows'
-import type { DocumentChunk } from '@auxx/lib/datasets'
+import { BaseNodeProcessor } from '../base-node'
 
 const logger = createScopedLogger('dataset-processor')
 

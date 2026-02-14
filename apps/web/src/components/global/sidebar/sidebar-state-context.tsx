@@ -1,7 +1,7 @@
 // components/global/sidebar/sidebar-state-context.tsx
 'use client'
 
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, type ReactNode, useContext } from 'react'
 import { useSidebarState } from '~/hooks/use-sidebar-state'
 
 type SidebarStateContextValue = ReturnType<typeof useSidebarState>

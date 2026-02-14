@@ -3,10 +3,10 @@
 
 import { createId } from '@paralleldrive/cuid2'
 import { sql } from 'drizzle-orm'
+import { ContentEngine } from '../generators/content-engine'
 import type { SeedingContext, SeedingScenario } from '../types'
 import { BusinessDistributions } from '../utils/business-distributions'
 import { RelationshipEngine } from '../utils/relationship-engine'
-import { ContentEngine } from '../generators/content-engine'
 
 /** OrganizationDomain captures refinements for organization-adjacent entities. */
 export class OrganizationDomain {
@@ -89,7 +89,12 @@ export class OrganizationDomain {
    * @param organizationId - Organization ID to associate signatures with
    * @param users - Array of user records
    */
-  private async seedSignatures(db: any, schema: any, organizationId: string, users: Array<{ id: string; email: string }>): Promise<void> {
+  private async seedSignatures(
+    db: any,
+    schema: any,
+    organizationId: string,
+    users: Array<{ id: string; email: string }>
+  ): Promise<void> {
     console.log('✍️  Generating signatures...')
 
     const signatures = []
@@ -110,7 +115,7 @@ export class OrganizationDomain {
           isDefault: isDefault,
           organizationId: organizationId,
           createdById: user.id,
-          createdAt: new Date(Date.now() - (signatures.length) * 3600000),
+          createdAt: new Date(Date.now() - signatures.length * 3600000),
           updatedAt: new Date(),
         })
       }
@@ -141,20 +146,69 @@ export class OrganizationDomain {
    * @param organizationId - Organization ID to associate snippets with
    * @param users - Array of user records
    */
-  private async seedSnippets(db: any, schema: any, organizationId: string, users: Array<{ id: string }>): Promise<void> {
+  private async seedSnippets(
+    db: any,
+    schema: any,
+    organizationId: string,
+    users: Array<{ id: string }>
+  ): Promise<void> {
     console.log('📝 Generating snippets...')
 
     const snippetTemplates = [
-      { shortcut: 'greeting', title: 'Greeting', content: 'Hello! Thank you for reaching out to us. How can I help you today?' },
-      { shortcut: 'thanks', title: 'Thank You', content: 'Thank you for contacting us. We appreciate your business!' },
-      { shortcut: 'closing', title: 'Closing', content: 'If you have any other questions, please don\'t hesitate to reach out. Have a great day!' },
-      { shortcut: 'order-status', title: 'Order Status', content: 'Let me check on your order status for you. Could you please provide your order number?' },
-      { shortcut: 'refund', title: 'Refund Process', content: 'I understand you\'d like to process a refund. Let me help you with that right away.' },
-      { shortcut: 'shipping', title: 'Shipping Info', content: 'Your order has been shipped and should arrive within 3-5 business days.' },
-      { shortcut: 'apology', title: 'Apology', content: 'We sincerely apologize for any inconvenience this may have caused. Let me make this right.' },
-      { shortcut: 'escalate', title: 'Escalation', content: 'I\'m going to escalate this to our management team for immediate attention.' },
-      { shortcut: 'followup', title: 'Follow Up', content: 'Just following up on our previous conversation. Have you had a chance to review?' },
-      { shortcut: 'welcome', title: 'Welcome', content: 'Welcome to our community! We\'re excited to have you here.' },
+      {
+        shortcut: 'greeting',
+        title: 'Greeting',
+        content: 'Hello! Thank you for reaching out to us. How can I help you today?',
+      },
+      {
+        shortcut: 'thanks',
+        title: 'Thank You',
+        content: 'Thank you for contacting us. We appreciate your business!',
+      },
+      {
+        shortcut: 'closing',
+        title: 'Closing',
+        content:
+          "If you have any other questions, please don't hesitate to reach out. Have a great day!",
+      },
+      {
+        shortcut: 'order-status',
+        title: 'Order Status',
+        content:
+          'Let me check on your order status for you. Could you please provide your order number?',
+      },
+      {
+        shortcut: 'refund',
+        title: 'Refund Process',
+        content:
+          "I understand you'd like to process a refund. Let me help you with that right away.",
+      },
+      {
+        shortcut: 'shipping',
+        title: 'Shipping Info',
+        content: 'Your order has been shipped and should arrive within 3-5 business days.',
+      },
+      {
+        shortcut: 'apology',
+        title: 'Apology',
+        content:
+          'We sincerely apologize for any inconvenience this may have caused. Let me make this right.',
+      },
+      {
+        shortcut: 'escalate',
+        title: 'Escalation',
+        content: "I'm going to escalate this to our management team for immediate attention.",
+      },
+      {
+        shortcut: 'followup',
+        title: 'Follow Up',
+        content: 'Just following up on our previous conversation. Have you had a chance to review?',
+      },
+      {
+        shortcut: 'welcome',
+        title: 'Welcome',
+        content: "Welcome to our community! We're excited to have you here.",
+      },
     ]
 
     const snippets = []
@@ -199,7 +253,12 @@ export class OrganizationDomain {
    * @param organizationId - Organization ID to associate snippet folders with
    * @param users - Array of user records
    */
-  private async seedSnippetFolders(db: any, schema: any, organizationId: string, users: Array<{ id: string }>): Promise<void> {
+  private async seedSnippetFolders(
+    db: any,
+    schema: any,
+    organizationId: string,
+    users: Array<{ id: string }>
+  ): Promise<void> {
     console.log('📁 Generating snippet folders...')
 
     const folderNames = ['General', 'Sales', 'Support']
@@ -264,16 +323,39 @@ export class OrganizationDomain {
   /** generateOrganizationNames creates realistic organization names. */
   private generateOrganizationNames(): string[] {
     const businessTypes = [
-      'Solutions', 'Technologies', 'Innovations', 'Systems', 'Digital',
-      'Commerce', 'Enterprises', 'Group', 'Partners', 'Consulting'
+      'Solutions',
+      'Technologies',
+      'Innovations',
+      'Systems',
+      'Digital',
+      'Commerce',
+      'Enterprises',
+      'Group',
+      'Partners',
+      'Consulting',
     ]
     const adjectives = [
-      'Global', 'Premium', 'Advanced', 'Smart', 'Elite', 'Prime',
-      'Dynamic', 'Strategic', 'Innovative', 'Modern'
+      'Global',
+      'Premium',
+      'Advanced',
+      'Smart',
+      'Elite',
+      'Prime',
+      'Dynamic',
+      'Strategic',
+      'Innovative',
+      'Modern',
     ]
     const bases = [
-      'Auxx', 'TechFlow', 'DataSync', 'CloudPro', 'MarketEdge',
-      'SalesHub', 'BusinessCore', 'ServiceLink', 'CustomerFirst'
+      'Auxx',
+      'TechFlow',
+      'DataSync',
+      'CloudPro',
+      'MarketEdge',
+      'SalesHub',
+      'BusinessCore',
+      'ServiceLink',
+      'CustomerFirst',
     ]
 
     const names: string[] = []
@@ -290,18 +372,34 @@ export class OrganizationDomain {
   private generateWebsites(): string[] {
     const websites: string[] = []
     const businessTypes = [
-      'Solutions', 'Technologies', 'Innovations', 'Systems', 'Digital',
-      'Commerce', 'Enterprises', 'Group', 'Partners', 'Consulting'
+      'Solutions',
+      'Technologies',
+      'Innovations',
+      'Systems',
+      'Digital',
+      'Commerce',
+      'Enterprises',
+      'Group',
+      'Partners',
+      'Consulting',
     ]
     const bases = [
-      'Auxx', 'TechFlow', 'DataSync', 'CloudPro', 'MarketEdge',
-      'SalesHub', 'BusinessCore', 'ServiceLink', 'CustomerFirst'
+      'Auxx',
+      'TechFlow',
+      'DataSync',
+      'CloudPro',
+      'MarketEdge',
+      'SalesHub',
+      'BusinessCore',
+      'ServiceLink',
+      'CustomerFirst',
     ]
 
     for (let i = 0; i < this.scenario.scales.organizations; i++) {
       const base = bases[i % bases.length]
       const type = businessTypes[i % businessTypes.length]
-      const name = `${base}${type}`.toLowerCase()
+      const name = `${base}${type}`
+        .toLowerCase()
         .replace(/[^a-z0-9]/g, '')
         .substring(0, 15)
       websites.push(`https://www.${name}.com`)
@@ -333,8 +431,15 @@ export class OrganizationDomain {
   private generateEmailDomains(): string[] {
     const domains: string[] = []
     const bases = [
-      'Auxx', 'TechFlow', 'DataSync', 'CloudPro', 'MarketEdge',
-      'SalesHub', 'BusinessCore', 'ServiceLink', 'CustomerFirst'
+      'Auxx',
+      'TechFlow',
+      'DataSync',
+      'CloudPro',
+      'MarketEdge',
+      'SalesHub',
+      'BusinessCore',
+      'ServiceLink',
+      'CustomerFirst',
     ]
 
     for (let i = 0; i < this.scenario.scales.organizations; i++) {
@@ -361,8 +466,15 @@ export class OrganizationDomain {
   private generateHandles(): string[] {
     const handles: string[] = []
     const bases = [
-      'Auxx', 'TechFlow', 'DataSync', 'CloudPro', 'MarketEdge',
-      'SalesHub', 'BusinessCore', 'ServiceLink', 'CustomerFirst'
+      'Auxx',
+      'TechFlow',
+      'DataSync',
+      'CloudPro',
+      'MarketEdge',
+      'SalesHub',
+      'BusinessCore',
+      'ServiceLink',
+      'CustomerFirst',
     ]
 
     for (let i = 0; i < this.scenario.scales.organizations; i++) {
@@ -437,11 +549,21 @@ export class OrganizationDomain {
   /** generateSettingKeys creates realistic configuration keys. */
   private generateSettingKeys(): string[] {
     const settingKeys = [
-      'email_notifications', 'auto_reply_enabled', 'response_time_sla',
-      'escalation_rules', 'working_hours', 'timezone', 'language',
-      'signature_template', 'ai_analysis_enabled', 'spam_filtering',
-      'thread_assignment', 'priority_routing', 'customer_tags',
-      'integration_webhooks', 'data_retention_days'
+      'email_notifications',
+      'auto_reply_enabled',
+      'response_time_sla',
+      'escalation_rules',
+      'working_hours',
+      'timezone',
+      'language',
+      'signature_template',
+      'ai_analysis_enabled',
+      'spam_filtering',
+      'thread_assignment',
+      'priority_routing',
+      'customer_tags',
+      'integration_webhooks',
+      'data_retention_days',
     ]
 
     const keys: string[] = []

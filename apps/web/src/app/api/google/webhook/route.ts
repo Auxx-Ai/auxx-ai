@@ -1,12 +1,13 @@
 // apps/web/src/app/api/google/webhook/route.ts
-import { NextRequest, NextResponse } from 'next/server'
-import { database as db, schema } from '@auxx/database'
-import { MessageService, IntegrationProviderType } from '@auxx/lib/email' // Renamed imports
-import { createScopedLogger } from '@auxx/logger'
+
 import { env, WEBAPP_URL } from '@auxx/config/server'
+import { database as db, schema } from '@auxx/database'
+import { type IntegrationProviderType, MessageService } from '@auxx/lib/email' // Renamed imports
+import { createScopedLogger } from '@auxx/logger'
+import { and, eq, sql } from 'drizzle-orm'
 import jwt from 'jsonwebtoken'
 import jwksClient from 'jwks-rsa'
-import { and, eq, sql } from 'drizzle-orm'
+import { type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('google-webhook')
 

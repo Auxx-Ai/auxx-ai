@@ -1,16 +1,16 @@
 // packages/lib/src/ai/providers/cohere/cohere-embedding-client.ts
 
-import { CohereClient } from 'cohere-ai'
+import type { CohereClient } from 'cohere-ai'
+import { createScopedLogger, type Logger } from '../../../logger'
 import { TextEmbeddingClient } from '../../clients/base/text-embedding-client'
 import type {
+  BatchEmbeddingParams,
+  BatchEmbeddingResponse,
   ClientConfig,
   EmbeddingParams,
   EmbeddingResponse,
-  BatchEmbeddingParams,
-  BatchEmbeddingResponse,
   UsageMetrics,
 } from '../../clients/base/types'
-import { createScopedLogger, Logger } from '../../../logger'
 
 /**
  * Cohere specialized text embedding client
@@ -26,9 +26,9 @@ export class CohereTextEmbeddingClient extends TextEmbeddingClient {
 
   async invoke(params: EmbeddingParams): Promise<EmbeddingResponse> {
     this.validateEmbeddingParams(params)
-    
+
     const startTime = this.getTimestamp()
-    
+
     this.logOperationStart('Cohere embedding invoke', {
       model: params.model,
       textType: typeof params.text,
@@ -36,29 +36,32 @@ export class CohereTextEmbeddingClient extends TextEmbeddingClient {
     })
 
     try {
-      return await this.withRetryAndCircuitBreaker(async () => {
-        const texts = Array.isArray(params.text) ? params.text : [params.text]
-        
-        const response = await this.apiClient.embed({
-          texts,
-          model: params.model,
-          inputType: this.getInputType(params.purpose),
-          embeddingTypes: ['float'], // Use float embeddings
-          truncate: 'END', // Truncate from end if text is too long
-        })
+      return await this.withRetryAndCircuitBreaker(
+        async () => {
+          const texts = Array.isArray(params.text) ? params.text : [params.text]
 
-        const embeddings = response.embeddings.float || []
-        const usage = this.convertCohereUsage(response.meta)
+          const response = await this.apiClient.embed({
+            texts,
+            model: params.model,
+            inputType: this.getInputType(params.purpose),
+            embeddingTypes: ['float'], // Use float embeddings
+            truncate: 'END', // Truncate from end if text is too long
+          })
 
-        return {
-          embeddings,
+          const embeddings = response.embeddings.float || []
+          const usage = this.convertCohereUsage(response.meta)
+
+          return {
+            embeddings,
+            model: params.model,
+            usage,
+          }
+        },
+        {
+          operation: 'cohere_embedding_invoke',
           model: params.model,
-          usage,
         }
-      }, {
-        operation: 'cohere_embedding_invoke',
-        model: params.model,
-      })
+      )
     } catch (error) {
       this.handleApiError(error, 'invoke')
     } finally {
@@ -71,14 +74,14 @@ export class CohereTextEmbeddingClient extends TextEmbeddingClient {
   async batchInvoke(params: BatchEmbeddingParams): Promise<BatchEmbeddingResponse> {
     const { texts, batchSize, ...singleParams } = params
     const effectiveBatchSize = batchSize || this.getCohereBatchSize(params.model)
-    
+
     if (texts.length <= effectiveBatchSize) {
       // Single request can handle all texts
       const response = await this.invoke({
         ...singleParams,
         text: texts,
       })
-      
+
       return {
         embeddings: response.embeddings,
         model: response.model,
@@ -117,7 +120,9 @@ export class CohereTextEmbeddingClient extends TextEmbeddingClient {
   /**
    * Get input type for Cohere embeddings
    */
-  private getInputType(purpose?: string): 'search_document' | 'search_query' | 'classification' | 'clustering' {
+  private getInputType(
+    purpose?: string
+  ): 'search_document' | 'search_query' | 'classification' | 'clustering' {
     switch (purpose?.toLowerCase()) {
       case 'search':
       case 'retrieval':
@@ -136,7 +141,7 @@ export class CohereTextEmbeddingClient extends TextEmbeddingClient {
   private convertCohereUsage(meta: any): UsageMetrics {
     const billedUnits = meta?.billedUnits || {}
     const inputTokens = billedUnits.inputTokens || 0
-    
+
     return {
       prompt_tokens: inputTokens,
       completion_tokens: 0, // Embeddings don't have completion tokens
@@ -227,7 +232,7 @@ export class CohereTextEmbeddingClient extends TextEmbeddingClient {
     // Check input length (Cohere has strict token limits)
     const maxLength = this.getMaxInputLength(params.model)
     const texts = Array.isArray(params.text) ? params.text : [params.text]
-    
+
     for (const text of texts) {
       const estimatedTokens = Math.ceil(text.length / 4) // Rough estimation
       if (estimatedTokens > maxLength) {

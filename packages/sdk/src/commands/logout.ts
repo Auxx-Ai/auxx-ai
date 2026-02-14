@@ -1,7 +1,7 @@
 // packages/sdk/src/commands/logout.ts
 
-import { Command } from 'commander'
 import chalk from 'chalk'
+import { Command } from 'commander'
 import { authenticator } from '../auth/auth.js'
 
 /**

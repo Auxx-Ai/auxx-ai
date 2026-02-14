@@ -1,12 +1,12 @@
 // apps/web/src/app/api/imports/[importJobId]/events/route.ts
 
-import { NextRequest } from 'next/server'
-import { auth } from '~/auth/server'
-import { createScopedLogger } from '@auxx/logger'
-import { headers } from 'next/headers'
 import { database as db, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
+import { createScopedLogger } from '@auxx/logger'
 import { createDedicatedClient } from '@auxx/redis'
+import { and, eq } from 'drizzle-orm'
+import { headers } from 'next/headers'
+import type { NextRequest } from 'next/server'
+import { auth } from '~/auth/server'
 
 const logger = createScopedLogger('import-job-events-api')
 
@@ -44,10 +44,7 @@ export async function GET(
     .select()
     .from(schema.ImportJob)
     .where(
-      and(
-        eq(schema.ImportJob.id, importJobId),
-        eq(schema.ImportJob.organizationId, organizationId)
-      )
+      and(eq(schema.ImportJob.id, importJobId), eq(schema.ImportJob.organizationId, organizationId))
     )
     .limit(1)
 

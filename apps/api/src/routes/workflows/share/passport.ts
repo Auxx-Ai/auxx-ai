@@ -5,14 +5,14 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import {
+  getOrCreateEndUser,
+  getSharedWorkflowByToken,
+  issueWorkflowPassport,
+  validateWorkflowAccess,
+} from '@auxx/services/workflow-share'
 import { Hono } from 'hono'
 import { getCookie, setCookie } from 'hono/cookie'
-import {
-  getSharedWorkflowByToken,
-  getOrCreateEndUser,
-  validateWorkflowAccess,
-  issueWorkflowPassport,
-} from '@auxx/services/workflow-share'
 import { validateSessionFromCookies } from '../../../lib/session-validator'
 
 const passportRoute = new Hono()

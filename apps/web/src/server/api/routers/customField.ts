@@ -1,12 +1,12 @@
 // ~/server/api/routers/customField.ts
 
+import { FieldType } from '@auxx/database/enums'
+import { CustomFieldService } from '@auxx/lib/custom-fields'
+import { getFieldsByIds } from '@auxx/services/custom-fields'
+import { fieldOptionsUnionSchema, relationshipOptionsSchema } from '@auxx/types/custom-field'
+import { fieldIdSchema, resourceFieldIdSchema } from '@auxx/types/field'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { CustomFieldService } from '@auxx/lib/custom-fields'
-import { fieldOptionsUnionSchema, relationshipOptionsSchema } from '@auxx/types/custom-field'
-import { FieldType } from '@auxx/database/enums'
-import { resourceFieldIdSchema, fieldIdSchema } from '@auxx/types/field'
-import { getFieldsByIds } from '@auxx/services/custom-fields'
 
 export const customFieldRouter = createTRPCRouter({
   /**

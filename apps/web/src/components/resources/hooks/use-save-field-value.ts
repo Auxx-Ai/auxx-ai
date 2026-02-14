@@ -1,30 +1,29 @@
 // apps/web/src/components/resources/hooks/use-save-field-value.ts
 
-import { useCallback } from 'react'
-import { api } from '~/trpc/react'
+import type { FieldType } from '@auxx/database/types'
+import { formatToTypedInput, isArrayReturnFieldType } from '@auxx/lib/field-values/client'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import {
-  useFieldValueStore,
+  getInverseFieldId,
+  getRelatedEntityDefinitionId,
+  type RelationshipConfig,
+} from '@auxx/types/custom-field'
+import { type FieldId, toResourceFieldId } from '@auxx/types/field'
+import { toastError } from '@auxx/ui/components/toast'
+import { getInverseCardinality } from '@auxx/utils'
+import { useCallback } from 'react'
+import {
   buildFieldValueKey,
   type FieldValueKey,
   type StoredFieldValue,
+  useFieldValueStore,
 } from '~/components/resources/store/field-value-store'
-import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
-import { toastError } from '@auxx/ui/components/toast'
-import { formatToTypedInput, isArrayReturnFieldType } from '@auxx/lib/field-values/client'
+import { api } from '~/trpc/react'
 import {
-  useRelationshipSync,
   extractRelatedRecordIds,
   type InverseSyncInfo,
+  useRelationshipSync,
 } from './use-relationship-sync'
-import { getInverseCardinality } from '@auxx/utils'
-import { toResourceFieldId, type FieldId } from '@auxx/types/field'
-import {
-  type RelationshipConfig,
-  getRelatedEntityDefinitionId,
-  getInverseFieldId,
-} from '@auxx/types/custom-field'
-
-import { type FieldType } from '@auxx/database/types'
 
 /** Field metadata for relationship sync - uses raw RelationshipConfig */
 interface FieldMetadata {

@@ -2,13 +2,13 @@
 
 'use client'
 
-import React, { memo, useEffect, useState, useCallback, useMemo, useRef } from 'react'
-import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
-import { useAppStore } from '~/lib/extensions/use-app-store'
-import { reconstructReactTree } from '~/lib/extensions/reconstruct-react-tree'
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNodeCrud } from '~/components/workflow/hooks'
-import type { WorkflowBlock } from '../types'
+import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import { reconstructReactTree } from '~/lib/extensions/reconstruct-react-tree'
+import { useAppStore } from '~/lib/extensions/use-app-store'
+import type { WorkflowBlock } from '../types'
 
 /**
  * Props for AppWorkflowPanel component
@@ -56,7 +56,7 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
 
       const loadPanelComponent = async (retryCount = 0): Promise<void> => {
         const maxRetries = 3
-        const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 5000) // Exponential backoff, max 5s
+        const retryDelay = Math.min(1000 * 2 ** retryCount, 5000) // Exponential backoff, max 5s
 
         const messageClient = appStore.getMessageClient({
           appId,
@@ -174,17 +174,14 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
 
           if (!isMounted) return
 
-          unsubscribe = messageClient.listenForRequest(
-            'workflow-node-data-update',
-            (data: any) => {
-              if (data.nodeId === nodeId) {
-                setInputs({
-                  ...nodeDataRef.current,
-                  ...data.data
-                })
-              }
+          unsubscribe = messageClient.listenForRequest('workflow-node-data-update', (data: any) => {
+            if (data.nodeId === nodeId) {
+              setInputs({
+                ...nodeDataRef.current,
+                ...data.data,
+              })
             }
-          )
+          })
         } catch (error) {
           console.error('[AppWorkflowPanel] Setup error:', error)
           // Retry on error
@@ -210,15 +207,12 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
 
       if (!messageClient) return
 
-      const unsubscribe = messageClient.listenForRequest(
-        'workflow-panel-updated',
-        (data: any) => {
-          if (data.nodeId === nodeId) {
-            // Store raw component data - will be reconstructed in render
-            setPanelComponent(data.component)
-          }
+      const unsubscribe = messageClient.listenForRequest('workflow-panel-updated', (data: any) => {
+        if (data.nodeId === nodeId) {
+          // Store raw component data - will be reconstructed in render
+          setPanelComponent(data.component)
         }
-      )
+      })
 
       return unsubscribe
     }, [appId, installationId, nodeId, appStore])
@@ -255,12 +249,12 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
     return (
       <BasePanel title={block.label} nodeId={nodeId} data={nodeData}>
         {isLoading ? (
-          <div className="p-4">
-            <div className="text-sm text-muted-foreground">Loading configuration...</div>
+          <div className='p-4'>
+            <div className='text-sm text-muted-foreground'>Loading configuration...</div>
           </div>
         ) : error ? (
-          <div className="p-4">
-            <div className="text-sm text-destructive">Error loading configuration: {error}</div>
+          <div className='p-4'>
+            <div className='text-sm text-destructive'>Error loading configuration: {error}</div>
           </div>
         ) : panelComponent ? (
           <>
@@ -297,8 +291,8 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
             />
           </>
         ) : (
-          <div className="p-4">
-            <div className="text-sm text-muted-foreground">No panel available</div>
+          <div className='p-4'>
+            <div className='text-sm text-muted-foreground'>No panel available</div>
           </div>
         )}
       </BasePanel>

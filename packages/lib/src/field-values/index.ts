@@ -1,183 +1,172 @@
 // packages/lib/src/field-values/index.ts
 
-// Services
-export { FieldValueService } from './field-value-service'
-export { DisplayFieldService } from './display-field-service'
-
-// Helpers (context and shared utilities)
-export {
-  type FieldValueContext,
-  createFieldValueContext,
-  getField,
-  getInverseInfoFromField,
-  rowToTypedValue,
-  rowsToTypedValues,
-  isValidTypedValue,
-  validateRowReferences,
-  validateAndConvertValue,
-  validateSingleValue,
-  preBatchValidateRelationships,
-  maybeUpdateDisplayValue,
-  getFieldTypeMapByDefinition,
-} from './field-value-helpers'
-
-// Queries (for direct usage)
-export {
-  getValue,
-  getValues,
-  batchGetValues,
-} from './field-value-queries'
-
-// Mutations (for direct usage)
-export {
-  setValue,
-  setValueWithType,
-  addValue,
-  removeValue,
-  deleteValue,
-  setValueWithBuiltIn,
-  setValuesForEntity,
-  setBulkValues,
-  extractRelatedIdsFromRaw,
-} from './field-value-mutations'
-
-// NEW: Centralized Formatter API (preferred)
-export {
-  formatToTypedInput,
-  formatToRawValue,
-  formatToDisplayValue,
-  isMultiValueFieldType,
-  extractValues,
-  isValueEmpty,
-  areValuesEqual,
-  type ConverterOptions,
-  type FieldOptions,
-  type FieldValueConverter,
-  type NumberFieldOptions,
-  type DateFieldOptions,
-  type BooleanFieldOptions,
-  type TextFieldOptions,
-  type SelectFieldOptions,
-} from './formatter'
-
-// Converters (for direct access if needed)
-export {
-  converters,
-  textConverter,
-  numberConverter,
-  currencyConverter,
-  booleanConverter,
-  dateConverter,
-  selectConverter,
-  relationshipConverter,
-  jsonConverter,
-  nameConverter,
-  fileConverter,
-  calcConverter,
-} from './converters'
-
+export type { RecordId } from '@auxx/types/resource'
 // CALC expression evaluator - re-exported from @auxx/utils
 export {
-  evaluateCalcExpression,
-  validateCalcExpression,
-  getAvailableFunctions,
   type CalcFunction,
+  evaluateCalcExpression,
+  getAvailableFunctions,
   type ParsedExpression,
+  validateCalcExpression,
 } from '@auxx/utils/calc-expression'
-
+// Converters (for direct access if needed)
+export {
+  booleanConverter,
+  calcConverter,
+  converters,
+  currencyConverter,
+  dateConverter,
+  fileConverter,
+  jsonConverter,
+  nameConverter,
+  numberConverter,
+  relationshipConverter,
+  selectConverter,
+  textConverter,
+} from './converters'
+export { DisplayFieldService } from './display-field-service'
+// Display field types and config
+export type {
+  DisplayFieldConfig,
+  DisplayFieldType,
+  RecalculateDisplayFieldInput,
+  RecalculateDisplayFieldResult,
+  RecalculateDisplayFieldsInput,
+} from './display-field-types'
+export { DEFINITION_COLUMN_TO_TYPE, DISPLAY_FIELD_CONFIG } from './display-field-types'
+// Helpers (context and shared utilities)
+export {
+  createFieldValueContext,
+  type FieldValueContext,
+  getField,
+  getFieldTypeMapByDefinition,
+  getInverseInfoFromField,
+  isValidTypedValue,
+  maybeUpdateDisplayValue,
+  preBatchValidateRelationships,
+  rowsToTypedValues,
+  rowToTypedValue,
+  validateAndConvertValue,
+  validateRowReferences,
+  validateSingleValue,
+} from './field-value-helpers'
+// Mutations (for direct usage)
+export {
+  addValue,
+  deleteValue,
+  extractRelatedIdsFromRaw,
+  removeValue,
+  setBulkValues,
+  setValue,
+  setValuesForEntity,
+  setValueWithBuiltIn,
+  setValueWithType,
+} from './field-value-mutations'
+// Queries (for direct usage)
+export {
+  batchGetValues,
+  getValue,
+  getValues,
+} from './field-value-queries'
+// Services
+export { FieldValueService } from './field-value-service'
+// NEW: Centralized Formatter API (preferred)
+export {
+  areValuesEqual,
+  type BooleanFieldOptions,
+  type ConverterOptions,
+  type DateFieldOptions,
+  extractValues,
+  type FieldOptions,
+  type FieldValueConverter,
+  formatToDisplayValue,
+  formatToRawValue,
+  formatToTypedInput,
+  isMultiValueFieldType,
+  isValueEmpty,
+  type NumberFieldOptions,
+  type SelectFieldOptions,
+  type TextFieldOptions,
+} from './formatter'
+// Relationship error types
+export {
+  createCircularReferenceError,
+  createHasChildrenError,
+  createMaxDepthError,
+  type RelationshipErrorCode,
+  RelationshipValidationError,
+} from './relationship-errors'
 // Relationship utilities
 export {
   extractRelationshipRecordIds,
+  getDefinitionId,
+  getInstanceId,
+  isMultiRelationship,
+  isRecordId,
   isRelationshipFieldValue,
   isRelationshipFieldValueArray,
-  isMultiRelationship,
   isSingleRelationship,
-  toRecordId,
   parseRecordId,
-  isRecordId,
-  toRecordIds,
-  getInstanceId,
-  getDefinitionId,
   type RelationshipType,
+  toRecordId,
+  toRecordIds,
 } from './relationship-field'
-export type { RecordId } from '@auxx/types/resource'
-
-// Relationship sync (bidirectional integrity)
-export {
-  getExistingRelatedIds,
-  batchGetExistingRelatedIds,
-  syncInverseRelationships,
-  syncInverseRelationshipsBulk,
-  type RelationshipSyncContext,
-  type InverseFieldInfo,
-  type SyncInverseInput,
-  type InverseSyncResult,
-  type BulkRelationshipUpdate,
-  type BulkSyncInput,
-} from './relationship-sync'
-
-// Relationship validators (self-referential constraints)
-export {
-  getDescendantIds,
-  hasCircularReference,
-  calculateDepth,
-  validateSelfReferentialChange,
-  validateSelfReferentialDelete,
-  type ValidationContext,
-  type ValidationResult,
-} from './relationship-validators'
-
-// Relationship error types
-export {
-  RelationshipValidationError,
-  createCircularReferenceError,
-  createMaxDepthError,
-  createHasChildrenError,
-  type RelationshipErrorCode,
-} from './relationship-errors'
 
 // Relationship query helpers (for TagsOnThread migration)
 export {
-  threadHasAnyTags,
-  threadHasNoTags,
-  threadHasTags,
-  threadDoesNotHaveTags,
-  getThreadTagIds,
   batchGetThreadTagIds,
   getThreadsWithTag,
+  getThreadTagIds,
+  threadDoesNotHaveTags,
+  threadHasAnyTags,
+  threadHasNoTags,
   threadHasTagMatchingSearch,
+  threadHasTags,
 } from './relationship-queries'
-
-// Display field types and config
-export type {
-  DisplayFieldType,
-  DisplayFieldConfig,
-  RecalculateDisplayFieldInput,
-  RecalculateDisplayFieldsInput,
-  RecalculateDisplayFieldResult,
-} from './display-field-types'
-export { DISPLAY_FIELD_CONFIG, DEFINITION_COLUMN_TO_TYPE } from './display-field-types'
+// Relationship sync (bidirectional integrity)
+export {
+  type BulkRelationshipUpdate,
+  type BulkSyncInput,
+  batchGetExistingRelatedIds,
+  getExistingRelatedIds,
+  type InverseFieldInfo,
+  type InverseSyncResult,
+  type RelationshipSyncContext,
+  type SyncInverseInput,
+  syncInverseRelationships,
+  syncInverseRelationshipsBulk,
+} from './relationship-sync'
+// Relationship validators (self-referential constraints)
+export {
+  calculateDepth,
+  getDescendantIds,
+  hasCircularReference,
+  type ValidationContext,
+  type ValidationResult,
+  validateSelfReferentialChange,
+  validateSelfReferentialDelete,
+} from './relationship-validators'
 
 // Service types
 export type {
-  // Model types
-  ModelType,
-  // Existing input types
-  SetValueInput,
-  SetValueWithTypeInput,
   AddValueInput,
-  GetValueInput,
-  GetValuesInput,
+  BatchFieldValueResult,
   BatchGetValuesInput,
   DeleteValueInput,
-  // New input types (replaces CustomFieldService methods)
-  SetValueWithBuiltInInput,
-  SetValuesForEntityInput,
+  FieldValueRow,
+  GetValueInput,
+  GetValuesInput,
+  // Model types
+  ModelType,
   SetBulkValuesInput,
+  // Existing input types
+  SetValueInput,
   // Result types
   SetValueResult,
+  SetValuesForEntityInput,
   SetValuesResult,
+  // New input types (replaces CustomFieldService methods)
+  SetValueWithBuiltInInput,
+  SetValueWithTypeInput,
   TypedFieldValueResult,
-  BatchFieldValueResult,
-  FieldValueRow,
 } from './types'

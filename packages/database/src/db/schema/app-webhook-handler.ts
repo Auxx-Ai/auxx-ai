@@ -1,16 +1,8 @@
 // packages/database/src/db/schema/app-webhook-handler.ts
 // Drizzle table for app webhook handlers
 
-import {
-  pgTable,
-  text,
-  timestamp,
-  boolean,
-  uniqueIndex,
-  index,
-  type AnyPgColumn,
-} from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, boolean, index, pgTable, text, timestamp, uniqueIndex } from './_shared'
 import { AppInstallation } from './app-installation'
 
 /** Drizzle table for AppWebhookHandler */

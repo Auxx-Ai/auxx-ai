@@ -1,7 +1,8 @@
 // apps/web/src/components/inbox/index.ts
-export { InboxDialog } from './inbox-dialog'
-export { InboxList } from './inbox-list'
-export { InboxDetail } from './inbox-detail'
-export { InboxSettingsTab } from './inbox-settings-tab'
+
 export { InboxAccessTab } from './inbox-access-tab'
+export { InboxDetail } from './inbox-detail'
+export { InboxDialog } from './inbox-dialog'
 export { InboxIntegrationsTab } from './inbox-integrations-tab'
+export { InboxList } from './inbox-list'
+export { InboxSettingsTab } from './inbox-settings-tab'

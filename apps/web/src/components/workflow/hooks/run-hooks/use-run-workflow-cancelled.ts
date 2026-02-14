@@ -1,8 +1,9 @@
 // apps/web/src/components/workflow/hooks/run-hooks/use-run-workflow-cancelled.ts
-import { useCallback } from 'react'
-import { useRunStore } from '../../store/run-store'
-import type { ExecutionEvent } from '../../store/run-store'
+
 import { WorkflowRunStatus } from '@auxx/database/enums'
+import { useCallback } from 'react'
+import type { ExecutionEvent } from '../../store/run-store'
+import { useRunStore } from '../../store/run-store'
 export const useRunWorkflowCancelled = () => {
   const setIsRunning = useRunStore((state) => state.setIsRunning)
   const updateActiveRun = useRunStore((state) => state.updateActiveRun)

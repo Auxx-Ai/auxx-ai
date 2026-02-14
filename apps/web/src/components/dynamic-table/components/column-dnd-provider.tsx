@@ -2,29 +2,29 @@
 
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
 import {
-  DndContext,
   closestCenter,
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
-  DragOverlay,
 } from '@dnd-kit/core'
 import {
   arrayMove,
+  horizontalListSortingStrategy,
   SortableContext,
   sortableKeyboardCoordinates,
-  horizontalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import type { Table, Column } from '@tanstack/react-table'
-import type { ExtendedColumnDef } from '../types'
-import { decodeColumnId } from '../utils/column-id'
+import type { Column, Table } from '@tanstack/react-table'
+import { useCallback, useMemo, useState } from 'react'
 import { useFields } from '~/components/resources/hooks/use-field'
 import { getIconForFieldType } from '../custom-field-column-factory'
+import type { ExtendedColumnDef } from '../types'
+import { decodeColumnId } from '../utils/column-id'
 
 interface ColumnDndProviderProps<TData> {
   table: Table<TData>
@@ -76,10 +76,10 @@ function ColumnDragOverlay<TData>({
   }, [columnDef.header, isPathColumn, pathFields, columnId])
 
   return (
-    <div className="bg-primary-200 border border-primary rounded-lg shadow-2xl px-2 py-2 cursor-grabbing">
-      <div className="font-medium text-xs text-zinc-700 flex items-center">
-        {Icon && <Icon className="mr-2 size-3 text-zinc-500" />}
-        <span className="font-semibold">{label}</span>
+    <div className='bg-primary-200 border border-primary rounded-lg shadow-2xl px-2 py-2 cursor-grabbing'>
+      <div className='font-medium text-xs text-zinc-700 flex items-center'>
+        {Icon && <Icon className='mr-2 size-3 text-zinc-500' />}
+        <span className='font-semibold'>{label}</span>
       </div>
     </div>
   )
@@ -148,7 +148,7 @@ export function ColumnDndProvider<TData>({
         dropAnimation={null}
         adjustScale={false}
         style={{ width: 'auto' }}
-        className="w-auto">
+        className='w-auto'>
         {activeColumnId && activeColumnDef ? (
           <ColumnDragOverlay columnId={activeColumnId} columnDef={activeColumnDef} />
         ) : null}

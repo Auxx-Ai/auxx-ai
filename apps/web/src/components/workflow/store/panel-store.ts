@@ -2,12 +2,12 @@
 'use client'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import { type PanelState } from './types'
-import { storeEventBus } from './event-bus'
-import { useWorkflowStore } from './workflow-store'
-import { useSelectionStore } from './selection-store'
 import { safeLocalStorage } from '~/lib/safe-localstorage'
 import { useDockStore } from '~/stores/dock-store'
+import { storeEventBus } from './event-bus'
+import { useSelectionStore } from './selection-store'
+import type { PanelState } from './types'
+import { useWorkflowStore } from './workflow-store'
 
 /** Type for panel types in docked tabbed mode */
 type DockPanelType = 'property' | 'run' | 'settings'

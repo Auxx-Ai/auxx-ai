@@ -494,11 +494,22 @@ export const ENTITY_CONFIGS: Record<EntityType, EntityUploadConfig> = {
     description: 'Attach files to comments',
     stages: [
       { name: 'validation', displayName: 'Validation', weight: 50, estimatedDuration: 1 },
-      { name: 'attachment-creation', displayName: 'Attachment Creation', weight: 50, estimatedDuration: 2 },
+      {
+        name: 'attachment-creation',
+        displayName: 'Attachment Creation',
+        weight: 50,
+        estimatedDuration: 2,
+      },
     ],
     validation: {
       maxFileSize: 25 * 1024 * 1024, // 25MB
-      allowedMimeTypes: ['image/*', 'text/*', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      allowedMimeTypes: [
+        'image/*',
+        'text/*',
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      ],
       allowedExtensions: ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.txt', '.doc', '.docx'],
       scanForViruses: true,
       requireExtension: true,
@@ -517,17 +528,16 @@ export const ENTITY_CONFIGS: Record<EntityType, EntityUploadConfig> = {
     stages: [
       { name: 'validation', displayName: 'Validation', weight: 30, estimatedDuration: 1 },
       { name: 'virus-scan', displayName: 'Security Scan', weight: 20, estimatedDuration: 2 },
-      { name: 'attachment-creation', displayName: 'Attachment Creation', weight: 50, estimatedDuration: 2 },
+      {
+        name: 'attachment-creation',
+        displayName: 'Attachment Creation',
+        weight: 50,
+        estimatedDuration: 2,
+      },
     ],
     validation: {
       maxFileSize: 25 * 1024 * 1024, // 25MB (Gmail standard)
-      allowedMimeTypes: [
-        'image/*',
-        'text/*',
-        'application/*',
-        'audio/*',
-        'video/*',
-      ],
+      allowedMimeTypes: ['image/*', 'text/*', 'application/*', 'audio/*', 'video/*'],
       allowedExtensions: [], // Allow all extensions for email
       scanForViruses: true,
       requireExtension: false,
@@ -536,12 +546,12 @@ export const ENTITY_CONFIGS: Record<EntityType, EntityUploadConfig> = {
     defaultVisibility: 'private',
     maxConcurrentUploads: 5,
     enableBatchUpload: true,
-    supportedFeatures: { 
-      progress: true, 
-      preview: true, 
-      retry: true, 
-      pause: false, 
-      resume: false 
+    supportedFeatures: {
+      progress: true,
+      preview: true,
+      retry: true,
+      pause: false,
+      resume: false,
     },
   },
 
@@ -551,7 +561,12 @@ export const ENTITY_CONFIGS: Record<EntityType, EntityUploadConfig> = {
     description: 'Logos and branding assets for Knowledge Base',
     stages: [
       { name: 'validation', displayName: 'Validation', weight: 50, estimatedDuration: 1 },
-      { name: 'attachment-creation', displayName: 'Attachment Creation', weight: 50, estimatedDuration: 2 },
+      {
+        name: 'attachment-creation',
+        displayName: 'Attachment Creation',
+        weight: 50,
+        estimatedDuration: 2,
+      },
     ],
     validation: {
       maxFileSize: 10 * 1024 * 1024, // 10MB

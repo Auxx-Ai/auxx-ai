@@ -3,8 +3,8 @@
 import type { WorkflowExecutionResult } from '@auxx/lib/workflow-engine/types'
 // Import consolidated types
 import type {
-  FlowNode as BaseFlowNode,
   FlowEdge as BaseFlowEdge,
+  FlowNode as BaseFlowNode,
 } from '~/components/workflow/types'
 
 /**

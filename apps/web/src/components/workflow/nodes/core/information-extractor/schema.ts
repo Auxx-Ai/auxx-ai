@@ -1,18 +1,18 @@
 // apps/web/src/components/workflow/nodes/core/information-extractor/schema.ts
 
+import { AI_NODE_CONSTANTS } from '@auxx/lib/workflow-engine/constants'
 import { z } from 'zod'
 import {
-  type NodeDefinition,
   NodeCategory,
+  type NodeDefinition,
   type ValidationResult,
 } from '~/components/workflow/types'
-import { type UnifiedVariable, BaseType } from '~/components/workflow/types/variable-types'
-import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
-import type { InformationExtractorNodeData } from './types'
-import { InformationExtractorPanel } from './panel'
 import { NodeType } from '~/components/workflow/types/node-types'
+import { BaseType, type UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
-import { AI_NODE_CONSTANTS } from '@auxx/lib/workflow-engine/constants'
+import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
+import { InformationExtractorPanel } from './panel'
+import type { InformationExtractorNodeData } from './types'
 
 /**
  * Zod schema for AI model completion parameters

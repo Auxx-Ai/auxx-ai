@@ -2,7 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
-import { type NewSystemEntityType } from './entity-types'
+import type { NewSystemEntityType } from './entity-types'
 
 /** Cache key format: entity-def:{organizationId}:{entityType} */
 const ENTITY_DEF_CACHE_PREFIX = 'entity-def'

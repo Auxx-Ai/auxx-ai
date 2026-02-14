@@ -2,10 +2,10 @@
 'use client'
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { UserMemberList } from './user-member-list'
-import { EntityMemberList } from './entity-member-list'
 import { useGroup } from '../hooks'
 import { getGroupMetadata } from '../utils'
+import { EntityMemberList } from './entity-member-list'
+import { UserMemberList } from './user-member-list'
 
 /** Props for MemberList component */
 interface MemberListProps {
@@ -36,15 +36,15 @@ export function MemberList({ groupId, canManage }: MemberListProps) {
 
   // Show both tabs for 'any' memberType
   return (
-    <Tabs defaultValue="users" className="w-full">
-      <TabsList className="mb-4">
-        <TabsTrigger value="users">Users</TabsTrigger>
-        <TabsTrigger value="entities">Records</TabsTrigger>
+    <Tabs defaultValue='users' className='w-full'>
+      <TabsList className='mb-4'>
+        <TabsTrigger value='users'>Users</TabsTrigger>
+        <TabsTrigger value='entities'>Records</TabsTrigger>
       </TabsList>
-      <TabsContent value="users">
+      <TabsContent value='users'>
         <UserMemberList groupId={groupId} canManage={canManage} />
       </TabsContent>
-      <TabsContent value="entities">
+      <TabsContent value='entities'>
         <EntityMemberList groupId={groupId} canManage={canManage} />
       </TabsContent>
     </Tabs>

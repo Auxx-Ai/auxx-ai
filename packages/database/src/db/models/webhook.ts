@@ -57,9 +57,16 @@ export class WebhookModel extends BaseModel<
   }
 
   /** Global update by id without org scoping */
-  async updateByIdGlobal(id: string, data: Partial<WebhookEntity>): Promise<TypedResult<WebhookEntity, Error>> {
+  async updateByIdGlobal(
+    id: string,
+    data: Partial<WebhookEntity>
+  ): Promise<TypedResult<WebhookEntity, Error>> {
     try {
-      const [row] = await this.db.update(Webhook).set(data as any).where(eq(Webhook.id, id)).returning()
+      const [row] = await this.db
+        .update(Webhook)
+        .set(data as any)
+        .where(eq(Webhook.id, id))
+        .returning()
       return row ? Result.ok(row as WebhookEntity) : Result.error(new Error('Webhook not found'))
     } catch (error: any) {
       return Result.error(error)

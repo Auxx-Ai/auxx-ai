@@ -3,8 +3,8 @@
 
 import {
   ContactEventType,
-  TicketEventType,
   EntityInstanceEventType,
+  TicketEventType,
   type TimelineEventBase,
 } from '@auxx/lib/timeline/client'
 
@@ -27,7 +27,7 @@ export function GroupDescription({ eventType, events }: GroupDescriptionProps) {
     case ContactEventType.FIELD_UPDATED:
       return (
         <span>
-          <span className="emphasis">{firstEvent?.actor.name || 'Someone'}</span> updated multiple
+          <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span> updated multiple
           fields
         </span>
       )
@@ -35,7 +35,7 @@ export function GroupDescription({ eventType, events }: GroupDescriptionProps) {
     case ContactEventType.TAG_ADDED:
       return (
         <span>
-          <span className="emphasis">{firstEvent?.actor.name || 'Someone'}</span> added multiple
+          <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span> added multiple
           tags
         </span>
       )
@@ -43,7 +43,7 @@ export function GroupDescription({ eventType, events }: GroupDescriptionProps) {
     case ContactEventType.TAG_REMOVED:
       return (
         <span>
-          <span className="emphasis">{firstEvent?.actor.name || 'Someone'}</span> removed multiple
+          <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span> removed multiple
           tags
         </span>
       )
@@ -52,7 +52,7 @@ export function GroupDescription({ eventType, events }: GroupDescriptionProps) {
     case TicketEventType.FIELD_UPDATED:
       return (
         <span>
-          <span className="emphasis">{firstEvent?.actor.name || 'Someone'}</span> updated multiple
+          <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span> updated multiple
           fields
         </span>
       )
@@ -60,7 +60,7 @@ export function GroupDescription({ eventType, events }: GroupDescriptionProps) {
     case TicketEventType.TAG_ADDED:
       return (
         <span>
-          <span className="emphasis">{firstEvent?.actor.name || 'Someone'}</span> added multiple
+          <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span> added multiple
           tags
         </span>
       )
@@ -68,7 +68,7 @@ export function GroupDescription({ eventType, events }: GroupDescriptionProps) {
     case TicketEventType.TAG_REMOVED:
       return (
         <span>
-          <span className="emphasis">{firstEvent?.actor.name || 'Someone'}</span> removed multiple
+          <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span> removed multiple
           tags
         </span>
       )
@@ -77,7 +77,7 @@ export function GroupDescription({ eventType, events }: GroupDescriptionProps) {
     case EntityInstanceEventType.FIELD_UPDATED:
       return (
         <span>
-          <span className="emphasis">{firstEvent?.actor.name || 'Someone'}</span> updated multiple
+          <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span> updated multiple
           fields
         </span>
       )
@@ -85,7 +85,7 @@ export function GroupDescription({ eventType, events }: GroupDescriptionProps) {
     default:
       return (
         <span>
-          <span className="emphasis">{firstEvent?.actor.name || 'Someone'}</span> made multiple
+          <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span> made multiple
           changes
         </span>
       )

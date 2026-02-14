@@ -1,38 +1,38 @@
 // packages/lib/src/files/core/folder-service.ts
 
-import { database, type Database, schema } from '@auxx/database'
-import { FolderEntity as Folder } from '@auxx/database/models'
+import { type Database, database, schema } from '@auxx/database'
+import type { FolderEntity as Folder } from '@auxx/database/models'
 import {
   and,
-  eq,
-  gte,
-  lte,
-  gt,
-  lt,
-  ilike,
-  isNull,
-  sql,
-  count,
-  max,
-  sum,
-  desc,
   asc,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  ilike,
   inArray,
+  isNull,
+  lt,
+  lte,
+  max,
   type SQL,
+  sql,
+  sum,
 } from 'drizzle-orm'
-import type {
-  CreateFolderRequest,
-  UpdateFolderRequest,
-  FolderTreeNode,
-  FolderContents,
-  FolderWithRelations,
-  ValidationResult,
-  SearchOptions,
-  FolderSearchResult,
-  Nullish,
-} from './types'
 import { BaseService } from './base-service'
 import { FileService } from './file-service'
+import type {
+  CreateFolderRequest,
+  FolderContents,
+  FolderSearchResult,
+  FolderTreeNode,
+  FolderWithRelations,
+  Nullish,
+  SearchOptions,
+  UpdateFolderRequest,
+  ValidationResult,
+} from './types'
 
 /**
  * Enhanced service for managing folder hierarchy and organization
@@ -453,7 +453,7 @@ export class FolderService extends BaseService<
       }
     }
 
-    let updateData: any = { ...data }
+    const updateData: any = { ...data }
 
     // Recalculate path and depth if name or parent changed
     if (data.name || data.parentId !== undefined) {

@@ -1,5 +1,5 @@
 import { Container, Heading, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -40,7 +40,7 @@ export async function EmailChangeVerificationEmail({
 
         <Text>To confirm this change, please click the button below:</Text>
 
-        <EmailButton href={verificationLink} label="Confirm Email Change" />
+        <EmailButton href={verificationLink} label='Confirm Email Change' />
 
         <Text style={{ fontSize: '14px', color: '#718096' }}>
           Or copy and paste this link into your browser:
@@ -94,8 +94,7 @@ export async function EmailChangeVerificationEmail({
           </Text>
           <Text style={{ fontSize: '14px', color: '#718096', margin: '0' }}>
             • This verification link will expire in 24 hours
-            <br />
-            • After confirmation, all future emails will be sent to your new address
+            <br />• After confirmation, all future emails will be sent to your new address
             <br />• You may need to update your email in any connected services
           </Text>
         </div>

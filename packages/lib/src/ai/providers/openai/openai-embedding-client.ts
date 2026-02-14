@@ -1,16 +1,16 @@
 // packages/lib/src/ai/providers/openai/openai-embedding-client.ts
 
-import OpenAI from 'openai'
+import type OpenAI from 'openai'
+import { createScopedLogger, type Logger } from '../../../logger'
 import { TextEmbeddingClient } from '../../clients/base/text-embedding-client'
 import type {
+  BatchEmbeddingParams,
+  BatchEmbeddingResponse,
   ClientConfig,
   EmbeddingParams,
   EmbeddingResponse,
-  BatchEmbeddingParams,
-  BatchEmbeddingResponse,
   UsageMetrics,
 } from '../../clients/base/types'
-import { createScopedLogger, Logger } from '../../../logger'
 
 /**
  * OpenAI specialized text embedding client
@@ -26,9 +26,9 @@ export class OpenAITextEmbeddingClient extends TextEmbeddingClient {
 
   async invoke(params: EmbeddingParams): Promise<EmbeddingResponse> {
     this.validateEmbeddingParams(params)
-    
+
     const startTime = this.getTimestamp()
-    
+
     this.logOperationStart('Embedding invoke', {
       model: params.model,
       textType: typeof params.text,
@@ -36,35 +36,38 @@ export class OpenAITextEmbeddingClient extends TextEmbeddingClient {
     })
 
     try {
-      return await this.withRetryAndCircuitBreaker(async () => {
-        const requestParams: any = {
+      return await this.withRetryAndCircuitBreaker(
+        async () => {
+          const requestParams: any = {
+            model: params.model,
+            input: params.text,
+          }
+
+          // Add dimensions if specified and supported
+          if (params.dimensions) {
+            requestParams.dimensions = params.dimensions
+          }
+
+          if (params.user) {
+            requestParams.user = params.user
+          }
+
+          const response = await this.apiClient.embeddings.create(requestParams)
+
+          const embeddings = response.data.map((item: any) => item.embedding)
+          const usage = this.convertUsage(response.usage)
+
+          return {
+            embeddings,
+            model: response.model,
+            usage,
+          }
+        },
+        {
+          operation: 'embedding_invoke',
           model: params.model,
-          input: params.text,
         }
-
-        // Add dimensions if specified and supported
-        if (params.dimensions) {
-          requestParams.dimensions = params.dimensions
-        }
-
-        if (params.user) {
-          requestParams.user = params.user
-        }
-
-        const response = await this.apiClient.embeddings.create(requestParams)
-
-        const embeddings = response.data.map((item: any) => item.embedding)
-        const usage = this.convertUsage(response.usage)
-
-        return {
-          embeddings,
-          model: response.model,
-          usage,
-        }
-      }, {
-        operation: 'embedding_invoke',
-        model: params.model,
-      })
+      )
     } catch (error) {
       this.handleApiError(error, 'invoke')
     } finally {
@@ -76,14 +79,14 @@ export class OpenAITextEmbeddingClient extends TextEmbeddingClient {
 
   async batchInvoke(params: BatchEmbeddingParams): Promise<BatchEmbeddingResponse> {
     const { texts, batchSize = 2048, ...singleParams } = params // OpenAI allows up to 2048 inputs
-    
+
     if (texts.length <= batchSize) {
       // Single request can handle all texts
       const response = await this.invoke({
         ...singleParams,
         text: texts,
       })
-      
+
       return {
         embeddings: response.embeddings,
         model: response.model,
@@ -111,11 +114,7 @@ export class OpenAITextEmbeddingClient extends TextEmbeddingClient {
    * Get supported embedding models
    */
   getSupportedModels(): string[] {
-    return [
-      'text-embedding-3-small',
-      'text-embedding-3-large',
-      'text-embedding-ada-002',
-    ]
+    return ['text-embedding-3-small', 'text-embedding-3-large', 'text-embedding-ada-002']
   }
 
   /**
@@ -160,10 +159,12 @@ export class OpenAITextEmbeddingClient extends TextEmbeddingClient {
 
     if (dimensions) {
       const defaultDims = this.getDefaultDimensions(model)
-      
+
       // For text-embedding-3 models, dimensions must be <= default
       if (model.startsWith('text-embedding-3-') && dimensions > defaultDims) {
-        throw new Error(`Dimensions ${dimensions} exceeds maximum ${defaultDims} for model ${model}`)
+        throw new Error(
+          `Dimensions ${dimensions} exceeds maximum ${defaultDims} for model ${model}`
+        )
       }
 
       // Minimum dimensions check
@@ -183,9 +184,10 @@ export class OpenAITextEmbeddingClient extends TextEmbeddingClient {
     // Check input length
     const maxLength = this.getMaxInputLength(params.model)
     const texts = Array.isArray(params.text) ? params.text : [params.text]
-    
+
     for (const text of texts) {
-      if (text.length > maxLength * 4) { // Rough character to token ratio
+      if (text.length > maxLength * 4) {
+        // Rough character to token ratio
         this.logger.warn('Text may exceed model token limit', {
           textLength: text.length,
           estimatedTokens: Math.ceil(text.length / 4),

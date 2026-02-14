@@ -1,11 +1,8 @@
 // apps/web/src/app/(protected)/app/settings/general/_components/two-factor-dialog.tsx
 'use client'
 
-import { useState } from 'react'
-import { Loader2, QrCode, ShieldCheck, ShieldOff } from 'lucide-react'
-import QRCode from 'react-qr-code'
-
 import { Button } from '@auxx/ui/components/button'
+import { CopyButton } from '@auxx/ui/components/button-copy'
 import {
   Dialog,
   DialogContent,
@@ -16,17 +13,18 @@ import {
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
 import { Input } from '@auxx/ui/components/input'
-import { Label } from '@auxx/ui/components/label'
-import { client } from '~/auth/auth-client'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { CopyButton } from '@auxx/ui/components/button-copy'
-
 import {
   InputOTP,
   InputOTPGroup,
   InputOTPSeparator,
   InputOTPSlot,
 } from '@auxx/ui/components/input-otp'
+import { Label } from '@auxx/ui/components/label'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { Loader2, QrCode, ShieldCheck, ShieldOff } from 'lucide-react'
+import { useState } from 'react'
+import QRCode from 'react-qr-code'
+import { client } from '~/auth/auth-client'
 
 /**
  * Component for managing two-factor authentication - enable/disable 2FA and QR code display
@@ -78,7 +76,7 @@ export function TwoFactorDialog(): JSX.Element {
     if (session?.user.twoFactorEnabled) {
       // Disable 2FA
       await client.twoFactor.disable({
-        //@ts-ignore
+        //@ts-expect-error
         password: twoFaPassword,
         fetchOptions: {
           onError(context) {
@@ -147,40 +145,40 @@ export function TwoFactorDialog(): JSX.Element {
   }
 
   return (
-    <div className="flex gap-2">
+    <div className='flex gap-2'>
       {!!session?.user.twoFactorEnabled && (
         <Dialog>
           <DialogTrigger asChild>
-            <Button variant="outline" size="sm">
+            <Button variant='outline' size='sm'>
               <QrCode />
               Scan QR Code
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px] w-11/12">
-            <DialogHeader className="pb-4">
+          <DialogContent className='sm:max-w-[425px] w-11/12'>
+            <DialogHeader className='pb-4'>
               <DialogTitle>Scan QR Code</DialogTitle>
               <DialogDescription>Scan the QR code with your TOTP app</DialogDescription>
             </DialogHeader>
 
             {twoFactorVerifyURI ? (
               <>
-                <div className="flex items-center justify-center">
+                <div className='flex items-center justify-center'>
                   <QRCode value={twoFactorVerifyURI} />
                 </div>
-                <div className="flex gap-2 items-center justify-center">
-                  <p className="text-sm text-muted-foreground">Copy URI to clipboard</p>
+                <div className='flex gap-2 items-center justify-center'>
+                  <p className='text-sm text-muted-foreground'>Copy URI to clipboard</p>
                   <CopyButton text={twoFactorVerifyURI} />
                 </div>
               </>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div className='flex flex-col gap-2'>
                 <Input
                   value={twoFaPassword}
-                  type="password"
+                  type='password'
                   onChange={(e) => setTwoFaPassword(e.target.value)}
-                  placeholder="Enter Password"
+                  placeholder='Enter Password'
                 />
-                <Button variant="outline" type="button" onClick={handleShowQRCode}>
+                <Button variant='outline' type='button' onClick={handleShowQRCode}>
                   Show QR Code
                 </Button>
               </div>
@@ -190,13 +188,13 @@ export function TwoFactorDialog(): JSX.Element {
       )}
       <Dialog open={twoFactorDialog} onOpenChange={setTwoFactorDialog}>
         <DialogTrigger asChild>
-          <Button size="sm" variant={session?.user.twoFactorEnabled ? 'destructive' : 'outline'}>
+          <Button size='sm' variant={session?.user.twoFactorEnabled ? 'destructive' : 'outline'}>
             {session?.user.twoFactorEnabled ? <ShieldOff /> : <ShieldCheck />}
             {session?.user.twoFactorEnabled ? 'Disable 2FA' : 'Enable 2FA'}
           </Button>
         </DialogTrigger>
-        <DialogContent className="sm:max-w-[425px] w-11/12">
-          <DialogHeader className="mb-4">
+        <DialogContent className='sm:max-w-[425px] w-11/12'>
+          <DialogHeader className='mb-4'>
             <DialogTitle>
               {session?.user.twoFactorEnabled ? 'Disable 2FA' : 'Enable 2FA'}
             </DialogTitle>
@@ -208,18 +206,18 @@ export function TwoFactorDialog(): JSX.Element {
           </DialogHeader>
 
           {twoFactorVerifyURI ? (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="password">Scan the QR code with your TOTP app</Label>
+            <div className='flex flex-col gap-2'>
+              <Label htmlFor='password'>Scan the QR code with your TOTP app</Label>
 
-              <div className="flex items-center justify-center">
+              <div className='flex items-center justify-center'>
                 <QRCode value={twoFactorVerifyURI} />
               </div>
-              <div className="flex gap-2 items-center justify-center">
-                <p className="text-sm text-muted-foreground">Copy URI to clipboard</p>
+              <div className='flex gap-2 items-center justify-center'>
+                <p className='text-sm text-muted-foreground'>Copy URI to clipboard</p>
                 <CopyButton text={twoFactorVerifyURI} />
               </div>
 
-              <div className="flex flex-col mx-auto">
+              <div className='flex flex-col mx-auto'>
                 <InputOTP
                   maxLength={6}
                   value={twoFaPassword}
@@ -244,12 +242,12 @@ export function TwoFactorDialog(): JSX.Element {
               /> */}
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="password">Password</Label>
+            <div className='flex flex-col gap-2'>
+              <Label htmlFor='password'>Password</Label>
               <Input
-                id="password"
-                type="password"
-                placeholder="Password"
+                id='password'
+                type='password'
+                placeholder='Password'
                 value={twoFaPassword}
                 onChange={(e) => setTwoFaPassword(e.target.value)}
               />
@@ -257,11 +255,11 @@ export function TwoFactorDialog(): JSX.Element {
           )}
           <DialogFooter>
             <Button
-              variant="outline"
+              variant='outline'
               disabled={isButtonDisabled()}
               onClick={handleTwoFactorToggle}
               loading={isPendingTwoFa}
-              loadingText="Processing...">
+              loadingText='Processing...'>
               {session?.user.twoFactorEnabled
                 ? 'Disable 2FA'
                 : twoFactorVerifyURI

@@ -1,7 +1,7 @@
 // packages/lib/src/resources/crud/utils/custom-fields.ts
 
-import { FieldValueService } from '../../../field-values'
 import type { RecordId } from '@auxx/types/resource'
+import { FieldValueService } from '../../../field-values'
 import type { CrudContext } from '../types'
 
 /**

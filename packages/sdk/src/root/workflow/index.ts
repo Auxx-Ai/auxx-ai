@@ -4,10 +4,10 @@
 export * from './types.js'
 
 // Export utility types
-export type { SchemaOf, InputOf, OutputOf } from './utils.js'
+export type { InputOf, OutputOf, SchemaOf } from './utils.js'
 
 // Import and export base node and options
-import { WorkflowFieldNode, type BaseWorkflowFieldOptions } from './base-node.js'
+import { type BaseWorkflowFieldOptions, WorkflowFieldNode } from './base-node.js'
 export { WorkflowFieldNode, type BaseWorkflowFieldOptions }
 
 // Re-export SelectOption from schema
@@ -15,21 +15,21 @@ export type { SelectOption } from '../schema/select-node.js'
 
 // Import input field classes (needed for type utilities below)
 import {
-  WorkflowStringNode,
-  WorkflowNumberNode,
-  WorkflowBooleanNode,
-  WorkflowSelectNode,
   WorkflowArrayNode,
+  WorkflowBooleanNode,
+  WorkflowNumberNode,
+  WorkflowSelectNode,
+  WorkflowStringNode,
   WorkflowStructNode,
 } from './input-nodes.js'
 
 // Export input field types
 export type {
-  StringInputOptions,
-  NumberInputOptions,
-  BooleanInputOptions,
-  SelectInputOptions,
   ArrayInputOptions,
+  BooleanInputOptions,
+  NumberInputOptions,
+  SelectInputOptions,
+  StringInputOptions,
   StructInputOptions,
 } from './input-nodes.js'
 
@@ -43,26 +43,23 @@ export {
   WorkflowStructNode,
 }
 
-// Import input factories (not exported directly - only via Workflow namespace)
-import { string, number, boolean, select, array, struct } from './input-nodes.js'
-
 // Import specialized string format helpers from schema
-import { date, datetime, time, email, url, type StringFormat } from '../schema/index.js'
-
+import { date, datetime, email, type StringFormat, time, url } from '../schema/index.js'
 // Import and export AuxxRule field
-import { auxxRule, AuxxRuleReference, WorkflowAuxxRuleNode } from './auxx-rule-node.js'
+import { AuxxRuleReference, auxxRule, WorkflowAuxxRuleNode } from './auxx-rule-node.js'
+// Import input factories (not exported directly - only via Workflow namespace)
+import { array, boolean, number, select, string, struct } from './input-nodes.js'
 export { auxxRule, AuxxRuleReference, WorkflowAuxxRuleNode }
 export type { AuxxRuleWorkflowFieldOptions } from './auxx-rule-node.js'
-
+export { createMockTransformationContext } from './values/mock-context.js'
 // Export transformation utilities
 export {
+  deserializeSchemaValues,
+  serializeSchemaValues,
   transformSchemaToConfig,
   transformSchemaToRuntime,
-  serializeSchemaValues,
-  deserializeSchemaValues,
 } from './values/transform.js'
 export type { TransformationContext } from './values/types.js'
-export { createMockTransformationContext } from './values/mock-context.js'
 
 // ============================================================================
 // Workflow Namespace

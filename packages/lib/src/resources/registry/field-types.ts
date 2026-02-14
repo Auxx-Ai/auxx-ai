@@ -1,9 +1,9 @@
 // packages/lib/src/resources/registry/field-types.ts
 
-import { BaseType } from '../types'
 import type { FieldType } from '@auxx/database/types'
-import type { FieldOptions } from '../../custom-fields/field-options'
 import type { FieldId, ResourceFieldId } from '@auxx/types/field'
+import type { FieldOptions } from '../../custom-fields/field-options'
+import type { BaseType } from '../types'
 
 /**
  * Table-level metadata for a resource
@@ -63,7 +63,6 @@ export interface FieldValidation {
   /** Maximum length for strings */
   maxLength?: number
 }
-
 
 /**
  * Unified field definition

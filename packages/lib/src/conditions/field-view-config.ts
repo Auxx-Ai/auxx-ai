@@ -5,7 +5,13 @@ import { z } from 'zod'
 /**
  * Context types for different view contexts
  */
-export const viewContextTypes = ['table', 'kanban', 'panel', 'dialog_create', 'dialog_edit'] as const
+export const viewContextTypes = [
+  'table',
+  'kanban',
+  'panel',
+  'dialog_create',
+  'dialog_edit',
+] as const
 
 /** View context type: 'table' | 'kanban' | 'panel' | 'dialog_create' | 'dialog_edit' */
 export type ViewContextType = (typeof viewContextTypes)[number]

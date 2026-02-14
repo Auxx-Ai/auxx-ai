@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/nodes/shared/node-validation-warning.tsx
 
-import React from 'react'
-import { AlertTriangle, AlertCircle } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
+import { AlertCircle, AlertTriangle } from 'lucide-react'
+import React from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 
 interface NodeValidationWarningProps {
@@ -33,25 +33,25 @@ export function NodeValidationWarning({ issues }: NodeValidationWarningProps) {
   // Create tooltip content component
   const tooltipContent = (
     <div className={cn('text-xs rounded px-2 py-1 w-[300px]', tooltipBg, tooltipText)}>
-      <div className="space-y-1">
+      <div className='space-y-1'>
         {errors.length > 0 && (
           <>
-            <div className="font-semibold">Errors:</div>
+            <div className='font-semibold'>Errors:</div>
             {errors.map((error, idx) => (
-              <div key={`error-${idx}`} className="pl-2">
+              <div key={`error-${idx}`} className='pl-2'>
                 • {error.message}
               </div>
             ))}
           </>
         )}
         {errors.length > 0 && warnings.length > 0 && (
-          <div className="border-t border-current opacity-20 my-1" />
+          <div className='border-t border-current opacity-20 my-1' />
         )}
         {warnings.length > 0 && (
           <>
-            <div className="font-semibold">Warnings:</div>
+            <div className='font-semibold'>Warnings:</div>
             {warnings.map((warning, idx) => (
-              <div key={`warning-${idx}`} className="pl-2">
+              <div key={`warning-${idx}`} className='pl-2'>
                 • {warning.message}
               </div>
             ))}
@@ -62,13 +62,13 @@ export function NodeValidationWarning({ issues }: NodeValidationWarningProps) {
   )
 
   return (
-    <div className="absolute -top-2 -right-2 z-1">
+    <div className='absolute -top-2 -right-2 z-1'>
       <Tooltip
         contentComponent={tooltipContent}
-        side="top"
-        align="end"
+        side='top'
+        align='end'
         sideOffset={8}
-        className="p-0">
+        className='p-0'>
         <div
           className={cn(
             'flex items-center justify-center size-5 border rounded-full',

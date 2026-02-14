@@ -1,6 +1,6 @@
 // packages/lib/src/providers/google/__tests__/test-utils.ts
-import { gmail_v1 } from 'googleapis'
-import { UniversalThrottler } from '../../../utils/rate-limiter'
+import type { gmail_v1 } from 'googleapis'
+import type { UniversalThrottler } from '../../../utils/rate-limiter'
 
 /**
  * Create mock Gmail client for testing

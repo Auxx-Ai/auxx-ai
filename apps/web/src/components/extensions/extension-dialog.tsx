@@ -1,10 +1,10 @@
 // apps/web/src/components/extensions/extension-dialog.tsx
 'use client'
 
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
 import { useEffect, useReducer } from 'react'
 import { useDialog } from '~/lib/extensions/use-dialog'
 import { useInternalAppsContext } from '~/providers/extensions/internal-apps-context'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
 
 /**
  * Global extension dialog renderer.
@@ -79,12 +79,12 @@ export function ExtensionDialog() {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className={sizeClasses[size as keyof typeof sizeClasses]} position="tc">
+      <DialogContent className={sizeClasses[size as keyof typeof sizeClasses]} position='tc'>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
-        <div className="py-4">
+        <div className='py-4'>
           {/* Render the reconstructed React tree */}
           {dialog.component}
         </div>

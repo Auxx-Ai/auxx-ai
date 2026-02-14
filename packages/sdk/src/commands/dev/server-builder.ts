@@ -1,11 +1,12 @@
 // packages/sdk/src/commands/dev/server-builder.ts
+
+import * as esbuild from 'esbuild'
 import fs from 'fs/promises'
 import path from 'path'
-import * as esbuild from 'esbuild'
 import tmp from 'tmp-promise'
-import { complete, errored, isErrored, errorsAndWarningsSchema, type Result } from '../../errors.js'
 import { createServerBuildConfig } from '../../build/server/create-server-build-config.js'
 import { generateServerEntry } from '../../build/server/generate-server-entry.js'
+import { complete, errored, errorsAndWarningsSchema, isErrored, type Result } from '../../errors.js'
 import type { BuildMode } from './client-builder.js'
 
 /**
@@ -106,7 +107,11 @@ export class ServerBuilder {
    * @param workflowBlockModules Modules referenced by workflow blocks participating in the build.
    * @returns A {@link Result} containing the esbuild {@link esbuild.BuildResult} or build errors.
    */
-  async rebuild({ workflowBlockModules }: { workflowBlockModules: Map<string, any> }): Promise<Result<esbuild.BuildResult, any>> {
+  async rebuild({
+    workflowBlockModules,
+  }: {
+    workflowBlockModules: Map<string, any>
+  }): Promise<Result<esbuild.BuildResult, any>> {
     const jsResult = await generateServerEntry({
       appDirAbsolute: path.resolve(this._directories.app),
       srcDirAbsolute: path.resolve(this._directories.src),

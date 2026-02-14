@@ -1,6 +1,9 @@
 // apps/web/src/components/custom-fields/ui/currency-options-editor.tsx
 'use client'
 
+import type { FieldOptions } from '@auxx/lib/field-values/client'
+import type { CurrencyOptions } from '@auxx/types/custom-field'
+import { Field, FieldGroup, FieldLabel } from '@auxx/ui/components/field'
 import {
   Select,
   SelectContent,
@@ -8,10 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
 import { CurrencyPicker } from '~/components/pickers/currency-picker'
-import type { CurrencyOptions } from '@auxx/types/custom-field'
-import type { FieldOptions } from '@auxx/lib/field-values/client'
 
 // Re-export CurrencyOptions for convenience
 export type { CurrencyOptions }
@@ -67,8 +67,8 @@ export function CurrencyOptionsEditor({ options, onChange }: CurrencyOptionsEdit
   }
 
   return (
-    <div className="rounded-xl border py-3 px-3 bg-primary-50 space-y-4">
-      <FieldGroup className="gap-3">
+    <div className='rounded-xl border py-3 px-3 bg-primary-50 space-y-4'>
+      <FieldGroup className='gap-3'>
         {/* Currency Code - Using CurrencyPicker */}
         <Field>
           <FieldLabel>Currency</FieldLabel>
@@ -85,11 +85,11 @@ export function CurrencyOptionsEditor({ options, onChange }: CurrencyOptionsEdit
             value={options.decimalPlaces || 'two-places'}
             onValueChange={(v) => handleChange('decimalPlaces', v as 'two-places' | 'no-decimal')}>
             <SelectTrigger>
-              <SelectValue placeholder="Select decimal format" />
+              <SelectValue placeholder='Select decimal format' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="two-places">Two decimal places (10.99)</SelectItem>
-              <SelectItem value="no-decimal">No decimals (11)</SelectItem>
+              <SelectItem value='two-places'>Two decimal places (10.99)</SelectItem>
+              <SelectItem value='no-decimal'>No decimals (11)</SelectItem>
             </SelectContent>
           </Select>
         </Field>
@@ -101,12 +101,12 @@ export function CurrencyOptionsEditor({ options, onChange }: CurrencyOptionsEdit
             value={options.displayType || 'symbol'}
             onValueChange={(v) => handleChange('displayType', v as 'symbol' | 'name' | 'code')}>
             <SelectTrigger>
-              <SelectValue placeholder="Select display format" />
+              <SelectValue placeholder='Select display format' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="symbol">Symbol ($10.99)</SelectItem>
-              <SelectItem value="code">Code (USD 10.99)</SelectItem>
-              <SelectItem value="name">Name (10.99 US dollars)</SelectItem>
+              <SelectItem value='symbol'>Symbol ($10.99)</SelectItem>
+              <SelectItem value='code'>Code (USD 10.99)</SelectItem>
+              <SelectItem value='name'>Name (10.99 US dollars)</SelectItem>
             </SelectContent>
           </Select>
         </Field>
@@ -118,11 +118,11 @@ export function CurrencyOptionsEditor({ options, onChange }: CurrencyOptionsEdit
             value={options.groups || 'default'}
             onValueChange={(v) => handleChange('groups', v as 'default' | 'no-groups')}>
             <SelectTrigger>
-              <SelectValue placeholder="Select grouping" />
+              <SelectValue placeholder='Select grouping' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">With separators (1,000.00)</SelectItem>
-              <SelectItem value="no-groups">No separators (1000.00)</SelectItem>
+              <SelectItem value='default'>With separators (1,000.00)</SelectItem>
+              <SelectItem value='no-groups'>No separators (1000.00)</SelectItem>
             </SelectContent>
           </Select>
         </Field>

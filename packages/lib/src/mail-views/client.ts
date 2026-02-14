@@ -2,9 +2,9 @@
 // Client-safe exports only - no database dependencies
 
 export {
-  MAIL_VIEW_FIELD_DEFINITIONS,
+  getDefaultOperatorForField,
   getMailViewFieldDefinition,
   getMailViewFields,
-  getDefaultOperatorForField,
+  MAIL_VIEW_FIELD_DEFINITIONS,
   type MailViewFieldDefinition,
 } from './mail-view-field-definitions'

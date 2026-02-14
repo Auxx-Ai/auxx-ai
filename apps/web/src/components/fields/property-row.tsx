@@ -1,17 +1,17 @@
 // apps/web/src/components/fields/property-row.tsx
 'use client'
 
+import type { FieldType } from '@auxx/database/types'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
-import { DisplayField } from './displays/display-field'
-import { useCallback, useMemo } from 'react'
-import { FieldInput } from './field-input'
-import { usePropertyContext } from './property-provider'
 import { isValueEmpty } from '@auxx/lib/field-values/client'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Badge } from '@auxx/ui/components/badge'
 import { EntityIcon } from '@auxx/ui/components/icons'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { useCallback, useMemo } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
-import type { FieldType } from '@auxx/database/types'
+import { DisplayField } from './displays/display-field'
+import { FieldInput } from './field-input'
+import { usePropertyContext } from './property-provider'
 
 /**
  * Renders the interactive row for a single property, including label, icon, and value.
@@ -50,8 +50,8 @@ function PropertyRow({
   }, [field, isLoading, isOpen])
 
   const valueSection = (
-    <div className="min-w-0 relative flex text-sm flex-1">
-      <div className="items-center flex-1 flex gap-[4px] w-full overflow-y-auto no-scrollbar">
+    <div className='min-w-0 relative flex text-sm flex-1'>
+      <div className='items-center flex-1 flex gap-[4px] w-full overflow-y-auto no-scrollbar'>
         {isLoading ? (
           <LoadingFieldSkeleton />
         ) : !field.readOnly ? (
@@ -70,23 +70,23 @@ function PropertyRow({
   return (
     <div
       // ref={anchorRef}
-      className="group/property-row flex w-full h-fit row group min-h-[30px]"
+      className='group/property-row flex w-full h-fit row group min-h-[30px]'
       onClick={handleClick}
       onPointerDown={handlePointerDown}
       style={{ cursor: !field.readOnly && !isLoading ? 'pointer' : undefined }}
-      data-slot="property-row">
+      data-slot='property-row'>
       {showTitle && (
-        <div className="items-center self-start flex gap-[4px] h-[24px] shrink-0">
+        <div className='items-center self-start flex gap-[4px] h-[24px] shrink-0'>
           <EntityIcon
             iconId={iconId}
-            variant="default"
-            size="default"
-            className="text-neutral-400 group-data-[active]/row-wrapper:text-foreground"
+            variant='default'
+            size='default'
+            className='text-neutral-400 group-data-[active]/row-wrapper:text-foreground'
           />
-          <div className="w-[120px] flex items-center text-sm text-neutral-400 group-data-[active]/row-wrapper:text-foreground shrink-0">
-            <div className="truncate me-1">{field.name}</div>
+          <div className='w-[120px] flex items-center text-sm text-neutral-400 group-data-[active]/row-wrapper:text-foreground shrink-0'>
+            <div className='truncate me-1'>{field.name}</div>
             {field.isUnique && (
-              <Badge size="xs" variant="purple">
+              <Badge size='xs' variant='purple'>
                 U
               </Badge>
             )}
@@ -94,7 +94,7 @@ function PropertyRow({
         </div>
       )}
       {!showTitle ? (
-        <Tooltip align="start" side="left" content={field.name}>
+        <Tooltip align='start' side='left' content={field.name}>
           {valueSection}
         </Tooltip>
       ) : (
@@ -108,8 +108,8 @@ function PropertyRow({
  */
 function EmptyField() {
   return (
-    <div className="rounded-lg px-1 overflow-hidden h-auto min-h-[28px] flex items-center group-hover/property-row:bg-neutral-100 group-hover/property-row:dark:bg-foreground/10">
-      <div className="content-center items-center h-fit flex overflow-hidden whitespace-nowrap py-[2px] text-ellipsis text-neutral-300 dark:text-foreground/40">
+    <div className='rounded-lg px-1 overflow-hidden h-auto min-h-[28px] flex items-center group-hover/property-row:bg-neutral-100 group-hover/property-row:dark:bg-foreground/10'>
+      <div className='content-center items-center h-fit flex overflow-hidden whitespace-nowrap py-[2px] text-ellipsis text-neutral-300 dark:text-foreground/40'>
         Empty
       </div>
     </div>
@@ -125,6 +125,6 @@ function LoadingFieldSkeleton() {
     return widthOptions[index]
   }, [])
 
-  return <Skeleton className="h-4 max-w-[220px]" style={{ width: skeletonWidth }} />
+  return <Skeleton className='h-4 max-w-[220px]' style={{ width: skeletonWidth }} />
 }
 export default PropertyRow

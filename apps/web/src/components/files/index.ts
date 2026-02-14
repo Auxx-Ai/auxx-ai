@@ -1,35 +1,30 @@
 // apps/web/src/components/files/index.ts
 
+export { CreateFolderDialog } from './create-folder-dialog'
+// Table columns
+export { createFileColumns } from './file-columns'
+export { FileDetailDrawer } from './file-detail-drawer'
+export { FileDropZone } from './file-drop-zone'
+export { FileFilterBar } from './file-filter-bar'
+export { FileUploadDialog } from './file-upload-dialog'
+export { FilesBreadcrumb } from './files-breadcrumb'
 // Main components
 export { FilesManagement } from './files-management'
-export { FilesBreadcrumb } from './files-breadcrumb'
-export { FileDropZone } from './file-drop-zone'
-export { FileDetailDrawer } from './file-detail-drawer'
-export { FileUploadDialog } from './file-upload-dialog'
-export { CreateFolderDialog } from './create-folder-dialog'
-export { FileFilterBar } from './file-filter-bar'
-
-// Provider and context
-export { FilesystemProvider, useFilesystemContext } from './provider/filesystem-provider'
-
-// Hook
-export { useFilesystem } from './hooks/use-filesystem'
+// Types
+export type {
+  BreadcrumbItem,
+  FileFilterSettings,
+  FileItem,
+  FileSystemStore,
+  FolderTreeNode,
+} from './files-store'
 
 // Store
 export { useFileSystemStore } from './files-store'
-
-// Table columns
-export { createFileColumns } from './file-columns'
-
+// Hook
+export { useFilesystem } from './hooks/use-filesystem'
+// Provider and context
+export { FilesystemProvider, useFilesystemContext } from './provider/filesystem-provider'
 // Utils
 export { getFileIcon } from './utils/file-icon'
-export { getStandardFileType, getFileCategory } from './utils/file-type'
-
-// Types
-export type { 
-  FileItem, 
-  FileSystemStore, 
-  FolderTreeNode, 
-  BreadcrumbItem,
-  FileFilterSettings 
-} from './files-store'
+export { getFileCategory, getStandardFileType } from './utils/file-type'

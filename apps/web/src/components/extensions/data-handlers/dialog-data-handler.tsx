@@ -1,11 +1,11 @@
 // apps/web/src/components/extensions/data-handlers/dialog-data-handler.tsx
 'use client'
 
-import { useEffect } from 'react'
-import { useInternalAppsContext } from '~/providers/extensions/internal-apps-context'
-import { useExtensionDataHandlerContext } from '~/providers/extensions/extension-data-handler-context'
-import { reconstructReactTree } from '~/lib/extensions/reconstruct-react-tree'
 import { toastError } from '@auxx/ui/components/toast'
+import { useEffect } from 'react'
+import { reconstructReactTree } from '~/lib/extensions/reconstruct-react-tree'
+import { useExtensionDataHandlerContext } from '~/providers/extensions/extension-data-handler-context'
+import { useInternalAppsContext } from '~/providers/extensions/internal-apps-context'
 
 /**
  * Handles dialog-related messages from extension runtime.
@@ -25,48 +25,58 @@ export function DialogDataHandler() {
     if (!messageClient) return
 
     // Listen for component updates (React state changes)
-    const unsubscribeUpdates = messageClient.listenForRequest('component-updated', async (data: any) => {
-      const { id, component } = data
-
-      if (isDevLoggingEnabled) {
-        console.log(`[DialogDataHandler] App(${appId}) dialog updated:`, id)
-      }
-
-      try {
-        // Reconstruct the updated tree
-        const reconstructed = reconstructReactTree(component, {
-          injectedProps: {
-            hideDialog: () => {
-              console.log(`[DialogDataHandler] hideDialog called for:`, id)
-              messageClient.sendMessage('close-dialog', { id })
-            },
-          },
-          onCallHandler: async (instanceId: number, eventName: string, ...args: any[]) => {
-            console.log(`[DialogDataHandler] Calling event:`, eventName, 'on instance:', instanceId, 'with args:', args)
-            const result = await messageClient.sendRequest('call-instance-method', {
-              instanceId,
-              eventName,
-              args,
-            })
-            return result
-          },
-        })
-
-        // Update dialog in store
-        store.updateDialog({
-          dialogId: id,
-          component: reconstructed,
-        })
+    const unsubscribeUpdates = messageClient.listenForRequest(
+      'component-updated',
+      async (data: any) => {
+        const { id, component } = data
 
         if (isDevLoggingEnabled) {
-          console.log(`[DialogDataHandler] App(${appId}) dialog updated successfully:`, id)
+          console.log(`[DialogDataHandler] App(${appId}) dialog updated:`, id)
         }
-      } catch (error: any) {
-        console.error('[DialogDataHandler] Failed to update dialog:', error)
-      }
 
-      return null
-    })
+        try {
+          // Reconstruct the updated tree
+          const reconstructed = reconstructReactTree(component, {
+            injectedProps: {
+              hideDialog: () => {
+                console.log(`[DialogDataHandler] hideDialog called for:`, id)
+                messageClient.sendMessage('close-dialog', { id })
+              },
+            },
+            onCallHandler: async (instanceId: number, eventName: string, ...args: any[]) => {
+              console.log(
+                `[DialogDataHandler] Calling event:`,
+                eventName,
+                'on instance:',
+                instanceId,
+                'with args:',
+                args
+              )
+              const result = await messageClient.sendRequest('call-instance-method', {
+                instanceId,
+                eventName,
+                args,
+              })
+              return result
+            },
+          })
+
+          // Update dialog in store
+          store.updateDialog({
+            dialogId: id,
+            component: reconstructed,
+          })
+
+          if (isDevLoggingEnabled) {
+            console.log(`[DialogDataHandler] App(${appId}) dialog updated successfully:`, id)
+          }
+        } catch (error: any) {
+          console.error('[DialogDataHandler] Failed to update dialog:', error)
+        }
+
+        return null
+      }
+    )
 
     // Listen for dialog opened notification
     const unsubscribeOpened = messageClient.listenForRequest('dialog-opened', async (data: any) => {
@@ -101,7 +111,14 @@ export function DialogDataHandler() {
             },
           },
           onCallHandler: async (instanceId: number, eventName: string, ...args: any[]) => {
-            console.log(`[DialogDataHandler] Calling event:`, eventName, 'on instance:', instanceId, 'with args:', args)
+            console.log(
+              `[DialogDataHandler] Calling event:`,
+              eventName,
+              'on instance:',
+              instanceId,
+              'with args:',
+              args
+            )
             const result = await messageClient.sendRequest('call-instance-method', {
               instanceId,
               eventName,

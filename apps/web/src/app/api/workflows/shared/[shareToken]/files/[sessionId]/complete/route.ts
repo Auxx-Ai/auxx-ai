@@ -1,11 +1,11 @@
 // apps/web/src/app/api/workflows/shared/[shareToken]/files/[sessionId]/complete/route.ts
 
-import { NextRequest, NextResponse } from 'next/server'
 import { createStorageManager, MediaAssetService } from '@auxx/lib/files'
 import { SystemUserService } from '@auxx/lib/users'
-import { verifyWorkflowPassport } from '@auxx/services/workflow-share'
-import { getRedisData, deleteRedisData } from '@auxx/redis'
 import { createScopedLogger } from '@auxx/logger'
+import { deleteRedisData, getRedisData } from '@auxx/redis'
+import { verifyWorkflowPassport } from '@auxx/services/workflow-share'
+import { type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('public-file-upload-complete')
 
@@ -53,7 +53,10 @@ export async function POST(
   const passport = passportResult.value
 
   // 2. Get session from Redis
-  const sessionData = await getRedisData(`public-upload:${sessionId}`, false) as UploadSessionData | null
+  const sessionData = (await getRedisData(
+    `public-upload:${sessionId}`,
+    false
+  )) as UploadSessionData | null
   if (!sessionData) {
     return NextResponse.json({ error: 'Session not found or expired' }, { status: 404 })
   }

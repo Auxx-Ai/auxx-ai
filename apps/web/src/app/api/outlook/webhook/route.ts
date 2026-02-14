@@ -1,9 +1,11 @@
 // apps/web/src/app/api/outlook/webhook/route.ts
-import { NextRequest, NextResponse } from 'next/server'
+
 import { database as db, schema } from '@auxx/database'
-import { MessageService, IntegrationProviderType } from '@auxx/lib/email'
+import { type IntegrationProviderType, MessageService } from '@auxx/lib/email'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
+import { type NextRequest, NextResponse } from 'next/server'
+
 // Note: env import removed as not currently used
 
 const logger = createScopedLogger('outlook-webhook')

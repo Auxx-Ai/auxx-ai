@@ -1,16 +1,17 @@
 // apps/web/src/app/api/openphone/webhook/route.ts
-import { NextRequest, NextResponse } from 'next/server'
+
 import { database as db, schema } from '@auxx/database'
-import { MessageStorageService } from '@auxx/lib/email'
 import type { MessageData } from '@auxx/lib/email'
+import { MessageStorageService } from '@auxx/lib/email'
+import type {
+  OpenPhoneIntegrationMetadata,
+  OpenPhoneMessageReceivedData,
+  OpenPhoneWebhookEvent,
+} from '@auxx/lib/providers/openphone/types' // Adjust path
 import { createScopedLogger } from '@auxx/logger'
 import crypto from 'crypto'
 import { and, eq, sql } from 'drizzle-orm'
-import {
-  OpenPhoneIntegrationMetadata,
-  OpenPhoneWebhookEvent,
-  OpenPhoneMessageReceivedData,
-} from '@auxx/lib/providers/openphone/types' // Adjust path
+import { type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('openphone-webhook')
 
@@ -57,7 +58,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const [integration] = await db
-      .select({ id: schema.Integration.id, organizationId: schema.Integration.organizationId, metadata: schema.Integration.metadata })
+      .select({
+        id: schema.Integration.id,
+        organizationId: schema.Integration.organizationId,
+        metadata: schema.Integration.metadata,
+      })
       .from(schema.Integration)
       .where(
         and(
@@ -112,7 +117,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const storageService = new MessageStorageService()
 
     switch (payload.type) {
-      case 'message.received':
+      case 'message.received': {
         logger.info(`Processing message.received event`, {
           eventId: payload.id,
           integrationId: integration.id,
@@ -138,7 +143,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             })
             // Decide if we should return 500 to trigger retry
             // If it's a unique constraint (P2002), message likely processed, return 200.
-            if (storeError && typeof storeError === 'object' && (storeError as any).code === 'P2002') {
+            if (
+              storeError &&
+              typeof storeError === 'object' &&
+              (storeError as any).code === 'P2002'
+            ) {
               logger.warn('Message likely already processed (unique constraint violation).', {
                 mid: messageData.externalId,
               })
@@ -152,6 +161,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           logger.warn('Failed to convert message.received event data', { eventId: payload.id })
         }
         break
+      }
 
       case 'call.ringing':
         // TODO: Handle incoming call event (e.g., create notification, log event)

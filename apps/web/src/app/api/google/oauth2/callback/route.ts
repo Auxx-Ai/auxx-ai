@@ -1,10 +1,11 @@
 // /api/google/oauth2/callback/route.ts
-import { NextRequest, NextResponse } from 'next/server'
-import { GoogleOAuthService } from '@auxx/lib/providers'
-import { auth } from '~/auth/server'
-import { createScopedLogger } from '@auxx/logger'
+
 import { requireAdminAccess } from '@auxx/lib/email'
+import { GoogleOAuthService } from '@auxx/lib/providers'
+import { createScopedLogger } from '@auxx/logger'
 import { headers } from 'next/headers'
+import { type NextRequest, NextResponse } from 'next/server'
+import { auth } from '~/auth/server'
 
 const logger = createScopedLogger('google-oauth-callback')
 

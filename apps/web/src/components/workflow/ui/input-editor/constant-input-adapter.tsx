@@ -1,9 +1,14 @@
 // apps/web/src/components/workflow/ui/input-editor/constant-input-adapter.tsx
 
-import React, { useState } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
+import type React from 'react'
+import { useState } from 'react'
 import { BaseType } from '~/components/workflow/types'
-import { getInputComponent, getSpecificPropsForType, type FieldOptions } from './get-input-component'
+import {
+  type FieldOptions,
+  getInputComponent,
+  getSpecificPropsForType,
+} from './get-input-component'
 
 /**
  * Props for the ConstantInput component

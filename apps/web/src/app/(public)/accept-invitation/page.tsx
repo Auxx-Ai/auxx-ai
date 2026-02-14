@@ -1,13 +1,13 @@
 // apps/web/src/app/(public)/accept-invitation/page.tsx
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
-import { api } from '~/trpc/react'
 import { Button } from '@auxx/ui/components/button'
-import { Loader2 } from 'lucide-react'
 import { toastError } from '@auxx/ui/components/toast'
+import { Loader2 } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { useSession } from '~/auth/auth-client'
+import { api } from '~/trpc/react'
 
 export default function AcceptInvitationPage() {
   const router = useRouter()
@@ -67,18 +67,18 @@ export default function AcceptInvitationPage() {
   // Render different states
   if (isLoading && !error) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-muted-foreground">Processing invitation...</p>
+      <div className='flex min-h-screen flex-col items-center justify-center gap-4'>
+        <Loader2 className='h-8 w-8 animate-spin text-primary' />
+        <p className='text-muted-foreground'>Processing invitation...</p>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4 text-center">
-        <h1 className="text-2xl font-semibold text-destructive">Invitation Error</h1>
-        <p className="text-red-600">{error}</p>
+      <div className='flex min-h-screen flex-col items-center justify-center gap-4 p-4 text-center'>
+        <h1 className='text-2xl font-semibold text-destructive'>Invitation Error</h1>
+        <p className='text-red-600'>{error}</p>
         <Button onClick={() => router.push('/app')}>Go to Dashboard</Button>
       </div>
     )
@@ -88,9 +88,9 @@ export default function AcceptInvitationPage() {
   // Or handle redirect entirely client side after success state update
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      <p className="text-muted-foreground">Checking session...</p>
+    <div className='flex min-h-screen flex-col items-center justify-center gap-4'>
+      <Loader2 className='h-8 w-8 animate-spin text-primary' />
+      <p className='text-muted-foreground'>Checking session...</p>
       {/* Fallback / initial loading state */}
     </div>
   )

@@ -1,17 +1,17 @@
 // packages/database/src/db/schema/import-mapping-property.ts
 
+import { createId } from '@paralleldrive/cuid2'
 import {
-  pgTable,
-  index,
-  text,
-  integer,
-  timestamp,
   type AnyPgColumn,
   importMappingTargetType,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
 } from './_shared'
-import { createId } from '@paralleldrive/cuid2'
-import { ImportMapping } from './import-mapping'
 import { CustomField } from './custom-field'
+import { ImportMapping } from './import-mapping'
 
 /**
  * ImportMappingProperty - Column mapping within a template
@@ -30,7 +30,10 @@ export const ImportMappingProperty = pgTable(
     // Parent mapping
     importMappingId: text()
       .notNull()
-      .references((): AnyPgColumn => ImportMapping.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
+      .references((): AnyPgColumn => ImportMapping.id, {
+        onUpdate: 'cascade',
+        onDelete: 'cascade',
+      }),
 
     // Source column index (0-based)
     sourceColumnIndex: integer().notNull(),

@@ -2,27 +2,27 @@
 
 'use client'
 
-import Link from 'next/link'
-import { Upload, RefreshCw, Save } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
-import { useState, useEffect, useMemo } from 'react'
-import { ViewSelector } from './view-selector'
-import { TableFilterBuilder } from './table-filter-builder'
-import { ColumnManager } from './column-manager'
-import { KanbanViewSettings } from './kanban-view-settings'
-import type { ViewConfig, ViewType } from '../../types'
+import { InputSearch } from '@auxx/ui/components/input-search'
+import { cn } from '@auxx/ui/lib/utils'
+import { RefreshCw, Save, Upload } from 'lucide-react'
+import Link from 'next/link'
+import type { ReactNode } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
+import { useResourceFields } from '~/components/resources/hooks'
 import { useDebounce } from '~/hooks/use-debounced-value'
 import { useTableConfig } from '../../context/table-config-context'
 import { useTableInstance } from '../../context/table-instance-context'
 import { useViewMetadata } from '../../context/view-metadata-context'
-import { useTableViews, useActiveView, useTableFilters } from '../../stores/store-selectors'
-import { useSetFilters } from '../../stores/store-actions'
 import { useDynamicTableStore } from '../../stores/dynamic-table-store'
-import type { ReactNode } from 'react'
-import { InputSearch } from '@auxx/ui/components/input-search'
-import { Tooltip } from '~/components/global/tooltip'
-import { cn } from '@auxx/ui/lib/utils'
-import { useResourceFields } from '~/components/resources/hooks'
+import { useSetFilters } from '../../stores/store-actions'
+import { useActiveView, useTableFilters, useTableViews } from '../../stores/store-selectors'
+import type { ViewConfig, ViewType } from '../../types'
+import { ColumnManager } from './column-manager'
+import { KanbanViewSettings } from './kanban-view-settings'
+import { TableFilterBuilder } from './table-filter-builder'
+import { ViewSelector } from './view-selector'
 
 interface TableToolbarProps {
   children?: ReactNode
@@ -143,9 +143,9 @@ export function TableToolbar<TData = any>({
 
       {/* Save as new view button - shown when filters differ from active view */}
       {hasUnsavedFilters && filters.length > 0 && (
-        <Button variant="outline" size="sm" onClick={() => setIsCreateDialogOpen(true)}>
-          <Save className="size-3" />
-          <span className="hidden @lg/controls:block">Save as new view</span>
+        <Button variant='outline' size='sm' onClick={() => setIsCreateDialogOpen(true)}>
+          <Save className='size-3' />
+          <span className='hidden @lg/controls:block'>Save as new view</span>
         </Button>
       )}
 
@@ -154,11 +154,11 @@ export function TableToolbar<TData = any>({
 
       {/* Import Button - Link to import page if href provided, otherwise file picker */}
       {enableImport && importHref && (
-        <Tooltip content="Import data">
-          <Button variant="ghost" size="sm" asChild>
+        <Tooltip content='Import data'>
+          <Button variant='ghost' size='sm' asChild>
             <Link href={importHref}>
-              <Upload className="size-3" />
-              <span className="hidden @lg/controls:block">Import</span>
+              <Upload className='size-3' />
+              <span className='hidden @lg/controls:block'>Import</span>
             </Link>
           </Button>
         </Tooltip>
@@ -169,15 +169,15 @@ export function TableToolbar<TData = any>({
       {/* Search Input */}
       {enableSearch && (
         <InputSearch
-          placeholder="Search..."
+          placeholder='Search...'
           value={localSearchQuery}
           onChange={(e) => setLocalSearchQuery(e.target.value)}
         />
       )}
 
       {onRefresh && (
-        <Tooltip content="Refresh Data">
-          <Button variant="ghost" size="sm" className="text-xs" onClick={onRefresh}>
+        <Tooltip content='Refresh Data'>
+          <Button variant='ghost' size='sm' className='text-xs' onClick={onRefresh}>
             <RefreshCw />
           </Button>
         </Tooltip>

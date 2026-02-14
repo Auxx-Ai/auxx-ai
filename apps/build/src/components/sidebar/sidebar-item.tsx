@@ -1,9 +1,9 @@
 // apps/build/src/components/sidebar/sidebar-item.tsx
 'use client'
 
-import Link from 'next/link'
 import { SidebarMenuButton } from '@auxx/ui/components/sidebar'
 import { cn } from '@auxx/ui/lib/utils'
+import Link from 'next/link'
 
 interface SidebarItemProps {
   id: string

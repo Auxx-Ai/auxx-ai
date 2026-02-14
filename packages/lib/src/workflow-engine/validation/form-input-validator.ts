@@ -1,10 +1,7 @@
 // packages/lib/src/workflow-engine/validation/form-input-validator.ts
 
+import { type FileTypeCategory, getExtensionsForCategories } from '../../files/file-type-constants'
 import { BaseType } from '../core/types'
-import {
-  getExtensionsForCategories,
-  type FileTypeCategory,
-} from '../../files/file-type-constants'
 
 /**
  * Select option for ENUM type
@@ -85,10 +82,7 @@ export function extractFormInputConfigs(graph: any): FormInputConfig[] {
  * Validate workflow inputs against form-input configurations
  * This is the single source of truth for form input validation
  */
-export function validateFormInputs(
-  graph: any,
-  inputs: Record<string, any>
-): ValidationResult {
+export function validateFormInputs(graph: any, inputs: Record<string, any>): ValidationResult {
   const configs = extractFormInputConfigs(graph)
   const errors: ValidationError[] = []
 
@@ -166,7 +160,7 @@ export function validateFormInputs(
         }
         break
 
-      case BaseType.FILE:
+      case BaseType.FILE: {
         const fileOpts = config.typeOptions?.file
         if (fileOpts) {
           // Handle both array and single file values
@@ -205,6 +199,7 @@ export function validateFormInputs(
           }
         }
         break
+      }
     }
   }
 

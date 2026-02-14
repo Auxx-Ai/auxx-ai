@@ -1,7 +1,7 @@
 // packages/lib/src/ai/providers/base/validation.ts
 
-import type { SchemaValidationResult, ProviderCredentials } from './types'
 import type { CredentialFormField } from '../types'
+import type { ProviderCredentials, SchemaValidationResult } from './types'
 
 /**
  * Common validation utilities for provider credentials
@@ -19,7 +19,7 @@ export class ValidationUtils {
 
     for (const field of schema) {
       const value = credentials[field.variable]
-      const fieldError = this.validateField(value, field)
+      const fieldError = ValidationUtils.validateField(value, field)
 
       if (fieldError) {
         fieldErrors[field.variable] = fieldError
@@ -43,12 +43,12 @@ export class ValidationUtils {
    */
   static validateField(value: any, field: CredentialFormField): string | null {
     // Check required fields
-    if (field.required && this.isEmpty(value)) {
+    if (field.required && ValidationUtils.isEmpty(value)) {
       return `${field.label} is required`
     }
 
     // If field is not required and empty, skip further validation
-    if (!field.required && this.isEmpty(value)) {
+    if (!field.required && ValidationUtils.isEmpty(value)) {
       return null
     }
 
@@ -62,7 +62,7 @@ export class ValidationUtils {
         break
 
       case 'number-input':
-        if (typeof value !== 'number' && !this.isNumericString(value)) {
+        if (typeof value !== 'number' && !ValidationUtils.isNumericString(value)) {
           return `${field.label} must be a number`
         }
         break
@@ -196,7 +196,7 @@ export class ValidationUtils {
     ]
 
     for (const pattern of patterns) {
-      if (credentials.hasOwnProperty(pattern) && credentials[pattern] !== undefined) {
+      if (Object.hasOwn(credentials, pattern) && credentials[pattern] !== undefined) {
         return credentials[pattern]
       }
     }

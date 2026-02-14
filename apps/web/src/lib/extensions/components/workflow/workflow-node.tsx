@@ -1,8 +1,8 @@
 // apps/web/src/lib/extensions/components/workflow/workflow-node.tsx
 
-import React from 'react'
-import { useReactFlow } from '@xyflow/react'
 import { cn } from '@auxx/ui/lib/utils'
+import { useReactFlow } from '@xyflow/react'
+import React from 'react'
 import { WorkflowNodeProvider } from './workflow-node-context'
 import { WorkflowNodeHandle } from './workflow-node-handle'
 
@@ -138,11 +138,11 @@ function injectMissingHandles(
     const targetConfig = typeof config.target === 'object' ? config.target : {}
     const targetHandle = (
       <WorkflowNodeHandle
-        key="__auto-target"
-        type="target"
+        key='__auto-target'
+        type='target'
         id={targetConfig.id || 'target'}
         position={targetConfig.position || 'left'}
-        className="auto-injected"
+        className='auto-injected'
       />
     )
     childArray = [targetHandle, ...childArray]
@@ -153,11 +153,11 @@ function injectMissingHandles(
     const sourceConfig = typeof config.source === 'object' ? config.source : {}
     const sourceHandle = (
       <WorkflowNodeHandle
-        key="__auto-source"
-        type="source"
+        key='__auto-source'
+        type='source'
         id={sourceConfig.id || 'source'}
         position={sourceConfig.position || 'right'}
-        className="auto-injected"
+        className='auto-injected'
       />
     )
     childArray = [...childArray, sourceHandle]

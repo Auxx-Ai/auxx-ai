@@ -6,96 +6,97 @@
 
 // ============= CORE SERVICES =============
 
-// Base Service - Shared functionality for all services
-export { BaseService } from './core/base-service'
-
-// File Service - Core file management operations
-export { FileService, createFileService } from './core/file-service'
-export type { CreateFileRequest, UpdateFileRequest, FolderTreeNode } from './core/types'
-
-// Folder Service - Folder hierarchy management
-export { FolderService, createFolderService } from './core/folder-service'
-export type { CreateFolderRequest, UpdateFolderRequest } from './core/types'
-
-export { FilesystemService, createFilesystemService } from './core/filesystem-service'
-export type { GetFileSystemOptions, BreadcrumbItem } from './core/filesystem-service'
-
 // Attachment Service - Entity attachment management
 export { AttachmentService, createAttachmentService } from './core/attachment-service'
-export type { CreateAttachmentRequest, UpdateAttachmentRequest, AttachmentRole } from './core/types'
-
+// Base Service - Shared functionality for all services
+export { BaseService } from './core/base-service'
+// File Service - Core file management operations
+export { createFileService, FileService } from './core/file-service'
+export type { BreadcrumbItem, GetFileSystemOptions } from './core/filesystem-service'
+export { createFilesystemService, FilesystemService } from './core/filesystem-service'
+// Folder Service - Folder hierarchy management
+export { createFolderService, FolderService } from './core/folder-service'
 // Media Asset Service - Media-specific operations
-export { MediaAssetService, createMediaAssetService } from './core/media-asset-service'
-export type { CreateAssetRequest, UpdateAssetRequest, AssetKind } from './core/types'
-
+export { createMediaAssetService, MediaAssetService } from './core/media-asset-service'
 // Thumbnail Service - Thumbnail generation and management
 export { ThumbnailService } from './core/thumbnail-service'
 export type {
-  ThumbnailSource,
+  GenerateThumbnailPayload,
+  PresetConfig,
+  PresetKey,
+  ProcessedThumbnail,
+  ThumbnailMetadata,
   ThumbnailOptions,
   ThumbnailResult,
-  PresetKey,
-  PresetConfig,
-  ThumbnailMetadata,
-  ProcessedThumbnail,
-  ThumbnailSet,
-  GenerateThumbnailPayload,
   ThumbnailServiceConfig,
+  ThumbnailSet,
+  ThumbnailSource,
 } from './core/thumbnail-types'
-export { THUMBNAIL_PRESETS, THUMBNAIL_LIMITS, ALLOWED_IMAGE_TYPES } from './core/thumbnail-types'
+export { ALLOWED_IMAGE_TYPES, THUMBNAIL_LIMITS, THUMBNAIL_PRESETS } from './core/thumbnail-types'
+export type {
+  AssetKind,
+  AttachmentRole,
+  CreateAssetRequest,
+  CreateAttachmentRequest,
+  CreateFileRequest,
+  CreateFolderRequest,
+  FolderTreeNode,
+  UpdateAssetRequest,
+  UpdateAttachmentRequest,
+  UpdateFileRequest,
+  UpdateFolderRequest,
+} from './core/types'
 
 // Filesystem Service - Unified bulk loading operations
 
 // ============= STORAGE SYSTEM =============
 
-// Storage Manager - Unified storage operations
-export { StorageManager, createStorageManager } from './storage/storage-manager'
 export type {
-  StorageUploadParams,
-  StorageDownloadParams,
-  StorageCopyParams,
-  StorageMigrationParams,
-  StorageUsageStats,
-  StorageHealthCheck,
-} from './storage/storage-manager'
-
-// Storage Location Service - Database operations for storage locations
-export { StorageLocationService, storageLocationService } from './storage/storage-location-service'
-export type {
-  CreateStorageLocationRequest,
-  UpdateStorageLocationRequest,
-  StorageLocationWithCredentials,
-  BulkStorageOperationOptions,
-  BulkStorageOperationResult,
-} from './storage/storage-location-service'
-
+  FileMetadata,
+  FileRevision,
+  MultipartUpload,
+  PresignedUpload,
+  ProviderAuth,
+  ProviderId,
+  StorageAdapter,
+  StorageAdapterError,
+  StorageAuthError,
+  StorageCapabilities,
+  StorageFileNotFoundError,
+  StorageLocationRef,
+  StorageQuotaError,
+  StorageUnsupportedError,
+  WebhookEvent,
+} from './adapters/base-adapter'
 // Storage Adapters
 export { BaseStorageAdapter } from './adapters/base-adapter'
 export { S3Adapter } from './adapters/s3-adapter'
 export type {
-  StorageAdapter,
-  ProviderId,
-  ProviderAuth,
-  StorageCapabilities,
-  FileMetadata,
-  StorageLocationRef,
-  PresignedUpload,
-  MultipartUpload,
-  FileRevision,
-  WebhookEvent,
-  StorageAdapterError,
-  StorageAuthError,
-  StorageFileNotFoundError,
-  StorageQuotaError,
-  StorageUnsupportedError,
-} from './adapters/base-adapter'
+  BulkStorageOperationOptions,
+  BulkStorageOperationResult,
+  CreateStorageLocationRequest,
+  StorageLocationWithCredentials,
+  UpdateStorageLocationRequest,
+} from './storage/storage-location-service'
+// Storage Location Service - Database operations for storage locations
+export { StorageLocationService, storageLocationService } from './storage/storage-location-service'
+export type {
+  StorageCopyParams,
+  StorageDownloadParams,
+  StorageHealthCheck,
+  StorageMigrationParams,
+  StorageUploadParams,
+  StorageUsageStats,
+} from './storage/storage-manager'
+// Storage Manager - Unified storage operations
+export { createStorageManager, StorageManager } from './storage/storage-manager'
 
 // ============= UPLOAD SYSTEM =============
 
 import { createFileUploadService } from './upload/upload-service'
 
 // File Upload Service - Modern upload system with StorageManager integration
-export { FileUploadService, createFileUploadService } from './upload/upload-service'
+export { createFileUploadService, FileUploadService } from './upload/upload-service'
 
 // Import for internal use in fileUploadService
 import type { UploadServiceConfig } from './upload/enhanced-types'
@@ -107,16 +108,20 @@ export const fileUploadService = {
     createFileUploadService(organizationId, config),
 }
 export type {
-  UploadRequest,
-  UploadResult,
-  UploadStrategy,
-  UploadServiceConfig,
-  BatchUploadResult,
   BatchUploadOptions,
+  BatchUploadResult,
   UploadProgress,
   UploadProgressCallback,
+  UploadRequest,
+  UploadResult,
+  UploadServiceConfig,
+  UploadStrategy,
 } from './upload/enhanced-types'
+// Upload Progress & Events
+export { FileUploadProgressTracker } from './upload/progress/progress-tracker'
 
+// Upload Session Management
+export { FileUploadSession, SessionManager } from './upload/session-index'
 // Upload strategies
 export {
   BaseUploadStrategy,
@@ -126,12 +131,6 @@ export {
   UploadStrategySelector,
 } from './upload/strategies'
 
-// Upload Session Management
-export { FileUploadSession, SessionManager } from './upload/session-index'
-
-// Upload Progress & Events
-export { FileUploadProgressTracker } from './upload/progress/progress-tracker'
-
 // Legacy Upload Types (for backward compatibility)
 export type { FileUploadParams, FileUploadResult } from './upload/types'
 
@@ -139,22 +138,21 @@ export type { FileUploadParams, FileUploadResult } from './upload/types'
 
 // Cleanup Services
 export {
+  cleanupFailedUpload,
   deleteEntityFiles,
+  deleteExpiredFiles,
   deleteFilesByIds,
   deleteOrganizationFiles,
   deleteOrphanedFiles,
-  deleteExpiredFiles,
-  cleanupFailedUpload,
 } from './lifecycle/cleanup-service'
 
-export { orphanedFileCleanupJob, deletedFileCleanupJob } from './lifecycle/orphaned-cleanup'
-export type { OrphanedFileCleanupJobData, OrphanedFileCleanupResult } from './lifecycle/types'
-
+export { deletedFileCleanupJob, orphanedFileCleanupJob } from './lifecycle/orphaned-cleanup'
 export {
   calculateStorageUsage,
-  storageQuotaCheckJob,
   quotaEnforcementCleanupJob,
+  storageQuotaCheckJob,
 } from './lifecycle/quota-cleanup'
+export type { OrphanedFileCleanupJobData, OrphanedFileCleanupResult } from './lifecycle/types'
 
 // ============= SHARED TYPES & UTILITIES =============
 
@@ -175,25 +173,23 @@ export {
 //   FileUploadChannels,
 // } from './shared-types'
 
-// Validators
-export {
-  validateFile,
-  validateFileSize,
-  validateMimeType,
-  validateExtension,
-  validateFilename,
-  sanitizeFilename,
-  getMimeTypeFromExtension,
-} from './upload/validators'
-
+export { cleanupService } from './cleanup/cleanup-service'
+export type { EntityType } from './types'
+export { ENTITY_TYPES } from './types'
+export { UploadErrorHandler } from './upload/error-handling'
 export { ensureProcessorsInitialized, ProcessorRegistry } from './upload/processors'
-
 // Additional public exports expected by apps/web
 export { ProgressPublisher } from './upload/progress-publisher'
-export { UploadErrorHandler } from './upload/error-handling'
-export { cleanupService } from './cleanup/cleanup-service'
-export { ENTITY_TYPES } from './types'
-export type { EntityType } from './types'
+// Validators
+export {
+  getMimeTypeFromExtension,
+  sanitizeFilename,
+  validateExtension,
+  validateFile,
+  validateFilename,
+  validateFileSize,
+  validateMimeType,
+} from './upload/validators'
 
 // Selected utilities re-exported for convenience
 export { createFileDownloadResponse, parseRangeHeader } from './utils'
@@ -201,15 +197,15 @@ export { createFileDownloadResponse, parseRangeHeader } from './utils'
 // ============= FILE TYPE CONSTANTS =============
 
 export {
-  IMAGE_EXTENSIONS,
-  VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
-  DOCUMENT_EXTENSIONS,
-  FILE_TYPE_CATEGORIES,
   CATEGORY_EXTENSIONS,
   CATEGORY_MIME_PATTERNS,
+  DOCUMENT_EXTENSIONS,
+  FILE_TYPE_CATEGORIES,
+  type FileTypeCategory,
   getExtensionsForCategories,
   getMimePatternsForCategories,
+  IMAGE_EXTENSIONS,
   isExtensionAllowed,
-  type FileTypeCategory,
+  VIDEO_EXTENSIONS,
 } from './file-type-constants'

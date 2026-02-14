@@ -1,6 +1,5 @@
 // packages/lib/src/participants/index.ts
 
-export { ParticipantService, type FindOrCreateParticipantInput } from './participant-service'
-
 // Re-export client-safe types
-export type { ParticipantMeta, ParticipantIdentifierType } from './client'
+export type { ParticipantIdentifierType, ParticipantMeta } from './client'
+export { type FindOrCreateParticipantInput, ParticipantService } from './participant-service'

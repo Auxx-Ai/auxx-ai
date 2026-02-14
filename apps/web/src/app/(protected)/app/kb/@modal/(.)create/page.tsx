@@ -1,6 +1,5 @@
 'use client'
-import React, { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import type { ArticleCategory } from '@auxx/database/types'
 import {
   Dialog,
   DialogContent,
@@ -9,9 +8,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { useRouter } from 'next/navigation'
+import React, { useState } from 'react'
 // import { ArticleForm } from '../../_components/article-form'
 import { api } from '~/trpc/react'
-import type { ArticleCategory } from '@auxx/database/types'
+
 // import { ArticleForm } from '../../_components/article-form';
 type CreateArticleProps = {
   categories: ArticleCategory[]
@@ -34,7 +35,7 @@ export default function CreateArticleDialog() {
   return (
     // <Dialog open={open} onOpenChange={setOpen}>
     <Dialog open={true}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className='sm:max-w-[425px]'>
         <DialogHeader>
           <DialogTitle>Create New Article</DialogTitle>
           <DialogDescription>Add a new article.</DialogDescription>

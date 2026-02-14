@@ -1,11 +1,11 @@
 // apps/web/src/server/api/routers/participant.ts
 
-import { z } from 'zod'
-import { TRPCError } from '@trpc/server'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 import { getUserOrganizationId } from '@auxx/lib/email'
-import { createScopedLogger } from '@auxx/logger'
 import { ParticipantService } from '@auxx/lib/participants'
+import { createScopedLogger } from '@auxx/logger'
+import { TRPCError } from '@trpc/server'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('participant-router')
 

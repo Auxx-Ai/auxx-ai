@@ -2,15 +2,15 @@
 
 'use client'
 
-import { useCallback, useMemo } from 'react'
-import { Button } from '@auxx/ui/components/button'
-import { Plus, Trash2 } from 'lucide-react'
-import { VarEditor } from '~/components/workflow/ui/input-editor/var-editor'
-import { cn } from '@auxx/ui/lib/utils'
-import { useConditionContext } from '../condition-context'
-import { resolveInputConfig, InputMode } from '@auxx/lib/workflow-engine/client'
-import type { Condition, FieldDefinition } from '../types'
+import { InputMode, resolveInputConfig } from '@auxx/lib/workflow-engine/client'
 import { BaseType } from '@auxx/lib/workflow-engine/types'
+import { Button } from '@auxx/ui/components/button'
+import { cn } from '@auxx/ui/lib/utils'
+import { Plus, Trash2 } from 'lucide-react'
+import { useCallback, useMemo } from 'react'
+import { VarEditor } from '~/components/workflow/ui/input-editor/var-editor'
+import { useConditionContext } from '../condition-context'
+import type { Condition, FieldDefinition } from '../types'
 
 /**
  * Props for VariableInput component
@@ -97,7 +97,9 @@ export function VariableInput({
 
   // Placeholder text
   const placeholderText =
-    placeholder || inputConfig.placeholder || `Enter ${field.label?.toLowerCase() || 'value'} or select variable`
+    placeholder ||
+    inputConfig.placeholder ||
+    `Enter ${field.label?.toLowerCase() || 'value'} or select variable`
 
   // Multiple value mode for "in" / "not in" operators
   if (inputConfig.mode === InputMode.MULTIPLE) {
@@ -207,32 +209,39 @@ function MultipleVarEditor({
   return (
     <div className={cn('flex flex-col gap-1', className)}>
       {values.map((val, index) => (
-        <div key={index} className="flex items-center gap-1">
+        <div key={index} className='flex items-center gap-1'>
           <VarEditor
             value={val}
-            onChange={(newValue, isConstantMode) => handleUpdateValue(index, newValue, isConstantMode)}
+            onChange={(newValue, isConstantMode) =>
+              handleUpdateValue(index, newValue, isConstantMode)
+            }
             onBlur={(newValue) => handleUpdateValue(index, newValue)}
             nodeId={nodeId}
             placeholder={placeholder || `Value ${index + 1}`}
             disabled={disabled}
             varType={varType}
-            className="flex-1"
+            className='flex-1'
             allowConstant={allowConstant}
             defaultIsConstantMode={true}
             fieldOptions={fieldOptions}
             allowedTypes={allowedTypes}
           />
           <Button
-            variant="destructive-hover"
-            className="rounded-lg"
-            size="icon-xs"
+            variant='destructive-hover'
+            className='rounded-lg'
+            size='icon-xs'
             onClick={() => handleRemoveValue(index)}
             disabled={disabled || values.length === 1}>
             <Trash2 />
           </Button>
         </div>
       ))}
-      <Button variant="outline" size="xs" onClick={handleAddValue} disabled={disabled} className="w-fit">
+      <Button
+        variant='outline'
+        size='xs'
+        onClick={handleAddValue}
+        disabled={disabled}
+        className='w-fit'>
         <Plus />
         Add Value
       </Button>

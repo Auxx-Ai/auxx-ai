@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/hooks/use-context-menu.ts
 
-import { useCallback } from 'react'
 import type { Node } from '@xyflow/react'
+import { useCallback } from 'react'
 import { useWorkflowStore } from '../store/workflow-store'
 import { NodeType } from '../types/node-types'
 

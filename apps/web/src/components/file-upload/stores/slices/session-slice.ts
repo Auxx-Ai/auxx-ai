@@ -1,11 +1,10 @@
 // apps/web/src/components/file-upload/stores/slices/session-slice.ts
 
-import { StateCreator } from 'zustand'
-import type { UploadStore, SessionState, SSEConnectionState, CreateSessionOptions } from '../types'
 import type { FileUploadEvent } from '@auxx/lib/files/types'
-import { FileUploadEventType } from '@auxx/lib/files/types'
+import { ENTITY_TYPES, FileUploadEventType } from '@auxx/lib/files/types'
+import type { StateCreator } from 'zustand'
 import { SSEConnectionManager } from '../../utils'
-import { ENTITY_TYPES } from '@auxx/lib/files/types'
+import type { CreateSessionOptions, SessionState, SSEConnectionState, UploadStore } from '../types'
 
 /**
  * Session slice that combines session management and SSE functionality

@@ -2,9 +2,10 @@
 
 'use client'
 
-import React, { useEffect, useRef } from 'react'
+import { useNodesInitialized, useStoreApi } from '@xyflow/react'
+import type React from 'react'
+import { useEffect, useRef } from 'react'
 import { useVarStore } from '../../store/use-var-store'
-import { useStoreApi, useNodesInitialized } from '@xyflow/react'
 
 /** Sanitized environment variable from public API */
 interface SanitizedEnvVar {

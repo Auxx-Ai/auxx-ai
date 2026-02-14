@@ -1,7 +1,8 @@
 // apps/web/src/server/api/routers/attachment.ts
+
+import { AttachmentService, FileService, MediaAssetService } from '@auxx/lib/files'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { AttachmentService, MediaAssetService, FileService } from '@auxx/lib/files'
 
 /**
  * Attachment router for managing file attachments to entities

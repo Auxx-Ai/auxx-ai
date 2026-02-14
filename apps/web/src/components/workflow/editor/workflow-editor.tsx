@@ -1,28 +1,26 @@
 // apps/web/src/components/workflow/editor/workflow-editor.tsx
 
+import { Separator } from '@auxx/ui/components/separator'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { cn } from '@auxx/ui/lib/utils'
+import { ReactFlowProvider, type Viewport } from '@xyflow/react'
+import { Loader2 } from 'lucide-react'
 import React, { memo, useEffect, useRef } from 'react'
-import { WorkflowStoreProvider } from '../store/workflow-store-provider'
-import { WorkflowHistoryProvider } from '../store/workflow-history-provider'
 import { WorkflowCanvas } from '../canvas/workflow-canvas'
 import { WorkflowToolbar } from '../canvas/workflow-toolbar'
+import { useWorkflowBlocks, useWorkflowInit, useWorkflowShortcuts } from '../hooks'
 import { PropertyPanel } from '../panels/property-panel'
 import { WorkflowRunPanel } from '../panels/run/workflow-run-panel'
 import { WorkflowSettingsPanel } from '../panels/settings'
+import { VarStoreSyncProvider, WorkflowResourceProvider } from '../providers'
 import { usePanelStore } from '../store/panel-store'
-import { useWorkflowStore } from '../store/workflow-store'
-import { WorkflowEditorProvider } from './workflow-editor-provider'
-import { useWorkflowShortcuts } from '../hooks'
-import { useWorkflowInit } from '../hooks'
-import { useWorkflowBlocks } from '../hooks'
-import { cn } from '@auxx/ui/lib/utils'
-import { Loader2 } from 'lucide-react'
-import { ReactFlowProvider, type Viewport } from '@xyflow/react'
 import { useTestInputSync } from '../store/test-input-store'
 import { useWebhookTestStore } from '../store/webhook-test-store'
+import { WorkflowHistoryProvider } from '../store/workflow-history-provider'
+import { useWorkflowStore } from '../store/workflow-store'
+import { WorkflowStoreProvider } from '../store/workflow-store-provider'
 import type { FlowEdge, FlowNode } from '../types'
-import { VarStoreSyncProvider, WorkflowResourceProvider } from '../providers'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { Separator } from '@auxx/ui/components/separator'
+import { WorkflowEditorProvider } from './workflow-editor-provider'
 
 interface WorkflowEditorProps {
   workflowId: string
@@ -63,27 +61,27 @@ const WorkflowEditorInner = memo<{
   return (
     <>
       <WorkflowKeyboardShortcuts />
-      <div className="workflow-editor flex flex-col h-full rounded-2xl">
+      <div className='workflow-editor flex flex-col h-full rounded-2xl'>
         {/* Toolbar */}
-        <WorkflowToolbar className="flex-shrink-0" />
+        <WorkflowToolbar className='flex-shrink-0' />
 
         {/* Main content */}
-        <div className="flex-1 min-h-0 w-full flex flex-row">
+        <div className='flex-1 min-h-0 w-full flex flex-row'>
           <WorkflowCanvas
             readOnly={readOnly}
-            className="h-full flex-1 shrink-0"
+            className='h-full flex-1 shrink-0'
             edges={initialEdges}
             nodes={initialNodes}
             initialViewport={initialViewport}
           />
 
           {/* Right sidebar - Properties/Variables/Debug */}
-          {rightSidebarOpen && activePanel && <PropertyPanel className="h-full" />}
+          {rightSidebarOpen && activePanel && <PropertyPanel className='h-full' />}
 
           {/* Run Panel */}
           {runPanelOpen && (
             <WorkflowRunPanel
-              className="h-full border-l"
+              className='h-full border-l'
               workflowId={(workflow as any)?.workflowId}
               workflowAppId={workflow?.id}
             />
@@ -92,7 +90,7 @@ const WorkflowEditorInner = memo<{
           {/* Settings Panel */}
           {settingsPanelOpen && (
             <WorkflowSettingsPanel
-              className="h-full border-l"
+              className='h-full border-l'
               workflowId={(workflow as any)?.workflowId}
               workflowAppId={workflow?.id}
             />
@@ -140,24 +138,24 @@ export const WorkflowEditor = memo<WorkflowEditorProps>(
             'workflow-editor-container bg-background relative h-full outline-none flex flex-col',
             className
           )}>
-          <div className="bg-primary-150 h-9 rounded-t-lg border-b border-primary-300 p-1 flex items-center gap-1">
-            <Skeleton className="h-7 w-7" />
-            <Separator orientation="vertical" className="h-6" />
-            <Skeleton className="h-7 w-7" />
-            <Skeleton className="h-7 w-[62px]" />
-            <Separator orientation="vertical" className="h-6" />
-            <Skeleton className="h-7 w-7" />
-            <Skeleton className="h-7 w-[62px]" />
-            <Skeleton className="h-7 w-[80px]" />
-            <Skeleton className="h-7 w-[82px]" />
-            <Separator orientation="vertical" className="h-6" />
-            <Skeleton className="h-7 w-[78px]" />
-            <Skeleton className="h-7 w-7" />
+          <div className='bg-primary-150 h-9 rounded-t-lg border-b border-primary-300 p-1 flex items-center gap-1'>
+            <Skeleton className='h-7 w-7' />
+            <Separator orientation='vertical' className='h-6' />
+            <Skeleton className='h-7 w-7' />
+            <Skeleton className='h-7 w-[62px]' />
+            <Separator orientation='vertical' className='h-6' />
+            <Skeleton className='h-7 w-7' />
+            <Skeleton className='h-7 w-[62px]' />
+            <Skeleton className='h-7 w-[80px]' />
+            <Skeleton className='h-7 w-[82px]' />
+            <Separator orientation='vertical' className='h-6' />
+            <Skeleton className='h-7 w-[78px]' />
+            <Skeleton className='h-7 w-7' />
           </div>
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
-              <p className="text-sm text-muted-foreground">Loading workflow...</p>
+          <div className='flex-1 flex items-center justify-center'>
+            <div className='text-center'>
+              <Loader2 className='w-8 h-8 animate-spin mx-auto mb-4' />
+              <p className='text-sm text-muted-foreground'>Loading workflow...</p>
             </div>
           </div>
         </div>
@@ -172,9 +170,9 @@ export const WorkflowEditor = memo<WorkflowEditorProps>(
             'workflow-editor-container relative h-full outline-none flex items-center justify-center',
             className
           )}>
-          <div className="text-center max-w-md">
-            <p className="text-sm text-red-600 mb-2">Failed to load workflow</p>
-            <p className="text-xs text-muted-foreground">{error.message}</p>
+          <div className='text-center max-w-md'>
+            <p className='text-sm text-red-600 mb-2'>Failed to load workflow</p>
+            <p className='text-xs text-muted-foreground'>{error.message}</p>
           </div>
         </div>
       )

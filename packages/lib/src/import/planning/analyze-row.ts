@@ -1,9 +1,9 @@
 // packages/lib/src/import/planning/analyze-row.ts
 
-import type { StrategyType, RowAnalysis } from '../types/plan'
-import type { ValueResolution } from '../types/resolution'
-import type { ImportMappingProperty } from '../types/mapping'
 import { hashValue } from '../hashing/hash-value'
+import type { ImportMappingProperty } from '../types/mapping'
+import type { RowAnalysis, StrategyType } from '../types/plan'
+import type { ValueResolution } from '../types/resolution'
 
 /** Context for analyzing a row */
 export interface AnalyzeRowContext {
@@ -58,8 +58,7 @@ export async function analyzeRow(
       } else if (!resolution.isValid) {
         // Check if this is a user-initiated skip (no error message, empty resolved values)
         // vs an actual validation error (has error message)
-        const isUserSkip =
-          !resolution.errorMessage && resolution.resolvedValues.length === 0
+        const isUserSkip = !resolution.errorMessage && resolution.resolvedValues.length === 0
 
         if (isUserSkip) {
           // User deliberately skipped this value - omit from row data, not an error

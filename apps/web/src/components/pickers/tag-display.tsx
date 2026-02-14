@@ -2,7 +2,7 @@
 // DEPRECATED: Import from '~/components/tags/ui/tag-display' instead
 
 export {
-  TagDisplay,
-  SelectedTagsDisplay,
   SearchTagDisplay,
+  SelectedTagsDisplay,
+  TagDisplay,
 } from '~/components/tags/ui/tag-display'

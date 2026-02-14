@@ -1,12 +1,13 @@
 // server/api/routers/comment.ts
-import { TRPCError } from '@trpc/server'
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+
 import { CommentService } from '@auxx/lib/comments'
 import { createScopedLogger } from '@auxx/logger'
 import { recordIdSchema } from '@auxx/types'
+import { type ActorId, toActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/types/resource'
-import { toActorId, type ActorId } from '@auxx/types/actor'
+import { TRPCError } from '@trpc/server'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('comment-router')
 

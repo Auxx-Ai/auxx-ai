@@ -1,9 +1,9 @@
 // src/server/api/routers/ticketSequence.ts
 
+import { TicketSequenceModel } from '@auxx/database/models'
+import { ticketNumbering } from '@auxx/lib/tickets'
 // import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { ticketNumbering } from '@auxx/lib/tickets'
-import { TicketSequenceModel } from '@auxx/database/models'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 export const ticketSequenceRouter = createTRPCRouter({

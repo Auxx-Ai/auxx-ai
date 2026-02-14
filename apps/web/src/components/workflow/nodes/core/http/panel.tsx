@@ -2,16 +2,7 @@
 
 'use client'
 
-import { useCallback, useMemo, memo } from 'react'
-import { produce } from 'immer'
-import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
-import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import type { HttpNodeData, KeyValue } from './types'
-import Field from '~/components/workflow/ui/field'
 import { Button } from '@auxx/ui/components/button'
-import Section from '~/components/workflow/ui/section'
-import { FileJson, Plus, ChevronDown } from 'lucide-react'
-import { InputEditor } from '~/components/workflow/ui/input-editor'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +10,21 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { Input } from '@auxx/ui/components/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+  InputGroupText,
+} from '@auxx/ui/components/input-group'
+import {
+  NumberInput,
+  NumberInputDecrement,
+  NumberInputField,
+  NumberInputIncrement,
+  NumberInputScrubber,
+} from '@auxx/ui/components/input-number'
 import {
   Select,
   SelectContent,
@@ -26,34 +32,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Input } from '@auxx/ui/components/input'
-import {
-  InputGroup,
-  InputGroupInput,
-  InputGroupAddon,
-  InputGroupText,
-  InputGroupButton,
-} from '@auxx/ui/components/input-group'
-import {
-  NumberInput,
-  NumberInputField,
-  NumberInputScrubber,
-  NumberInputIncrement,
-  NumberInputDecrement,
-} from '@auxx/ui/components/input-number'
-import { KeyValueList, EditHttpBody, ErrorHandling } from './components'
-import { AuthDialog } from './components/auth-dialog'
+import { produce } from 'immer'
+import { ChevronDown, FileJson, Plus } from 'lucide-react'
+import { memo, useCallback, useMemo } from 'react'
 import { NodeCredentialButton } from '~/components/workflow/credentials/node-credential-button'
+import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
+import Field from '~/components/workflow/ui/field'
+import { InputEditor } from '~/components/workflow/ui/input-editor'
+import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import Section from '~/components/workflow/ui/section'
+import { EditHttpBody, ErrorHandling, KeyValueList } from './components'
+import { AuthDialog } from './components/auth-dialog'
+import { BodyTypeOptions, MethodOptions } from './constants'
+import { httpNodeDefinition } from './schema'
+import type { HttpNodeData, KeyValue } from './types'
+import { BodyType } from './types'
 import {
-  parseHeadersToKeyValue,
-  parseParamsToKeyValue,
   keyValueToHeaders,
   keyValueToParams,
+  parseHeadersToKeyValue,
+  parseParamsToKeyValue,
 } from './utils'
-import { BodyType } from './types'
-import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
-import { httpNodeDefinition } from './schema'
-import { MethodOptions, BodyTypeOptions } from './constants'
 
 interface HttpPanelProps {
   nodeId: string
@@ -164,10 +164,10 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
   }
   return (
     <BasePanel nodeId={nodeId} data={data}>
-      <Section title="HTTP Request Configuration" isRequired>
-        <div className="space-y-5">
+      <Section title='HTTP Request Configuration' isRequired>
+        <div className='space-y-5'>
           <Field
-            title="Request"
+            title='Request'
             isRequired
             actions={
               <>
@@ -179,8 +179,8 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
                   }}
                 />
                 <Button
-                  variant="ghost"
-                  size="xs"
+                  variant='ghost'
+                  size='xs'
                   onClick={() => {
                     // Placeholder for method selection logic
                     console.log('Import from cURL')
@@ -190,18 +190,18 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
                 </Button>
               </>
             }>
-            <div className="space-y-2">
-              <div className="flex flex-row items-center gap-2">
+            <div className='space-y-2'>
+              <div className='flex flex-row items-center gap-2'>
                 <InputGroup>
-                  <InputGroupAddon align="inline-start">
+                  <InputGroupAddon align='inline-start'>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <InputGroupButton variant="ghost" className="!pr-1.5 text-xs">
+                        <InputGroupButton variant='ghost' className='!pr-1.5 text-xs'>
                           {(inputs.method || 'get').toUpperCase()}{' '}
-                          <ChevronDown className="size-3" />
+                          <ChevronDown className='size-3' />
                         </InputGroupButton>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="[--radius:0.95rem]">
+                      <DropdownMenuContent align='end' className='[--radius:0.95rem]'>
                         <DropdownMenuRadioGroup
                           value={inputs.method || 'get'}
                           onValueChange={handleMethodChange}>
@@ -209,7 +209,7 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
                             <DropdownMenuRadioItem
                               key={option.value}
                               value={option.value}
-                              className="pl-3">
+                              className='pl-3'>
                               {option.label}
                             </DropdownMenuRadioItem>
                           ))}
@@ -217,15 +217,15 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </InputGroupAddon>
-                  <div className="flex-1 px-2">
+                  <div className='flex-1 px-2'>
                     <InputEditor
                       nodeId={nodeId}
                       value={inputs.url}
                       onBlur={(value) => {
                         setInputs({ ...inputs, url: value })
                       }}
-                      placeholder="Enter URL"
-                      className="w-full"
+                      placeholder='Enter URL'
+                      className='w-full'
                     />
                   </div>
                 </InputGroup>
@@ -233,9 +233,9 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
             </div>
           </Field>
           <Field
-            title="Headers"
+            title='Headers'
             actions={
-              <Button variant="ghost" size="xs" onClick={handleAddHeader}>
+              <Button variant='ghost' size='xs' onClick={handleAddHeader}>
                 <Plus /> Add header
               </Button>
             }>
@@ -248,9 +248,9 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
             />
           </Field>
           <Field
-            title="Params"
+            title='Params'
             actions={
-              <Button variant="ghost" size="xs" onClick={handleAddParam}>
+              <Button variant='ghost' size='xs' onClick={handleAddParam}>
                 <Plus /> Add param
               </Button>
             }>
@@ -263,13 +263,13 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
           </Field>
           {inputs.method !== 'get' && inputs.method !== 'head' && (
             <Field
-              title="Body"
+              title='Body'
               actions={
                 <Select
                   value={inputs.body?.type || BodyType.none}
                   onValueChange={handleBodyTypeChange}>
-                  <SelectTrigger variant={'default'} size="sm" disabled={isReadOnly}>
-                    <SelectValue placeholder="Type" />
+                  <SelectTrigger variant={'default'} size='sm' disabled={isReadOnly}>
+                    <SelectValue placeholder='Type' />
                   </SelectTrigger>
                   <SelectContent>
                     {BodyTypeOptions.map((option) => (
@@ -290,26 +290,26 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
           )}
         </div>
       </Section>
-      <Section title="Timeout" initialOpen={false}>
-        <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">All timeout values are in seconds</p>
-          <div className="grid grid-cols-3 gap-4">
+      <Section title='Timeout' initialOpen={false}>
+        <div className='space-y-2'>
+          <p className='text-xs text-muted-foreground'>All timeout values are in seconds</p>
+          <div className='grid grid-cols-3 gap-4'>
             <NumberInput
               value={inputs.timeout?.connect}
               onValueChange={(val) => handleTimeoutChange('connect', val)}
               min={0}
               step={1}
               disabled={isReadOnly}>
-              <div className="flex flex-col items-start">
-                <NumberInputScrubber htmlFor="timeout-connection" className="mb-1">
+              <div className='flex flex-col items-start'>
+                <NumberInputScrubber htmlFor='timeout-connection' className='mb-1'>
                   Connection
                 </NumberInputScrubber>
                 <InputGroup>
-                  <InputGroupAddon align="inline-start">
+                  <InputGroupAddon align='inline-start'>
                     <NumberInputDecrement />
                   </InputGroupAddon>
-                  <NumberInputField id="timeout-connection" placeholder="10" />
-                  <InputGroupAddon align="inline-end">
+                  <NumberInputField id='timeout-connection' placeholder='10' />
+                  <InputGroupAddon align='inline-end'>
                     <NumberInputIncrement />
                     <InputGroupText>s</InputGroupText>
                   </InputGroupAddon>
@@ -322,16 +322,16 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
               min={0}
               step={1}
               disabled={isReadOnly}>
-              <div className="flex flex-col items-start">
-                <NumberInputScrubber htmlFor="timeout-read" className="mb-1">
+              <div className='flex flex-col items-start'>
+                <NumberInputScrubber htmlFor='timeout-read' className='mb-1'>
                   Read
                 </NumberInputScrubber>
                 <InputGroup>
-                  <InputGroupAddon align="inline-start">
+                  <InputGroupAddon align='inline-start'>
                     <NumberInputDecrement />
                   </InputGroupAddon>
-                  <NumberInputField id="timeout-read" placeholder="30" />
-                  <InputGroupAddon align="inline-end">
+                  <NumberInputField id='timeout-read' placeholder='30' />
+                  <InputGroupAddon align='inline-end'>
                     <NumberInputIncrement />
                     <InputGroupText>s</InputGroupText>
                   </InputGroupAddon>
@@ -344,16 +344,16 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
               min={0}
               step={1}
               disabled={isReadOnly}>
-              <div className="flex flex-col items-start">
-                <NumberInputScrubber htmlFor="timeout-write" className="mb-1">
+              <div className='flex flex-col items-start'>
+                <NumberInputScrubber htmlFor='timeout-write' className='mb-1'>
                   Write
                 </NumberInputScrubber>
                 <InputGroup>
-                  <InputGroupAddon align="inline-start">
+                  <InputGroupAddon align='inline-start'>
                     <NumberInputDecrement />
                   </InputGroupAddon>
-                  <NumberInputField id="timeout-write" placeholder="30" />
-                  <InputGroupAddon align="inline-end">
+                  <NumberInputField id='timeout-write' placeholder='30' />
+                  <InputGroupAddon align='inline-end'>
                     <NumberInputIncrement />
                     <InputGroupText>s</InputGroupText>
                   </InputGroupAddon>
@@ -364,12 +364,12 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
         </div>
       </Section>
       <Section
-        title="Retry on failure"
+        title='Retry on failure'
         initialOpen={false}
         showEnable
         enabled={inputs.retry_config?.retry_enabled || false}
         onEnableChange={handleRetryEnabledChange}>
-        <div className="space-y-2">
+        <div className='space-y-2'>
           <NumberInput
             value={inputs.retry_config?.max_retries}
             onValueChange={handleMaxRetriesChange}
@@ -377,16 +377,16 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
             max={10}
             step={1}
             disabled={isReadOnly || !inputs.retry_config?.retry_enabled}>
-            <div className="flex flex-row gap-1 items-center">
-              <NumberInputScrubber htmlFor="max-retries" className="w-[100px]">
+            <div className='flex flex-row gap-1 items-center'>
+              <NumberInputScrubber htmlFor='max-retries' className='w-[100px]'>
                 Max retries
               </NumberInputScrubber>
               <InputGroup>
-                <InputGroupAddon align="inline-start">
+                <InputGroupAddon align='inline-start'>
                   <NumberInputDecrement />
                 </InputGroupAddon>
-                <NumberInputField id="max-retries" placeholder="1" />
-                <InputGroupAddon align="inline-end">
+                <NumberInputField id='max-retries' placeholder='1' />
+                <InputGroupAddon align='inline-end'>
                   <NumberInputIncrement />
                   <InputGroupText>times</InputGroupText>
                 </InputGroupAddon>
@@ -400,16 +400,16 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
             max={5000}
             step={100}
             disabled={isReadOnly || !inputs.retry_config?.retry_enabled}>
-            <div className="flex flex-row gap-1 items-center">
-              <NumberInputScrubber htmlFor="retry-interval" className="w-[100px]">
+            <div className='flex flex-row gap-1 items-center'>
+              <NumberInputScrubber htmlFor='retry-interval' className='w-[100px]'>
                 Retry interval
               </NumberInputScrubber>
               <InputGroup>
-                <InputGroupAddon align="inline-start">
+                <InputGroupAddon align='inline-start'>
                   <NumberInputDecrement />
                 </InputGroupAddon>
-                <NumberInputField id="retry-interval" placeholder="1000" />
-                <InputGroupAddon align="inline-end">
+                <NumberInputField id='retry-interval' placeholder='1000' />
+                <InputGroupAddon align='inline-end'>
                   <NumberInputIncrement />
                   <InputGroupText>ms</InputGroupText>
                 </InputGroupAddon>

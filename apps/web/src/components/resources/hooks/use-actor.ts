@@ -1,12 +1,12 @@
 // apps/web/src/components/resources/hooks/use-actor.ts
 
-import { useEffect, useLayoutEffect, useRef } from 'react'
-import { useShallow } from 'zustand/shallow'
-import { useActorStore, getActorStoreState } from '../store/actor-store'
 import type { Actor, ActorId } from '@auxx/types/actor'
 import { parseActorId } from '@auxx/types/actor'
 import type { GroupMember } from '@auxx/types/groups'
+import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useShallow } from 'zustand/shallow'
 import { api } from '~/trpc/react'
+import { getActorStoreState, useActorStore } from '../store/actor-store'
 
 /** Stable empty array to prevent re-renders */
 const EMPTY_MEMBERS: GroupMember[] = []

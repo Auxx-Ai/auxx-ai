@@ -1,14 +1,14 @@
 // apps/web/src/components/mail/standalone-draft-item.tsx
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNowStrict } from 'date-fns'
 import { FileEdit } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { useThreadStore, type StandaloneDraftMeta } from '~/components/threads/store'
-import { getIntegrationIcon } from './mail-status-config'
+import React, { useMemo, useState } from 'react'
+import { type StandaloneDraftMeta, useThreadStore } from '~/components/threads/store'
 import { NewMessageDialog } from './email-editor/new-message-dialog'
+import { getIntegrationIcon } from './mail-status-config'
 
 /**
  * Props for the StandaloneDraftItem component.
@@ -48,7 +48,7 @@ export function StandaloneDraftItem({ draftId }: StandaloneDraftItemProps) {
 
   return (
     <>
-      <div className="flex flex-row items-stretch relative">
+      <div className='flex flex-row items-stretch relative'>
         <div
           id={`draft-${draftId}`}
           className={cn(
@@ -57,32 +57,32 @@ export function StandaloneDraftItem({ draftId }: StandaloneDraftItemProps) {
           onClick={handleClick}>
           {/* Draft indicator dot */}
           <div
-            className="absolute left-2 top-9 h-2 w-2 -translate-y-1/2 rounded-full bg-red-500"
-            aria-label="Draft"
+            className='absolute left-2 top-9 h-2 w-2 -translate-y-1/2 rounded-full bg-red-500'
+            aria-label='Draft'
           />
 
-          <div className="absolute top-3 left-1">
-            <div className="flex-none rounded-full border p-0.5 text-blue-500">
+          <div className='absolute top-3 left-1'>
+            <div className='flex-none rounded-full border p-0.5 text-blue-500'>
               {getIntegrationIcon(draft.integrationProvider)}
             </div>
           </div>
 
           {/* Content */}
-          <div className="flex w-full flex-col gap-1">
-            <div className="flex items-center">
-              <div className="flex items-center ms-0.5 gap-0.5 overflow-hidden">
-                <div className="flex-1 truncate font-semibold">
+          <div className='flex w-full flex-col gap-1'>
+            <div className='flex items-center'>
+              <div className='flex items-center ms-0.5 gap-0.5 overflow-hidden'>
+                <div className='flex-1 truncate font-semibold'>
                   {draft.recipientSummary || '(no recipients)'}
                 </div>
               </div>
-              <div className="ml-auto shrink-0 whitespace-nowrap pl-2 text-xs text-muted-foreground">
+              <div className='ml-auto shrink-0 whitespace-nowrap pl-2 text-xs text-muted-foreground'>
                 {formattedDate}
               </div>
             </div>
 
             {/* Subject */}
-            <div className="flex w-full items-center gap-1 min-w-0">
-              <div className="min-w-0 truncate text-xs font-medium max-w-[60%] shrink-0">
+            <div className='flex w-full items-center gap-1 min-w-0'>
+              <div className='min-w-0 truncate text-xs font-medium max-w-[60%] shrink-0'>
                 {draft.subject || '(no subject)'}
               </div>
             </div>
@@ -90,7 +90,7 @@ export function StandaloneDraftItem({ draftId }: StandaloneDraftItemProps) {
 
           {/* Snippet */}
           {draft.snippet && (
-            <div className="line-clamp-2 w-full break-words text-xs text-muted-foreground">
+            <div className='line-clamp-2 w-full break-words text-xs text-muted-foreground'>
               {draft.snippet}
             </div>
           )}
@@ -102,7 +102,7 @@ export function StandaloneDraftItem({ draftId }: StandaloneDraftItemProps) {
         open={isComposeOpen}
         onOpenChange={setIsComposeOpen}
         draftId={draftId}
-        mode="draft"
+        mode='draft'
       />
     </>
   )
@@ -113,15 +113,15 @@ export function StandaloneDraftItem({ draftId }: StandaloneDraftItemProps) {
  */
 function DraftItemSkeleton() {
   return (
-    <div className="flex flex-row items-stretch relative">
-      <div className="z-2 group relative flex w-full flex-col items-start gap-1 rounded-lg border bg-background ps-6 pe-2 py-3">
-        <div className="flex w-full flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <Skeleton className="h-4 w-1/3" />
-            <Skeleton className="h-3 w-16" />
+    <div className='flex flex-row items-stretch relative'>
+      <div className='z-2 group relative flex w-full flex-col items-start gap-1 rounded-lg border bg-background ps-6 pe-2 py-3'>
+        <div className='flex w-full flex-col gap-2'>
+          <div className='flex items-center justify-between'>
+            <Skeleton className='h-4 w-1/3' />
+            <Skeleton className='h-3 w-16' />
           </div>
-          <Skeleton className="h-3 w-2/3" />
-          <Skeleton className="h-3 w-full" />
+          <Skeleton className='h-3 w-2/3' />
+          <Skeleton className='h-3 w-full' />
         </div>
       </div>
     </div>

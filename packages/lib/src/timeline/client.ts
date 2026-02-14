@@ -2,34 +2,32 @@
 // Client-safe timeline exports (no server dependencies)
 
 export {
-  TimelineEntityType,
-  TimelineActorType,
   ContactEventType,
-  TicketEventType,
   EntityInstanceEventType,
   SYSTEM_ENTITY_TYPES,
+  TicketEventType,
+  TimelineActorType,
+  TimelineEntityType,
   type TimelineEventType,
 } from './event-types'
-
+export {
+  type GroupedTimelineData,
+  getPeriodTitle,
+  getPeriodType,
+  groupTimelineEventsByPeriod,
+  MONTH_NAMES,
+  type PeriodType,
+  PeriodTypes,
+  type TimelinePeriodGroup,
+} from './timeline-periods'
 export type {
-  TimelineActor,
-  TimelineEventBase,
-  SingleTimelineEvent,
+  CreateTimelineEventInput,
   GroupedTimelineEvent,
+  SingleTimelineEvent,
+  TimelineActor,
+  TimelineCursor,
+  TimelineEventBase,
   TimelineItem,
   TimelineQueryInput,
   TimelineQueryResult,
-  CreateTimelineEventInput,
-  TimelineCursor,
 } from './types'
-
-export {
-  groupTimelineEventsByPeriod,
-  getPeriodType,
-  getPeriodTitle,
-  PeriodTypes,
-  MONTH_NAMES,
-  type PeriodType,
-  type TimelinePeriodGroup,
-  type GroupedTimelineData,
-} from './timeline-periods'

@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/utils/viewport-utils.ts
 
-import type { ReactFlowInstance, Node, XYPosition } from '@xyflow/react'
+import type { Node, ReactFlowInstance, XYPosition } from '@xyflow/react'
 
 /**
  * Get the absolute position of a node, accounting for parent hierarchy

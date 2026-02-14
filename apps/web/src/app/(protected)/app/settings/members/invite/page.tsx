@@ -1,9 +1,9 @@
+import { headers } from 'next/headers'
+import { redirect } from 'next/navigation'
 import React from 'react'
+import { auth } from '~/auth/server'
 import SettingsPage from '~/components/global/settings-page'
 import InviteForm from '../_components/invite-form'
-import { auth } from '~/auth/server'
-import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
 
 type Props = {}
 
@@ -19,14 +19,14 @@ async function InvitePage({}: Props) {
   const defaultOrganizationId = 'your-default-organization-id' // Replace with actual logic to get the default organization ID
   return (
     <SettingsPage
-      title="Members"
-      description="Members of your organization"
+      title='Members'
+      description='Members of your organization'
       breadcrumbs={[
         { title: 'Settings', href: '/app/settings' },
         { title: 'Members', href: '/app/settings/members' },
         { title: 'Invite' },
       ]}>
-      <div className="p-8">
+      <div className='p-8'>
         <InviteForm organizationId={defaultOrgId} />
       </div>
     </SettingsPage>

@@ -23,18 +23,18 @@ export class IdPoolManager {
 
   /** generateUserIds creates a deterministic pool of User IDs */
   generateUserIds(): string[] {
-    const ids = Array(this.scenario.scales.users).fill(0).map((_, i) =>
-      this.generateDeterministicId('user', i)
-    )
+    const ids = Array(this.scenario.scales.users)
+      .fill(0)
+      .map((_, i) => this.generateDeterministicId('user', i))
     this.pools.set('User', ids)
     return ids
   }
 
   /** generateOrganizationIds creates a deterministic pool of Organization IDs */
   generateOrganizationIds(): string[] {
-    const ids = Array(this.scenario.scales.organizations).fill(0).map((_, i) =>
-      this.generateDeterministicId('org', i)
-    )
+    const ids = Array(this.scenario.scales.organizations)
+      .fill(0)
+      .map((_, i) => this.generateDeterministicId('org', i))
     this.pools.set('Organization', ids)
     return ids
   }
@@ -43,9 +43,9 @@ export class IdPoolManager {
   generateIntegrationIds(): string[] {
     // Each organization gets 2-3 integrations (email, shopify, etc.)
     const count = this.scenario.scales.organizations * 3
-    const ids = Array(count).fill(0).map((_, i) =>
-      this.generateDeterministicId('integration', i)
-    )
+    const ids = Array(count)
+      .fill(0)
+      .map((_, i) => this.generateDeterministicId('integration', i))
     this.pools.set('Integration', ids)
     return ids
   }
@@ -54,9 +54,9 @@ export class IdPoolManager {
   generateTemplateIds(): string[] {
     // Each organization gets 5-10 templates
     const count = this.scenario.scales.organizations * 8
-    const ids = Array(count).fill(0).map((_, i) =>
-      this.generateDeterministicId('template', i)
-    )
+    const ids = Array(count)
+      .fill(0)
+      .map((_, i) => this.generateDeterministicId('template', i))
     this.pools.set('MessageTemplate', ids)
     return ids
   }

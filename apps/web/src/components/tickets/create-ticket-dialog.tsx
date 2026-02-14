@@ -1,8 +1,8 @@
 // ~/components/tickets/create-ticket-dialog.tsx
 'use client'
-import { useState } from 'react'
 import { Button } from '@auxx/ui/components/button'
 import { PlusIcon } from 'lucide-react'
+import { useState } from 'react'
 import TicketFormDialog from '~/app/(protected)/app/tickets/_components/ticket-form-dialog'
 
 interface CreateTicketDialogProps {
@@ -26,8 +26,8 @@ export default function CreateTicketDialog({
       {children ? (
         <span onClick={() => setIsOpen(true)}>{children}</span>
       ) : (
-        <Button variant="info" size="sm" className="px-2" onClick={() => setIsOpen(true)}>
-          <PlusIcon className="h-4 w-4" />
+        <Button variant='info' size='sm' className='px-2' onClick={() => setIsOpen(true)}>
+          <PlusIcon className='h-4 w-4' />
           New Ticket
         </Button>
       )}

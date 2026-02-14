@@ -1,7 +1,7 @@
 // packages/services/src/entity-definitions/get-entity-definition.ts
 
 import { database } from '@auxx/database'
-import { ok, err } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 
 /**

@@ -1,9 +1,9 @@
 // apps/web/src/components/dynamic-table/hooks/use-cell-navigation.ts
 'use client'
 
+import type { Table } from '@tanstack/react-table'
 import type React from 'react'
 import { useCallback, useEffect, useRef } from 'react'
-import type { Table } from '@tanstack/react-table'
 import type { CellSelectionState } from '../types'
 
 interface UseCellNavigationOptions<TData> {

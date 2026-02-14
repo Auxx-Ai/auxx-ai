@@ -2,6 +2,7 @@
 
 'use client'
 
+import { toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -10,12 +11,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
-import { toRecordId } from '@auxx/types/resource'
-import { Upload, MoreHorizontal, RefreshCw, Download, Archive, Trash2 } from 'lucide-react'
-import { useDatasetDetail } from './dataset-detail-provider'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { Archive, Download, MoreHorizontal, RefreshCw, Trash2, Upload } from 'lucide-react'
 import { useDatasetActions } from '~/components/datasets/hooks/use-dataset-actions'
+import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
+import { useDatasetDetail } from './dataset-detail-provider'
 
 /**
  * Actions component for dataset detail page header
@@ -23,12 +23,14 @@ import { useDatasetActions } from '~/components/datasets/hooks/use-dataset-actio
 export function DatasetActions() {
   const { dataset, setCurrentTab, refetch, setUploadDialogOpen } = useDatasetDetail()
 
-  const { handleDelete, handleArchive, isDeleting, isArchiving, ConfirmDialog } = useDatasetActions({
-    datasetId: dataset?.id ?? '',
-    datasetName: dataset?.name,
-    onSuccess: refetch,
-    redirectAfterDelete: true,
-  })
+  const { handleDelete, handleArchive, isDeleting, isArchiving, ConfirmDialog } = useDatasetActions(
+    {
+      datasetId: dataset?.id ?? '',
+      datasetName: dataset?.name,
+      onSuccess: refetch,
+      redirectAfterDelete: true,
+    }
+  )
 
   /**
    * Open upload dialog and switch to documents tab
@@ -65,8 +67,8 @@ export function DatasetActions() {
 
   if (!dataset) {
     return (
-      <div className="flex gap-2">
-        <Button disabled variant="outline" size="sm">
+      <div className='flex gap-2'>
+        <Button disabled variant='outline' size='sm'>
           <Upload />
         </Button>
       </div>
@@ -75,9 +77,9 @@ export function DatasetActions() {
 
   return (
     <>
-      <div className="flex items-center gap-2">
+      <div className='flex items-center gap-2'>
         {/* Primary Actions */}
-        <Button onClick={handleUpload} size="sm">
+        <Button onClick={handleUpload} size='sm'>
           <Upload />
           Upload
         </Button>
@@ -85,11 +87,11 @@ export function DatasetActions() {
         {/* More Actions Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon-sm">
+            <Button variant='outline' size='icon-sm'>
               <MoreHorizontal />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align='end'>
             <WorkflowSubMenu recordId={toRecordId('dataset', dataset.id)} onSuccess={refetch} />
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleRefresh}>
@@ -105,7 +107,7 @@ export function DatasetActions() {
               <Archive />
               Archive
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleDelete} variant="destructive" disabled={isDeleting}>
+            <DropdownMenuItem onClick={handleDelete} variant='destructive' disabled={isDeleting}>
               <Trash2 />
               Delete
             </DropdownMenuItem>

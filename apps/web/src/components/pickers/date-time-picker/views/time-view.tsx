@@ -2,10 +2,10 @@
 'use client'
 
 import React from 'react'
+import OptionListItem from '../components/option-list-item'
 import { useTimeOptions } from '../hooks'
 import { Period, type TimeViewProps } from '../types'
 import { getHourIn12HourFormat, getPeriod } from '../utils'
-import OptionListItem from '../components/option-list-item'
 
 /**
  * Time selection view with three scrollable columns (hours, minutes, period)
@@ -32,9 +32,9 @@ const TimeView: React.FC<TimeViewProps> = ({
   const filteredMinutes = minuteFilter ? minuteFilter(minuteOptions) : minuteOptions
   //h-[208px]
   return (
-    <div className="grid grid-cols-3 gap-x-1 p-2">
+    <div className='grid grid-cols-3 gap-x-1 p-2'>
       {/* Hour column */}
-      <ul className="no-scrollbar flex h-[235px]  flex-col gap-y-0.5 overflow-y-auto pb-[184px]">
+      <ul className='no-scrollbar flex h-[235px]  flex-col gap-y-0.5 overflow-y-auto pb-[184px]'>
         {hourOptions.map((hour) => (
           <OptionListItem
             key={hour}
@@ -46,7 +46,7 @@ const TimeView: React.FC<TimeViewProps> = ({
       </ul>
 
       {/* Minute column */}
-      <ul className="no-scrollbar flex h-[235px] flex-col gap-y-0.5 overflow-y-auto pb-[184px]">
+      <ul className='no-scrollbar flex h-[235px] flex-col gap-y-0.5 overflow-y-auto pb-[184px]'>
         {filteredMinutes.map((minute) => (
           <OptionListItem
             key={minute}
@@ -58,7 +58,7 @@ const TimeView: React.FC<TimeViewProps> = ({
       </ul>
 
       {/* Period column */}
-      <ul className="no-scrollbar flex h-[235px] flex-col gap-y-0.5 overflow-y-auto pb-[184px]">
+      <ul className='no-scrollbar flex h-[235px] flex-col gap-y-0.5 overflow-y-auto pb-[184px]'>
         {periodOptions.map((period) => (
           <OptionListItem
             key={period}

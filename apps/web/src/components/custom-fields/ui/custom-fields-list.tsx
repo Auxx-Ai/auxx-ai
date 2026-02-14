@@ -1,34 +1,33 @@
 // apps/web/src/components/custom-fields/ui/custom-fields-list.tsx
 'use client'
 
-import { useState, useMemo } from 'react'
+import type { Resource } from '@auxx/lib/resources/client'
+import { type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
+import { Button } from '@auxx/ui/components/button'
+import { TableBody, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
 import {
-  DndContext,
   closestCenter,
+  DndContext,
+  type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
 } from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import {
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-
-import { TableBody, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
-import { Rows3, Plus } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
+import { Plus, Rows3 } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
-import { EmptyState } from '~/components/global/empty-state'
-import { CustomFieldRow } from '~/components/custom-fields/ui/field-list'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
-import { useConfirm } from '~/hooks/use-confirm'
+import { CustomFieldRow } from '~/components/custom-fields/ui/field-list'
+import { EmptyState } from '~/components/global/empty-state'
 import { useResourceFields } from '~/components/resources'
-import type { Resource } from '@auxx/lib/resources/client'
-import { toResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { useConfirm } from '~/hooks/use-confirm'
 
 /** Props for CustomFieldsList component */
 interface CustomFieldsListProps {
@@ -106,7 +105,7 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className='flex flex-col h-full'>
       {/* Confirm Delete Dialog */}
       <ConfirmDeleteDialog />
 
@@ -124,15 +123,15 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
       {sortedFields.length === 0 ? (
         <EmptyState
           icon={Rows3}
-          title="No custom fields added"
-          description={<div className="max-w-sm">Create your first custom field.</div>}
+          title='No custom fields added'
+          description={<div className='max-w-sm'>Create your first custom field.</div>}
           button={
             <Button
-              size="sm"
-              variant="outline"
+              size='sm'
+              variant='outline'
               onClick={handleAddNew}
               loading={isPending}
-              loadingText="Saving...">
+              loadingText='Saving...'>
               <Plus />
               Create Field
             </Button>
@@ -144,23 +143,23 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
           modifiers={[restrictToVerticalAxis]}>
-          <table className="text-sm w-full caption-bottom">
+          <table className='text-sm w-full caption-bottom'>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[40px]"></TableHead>
+                <TableHead className='w-[40px]'></TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Description</TableHead>
-                <TableHead className="w-[90px]"></TableHead>
-                <TableHead className="text-right w-[30px] relative">
+                <TableHead className='w-[90px]'></TableHead>
+                <TableHead className='text-right w-[30px] relative'>
                   <Button
                     onClick={handleAddNew}
                     disabled={isPending}
-                    variant="outline"
-                    size="sm"
-                    className="absolute right-0 top-1/2 -translate-y-1/2 right-2">
+                    variant='outline'
+                    size='sm'
+                    className='absolute right-0 top-1/2 -translate-y-1/2 right-2'>
                     <Plus />
-                    <span className="text-foreground">Add</span>
+                    <span className='text-foreground'>Add</span>
                   </Button>
                 </TableHead>
               </TableRow>

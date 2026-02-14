@@ -1,16 +1,16 @@
 // apps/web/src/components/resources/hooks/use-field-values.ts
 
+import type { RecordId } from '@auxx/lib/resources/client'
+import { type FieldReference, fieldRefToKey } from '@auxx/types/field'
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { fieldRefToKey, type FieldReference } from '@auxx/types/field'
-import type { RecordId } from '@auxx/lib/resources/client'
+import { fieldValueFetchQueue } from '../store/field-value-fetch-queue'
 import {
-  useFieldValueStore,
   buildFieldValueKey,
   type CustomFieldValueState,
   type StoredFieldValue,
+  useFieldValueStore,
 } from '../store/field-value-store'
-import { fieldValueFetchQueue } from '../store/field-value-fetch-queue'
 
 /**
  * Options for useFieldValue hook.
@@ -157,9 +157,7 @@ export function useFieldValues(
     queuedKeyRef.current = requestKey
 
     // Use batch queue - handles deduplication internally
-    fieldValueFetchQueue.queueFetchBatch(
-      fieldRefs.map((fieldRef) => ({ recordId, fieldRef }))
-    )
+    fieldValueFetchQueue.queueFetchBatch(fieldRefs.map((fieldRef) => ({ recordId, fieldRef })))
   }, [autoFetch, recordId, refsKey, fieldRefs])
 
   return { values, isLoading }

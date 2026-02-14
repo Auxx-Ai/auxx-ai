@@ -1,8 +1,8 @@
 // apps/web/src/lib/extensions/server-function-handler.ts
 
-import type { MessageClient } from './message-client'
 import { toastError } from '@auxx/ui/components/toast'
 import { connectionExpiredEmitter } from './connection-expired-emitter'
+import type { MessageClient } from './message-client'
 
 interface ServerFunctionContext {
   appId: string

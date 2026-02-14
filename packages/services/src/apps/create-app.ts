@@ -1,7 +1,7 @@
 // packages/services/src/apps/create-app.ts
 
-import { database, App } from '@auxx/database'
-import { ok, err } from 'neverthrow'
+import { App, database } from '@auxx/database'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 // import type { AppError } from './errors'
 

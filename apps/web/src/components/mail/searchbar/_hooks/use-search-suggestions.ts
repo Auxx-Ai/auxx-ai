@@ -2,13 +2,13 @@
 
 'use client'
 
-import { useCallback, useMemo } from 'react'
-import { api } from '~/trpc/react'
-import { useDebouncedValue } from '~/hooks/use-debounced-value'
 import {
   MAIL_VIEW_FIELD_DEFINITIONS,
   type MailViewFieldDefinition,
 } from '@auxx/lib/mail-views/client'
+import { useCallback, useMemo } from 'react'
+import { useDebouncedValue } from '~/hooks/use-debounced-value'
+import { api } from '~/trpc/react'
 import type { SearchSuggestion } from '../search-suggestions-list'
 
 /**
@@ -109,7 +109,10 @@ export function useSaveSearchQuery() {
   })
 
   return useCallback(
-    (conditions: Array<{ fieldId: string; operator: string; value: unknown }>, displayText: string) => {
+    (
+      conditions: Array<{ fieldId: string; operator: string; value: unknown }>,
+      displayText: string
+    ) => {
       if (conditions.length > 0) {
         mutate({ conditions, displayText })
       }

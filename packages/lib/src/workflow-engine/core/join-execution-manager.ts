@@ -1,11 +1,15 @@
 // packages/lib/src/workflow-engine/core/join-execution-manager.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { BatchedJoinStateUpdater } from './batched-join-updater'
-import { JoinStateCache } from './join-state-cache'
-import type { BranchResult, BranchError, NodeExecutionResult, NodeRunningStatus } from './types'
-
-import { JoinState } from './types'
+import type { BatchedJoinStateUpdater } from './batched-join-updater'
+import type { JoinStateCache } from './join-state-cache'
+import type {
+  BranchError,
+  BranchResult,
+  JoinState,
+  NodeExecutionResult,
+  NodeRunningStatus,
+} from './types'
 
 const logger = createScopedLogger('join-execution-manager')
 
@@ -194,7 +198,7 @@ export class JoinExecutionManager {
         result.canProceed = result.arrivedCount >= (options.minRequired || 1)
         break
 
-      case 'timeout':
+      case 'timeout': {
         const elapsed = Date.now() - joinState.startedAt.getTime()
         const isTimeout = options.timeout ? elapsed >= options.timeout : false
         result.canProceed = result.arrivedCount === result.expectedCount || isTimeout
@@ -202,6 +206,7 @@ export class JoinExecutionManager {
           result.reason = 'timeout'
         }
         break
+      }
     }
 
     // Apply error strategy if we can proceed
@@ -212,7 +217,7 @@ export class JoinExecutionManager {
           result.reason = 'error'
           break
 
-        case 'best-effort':
+        case 'best-effort': {
           // Check if we have minimum successful branches
           const minSuccessful = options.minRequired || 1
           if (result.successfulBranches.length < minSuccessful) {
@@ -220,6 +225,7 @@ export class JoinExecutionManager {
             result.reason = 'error'
           }
           break
+        }
 
         case 'collect-all':
           // Continue even with errors

@@ -1,7 +1,7 @@
 // apps/web/src/components/data-import/types.ts
 
-import type { ReactNode } from 'react'
 import type { SelectOption } from '@auxx/types/custom-field'
+import type { ReactNode } from 'react'
 
 /** Wizard step identifiers */
 export type ImportStep = 'upload' | 'map-columns' | 'review-values' | 'confirm'

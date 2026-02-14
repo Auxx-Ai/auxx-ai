@@ -1,23 +1,25 @@
 // src/lib/providers/facebook/facebook-provider.ts
-import { BaseMessageProvider, MessageProvider } from '../message-provider-interface'
-import { ProviderCapabilities, getProviderCapabilities } from '../provider-capabilities'
-import {
-  IntegrationProvider,
-  SendMessageOptions,
-  MessageStatus,
-} from '../integration-provider.interface' // Adjust path based on final structure
-import { database as db, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import {
-  MessageStorageService,
-  MessageData, // Data structure expected by storage service
-  ParticipantInputData, // Structure for participant info from provider
-  IntegrationType,
-} from '../../email/email-storage' // Adjust path
-import { createScopedLogger } from '@auxx/logger'
+
 import { env } from '@auxx/config/server'
-import { FacebookOAuthService, FacebookIntegrationMetadata } from './facebook-oauth'
+import { database as db, schema } from '@auxx/database'
 import { IntegrationProviderType, MessageType } from '@auxx/database/enums'
+import { createScopedLogger } from '@auxx/logger'
+import { and, eq } from 'drizzle-orm'
+import {
+  IntegrationType,
+  type MessageData, // Data structure expected by storage service
+  MessageStorageService,
+  type ParticipantInputData, // Structure for participant info from provider
+} from '../../email/email-storage' // Adjust path
+import type {
+  IntegrationProvider,
+  MessageStatus,
+  SendMessageOptions,
+} from '../integration-provider.interface' // Adjust path based on final structure
+import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
+import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
+import { type FacebookIntegrationMetadata, FacebookOAuthService } from './facebook-oauth'
+
 const logger = createScopedLogger('facebook-provider')
 const API_VERSION = env.FACEBOOK_GRAPH_API_VERSION || 'v19.0'
 // --- Interface Definitions (for clarity, align with Graph API responses) ---

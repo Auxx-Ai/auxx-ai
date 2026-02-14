@@ -98,8 +98,7 @@
 
 import { Check, ChevronDown, X } from 'lucide-react'
 import { useCallback, useState } from 'react'
-import { Toaster as SonnerToaster } from 'sonner'
-import { toast as sonnerToast, type ExternalToast } from 'sonner'
+import { type ExternalToast, Toaster as SonnerToaster, toast as sonnerToast } from 'sonner'
 
 /**
  * Props for the custom Toast component
@@ -138,22 +137,22 @@ function Toast(props: ToastProps) {
     setIsShow((bool) => !bool)
   }, [])
   return (
-    <div className="flex rounded-2xl bg-white dark:bg-primary-400 shadow-lg shadow-black/10 ring-1 ring-black/5 w-full md:max-w-[350px] min-w-[300px] items-start ps-2 p-1.5 gap-2">
-      <div className="mt-[2px]">{icon}</div>
-      <div className="flex flex-1 items-start flex-col">
-        <div className="w-full flex items-center justify-start gap-2 mt-[2px]">
-          <p className="text-[14px]  mb-0 font-medium text-primary-600 dark:text-primary-800">
+    <div className='flex rounded-2xl bg-white dark:bg-primary-400 shadow-lg shadow-black/10 ring-1 ring-black/5 w-full md:max-w-[350px] min-w-[300px] items-start ps-2 p-1.5 gap-2'>
+      <div className='mt-[2px]'>{icon}</div>
+      <div className='flex flex-1 items-start flex-col'>
+        <div className='w-full flex items-center justify-start gap-2 mt-[2px]'>
+          <p className='text-[14px]  mb-0 font-medium text-primary-600 dark:text-primary-800'>
             {title}
           </p>
           {description && (
             <button
               onClick={showMore}
-              className="size-4.5 bg-black/5 rounded-md flex items-center justify-center shrink-0">
-              <ChevronDown className="size-4 text-muted-foreground" />
+              className='size-4.5 bg-black/5 rounded-md flex items-center justify-center shrink-0'>
+              <ChevronDown className='size-4 text-muted-foreground' />
             </button>
           )}
         </div>
-        {isShow && <div className=" text-sm text-primary-600">{description}</div>}
+        {isShow && <div className=' text-sm text-primary-600'>{description}</div>}
       </div>
       <div>
         <button
@@ -161,8 +160,8 @@ function Toast(props: ToastProps) {
             button?.onClick()
             sonnerToast.dismiss(id)
           }}
-          className="shrink-0 flex items-center justify-center size-6 rounded-full hover:bg-black/5 dark:hover:bg-black/10">
-          <X className="size-4" />
+          className='shrink-0 flex items-center justify-center size-6 rounded-full hover:bg-black/5 dark:hover:bg-black/10'>
+          <X className='size-4' />
         </button>
       </div>
     </div>
@@ -172,7 +171,7 @@ function Toast(props: ToastProps) {
 export function toastSuccess(options: { title?: string; description?: string }) {
   return toast({
     title: options.title ?? 'Success',
-    icon: <Check className="size-5 text-good-500" />,
+    icon: <Check className='size-5 text-good-500' />,
     description: options.description,
     position: 'top-right',
   })
@@ -191,7 +190,7 @@ export function toastError(options: {
 }) {
   return toast({
     title: options.title || 'Error',
-    icon: <X className="size-5 text-red-500" />,
+    icon: <X className='size-5 text-red-500' />,
     description: options.description,
     position: 'top-right',
     duration: 10_000,

@@ -1,7 +1,7 @@
 // apps/api/src/services/app-installations/get-dev-installation.ts
 
 import { database } from '@auxx/database'
-import { ok, err } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 // import type { AppInstallationError } from './errors'
 import { fromDatabase } from '../shared/utils'
 

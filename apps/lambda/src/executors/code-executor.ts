@@ -6,10 +6,10 @@
  */
 
 import {
-  interceptConsole,
-  getCapturedLogs,
-  restoreConsole,
   clearCapturedLogs,
+  getCapturedLogs,
+  interceptConsole,
+  restoreConsole,
 } from '../runtime-helpers/index.ts'
 import type { CodeExecutionEvent } from '../validator.ts'
 
@@ -100,7 +100,7 @@ function isSchemaContext(contextId: string): boolean {
 function createDollarFunction(variables: Record<string, any>) {
   return function $(contextId: string) {
     return {
-      var: function (varPath: string) {
+      var: (varPath: string) => {
         if (contextId === 'sys' || contextId === 'env' || isSchemaContext(contextId)) {
           // Handle system, environment, and schema variables
           const fullPath = contextId + '.' + varPath

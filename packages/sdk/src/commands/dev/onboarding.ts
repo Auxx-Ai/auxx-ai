@@ -6,9 +6,9 @@
  */
 
 import open from 'open'
-import { isErrored } from '../../errors.js'
 import { api } from '../../api/api.js'
 import { APP_URL } from '../../env.js'
+import { isErrored } from '../../errors.js'
 
 import { listenForKey } from '../../util/listen-for-key.js'
 

@@ -1,11 +1,11 @@
 // packages/sdk/src/api/fetcher.ts
 
-import { z } from 'zod'
+import type { z } from 'zod'
 import { authenticator } from '../auth/auth.js'
 import { API } from '../env.js'
+import type { FetcherError } from '../errors.js'
 import type { Result } from '../types/result.js'
 import { isError } from '../types/result.js'
-import type { FetcherError } from '../errors.js'
 
 interface FetchOptions<T> {
   path: string

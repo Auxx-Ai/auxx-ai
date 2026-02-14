@@ -1,14 +1,14 @@
 // apps/web/src/components/workflow/nodes/core/document-extractor/schema.ts
 
 import { z } from 'zod'
-import { type NodeDefinition, NodeCategory } from '~/components/workflow/types'
-import { NodeType } from '~/components/workflow/types/node-types'
+import { NodeCategory, type NodeDefinition } from '~/components/workflow/types'
 import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
-import { type DocumentExtractorNodeData, DocumentSourceType } from './types'
-import { getDocumentExtractorOutputVariables } from './output-variables'
-import { DocumentExtractorPanel } from './panel'
+import { NodeType } from '~/components/workflow/types/node-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { isNodeVariable, isVariableMode } from '~/components/workflow/utils/variable-utils'
+import { getDocumentExtractorOutputVariables } from './output-variables'
+import { DocumentExtractorPanel } from './panel'
+import { type DocumentExtractorNodeData, DocumentSourceType } from './types'
 
 /**
  * Zod schema for Document Extractor node data validation

@@ -1,16 +1,16 @@
 // apps/web/src/components/workflow/store/workflow-store.ts
 
+import { type Workflow, WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import type { Node } from '@xyflow/react'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import type { WorkflowMetadata, DragState } from './types'
-import { historyManager } from './history-manager'
-import { type Workflow, WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import type { HelpLineHorizontalPosition, HelpLineVerticalPosition } from '../ui/helpline/types'
+import { useCanvasStore } from './canvas-store'
 // import { useNodeStore } from './node-store'
 import { useEdgeStore } from './edge-store'
 import { storeEventBus } from './event-bus'
-import type { Node } from '@xyflow/react'
-import type { HelpLineHorizontalPosition, HelpLineVerticalPosition } from '../ui/helpline/types'
-import { useCanvasStore } from './canvas-store'
+import { historyManager } from './history-manager'
+import type { DragState, WorkflowMetadata } from './types'
 import { useVarStore } from './use-var-store'
 
 interface ModelData {

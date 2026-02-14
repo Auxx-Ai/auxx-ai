@@ -1,7 +1,8 @@
 // @auxx/lib/realtime/realtime-service.ts
+
+import { env } from '@auxx/config/server'
 import { createScopedLogger } from '@auxx/logger'
 import Pusher from 'pusher'
-import { env } from '@auxx/config/server'
 
 const logger = createScopedLogger('realtime-service')
 

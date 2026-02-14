@@ -1,13 +1,13 @@
 // apps/web/src/components/workflow/nodes/core/end/schema.ts
 
 import { z } from 'zod'
-import { type NodeDefinition, NodeCategory, type ValidationResult, BaseType } from '../../../types'
-import { type EndNodeData } from './types'
-import { EndPanel } from './panel'
-import { NodeType } from '../../../types/node-types'
 import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
+import { BaseType, NodeCategory, type NodeDefinition, type ValidationResult } from '../../../types'
+import { NodeType } from '../../../types/node-types'
+import { EndPanel } from './panel'
+import type { EndNodeData } from './types'
 
 /**
  * Main schema for end node data (simplified structure)

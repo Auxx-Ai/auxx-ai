@@ -1,9 +1,9 @@
 // src/components/kbar/kbar-settings.tsx
 
-import { useRegisterActions, type Action } from 'kbar'
+import { type Action, useRegisterActions } from 'kbar'
 import { useRouter } from 'next/navigation'
-import { useUser } from '~/hooks/use-user'
 import React from 'react'
+import { useUser } from '~/hooks/use-user'
 
 /**
  * useKbarSettings hook

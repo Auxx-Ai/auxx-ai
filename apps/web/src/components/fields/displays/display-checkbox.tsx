@@ -1,8 +1,9 @@
 // apps/web/src/components/fields/displays/display-checkbox.tsx
+
+import type { BooleanFieldOptions } from '@auxx/lib/field-values/client'
 import { Check, X } from 'lucide-react'
 import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
-import type { BooleanFieldOptions } from '@auxx/lib/field-values/client'
 
 /**
  * DisplayCheckbox component
@@ -23,7 +24,7 @@ export function DisplayCheckbox() {
   if (checkboxStyle === 'text') {
     return (
       <DisplayWrapper copyValue={label}>
-        <span className="text-muted-foreground">{label}</span>
+        <span className='text-muted-foreground'>{label}</span>
       </DisplayWrapper>
     )
   }
@@ -32,7 +33,7 @@ export function DisplayCheckbox() {
   if (checkboxStyle === 'icon') {
     return (
       <DisplayWrapper copyValue={label}>
-        {value ? <Check className="size-4" /> : <X className="size-4" />}
+        {value ? <Check className='size-4' /> : <X className='size-4' />}
       </DisplayWrapper>
     )
   }
@@ -40,9 +41,9 @@ export function DisplayCheckbox() {
   // Icon with text display (default)
   return (
     <DisplayWrapper copyValue={label}>
-      <div className="flex items-center justify-center gap-2">
-        {value ? <Check className="size-4" /> : <X className="size-4" />}
-        <span className="text-muted-foreground">{label}</span>
+      <div className='flex items-center justify-center gap-2'>
+        {value ? <Check className='size-4' /> : <X className='size-4' />}
+        <span className='text-muted-foreground'>{label}</span>
       </div>
     </DisplayWrapper>
   )

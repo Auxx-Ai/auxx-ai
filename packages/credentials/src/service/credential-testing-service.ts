@@ -1,10 +1,10 @@
 // packages/credentials/src/service/credential-testing-service.ts
 
-import { CredentialService } from './credential-service'
 import { createScopedLogger } from '@auxx/logger'
 // TODO: Move credential-testers.ts to this package
 // import { SmtpTester, PostgresTester } from './credential-testers'
-import type { ICredentialType, CredentialTestResult } from '@auxx/workflow-nodes/types'
+import type { CredentialTestResult, ICredentialType } from '@auxx/workflow-nodes/types'
+import { CredentialService } from './credential-service'
 
 const logger = createScopedLogger('credential-testing-service')
 
@@ -36,10 +36,10 @@ export class CredentialTestingService {
    * Register a credential type for testing
    */
   static registerCredentialType(credentialType: ICredentialType): void {
-    this.registeredCredentials.set(credentialType.name, credentialType)
+    CredentialTestingService.registeredCredentials.set(credentialType.name, credentialType)
     logger.debug('Registered credential type for testing', {
       type: credentialType.name,
-      supportsTest: this.credentialSupportsTest(credentialType.name),
+      supportsTest: CredentialTestingService.credentialSupportsTest(credentialType.name),
     })
   }
 
@@ -47,14 +47,14 @@ export class CredentialTestingService {
    * Get a registered credential type
    */
   static getCredentialType(type: string): ICredentialType | undefined {
-    return this.registeredCredentials.get(type)
+    return CredentialTestingService.registeredCredentials.get(type)
   }
 
   /**
    * List all registered credential types
    */
   static getRegisteredCredentialTypes(): ICredentialType[] {
-    return Array.from(this.registeredCredentials.values())
+    return Array.from(CredentialTestingService.registeredCredentials.values())
   }
 
   /**
@@ -73,7 +73,7 @@ export class CredentialTestingService {
   ): Promise<CredentialTestResult> {
     try {
       // Check rate limit
-      this.checkRateLimit(organizationId)
+      CredentialTestingService.checkRateLimit(organizationId)
 
       logger.info('Testing credential', { credentialId, organizationId })
 
@@ -88,7 +88,7 @@ export class CredentialTestingService {
       }
 
       // Check if credential type supports testing
-      if (!this.credentialSupportsTest(credentialInfo.type)) {
+      if (!CredentialTestingService.credentialSupportsTest(credentialInfo.type)) {
         return {
           success: true,
           message: 'Testing not supported for this credential type - credential format validated',
@@ -105,7 +105,7 @@ export class CredentialTestingService {
       }
 
       // Execute the test with timeout
-      const testResult = await this.withTimeout(
+      const testResult = await CredentialTestingService.withTimeout(
         tester.test(credentialData),
         15000 // 15 second timeout
       )
@@ -160,12 +160,12 @@ export class CredentialTestingService {
   ): Promise<CredentialTestResult> {
     try {
       // Check rate limit
-      this.checkRateLimit(organizationId)
+      CredentialTestingService.checkRateLimit(organizationId)
 
       logger.info('Testing credential data', { credentialType, organizationId })
 
       // Check if credential type supports testing
-      if (!this.credentialSupportsTest(credentialType)) {
+      if (!CredentialTestingService.credentialSupportsTest(credentialType)) {
         return {
           success: true,
           message: 'Testing not supported for this credential type - credential format validated',
@@ -182,7 +182,7 @@ export class CredentialTestingService {
       }
 
       // Execute the test with timeout
-      const testResult = await this.withTimeout(
+      const testResult = await CredentialTestingService.withTimeout(
         tester.test(credentialData),
         15000 // 15 second timeout
       )

@@ -2,29 +2,29 @@
 
 'use client'
 
-import React, { useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import { Button } from '@auxx/ui/components/button'
 import { Badge } from '@auxx/ui/components/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
+import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Separator } from '@auxx/ui/components/separator'
-import {
-  FileQueueManager,
-  FileItem,
-  type BatchUploadResult,
-  type FileItemProps,
-} from '~/components/file-upload'
-import { FilesPicker, type FileSelection } from '~/components/pickers'
-import { FileSelect, FileSelectDialog, type FileSelectItem } from '~/components/file-select'
-import { FileSelectPicker } from '~/components/pickers/file-select-picker'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import React, { useState } from 'react'
+import { FileSelect, FileSelectDialog, type FileSelectItem } from '~/components/file-select'
+import {
+  type BatchUploadResult,
+  FileItem,
+  type FileItemProps,
+  FileQueueManager,
+} from '~/components/file-upload'
+import { type FileSelection, FilesPicker } from '~/components/pickers'
+import { FileSelectPicker } from '~/components/pickers/file-select-picker'
 
 /**
  * Minimal FileItem - Simplified compact display
  */
 function MinimalFileItem({ fileId, ...props }: FileItemProps) {
   return (
-    <div className="bg-gray-50 border-l-4 border-gray-400 pl-4 py-2">
+    <div className='bg-gray-50 border-l-4 border-gray-400 pl-4 py-2'>
       <FileItem fileId={fileId} compact={true} {...props} />
     </div>
   )
@@ -43,16 +43,16 @@ function BasicUploadExample({
   onProgress: (progress: BatchUploadResult) => void
 }) {
   return (
-    <div className="space-y-3">
-      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-        <p className="text-sm text-blue-700">
+    <div className='space-y-3'>
+      <div className='p-3 bg-blue-50 border border-blue-200 rounded-lg'>
+        <p className='text-sm text-blue-700'>
           <strong>Enhanced Features:</strong> Direct presigned uploads to storage, real-time
           progress tracking, per-file cancellation, advanced queue controls, retry logic, and live
           connection status.
         </p>
       </div>
       <FileQueueManager
-        entityType="article:attachment"
+        entityType='article:attachment'
         // Note: entityId is optional - omitting it will create generic upload session
         onComplete={onComplete}
         onError={onError}
@@ -78,7 +78,7 @@ function MinimalUploadExample({
 }) {
   return (
     <FileQueueManager
-      entityType="article:attachment"
+      entityType='article:attachment'
       onComplete={onComplete}
       onError={onError}
       fileItemComponent={MinimalFileItem}
@@ -122,12 +122,12 @@ function FileSelectExample() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className='space-y-8'>
       {/* Multiple File Selection */}
-      <div className="space-y-4">
+      <div className='space-y-4'>
         <div>
-          <h4 className="text-lg font-semibold mb-2">Multiple File Selection</h4>
-          <p className="text-sm text-gray-600 mb-4">
+          <h4 className='text-lg font-semibold mb-2'>Multiple File Selection</h4>
+          <p className='text-sm text-gray-600 mb-4'>
             Select or upload multiple files with validation. Max 5 files, 10MB each, images and
             documents only.
           </p>
@@ -138,29 +138,29 @@ function FileSelectExample() {
           maxFiles={5}
           maxFileSize={10 * 1024 * 1024} // 10MB
           fileExtensions={['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx']}
-          entityType="article:attachment"
+          entityType='article:attachment'
           onChange={handleFilesChange}
           onUploadComplete={handleUploadComplete}
           onError={handleError}
-          placeholder="Drop images or documents here, or click to select"
+          placeholder='Drop images or documents here, or click to select'
         />
 
         {multipleFiles.length > 0 && (
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h5 className="font-medium text-blue-800 mb-2">
+          <div className='p-4 bg-blue-50 border border-blue-200 rounded-lg'>
+            <h5 className='font-medium text-blue-800 mb-2'>
               Selected Files ({multipleFiles.length}):
             </h5>
-            <div className="space-y-2">
+            <div className='space-y-2'>
               {multipleFiles.map((file) => (
-                <div key={file.id} className="flex items-center gap-3 text-sm bg-white p-2 rounded">
-                  <span className="font-medium">{file.name}</span>
-                  <Badge variant="outline">{file.source}</Badge>
+                <div key={file.id} className='flex items-center gap-3 text-sm bg-white p-2 rounded'>
+                  <span className='font-medium'>{file.name}</span>
+                  <Badge variant='outline'>{file.source}</Badge>
                   {file.uploadStatus && (
                     <Badge variant={file.uploadStatus === 'completed' ? 'default' : 'secondary'}>
                       {file.uploadStatus}
                     </Badge>
                   )}
-                  <span className="text-gray-500">{(file.size / 1024).toFixed(1)} KB</span>
+                  <span className='text-gray-500'>{(file.size / 1024).toFixed(1)} KB</span>
                 </div>
               ))}
             </div>
@@ -171,10 +171,10 @@ function FileSelectExample() {
       <Separator />
 
       {/* Single File Selection */}
-      <div className="space-y-4">
+      <div className='space-y-4'>
         <div>
-          <h4 className="text-lg font-semibold mb-2">Single File Selection</h4>
-          <p className="text-sm text-gray-600 mb-4">
+          <h4 className='text-lg font-semibold mb-2'>Single File Selection</h4>
+          <p className='text-sm text-gray-600 mb-4'>
             Select or upload a single file. Any file type accepted.
           </p>
         </div>
@@ -182,20 +182,20 @@ function FileSelectExample() {
         <FileSelect
           allowMultiple={false}
           maxFiles={1}
-          entityType="FILE"
+          entityType='FILE'
           onChange={handleSingleFileChange}
           onUploadComplete={handleUploadComplete}
           onError={handleError}
-          placeholder="Select one file"
+          placeholder='Select one file'
         />
 
         {singleFile.length > 0 && (
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-            <h5 className="font-medium text-green-800 mb-2">Selected File:</h5>
-            <div className="bg-white p-3 rounded">
-              <div className="flex items-center gap-3">
-                <span className="font-medium">{singleFile[0].name}</span>
-                <Badge variant="outline">{singleFile[0].source}</Badge>
+          <div className='p-4 bg-green-50 border border-green-200 rounded-lg'>
+            <h5 className='font-medium text-green-800 mb-2'>Selected File:</h5>
+            <div className='bg-white p-3 rounded'>
+              <div className='flex items-center gap-3'>
+                <span className='font-medium'>{singleFile[0].name}</span>
+                <Badge variant='outline'>{singleFile[0].source}</Badge>
                 {singleFile[0].uploadStatus && (
                   <Badge
                     variant={singleFile[0].uploadStatus === 'completed' ? 'default' : 'secondary'}>
@@ -203,7 +203,7 @@ function FileSelectExample() {
                   </Badge>
                 )}
               </div>
-              <p className="text-sm text-gray-500 mt-1">
+              <p className='text-sm text-gray-500 mt-1'>
                 Size: {(singleFile[0].size / 1024).toFixed(1)} KB | Type: {singleFile[0].type}
               </p>
             </div>
@@ -214,10 +214,10 @@ function FileSelectExample() {
       <Separator />
 
       {/* Compact Mode */}
-      <div className="space-y-4">
+      <div className='space-y-4'>
         <div>
-          <h4 className="text-lg font-semibold mb-2">Compact Mode</h4>
-          <p className="text-sm text-gray-600 mb-4">
+          <h4 className='text-lg font-semibold mb-2'>Compact Mode</h4>
+          <p className='text-sm text-gray-600 mb-4'>
             FileSelect in compact mode for use in forms and tight spaces. Upload only (no file
             picker).
           </p>
@@ -228,18 +228,18 @@ function FileSelectExample() {
           maxFiles={3}
           compact={true}
           showFilePicker={false}
-          entityType="FILE"
-          placeholder="Compact file selector"
+          entityType='FILE'
+          placeholder='Compact file selector'
           onChange={handleCompactFilesChange}
           onError={handleError}
         />
 
         {compactFiles.length > 0 && (
-          <div className="p-3 bg-gray-50 border rounded">
-            <h5 className="text-sm font-medium mb-2">Compact Selection ({compactFiles.length}):</h5>
-            <div className="flex flex-wrap gap-2">
+          <div className='p-3 bg-gray-50 border rounded'>
+            <h5 className='text-sm font-medium mb-2'>Compact Selection ({compactFiles.length}):</h5>
+            <div className='flex flex-wrap gap-2'>
               {compactFiles.map((file) => (
-                <Badge key={file.id} variant="outline" className="text-xs">
+                <Badge key={file.id} variant='outline' className='text-xs'>
                   {file.name}
                 </Badge>
               ))}
@@ -251,15 +251,15 @@ function FileSelectExample() {
       <Separator />
 
       {/* FileSelectDialog Demo */}
-      <div className="space-y-4">
+      <div className='space-y-4'>
         <div>
-          <h4 className="text-lg font-semibold mb-2">FileSelectDialog</h4>
-          <p className="text-sm text-gray-600 mb-4">
+          <h4 className='text-lg font-semibold mb-2'>FileSelectDialog</h4>
+          <p className='text-sm text-gray-600 mb-4'>
             Standalone file selection dialog. Click to open the full file browser in a dialog.
           </p>
         </div>
 
-        <div className="flex gap-3">
+        <div className='flex gap-3'>
           <FileSelectDialog
             onFilesSelected={(files) => {
               console.log('Dialog selected files:', files)
@@ -282,8 +282,8 @@ function FileSelectExample() {
             }}
             allowMultiple={true}
             maxSelection={3}
-            title="Select Files from Library"
-            description="Choose up to 3 files from your existing library"
+            title='Select Files from Library'
+            description='Choose up to 3 files from your existing library'
           />
 
           <FileSelectDialog
@@ -308,9 +308,9 @@ function FileSelectExample() {
               }
             }}
             allowMultiple={false}
-            title="Select Single File"
-            description="Choose one file from your library"
-            trigger={<Button variant="secondary">Select Single File</Button>}
+            title='Select Single File'
+            description='Choose one file from your library'
+            trigger={<Button variant='secondary'>Select Single File</Button>}
           />
         </div>
       </div>
@@ -318,22 +318,22 @@ function FileSelectExample() {
       <Separator />
 
       {/* FileSelectPicker Demo */}
-      <div className="space-y-4">
+      <div className='space-y-4'>
         <div>
-          <h4 className="text-lg font-semibold mb-2">FileSelectPicker (Popover)</h4>
-          <p className="text-sm text-gray-600 mb-4">
+          <h4 className='text-lg font-semibold mb-2'>FileSelectPicker (Popover)</h4>
+          <p className='text-sm text-gray-600 mb-4'>
             New popover-based file selection component. Combines upload and existing file selection
             in a compact popover interface.
           </p>
         </div>
 
-        <div className="flex gap-3">
+        <div className='flex gap-3'>
           <FileSelectPicker
             allowMultiple={true}
             maxFiles={3}
             maxFileSize={5 * 1024 * 1024} // 5MB
             fileTypes={['.jpg', '.png', '.pdf']}
-            entityType="article:attachment"
+            entityType='article:attachment'
             onSelect={(files) => {
               console.log('FileSelectPicker selected files:', files)
               setMultipleFiles((prev) => [...prev, ...files])
@@ -341,20 +341,20 @@ function FileSelectExample() {
             onUploadComplete={(files) => {
               console.log('FileSelectPicker upload completed:', files)
             }}>
-            <Button variant="outline">📎 Attach Files</Button>
+            <Button variant='outline'>📎 Attach Files</Button>
           </FileSelectPicker>
 
           <FileSelectPicker
             allowMultiple={false}
             maxFiles={1}
-            entityType="FILE"
+            entityType='FILE'
             onSelect={(files) => {
               console.log('FileSelectPicker single file:', files[0])
               if (files[0]) {
                 setSingleFile([files[0]])
               }
             }}>
-            <Button variant="secondary">📂 Select One File</Button>
+            <Button variant='secondary'>📂 Select One File</Button>
           </FileSelectPicker>
         </div>
       </div>
@@ -386,56 +386,56 @@ function FilesPickerExample() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className='space-y-6'>
       {/* Configuration Panel */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
-        <div className="space-y-3">
-          <h4 className="font-medium text-sm">Selection Options</h4>
-          <div className="space-y-2">
-            <label className="flex items-center space-x-2">
+      <div className='grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg'>
+        <div className='space-y-3'>
+          <h4 className='font-medium text-sm'>Selection Options</h4>
+          <div className='space-y-2'>
+            <label className='flex items-center space-x-2'>
               <input
-                type="checkbox"
+                type='checkbox'
                 checked={allowFiles}
                 onChange={(e) => setAllowFiles(e.target.checked)}
-                className="rounded"
+                className='rounded'
               />
-              <span className="text-sm">Allow Files</span>
+              <span className='text-sm'>Allow Files</span>
             </label>
-            <label className="flex items-center space-x-2">
+            <label className='flex items-center space-x-2'>
               <input
-                type="checkbox"
+                type='checkbox'
                 checked={allowFolders}
                 onChange={(e) => setAllowFolders(e.target.checked)}
-                className="rounded"
+                className='rounded'
               />
-              <span className="text-sm">Allow Folders</span>
+              <span className='text-sm'>Allow Folders</span>
             </label>
-            <label className="flex items-center space-x-2">
+            <label className='flex items-center space-x-2'>
               <input
-                type="checkbox"
+                type='checkbox'
                 checked={allowMultiple}
                 onChange={(e) => setAllowMultiple(e.target.checked)}
-                className="rounded"
+                className='rounded'
               />
-              <span className="text-sm">Allow Multiple</span>
+              <span className='text-sm'>Allow Multiple</span>
             </label>
-            <label className="flex items-center space-x-2">
+            <label className='flex items-center space-x-2'>
               <input
-                type="checkbox"
+                type='checkbox'
                 checked={onlyLeafSelection}
                 onChange={(e) => setOnlyLeafSelection(e.target.checked)}
-                className="rounded"
+                className='rounded'
               />
-              <span className="text-sm">Only Leaf Selection</span>
+              <span className='text-sm'>Only Leaf Selection</span>
             </label>
           </div>
         </div>
 
-        <div className="space-y-3">
-          <h4 className="font-medium text-sm">File Filters</h4>
-          <div className="space-y-2">
-            <div className="text-xs text-gray-600">File Extensions:</div>
-            <div className="flex flex-wrap gap-2">
+        <div className='space-y-3'>
+          <h4 className='font-medium text-sm'>File Filters</h4>
+          <div className='space-y-2'>
+            <div className='text-xs text-gray-600'>File Extensions:</div>
+            <div className='flex flex-wrap gap-2'>
               {['pdf', 'jpg', 'png', 'txt', 'csv', 'json'].map((ext) => (
                 <button
                   key={ext}
@@ -454,10 +454,10 @@ function FilesPickerExample() {
       </div>
 
       {/* File Picker Demo */}
-      <div className="space-y-4">
-        <div className="flex flex-wrap gap-3">
+      <div className='space-y-4'>
+        <div className='flex flex-wrap gap-3'>
           <FilesPicker
-            trigger={<Button variant="outline">Select Files (Popover)</Button>}
+            trigger={<Button variant='outline'>Select Files (Popover)</Button>}
             selectedFiles={selectedFiles}
             selectedFolders={selectedFolders}
             onChange={handleSelectionChange}
@@ -473,7 +473,7 @@ function FilesPickerExample() {
           />
 
           <Button
-            variant="outline"
+            variant='outline'
             onClick={() => {
               setSelectedFiles([])
               setSelectedFolders([])
@@ -483,38 +483,38 @@ function FilesPickerExample() {
         </div>
 
         {/* Selection Display */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h4 className="font-medium text-blue-800 mb-2">
+        <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+          <div className='p-4 bg-blue-50 border border-blue-200 rounded-lg'>
+            <h4 className='font-medium text-blue-800 mb-2'>
               Selected Files ({selectedFiles.length})
             </h4>
             {selectedFiles.length > 0 ? (
-              <div className="space-y-1 max-h-32 overflow-y-auto">
+              <div className='space-y-1 max-h-32 overflow-y-auto'>
                 {selectedFiles.map((fileId) => (
-                  <div key={fileId} className="text-sm text-blue-700 bg-white px-2 py-1 rounded">
+                  <div key={fileId} className='text-sm text-blue-700 bg-white px-2 py-1 rounded'>
                     {fileId}
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-blue-600 italic">No files selected</p>
+              <p className='text-sm text-blue-600 italic'>No files selected</p>
             )}
           </div>
 
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-            <h4 className="font-medium text-green-800 mb-2">
+          <div className='p-4 bg-green-50 border border-green-200 rounded-lg'>
+            <h4 className='font-medium text-green-800 mb-2'>
               Selected Folders ({selectedFolders.length})
             </h4>
             {selectedFolders.length > 0 ? (
-              <div className="space-y-1 max-h-32 overflow-y-auto">
+              <div className='space-y-1 max-h-32 overflow-y-auto'>
                 {selectedFolders.map((folderId) => (
-                  <div key={folderId} className="text-sm text-green-700 bg-white px-2 py-1 rounded">
+                  <div key={folderId} className='text-sm text-green-700 bg-white px-2 py-1 rounded'>
                     {folderId}
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-green-600 italic">No folders selected</p>
+              <p className='text-sm text-green-600 italic'>No folders selected</p>
             )}
           </div>
         </div>
@@ -536,27 +536,27 @@ function DatasetUploadExample({
   onProgress: (progress: BatchUploadResult) => void
 }) {
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
-        <div className="text-center">
-          <div className="text-lg font-semibold text-green-600">Upload</div>
-          <div className="text-sm text-gray-600">Direct transfer to storage</div>
+    <div className='space-y-4'>
+      <div className='grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg'>
+        <div className='text-center'>
+          <div className='text-lg font-semibold text-green-600'>Upload</div>
+          <div className='text-sm text-gray-600'>Direct transfer to storage</div>
         </div>
-        <div className="text-center">
-          <div className="text-lg font-semibold text-blue-600">Processing</div>
-          <div className="text-sm text-gray-600">Data validation & parsing</div>
+        <div className='text-center'>
+          <div className='text-lg font-semibold text-blue-600'>Processing</div>
+          <div className='text-sm text-gray-600'>Data validation & parsing</div>
         </div>
-        <div className="text-center">
-          <div className="text-lg font-semibold text-purple-600">Indexing</div>
-          <div className="text-sm text-gray-600">Search index generation</div>
+        <div className='text-center'>
+          <div className='text-lg font-semibold text-purple-600'>Indexing</div>
+          <div className='text-sm text-gray-600'>Search index generation</div>
         </div>
       </div>
 
       <Separator />
 
       <FileQueueManager
-        entityType="dataset"
-        entityId="cme2h4pbu0000tdvnpr8deyig"
+        entityType='dataset'
+        entityId='cme2h4pbu0000tdvnpr8deyig'
         onComplete={onComplete}
         onError={onError}
         onProgress={onProgress}
@@ -565,12 +565,12 @@ function DatasetUploadExample({
         showProgress={true}
         maxFiles={5}
         emptyState={
-          <div className="text-center py-8">
-            <div className="text-lg font-medium text-gray-700 mb-2">Upload Dataset Files</div>
-            <p className="text-sm text-gray-500 mb-4">
+          <div className='text-center py-8'>
+            <div className='text-lg font-medium text-gray-700 mb-2'>Upload Dataset Files</div>
+            <p className='text-sm text-gray-500 mb-4'>
               Supported formats: CSV, JSON, Excel, PDF, TXT
             </p>
-            <div className="text-xs text-gray-400">
+            <div className='text-xs text-gray-400'>
               Files will be processed through upload → validation → indexing stages
             </div>
           </div>
@@ -646,17 +646,11 @@ export default function FileUploadExamplesPage() {
       description: 'This toast has a custom React component as an action.',
       duration: Infinity,
       actions: (
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="xs"
-            onClick={() => console.log('Custom button 1')}>
+        <div className='flex gap-2'>
+          <Button variant='outline' size='xs' onClick={() => console.log('Custom button 1')}>
             Custom 1
           </Button>
-          <Button
-            variant="secondary"
-            size="xs"
-            onClick={() => console.log('Custom button 2')}>
+          <Button variant='secondary' size='xs' onClick={() => console.log('Custom button 2')}>
             Custom 2
           </Button>
         </div>
@@ -682,24 +676,24 @@ export default function FileUploadExamplesPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6 overflow-y-auto">
+    <div className='container mx-auto py-6 space-y-6 overflow-y-auto'>
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold">File Upload Components</h1>
-          <p className="text-muted-foreground">
+      <div className='flex flex-wrap items-start justify-between gap-4'>
+        <div className='space-y-2'>
+          <h1 className='text-3xl font-bold'>File Upload Components</h1>
+          <p className='text-muted-foreground'>
             Interactive examples showcasing the presigned upload system with direct-to-storage
             transfers, per-file cancellation, and unified hook architecture.
           </p>
         </div>
-        <div className="flex gap-2 flex-row flex-wrap">
-          <Button variant="outline" onClick={handleShowSuccessToast}>
+        <div className='flex gap-2 flex-row flex-wrap'>
+          <Button variant='outline' onClick={handleShowSuccessToast}>
             Show Success Toast
           </Button>
-          <Button variant="outline" onClick={handleShowErrorToast}>
+          <Button variant='outline' onClick={handleShowErrorToast}>
             Show Error Toast
           </Button>
-          <Button variant="outline" onClick={handleShowCustomActionToast}>
+          <Button variant='outline' onClick={handleShowCustomActionToast}>
             Show Custom Action Toast
           </Button>
         </div>
@@ -709,30 +703,30 @@ export default function FileUploadExamplesPage() {
       {uploadResults.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center justify-between">
+            <CardTitle className='flex items-center justify-between'>
               Upload Results
-              <Button variant="outline" size="sm" onClick={clearResults}>
+              <Button variant='outline' size='sm' onClick={clearResults}>
                 Clear Results
               </Button>
             </CardTitle>
             <CardDescription>Summary of completed upload operations</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className='space-y-2'>
               {uploadResults.map((result, index) => (
                 <div
                   key={index}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center gap-3">
+                  className='flex items-center justify-between p-3 bg-gray-50 rounded-lg'>
+                  <div className='flex items-center gap-3'>
                     <Badge variant={result.failedCount > 0 ? 'destructive' : 'default'}>
                       Upload #{index + 1}
                     </Badge>
-                    <span className="text-sm">
+                    <span className='text-sm'>
                       {result.totalFiles} files • {result.successCount} success •{' '}
                       {result.failedCount} failed
                     </span>
                   </div>
-                  <div className="text-sm text-gray-500">{result.overallProgress}% complete</div>
+                  <div className='text-sm text-gray-500'>{result.overallProgress}% complete</div>
                 </div>
               ))}
             </div>
@@ -741,17 +735,17 @@ export default function FileUploadExamplesPage() {
       )}
 
       {/* Examples */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid grid-cols-5 w-full">
-          <TabsTrigger value="basic">Basic</TabsTrigger>
-          <TabsTrigger value="minimal">Minimal</TabsTrigger>
-          <TabsTrigger value="dataset">Dataset</TabsTrigger>
-          <TabsTrigger value="fileselect">FileSelect</TabsTrigger>
-          <TabsTrigger value="picker">File Picker</TabsTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className='space-y-4'>
+        <TabsList className='grid grid-cols-5 w-full'>
+          <TabsTrigger value='basic'>Basic</TabsTrigger>
+          <TabsTrigger value='minimal'>Minimal</TabsTrigger>
+          <TabsTrigger value='dataset'>Dataset</TabsTrigger>
+          <TabsTrigger value='fileselect'>FileSelect</TabsTrigger>
+          <TabsTrigger value='picker'>File Picker</TabsTrigger>
         </TabsList>
 
         {/* Basic Example */}
-        <TabsContent value="basic" className="space-y-4">
+        <TabsContent value='basic' className='space-y-4'>
           <Card>
             <CardHeader>
               <CardTitle>Basic File Upload</CardTitle>
@@ -771,7 +765,7 @@ export default function FileUploadExamplesPage() {
         </TabsContent>
 
         {/* Minimal Example */}
-        <TabsContent value="minimal" className="space-y-4">
+        <TabsContent value='minimal' className='space-y-4'>
           <Card>
             <CardHeader>
               <CardTitle>Minimal Upload Interface</CardTitle>
@@ -786,7 +780,7 @@ export default function FileUploadExamplesPage() {
         </TabsContent>
 
         {/* Dataset Upload Example */}
-        <TabsContent value="dataset" className="space-y-4">
+        <TabsContent value='dataset' className='space-y-4'>
           <Card>
             <CardHeader>
               <CardTitle>Dataset File Upload</CardTitle>
@@ -806,7 +800,7 @@ export default function FileUploadExamplesPage() {
         </TabsContent>
 
         {/* FileSelect Component Example */}
-        <TabsContent value="fileselect" className="space-y-4">
+        <TabsContent value='fileselect' className='space-y-4'>
           <Card>
             <CardHeader>
               <CardTitle>FileSelect Component</CardTitle>
@@ -823,7 +817,7 @@ export default function FileUploadExamplesPage() {
         </TabsContent>
 
         {/* Files Picker Example */}
-        <TabsContent value="picker" className="space-y-4">
+        <TabsContent value='picker' className='space-y-4'>
           <Card>
             <CardHeader>
               <CardTitle>Files Picker Component</CardTitle>

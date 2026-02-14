@@ -1,14 +1,4 @@
 'use client'
-import React from 'react'
-
-// import { ProductNav } from './products/product-nav'
-// import { DataTable } from '../data-table/data-table'
-import { z } from 'zod'
-import { orderSchema } from './schema'
-import { columns } from './orders-columns'
-import { DataTable } from '~/components/data-table/data-table'
-import { SyncShopifyButton } from '~/app/(protected)/app/shopify/_components/sync-button'
-import useOrders from '~/hooks/use-orders'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -16,6 +6,15 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import React from 'react'
+// import { ProductNav } from './products/product-nav'
+// import { DataTable } from '../data-table/data-table'
+import { z } from 'zod'
+import { SyncShopifyButton } from '~/app/(protected)/app/shopify/_components/sync-button'
+import { DataTable } from '~/components/data-table/data-table'
+import useOrders from '~/hooks/use-orders'
+import { columns } from './orders-columns'
+import { orderSchema } from './schema'
 
 type Props = {}
 
@@ -25,18 +24,18 @@ export function OrdersOverview({}: Props) {
 
   return (
     <MainPage>
-      <MainPageHeader action={<SyncShopifyButton type="orders" label="Sync Orders" />}>
+      <MainPageHeader action={<SyncShopifyButton type='orders' label='Sync Orders' />}>
         <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title="Shopify" href="/app/shopify" />
-          <MainPageBreadcrumbItem title="Orders" href="/app/shopify/orders" last />
+          <MainPageBreadcrumbItem title='Shopify' href='/app/shopify' />
+          <MainPageBreadcrumbItem title='Orders' href='/app/shopify/orders' last />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>
         <DataTable
-          id="orders"
+          id='orders'
           data={orders}
           columns={columns}
-          label="orders"
+          label='orders'
           isFetching={isFetching}
           fetchNextPage={fetchNextPage}
           hasNextPage={hasNextPage}>

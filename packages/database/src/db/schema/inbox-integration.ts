@@ -1,17 +1,17 @@
 // packages/database/src/db/schema/inbox-integration.ts
 // Drizzle table: inboxIntegration
 
-import {
-  pgTable,
-  uniqueIndex,
-  index,
-  text,
-  boolean,
-  timestamp,
-  jsonb,
-  type AnyPgColumn,
-} from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import {
+  type AnyPgColumn,
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from './_shared'
 
 import { EntityInstance } from './entity-instance'
 import { Integration } from './integration'
@@ -34,7 +34,10 @@ export const InboxIntegration = pgTable(
     /** References inbox EntityInstance.id */
     inboxId: text()
       .notNull()
-      .references((): AnyPgColumn => EntityInstance.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
+      .references((): AnyPgColumn => EntityInstance.id, {
+        onUpdate: 'cascade',
+        onDelete: 'cascade',
+      }),
     integrationId: text()
       .notNull()
       .references((): AnyPgColumn => Integration.id, { onUpdate: 'cascade', onDelete: 'cascade' }),

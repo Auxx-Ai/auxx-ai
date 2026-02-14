@@ -1,8 +1,8 @@
 // packages/services/src/contacts/customer-groups.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and, asc, ilike, count, inArray } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
+import { and, asc, count, eq, ilike, inArray } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { ContactContext } from './types'
 

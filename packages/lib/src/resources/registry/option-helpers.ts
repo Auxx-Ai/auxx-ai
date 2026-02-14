@@ -1,7 +1,7 @@
 // packages/lib/src/resources/registry/option-helpers.ts
 
-import type { ResourceField } from './field-types'
 import type { FieldOptions } from '../../field-values/converters'
+import type { ResourceField } from './field-types'
 
 /**
  * Single option item type extracted from FieldOptions.
@@ -26,7 +26,10 @@ export function getFieldOptions(field: ResourceField | null | undefined): FieldO
  * @param value - The value to validate
  * @returns True if value is valid or field has no options
  */
-export function isValidOptionValue(field: ResourceField | null | undefined, value: string): boolean {
+export function isValidOptionValue(
+  field: ResourceField | null | undefined,
+  value: string
+): boolean {
   const options = getFieldOptions(field)
   if (options.length === 0) return true
   return options.some((opt) => opt.value === value || opt.label === value)
@@ -49,7 +52,10 @@ export function getOptionLabel(field: ResourceField | null | undefined, value: s
  * @param label - Single label or array of labels
  * @returns Single value or array of values
  */
-export function labelToValue(options: FieldOptionItem[], label: string | string[]): string | string[] {
+export function labelToValue(
+  options: FieldOptionItem[],
+  label: string | string[]
+): string | string[] {
   if (Array.isArray(label)) return label.map((l) => labelToValue(options, l) as string)
   return options.find((opt) => opt.label === label)?.value ?? label
 }

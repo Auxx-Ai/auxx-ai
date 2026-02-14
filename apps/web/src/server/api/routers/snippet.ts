@@ -1,27 +1,37 @@
 // server/api/routers/snippets.ts
-import { z } from 'zod'
-import { TRPCError } from '@trpc/server'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { createScopedLogger } from '@auxx/logger'
+
 import { database, schema } from '@auxx/database'
-import { SnippetSharingType, BuiltInEntityType, ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import {
+  BuiltInEntityType,
+  ResourceGranteeType,
+  ResourcePermission,
+  SnippetSharingType,
+} from '@auxx/database/enums'
+import {
+  getInstanceAccess,
+  getUserAccessibleInstances,
+  setInstanceAccess,
+} from '@auxx/lib/resource-access'
+import { createScopedLogger } from '@auxx/logger'
+import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { TRPCError } from '@trpc/server'
 import {
   and,
-  or,
-  eq,
-  ilike,
-  desc,
   asc,
-  not,
-  isNull,
-  sql,
   count,
-  inArray,
+  desc,
+  eq,
   exists,
+  ilike,
+  inArray,
+  isNull,
+  not,
+  or,
   type SQL,
+  sql,
 } from 'drizzle-orm'
-import { getUserAccessibleInstances, setInstanceAccess, getInstanceAccess } from '@auxx/lib/resource-access'
-import { toRecordId, parseRecordId } from '@auxx/types/resource'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('snippets-router')
 
@@ -90,8 +100,8 @@ export const snippetsRouter = createTRPCRouter({
             )
           } else {
             // Get snippet IDs from ResourceAccess instances
-            const sharedSnippetIds = accessResult.instances.map((a) =>
-              parseRecordId(a.recordId).entityInstanceId
+            const sharedSnippetIds = accessResult.instances.map(
+              (a) => parseRecordId(a.recordId).entityInstanceId
             )
 
             // Include user's own OR org shared OR specifically shared via ResourceAccess
@@ -167,8 +177,8 @@ export const snippetsRouter = createTRPCRouter({
         userId,
         BuiltInEntityType.snippet
       )
-      const sharedSnippetIds = accessResult.instances.map((a) =>
-        parseRecordId(a.recordId).entityInstanceId
+      const sharedSnippetIds = accessResult.instances.map(
+        (a) => parseRecordId(a.recordId).entityInstanceId
       )
 
       const snippet = await ctx.db.query.Snippet.findFirst({
@@ -179,7 +189,11 @@ export const snippetsRouter = createTRPCRouter({
           or(
             eq(schema.Snippet.createdById, userId), // User's own snippets
             eq(schema.Snippet.sharingType, SnippetSharingType.ORGANIZATION), // Org-wide shared snippets
-            accessResult.hasTypeAccess ? sql`true` : (sharedSnippetIds.includes(id) ? sql`true` : sql`false`) // Shared via ResourceAccess
+            accessResult.hasTypeAccess
+              ? sql`true`
+              : sharedSnippetIds.includes(id)
+                ? sql`true`
+                : sql`false` // Shared via ResourceAccess
           )!
         ),
         with: {
@@ -215,7 +229,9 @@ export const snippetsRouter = createTRPCRouter({
         // Check if user has EDIT permission via group membership
         if (!canEdit) {
           const groupShares = shares.filter(
-            (s) => s.granteeType === ResourceGranteeType.group && s.permission === ResourcePermission.edit
+            (s) =>
+              s.granteeType === ResourceGranteeType.group &&
+              s.permission === ResourcePermission.edit
           )
           if (groupShares.length > 0) {
             const userGroupMembership = await ctx.db.query.EntityGroupMember.findFirst({
@@ -369,7 +385,9 @@ export const snippetsRouter = createTRPCRouter({
           // Check group-based permission
           if (!canEdit) {
             const groupShares = shares.filter(
-              (s) => s.granteeType === ResourceGranteeType.group && s.permission === ResourcePermission.edit
+              (s) =>
+                s.granteeType === ResourceGranteeType.group &&
+                s.permission === ResourcePermission.edit
             )
             if (groupShares.length > 0) {
               const userGroupMembership = await ctx.db.query.EntityGroupMember.findFirst({
@@ -568,7 +586,8 @@ export const snippetsRouter = createTRPCRouter({
               ResourceGranteeType.group,
               groupShares.map((s) => ({
                 granteeId: s.granteeId,
-                permission: s.permission === 'EDIT' ? ResourcePermission.edit : ResourcePermission.view,
+                permission:
+                  s.permission === 'EDIT' ? ResourcePermission.edit : ResourcePermission.view,
               }))
             )
 
@@ -579,7 +598,8 @@ export const snippetsRouter = createTRPCRouter({
               ResourceGranteeType.user,
               userShares.map((s) => ({
                 granteeId: s.granteeId,
-                permission: s.permission === 'EDIT' ? ResourcePermission.edit : ResourcePermission.view,
+                permission:
+                  s.permission === 'EDIT' ? ResourcePermission.edit : ResourcePermission.view,
               }))
             )
           } else if (sharingType !== SnippetSharingType.GROUPS) {

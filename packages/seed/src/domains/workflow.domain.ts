@@ -48,7 +48,7 @@ export class WorkflowDomain {
       'After Hours Auto Response',
       'Billing Inquiry Auto-Reply',
       'Product Question Router',
-      'Complaint Escalation Rule'
+      'Complaint Escalation Rule',
     ]
     const names: string[] = []
     const count = this.calculateAutoResponseRuleCount()
@@ -70,7 +70,7 @@ export class WorkflowDomain {
       'Send auto-reply during non-business hours',
       'Provide billing information and escalate if needed',
       'Route product questions to appropriate department',
-      'Escalate complaints to management team'
+      'Escalate complaints to management team',
     ]
     const result: string[] = []
     const count = this.calculateAutoResponseRuleCount()

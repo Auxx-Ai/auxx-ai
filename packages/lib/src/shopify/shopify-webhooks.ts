@@ -1,13 +1,13 @@
+import { env } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import type { ShopifyIntegrationEntity } from '@auxx/database/models'
-// import { extractShopifyId } from '.'
-import { WEBHOOK_FORMAT, WEBHOOK_TOPIC, webhookSchema } from './shopify-types'
-import { UserSettingsService } from '../settings'
-import { env } from '@auxx/config/server'
 import { createScopedLogger } from '@auxx/logger'
 import { createAdminApiClient } from '@shopify/admin-api-client'
+import { and, eq } from 'drizzle-orm'
+import { UserSettingsService } from '../settings'
+// import { extractShopifyId } from '.'
+import { WEBHOOK_FORMAT, WEBHOOK_TOPIC, type webhookSchema } from './shopify-types'
 import { extractShopifyId } from './utils'
-import { eq, and } from 'drizzle-orm'
 
 const WEBHOOK_PROVIDER = 'shopify'
 const logger = createScopedLogger('webhooks/setup')

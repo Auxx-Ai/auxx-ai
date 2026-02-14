@@ -4,8 +4,8 @@
 
 import { memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
-import { NodeTargetHandle, NodeSourceHandle } from '../../../ui/node-handle'
-import { type DateTimeNode as DateTimeNodeType } from './types'
+import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'
+import type { DateTimeNode as DateTimeNodeType } from './types'
 
 /**
  * Date Time node visual component
@@ -32,19 +32,19 @@ export const DateTimeNode = memo<DateTimeNodeType>(({ id, data, selected }) => {
   }
 
   return (
-    <BaseNode id={id} data={data} selected={selected} width={244} height="auto">
-      <NodeTargetHandle id={id} data={{ ...data, selected }} handleId="target" />
-      <div className="px-3 pb-2">
-        <div className="h-6 relative flex items-center justify-between rounded-md bg-muted">
-          <div className="text-xs text-muted-foreground px-2">{getOperationDescription()}</div>
+    <BaseNode id={id} data={data} selected={selected} width={244} height='auto'>
+      <NodeTargetHandle id={id} data={{ ...data, selected }} handleId='target' />
+      <div className='px-3 pb-2'>
+        <div className='h-6 relative flex items-center justify-between rounded-md bg-muted'>
+          <div className='text-xs text-muted-foreground px-2'>{getOperationDescription()}</div>
         </div>
       </div>
 
       <NodeSourceHandle
         id={id}
         data={{ ...data, selected }}
-        handleClassName="!bottom-5"
-        handleId="source"
+        handleClassName='!bottom-5'
+        handleId='source'
       />
     </BaseNode>
   )

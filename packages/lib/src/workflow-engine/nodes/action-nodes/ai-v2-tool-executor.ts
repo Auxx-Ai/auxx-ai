@@ -1,11 +1,11 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/ai-v2-tool-executor.ts
 
-import type { ToolExecutor, ToolExecutionResult } from '../../../ai/orchestrator/types'
 import type { ToolCall } from '../../../ai/clients/base/types'
-import type { Workflow } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
-import { ToolExecutionManager } from '../../core/tool-execution-manager'
+import type { ToolExecutionResult, ToolExecutor } from '../../../ai/orchestrator/types'
 import { createScopedLogger } from '../../../logger'
+import type { ExecutionContextManager } from '../../core/execution-context'
+import type { ToolExecutionManager } from '../../core/tool-execution-manager'
+import type { Workflow } from '../../core/types'
 
 /**
  * Tool executor for AI-v2 node that integrates with the workflow engine's tool system
@@ -24,14 +24,14 @@ export class AIV2ToolExecutor implements ToolExecutor {
     this.logger.debug('Executing tools for AI-v2 node', {
       nodeId: this.nodeId,
       toolCount: toolCalls.length,
-      toolNames: toolCalls.map(t => t.function.name),
+      toolNames: toolCalls.map((t) => t.function.name),
     })
 
     const results: ToolExecutionResult[] = []
 
     for (const toolCall of toolCalls) {
       const startTime = Date.now()
-      
+
       try {
         this.contextManager.log('DEBUG', this.nodeId, 'Executing tool', {
           toolCallId: toolCall.id,
@@ -80,7 +80,6 @@ export class AIV2ToolExecutor implements ToolExecutor {
             workflowId: this.workflow.id,
           },
         })
-
       } catch (error) {
         const executionTime = Date.now() - startTime
         const errorMessage = error instanceof Error ? error.message : String(error)
@@ -117,8 +116,8 @@ export class AIV2ToolExecutor implements ToolExecutor {
     this.logger.info('Tool execution batch completed', {
       nodeId: this.nodeId,
       totalTools: toolCalls.length,
-      successfulTools: results.filter(r => r.success).length,
-      failedTools: results.filter(r => !r.success).length,
+      successfulTools: results.filter((r) => r.success).length,
+      failedTools: results.filter((r) => !r.success).length,
     })
 
     return results

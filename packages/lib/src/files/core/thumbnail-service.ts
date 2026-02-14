@@ -1,20 +1,20 @@
 // packages/lib/src/files/core/thumbnail-service.ts
 
-import { createHash } from 'crypto'
-import { database as db, schema, type Database } from '@auxx/database'
-import { eq, and, or, isNull, isNotNull, lt, inArray, desc, asc, sql, count } from 'drizzle-orm'
+import { type Database, database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
-import { createScopedLogger } from '../../logger'
-import { StorageManager, createStorageManager } from '../storage/storage-manager'
+import { createHash } from 'crypto'
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import { getQueue, Queues } from '../../jobs/queues'
+import { createScopedLogger } from '../../logger'
+import { createStorageManager, type StorageManager } from '../storage/storage-manager'
 import type {
-  ThumbnailSource,
+  GenerateThumbnailPayload,
+  PresetKey,
+  ThumbnailMetadata,
   ThumbnailOptions,
   ThumbnailResult,
-  PresetKey,
-  GenerateThumbnailPayload,
   ThumbnailSet,
-  ThumbnailMetadata,
+  ThumbnailSource,
 } from './thumbnail-types'
 import { THUMBNAIL_PRESETS } from './thumbnail-types'
 
@@ -500,15 +500,11 @@ export class ThumbnailService {
       // Thumbnails use THUMBNAIL entity type, source asset ID as entityId
       const { deriveStorageKey } = await import('../upload/util')
       const format = THUMBNAIL_PRESETS[params.preset as PresetKey].format
-      const storageKey = deriveStorageKey(
-        this.organizationId,
-        `${params.preset}.${format}`,
-        {
-          entityType: 'THUMBNAIL',
-          entityId: sourceVersion.asset.id, // Use source asset ID for grouping
-          keySeed: params.preset, // Include preset in filename
-        }
-      )
+      const storageKey = deriveStorageKey(this.organizationId, `${params.preset}.${format}`, {
+        entityType: 'THUMBNAIL',
+        entityId: sourceVersion.asset.id, // Use source asset ID for grouping
+        keySeed: params.preset, // Include preset in filename
+      })
       // Result: org123/thumbnail/asset456/1704124800000_avatar-64_avatar-64.webp
 
       const storageLocation = await this.storageManager.uploadContent({

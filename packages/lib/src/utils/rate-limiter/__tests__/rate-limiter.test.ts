@@ -1,13 +1,13 @@
 // packages/lib/src/utils/rate-limiter/__tests__/rate-limiter.test.ts
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { TokenBucket } from '../token-bucket'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ExponentialBackoff } from '../backoff-handler'
 import { CircuitBreaker } from '../circuit-breaker'
-import { PriorityQueue } from '../priority-queue'
-import { UniversalThrottler } from '../universal-throttler'
 import { MetricsCollector } from '../metrics-collector'
-import { RateLimitError, CircuitBreakerError } from '../types'
+import { PriorityQueue } from '../priority-queue'
+import { TokenBucket } from '../token-bucket'
+import { CircuitBreakerError, RateLimitError } from '../types'
+import { UniversalThrottler } from '../universal-throttler'
 
 describe('TokenBucket', () => {
   it('should initialize with full capacity', () => {
@@ -18,7 +18,7 @@ describe('TokenBucket', () => {
   it('should consume tokens when acquiring', () => {
     const bucket = new TokenBucket(10, 0.1)
     const acquired = bucket.tryAcquire(5)
-    
+
     expect(acquired).toBe(true)
     expect(bucket.getAvailableTokens()).toBe(5)
   })
@@ -26,7 +26,7 @@ describe('TokenBucket', () => {
   it('should reject when not enough tokens', () => {
     const bucket = new TokenBucket(5, 0.1)
     const acquired = bucket.tryAcquire(10)
-    
+
     expect(acquired).toBe(false)
     expect(bucket.getAvailableTokens()).toBe(5)
   })
@@ -34,9 +34,9 @@ describe('TokenBucket', () => {
   it('should refill tokens over time', async () => {
     const bucket = new TokenBucket(10, 1) // 1 token per ms
     bucket.tryAcquire(10) // Empty the bucket
-    
-    await new Promise(resolve => setTimeout(resolve, 5))
-    
+
+    await new Promise((resolve) => setTimeout(resolve, 5))
+
     const available = bucket.getAvailableTokens()
     expect(available).toBeGreaterThan(0)
     expect(available).toBeLessThanOrEqual(10)
@@ -44,16 +44,16 @@ describe('TokenBucket', () => {
 
   it('should not exceed capacity when refilling', async () => {
     const bucket = new TokenBucket(10, 10) // Fast refill rate
-    
-    await new Promise(resolve => setTimeout(resolve, 100))
-    
+
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
     expect(bucket.getAvailableTokens()).toBe(10)
   })
 
   it('should calculate wait time correctly', () => {
     const bucket = new TokenBucket(10, 0.1) // 0.1 token/ms
     bucket.tryAcquire(10) // Empty the bucket
-    
+
     const waitTime = bucket.getWaitTime(5) // Need 5 tokens
     expect(waitTime).toBe(50) // 5 tokens / 0.1 token per ms = 50ms
   })
@@ -61,7 +61,7 @@ describe('TokenBucket', () => {
   it('should reset to full capacity', () => {
     const bucket = new TokenBucket(10, 0.1)
     bucket.tryAcquire(5)
-    
+
     bucket.reset()
     expect(bucket.getAvailableTokens()).toBe(10)
   })
@@ -95,10 +95,10 @@ describe('ExponentialBackoff', () => {
     })
 
     const promise = backoff.executeWithRetry(fn)
-    
+
     // Wait for retries to complete
     await vi.runAllTimersAsync()
-    
+
     const result = await promise
     expect(result).toBe('success')
     expect(fn).toHaveBeenCalledTimes(3)
@@ -134,9 +134,9 @@ describe('ExponentialBackoff', () => {
     })
 
     const promise = backoff.executeWithRetry(fn)
-    
+
     await vi.runAllTimersAsync()
-    
+
     await expect(promise).rejects.toThrow(/Max retries \(2\) exceeded/)
     expect(fn).toHaveBeenCalledTimes(3) // Initial + 2 retries
   })
@@ -162,7 +162,7 @@ describe('ExponentialBackoff', () => {
 
     const promise = backoff.executeWithRetry(fn)
     await vi.runAllTimersAsync()
-    
+
     const result = await promise
     expect(result).toBe('success')
     expect(fn).toHaveBeenCalledTimes(2)
@@ -235,7 +235,7 @@ describe('CircuitBreaker', () => {
     // Should be half-open now
     const successFn = vi.fn(async () => 'success')
     const result = await breaker.execute(successFn)
-    
+
     expect(result).toBe('success')
     expect(breaker.getState()).toBe('half-open')
   })
@@ -249,9 +249,11 @@ describe('CircuitBreaker', () => {
 
     // Open the breaker
     for (let i = 0; i < 2; i++) {
-      await expect(breaker.execute(async () => {
-        throw new Error('failure')
-      })).rejects.toThrow()
+      await expect(
+        breaker.execute(async () => {
+          throw new Error('failure')
+        })
+      ).rejects.toThrow()
     }
 
     // Wait and enter half-open
@@ -273,9 +275,11 @@ describe('CircuitBreaker', () => {
     })
 
     await breaker.execute(async () => 'success')
-    await expect(breaker.execute(async () => {
-      throw new Error('failure')
-    })).rejects.toThrow()
+    await expect(
+      breaker.execute(async () => {
+        throw new Error('failure')
+      })
+    ).rejects.toThrow()
 
     const stats = breaker.getStats()
     expect(stats.failures).toBe(1)
@@ -526,7 +530,7 @@ describe('MetricsCollector', () => {
 
     collector.recordSuccess('test', 100)
     collector.recordFailure('test', new Error('failed'))
-    
+
     collector.reset()
 
     const metrics = collector.getMetrics('test')
@@ -574,13 +578,7 @@ describe('UniversalThrottler', () => {
 
     // Fire off 3 requests quickly
     for (let i = 0; i < 3; i++) {
-      results.push(
-        throttler.execute(
-          'test',
-          async () => i,
-          { queue: true, priority: i }
-        )
-      )
+      results.push(throttler.execute('test', async () => i, { queue: true, priority: i }))
     }
 
     // Process queue
@@ -609,9 +607,9 @@ describe('UniversalThrottler', () => {
     await throttler.execute('test', async () => 'first')
 
     // Second request should fail
-    await expect(
-      throttler.execute('test', async () => 'second', { queue: false })
-    ).rejects.toThrow(RateLimitError)
+    await expect(throttler.execute('test', async () => 'second', { queue: false })).rejects.toThrow(
+      RateLimitError
+    )
   }, 5000)
 
   it('should support request coalescing', async () => {
@@ -691,7 +689,7 @@ describe('UniversalThrottler', () => {
     await throttler.init()
 
     await throttler.execute('test', async () => 'success')
-    
+
     await throttler.reset()
 
     const metrics = throttler.getMetrics('test')
@@ -711,12 +709,12 @@ describe('UniversalThrottler', () => {
     })
 
     const promise = throttler.execute('test', fn, { timeout: 100 })
-    
+
     // Wait for timeout
     await vi.advanceTimersByTimeAsync(150)
-    
+
     await expect(promise).rejects.toThrow('Operation timed out')
-    
+
     // Clean up
     if (resolveFn) resolveFn('cleanup')
   }, 5000)
@@ -739,7 +737,7 @@ describe('Integration Tests', () => {
         throttler.execute(
           'test',
           async () => {
-            await new Promise(resolve => setTimeout(resolve, 10))
+            await new Promise((resolve) => setTimeout(resolve, 10))
             return i
           },
           { queue: true }
@@ -767,18 +765,20 @@ describe('Integration Tests', () => {
     const promises = []
     for (let i = 0; i < 10; i++) {
       promises.push(
-        throttler.execute('test', async () => {
-          if (i % 3 === 0) {
-            throw new Error('random failure')
-          }
-          return i
-        }).catch(err => ({ error: err.message }))
+        throttler
+          .execute('test', async () => {
+            if (i % 3 === 0) {
+              throw new Error('random failure')
+            }
+            return i
+          })
+          .catch((err) => ({ error: err.message }))
       )
     }
 
     const results = await Promise.all(promises)
-    const successes = results.filter(r => typeof r === 'number').length
-    const failures = results.filter(r => r && typeof r === 'object' && 'error' in r).length
+    const successes = results.filter((r) => typeof r === 'number').length
+    const failures = results.filter((r) => r && typeof r === 'object' && 'error' in r).length
 
     expect(successes).toBeGreaterThan(0)
     expect(failures).toBeGreaterThan(0)

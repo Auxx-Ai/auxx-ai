@@ -103,19 +103,19 @@ export const formatEmail = (email: string | null): string | null => {
  * @returns Normalized email address
  */
 export function normalizeEmail(email: string): string {
-  const lower = email.toLowerCase().trim();
-  
+  const lower = email.toLowerCase().trim()
+
   // For Gmail addresses, dots don't matter and + aliases should match
   if (lower.includes('@gmail.com') || lower.includes('@googlemail.com')) {
-    const [localPart, domain] = lower.split('@');
-    if (!localPart) return lower;
+    const [localPart, domain] = lower.split('@')
+    if (!localPart) return lower
     // Remove plus addressing and dots from local part
-    const baseLocal = localPart.split('+')[0] ?? localPart;
-    return `${baseLocal.replace(/\./g, '')}@${domain}`;
+    const baseLocal = localPart.split('+')[0] ?? localPart
+    return `${baseLocal.replace(/\./g, '')}@${domain}`
   }
-  
+
   // For other email providers, just lowercase and trim
-  return lower;
+  return lower
 }
 
 /**
@@ -126,11 +126,11 @@ export function normalizeEmail(email: string): string {
  */
 export function isUserEmail(email: string, userEmails: string[]): boolean {
   if (!email || !userEmails || userEmails.length === 0) {
-    return false;
+    return false
   }
-  
-  const normalizedEmail = normalizeEmail(email);
-  return userEmails.some(userEmail => normalizeEmail(userEmail) === normalizedEmail);
+
+  const normalizedEmail = normalizeEmail(email)
+  return userEmails.some((userEmail) => normalizeEmail(userEmail) === normalizedEmail)
 }
 
 /**
@@ -139,21 +139,21 @@ export function isUserEmail(email: string, userEmails: string[]): boolean {
  * @returns Extracted name or undefined
  */
 export function extractNameFromHeader(headerValue: string): string | undefined {
-  if (!headerValue) return undefined;
-  
+  if (!headerValue) return undefined
+
   // Extract name from "Name <email>" format
-  const match = headerValue.match(/^([^<]+)</);
+  const match = headerValue.match(/^([^<]+)</)
   if (match && match[1]) {
-    return match[1].trim();
+    return match[1].trim()
   }
-  
+
   // If no angle brackets, it might be just an email
   if (headerValue.includes('@')) {
-    return undefined;
+    return undefined
   }
-  
+
   // Otherwise, the whole string might be a name
-  return headerValue.trim();
+  return headerValue.trim()
 }
 
 /**
@@ -162,10 +162,10 @@ export function extractNameFromHeader(headerValue: string): string | undefined {
  * @returns True if valid email format
  */
 export function isValidEmail(email: string): boolean {
-  if (!email) return false;
-  
-  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-  return emailRegex.test(email.trim());
+  if (!email) return false
+
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+  return emailRegex.test(email.trim())
 }
 
 /**
@@ -175,8 +175,8 @@ export function isValidEmail(email: string): boolean {
  * @returns True if emails are equivalent
  */
 export function emailsAreEquivalent(email1: string, email2: string): boolean {
-  if (!email1 || !email2) return false;
-  return normalizeEmail(email1) === normalizeEmail(email2);
+  if (!email1 || !email2) return false
+  return normalizeEmail(email1) === normalizeEmail(email2)
 }
 
 /**
@@ -185,7 +185,7 @@ export function emailsAreEquivalent(email1: string, email2: string): boolean {
  */
 export function normalizeMessageId(messageId: string | undefined): string | undefined {
   if (!messageId) return undefined
-  
+
   // Ensure angle brackets for Message-ID
   if (!messageId.startsWith('<')) {
     messageId = '<' + messageId
@@ -193,7 +193,7 @@ export function normalizeMessageId(messageId: string | undefined): string | unde
   if (!messageId.endsWith('>')) {
     messageId = messageId + '>'
   }
-  
+
   return messageId
 }
 
@@ -230,12 +230,12 @@ export function formatEmailList(emails: string[]): string {
  */
 export function encodeEmailHeader(text: string): string {
   if (!text) return ''
-  
+
   // Check if encoding is needed
   if (!/[^\x20-\x7E]/.test(text)) {
     return text
   }
-  
+
   // RFC 2047 base64 encoding for non-ASCII
   return `=?UTF-8?B?${Buffer.from(text, 'utf8').toString('base64')}?=`
 }
@@ -245,21 +245,19 @@ export function encodeEmailHeader(text: string): string {
  * Pure utility that validates from against allowlist
  */
 export function validateSendAsAddress(
-  from: string, 
+  from: string,
   authorizedAddresses: string[]
 ): { valid: boolean; fallback?: string } {
   if (!from || !authorizedAddresses || authorizedAddresses.length === 0) {
     return { valid: false, fallback: authorizedAddresses?.[0] }
   }
-  
+
   const normalizedFrom = normalizeEmail(from)
-  const isValid = authorizedAddresses.some(addr => 
-    normalizeEmail(addr) === normalizedFrom
-  )
-  
+  const isValid = authorizedAddresses.some((addr) => normalizeEmail(addr) === normalizedFrom)
+
   return {
     valid: isValid,
-    fallback: isValid ? undefined : authorizedAddresses[0]
+    fallback: isValid ? undefined : authorizedAddresses[0],
   }
 }
 
@@ -269,11 +267,9 @@ export function validateSendAsAddress(
  */
 export function sanitizeHeaderValue(value: string): string {
   if (!value) return ''
-  
+
   // Remove any control characters including CR, LF, and null bytes
-  return value
-    .replace(/[\r\n\0]/g, '')
-    .trim()
+  return value.replace(/[\r\n\0]/g, '').trim()
 }
 
 /**
@@ -287,33 +283,33 @@ export function buildThreadingHeaders(options: {
 }): {
   'Message-ID'?: string
   'In-Reply-To'?: string
-  'References'?: string
+  References?: string
 } {
   const headers: {
     'Message-ID'?: string
     'In-Reply-To'?: string
-    'References'?: string
+    References?: string
   } = {}
-  
+
   if (options.messageId) {
     headers['Message-ID'] = normalizeMessageId(options.messageId)
   }
-  
+
   if (options.inReplyTo) {
     headers['In-Reply-To'] = normalizeMessageId(options.inReplyTo)
   }
-  
+
   if (options.references) {
-    const refs = Array.isArray(options.references) 
-      ? options.references 
+    const refs = Array.isArray(options.references)
+      ? options.references
       : options.references.split(/\s+/)
-    
+
     headers['References'] = refs
-      .map(ref => normalizeMessageId(ref))
+      .map((ref) => normalizeMessageId(ref))
       .filter(Boolean)
       .join(' ')
   }
-  
+
   return headers
 }
 
@@ -321,16 +317,12 @@ export function buildThreadingHeaders(options: {
  * Convert email list to Graph API recipient format
  * Maps string[] to Outlook Graph recipient objects
  */
-export function toGraphRecipients(
-  emails: string[]
-): Array<{ emailAddress: { address: string } }> {
+export function toGraphRecipients(emails: string[]): Array<{ emailAddress: { address: string } }> {
   if (!emails || emails.length === 0) return []
-  
-  return emails
-    .filter(Boolean)
-    .map(email => ({
-      emailAddress: { address: email.trim() }
-    }))
+
+  return emails.filter(Boolean).map((email) => ({
+    emailAddress: { address: email.trim() },
+  }))
 }
 
 /**
@@ -346,17 +338,17 @@ export function buildGraphFileAttachment(attachment: {
   const base64Content = Buffer.isBuffer(attachment.content)
     ? attachment.content.toString('base64')
     : Buffer.from(attachment.content).toString('base64')
-  
+
   const fileAttachment: Record<string, any> = {
     '@odata.type': '#microsoft.graph.fileAttachment',
     name: attachment.filename,
-    contentBytes: base64Content
+    contentBytes: base64Content,
   }
-  
+
   if (attachment.isInline && attachment.contentId) {
     fileAttachment.contentId = attachment.contentId
     fileAttachment.isInline = true
   }
-  
+
   return fileAttachment
 }

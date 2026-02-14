@@ -2,14 +2,14 @@
 
 'use client'
 
-import { useMemo, useCallback } from 'react'
-import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { useResourceFields } from '~/components/resources'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { createNodeInput, type NodeInputProps } from './base-node-input'
-import { toRecordIds, getInstanceId, type RecordId } from '@auxx/lib/field-values/client'
+import { getInstanceId, type RecordId, toRecordIds } from '@auxx/lib/field-values/client'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
-import { parseResourceFieldId, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { useCallback, useMemo } from 'react'
+import { useResourceFields } from '~/components/resources'
+import { MultiRelationInput } from '~/components/shared/multi-relation-input'
+import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 interface RelationInputProps extends NodeInputProps {
   /** Field name */
@@ -30,7 +30,9 @@ export const RelationInput = createNodeInput<RelationInputProps>(
     const [resourceType, fieldKey] = useMemo(() => {
       if (!fieldReference) return [null, null]
       if (!isResourceFieldId(fieldReference)) return [null, null] // Direct resource
-      const { entityDefinitionId, fieldId } = parseResourceFieldId(fieldReference as ResourceFieldId)
+      const { entityDefinitionId, fieldId } = parseResourceFieldId(
+        fieldReference as ResourceFieldId
+      )
       return [entityDefinitionId, fieldId]
     }, [fieldReference])
 
@@ -89,13 +91,13 @@ export const RelationInput = createNodeInput<RelationInputProps>(
 
     // Loading state while resolving fields
     if (resourceType && isLoadingFields) {
-      return <Skeleton className="h-8 w-full" />
+      return <Skeleton className='h-8 w-full' />
     }
 
     // Error state - missing or invalid fieldReference
     if (!targetResourceId) {
       return (
-        <div className="text-sm text-destructive flex items-center h-8">
+        <div className='text-sm text-destructive flex items-center h-8'>
           {fieldReference ? `Invalid relationship: ${fieldReference}` : 'Missing field reference'}
         </div>
       )

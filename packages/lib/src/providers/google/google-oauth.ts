@@ -1,11 +1,12 @@
 // src/lib/email/providers/google-oauth.ts
-import { google } from 'googleapis'
+
 import { env, WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
-import { eq, and, desc } from 'drizzle-orm'
-import { Common } from 'googleapis'
 import { InboxService } from '@auxx/lib/inboxes'
+import { createScopedLogger } from '@auxx/logger'
+import { and, desc, eq } from 'drizzle-orm'
+import { type Common, google } from 'googleapis'
+
 type GaxiosError = Common.GaxiosError
 
 const logger = createScopedLogger('google-oauth')

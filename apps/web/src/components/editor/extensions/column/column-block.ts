@@ -1,12 +1,12 @@
-import { Node, mergeAttributes } from '@tiptap/core'
 import type { CommandProps } from '@tiptap/core'
-import type { Node as ProseMirrorNode, NodeType } from 'prosemirror-model'
+import { mergeAttributes, Node } from '@tiptap/core'
+import type { NodeType, Node as ProseMirrorNode } from 'prosemirror-model'
 import { NodeSelection } from 'prosemirror-state'
 
 import { Column } from './column'
 import { ColumnSelection } from './column-selection'
-import { buildColumn, buildNColumns, buildColumnBlock, findParentNodeClosestToPos } from './utils'
 import type { Predicate } from './utils'
+import { buildColumn, buildColumnBlock, buildNColumns, findParentNodeClosestToPos } from './utils'
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {

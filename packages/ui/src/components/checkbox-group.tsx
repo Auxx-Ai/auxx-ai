@@ -1,11 +1,11 @@
 // packages/ui/src/components/checkbox-group.tsx
 'use client'
 
-import * as React from 'react'
-import { Checkbox as CheckboxPrimitive } from 'radix-ui'
-import { Check } from 'lucide-react'
 import { Label } from '@auxx/ui/components/label'
 import { cn } from '@auxx/ui/lib/utils'
+import { Check } from 'lucide-react'
+import { Checkbox as CheckboxPrimitive } from 'radix-ui'
+import * as React from 'react'
 
 /** Context value for CheckboxGroup state management */
 interface CheckboxGroupContextValue {
@@ -79,7 +79,7 @@ function CheckboxGroup({
 
   return (
     <CheckboxGroupContext.Provider value={{ value, onValueChange: handleValueChange, disabled }}>
-      <div className={cn('grid gap-3', className)} role="group">
+      <div className={cn('grid gap-3', className)} role='group'>
         {children}
       </div>
     </CheckboxGroupContext.Provider>
@@ -126,32 +126,32 @@ function CheckboxGroupItem({
         onCheckedChange={handleCheckedChange}
         disabled={disabled}
         aria-describedby={description ? descriptionId : undefined}
-        className="order-1 after:absolute after:inset-0 size-5 shrink-0 rounded-sm border border-primary-300 shadow-sm focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-info data-[state=checked]:text-primary-foreground data-[state=checked]:dark:text-white data-[state=checked]:border-blue-800 transition-colors">
-        <CheckboxPrimitive.Indicator className="flex items-center justify-center text-current">
-          <Check className="size-3.5" />
+        className='order-1 after:absolute after:inset-0 size-5 shrink-0 rounded-sm border border-primary-300 shadow-sm focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-info data-[state=checked]:text-primary-foreground data-[state=checked]:dark:text-white data-[state=checked]:border-blue-800 transition-colors'>
+        <CheckboxPrimitive.Indicator className='flex items-center justify-center text-current'>
+          <Check className='size-3.5' />
         </CheckboxPrimitive.Indicator>
       </CheckboxPrimitive.Root>
 
       {/* Content on the left */}
-      <div className="flex grow items-start gap-3">
-        <div className="flex items-center gap-3">
+      <div className='flex grow items-start gap-3'>
+        <div className='flex items-center gap-3'>
           {icon && (
-            <div className="size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors overflow-hidden shrink-0">
-              <div className="flex-shrink-0 [&_svg]:size-4">{icon}</div>
+            <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors overflow-hidden shrink-0'>
+              <div className='flex-shrink-0 [&_svg]:size-4'>{icon}</div>
             </div>
           )}
-          <div className="grid grow gap-0.5">
-            <Label htmlFor={itemId} className="font-normal">
+          <div className='grid grow gap-0.5'>
+            <Label htmlFor={itemId} className='font-normal'>
               {label}
               {sublabel && (
-                <span className="text-muted-foreground text-xs leading-[inherit] font-normal">
+                <span className='text-muted-foreground text-xs leading-[inherit] font-normal'>
                   {' '}
                   ({sublabel})
                 </span>
               )}
             </Label>
             {description && (
-              <p id={descriptionId} className="text-muted-foreground text-xs">
+              <p id={descriptionId} className='text-muted-foreground text-xs'>
                 {description}
               </p>
             )}

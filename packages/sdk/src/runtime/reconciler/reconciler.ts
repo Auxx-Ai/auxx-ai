@@ -27,7 +27,7 @@
  */
 
 import ReactReconciler from 'react-reconciler'
-import { makeHostConfig, type Container } from './host-config.js'
+import { type Container, makeHostConfig } from './host-config.js'
 import { sanitize } from './sanitizer.js'
 import type { RenderOptions } from './types.js'
 
@@ -252,4 +252,4 @@ export async function render({
  *
  * Allows consumers to import types from this file instead of navigating to types.ts.
  */
-export type { SanitizedInstance, ReconcilerConfig, RenderOptions } from './types.js'
+export type { ReconcilerConfig, RenderOptions, SanitizedInstance } from './types.js'

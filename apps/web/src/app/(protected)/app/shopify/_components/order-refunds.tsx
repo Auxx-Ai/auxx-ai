@@ -1,10 +1,8 @@
-import React from 'react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@auxx/ui/components/card'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { format } from 'date-fns'
-import { AlertCircle, ArrowLeft, Receipt } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -13,9 +11,11 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import { Separator } from '@auxx/ui/components/separator'
-import { formatMoney } from '~/utils/strings'
+import { format } from 'date-fns'
+import { AlertCircle, ArrowLeft, Receipt } from 'lucide-react'
+import React from 'react'
 import { useOrder } from '~/components/orders/order-context'
+import { formatMoney } from '~/utils/strings'
 
 // Helper function to format dates
 function formatDate(date: Date | null | undefined) {
@@ -70,14 +70,14 @@ export default function OrderRefunds({ order: orderProp }: { order?: any } = {})
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col items-center justify-center space-y-3 py-6">
-            <Receipt className="h-12 w-12 text-muted-foreground" />
-            <p className="max-w-md text-center text-muted-foreground">
+          <div className='flex flex-col items-center justify-center space-y-3 py-6'>
+            <Receipt className='h-12 w-12 text-muted-foreground' />
+            <p className='max-w-md text-center text-muted-foreground'>
               This order has not had any refunds or returns processed. You can initiate a refund or
               return process when needed.
             </p>
-            <div className="flex gap-2">
-              <Button variant="outline">Create Return</Button>
+            <div className='flex gap-2'>
+              <Button variant='outline'>Create Return</Button>
               <Button>Create Refund</Button>
             </div>
           </div>
@@ -87,7 +87,7 @@ export default function OrderRefunds({ order: orderProp }: { order?: any } = {})
   }
 
   return (
-    <div className="space-y-6">
+    <div className='space-y-6'>
       {/* Refunds section */}
       {hasRefunds && (
         <Card>
@@ -111,7 +111,7 @@ export default function OrderRefunds({ order: orderProp }: { order?: any } = {})
                     <TableCell>{formatMoney(refund.totalRefundedAmount)}</TableCell>
                     <TableCell>{refund.currencyCode}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm">
+                      <Button variant='ghost' size='sm'>
                         View Details
                       </Button>
                     </TableCell>
@@ -121,9 +121,9 @@ export default function OrderRefunds({ order: orderProp }: { order?: any } = {})
             </Table>
 
             {/* Refund summary */}
-            <div className="mt-4 flex justify-between border-t pt-4">
-              <span className="font-medium">Total Refunded</span>
-              <span className="font-medium">{formatMoney(order.totalRefunded)}</span>
+            <div className='mt-4 flex justify-between border-t pt-4'>
+              <span className='font-medium'>Total Refunded</span>
+              <span className='font-medium'>{formatMoney(order.totalRefunded)}</span>
             </div>
           </CardContent>
         </Card>
@@ -164,7 +164,7 @@ export default function OrderRefunds({ order: orderProp }: { order?: any } = {})
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm">
+                      <Button variant='ghost' size='sm'>
                         View Details
                       </Button>
                     </TableCell>
@@ -180,8 +180,8 @@ export default function OrderRefunds({ order: orderProp }: { order?: any } = {})
       {hasRefundCase && order.tickets && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center">
-              <AlertCircle className="mr-2 h-5 w-5 text-amber-500" />
+            <CardTitle className='flex items-center'>
+              <AlertCircle className='mr-2 h-5 w-5 text-amber-500' />
               Refund Requests
             </CardTitle>
             <CardDescription>Refund requests from support tickets</CardDescription>
@@ -211,15 +211,15 @@ export default function OrderRefunds({ order: orderProp }: { order?: any } = {})
                           : 'Not specified'}
                       </TableCell>
                       <TableCell>{getRefundStatusBadge(ticket.refundCase.refundStatus)}</TableCell>
-                      <TableCell className="max-w-xs truncate">
+                      <TableCell className='max-w-xs truncate'>
                         {ticket.refundCase.refundReason || 'No reason provided'}
                       </TableCell>
                       <TableCell>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="sm">
+                        <div className='flex gap-1'>
+                          <Button variant='ghost' size='sm'>
                             View Ticket
                           </Button>
-                          <Button variant="outline" size="sm">
+                          <Button variant='outline' size='sm'>
                             Process
                           </Button>
                         </div>
@@ -236,8 +236,8 @@ export default function OrderRefunds({ order: orderProp }: { order?: any } = {})
       {order.tickets && order.tickets.some((ticket: any) => ticket.returnCase) && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center">
-              <ArrowLeft className="mr-2 h-5 w-5 text-amber-500" />
+            <CardTitle className='flex items-center'>
+              <ArrowLeft className='mr-2 h-5 w-5 text-amber-500' />
               Return Requests
             </CardTitle>
             <CardDescription>Return requests from support tickets</CardDescription>
@@ -286,11 +286,11 @@ export default function OrderRefunds({ order: orderProp }: { order?: any } = {})
                       </TableCell>
                       <TableCell>{ticket.returnCase.returnTrackingNumber || 'N/A'}</TableCell>
                       <TableCell>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="sm">
+                        <div className='flex gap-1'>
+                          <Button variant='ghost' size='sm'>
                             View Ticket
                           </Button>
-                          <Button variant="outline" size="sm">
+                          <Button variant='outline' size='sm'>
                             {ticket.returnCase.returnLabelSent ? 'Update' : 'Send Label'}
                           </Button>
                         </div>
@@ -304,8 +304,8 @@ export default function OrderRefunds({ order: orderProp }: { order?: any } = {})
       )}
 
       {/* Actions */}
-      <div className="flex justify-end space-x-3">
-        <Button variant="outline">Create Return</Button>
+      <div className='flex justify-end space-x-3'>
+        <Button variant='outline'>Create Return</Button>
         <Button>Create Refund</Button>
       </div>
     </div>
@@ -315,32 +315,32 @@ export default function OrderRefunds({ order: orderProp }: { order?: any } = {})
 // Skeleton component for loading state
 function OrderRefundsSkeleton() {
   return (
-    <div className="space-y-6">
+    <div className='space-y-6'>
       <Card>
         <CardHeader>
           <CardTitle>Refunds & Returns</CardTitle>
           <CardDescription>Loading refund information...</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
+          <div className='space-y-4'>
             {[...Array(2)].map((_, index) => (
-              <div key={index} className="rounded-lg border p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <Skeleton className="h-6 w-32" />
-                  <Skeleton className="h-6 w-20" />
+              <div key={index} className='rounded-lg border p-4'>
+                <div className='flex items-center justify-between mb-4'>
+                  <Skeleton className='h-6 w-32' />
+                  <Skeleton className='h-6 w-20' />
                 </div>
-                <div className="grid gap-2">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Amount</span>
-                    <Skeleton className="h-4 w-16" />
+                <div className='grid gap-2'>
+                  <div className='flex justify-between'>
+                    <span className='text-muted-foreground'>Amount</span>
+                    <Skeleton className='h-4 w-16' />
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Reason</span>
-                    <Skeleton className="h-4 w-24" />
+                  <div className='flex justify-between'>
+                    <span className='text-muted-foreground'>Reason</span>
+                    <Skeleton className='h-4 w-24' />
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Created</span>
-                    <Skeleton className="h-4 w-20" />
+                  <div className='flex justify-between'>
+                    <span className='text-muted-foreground'>Created</span>
+                    <Skeleton className='h-4 w-20' />
                   </div>
                 </div>
               </div>

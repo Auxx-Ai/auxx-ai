@@ -67,9 +67,7 @@ export interface MessageMeta {
 /**
  * Options for listing messages.
  */
-export interface ListMessageIdsOptions {
-  // Reserved for future options
-}
+export type ListMessageIdsOptions = {}
 
 /**
  * Result from listing messages by thread.

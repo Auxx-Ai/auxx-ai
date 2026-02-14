@@ -1,18 +1,19 @@
 // hooks/use-user.ts
-import { useEffect, useMemo } from 'react'
-import { api } from '~/trpc/react'
-import { useRouter, usePathname } from 'next/navigation'
-import type { FeatureMapObject } from '@auxx/lib/types'
-import type { Settings } from '@auxx/lib/settings/types'
+
 import type { OrganizationRole } from '@auxx/database/types'
+import type { Settings } from '@auxx/lib/settings/types'
+import type { FeatureMapObject } from '@auxx/lib/types'
+import { usePathname, useRouter } from 'next/navigation'
+import { useEffect, useMemo } from 'react'
+import { client as authClient } from '~/auth/auth-client'
+import { clearResourceCaches } from '~/components/resources'
 import {
-  useDehydratedUser,
   useDehydratedOrganization,
   useDehydratedOrganizations,
+  useDehydratedUser,
 } from '~/providers/dehydrated-state-provider'
 import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
-import { clearResourceCaches } from '~/components/resources'
-import { client as authClient } from '~/auth/auth-client'
+import { api } from '~/trpc/react'
 
 export interface OrganizationMember {
   id: string

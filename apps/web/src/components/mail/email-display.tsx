@@ -1,13 +1,20 @@
 // apps/web/src/components/mail/email-display.tsx
 'use client'
 
-import { Letter } from 'react-letter'
-import { api } from '~/trpc/react'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
-import { formatDistanceToNow } from 'date-fns'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { toastError } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
+import { formatDistanceToNow } from 'date-fns'
 import {
   Code,
   CopyPlusIcon,
@@ -21,23 +28,17 @@ import {
   Send,
   Trash,
 } from 'lucide-react'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
-import { Tooltip } from '../global/tooltip'
-import { ParticipantList, type ParticipantListEntry } from './participant-display'
-import { type EmailActions } from './email-actions'
-import { SendStatusIndicator } from './send-status-indicator'
-import { toastError } from '@auxx/ui/components/toast'
+import type React from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Letter } from 'react-letter'
 import { AttachmentDisplay } from '~/components/files/utils/attachment-display'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useMessage, useMessageParticipants, useThreadReadStatus } from '~/components/threads/hooks'
 import type { MessageMeta } from '~/components/threads/store'
+import { api } from '~/trpc/react'
+import { Tooltip } from '../global/tooltip'
+import type { EmailActions } from './email-actions'
+import { ParticipantList, type ParticipantListEntry } from './participant-display'
+import { SendStatusIndicator } from './send-status-indicator'
 
 interface EmailDisplayProps {
   /** Message ID to display */
@@ -170,10 +171,10 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
       )}
       ref={letterRef}>
       <div onClick={() => setSelected(!selected)}>
-        <div className="flex cursor-pointer justify-between gap-2 px-2 py-1">
-          <div className="flex grow items-start gap-1">
-            <div className="size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0 mt-2">
-              <Avatar className="size-7 rounded-none shadow-none">
+        <div className='flex cursor-pointer justify-between gap-2 px-2 py-1'>
+          <div className='flex grow items-start gap-1'>
+            <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0 mt-2'>
+              <Avatar className='size-7 rounded-none shadow-none'>
                 <AvatarFallback className={cn('rounded-none bg-transparent')}>
                   {senderInitials}
                 </AvatarFallback>
@@ -181,7 +182,7 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
               </Avatar>
             </div>
             <div
-              className="flex flex-col rounded-[6px] px-[7px] py-[3px] hover:bg-muted"
+              className='flex flex-col rounded-[6px] px-[7px] py-[3px] hover:bg-muted'
               onClick={(e) => {
                 if (selected) {
                   e.stopPropagation()
@@ -190,9 +191,9 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
               {selected ? (
                 <>
                   <ParticipantList participants={participantEntries} />
-                  <div className="flex text-sm">
-                    <span className="mr-[4px] shrink-0 text-muted-foreground">Subject:</span>
-                    <span className="flex-shrink-1 min-w-0 truncate whitespace-nowrap">
+                  <div className='flex text-sm'>
+                    <span className='mr-[4px] shrink-0 text-muted-foreground'>Subject:</span>
+                    <span className='flex-shrink-1 min-w-0 truncate whitespace-nowrap'>
                       {message.subject}
                     </span>
                   </div>
@@ -206,29 +207,29 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
               error={message.providerError}
               attempts={message.attempts}
               onRetry={handleRetry}
-              className="mt-1"
+              className='mt-1'
             />
           </div>
-          <div className="flex shrink-0 grow-0 items-start gap-2">
-            <div className="flex flex-col items-end">
-              <div className="flex items-center flex-row justify-end">
+          <div className='flex shrink-0 grow-0 items-start gap-2'>
+            <div className='flex flex-col items-end'>
+              <div className='flex items-center flex-row justify-end'>
                 <DropdownMenuDemo
                   message={message}
                   emailActions={messageActions}
                   onMarkUnread={markAsUnread}
                 />
-                <Button variant="ghost" size="icon-sm" onClick={handleReply}>
+                <Button variant='ghost' size='icon-sm' onClick={handleReply}>
                   <Reply />
                 </Button>
               </div>
-              <div className="text-xs text-muted-foreground">
+              <div className='text-xs text-muted-foreground'>
                 <Tooltip
                   content={message.sentAt ? new Date(message.sentAt).toString() : ''}
                   delayDuration={0}
-                  side="bottom"
+                  side='bottom'
                   sideOffset={5}
-                  className="text-xs text-muted-foreground">
-                  <span className="shrink-0 whitespace-nowrap">
+                  className='text-xs text-muted-foreground'>
+                  <span className='shrink-0 whitespace-nowrap'>
                     {formatDistanceToNow(message.sentAt ? new Date(message.sentAt) : new Date(), {
                       addSuffix: true,
                     })}
@@ -240,40 +241,40 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
         </div>
       </div>
       {selected && (
-        <div className="border-t border-secondary">
+        <div className='border-t border-secondary'>
           <Letter
             className={cn('bg-background p-4 text-foreground')}
             html={message.textHtml ?? message.textPlain ?? ''}
           />
           {message.attachments && message.attachments.length > 0 && (
-            <div className="px-4 pb-4">
-              <div className="flex items-center flex-row">
+            <div className='px-4 pb-4'>
+              <div className='flex items-center flex-row'>
                 {message.attachments.map((attachment) => (
                   <AttachmentDisplay
                     key={attachment.id}
                     attachment={attachment as any}
                     showRemoveButton={false}
-                    className="inline-flex w-auto"
+                    className='inline-flex w-auto'
                   />
                 ))}
               </div>
             </div>
           )}
-          <div className="flex items-center flex-row gap-2 p-4">
+          <div className='flex items-center flex-row gap-2 p-4'>
             <Button
-              variant="info"
-              className="rounded-full"
-              size="sm"
+              variant='info'
+              className='rounded-full'
+              size='sm'
               onClick={handleDirectReplyClick}>
-              <Reply className="opacity-70" />
+              <Reply className='opacity-70' />
               Reply
             </Button>
             <Button
-              variant="info"
-              className="rounded-full"
-              size="sm"
+              variant='info'
+              className='rounded-full'
+              size='sm'
               onClick={handleDirectReplyAllClick}>
-              <ReplyAll className="opacity-70" />
+              <ReplyAll className='opacity-70' />
               Reply All
             </Button>
           </div>
@@ -290,14 +291,14 @@ export default EmailDisplay
  */
 function EmailSkeleton() {
   return (
-    <div className="rounded-2xl border p-4 space-y-3">
-      <div className="flex items-center gap-3">
-        <Skeleton className="h-8 w-8 rounded-lg" />
-        <div className="space-y-2 flex-1">
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-3 w-48" />
+    <div className='rounded-2xl border p-4 space-y-3'>
+      <div className='flex items-center gap-3'>
+        <Skeleton className='h-8 w-8 rounded-lg' />
+        <div className='space-y-2 flex-1'>
+          <Skeleton className='h-4 w-32' />
+          <Skeleton className='h-3 w-48' />
         </div>
-        <Skeleton className="h-6 w-16" />
+        <Skeleton className='h-6 w-16' />
       </div>
     </div>
   )
@@ -322,55 +323,55 @@ export function DropdownMenuDemo({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm">
+        <Button variant='ghost' size='icon-sm'>
           <EllipsisVertical />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent align='end' className='w-56'>
         <DropdownMenuGroup>
           <DropdownMenuItem onSelect={handleSelect(emailActions.onReply)}>
-            <Reply className="opacity-60" />
+            <Reply className='opacity-60' />
             Reply
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleSelect(emailActions.onReplyAll)}>
-            <ReplyAll className="opacity-60" />
+            <ReplyAll className='opacity-60' />
             Reply all
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleSelect(emailActions.onForward)}>
-            <Forward className="opacity-60" />
+            <Forward className='opacity-60' />
             Forward
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleSelect(emailActions.onResend)}>
-            <Send className="opacity-60" />
+            <Send className='opacity-60' />
             Resend
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
           <DropdownMenuItem onSelect={onMarkUnread}>
-            <Mail className="opacity-60" />
+            <Mail className='opacity-60' />
             Mark as unread
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={handleSelect(emailActions.onDelete)} variant="destructive">
-            <Trash className="opacity-60" />
+          <DropdownMenuItem onSelect={handleSelect(emailActions.onDelete)} variant='destructive'>
+            <Trash className='opacity-60' />
             Delete
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleSelect(emailActions.onDownload)}>
-            <Download className="opacity-60" />
+            <Download className='opacity-60' />
             Download
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleSelect(emailActions.onPrint)}>
-            <Printer className="opacity-60" />
+            <Printer className='opacity-60' />
             Print
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={handleSelect(emailActions.onCopyId)}>
-          <CopyPlusIcon className="opacity-60" />
+          <CopyPlusIcon className='opacity-60' />
           Copy Message ID
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={handleSelect(emailActions.onViewSource)}>
-          <Code className="opacity-60" />
+          <Code className='opacity-60' />
           View Source
         </DropdownMenuItem>
       </DropdownMenuContent>

@@ -57,29 +57,29 @@ export type FieldPath = [ResourceFieldId, ...ResourceFieldId[]] // At least 1 el
  */
 export type FieldReference = FieldId | ResourceFieldId | FieldPath
 
-export { resourceFieldIdSchema, fieldIdSchema } from './schema'
 export type {
   ActorFieldOptions,
-  ActorUserValue,
-  ActorGroupValue,
   ActorFieldValue,
+  ActorGroupValue,
+  ActorUserValue,
 } from './actor-field'
+export { fieldIdSchema, resourceFieldIdSchema } from './schema'
 export {
-  toFieldId,
-  toResourceFieldId,
-  parseResourceFieldId,
-  isResourceFieldId,
-  isFieldId,
-  getFieldId,
-  getFieldDefinitionId,
-  toResourceFieldIds,
-  toFieldPath,
-  isFieldPath,
-  isPlainFieldId,
-  validateFieldPath,
   fieldPathToString,
+  fieldRefToKey,
+  getFieldDefinitionId,
+  getFieldId,
   getRootEntityId,
   getTargetFieldId,
-  fieldRefToKey,
+  isFieldId,
+  isFieldPath,
+  isPlainFieldId,
+  isResourceFieldId,
   keyToFieldRef,
+  parseResourceFieldId,
+  toFieldId,
+  toFieldPath,
+  toResourceFieldId,
+  toResourceFieldIds,
+  validateFieldPath,
 } from './utils'

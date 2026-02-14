@@ -2,8 +2,8 @@
 // Participant model built on BaseModel (org-scoped)
 
 import { and, eq, ilike, or, type SQL } from 'drizzle-orm'
-import { Participant } from '../schema/participant'
 import { Contact } from '../schema/contact'
+import { Participant } from '../schema/participant'
 import { BaseModel } from '../utils/base-model'
 import { Result, type TypedResult } from '../utils/result'
 
@@ -30,7 +30,10 @@ export class ParticipantModel extends BaseModel<
   }
 
   /** Suggest participants by identifier/name/displayName or contact fields */
-  async listSuggestions(q?: string, limit: number = 10): Promise<
+  async listSuggestions(
+    q?: string,
+    limit: number = 10
+  ): Promise<
     TypedResult<
       Array<
         ParticipantEntity & {

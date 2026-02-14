@@ -2,9 +2,9 @@
 
 'use client'
 
-import { useEffect, useRef } from 'react'
-import { Loader2, RefreshCw } from 'lucide-react'
 import { Progress } from '@auxx/ui/components/progress'
+import { Loader2, RefreshCw } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { api } from '~/trpc/react'
 
 interface ResolutionProgressProps {
@@ -66,17 +66,17 @@ export function ResolutionProgress({
   const isLoading = variant === 'loading'
 
   return (
-    <div className="flex flex-col items-center justify-center flex-1">
-      <div className="space-y-4 py-3 px-6 min-w-[300px] rounded-2xl border bg-primary-100">
-        <div className="flex items-center justify-center gap-3">
+    <div className='flex flex-col items-center justify-center flex-1'>
+      <div className='space-y-4 py-3 px-6 min-w-[300px] rounded-2xl border bg-primary-100'>
+        <div className='flex items-center justify-center gap-3'>
           {isLoading ? (
-            <Loader2 className="h-8 w-8 text-primary-500 animate-spin" />
+            <Loader2 className='h-8 w-8 text-primary-500 animate-spin' />
           ) : (
-            <RefreshCw className="h-8 w-8 text-primary-500 animate-spin" />
+            <RefreshCw className='h-8 w-8 text-primary-500 animate-spin' />
           )}
           <div>
-            <p className="font-medium">{isLoading ? 'Loading values...' : 'Resolving values...'}</p>
-            <p className="text-sm text-muted-foreground">
+            <p className='font-medium'>{isLoading ? 'Loading values...' : 'Resolving values...'}</p>
+            <p className='text-sm text-muted-foreground'>
               {isLoading
                 ? 'Preparing column data'
                 : `Column ${progress?.columnsProcessed ?? 0} of ${progress?.totalColumns ?? 0}`}
@@ -84,10 +84,12 @@ export function ResolutionProgress({
           </div>
         </div>
 
-        <Progress value={isLoading ? undefined : percentage} className="w-full max-w-md mx-auto" />
+        <Progress value={isLoading ? undefined : percentage} className='w-full max-w-md mx-auto' />
 
-        <p className="text-center text-sm text-muted-foreground">
-          {isLoading ? 'Please wait...' : `${progress?.valuesProcessed?.toLocaleString() ?? 0} values processed`}
+        <p className='text-center text-sm text-muted-foreground'>
+          {isLoading
+            ? 'Please wait...'
+            : `${progress?.valuesProcessed?.toLocaleString() ?? 0} values processed`}
         </p>
       </div>
     </div>

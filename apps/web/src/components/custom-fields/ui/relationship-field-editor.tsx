@@ -2,8 +2,16 @@
 
 'use client'
 
-import { Input } from '@auxx/ui/components/input'
+import {
+  RELATIONSHIP_TYPES as RELATIONSHIP_TYPE_VALUES,
+  type RelationshipConfig,
+  type RelationshipOptions,
+} from '@auxx/types/custom-field'
+import { parseResourceFieldId } from '@auxx/types/field'
 import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { EntityIcon } from '@auxx/ui/components/icons'
+import { Input } from '@auxx/ui/components/input'
+import { Label } from '@auxx/ui/components/label'
 import {
   Select,
   SelectContent,
@@ -11,16 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Label } from '@auxx/ui/components/label'
-import { EntityIcon } from '@auxx/ui/components/icons'
-import {
-  RELATIONSHIP_TYPES as RELATIONSHIP_TYPE_VALUES,
-  type RelationshipOptions,
-  type RelationshipConfig,
-} from '@auxx/types/custom-field'
-import { parseResourceFieldId } from '@auxx/types/field'
-import { isSingleRelationship, getInverseCardinality } from '@auxx/utils'
-import { useResources, useResource, useField } from '~/components/resources'
+import { getInverseCardinality, isSingleRelationship } from '@auxx/utils'
+import { useField, useResource, useResources } from '~/components/resources'
 
 // Re-export RelationshipOptions for consumers of this component
 export type { RelationshipOptions }
@@ -118,9 +118,7 @@ export function RelationshipFieldEditor(props: RelationshipFieldEditorProps) {
    */
   const getLeftPlaceholder = () => {
     if (!selectedResource) return 'Field name...'
-    return isSingleRelationship(relationshipType)
-      ? selectedResource.label
-      : selectedResource.plural
+    return isSingleRelationship(relationshipType) ? selectedResource.label : selectedResource.plural
   }
 
   /**
@@ -134,35 +132,35 @@ export function RelationshipFieldEditor(props: RelationshipFieldEditorProps) {
   }
 
   return (
-    <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-start">
+    <div className='grid grid-cols-[1fr_auto_1fr] gap-4 items-start'>
       {/* LEFT: Current entity field */}
       <Card>
-        <CardHeader className="p-0 border-b">
-          <CardTitle className="text-sm font-medium h-8 flex items-center ps-4">
+        <CardHeader className='p-0 border-b'>
+          <CardTitle className='text-sm font-medium h-8 flex items-center ps-4'>
             {currentResource?.plural || 'This Entity'}
           </CardTitle>
         </CardHeader>
-        <CardContent className="pt-3">
+        <CardContent className='pt-3'>
           <Input
             value={name}
             onChange={(e) => onNameChange(e.target.value)}
             placeholder={`e.g. ${getLeftPlaceholder()}`}
           />
-          <Label className="font-normal ps-2 mt-2 text-sm text-primary-400">
+          <Label className='font-normal ps-2 mt-2 text-sm text-primary-400'>
             Associated attribute name
           </Label>
         </CardContent>
       </Card>
 
       {/* MIDDLE: Relationship type selector */}
-      <div className="flex items-center h-full">
+      <div className='flex items-center h-full'>
         <Select
           value={relationshipType}
           onValueChange={(v) =>
             updateOption('relationshipType', v as RelationshipOptions['relationshipType'])
           }
           disabled={isEditMode}>
-          <SelectTrigger className="w-[140px]">
+          <SelectTrigger className='w-[140px]'>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -177,18 +175,18 @@ export function RelationshipFieldEditor(props: RelationshipFieldEditorProps) {
 
       {/* RIGHT: Related entity + inverse field */}
       <Card>
-        <CardHeader className="p-0 border-b">
+        <CardHeader className='p-0 border-b'>
           {isEditMode ? (
             /* Edit mode: show related resource as read-only */
-            <div className="flex items-center gap-2 h-8 ps-4">
+            <div className='flex items-center gap-2 h-8 ps-4'>
               {selectedResource?.icon && (
                 <EntityIcon
                   iconId={selectedResource.icon}
                   color={selectedResource.color || 'gray'}
-                  className="size-5"
+                  className='size-5'
                 />
               )}
-              <span className="text-sm font-medium">{selectedResource?.label || 'Unknown'}</span>
+              <span className='text-sm font-medium'>{selectedResource?.label || 'Unknown'}</span>
             </div>
           ) : (
             /* Create mode: show resource selector */
@@ -196,18 +194,18 @@ export function RelationshipFieldEditor(props: RelationshipFieldEditorProps) {
               value={props.options.relatedResourceId}
               onValueChange={(v) => updateOption('relatedResourceId', v)}
               disabled={isLoading}>
-              <SelectTrigger className="mb-0" variant="transparent" size="default">
-                <SelectValue placeholder="Select resource..." />
+              <SelectTrigger className='mb-0' variant='transparent' size='default'>
+                <SelectValue placeholder='Select resource...' />
               </SelectTrigger>
               <SelectContent>
                 {resources.map((resource) => (
                   <SelectItem key={resource.id} value={resource.id}>
-                    <div className="flex items-center gap-2">
+                    <div className='flex items-center gap-2'>
                       {resource.icon && (
                         <EntityIcon
                           iconId={resource.icon}
                           color={resource.color || 'gray'}
-                          className="size-5"
+                          className='size-5'
                         />
                       )}
                       <span>{resource.label}</span>
@@ -218,13 +216,13 @@ export function RelationshipFieldEditor(props: RelationshipFieldEditorProps) {
             </Select>
           )}
         </CardHeader>
-        <CardContent className="pt-3">
+        <CardContent className='pt-3'>
           {isEditMode ? (
             /* Edit mode: editable inverse field name */
             <Input
               value={inverseName}
               onChange={(e) => props.onInverseNameChange(e.target.value)}
-              placeholder="Inverse field name"
+              placeholder='Inverse field name'
             />
           ) : (
             /* Create mode: editable inverse field name */
@@ -234,7 +232,7 @@ export function RelationshipFieldEditor(props: RelationshipFieldEditorProps) {
               placeholder={`e.g. ${getRightPlaceholder()}`}
             />
           )}
-          <Label className="font-normal ps-2 mt-2 text-sm text-primary-400">
+          <Label className='font-normal ps-2 mt-2 text-sm text-primary-400'>
             Associated attribute name
           </Label>
         </CardContent>

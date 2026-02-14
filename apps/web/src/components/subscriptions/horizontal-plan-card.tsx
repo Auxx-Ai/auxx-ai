@@ -1,12 +1,12 @@
 // app/(protected)/app/settings/plans/_components/horizontal-plan-card.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
 import { Button } from '@auxx/ui/components/button'
-import { Check, Loader2, Sparkles } from 'lucide-react'
-import { api } from '~/trpc/react'
-import { useRouter } from 'next/navigation'
 import { toastError } from '@auxx/ui/components/toast'
+import { Check, Loader2, Sparkles } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { api } from '~/trpc/react'
 import { showCelebrationConfetti } from './show-confetti'
 
 /** Props for horizontal plan card */
@@ -158,9 +158,9 @@ export function HorizontalPlanCard({
     <div
       className={`flex flex-col md:flex-row gap-6 rounded-lg border p-3 items-center ${isCurrentPlan ? 'ring-1 ring-info' : ''}`}>
       {/* Left Section: Plan Info & Pricing */}
-      <div className="flex flex-col md:w-1/3 justify-center">
-        <div className="font-semibold leading-none tracking-tight mb-2">{plan.name}</div>
-        <div className="text-sm text-muted-foreground">{plan.description}</div>
+      <div className='flex flex-col md:w-1/3 justify-center'>
+        <div className='font-semibold leading-none tracking-tight mb-2'>{plan.name}</div>
+        <div className='text-sm text-muted-foreground'>{plan.description}</div>
 
         {/* {plan.isFree ? (
           <div className="flex items-baseline gap-2">
@@ -173,45 +173,45 @@ export function HorizontalPlanCard({
       </div>
 
       {/* Middle Section: Features */}
-      <div className="flex-1 md:w-1/2">
-        <div className=" gap-4 space-y-1">
+      <div className='flex-1 md:w-1/2'>
+        <div className=' gap-4 space-y-1'>
           {features.map((feature: string, index: number) => (
-            <div key={index} className="flex items-start">
-              <div className="mr-2 mt-0.5 flex items-center ring-1 ring-black/10 justify-center size-4 rounded-md bg-muted shrink-0">
-                <Check className="size-3 shrink-0 " />
+            <div key={index} className='flex items-start'>
+              <div className='mr-2 mt-0.5 flex items-center ring-1 ring-black/10 justify-center size-4 rounded-md bg-muted shrink-0'>
+                <Check className='size-3 shrink-0 ' />
               </div>
-              <span className="text-sm">{feature}</span>
+              <span className='text-sm'>{feature}</span>
             </div>
           ))}
         </div>
       </div>
 
       {/* Right Section: CTA */}
-      <div className="flex items-center md:w-1/6 justify-end">
+      <div className='flex items-center md:w-1/6 justify-end'>
         {actionType === 'contact' ? (
-          <Button className="w-full md:w-auto" onClick={() => router.push('/contact-sales')}>
+          <Button className='w-full md:w-auto' onClick={() => router.push('/contact-sales')}>
             Contact Sales
           </Button>
         ) : actionType === 'current' ? (
-          <Button className="w-full md:w-auto" disabled>
+          <Button className='w-full md:w-auto' disabled>
             Current Plan
           </Button>
         ) : trialEligible && plan.hasTrial && plan.trialDays > 0 ? (
           <Button
-            className="w-full md:w-auto"
+            className='w-full md:w-auto'
             onClick={handleStartTrial}
             loading={isProcessing}
-            loadingText="Processing..."
-            variant="outline">
+            loadingText='Processing...'
+            variant='outline'>
             <Sparkles />
             Start {plan.trialDays}-Day Trial
           </Button>
         ) : (
           <Button
-            className="w-full md:w-auto"
+            className='w-full md:w-auto'
             onClick={handleSelectPlan}
-            variant="outline"
-            loadingText="Processing..."
+            variant='outline'
+            loadingText='Processing...'
             loading={isProcessing}>
             {buttonText}
           </Button>

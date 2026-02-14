@@ -3,14 +3,10 @@
 
 import { createId } from '@paralleldrive/cuid2'
 import { sql } from 'drizzle-orm'
-import type {
-  SeedingContext,
-  SeedingScenario,
-  ServiceIntegratorShopifyIntegration,
-} from '../types'
+import { ContentEngine } from '../generators/content-engine'
+import type { SeedingContext, SeedingScenario, ServiceIntegratorShopifyIntegration } from '../types'
 import { BusinessDistributions } from '../utils/business-distributions'
 import { RelationshipEngine } from '../utils/relationship-engine'
-import { ContentEngine } from '../generators/content-engine'
 
 /** CommerceDomain encapsulates product and order refinements. */
 export class CommerceDomain {
@@ -288,7 +284,9 @@ export class CommerceDomain {
           })
 
         if (addresses.length > BATCH_SIZE) {
-          console.log(`  ✓ Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(addresses.length / BATCH_SIZE)} complete`)
+          console.log(
+            `  ✓ Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(addresses.length / BATCH_SIZE)} complete`
+          )
         }
       }
 
@@ -342,7 +340,11 @@ export class CommerceDomain {
       for (let orderIndex = 0; orderIndex < ordersPerCustomer; orderIndex++) {
         const orderId = orderIdCounter + BigInt(customerIndex * ordersPerCustomer + orderIndex)
         const orderNumber = 1000 + customerIndex * ordersPerCustomer + orderIndex
-        const subtotal = this.distributions.generateValueInRange(2000, 50000, customerIndex + orderIndex) // $20-$500
+        const subtotal = this.distributions.generateValueInRange(
+          2000,
+          50000,
+          customerIndex + orderIndex
+        ) // $20-$500
         const tax = Math.floor(subtotal * 0.08) // 8% tax
         const shipping = this.distributions.generateValueInRange(500, 1500, customerIndex) // $5-$15
         const total = subtotal + tax + shipping
@@ -398,7 +400,9 @@ export class CommerceDomain {
           })
 
         if (orders.length > BATCH_SIZE) {
-          console.log(`  ✓ Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(orders.length / BATCH_SIZE)} complete`)
+          console.log(
+            `  ✓ Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(orders.length / BATCH_SIZE)} complete`
+          )
         }
       }
 
@@ -411,8 +415,20 @@ export class CommerceDomain {
   /** generateFirstName creates realistic first names. */
   private generateFirstName(index: number): string {
     const names = [
-      'John', 'Jane', 'Michael', 'Sarah', 'David', 'Emily', 'Robert', 'Jessica',
-      'William', 'Ashley', 'Christopher', 'Amanda', 'Matthew', 'Stephanie',
+      'John',
+      'Jane',
+      'Michael',
+      'Sarah',
+      'David',
+      'Emily',
+      'Robert',
+      'Jessica',
+      'William',
+      'Ashley',
+      'Christopher',
+      'Amanda',
+      'Matthew',
+      'Stephanie',
     ]
     return names[index % names.length]!
   }
@@ -420,8 +436,19 @@ export class CommerceDomain {
   /** generateLastName creates realistic last names. */
   private generateLastName(index: number): string {
     const names = [
-      'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller',
-      'Davis', 'Rodriguez', 'Martinez', 'Wilson', 'Anderson', 'Taylor',
+      'Smith',
+      'Johnson',
+      'Williams',
+      'Brown',
+      'Jones',
+      'Garcia',
+      'Miller',
+      'Davis',
+      'Rodriguez',
+      'Martinez',
+      'Wilson',
+      'Anderson',
+      'Taylor',
     ]
     return names[index % names.length]!
   }
@@ -429,9 +456,21 @@ export class CommerceDomain {
   /** generateCity creates realistic city names. */
   private generateCity(index: number): string {
     const cities = [
-      'New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix',
-      'Philadelphia', 'San Antonio', 'San Diego', 'Dallas', 'Austin',
-      'San Francisco', 'Seattle', 'Denver', 'Boston', 'Portland',
+      'New York',
+      'Los Angeles',
+      'Chicago',
+      'Houston',
+      'Phoenix',
+      'Philadelphia',
+      'San Antonio',
+      'San Diego',
+      'Dallas',
+      'Austin',
+      'San Francisco',
+      'Seattle',
+      'Denver',
+      'Boston',
+      'Portland',
     ]
     return cities[index % cities.length]!
   }
@@ -444,7 +483,7 @@ export class CommerceDomain {
 
   /** generateZipCode creates realistic ZIP codes. */
   private generateZipCode(index: number): string {
-    const base = 10000 + (index * 100)
+    const base = 10000 + index * 100
     return base.toString().padStart(5, '0')
   }
 
@@ -518,8 +557,8 @@ export class CommerceDomain {
         tags: customerTags,
         createdAt: customerTimestamps.createdAt,
         updatedAt: customerTimestamps.updatedAt,
-        organizationId: customerAssignments.map(assignment => assignment.organizationId),
-        integrationId: customerAssignments.map(assignment => assignment.integrationId),
+        organizationId: customerAssignments.map((assignment) => assignment.organizationId),
+        integrationId: customerAssignments.map((assignment) => assignment.integrationId),
       }
 
       Object.entries(customerDebug).forEach(([key, value]) => {
@@ -540,10 +579,10 @@ export class CommerceDomain {
         createdAt: helpers.valuesFromArray({ values: customerTimestamps.createdAt }),
         updatedAt: helpers.valuesFromArray({ values: customerTimestamps.updatedAt }),
         organizationId: helpers.valuesFromArray({
-          values: customerAssignments.map(assignment => assignment.organizationId),
+          values: customerAssignments.map((assignment) => assignment.organizationId),
         }),
         integrationId: helpers.valuesFromArray({
-          values: customerAssignments.map(assignment => assignment.integrationId),
+          values: customerAssignments.map((assignment) => assignment.integrationId),
         }),
         // Explicitly set nullable foreign keys to null (these tables are not seeded)
         defaultAddressId: helpers.valuesFromArray({
@@ -588,12 +627,14 @@ export class CommerceDomain {
       // Log generated data for debugging
       console.log('📝 Generated product data:')
       for (let i = 0; i < productIds.length; i++) {
-        console.log(`  [${i}] id=${productIds[i]}, title="${productTitles[i]}", handle="${productHandles[i]}"`)
+        console.log(
+          `  [${i}] id=${productIds[i]}, title="${productTitles[i]}", handle="${productHandles[i]}"`
+        )
       }
 
       // Build product data with pre-generated arrays
       const productData = {
-        id: helpers.valuesFromArray({ values: [...productIds] }),  // Spread to create new array
+        id: helpers.valuesFromArray({ values: [...productIds] }), // Spread to create new array
         title: helpers.valuesFromArray({ values: [...productTitles] }),
         descriptionHtml: helpers.valuesFromArray({ values: [...productDescriptions] }),
         vendor: helpers.valuesFromArray({ values: [...productVendors] }),
@@ -608,10 +649,10 @@ export class CommerceDomain {
         updatedAt: helpers.valuesFromArray({ values: [...productTimestamps.updatedAt] }),
         publishedAt: helpers.valuesFromArray({ values: [...publishedAt] }),
         organizationId: helpers.valuesFromArray({
-          values: productAssignments.map(assignment => assignment.organizationId),
+          values: productAssignments.map((assignment) => assignment.organizationId),
         }),
         integrationId: helpers.valuesFromArray({
-          values: productAssignments.map(assignment => assignment.integrationId),
+          values: productAssignments.map((assignment) => assignment.integrationId),
         }),
       }
       console.log('✅ Product data generated')
@@ -642,10 +683,36 @@ export class CommerceDomain {
   private generateFirstNames(): string[] {
     console.log('  🔸 generateFirstNames started')
     const names = [
-      'John', 'Jane', 'Michael', 'Sarah', 'David', 'Emily', 'Robert', 'Jessica',
-      'William', 'Ashley', 'Christopher', 'Amanda', 'Matthew', 'Stephanie', 'Joshua',
-      'Jennifer', 'Andrew', 'Elizabeth', 'Daniel', 'Lauren', 'Joseph', 'Rachel',
-      'Ryan', 'Megan', 'Brandon', 'Nicole', 'Jason', 'Samantha', 'Justin', 'Katherine'
+      'John',
+      'Jane',
+      'Michael',
+      'Sarah',
+      'David',
+      'Emily',
+      'Robert',
+      'Jessica',
+      'William',
+      'Ashley',
+      'Christopher',
+      'Amanda',
+      'Matthew',
+      'Stephanie',
+      'Joshua',
+      'Jennifer',
+      'Andrew',
+      'Elizabeth',
+      'Daniel',
+      'Lauren',
+      'Joseph',
+      'Rachel',
+      'Ryan',
+      'Megan',
+      'Brandon',
+      'Nicole',
+      'Jason',
+      'Samantha',
+      'Justin',
+      'Katherine',
     ]
     const result: string[] = []
     for (let i = 0; i < this.scenario.scales.customers; i++) {
@@ -658,10 +725,33 @@ export class CommerceDomain {
   /** generateLastNames creates realistic customer last names. */
   private generateLastNames(): string[] {
     const names = [
-      'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller',
-      'Davis', 'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Gonzalez',
-      'Wilson', 'Anderson', 'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin',
-      'Lee', 'Perez', 'Thompson', 'White', 'Harris', 'Sanchez', 'Clark'
+      'Smith',
+      'Johnson',
+      'Williams',
+      'Brown',
+      'Jones',
+      'Garcia',
+      'Miller',
+      'Davis',
+      'Rodriguez',
+      'Martinez',
+      'Hernandez',
+      'Lopez',
+      'Gonzalez',
+      'Wilson',
+      'Anderson',
+      'Thomas',
+      'Taylor',
+      'Moore',
+      'Jackson',
+      'Martin',
+      'Lee',
+      'Perez',
+      'Thompson',
+      'White',
+      'Harris',
+      'Sanchez',
+      'Clark',
     ]
     const result: string[] = []
     for (let i = 0; i < this.scenario.scales.customers; i++) {
@@ -673,16 +763,65 @@ export class CommerceDomain {
   /** generateCustomerEmails creates realistic customer email addresses. */
   private generateCustomerEmails(): string[] {
     const firstNames = [
-      'John', 'Jane', 'Michael', 'Sarah', 'David', 'Emily', 'Robert', 'Jessica',
-      'William', 'Ashley', 'Christopher', 'Amanda', 'Matthew', 'Stephanie', 'Joshua',
-      'Jennifer', 'Andrew', 'Elizabeth', 'Daniel', 'Lauren', 'Joseph', 'Rachel',
-      'Ryan', 'Megan', 'Brandon', 'Nicole', 'Jason', 'Samantha', 'Justin', 'Katherine'
+      'John',
+      'Jane',
+      'Michael',
+      'Sarah',
+      'David',
+      'Emily',
+      'Robert',
+      'Jessica',
+      'William',
+      'Ashley',
+      'Christopher',
+      'Amanda',
+      'Matthew',
+      'Stephanie',
+      'Joshua',
+      'Jennifer',
+      'Andrew',
+      'Elizabeth',
+      'Daniel',
+      'Lauren',
+      'Joseph',
+      'Rachel',
+      'Ryan',
+      'Megan',
+      'Brandon',
+      'Nicole',
+      'Jason',
+      'Samantha',
+      'Justin',
+      'Katherine',
     ]
     const lastNames = [
-      'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller',
-      'Davis', 'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Gonzalez',
-      'Wilson', 'Anderson', 'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin',
-      'Lee', 'Perez', 'Thompson', 'White', 'Harris', 'Sanchez', 'Clark'
+      'Smith',
+      'Johnson',
+      'Williams',
+      'Brown',
+      'Jones',
+      'Garcia',
+      'Miller',
+      'Davis',
+      'Rodriguez',
+      'Martinez',
+      'Hernandez',
+      'Lopez',
+      'Gonzalez',
+      'Wilson',
+      'Anderson',
+      'Thomas',
+      'Taylor',
+      'Moore',
+      'Jackson',
+      'Martin',
+      'Lee',
+      'Perez',
+      'Thompson',
+      'White',
+      'Harris',
+      'Sanchez',
+      'Clark',
     ]
     const domains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com']
     const emails: string[] = []
@@ -715,9 +854,12 @@ export class CommerceDomain {
   private generateOrderCounts(): number[] {
     const counts: number[] = []
     for (let i = 0; i < this.scenario.scales.customers; i++) {
-      if (i % 10 === 0) counts.push(this.distributions.generateValueInRange(20, 50, i)) // 10% VIP
-      else if (i % 5 === 0) counts.push(this.distributions.generateValueInRange(8, 20, i)) // 20% loyal
-      else if (i % 3 === 0) counts.push(this.distributions.generateValueInRange(3, 8, i)) // 33% regular
+      if (i % 10 === 0)
+        counts.push(this.distributions.generateValueInRange(20, 50, i)) // 10% VIP
+      else if (i % 5 === 0)
+        counts.push(this.distributions.generateValueInRange(8, 20, i)) // 20% loyal
+      else if (i % 3 === 0)
+        counts.push(this.distributions.generateValueInRange(3, 8, i)) // 33% regular
       else counts.push(this.distributions.generateValueInRange(1, 3, i)) // rest occasional
     }
     return counts
@@ -741,9 +883,12 @@ export class CommerceDomain {
     for (let i = 0; i < this.scenario.scales.customers; i++) {
       // Generate order count inline to avoid circular dependency
       let orderCount: number
-      if (i % 10 === 0) orderCount = this.distributions.generateValueInRange(20, 50, i) // 10% VIP
-      else if (i % 5 === 0) orderCount = this.distributions.generateValueInRange(8, 20, i) // 20% loyal
-      else if (i % 3 === 0) orderCount = this.distributions.generateValueInRange(3, 8, i) // 33% regular
+      if (i % 10 === 0)
+        orderCount = this.distributions.generateValueInRange(20, 50, i) // 10% VIP
+      else if (i % 5 === 0)
+        orderCount = this.distributions.generateValueInRange(8, 20, i) // 20% loyal
+      else if (i % 3 === 0)
+        orderCount = this.distributions.generateValueInRange(3, 8, i) // 33% regular
       else orderCount = this.distributions.generateValueInRange(1, 3, i) // rest occasional
 
       const orderValue = this.distributions.selectWeightedValue(
@@ -772,8 +917,16 @@ export class CommerceDomain {
   /** generateCustomerTags creates realistic customer tags. */
   private generateCustomerTags(): string[][] {
     const availableTags = [
-      'vip', 'wholesale', 'retail', 'new_customer', 'returning_customer',
-      'high_value', 'frequent_buyer', 'seasonal', 'corporate', 'individual'
+      'vip',
+      'wholesale',
+      'retail',
+      'new_customer',
+      'returning_customer',
+      'high_value',
+      'frequent_buyer',
+      'seasonal',
+      'corporate',
+      'individual',
     ]
     const tagSets: string[][] = []
     for (let i = 0; i < this.scenario.scales.customers; i++) {
@@ -797,21 +950,26 @@ export class CommerceDomain {
     // ALWAYS generate fresh to avoid any caching issues with drizzle-seed
     console.log('  🔸 Generating product descriptions (fresh)')
 
-    const products: Array<{ name: string; description: string; tagline: string; category: string }> = []
+    const products: Array<{
+      name: string
+      description: string
+      tagline: string
+      category: string
+    }> = []
     for (let i = 0; i < this.scenario.scales.products; i++) {
       const productNumber = i + 1
       products.push({
         name: `Product ${productNumber}`,
         description: `This is a great product for your needs. Product ${productNumber} offers excellent value.`,
         tagline: `Quality Product ${productNumber}`,
-        category: 'Electronics' // Fixed category for consistency
+        category: 'Electronics', // Fixed category for consistency
       })
     }
 
     console.log(`  ✅ Generated ${products.length} unique product descriptions`)
 
     // Validate uniqueness
-    const names = products.map(p => p.name)
+    const names = products.map((p) => p.name)
     const uniqueNames = new Set(names)
     if (names.length !== uniqueNames.size) {
       throw new Error('Product cache contains duplicate names!')
@@ -824,7 +982,7 @@ export class CommerceDomain {
   private generateProductTitles(): string[] {
     console.log('  🔸 generateProductTitles started')
     const products = this.getProductDescriptions()
-    const titles = products.map(p => p.name)
+    const titles = products.map((p) => p.name)
     console.log(`  ✅ generateProductTitles completed (${titles.length} titles)`)
     return titles
   }
@@ -833,7 +991,9 @@ export class CommerceDomain {
   private generateProductDescriptions(): string[] {
     console.log('  🔸 generateProductDescriptions started')
     const products = this.getProductDescriptions()
-    const descriptions = products.map(p => `<p>${p.description}</p><p><strong>${p.tagline}</strong></p>`)
+    const descriptions = products.map(
+      (p) => `<p>${p.description}</p><p><strong>${p.tagline}</strong></p>`
+    )
     console.log(`  ✅ generateProductDescriptions completed (${descriptions.length} descriptions)`)
     return descriptions
   }
@@ -841,9 +1001,18 @@ export class CommerceDomain {
   /** generateVendors creates realistic vendor names. */
   private generateVendors(): string[] {
     const vendors = [
-      'Acme Corp', 'Global Supplies', 'Premium Brands', 'Elite Manufacturing',
-      'Quality Goods Co', 'Superior Products', 'Trusted Suppliers', 'Best Choice',
-      'Top Tier', 'Excellence Inc', 'Prime Vendor', 'Select Brands'
+      'Acme Corp',
+      'Global Supplies',
+      'Premium Brands',
+      'Elite Manufacturing',
+      'Quality Goods Co',
+      'Superior Products',
+      'Trusted Suppliers',
+      'Best Choice',
+      'Top Tier',
+      'Excellence Inc',
+      'Prime Vendor',
+      'Select Brands',
     ]
     const result: string[] = []
     for (let i = 0; i < this.scenario.scales.products; i++) {
@@ -871,7 +1040,7 @@ export class CommerceDomain {
     const products = this.getProductDescriptions()
 
     products.forEach((product, i) => {
-      let baseHandle = product.name
+      const baseHandle = product.name
         .toLowerCase()
         .replace(/[^a-z0-9\s]/g, '')
         .replace(/\s+/g, '-')
@@ -901,8 +1070,10 @@ export class CommerceDomain {
   private generateProductStatuses(): ('ACTIVE' | 'ARCHIVED' | 'DRAFT')[] {
     const statuses: ('ACTIVE' | 'ARCHIVED' | 'DRAFT')[] = []
     for (let i = 0; i < this.scenario.scales.products; i++) {
-      if (i % 20 === 0) statuses.push('DRAFT') // 5% draft
-      else if (i % 15 === 0) statuses.push('ARCHIVED') // ~7% archived
+      if (i % 20 === 0)
+        statuses.push('DRAFT') // 5% draft
+      else if (i % 15 === 0)
+        statuses.push('ARCHIVED') // ~7% archived
       else statuses.push('ACTIVE') // ~88% active
     }
     return statuses
@@ -942,8 +1113,16 @@ export class CommerceDomain {
   /** generateProductTags creates realistic product tags. */
   private generateProductTags(): string[][] {
     const availableTags = [
-      'new-arrival', 'bestseller', 'sale', 'featured', 'limited-edition',
-      'eco-friendly', 'premium', 'budget-friendly', 'trending', 'seasonal'
+      'new-arrival',
+      'bestseller',
+      'sale',
+      'featured',
+      'limited-edition',
+      'eco-friendly',
+      'premium',
+      'budget-friendly',
+      'trending',
+      'seasonal',
     ]
     const tagSets: string[][] = []
     for (let i = 0; i < this.scenario.scales.products; i++) {
@@ -982,7 +1161,7 @@ export class CommerceDomain {
 
   /** generateCommerceAssignments creates organization/integration assignments per entity. */
   private generateCommerceAssignments(
-    count: number,
+    count: number
   ): Array<{ organizationId: string; integrationId: string }> {
     return Array.from({ length: count }, (_, index) => {
       const integration = this.shopifyIntegrations[index % this.shopifyIntegrations.length]!
@@ -1007,7 +1186,9 @@ export class CommerceDomain {
 
   /** generatePublishedAtDates derives optional published timestamps from created dates. */
   private generatePublishedAtDates(created: Date[]): Array<Date | null> {
-    return created.map((date, index) => (index % 6 === 0 ? null : new Date(date.getTime() + 90 * 60000)))
+    return created.map((date, index) =>
+      index % 6 === 0 ? null : new Date(date.getTime() + 90 * 60000)
+    )
   }
 
   /**
@@ -1015,17 +1196,15 @@ export class CommerceDomain {
    * @param data - Product data to validate
    * @throws Error if validation fails
    */
-  private validateProductData(data: {
-    handles: string[]
-    titles: string[]
-    ids: bigint[]
-  }): void {
+  private validateProductData(data: { handles: string[]; titles: string[]; ids: bigint[] }): void {
     console.log('  🔍 Validating product data...')
 
     // Validate array lengths match
     const lengths = [data.handles.length, data.titles.length, data.ids.length]
     if (new Set(lengths).size !== 1) {
-      throw new Error(`Product array length mismatch: handles=${data.handles.length}, titles=${data.titles.length}, ids=${data.ids.length}`)
+      throw new Error(
+        `Product array length mismatch: handles=${data.handles.length}, titles=${data.titles.length}, ids=${data.ids.length}`
+      )
     }
 
     // Validate handle uniqueness
@@ -1036,13 +1215,13 @@ export class CommerceDomain {
     }
 
     // Validate ID uniqueness
-    const uniqueIds = new Set(data.ids.map(id => id.toString()))
+    const uniqueIds = new Set(data.ids.map((id) => id.toString()))
     if (data.ids.length !== uniqueIds.size) {
       throw new Error('Duplicate product IDs detected')
     }
 
     // Validate no empty handles
-    const emptyHandles = data.handles.filter(h => !h || h.trim() === '')
+    const emptyHandles = data.handles.filter((h) => !h || h.trim() === '')
     if (emptyHandles.length > 0) {
       throw new Error(`Empty product handles detected: ${emptyHandles.length} empty values`)
     }
@@ -1055,15 +1234,14 @@ export class CommerceDomain {
    * @param data - Customer data to validate
    * @throws Error if validation fails
    */
-  private validateCustomerData(data: {
-    emails: string[]
-    ids: bigint[]
-  }): void {
+  private validateCustomerData(data: { emails: string[]; ids: bigint[] }): void {
     console.log('  🔍 Validating customer data...')
 
     // Validate array lengths match
     if (data.emails.length !== data.ids.length) {
-      throw new Error(`Customer array length mismatch: emails=${data.emails.length}, ids=${data.ids.length}`)
+      throw new Error(
+        `Customer array length mismatch: emails=${data.emails.length}, ids=${data.ids.length}`
+      )
     }
 
     // Validate email uniqueness
@@ -1074,7 +1252,7 @@ export class CommerceDomain {
     }
 
     // Validate ID uniqueness
-    const uniqueIds = new Set(data.ids.map(id => id.toString()))
+    const uniqueIds = new Set(data.ids.map((id) => id.toString()))
     if (data.ids.length !== uniqueIds.size) {
       throw new Error('Duplicate customer IDs detected')
     }

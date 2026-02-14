@@ -1,8 +1,8 @@
 // apps/web/src/components/ui/items-list-view.tsx
 'use client'
 
-import { cn } from '@auxx/ui/lib/utils'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { cn } from '@auxx/ui/lib/utils'
 import { CellSelectionOverlay } from '../dynamic-table/components/cell-selection-overlay'
 
 /**
@@ -103,17 +103,17 @@ export function ItemsListView<T extends ItemsListItem>({
 
   return (
     <div className={cn('relative w-full flex items-center', className)}>
-      <div className="flex items-center gap-1 py-0.5 shrink-0">
+      <div className='flex items-center gap-1 py-0.5 shrink-0'>
         {displayItems.map((item, index) => (
-          <div key={getItemKey(item)} className="shrink-0">
+          <div key={getItemKey(item)} className='shrink-0'>
             {renderItem(item, index)}
           </div>
         ))}
         {remainingCount > 0 && (
           <button
-            type="button"
+            type='button'
             onClick={onShowMore}
-            className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            className='shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors'>
             +{remainingCount} more
           </button>
         )}
@@ -156,10 +156,10 @@ export function ItemsCellView<T extends ItemsListItem>({
   if (!isLoading && normalizedItems.length === 0) {
     return (
       <div
-        data-slot="expandable-cell-inner"
+        data-slot='expandable-cell-inner'
         className={cn('relative w-full min-h-9 flex items-center ps-3', className)}>
-        {emptyContent ?? <span className="text-muted-foreground">-</span>}
-        <div className="hidden [.cell-selected_&]:flex">
+        {emptyContent ?? <span className='text-muted-foreground'>-</span>}
+        <div className='hidden [.cell-selected_&]:flex'>
           <CellSelectionOverlay isSelected isEditing={false} />
         </div>
       </div>
@@ -170,10 +170,10 @@ export function ItemsCellView<T extends ItemsListItem>({
   if (isLoading && normalizedItems.length === 0) {
     return (
       <div
-        data-slot="expandable-cell-inner"
+        data-slot='expandable-cell-inner'
         className={cn('relative w-full min-h-9 flex items-center ps-3 gap-1', className)}>
         {Array.from({ length: loadingCount }).map((_, i) => (
-          <Skeleton key={i} className="h-5 w-16 rounded" />
+          <Skeleton key={i} className='h-5 w-16 rounded' />
         ))}
       </div>
     )
@@ -181,12 +181,12 @@ export function ItemsCellView<T extends ItemsListItem>({
 
   return (
     <div
-      data-slot="expandable-cell-inner"
+      data-slot='expandable-cell-inner'
       className={cn('relative min-w-full w-full min-h-9 group/items-list flex text-sm', className)}>
       {/* Items */}
-      <div className="flex items-center gap-1 w-full overflow-hidden ps-3 py-0.5 px-0.5 shrink-0 mask-r-from-[calc(100%-32px)] mask-r-to-[100%]">
+      <div className='flex items-center gap-1 w-full overflow-hidden ps-3 py-0.5 px-0.5 shrink-0 mask-r-from-[calc(100%-32px)] mask-r-to-[100%]'>
         {normalizedItems.map((item, index) => (
-          <div key={item.id} className="shrink-0">
+          <div key={item.id} className='shrink-0'>
             {renderItem(item, index)}
           </div>
         ))}
@@ -206,7 +206,7 @@ export function ItemsCellView<T extends ItemsListItem>({
       {/* Expanded view - shows when cell is selected */}
       <div
         data-self-overlay
-        data-slot="expandable-cell-inner"
+        data-slot='expandable-cell-inner'
         className={cn(
           'absolute left-0 top-0 z-15 min-h-9',
           'hidden [.cell-selected_&]:flex',
@@ -215,10 +215,10 @@ export function ItemsCellView<T extends ItemsListItem>({
           'bg-primary-100'
         )}>
         <CellSelectionOverlay isSelected isEditing={false} />
-        <div className="my-2">
-          <div className="flex flex-wrap gap-1">
+        <div className='my-2'>
+          <div className='flex flex-wrap gap-1'>
             {normalizedItems.map((item, index) => (
-              <div key={`expanded-${item.id}`} className="shrink-0">
+              <div key={`expanded-${item.id}`} className='shrink-0'>
                 {renderItem(item, index)}
               </div>
             ))}

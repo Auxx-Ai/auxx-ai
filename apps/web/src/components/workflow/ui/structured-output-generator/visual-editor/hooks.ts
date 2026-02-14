@@ -1,12 +1,13 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/visual-editor/hooks.ts
+
+import { toastError } from '@auxx/ui/components/toast'
 import { produce } from 'immer'
+import { ArrayType, type Field, Type } from '../types'
+import { findPropertyWithPath } from '../utils'
 import type { VisualEditorProps } from '.'
 import { useEventEmitter } from './context'
-import { useVisualEditorStore } from './store'
 import type { EditData } from './edit-card'
-import { ArrayType, type Field, Type } from '../types'
-import { toastError } from '@auxx/ui/components/toast'
-import { findPropertyWithPath } from '../utils'
+import { useVisualEditorStore } from './store'
 
 type ChangeEventParams = {
   path: string[]

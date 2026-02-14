@@ -1,16 +1,16 @@
 // app/(protected)/app/settings/plans/_components/plan-card.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { CardContent, CardFooter, CardHeader } from '@auxx/ui/components/card'
-import { Check, Sparkles } from 'lucide-react'
-import { api } from '~/trpc/react'
-import { useRouter } from 'next/navigation'
 import { toastError } from '@auxx/ui/components/toast'
-import { showCelebrationConfetti } from './show-confetti'
 import { cn } from '@auxx/ui/lib/utils'
-import { Badge } from '@auxx/ui/components/badge'
+import { Check, Sparkles } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { api } from '~/trpc/react'
+import { showCelebrationConfetti } from './show-confetti'
 
 type PlanCardProps = {
   plan: {
@@ -165,7 +165,7 @@ export function PlanCard({
   const isTrialProcessing = upgradeSubscription.isPending || isLoadingSubscription
 
   return (
-    <div className="flex flex-col flex-1">
+    <div className='flex flex-col flex-1'>
       {/* {plan.isMostPopular ? (
         <div className="pb-2 text-center font-semibold text-bad-500">Most popular</div>
       ) : (
@@ -177,35 +177,35 @@ export function PlanCard({
           isCurrentPlan && 'ring-info'
         )}>
         <CardHeader>
-          <div className="flex items-start justify-between">
+          <div className='flex items-start justify-between'>
             <div>
-              <div className="font-semibold leading-none tracking-tight">{plan.name}</div>
-              <div className="text-xs text-muted-foreground">{plan.description}</div>
+              <div className='font-semibold leading-none tracking-tight'>{plan.name}</div>
+              <div className='text-xs text-muted-foreground'>{plan.description}</div>
             </div>
           </div>
         </CardHeader>
 
-        <CardContent className="grow">
+        <CardContent className='grow'>
           {plan.isCustomPricing ? (
-            <div className="mb-6 text-2xl font-normal">Custom</div>
+            <div className='mb-6 text-2xl font-normal'>Custom</div>
           ) : (
-            <div className="mb-6">
+            <div className='mb-6'>
               {plan.isFree ? (
                 <>
-                  <div className="text-2xl font-normal">
-                    <span className="">Free</span>
+                  <div className='text-2xl font-normal'>
+                    <span className=''>Free</span>
                   </div>
-                  <div className="mt-1 text-xs text-muted-foreground">Forever</div>
+                  <div className='mt-1 text-xs text-muted-foreground'>Forever</div>
                 </>
               ) : (
-                <div className="flex flex-row relative">
-                  <div className="flex flex-col">
-                    <div className="text-2xl font-normal">
-                      <span className="">${(pricePerMonth / 100).toFixed(0)}</span>
-                      <span className="text-xs font-normal text-muted-foreground">/seat/mo</span>
+                <div className='flex flex-row relative'>
+                  <div className='flex flex-col'>
+                    <div className='text-2xl font-normal'>
+                      <span className=''>${(pricePerMonth / 100).toFixed(0)}</span>
+                      <span className='text-xs font-normal text-muted-foreground'>/seat/mo</span>
                     </div>
 
-                    <div className="mt-1 text-xs text-muted-foreground">
+                    <div className='mt-1 text-xs text-muted-foreground'>
                       Billed {billingCycle.toLowerCase()}
                     </div>
                   </div>
@@ -221,49 +221,49 @@ export function PlanCard({
             </div>
           )}
 
-          <div className="space-y-1">
+          <div className='space-y-1'>
             {features.map((feature: string, index: number) => (
-              <div key={index} className="flex items-start">
-                <div className="mr-2 mt-0.5 flex items-center ring-1 ring-black/10 justify-center size-4 rounded-md bg-muted shrink-0">
-                  <Check className="size-3 shrink-0 " />
+              <div key={index} className='flex items-start'>
+                <div className='mr-2 mt-0.5 flex items-center ring-1 ring-black/10 justify-center size-4 rounded-md bg-muted shrink-0'>
+                  <Check className='size-3 shrink-0 ' />
                 </div>
-                <span className="text-sm">{feature}</span>
+                <span className='text-sm'>{feature}</span>
               </div>
             ))}
           </div>
         </CardContent>
 
-        <CardFooter className="flex flex-col gap-2 p-3 pt-0">
+        <CardFooter className='flex flex-col gap-2 p-3 pt-0'>
           {actionType === 'contact' ? (
             <Button
-              variant="outline"
-              className="w-full"
+              variant='outline'
+              className='w-full'
               onClick={() => router.push('/contact-sales')}>
               Contact Sales
             </Button>
           ) : actionType === 'current' ? (
-            <Button className="w-full" disabled>
+            <Button className='w-full' disabled>
               Current Plan
             </Button>
           ) : trialEligible && plan.hasTrial && plan.trialDays > 0 ? (
             // Show Trial button if eligible
             <Button
-              className="w-full" // Or specific trial styling
+              className='w-full' // Or specific trial styling
               onClick={handleStartTrial}
               loading={isTrialProcessing}
-              loadingText="Processing..."
-              variant="outline">
+              loadingText='Processing...'
+              variant='outline'>
               <Sparkles />
               Start {plan.trialDays}-Day Free Trial
             </Button>
           ) : (
             // Default action button (Upgrade/Downgrade/Select)
             <Button
-              className="w-full" // Adjust styling based on actionType if desired
+              className='w-full' // Adjust styling based on actionType if desired
               onClick={handleSelectPlan}
-              variant="outline"
+              variant='outline'
               loading={isProcessing}
-              loadingText="Processing...">
+              loadingText='Processing...'>
               {buttonText}
             </Button>
           )}

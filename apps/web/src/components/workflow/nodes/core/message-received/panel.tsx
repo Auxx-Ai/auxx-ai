@@ -2,10 +2,7 @@
 
 'use client'
 
-import React, { memo } from 'react'
-import { type MessageReceivedNodeData } from './types'
-import { BasePanel } from '../../shared/base/base-panel'
-import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import {
   Select,
@@ -14,12 +11,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Button } from '@auxx/ui/components/button'
-import { Plus, Trash2 } from 'lucide-react'
-import Section from '../../../ui/section'
-import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
-import { messageReceivedDefinition } from './schema'
 import { produce } from 'immer'
+import { Plus, Trash2 } from 'lucide-react'
+import type React from 'react'
+import { memo } from 'react'
+import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import Section from '../../../ui/section'
+import { BasePanel } from '../../shared/base/base-panel'
+import { messageReceivedDefinition } from './schema'
+import type { MessageReceivedNodeData } from './types'
 
 interface MessageReceivedPanelProps {
   nodeId: string
@@ -94,28 +95,28 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
   return (
     <BasePanel nodeId={nodeId} data={data}>
       <Section
-        title="Message Filters"
-        description="Configure filters to control when this trigger activates."
+        title='Message Filters'
+        description='Configure filters to control when this trigger activates.'
         showEnable
         onEnableChange={toggleFilterEnabled}
         enabled={nodeData.message_filter?.enabled || false}
         initialOpen={nodeData.message_filter?.enabled || false}>
-        <div className="space-y-2">
+        <div className='space-y-2'>
           {(nodeData.message_filter?.conditions || []).map((condition, index) => (
-            <div key={index} className="flex gap-2 items-center">
+            <div key={index} className='flex gap-2 items-center'>
               <Select
                 value={condition.field}
                 onValueChange={(value: 'from' | 'subject' | 'body') =>
                   updateConditionField(index, value)
                 }
                 disabled={isReadOnly}>
-                <SelectTrigger className="w-24">
+                <SelectTrigger className='w-24'>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="from">From</SelectItem>
-                  <SelectItem value="subject">Subject</SelectItem>
-                  <SelectItem value="body">Body</SelectItem>
+                  <SelectItem value='from'>From</SelectItem>
+                  <SelectItem value='subject'>Subject</SelectItem>
+                  <SelectItem value='body'>Body</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -125,27 +126,27 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
                   updateConditionOperator(index, value)
                 }
                 disabled={isReadOnly}>
-                <SelectTrigger className="w-24">
+                <SelectTrigger className='w-24'>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="contains">Contains</SelectItem>
-                  <SelectItem value="equals">Equals</SelectItem>
-                  <SelectItem value="regex">Regex</SelectItem>
+                  <SelectItem value='contains'>Contains</SelectItem>
+                  <SelectItem value='equals'>Equals</SelectItem>
+                  <SelectItem value='regex'>Regex</SelectItem>
                 </SelectContent>
               </Select>
 
               <Input
                 value={condition.value}
                 onChange={(e) => updateConditionValue(index, e.target.value)}
-                placeholder="Value"
-                className="flex-1"
+                placeholder='Value'
+                className='flex-1'
                 disabled={isReadOnly}
               />
 
               <Button
-                size="icon"
-                variant="ghost"
+                size='icon'
+                variant='ghost'
                 onClick={() => removeCondition(index)}
                 disabled={isReadOnly}>
                 <Trash2 />
@@ -154,10 +155,10 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
           ))}
 
           <Button
-            size="sm"
-            variant="outline"
+            size='sm'
+            variant='outline'
             onClick={addCondition}
-            className="w-full"
+            className='w-full'
             disabled={isReadOnly}>
             <Plus /> Add Condition
           </Button>

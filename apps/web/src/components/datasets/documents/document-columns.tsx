@@ -1,15 +1,15 @@
 // apps/web/src/components/datasets/documents/document-columns.tsx
 'use client'
 
-import { FileText, Calendar, HardDrive, FileType, Hash, ToggleLeft } from 'lucide-react'
+import type { DocumentEntity as Document } from '@auxx/database/models'
+import type { DocumentStatus as DocumentStatusType } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
-import { DocumentNameCell } from './document-name-cell'
-import { DocumentStatus } from './document-utils'
+import { Calendar, FileText, FileType, HardDrive, Hash, ToggleLeft } from 'lucide-react'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { FormattedCell } from '~/components/dynamic-table'
 import { ItemsCellView } from '~/components/ui/items-list-view'
-import type { DocumentStatus as DocumentStatusType } from '@auxx/database/types'
-import type { DocumentEntity as Document } from '@auxx/database/models'
+import { DocumentNameCell } from './document-name-cell'
+import { DocumentStatus } from './document-utils'
 
 /**
  * Actions configuration for document columns
@@ -64,7 +64,7 @@ export function createDocumentColumns({
         return (
           <ItemsCellView
             item={{ id: status }}
-            renderItem={() => <DocumentStatus status={status} size="sm" />}
+            renderItem={() => <DocumentStatus status={status} size='sm' />}
           />
         )
       },
@@ -83,9 +83,9 @@ export function createDocumentColumns({
             item={{ id: String(enabled) }}
             renderItem={() =>
               enabled ? (
-                <Badge variant="green">Available</Badge>
+                <Badge variant='green'>Available</Badge>
               ) : (
-                <Badge variant="gray">Disabled</Badge>
+                <Badge variant='gray'>Disabled</Badge>
               )
             }
           />
@@ -102,8 +102,8 @@ export function createDocumentColumns({
       cell: ({ getValue }) => (
         <FormattedCell
           value={getValue() ?? 0}
-          fieldType="NUMBER"
-          columnId="totalChunks"
+          fieldType='NUMBER'
+          columnId='totalChunks'
           formatting={{ type: 'number', decimalPlaces: 0 }}
         />
       ),
@@ -119,8 +119,8 @@ export function createDocumentColumns({
       cell: ({ getValue }) => (
         <FormattedCell
           value={getValue()}
-          fieldType="NUMBER"
-          columnId="size"
+          fieldType='NUMBER'
+          columnId='size'
           formatting={{ type: 'number', displayAs: 'bytes', decimalPlaces: 2 }}
         />
       ),
@@ -136,9 +136,9 @@ export function createDocumentColumns({
       cell: ({ getValue }) => (
         <FormattedCell
           value={getValue()}
-          fieldType="TEXT"
-          columnId="mimeType"
-          className="font-mono"
+          fieldType='TEXT'
+          columnId='mimeType'
+          className='font-mono'
         />
       ),
       columnType: 'text',
@@ -151,7 +151,7 @@ export function createDocumentColumns({
       accessorKey: 'createdAt',
       header: 'Uploaded',
       cell: ({ getValue }) => (
-        <FormattedCell value={getValue()} fieldType="DATE" columnId="createdAt" />
+        <FormattedCell value={getValue()} fieldType='DATE' columnId='createdAt' />
       ),
       columnType: 'date',
       fieldType: 'DATE',

@@ -1,18 +1,21 @@
 // apps/web/src/components/workflow/types/core.ts
 
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
-import type { Edge } from './node-base'
-import type { Viewport } from '@xyflow/react'
-import { BaseType } from './unified-types'
 import type { Operator } from '@auxx/lib/conditions/client'
+import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import type { Viewport } from '@xyflow/react'
+import type { Edge } from './node-base'
+import type { BaseType } from './unified-types'
 
 // Re-export base types from node-base.ts to maintain backwards compatibility
-export type { BaseNodeConfig, BaseNodeData, CommonNodeType, WorkflowNode } from './node-base'
-
-export { isWorkflowNode, isNodeOfType, isCommonNode } from './node-base'
-
 // Legacy alias for backwards compatibility
-export type { WorkflowNode as FlowNode } from './node-base'
+export type {
+  BaseNodeConfig,
+  BaseNodeData,
+  CommonNodeType,
+  WorkflowNode,
+  WorkflowNode as FlowNode,
+} from './node-base'
+export { isCommonNode, isNodeOfType, isWorkflowNode } from './node-base'
 
 /**
  * Variable selector type for referencing workflow variables

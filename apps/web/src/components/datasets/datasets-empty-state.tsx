@@ -2,10 +2,10 @@
 
 'use client'
 
-import { EmptyState } from '~/components/global/empty-state'
-import { CreateDatasetButton } from './create-dataset-button'
 import type { DatasetStatus } from '@auxx/lib/datasets'
 import { Database } from 'lucide-react'
+import { EmptyState } from '~/components/global/empty-state'
+import { CreateDatasetButton } from './create-dataset-button'
 
 interface DatasetsEmptyStateProps {
   searchQuery: string
@@ -22,7 +22,7 @@ export function DatasetsEmptyState({ searchQuery, selectedStatus }: DatasetsEmpt
     return (
       <EmptyState
         icon={Database}
-        title="No datasets found"
+        title='No datasets found'
         description="Try adjusting your search terms or filters to find what you're looking for."
       />
     )
@@ -31,9 +31,9 @@ export function DatasetsEmptyState({ searchQuery, selectedStatus }: DatasetsEmpt
   return (
     <EmptyState
       icon={Database}
-      title="No datasets yet"
-      description="Create your first dataset to get started with knowledge management."
-      button={<CreateDatasetButton variant="outline" />}
+      title='No datasets yet'
+      description='Create your first dataset to get started with knowledge management.'
+      button={<CreateDatasetButton variant='outline' />}
     />
   )
 }

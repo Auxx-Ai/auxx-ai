@@ -1,7 +1,8 @@
 // apps/web/src/app/(website)/features/_components/sections/testimonials-and-proof-section.tsx
-import { Card } from '~/components/ui/card'
-import { Badge } from '~/components/ui/badge'
+
 import { Quote } from 'lucide-react'
+import { Badge } from '~/components/ui/badge'
+import { Card } from '~/components/ui/card'
 import { cn } from '~/lib/utils'
 
 // Enumerates customer testimonials for the social proof section.
@@ -38,27 +39,27 @@ const certificationLogos = ['SOC 2', 'ISO 27001', 'GDPR', 'PCI DSS', 'HIPAA Read
 // Renders the testimonials carousel and supporting trust badges.
 export function TestimonialsAndProofSection() {
   return (
-    <section className="relative border-foreground/10 border-b">
-      <div className="relative z-10 mx-auto max-w-6xl border-x px-3">
-        <div className="border-x">
+    <section className='relative border-foreground/10 border-b'>
+      <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
+        <div className='border-x'>
           <div
             aria-hidden
-            className="h-3 w-full bg-[repeating-linear-gradient(-45deg,var(--color-foreground),var(--color-foreground)_1px,transparent_1px,transparent_4px)] opacity-5"
+            className='h-3 w-full bg-[repeating-linear-gradient(-45deg,var(--color-foreground),var(--color-foreground)_1px,transparent_1px,transparent_4px)] opacity-5'
           />
-          <div className="w-full px-6 py-24">
-            <div className="mb-10 flex flex-col gap-4 text-center">
-              <Badge variant="outline" className="mx-auto w-fit">
+          <div className='w-full px-6 py-24'>
+            <div className='mb-10 flex flex-col gap-4 text-center'>
+              <Badge variant='outline' className='mx-auto w-fit'>
                 Customer results
               </Badge>
-              <h2 className="text-pretty text-3xl font-semibold sm:text-4xl">
+              <h2 className='text-pretty text-3xl font-semibold sm:text-4xl'>
                 Trusted by high-volume Shopify brands worldwide
               </h2>
-              <p className="text-muted-foreground mx-auto max-w-3xl text-base">
+              <p className='text-muted-foreground mx-auto max-w-3xl text-base'>
                 From DTC pioneers to global retailers, Auxx.ai powers support teams that demand
                 accuracy, compliance, and immediate ROI.
               </p>
             </div>
-            <div className="grid gap-6 md:grid-cols-3">
+            <div className='grid gap-6 md:grid-cols-3'>
               {testimonials.map((testimonial) => (
                 <Card
                   key={testimonial.name}
@@ -67,10 +68,10 @@ export function TestimonialsAndProofSection() {
                     testimonial.bgColor
                   )}>
                   <Quote className={cn('size-6 ', testimonial.color)} />
-                  <p className="text-sm text-muted-foreground">{testimonial.quote}</p>
-                  <div className="mt-auto pt-4 text-sm">
-                    <div className="font-semibold text-foreground">{testimonial.name}</div>
-                    <div className="text-muted-foreground text-xs">{testimonial.role}</div>
+                  <p className='text-sm text-muted-foreground'>{testimonial.quote}</p>
+                  <div className='mt-auto pt-4 text-sm'>
+                    <div className='font-semibold text-foreground'>{testimonial.name}</div>
+                    <div className='text-muted-foreground text-xs'>{testimonial.role}</div>
                   </div>
                 </Card>
               ))}

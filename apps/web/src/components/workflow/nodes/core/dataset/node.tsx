@@ -5,9 +5,9 @@
 import { memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
-import { type DatasetNode as DatasetNodeType } from './types'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
 import { isNodeVariable } from '~/components/workflow/utils/variable-utils'
+import type { DatasetNode as DatasetNodeType } from './types'
 
 /**
  * Dataset node component for the workflow canvas
@@ -33,20 +33,20 @@ export const DatasetNode = memo<DatasetNodeType>(({ id, data, selected }) => {
   const documentTitleValue = data.documentTitle || 'Untitled'
 
   return (
-    <BaseNode id={id} data={data} selected={selected} width={244} height="auto">
-      <NodeTargetHandle id={id} data={{ ...data, selected }} handleId="target" />
-      <div className="space-y-1 pb-2">
-        <div className="relative px-2">
+    <BaseNode id={id} data={data} selected={selected} width={244} height='auto'>
+      <NodeTargetHandle id={id} data={{ ...data, selected }} handleId='target' />
+      <div className='space-y-1 pb-2'>
+        <div className='relative px-2'>
           {hasDataset || hasChunks ? (
-            <div className="space-y-1 mt-1">
+            <div className='space-y-1 mt-1'>
               {/* Dataset */}
               {hasDataset && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <div className='flex items-center gap-1 text-xs text-muted-foreground'>
                   <span>Dataset:</span>
                   {isDatasetVariable ? (
                     <VariableTag variableId={data.datasetId as string} nodeId={id} />
                   ) : (
-                    <span className="font-mono text-primary-600 truncate max-w-[140px]">
+                    <span className='font-mono text-primary-600 truncate max-w-[140px]'>
                       {data.datasetId}
                     </span>
                   )}
@@ -55,24 +55,24 @@ export const DatasetNode = memo<DatasetNodeType>(({ id, data, selected }) => {
 
               {/* Chunks */}
               {hasChunks && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <div className='flex items-center gap-1 text-xs text-muted-foreground'>
                   <span>Chunks:</span>
                   {isChunksVariable ? (
                     <VariableTag variableId={data.chunks as string} nodeId={id} />
                   ) : (
-                    <span className="font-mono text-primary-600">configured</span>
+                    <span className='font-mono text-primary-600'>configured</span>
                   )}
                 </div>
               )}
 
               {/* Document Title */}
               {data.documentTitle && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <div className='flex items-center gap-1 text-xs text-muted-foreground'>
                   <span>Title:</span>
                   {isDocTitleVariable ? (
                     <VariableTag variableId={data.documentTitle as string} nodeId={id} />
                   ) : (
-                    <span className="font-mono text-primary-600 truncate max-w-[140px]">
+                    <span className='font-mono text-primary-600 truncate max-w-[140px]'>
                       {documentTitleValue}
                     </span>
                   )}
@@ -81,20 +81,20 @@ export const DatasetNode = memo<DatasetNodeType>(({ id, data, selected }) => {
 
               {/* Skip Embedding indicator */}
               {data.skipEmbedding && (
-                <div className="flex items-center gap-1 text-xs text-amber-600">
+                <div className='flex items-center gap-1 text-xs text-amber-600'>
                   <span>Skip Embedding</span>
                 </div>
               )}
             </div>
           ) : (
-            <div className="text-xs text-primary-400 mt-1">Not configured</div>
+            <div className='text-xs text-primary-400 mt-1'>Not configured</div>
           )}
 
           <NodeSourceHandle
-            handleId="source"
+            handleId='source'
             id={id}
             data={{ ...data, selected }}
-            handleClassName="!bottom-5"
+            handleClassName='!bottom-5'
             handleIndex={0}
             handleTotal={1}
           />

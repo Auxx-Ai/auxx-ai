@@ -3,6 +3,7 @@ import Pusher from 'pusher-js'
 // import { env } from '~/env.mjs'
 
 import { env } from '@auxx/config/client'
+
 let pusherClient: Pusher | null = null
 
 export function getPusherClient() {

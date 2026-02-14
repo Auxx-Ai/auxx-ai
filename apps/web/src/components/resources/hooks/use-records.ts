@@ -1,8 +1,8 @@
 // apps/web/src/components/resources/hooks/use-records.ts
 
-import { useEffect, useMemo } from 'react'
-import { useRecordStore, type RecordMeta } from '../store/record-store'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { useEffect, useMemo } from 'react'
+import { type RecordMeta, useRecordStore } from '../store/record-store'
 
 /**
  * Options for the useRecords hook.
@@ -122,9 +122,7 @@ export function useRecords<T extends RecordMeta = RecordMeta>({
     if (recordIds.length === 0) return true
     return recordIds.every((recordId) => {
       const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
-      return (
-        recordsState[entityDefinitionId]?.has(entityInstanceId) || notFoundIdsSet.has(recordId)
-      )
+      return recordsState[entityDefinitionId]?.has(entityInstanceId) || notFoundIdsSet.has(recordId)
     })
   }, [recordIds, recordsState, notFoundIdsSet, recordIdsKey])
 

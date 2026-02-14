@@ -1,20 +1,17 @@
 // apps/web/src/components/workflow/nodes/core/message-received/schema.ts
 
+import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
 import { z } from 'zod'
 import {
-  NodeType,
-  type NodeDefinition,
   NodeCategory,
+  type NodeDefinition,
+  NodeType,
   type ValidationResult,
 } from '~/components/workflow/types'
-import { type MessageReceivedNodeData } from './types'
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
-import { MessageReceivedPanel } from './panel'
-import {
-  type UnifiedVariable,
-  BaseType,
-} from '../../../types/variable-types'
+import { BaseType, type UnifiedVariable } from '../../../types/variable-types'
 import { createNestedVariable } from '../../../utils/variable-conversion'
+import { MessageReceivedPanel } from './panel'
+import type { MessageReceivedNodeData } from './types'
 
 /**
  * Zod schema for message-received configuration
@@ -136,7 +133,10 @@ export const messageReceivedDefinition: NodeDefinition<MessageReceivedNodeData> 
 /**
  * Define output variables for message-received node
  */
-function getMessageReceivedOutputVariables(data: MessageReceivedNodeData, nodeId: string): UnifiedVariable[] {
+function getMessageReceivedOutputVariables(
+  data: MessageReceivedNodeData,
+  nodeId: string
+): UnifiedVariable[] {
   // Message object with all nested properties using createNestedVariable
   const messageVariable = createNestedVariable({
     nodeId,

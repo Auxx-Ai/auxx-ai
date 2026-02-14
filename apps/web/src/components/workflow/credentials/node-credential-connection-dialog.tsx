@@ -1,27 +1,27 @@
 // apps/web/src/components/workflow/credentials/node-credential-connection-dialog.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
-import { ArrowLeft, ArrowRight, Settings, Trash2 } from 'lucide-react'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@auxx/ui/components/dialog'
-import { Button } from '@auxx/ui/components/button'
-import { Badge } from '@auxx/ui/components/badge'
 import { Separator } from '@auxx/ui/components/separator'
-import { CredentialTypeSelector } from './credential-type-selector'
-import { CredentialSelector } from './credential-selector'
-import { CreateCredentialDialog } from './create-credential-dialog'
-import { EditCredentialDialog } from './edit-credential-dialog'
-import { getCredentialType, type CredentialTypeMetadata } from './credential-registry'
-import { useConfirm } from '~/hooks/use-confirm'
 import { toastSuccess } from '@auxx/ui/components/toast'
+import { ArrowLeft, ArrowRight, Settings, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
+import { CreateCredentialDialog } from './create-credential-dialog'
+import { type CredentialTypeMetadata, getCredentialType } from './credential-registry'
+import { CredentialSelector } from './credential-selector'
+import { CredentialTypeSelector } from './credential-type-selector'
+import { EditCredentialDialog } from './edit-credential-dialog'
 
 interface NodeCredentialConnectionDialogProps {
   open: boolean
@@ -214,24 +214,24 @@ export function NodeCredentialConnectionDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto ">
-          <DialogHeader className="pb-0">
+        <DialogContent className='max-w-2xl max-h-[90vh] overflow-y-auto '>
+          <DialogHeader className='pb-0'>
             <DialogTitle>{getDialogTitle()}</DialogTitle>
             <DialogDescription>{getDialogDescription()}</DialogDescription>
 
             {selectedTypeInfo && currentStep !== 'select-type' && (
               <>
                 <Separator />
-                <div className="flex items-center gap-3 pt-2">
-                  <selectedTypeInfo.icon className="h-5 w-5" />
-                  <span className="font-medium">{selectedTypeInfo.displayName}</span>
-                  <Badge variant="secondary">{selectedTypeInfo.category}</Badge>
+                <div className='flex items-center gap-3 pt-2'>
+                  <selectedTypeInfo.icon className='h-5 w-5' />
+                  <span className='font-medium'>{selectedTypeInfo.displayName}</span>
+                  <Badge variant='secondary'>{selectedTypeInfo.category}</Badge>
                 </div>
               </>
             )}
           </DialogHeader>
 
-          <div className="">
+          <div className=''>
             {currentStep === 'select-type' && (
               <CredentialTypeSelector
                 onSelect={handleTypeSelect}
@@ -253,22 +253,22 @@ export function NodeCredentialConnectionDialog({
             )}
 
             {currentStep === 'connected-actions' && currentCredentialInfo && (
-              <div className="space-y-4">
-                <div className="text-center py-6">
+              <div className='space-y-4'>
+                <div className='text-center py-6'>
                   {selectedTypeInfo && (
-                    <selectedTypeInfo.icon className="h-12 w-12 mx-auto mb-4 text-primary" />
+                    <selectedTypeInfo.icon className='h-12 w-12 mx-auto mb-4 text-primary' />
                   )}
-                  <h3 className="text-lg font-medium mb-2">{currentCredentialInfo.name}</h3>
-                  <p className="text-muted-foreground">This credential is connected to your node</p>
+                  <h3 className='text-lg font-medium mb-2'>{currentCredentialInfo.name}</h3>
+                  <p className='text-muted-foreground'>This credential is connected to your node</p>
                 </div>
 
-                <div className="flex gap-3">
-                  <Button variant="outline" onClick={handleEdit} className="flex-1">
-                    <Settings className="w-4 h-4 mr-2" />
+                <div className='flex gap-3'>
+                  <Button variant='outline' onClick={handleEdit} className='flex-1'>
+                    <Settings className='w-4 h-4 mr-2' />
                     Edit Credential
                   </Button>
-                  <Button variant="destructive" onClick={handleDisconnect} className="flex-1">
-                    <Trash2 className="w-4 h-4 mr-2" />
+                  <Button variant='destructive' onClick={handleDisconnect} className='flex-1'>
+                    <Trash2 className='w-4 h-4 mr-2' />
                     Disconnect
                   </Button>
                 </div>
@@ -277,23 +277,23 @@ export function NodeCredentialConnectionDialog({
           </div>
 
           <DialogFooter>
-            <div className="flex justify-between w-full">
+            <div className='flex justify-between w-full'>
               <Button
-                variant="ghost"
-                size="sm"
+                variant='ghost'
+                size='sm'
                 onClick={handleBack}
                 disabled={currentStep === 'select-type' || currentStep === 'connected-actions'}>
                 <ArrowLeft />
                 Back
               </Button>
 
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => onOpenChange(false)} size="sm">
+              <div className='flex gap-2'>
+                <Button variant='outline' onClick={() => onOpenChange(false)} size='sm'>
                   Cancel
                 </Button>
 
                 {currentStep === 'select-credential' && (
-                  <Button onClick={handleConnect} disabled={!canGoNext()} size="sm">
+                  <Button onClick={handleConnect} disabled={!canGoNext()} size='sm'>
                     Connect
                     <ArrowRight />
                   </Button>

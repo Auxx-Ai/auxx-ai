@@ -1,10 +1,10 @@
 'use client'
+import type { RecordId } from '@auxx/lib/field-values/client'
+import { getGroupPosition, groupConsecutiveComments } from '@auxx/utils'
 // apps/web/src/components/global/comments/comment-list.tsx
 import React from 'react'
+import { type Comment, useComments } from '~/hooks/use-comments'
 import { CommentItem, CommentSkeleton } from './comment-item'
-import { useComments, type Comment } from '~/hooks/use-comments'
-import { getGroupPosition, groupConsecutiveComments } from '@auxx/utils'
-import type { RecordId } from '@auxx/lib/field-values/client'
 
 interface CommentListProps {
   // Required props

@@ -1,11 +1,11 @@
 // apps/web/src/components/fields/displays/display-phone.tsx
 
+import { formatToDisplayValue } from '@auxx/lib/field-values/client'
+import { Badge } from '@auxx/ui/components/badge'
+import { PhoneForwarded } from 'lucide-react'
 import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
-import { Badge } from '@auxx/ui/components/badge'
 import { FieldOptionButton } from './field-option-button'
-import { PhoneForwarded } from 'lucide-react'
-import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 
 /**
  * DisplayPhone component
@@ -23,14 +23,14 @@ export function DisplayPhone() {
   const displayText = formatted || '-'
 
   const buttons = [
-    <FieldOptionButton key="open" label="Call" href={`tel:${rawValue}`}>
+    <FieldOptionButton key='open' label='Call' href={`tel:${rawValue}`}>
       <PhoneForwarded />
     </FieldOptionButton>,
   ]
 
   return (
     <DisplayWrapper copyValue={rawValue || null} buttons={buttons}>
-      <Badge shape="tag" variant="pill">
+      <Badge shape='tag' variant='pill'>
         {displayText}
       </Badge>
     </DisplayWrapper>

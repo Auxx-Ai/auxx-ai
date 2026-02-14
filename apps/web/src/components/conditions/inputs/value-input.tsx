@@ -3,9 +3,9 @@
 'use client'
 
 import { useConditionContext } from '../condition-context'
+import type { ValueInputProps } from '../types'
 import { ResourceInput } from './resource-input'
 import { VariableInput } from './variable-input'
-import type { ValueInputProps } from '../types'
 
 /**
  * Router component that delegates to ResourceInput or VariableInput

@@ -6,8 +6,8 @@ import { Loader2Icon } from 'lucide-react'
 
 export function Loading() {
   return (
-    <div className="p-8">
-      <Loader2Icon className="mx-auto size-8 animate-spin" />
+    <div className='p-8'>
+      <Loader2Icon className='mx-auto size-8 animate-spin' />
     </div>
   )
 }
@@ -25,7 +25,7 @@ export function LoadingContent(props: LoadingContentProps) {
     return props.errorComponent ? (
       <>{props.errorComponent}</>
     ) : (
-      <div className="mt-4">
+      <div className='mt-4'>
         {props.error?.info?.error || props.error?.error}
         {/* <ErrorDisplay error={props.error} /> */}
       </div>
@@ -39,9 +39,9 @@ export function LoadingContent(props: LoadingContentProps) {
 
 export function LoadingSpinner() {
   return (
-    <div className="absolute inset-0 grid place-items-center">
-      <div className="flex flex-col items-center gap-2">
-        <Loader2Icon className="mx-auto size-8 animate-spin" />
+    <div className='absolute inset-0 grid place-items-center'>
+      <div className='flex flex-col items-center gap-2'>
+        <Loader2Icon className='mx-auto size-8 animate-spin' />
       </div>
     </div>
   )

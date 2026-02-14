@@ -4,8 +4,8 @@
  * Public workflow routes (no authentication required)
  */
 
-import { Hono } from 'hono'
 import { getPublicWorkflowApp } from '@auxx/services/workflows'
+import { Hono } from 'hono'
 
 /** Environment variable type for sanitization */
 interface EnvVar {

@@ -1,15 +1,15 @@
 // apps/web/src/components/workflow/hooks/use-workflow-trigger.ts
 
-import { useMemo, useCallback } from 'react'
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
-import { unifiedNodeRegistry } from '../nodes/unified-registry'
+import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import { useStore, useStoreApi } from '@xyflow/react'
+import { useCallback, useMemo } from 'react'
 import {
-  triggerRegistry,
   dynamicTriggerRegistry,
   type TriggerInputConfig,
+  triggerRegistry,
 } from '../nodes/trigger-registry'
+import { unifiedNodeRegistry } from '../nodes/unified-registry'
 import type { FlowNode, ValidationResult } from '../types'
-import { useStore, useStoreApi } from '@xyflow/react'
 
 /**
  * Return type for the workflow trigger hook

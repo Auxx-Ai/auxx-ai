@@ -1,15 +1,15 @@
 // apps/web/src/components/workflow/nodes/core/note/node.tsx
 
-import React, { memo, useRef, useCallback, useState } from 'react'
-import { Handle, Position } from '@xyflow/react'
-import type { NoteNode as NoteNodeType, NoteNodeData, NoteTheme } from './types'
-import { THEME_MAP, MIN_NOTE_WIDTH, MIN_NOTE_HEIGHT } from './constants'
-import { NoteEditor } from './editor/note-editor'
-import { NoteToolbar } from './editor/note-toolbar'
 import { cn } from '@auxx/ui/lib/utils'
+import { Handle, Position } from '@xyflow/react'
+import { produce } from 'immer'
+import React, { memo, useCallback, useRef, useState } from 'react'
 import { useNodeCrud, useNodesInteractions } from '~/components/workflow/hooks'
 import { NodeResizer } from '~/components/workflow/ui/node-resizer'
-import { produce } from 'immer'
+import { MIN_NOTE_HEIGHT, MIN_NOTE_WIDTH, THEME_MAP } from './constants'
+import { NoteEditor } from './editor/note-editor'
+import { NoteToolbar } from './editor/note-toolbar'
+import type { NoteNodeData, NoteNode as NoteNodeType, NoteTheme } from './types'
 
 export const NoteNode = memo<NoteNodeType>(({ id, data, selected, width, height }) => {
   const ref = useRef<HTMLDivElement | null>(null)
@@ -88,16 +88,16 @@ export const NoteNode = memo<NoteNodeType>(({ id, data, selected, width, height 
       style={{ width, height }}>
       {/* Invisible handles to prevent React Flow warnings */}
       <Handle
-        type="target"
+        type='target'
         position={Position.Top}
-        id="target"
+        id='target'
         style={{ opacity: 0, pointerEvents: 'none' }}
         isConnectable={false}
       />
       <Handle
-        type="source"
+        type='source'
         position={Position.Bottom}
-        id="source"
+        id='source'
         style={{ opacity: 0, pointerEvents: 'none' }}
         isConnectable={false}
       />
@@ -113,7 +113,7 @@ export const NoteNode = memo<NoteNodeType>(({ id, data, selected, width, height 
 
       {/* Toolbar - shown when selected */}
       {selected && (
-        <div className="absolute left-1/2 top-[-41px] -translate-x-1/2 z-10">
+        <div className='absolute left-1/2 top-[-41px] -translate-x-1/2 z-10'>
           <NoteToolbar
             editor={editor}
             theme={theme}
@@ -130,12 +130,12 @@ export const NoteNode = memo<NoteNodeType>(({ id, data, selected, width, height 
       )}
 
       {/* Editor content */}
-      <div className="flex-1 overflow-hidden px-3 py-2.5">
+      <div className='flex-1 overflow-hidden px-3 py-2.5'>
         <div className={cn(selected && 'nodrag nopan nowheel cursor-text')}>
           <NoteEditor
             content={inputs?.text || ''}
             onChange={handleEditorChange}
-            placeholder="Write your note..."
+            placeholder='Write your note...'
             fontSize={inputs?.fontSize || 14}
             editable={true}
             theme={THEME_MAP[theme]}
@@ -147,7 +147,7 @@ export const NoteNode = memo<NoteNodeType>(({ id, data, selected, width, height 
       </div>
 
       {/* Author display */}
-      {showAuthor && inputs?.author && <div className="p-3 pt-0 text-xs">{inputs.author}</div>}
+      {showAuthor && inputs?.author && <div className='p-3 pt-0 text-xs'>{inputs.author}</div>}
     </div>
   )
 })

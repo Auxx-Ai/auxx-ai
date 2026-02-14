@@ -1,14 +1,14 @@
 // app/(protected)/app/settings/plans/_components/plan-comparison-dialog.tsx
 'use client'
 
-import { useState } from 'react'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from '@auxx/ui/components/dialog'
+import { useState } from 'react'
 import { PlanComparison } from './plan-comparison'
 
 /** Props for PlanComparisonDialog component */
@@ -26,7 +26,7 @@ interface PlanComparisonDialogProps {
 export function PlanComparisonDialog({ open, onOpenChange }: PlanComparisonDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="xxl" className="max-h-screen overflow-y-auto">
+      <DialogContent size='xxl' className='max-h-screen overflow-y-auto'>
         <DialogHeader>
           <DialogTitle>Choose Your Plan</DialogTitle>
           <DialogDescription>

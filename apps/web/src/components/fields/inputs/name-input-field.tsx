@@ -1,8 +1,9 @@
 // apps/web/src/components/fields/inputs/name-input-field.tsx
-import { usePropertyContext } from '../property-provider'
-import { useEffect, useState, useRef } from 'react'
+
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
+import { useEffect, useRef, useState } from 'react'
+import { usePropertyContext } from '../property-provider'
 
 /**
  * NameInputField
@@ -56,34 +57,34 @@ export function NameInputField() {
   }, [onBeforeClose, initialName.firstName, initialName.lastName, commitValue])
 
   return (
-    <div className="p-3 pt-2 space-y-3">
-      <div className="space-y-2">
-        <Label htmlFor="firstName" className="text-sm font-medium">
+    <div className='p-3 pt-2 space-y-3'>
+      <div className='space-y-2'>
+        <Label htmlFor='firstName' className='text-sm font-medium'>
           First Name
         </Label>
         <Input
-          id="firstName"
-          size="sm"
+          id='firstName'
+          size='sm'
           value={fields.firstName}
           onChange={(e) => setFields((f) => ({ ...f, firstName: e.target.value }))}
           disabled={isSaving}
-          placeholder="Enter first name"
-          className="w-full"
+          placeholder='Enter first name'
+          className='w-full'
           autoFocus
         />
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="lastName" className="text-sm font-medium">
+      <div className='space-y-2'>
+        <Label htmlFor='lastName' className='text-sm font-medium'>
           Last Name
         </Label>
         <Input
-          id="lastName"
-          size="sm"
+          id='lastName'
+          size='sm'
           value={fields.lastName}
           onChange={(e) => setFields((f) => ({ ...f, lastName: e.target.value }))}
           disabled={isSaving}
-          placeholder="Enter last name"
-          className="w-full"
+          placeholder='Enter last name'
+          className='w-full'
         />
       </div>
     </div>

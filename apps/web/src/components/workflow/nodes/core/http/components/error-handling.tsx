@@ -2,7 +2,14 @@
 
 'use client'
 
-import { useCallback } from 'react'
+import { InputGroup, InputGroupAddon } from '@auxx/ui/components/input-group'
+import {
+  NumberInput,
+  NumberInputDecrement,
+  NumberInputField,
+  NumberInputIncrement,
+  NumberInputScrubber,
+} from '@auxx/ui/components/input-number'
 import {
   Select,
   SelectContent,
@@ -10,19 +17,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { InputGroup, InputGroupAddon } from '@auxx/ui/components/input-group'
-import {
-  NumberInput,
-  NumberInputField,
-  NumberInputScrubber,
-  NumberInputIncrement,
-  NumberInputDecrement,
-} from '@auxx/ui/components/input-number'
-import { Editor } from '~/components/workflow/ui/prompt-editor'
-import CodeEditor from '~/components/workflow/ui/structured-output-generator/code-editor'
-import Section from '~/components/workflow/ui/section'
+import { useCallback } from 'react'
 import { useEdgeInteractions } from '~/components/workflow/hooks'
-import { type HttpNodeData, type DefaultValueItem, ErrorStrategy } from '../types'
+import { Editor } from '~/components/workflow/ui/prompt-editor'
+import Section from '~/components/workflow/ui/section'
+import CodeEditor from '~/components/workflow/ui/structured-output-generator/code-editor'
+import { type DefaultValueItem, ErrorStrategy, type HttpNodeData } from '../types'
 
 interface ErrorHandlingProps {
   nodeId: string
@@ -102,7 +102,7 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
 
   return (
     <Section
-      title="Error handling"
+      title='Error handling'
       initialOpen={errorStrategy !== ErrorStrategy.none}
       enabled={errorStrategy !== ErrorStrategy.none}
       actions={
@@ -110,8 +110,8 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
           value={errorStrategy || 'default'}
           onValueChange={setErrorStrategy}
           disabled={isReadOnly}>
-          <SelectTrigger variant="default" size="sm" className="mb-0">
-            <SelectValue placeholder="Select strategy" />
+          <SelectTrigger variant='default' size='sm' className='mb-0'>
+            <SelectValue placeholder='Select strategy' />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ErrorStrategy.none}>None</SelectItem>
@@ -121,7 +121,7 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
         </Select>
       }>
       {errorStrategy === ErrorStrategy.default && (
-        <div className="space-y-3">
+        <div className='space-y-3'>
           {/* Status Code */}
           <NumberInput
             value={parseInt(getDefaultValue('status_code')) || 200}
@@ -130,14 +130,14 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
             max={599}
             step={1}
             disabled={isReadOnly}>
-            <div className="flex flex-col gap-1">
-              <NumberInputScrubber htmlFor="status-code">Status Code</NumberInputScrubber>
+            <div className='flex flex-col gap-1'>
+              <NumberInputScrubber htmlFor='status-code'>Status Code</NumberInputScrubber>
               <InputGroup>
-                <InputGroupAddon align="inline-start">
+                <InputGroupAddon align='inline-start'>
                   <NumberInputDecrement />
                 </InputGroupAddon>
-                <NumberInputField id="status-code" placeholder="200" />
-                <InputGroupAddon align="inline-end">
+                <NumberInputField id='status-code' placeholder='200' />
+                <InputGroupAddon align='inline-end'>
                   <NumberInputIncrement />
                 </InputGroupAddon>
               </InputGroup>
@@ -145,34 +145,34 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
           </NumberInput>
 
           {/* Body */}
-          <div className="flex flex-col gap-1">
+          <div className='flex flex-col gap-1'>
             <Editor
-              title={<label className="text-xs">Response Body</label>}
+              title={<label className='text-xs'>Response Body</label>}
               value={getDefaultValue('body') || ''}
               onChange={handleBodyChange}
               nodeId={nodeId}
-              placeholder="Enter default response body or use {{variables}}..."
+              placeholder='Enter default response body or use {{variables}}...'
               minHeight={100}
               readOnly={isReadOnly}
             />
           </div>
 
           {/* Headers */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium">Response Headers</label>
+          <div className='flex flex-col gap-1'>
+            <label className='text-xs font-medium'>Response Headers</label>
             <CodeEditor
               value={getDefaultValue('headers') || '{}'}
               onUpdate={handleHeadersChange}
               readOnly={isReadOnly}
-              className="min-h-[100px] rounded-md border border-primary-200"
-              editorWrapperClassName="h-[100px]"
+              className='min-h-[100px] rounded-md border border-primary-200'
+              editorWrapperClassName='h-[100px]'
               hideTopMenu={false}
             />
           </div>
         </div>
       )}
       {errorStrategy === ErrorStrategy.fail && (
-        <div className="text-sm text-primary-500">Configure a 'Fail branch' below.</div>
+        <div className='text-sm text-primary-500'>Configure a 'Fail branch' below.</div>
       )}
     </Section>
   )

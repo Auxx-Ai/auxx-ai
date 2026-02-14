@@ -1,36 +1,35 @@
 // apps/web/src/server/api/routers/workflow.ts
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { TRPCError } from '@trpc/server'
-import {
-  WorkflowService,
-  WorkflowVersionService,
-  WorkflowStatsService,
-  WorkflowTriggerType,
-  WORKFLOW_TRIGGER_TYPE_VALUES,
-  WorkflowExecutionService,
-  type WorkflowExecutionError,
-  TemplateGraphTransformer,
-} from '@auxx/lib/workflows'
-import { WorkflowAppModel } from '@auxx/database/models'
+
 import { schema } from '@auxx/database'
-import {
-  WorkflowEngine,
-  type Workflow,
-  type WorkflowNode,
-  WorkflowNodeType,
-} from '@auxx/lib/workflow-engine'
 import { WorkflowRunStatus } from '@auxx/database/enums'
-import { workflowTemplatesRouter } from './workflow-templates'
-import { getTemplateById } from '@auxx/services/workflow-templates'
-import { getWorkflowAppsByTrigger } from '@auxx/services/workflows'
+import { WorkflowAppModel } from '@auxx/database/models'
 import {
   triggerManualResourceWorkflow,
   triggerManualResourceWorkflowBulk,
+  type Workflow,
+  WorkflowEngine,
+  type WorkflowNode,
+  type WorkflowNodeType,
 } from '@auxx/lib/workflow-engine'
-import { generateId } from '@auxx/utils/generateId'
-import { and, eq } from 'drizzle-orm'
+import {
+  TemplateGraphTransformer,
+  WORKFLOW_TRIGGER_TYPE_VALUES,
+  type WorkflowExecutionError,
+  WorkflowExecutionService,
+  WorkflowService,
+  WorkflowStatsService,
+  WorkflowTriggerType,
+  WorkflowVersionService,
+} from '@auxx/lib/workflows'
+import { getTemplateById } from '@auxx/services/workflow-templates'
+import { getWorkflowAppsByTrigger } from '@auxx/services/workflows'
 import { type RecordId, recordIdSchema } from '@auxx/types/resource'
+import { generateId } from '@auxx/utils/generateId'
+import { TRPCError } from '@trpc/server'
+import { and, eq } from 'drizzle-orm'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { workflowTemplatesRouter } from './workflow-templates'
 
 /**
  * Convert database workflow format to workflow-engine format for validation
@@ -289,7 +288,7 @@ export const workflowRouter = createTRPCRouter({
 
     try {
       // If templateId is provided, fetch the template and transform it
-      let templateData: any = undefined
+      let templateData: any
 
       if (input.templateId) {
         const templateResult = await getTemplateById(input.templateId)

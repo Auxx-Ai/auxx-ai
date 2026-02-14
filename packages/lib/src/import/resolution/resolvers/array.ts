@@ -1,6 +1,6 @@
 // packages/lib/src/import/resolution/resolvers/array.ts
 
-import type { ResolvedValue, ResolutionConfig } from '../../types/resolution'
+import type { ResolutionConfig, ResolvedValue } from '../../types/resolution'
 
 /**
  * Split string by delimiter into array.

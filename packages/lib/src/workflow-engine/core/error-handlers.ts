@@ -1,13 +1,13 @@
 // packages/lib/src/workflow-engine/core/error-handlers.ts
 
 import { database as db, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
-import type { ExecutionContextManager } from './execution-context'
-import type { WorkflowNode, WorkflowExecutionOptions } from './types'
-import { WorkflowNodeError, WorkflowNodeProcessingError } from './errors'
-import { NodeRunningStatus } from './types'
+import { eq } from 'drizzle-orm'
 import { WorkflowEventType } from '../shared/types'
+import type { WorkflowNodeError, WorkflowNodeProcessingError } from './errors'
+import type { ExecutionContextManager } from './execution-context'
+import type { WorkflowExecutionOptions, WorkflowNode } from './types'
+import { NodeRunningStatus } from './types'
 
 const logger = createScopedLogger('workflow-error-handlers')
 

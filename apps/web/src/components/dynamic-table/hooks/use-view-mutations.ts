@@ -1,7 +1,7 @@
 // apps/web/src/components/dynamic-table/hooks/use-view-mutations.ts
 
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { useDynamicTableStore } from '../stores/dynamic-table-store'
 import type { TableView } from '../types'
 

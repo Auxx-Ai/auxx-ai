@@ -1,8 +1,8 @@
 import type {
-  FolderFileEntity as FolderFile,
+  AttachmentEntity as Attachment,
   FileVersionEntity as FileVersion,
   FolderEntity as Folder,
-  AttachmentEntity as Attachment,
+  FolderFileEntity as FolderFile,
   MediaAssetEntity as MediaAsset,
   MediaAssetVersionEntity as MediaAssetVersion,
   StorageLocationEntity as StorageLocation,

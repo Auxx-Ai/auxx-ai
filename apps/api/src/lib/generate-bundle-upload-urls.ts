@@ -2,9 +2,9 @@
 
 import { database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { type Result, ok, err } from 'neverthrow'
-import { generatePresignedUploadUrl } from './s3'
+import { err, ok, type Result } from 'neverthrow'
 import type { AppVersionBundleError } from './errors'
+import { generatePresignedUploadUrl } from './s3'
 import { fromDatabase } from './utils'
 
 /**

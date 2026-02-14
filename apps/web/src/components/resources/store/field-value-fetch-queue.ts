@@ -1,17 +1,17 @@
 // apps/web/src/components/resources/store/field-value-fetch-queue.ts
 
-import { generateId } from '@auxx/utils/generateId'
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
-import {
-  useFieldValueStore,
-  buildFieldValueKey,
-  normalizeFieldRef,
-  type FieldValueKey,
-  type FieldReference,
-  type StoredFieldValue,
-} from './field-value-store'
+import { generateId } from '@auxx/utils/generateId'
 import { computedFieldRegistry } from './computed-field-registry'
+import {
+  buildFieldValueKey,
+  type FieldReference,
+  type FieldValueKey,
+  normalizeFieldRef,
+  type StoredFieldValue,
+  useFieldValueStore,
+} from './field-value-store'
 
 const BATCH_SIZE = 100
 const DEFAULT_DEBOUNCE_MS = 50
@@ -19,10 +19,9 @@ const DEFAULT_DEBOUNCE_MS = 50
 /**
  * Function signature for the batch fetch API call.
  */
-type FetchFn = (params: {
-  recordIds: RecordId[]
-  fieldReferences: FieldReference[]
-}) => Promise<{ values: Array<{ recordId: string; fieldRef: FieldReference; value: StoredFieldValue }> }>
+type FetchFn = (params: { recordIds: RecordId[]; fieldReferences: FieldReference[] }) => Promise<{
+  values: Array<{ recordId: string; fieldRef: FieldReference; value: StoredFieldValue }>
+}>
 
 /**
  * Entry in the pending fetch queue.
@@ -64,7 +63,10 @@ class FieldValueFetchQueue {
    */
   queueFetch(recordId: RecordId, fieldRef: FieldReference): boolean {
     // Check if this is a CALC field (only for string fieldRefs, not paths)
-    if (typeof fieldRef === 'string' && computedFieldRegistry.isComputed(fieldRef as ResourceFieldId)) {
+    if (
+      typeof fieldRef === 'string' &&
+      computedFieldRegistry.isComputed(fieldRef as ResourceFieldId)
+    ) {
       const config = computedFieldRegistry.getConfig(fieldRef as ResourceFieldId)
       if (config) {
         // Queue source fields instead of the CALC field itself
@@ -105,7 +107,9 @@ class FieldValueFetchQueue {
   /**
    * Queue multiple fetch requests at once (more efficient than individual calls).
    */
-  queueFetchBatch(requests: Array<{ recordId: RecordId; fieldRef: FieldReference }>): FieldValueKey[] {
+  queueFetchBatch(
+    requests: Array<{ recordId: RecordId; fieldRef: FieldReference }>
+  ): FieldValueKey[] {
     const store = useFieldValueStore.getState()
     const queued: FieldValueKey[] = []
 

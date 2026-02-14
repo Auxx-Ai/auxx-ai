@@ -8,7 +8,5 @@
  * - Different entities or views = different table IDs (no conflicts)
  */
 export function generateTableId(entityDefinitionId: string, viewId?: string): string {
-  return viewId
-    ? `${entityDefinitionId}:${viewId}`
-    : entityDefinitionId
+  return viewId ? `${entityDefinitionId}:${viewId}` : entityDefinitionId
 }

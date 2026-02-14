@@ -1,8 +1,8 @@
 // packages/sdk/src/runtime/register-event-handler.ts
 
 import { eventBus } from './event-bus.js'
-import { wrapEventHandler, getComponentDisplayName } from './wrap-event-handler.js'
 import type { BaseTag } from './reconciler/tags/base-tag.js'
+import { getComponentDisplayName, wrapEventHandler } from './wrap-event-handler.js'
 
 /**
  * Registers an event handler prop with the global event bus.
@@ -17,12 +17,13 @@ export function registerEventHandler(tag: BaseTag, eventName: string): void {
   const removeMountListener = tag.mounted.addListener(({ instance, props }) => {
     if (props[eventName]) {
       const componentDisplayName = getComponentDisplayName(props)
-      const eventHandler = typeof props[eventName] === 'function'
-        ? wrapEventHandler(props[eventName], {
-            componentDisplayName,
-            eventName,
-          })
-        : props[eventName]
+      const eventHandler =
+        typeof props[eventName] === 'function'
+          ? wrapEventHandler(props[eventName], {
+              componentDisplayName,
+              eventName,
+            })
+          : props[eventName]
 
       eventBus.setTagEventListener(eventName, instance.instance_id, eventHandler)
       console.log(`[EventHandler] Registered ${eventName} for instance ${instance.instance_id}`)
@@ -42,12 +43,13 @@ export function registerEventHandler(tag: BaseTag, eventName: string): void {
         // Register new handler
         if (nextProps[eventName]) {
           const componentDisplayName = getComponentDisplayName(nextProps)
-          const eventHandler = typeof nextProps[eventName] === 'function'
-            ? wrapEventHandler(nextProps[eventName], {
-                componentDisplayName,
-                eventName,
-              })
-            : nextProps[eventName]
+          const eventHandler =
+            typeof nextProps[eventName] === 'function'
+              ? wrapEventHandler(nextProps[eventName], {
+                  componentDisplayName,
+                  eventName,
+                })
+              : nextProps[eventName]
 
           eventBus.setTagEventListener(eventName, instance.instance_id, eventHandler)
           console.log(`[EventHandler] Updated ${eventName} for instance ${instance.instance_id}`)

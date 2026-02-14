@@ -1,11 +1,11 @@
 // apps/web/src/app/(auth)/consent/_components/consent-content.tsx
 'use client'
 
-import { useState } from 'react'
-import { client } from '~/auth/auth-client'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent } from '@auxx/ui/components/card'
-import { ShieldCheck, AlertCircle } from 'lucide-react'
+import { AlertCircle, ShieldCheck } from 'lucide-react'
+import { useState } from 'react'
+import { client } from '~/auth/auth-client'
 
 /**
  * Props for the ConsentContent component
@@ -54,13 +54,13 @@ export function ConsentContent({ consentCode, clientId, scopes }: ConsentContent
   // Validate required params
   if (!consentCode || !clientId) {
     return (
-      <Card className="shadow-md shadow-black/20 border-transparent w-full">
-        <CardContent className="flex flex-col gap-4 overflow-hidden pt-6">
-          <div className="flex items-center gap-2 text-destructive">
-            <AlertCircle className="h-5 w-5" />
-            <div className="font-semibold">Authorization Error</div>
+      <Card className='shadow-md shadow-black/20 border-transparent w-full'>
+        <CardContent className='flex flex-col gap-4 overflow-hidden pt-6'>
+          <div className='flex items-center gap-2 text-destructive'>
+            <AlertCircle className='h-5 w-5' />
+            <div className='font-semibold'>Authorization Error</div>
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className='text-sm text-muted-foreground'>
             Invalid consent request. Missing required parameters.
           </p>
         </CardContent>
@@ -121,38 +121,38 @@ export function ConsentContent({ consentCode, clientId, scopes }: ConsentContent
   const clientName = clientId
 
   return (
-    <Card className="shadow-md shadow-black/20 border-transparent w-full">
-      <CardContent className="flex flex-col gap-4 overflow-hidden pt-6">
+    <Card className='shadow-md shadow-black/20 border-transparent w-full'>
+      <CardContent className='flex flex-col gap-4 overflow-hidden pt-6'>
         {state.error ? (
           <>
-            <div className="flex items-center gap-2 text-destructive">
-              <AlertCircle className="h-5 w-5" />
-              <div className="font-semibold">Authorization Error</div>
+            <div className='flex items-center gap-2 text-destructive'>
+              <AlertCircle className='h-5 w-5' />
+              <div className='font-semibold'>Authorization Error</div>
             </div>
-            <p className="text-sm text-muted-foreground">{state.error}</p>
+            <p className='text-sm text-muted-foreground'>{state.error}</p>
           </>
         ) : (
           <>
-            <div className="font-semibold leading-none tracking-tight py-4 text-xl text-center">
+            <div className='font-semibold leading-none tracking-tight py-4 text-xl text-center'>
               Authorize Application
             </div>
 
-            <div className="text-center mb-2">
-              <p className="text-sm text-muted-foreground">
-                <strong className="text-foreground">{clientName}</strong> is requesting access to
+            <div className='text-center mb-2'>
+              <p className='text-sm text-muted-foreground'>
+                <strong className='text-foreground'>{clientName}</strong> is requesting access to
                 your account
               </p>
             </div>
 
             {scopes.length > 0 && (
-              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <ShieldCheck className="h-4 w-4" />
+              <div className='bg-muted/50 rounded-lg p-4 space-y-2'>
+                <div className='flex items-center gap-2 text-sm font-medium'>
+                  <ShieldCheck className='h-4 w-4' />
                   <span>This application will be able to:</span>
                 </div>
-                <ul className="space-y-1.5 ml-6">
+                <ul className='space-y-1.5 ml-6'>
                   {scopes.map((scope) => (
-                    <li key={scope} className="text-sm text-muted-foreground">
+                    <li key={scope} className='text-sm text-muted-foreground'>
                       • {formatScopeDescription(scope)}
                     </li>
                   ))}
@@ -160,25 +160,25 @@ export function ConsentContent({ consentCode, clientId, scopes }: ConsentContent
               </div>
             )}
 
-            <div className="flex gap-3 mt-2">
+            <div className='flex gap-3 mt-2'>
               <Button
-                variant="outline"
+                variant='outline'
                 onClick={() => handleConsent(false)}
                 disabled={state.loading}
-                className="flex-1">
+                className='flex-1'>
                 Deny
               </Button>
               <Button
                 onClick={() => handleConsent(true)}
                 disabled={state.loading}
                 loading={state.loading}
-                loadingText="Authorizing..."
-                className="flex-1">
+                loadingText='Authorizing...'
+                className='flex-1'>
                 Authorize
               </Button>
             </div>
 
-            <p className="text-xs text-muted-foreground text-center mt-2">
+            <p className='text-xs text-muted-foreground text-center mt-2'>
               By authorizing, you allow this application to access your data according to their
               privacy policy.
             </p>

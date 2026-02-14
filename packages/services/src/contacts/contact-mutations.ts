@@ -2,8 +2,8 @@
 
 import { database, schema, type Transaction } from '@auxx/database'
 import type { CustomerStatus } from '@auxx/database/types'
-import { eq, and } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
+import { and, eq } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type {
   ContactContext,
@@ -156,9 +156,7 @@ export async function deleteContactWithRelations(
 
   const result = await tx
     .delete(schema.Contact)
-    .where(
-      and(eq(schema.Contact.id, contactId), eq(schema.Contact.organizationId, organizationId))
-    )
+    .where(and(eq(schema.Contact.id, contactId), eq(schema.Contact.organizationId, organizationId)))
     .returning({ id: schema.Contact.id })
 
   return result

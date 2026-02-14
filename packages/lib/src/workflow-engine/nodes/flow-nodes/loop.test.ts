@@ -1,11 +1,11 @@
 // packages/lib/src/workflow-engine/nodes/flow-nodes/loop.test.ts
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { LoopProcessor } from './loop'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ExecutionContextManager } from '../../core/execution-context'
 import { LoopContextManager } from '../../core/loop-context-extensions'
-import { WorkflowNodeType, NodeRunningStatus } from '../../core/types'
 import type { WorkflowNode } from '../../core/types'
+import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { LoopProcessor } from './loop'
 
 // Mock the logger
 vi.mock('@auxx/logger', () => ({
@@ -184,15 +184,13 @@ describe('LoopProcessor', () => {
 
     it('should return source outputHandle when loop breaks early', async () => {
       let iterationCount = 0
-      ;(loopProcessor as any).executeLoopBodyCallback = vi
-        .fn()
-        .mockImplementation(() => {
-          iterationCount++
-          if (iterationCount === 2) {
-            LoopContextManager.requestLoopBreak(contextManager, mockNode.nodeId)
-          }
-          return { processed: true }
-        })
+      ;(loopProcessor as any).executeLoopBodyCallback = vi.fn().mockImplementation(() => {
+        iterationCount++
+        if (iterationCount === 2) {
+          LoopContextManager.requestLoopBreak(contextManager, mockNode.nodeId)
+        }
+        return { processed: true }
+      })
 
       const result = await loopProcessor.execute(mockNode, contextManager)
 

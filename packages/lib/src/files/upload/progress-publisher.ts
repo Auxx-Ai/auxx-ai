@@ -1,7 +1,7 @@
 // packages/lib/src/files/upload/progress-publisher.ts
 
-import { getPublishingClient } from '@auxx/redis'
 import { createScopedLogger } from '@auxx/logger'
+import { getPublishingClient } from '@auxx/redis'
 
 const logger = createScopedLogger('upload-progress')
 
@@ -56,7 +56,7 @@ export class ProgressPublisher {
     status: ProgressUpdate['status'],
     message?: string
   ): Promise<void> {
-    await this.publishUpdate({
+    await ProgressPublisher.publishUpdate({
       sessionId,
       status,
       message,
@@ -72,7 +72,7 @@ export class ProgressPublisher {
     progress: number,
     message?: string
   ): Promise<void> {
-    await this.publishUpdate({
+    await ProgressPublisher.publishUpdate({
       sessionId,
       status: 'uploading',
       progress: Math.round(progress),
@@ -85,14 +85,14 @@ export class ProgressPublisher {
    * Publish processing started event
    */
   static async publishProcessingStarted(sessionId: string): Promise<void> {
-    await this.publishStatusChange(sessionId, 'processing', 'Processing uploaded file')
+    await ProgressPublisher.publishStatusChange(sessionId, 'processing', 'Processing uploaded file')
   }
 
   /**
    * Publish completion event
    */
   static async publishCompleted(sessionId: string, details?: Record<string, any>): Promise<void> {
-    await this.publishUpdate({
+    await ProgressPublisher.publishUpdate({
       sessionId,
       status: 'completed',
       message: 'Upload and processing completed successfully',
@@ -104,8 +104,12 @@ export class ProgressPublisher {
   /**
    * Publish failure event
    */
-  static async publishFailed(sessionId: string, message: string, details?: Record<string, any>): Promise<void> {
-    await this.publishUpdate({
+  static async publishFailed(
+    sessionId: string,
+    message: string,
+    details?: Record<string, any>
+  ): Promise<void> {
+    await ProgressPublisher.publishUpdate({
       sessionId,
       status: 'failed',
       message,

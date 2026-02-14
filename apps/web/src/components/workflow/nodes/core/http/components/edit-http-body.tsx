@@ -2,22 +2,22 @@
 
 'use client'
 
-import { memo, useCallback, useMemo } from 'react'
 import { Button } from '@auxx/ui/components/button'
 import { Plus } from 'lucide-react'
+import { memo, useCallback, useMemo } from 'react'
 import { Editor } from '~/components/workflow/ui/prompt-editor'
 import { VariablePicker } from '~/components/workflow/ui/variables/variable-picker'
-import { KeyValueList } from '.'
+import type { Body, KeyValue } from '../types'
+import { BodyPayloadValueType, BodyType } from '../types'
 import {
-  parseBodyDataToKeyValue,
-  keyValueToBodyPayload,
+  generateId,
   getBodyContent,
+  keyValueToBodyPayload,
+  parseBodyDataToKeyValue,
   setBodyContent,
   setBodyFileReference,
-  generateId,
 } from '../utils'
-import { BodyType, BodyPayloadValueType } from '../types'
-import type { KeyValue, Body } from '../types'
+import { KeyValueList } from '.'
 
 interface EditHttpBodyProps {
   body: Body
@@ -26,7 +26,12 @@ interface EditHttpBodyProps {
   onChange: (body: Body) => void
 }
 
-export const EditHttpBody = memo(function EditHttpBody({ body, isReadOnly, nodeId, onChange }: EditHttpBodyProps) {
+export const EditHttpBody = memo(function EditHttpBody({
+  body,
+  isReadOnly,
+  nodeId,
+  onChange,
+}: EditHttpBodyProps) {
   const bodyType = body?.type || BodyType.none
 
   // Parse body data for form-based body types
@@ -63,11 +68,11 @@ export const EditHttpBody = memo(function EditHttpBody({ body, isReadOnly, nodeI
 
   switch (bodyType) {
     case BodyType.none:
-      return <div className="text-sm text-muted-foreground">No body content</div>
+      return <div className='text-sm text-muted-foreground'>No body content</div>
 
     case BodyType.formData:
       return (
-        <div className="space-y-2">
+        <div className='space-y-2'>
           <KeyValueList
             readonly={isReadOnly}
             list={bodyList}
@@ -76,8 +81,8 @@ export const EditHttpBody = memo(function EditHttpBody({ body, isReadOnly, nodeI
             isSupportFile={true}
           />
           {bodyList.length === 0 && (
-            <Button variant="outline" size="xs" onClick={handleAddBodyItem}>
-              <Plus className="mr-1" />
+            <Button variant='outline' size='xs' onClick={handleAddBodyItem}>
+              <Plus className='mr-1' />
               Add item
             </Button>
           )}
@@ -86,7 +91,7 @@ export const EditHttpBody = memo(function EditHttpBody({ body, isReadOnly, nodeI
 
     case BodyType.xWwwFormUrlencoded:
       return (
-        <div className="space-y-2">
+        <div className='space-y-2'>
           <KeyValueList
             readonly={isReadOnly}
             list={bodyList}
@@ -95,8 +100,8 @@ export const EditHttpBody = memo(function EditHttpBody({ body, isReadOnly, nodeI
             isSupportFile={false}
           />
           {bodyList.length === 0 && (
-            <Button variant="outline" size="xs" onClick={handleAddBodyItem}>
-              <Plus className="mr-1" />
+            <Button variant='outline' size='xs' onClick={handleAddBodyItem}>
+              <Plus className='mr-1' />
               Add item
             </Button>
           )}
@@ -106,11 +111,11 @@ export const EditHttpBody = memo(function EditHttpBody({ body, isReadOnly, nodeI
     case BodyType.json:
       return (
         <Editor
-          title={<label className="text-xs font-medium">JSON</label>}
+          title={<label className='text-xs font-medium'>JSON</label>}
           value={getBodyContent(body)}
           onChange={handleBodyContentChange}
           nodeId={nodeId}
-          placeholder="Enter JSON content or use {{variables}}..."
+          placeholder='Enter JSON content or use {{variables}}...'
           minHeight={100}
           readOnly={isReadOnly}
         />
@@ -119,11 +124,11 @@ export const EditHttpBody = memo(function EditHttpBody({ body, isReadOnly, nodeI
     case BodyType.rawText:
       return (
         <Editor
-          title={<label className="text-xs font-medium">Raw Text</label>}
+          title={<label className='text-xs font-medium'>Raw Text</label>}
           value={getBodyContent(body)}
           onChange={handleBodyContentChange}
           nodeId={nodeId}
-          placeholder="Enter raw text or use {{variables}}..."
+          placeholder='Enter raw text or use {{variables}}...'
           minHeight={100}
           readOnly={isReadOnly}
         />
@@ -131,15 +136,15 @@ export const EditHttpBody = memo(function EditHttpBody({ body, isReadOnly, nodeI
 
     case BodyType.binary:
       return (
-        <div className="space-y-2">
+        <div className='space-y-2'>
           <VariablePicker
             nodeId={nodeId}
             value={body?.data?.[0]?.file || []}
             onChange={handleBodyFileChange}
-            placeholder="Select file variable"
+            placeholder='Select file variable'
             disabled={isReadOnly}
           />
-          <div className="text-xs text-muted-foreground">
+          <div className='text-xs text-muted-foreground'>
             Select a file variable from previous nodes
           </div>
         </div>

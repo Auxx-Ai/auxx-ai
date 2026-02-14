@@ -13,8 +13,6 @@
     "generate": "tsx scripts/generate-frontend.ts",
     "generate:watch": "tsx scripts/generate-frontend.ts --watch",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . --max-warnings 1000",
-    "lint:fix": "eslint . --fix --max-warnings 1000",
     "clean": "rm -rf node_modules .turbo dist",
     "test": "vitest",
     "test:ui": "vitest --ui",
@@ -29,10 +27,8 @@
     "@auxx/database": "workspace:*"
   },
   "devDependencies": {
-    "@auxx/eslint-config": "workspace:*",
     "@auxx/typescript-config": "workspace:*",
     "@vitejs/plugin-react": "catalog:",
-    "eslint": "catalog:",
     "fs-extra": "^11.2.0",
     "glob": "^10.3.10",
     "tsup": "catalog:",

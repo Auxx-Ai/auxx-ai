@@ -1,18 +1,17 @@
 'use client'
 
-import * as React from 'react'
-import { cva, type VariantProps } from 'class-variance-authority'
-
-import { cn } from '@auxx/ui/lib/utils'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import { Textarea } from '@auxx/ui/components/textarea'
+import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
+import type * as React from 'react'
 
 function InputGroup({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
-      data-slot="input-group"
-      role="group"
+      data-slot='input-group'
+      role='group'
       className={cn(
         'group/input-group border-primary-200 bg-primary-50 dark:bg-primary-100  relative flex w-full items-center rounded-xl border shadow-xs transition-[color,box-shadow] outline-none',
         'h-8 min-w-0 has-[>textarea]:h-auto',
@@ -62,8 +61,8 @@ function InputGroupAddon({
 }: React.ComponentProps<'div'> & VariantProps<typeof inputGroupAddonVariants>) {
   return (
     <div
-      role="group"
-      data-slot="input-group-addon"
+      role='group'
+      data-slot='input-group-addon'
       data-align={align}
       className={cn(inputGroupAddonVariants({ align }), className)}
       onClick={(e) => {
@@ -125,7 +124,7 @@ function InputGroupText({ className, ...props }: React.ComponentProps<'span'>) {
 function InputGroupInput({ className, ...props }: React.ComponentProps<'input'>) {
   return (
     <Input
-      data-slot="input-group-control"
+      data-slot='input-group-control'
       className={cn(
         'flex-1 rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent',
         className
@@ -138,7 +137,7 @@ function InputGroupInput({ className, ...props }: React.ComponentProps<'input'>)
 function InputGroupTextarea({ className, ...props }: React.ComponentProps<'textarea'>) {
   return (
     <Textarea
-      data-slot="input-group-control"
+      data-slot='input-group-control'
       className={cn(
         'flex-1 resize-none rounded-none border-0 bg-transparent py-3 shadow-none focus-visible:ring-0 dark:bg-transparent',
         className

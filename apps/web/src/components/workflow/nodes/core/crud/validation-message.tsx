@@ -2,10 +2,10 @@
 
 'use client'
 
-import React from 'react'
-import { AlertTriangle, XCircle } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
+import { cn } from '@auxx/ui/lib/utils'
+import { AlertTriangle, XCircle } from 'lucide-react'
+import type React from 'react'
 
 interface ValidationMessageProps {
   type: 'error' | 'warning'
@@ -37,11 +37,11 @@ export const ValidationMessage: React.FC<ValidationMessageProps> = ({
         className
       )}>
       {isError ? (
-        <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+        <XCircle className='h-4 w-4 mt-0.5 flex-shrink-0' />
       ) : (
-        <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+        <AlertTriangle className='h-4 w-4 mt-0.5 flex-shrink-0' />
       )}
-      <span className="flex-1">{message}</span>
+      <span className='flex-1'>{message}</span>
     </div>
   )
 }
@@ -67,7 +67,7 @@ export const ValidationIndicator: React.FC<ValidationIndicatorProps> = ({
               : 'bg-yellow-50 text-yellow-400 border-yellow-300',
             className
           )}>
-          <AlertTriangle className="size-3" />
+          <AlertTriangle className='size-3' />
         </div>
       </TooltipTrigger>
       <TooltipContent>
@@ -99,20 +99,20 @@ export const ValidationSummary: React.FC<ValidationSummaryProps> = ({ errors, cl
         className
       )}>
       {errorCount > 0 && (
-        <div className="flex items-center gap-2 text-sm font-medium text-red-800">
-          <XCircle className="h-4 w-4" />
+        <div className='flex items-center gap-2 text-sm font-medium text-red-800'>
+          <XCircle className='h-4 w-4' />
           {errorCount} error{errorCount !== 1 ? 's' : ''} found
         </div>
       )}
 
       {warningCount > 0 && (
-        <div className="flex items-center gap-2 text-sm font-medium text-yellow-800">
-          <AlertTriangle className="h-4 w-4" />
+        <div className='flex items-center gap-2 text-sm font-medium text-yellow-800'>
+          <AlertTriangle className='h-4 w-4' />
           {warningCount} warning{warningCount !== 1 ? 's' : ''} found
         </div>
       )}
 
-      <div className="space-y-1">
+      <div className='space-y-1'>
         {errors.slice(0, 5).map((error, index) => (
           <ValidationMessage
             key={`${error.field}-${index}`}
@@ -122,7 +122,7 @@ export const ValidationSummary: React.FC<ValidationSummaryProps> = ({ errors, cl
         ))}
 
         {errors.length > 5 && (
-          <div className="text-sm text-gray-600 pl-6">
+          <div className='text-sm text-gray-600 pl-6'>
             ... and {errors.length - 5} more issue{errors.length - 5 !== 1 ? 's' : ''}
           </div>
         )}

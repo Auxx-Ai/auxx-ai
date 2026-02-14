@@ -1,4 +1,4 @@
-import { findParentNodeClosestToPos, KeyboardShortcutCommand } from '@tiptap/core'
+import { findParentNodeClosestToPos, type KeyboardShortcutCommand } from '@tiptap/core'
 
 import { isCellSelection } from './isCellSelection'
 

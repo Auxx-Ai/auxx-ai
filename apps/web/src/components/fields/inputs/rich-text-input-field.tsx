@@ -1,6 +1,7 @@
 // apps/web/src/components/fields/inputs/rich-text-input-field.tsx
+
+import { useEffect, useRef, useState } from 'react'
 import { usePropertyContext } from '../property-provider'
-import { useRef, useEffect, useState } from 'react'
 
 /**
  * RichTextInputField

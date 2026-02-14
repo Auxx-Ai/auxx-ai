@@ -2,10 +2,10 @@
 // Integration model (org-scoped) built on BaseModel
 
 import { eq } from 'drizzle-orm'
+import type { IntegrationProviderType } from '../../types'
 import { Integration } from '../schema/integration'
 import { BaseModel } from '../utils/base-model'
 import { Result, type TypedResult } from '../utils/result'
-import type { IntegrationProviderType } from '../../types'
 
 /** Selected Integration entity type */
 export type IntegrationEntity = typeof Integration.$inferSelect
@@ -27,7 +27,7 @@ export class IntegrationModel extends BaseModel<
   }
 
   async findByProvider(
-    provider: IntegrationProviderType,
+    provider: IntegrationProviderType
   ): Promise<TypedResult<IntegrationEntity[], Error>> {
     try {
       return this.findMany({ where: eq(Integration.provider, provider) })

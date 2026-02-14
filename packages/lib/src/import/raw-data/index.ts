@@ -1,6 +1,6 @@
 // packages/lib/src/import/raw-data/index.ts
 
-export { storeRawData, storeRawDataChunk } from './store-raw-data'
+export { getColumnUniqueValues, getColumnValues } from './get-column-values'
 export { getRawData, getRawDataAsArray, getRawDataAsMap, type RawDataCell } from './get-raw-data'
-export { getColumnValues, getColumnUniqueValues } from './get-column-values'
-export { getRowData, getBatchRowData } from './get-row-data'
+export { getBatchRowData, getRowData } from './get-row-data'
+export { storeRawData, storeRawDataChunk } from './store-raw-data'

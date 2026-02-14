@@ -1,9 +1,9 @@
 // packages/lib/src/providers/google/webhooks/remove-webhook.ts
-import { gmail_v1 as GmailV1 } from 'googleapis'
+
 import { database as db, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
-import { Common } from 'googleapis'
+import { eq } from 'drizzle-orm'
+import type { Common, gmail_v1 as GmailV1 } from 'googleapis'
 
 type GaxiosError = Common.GaxiosError
 

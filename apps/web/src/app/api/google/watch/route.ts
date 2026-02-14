@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server'
-import { auth } from '~/auth/server'
 import { createScopedLogger } from '@auxx/logger'
 import { headers } from 'next/headers'
+import { NextResponse } from 'next/server'
+import { auth } from '~/auth/server'
 
 export const dynamic = 'force-dynamic'
 

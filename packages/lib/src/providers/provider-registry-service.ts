@@ -1,20 +1,24 @@
 // packages/lib/src/providers/provider-registry-service.ts
 import { database as db, schema } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
-import type { ActiveIntegration, ProviderInstance } from '../email/message-service'
-import type { IntegrationProvider } from './integration-provider.interface'
-import { GoogleProvider } from './google/google-provider'
-import { OutlookProvider } from './outlook/outlook-provider'
-import { FacebookProvider } from './facebook/facebook-provider'
-import { InstagramProvider } from './instagram/instagram-provider'
-import { OpenPhoneProvider } from './openphone/openphone-provider'
-import { getProviderCapabilities, type ProviderCapabilities } from './provider-capabilities'
-import { and, desc, eq } from 'drizzle-orm'
 import {
-  IntegrationProviderType as IntegrationProviderEnum,
   IntegrationAuthStatus,
+  IntegrationProviderType as IntegrationProviderEnum,
 } from '@auxx/database/enums'
-import type { IntegrationProviderType, IntegrationAuthStatus as IntegrationAuthStatusType } from '@auxx/database/types'
+import type {
+  IntegrationAuthStatus as IntegrationAuthStatusType,
+  IntegrationProviderType,
+} from '@auxx/database/types'
+import { createScopedLogger } from '@auxx/logger'
+import { and, desc, eq } from 'drizzle-orm'
+import type { ActiveIntegration, ProviderInstance } from '../email/message-service'
+import { FacebookProvider } from './facebook/facebook-provider'
+import { GoogleProvider } from './google/google-provider'
+import { InstagramProvider } from './instagram/instagram-provider'
+import type { IntegrationProvider } from './integration-provider.interface'
+import { OpenPhoneProvider } from './openphone/openphone-provider'
+import { OutlookProvider } from './outlook/outlook-provider'
+import { getProviderCapabilities, type ProviderCapabilities } from './provider-capabilities'
+
 const logger = createScopedLogger('provider-registry-service')
 
 /** Auth statuses that indicate re-authentication is required */
@@ -243,7 +247,13 @@ export class ProviderRegistryService {
 
       // Check if integration requires re-authentication
       if (integration.authStatus && REQUIRES_REAUTH_STATUSES.includes(integration.authStatus)) {
-        const metadata = integration.metadata as { auth?: { consecutiveFailures?: number; googleError?: string; googleErrorDescription?: string } } | null
+        const metadata = integration.metadata as {
+          auth?: {
+            consecutiveFailures?: number
+            googleError?: string
+            googleErrorDescription?: string
+          }
+        } | null
         const authDetails = metadata?.auth || {}
 
         logger.warn(

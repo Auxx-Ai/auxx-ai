@@ -1,7 +1,7 @@
 // packages/lib/src/import/resolution/resolvers/multiselect.ts
 
+import type { ResolutionConfig, ResolvedValue } from '../../types/resolution'
 import { resolveSelectValue } from './select'
-import type { ResolvedValue, ResolutionConfig } from '../../types/resolution'
 
 /**
  * Split string by delimiter and resolve each as select value.

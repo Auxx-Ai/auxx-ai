@@ -1,8 +1,8 @@
 // packages/seed/scripts/test-relational-seeding.ts
 // Test script for multi-phase relational seeding
 
-import { seed } from 'drizzle-seed'
 import { database, schema } from '@auxx/database'
+import { seed } from 'drizzle-seed'
 import { ScenarioBuilder } from '../src/scenarios/scenario-builder'
 import type { SeedingScenarioName } from '../src/types'
 
@@ -51,7 +51,6 @@ async function testRelationalSeeding() {
     Object.entries(poolSizes).forEach(([pool, size]) => {
       console.log(`  ${pool}: ${size} IDs`)
     })
-
   } catch (error) {
     console.error('❌ Multi-phase seeding test failed:', error)
     process.exit(1)
@@ -93,7 +92,7 @@ async function testPhase(scenario: any, phase: 1 | 2 | 3 | 4 | 5) {
       valuesFromArray: (args: any) => {
         console.log(`    Mock valuesFromArray called with ${args.values?.length || 0} values`)
         return { type: 'values_from_array', values: args.values }
-      }
+      },
     }
 
     const result = refinements(mockHelpers)
@@ -104,7 +103,6 @@ async function testPhase(scenario: any, phase: 1 | 2 | 3 | 4 | 5) {
     validateForeignKeyReferences(result, phase)
 
     console.log(`  ✅ Phase ${phase} validation completed`)
-
   } catch (error) {
     console.error(`  ❌ Phase ${phase} failed:`, error)
     throw error
@@ -120,19 +118,19 @@ function validateForeignKeyReferences(refinements: Record<string, any>, phase: n
   const expectedForeignKeys: Record<number, Record<string, string[]>> = {
     2: {
       Organization: ['createdById', 'systemUserId'],
-      OrganizationSetting: ['organizationId']
+      OrganizationSetting: ['organizationId'],
     },
     3: {
       EmailIntegration: ['organizationId'],
-      MessageTemplate: ['organizationId']
+      MessageTemplate: ['organizationId'],
     },
     4: {
-      Thread: ['organizationId', 'integrationId', 'assigneeId']
+      Thread: ['organizationId', 'integrationId', 'assigneeId'],
     },
     5: {
       AiUsage: ['organizationId', 'userId'],
-      AutoResponseRule: ['organizationId', 'templateId']
-    }
+      AutoResponseRule: ['organizationId', 'templateId'],
+    },
   }
 
   const expectedForPhase = expectedForeignKeys[phase]
@@ -175,7 +173,11 @@ function demonstrateIdDistribution(scenario: any) {
 
   // Show distributed organization IDs for 10 entities
   const distributedOrgIds = scenario.idPoolManager.generateDistributedOrganizationIds(10)
-  console.log(`Distributed Org IDs (80/20 pattern):`, distributedOrgIds.slice(0, 5).join(', '), '...')
+  console.log(
+    `Distributed Org IDs (80/20 pattern):`,
+    distributedOrgIds.slice(0, 5).join(', '),
+    '...'
+  )
 
   // Show distributed user IDs for 10 entities
   const distributedUserIds = scenario.idPoolManager.generateDistributedUserIds(10)
@@ -209,12 +211,12 @@ const args = process.argv.slice(2)
 const runLive = args.includes('--live')
 
 if (runLive) {
-  runLiveSeeding().catch(error => {
+  runLiveSeeding().catch((error) => {
     console.error('Live seeding failed:', error)
     process.exit(1)
   })
 } else {
-  testRelationalSeeding().catch(error => {
+  testRelationalSeeding().catch((error) => {
     console.error('Test failed:', error)
     process.exit(1)
   })

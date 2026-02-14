@@ -76,9 +76,9 @@
  */
 
 import React from 'react'
-import type { BaseTag } from './tags/base-tag.js'
-import { isCustomElement, createTag } from './tags/index.js'
 import { generateInstanceId } from './instance-id.js'
+import type { BaseTag } from './tags/base-tag.js'
+import { createTag, isCustomElement } from './tags/index.js'
 
 /**
  * Global registry of Tag instances for event handler invocation.

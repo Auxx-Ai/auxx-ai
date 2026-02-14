@@ -1,10 +1,10 @@
 // packages/database/src/db/schema/resource-access.ts
 
-import { pgTable, uniqueIndex, index, text, timestamp, type AnyPgColumn } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
-import { User } from './user'
-import { Organization } from './organization'
 import type { ResourceGranteeType, ResourcePermission } from '../../enums'
+import { type AnyPgColumn, index, pgTable, text, timestamp, uniqueIndex } from './_shared'
+import { Organization } from './organization'
+import { User } from './user'
 
 /**
  * ResourceAccess table for generic resource-level access control.
@@ -87,7 +87,10 @@ export const ResourceAccess = pgTable(
     // ─────────────────────────────────────────────────────────────────────────
 
     /** User who granted this access */
-    grantedById: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'set null' }),
+    grantedById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
 
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 })
@@ -108,7 +111,10 @@ export const ResourceAccess = pgTable(
     ),
 
     // Efficient lookups by entity definition (for type-level queries)
-    index('ResourceAccess_entityDef_idx').using('btree', table.entityDefinitionId.asc().nullsLast()),
+    index('ResourceAccess_entityDef_idx').using(
+      'btree',
+      table.entityDefinitionId.asc().nullsLast()
+    ),
 
     // Efficient lookups by specific instance
     index('ResourceAccess_instance_idx').using(

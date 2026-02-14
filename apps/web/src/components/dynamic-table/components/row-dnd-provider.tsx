@@ -2,24 +2,24 @@
 
 'use client'
 
-import { useCallback } from 'react'
 import {
   DndContext,
-  rectIntersection,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
+  rectIntersection,
+  useDndMonitor,
   useSensor,
   useSensors,
-  useDndMonitor,
-  type DragEndEvent,
-  type DragStartEvent,
-  DragOverlay,
 } from '@dnd-kit/core'
 import { snapCenterToCursor } from '@dnd-kit/modifiers'
-import { DndDebugOverlay } from './dnd-debug-overlay'
-import { useTableInstance } from '../context/table-instance-context'
+import { useCallback } from 'react'
 import { useTableConfig } from '../context/table-config-context'
+import { useTableInstance } from '../context/table-instance-context'
 import { useViewMetadata } from '../context/view-metadata-context'
+import { DndDebugOverlay } from './dnd-debug-overlay'
 
 interface RowDndProviderProps<TData> {
   children: React.ReactNode
@@ -55,7 +55,7 @@ export function RowDndProvider<TData>({ children }: RowDndProviderProps<TData>) 
         (id) => table.getState().rowSelection[id]
       )
 
-      let itemsToDrag = selectedRowIds.map((id) => table.getRow(id))
+      const itemsToDrag = selectedRowIds.map((id) => table.getRow(id))
       if (!selectedRowIds.includes(activeId)) {
         itemsToDrag.push(table.getRow(activeId))
       }
@@ -141,12 +141,12 @@ export function RowDndProvider<TData>({ children }: RowDndProviderProps<TData>) 
           adjustScale={false}
           modifiers={[snapCenterToCursor]}
           style={{ width: 'auto' }}
-          className="w-auto">
+          className='w-auto'>
           {activeDragItems && dragDropConfig?.dragPreview ? (
             <dragDropConfig.dragPreview items={activeDragItems} isDragging={true} />
           ) : activeDragItems ? (
-            <div className="bg-white border border-gray-300 rounded-lg shadow-lg p-2 min-w-48 flex items-center gap-2">
-              <span className="text-sm font-medium">
+            <div className='bg-white border border-gray-300 rounded-lg shadow-lg p-2 min-w-48 flex items-center gap-2'>
+              <span className='text-sm font-medium'>
                 {activeDragItems.length === 1 ? `1 item` : `${activeDragItems.length} items`}
               </span>
             </div>
@@ -180,12 +180,12 @@ export function RowDndProvider<TData>({ children }: RowDndProviderProps<TData>) 
         adjustScale={false}
         modifiers={[snapCenterToCursor]}
         style={{ width: 'auto' }}
-        className="w-auto">
+        className='w-auto'>
         {activeDragItems && dragDropConfig?.dragPreview ? (
           <dragDropConfig.dragPreview items={activeDragItems} isDragging={true} />
         ) : activeDragItems ? (
-          <div className="bg-white border border-gray-300 rounded-lg shadow-lg p-2 min-w-48 flex items-center gap-2">
-            <span className="text-sm font-medium">
+          <div className='bg-white border border-gray-300 rounded-lg shadow-lg p-2 min-w-48 flex items-center gap-2'>
+            <span className='text-sm font-medium'>
               {activeDragItems.length === 1 ? `1 item` : `${activeDragItems.length} items`}
             </span>
           </div>

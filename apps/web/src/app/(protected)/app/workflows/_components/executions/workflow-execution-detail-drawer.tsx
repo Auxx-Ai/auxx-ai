@@ -2,26 +2,24 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import type { WorkflowRunEntity } from '@auxx/database/models'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { OverflowTabsList, Tabs, TabsContent } from '@auxx/ui/components/tabs'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
-import { useDockStore } from '~/stores/dock-store'
+import { ListChecks, Loader2, Medal, Route } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useDockPortal } from '~/components/global/dock-portal-provider'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
-import { useRunStore } from '~/components/workflow/store/run-store'
-import { EntityIcon } from '@auxx/ui/components/icons'
-import { api } from '~/trpc/react'
-
+import { DetailTab } from '~/components/workflow/panels/run/tabs/detail-tab'
 // Reuse existing tabs (that don't require workflow editor providers)
 import { ResultTab } from '~/components/workflow/panels/run/tabs/result-tab'
-import { DetailTab } from '~/components/workflow/panels/run/tabs/detail-tab'
+import { useRunStore } from '~/components/workflow/store/run-store'
+import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
+import { useDockStore } from '~/stores/dock-store'
+import { api } from '~/trpc/react'
 import { ExecutionTracingView } from './execution-tracing-view'
-
-import { Medal, ListChecks, Route, Loader2 } from 'lucide-react'
 import { WorkflowRunStatusBadge } from './workflow-run-status-badge'
-import type { WorkflowRunEntity } from '@auxx/database/models'
 
 interface WorkflowExecutionDetailDrawerProps {
   run: WorkflowRunEntity
@@ -82,13 +80,13 @@ export function WorkflowExecutionDetailDrawer({
       portalTarget={primaryPanelRef}
       title={`Workflow Run #${run.sequenceNumber}`}>
       {/* Content */}
-      <div className="flex-1 overflow-y-auto min-h-0 flex flex-col rounded-t-xl">
+      <div className='flex-1 overflow-y-auto min-h-0 flex flex-col rounded-t-xl'>
         {/* Header */}
         <DrawerHeader
-          icon={<EntityIcon iconId="activity" color="purple" className="size-6" />}
+          icon={<EntityIcon iconId='activity' color='purple' className='size-6' />}
           title={
-            <div className="flex items-center gap-2">
-              <span className="font-medium">Run #{run.sequenceNumber}</span>
+            <div className='flex items-center gap-2'>
+              <span className='font-medium'>Run #{run.sequenceNumber}</span>
               <WorkflowRunStatusBadge status={run.status} />
             </div>
           }
@@ -98,14 +96,14 @@ export function WorkflowExecutionDetailDrawer({
 
         {/* Loading state */}
         {isLoading && (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <div className='flex items-center justify-center py-12'>
+            <Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
           </div>
         )}
 
         {/* Tabs - reusing existing components */}
         {!isLoading && completeRun && (
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className='flex-1 flex flex-col'>
             <OverflowTabsList
               tabs={[
                 { value: 'detail', label: 'Details', icon: ListChecks },
@@ -114,20 +112,20 @@ export function WorkflowExecutionDetailDrawer({
               ]}
               value={activeTab}
               onValueChange={setActiveTab}
-              variant="outline"
+              variant='outline'
             />
 
-            <TabsContent value="detail" className="flex-1 overflow-auto p-4">
-              <div className="rounded-lg border bg-secondary/10 p-4">
+            <TabsContent value='detail' className='flex-1 overflow-auto p-4'>
+              <div className='rounded-lg border bg-secondary/10 p-4'>
                 <DetailTab />
               </div>
             </TabsContent>
 
-            <TabsContent value="result" className="flex-1 overflow-auto">
+            <TabsContent value='result' className='flex-1 overflow-auto'>
               <ResultTab />
             </TabsContent>
 
-            <TabsContent value="tracing" className="flex-1 overflow-auto p-3">
+            <TabsContent value='tracing' className='flex-1 overflow-auto p-3'>
               <ExecutionTracingView />
             </TabsContent>
           </Tabs>

@@ -2,21 +2,21 @@
 
 'use client'
 
+import type { TaskWithRelations } from '@auxx/lib/tasks'
+import type { ActorId } from '@auxx/types/actor'
+import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
-import { TaskCheckbox } from './task-checkbox'
+import { ParsedText } from '~/components/editor/parsed-text'
+import { ActorBadge } from '~/components/resources/ui/actor-badge'
+import { RecordBadge } from '~/components/resources/ui/record-badge'
+import { ItemsListView } from '~/components/ui/items-list-view'
 import { useTaskCompletion } from '../hooks/use-task-completion'
 import {
   useTaskEffectiveCompletedAt,
   useTaskHasPendingCompletion,
 } from '../hooks/use-task-effective-state'
 import { formatTaskDeadline } from '../utils/group-tasks-by-period'
-import type { TaskWithRelations } from '@auxx/lib/tasks'
-import type { ActorId } from '@auxx/types/actor'
-import { RecordBadge } from '~/components/resources/ui/record-badge'
-import { ActorBadge } from '~/components/resources/ui/actor-badge'
-import { ItemsListView } from '~/components/ui/items-list-view'
-import { Separator } from '@auxx/ui/components/separator'
-import { ParsedText } from '~/components/editor/parsed-text'
+import { TaskCheckbox } from './task-checkbox'
 
 /**
  * Props for TaskItem component
@@ -73,10 +73,10 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
       </div>
 
       {/* Content (clickable for dialog) */}
-      <div className="flex-1 min-w-0" onClick={onClick}>
-        <div className="flex items-start justify-between gap-2">
+      <div className='flex-1 min-w-0' onClick={onClick}>
+        <div className='flex items-start justify-between gap-2'>
           {/* Title and Metadata */}
-          <div className="flex-1 min-w-0">
+          <div className='flex-1 min-w-0'>
             <div
               className={cn(
                 'text-sm text-primary-600 dark:text-primary-400',
@@ -84,14 +84,14 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
               )}>
               <ParsedText>{task.title}</ParsedText>
             </div>
-            <div className="flex flex-wrap gap-2 mt-1 items-center">
+            <div className='flex flex-wrap gap-2 mt-1 items-center'>
               {/* Entity References (shown in global mode) */}
               {hasReferences && (
                 <ItemsListView
-                  className="w-auto"
+                  className='w-auto'
                   items={task.references}
                   renderItem={(recordId) => (
-                    <RecordBadge recordId={recordId as string} showIcon variant="default" />
+                    <RecordBadge recordId={recordId as string} showIcon variant='default' />
                   )}
                   maxDisplay={3}
                 />
@@ -99,11 +99,11 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
 
               {/* Assignees (shown when there are assignees) */}
               {hasAssignments && hasReferences ? (
-                <Separator orientation="vertical" className="h-4" />
+                <Separator orientation='vertical' className='h-4' />
               ) : null}
               {hasAssignments ? (
                 <ItemsListView
-                  className="w-auto"
+                  className='w-auto'
                   items={task.assignments}
                   renderItem={(actorId) => <ActorBadge actorId={actorId as ActorId} />}
                   maxDisplay={2}
@@ -114,7 +114,7 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
 
           {/* Deadline */}
           {task.deadline && (
-            <div className="flex-shrink-0 text-xs text-muted-foreground">
+            <div className='flex-shrink-0 text-xs text-muted-foreground'>
               {formatTaskDeadline(new Date(task.deadline))}
             </div>
           )}

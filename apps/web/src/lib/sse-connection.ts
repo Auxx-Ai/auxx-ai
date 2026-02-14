@@ -72,7 +72,7 @@ export function createSSEConnection(config: SSEConnectionConfig): SSEConnection 
     }
 
     const delay = Math.min(
-      (config.reconnectDelay ?? 1000) * Math.pow(2, reconnectAttempts),
+      (config.reconnectDelay ?? 1000) * 2 ** reconnectAttempts,
       30000 // Max 30 seconds
     )
 

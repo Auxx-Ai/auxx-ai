@@ -1,14 +1,14 @@
 // packages/lib/src/ai/providers/deepseek/deepseek-client.ts
 
+import type { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
 import { ProviderClient } from '../base/provider-client'
 import {
-  ValidationResult,
-  ConnectionTestResult,
-  CredentialValidationError,
   ConnectionTestError,
+  type ConnectionTestResult,
+  CredentialValidationError,
+  type ValidationResult,
 } from '../base/types'
-import { ModelCapabilities, ProviderCredentials, ModelType } from '../types'
-import { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
+import type { ModelCapabilities, ModelType, ProviderCredentials } from '../types'
 import { DEEPSEEK_CAPABILITIES, DEEPSEEK_MODELS } from './deepseek-defaults'
 
 /**

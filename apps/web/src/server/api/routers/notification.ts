@@ -1,10 +1,13 @@
 // server/api/routers/notification.ts
+
+import { NotificationService } from '@auxx/lib/notifications'
+import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { NotificationService } from '@auxx/lib/notifications'
-import { createScopedLogger } from '@auxx/logger'
+
 const logger = createScopedLogger('notification-router')
+
 import { NotificationType } from '@auxx/database/enums'
 export const notificationRouter = createTRPCRouter({
   // Get user's notifications

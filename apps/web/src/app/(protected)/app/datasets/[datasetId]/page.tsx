@@ -3,8 +3,8 @@
 'use client'
 
 import { use } from 'react'
-import { DatasetDetailProvider } from './_components/dataset-detail-provider'
 import { DatasetDetailContent } from './_components/dataset-detail-content'
+import { DatasetDetailProvider } from './_components/dataset-detail-provider'
 
 interface DatasetPageProps {
   params: Promise<{ datasetId: string }>

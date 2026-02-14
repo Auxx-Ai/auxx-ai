@@ -1,10 +1,11 @@
 // packages/lib/src/email/transports/factory.ts
-import nodemailer from 'nodemailer'
-import { SESv2Client } from '@aws-sdk/client-sesv2'
+
 import { env } from '@auxx/config/server'
 import { createScopedLogger } from '@auxx/logger'
-import { createMailgunTransport } from './mailgun-transport'
+import { SESv2Client } from '@aws-sdk/client-sesv2'
+import nodemailer from 'nodemailer'
 import { parseBoolean } from '../lib/utils'
+import { createMailgunTransport } from './mailgun-transport'
 
 const logger = createScopedLogger('email-transport')
 
@@ -20,13 +21,13 @@ export class TransportFactory {
 
     switch (provider) {
       case 'ses':
-        return this.createSesTransport()
+        return TransportFactory.createSesTransport()
       case 'mailgun':
-        return this.createMailgunTransport()
+        return TransportFactory.createMailgunTransport()
       case 'smtp':
-        return this.createSmtpTransport()
+        return TransportFactory.createSmtpTransport()
       case 'sendmail':
-        return this.createSendmailTransport()
+        return TransportFactory.createSendmailTransport()
       default:
         throw new Error(`Unknown email provider: ${provider}`)
     }

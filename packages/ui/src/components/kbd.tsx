@@ -1,10 +1,10 @@
 // packages/ui/src/components/kbd.tsx
-import * as React from 'react'
-import { Command, ChevronUp, CornerDownLeft, Option } from 'lucide-react'
-import { cva, type VariantProps } from 'class-variance-authority'
-import { isMac } from '@auxx/utils'
 
 import { cn } from '@auxx/ui/lib/utils'
+import { isMac } from '@auxx/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { ChevronUp, Command, CornerDownLeft, Option } from 'lucide-react'
+import * as React from 'react'
 
 /** Maps shortcut keys to Lucide icons or text strings */
 const SHORTCUT_MAP = {
@@ -50,7 +50,7 @@ function KbdGroup({ className, variant, size, ...props }: KbdGroupProps) {
   return (
     <KbdGroupContext.Provider value={true}>
       <kbd
-        data-slot="kbd-group"
+        data-slot='kbd-group'
         className={cn(
           kbdGroupVariants({ variant, size }),
           "[&_svg:not([class*='size-'])]:size-3",
@@ -87,7 +87,7 @@ function Kbd({ className, shortcut, children, variant, size, ...props }: KbdProp
 
   const kbdElement = (
     <span
-      data-slot="kbd"
+      data-slot='kbd'
       className={cn('inline-flex items-center justify-center', className)}
       {...props}>
       {content}
@@ -119,7 +119,7 @@ function KbdSubmit({ variant, size, className }: KbdSubmitProps) {
   return (
     <KbdGroup variant={variant} size={size} className={className}>
       <Kbd shortcut={isMac() ? 'cmd' : 'ctrl'} />
-      <Kbd shortcut="enter" />
+      <Kbd shortcut='enter' />
     </KbdGroup>
   )
 }

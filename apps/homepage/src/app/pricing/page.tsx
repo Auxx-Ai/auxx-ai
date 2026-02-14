@@ -1,11 +1,12 @@
 // apps/homepage/src/app/pricing/page.tsx
-import React from 'react'
+
 import type { Metadata } from 'next'
-import Header from '../_components/main/header'
-import FooterSection from '../_components/main/footer-section'
-import PricingSection from '../_components/sections/pricing-section'
-import PlansSection from '../_components/sections/plans-section'
+import React from 'react'
 import { config } from '~/lib/config'
+import FooterSection from '../_components/main/footer-section'
+import Header from '../_components/main/header'
+import PlansSection from '../_components/sections/plans-section'
+import PricingSection from '../_components/sections/pricing-section'
 
 export const metadata: Metadata = {
   title: `Pricing | ${config.shortName}`,
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
 
 const PricingPage = async () => {
   return (
-    <div id="root" className="relative overflow-y-auto h-screen">
+    <div id='root' className='relative overflow-y-auto h-screen'>
       <Header />
       <PricingSection />
       {/* <StatsSection /> */}

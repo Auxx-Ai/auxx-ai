@@ -1,7 +1,7 @@
 // packages/lib/src/conditions/evaluate.ts
 
-import type { Condition, ConditionGroup } from './types'
 import type { Operator } from './operator-definitions'
+import type { Condition, ConditionGroup } from './types'
 
 /**
  * Field value resolver function.
@@ -46,11 +46,7 @@ export function evaluateConditions<T>(
 /**
  * Evaluate a single condition group.
  */
-function evaluateGroup<T>(
-  entity: T,
-  group: ConditionGroup,
-  resolver: FieldResolver<T>
-): boolean {
+function evaluateGroup<T>(entity: T, group: ConditionGroup, resolver: FieldResolver<T>): boolean {
   const { conditions, logicalOperator } = group
 
   if (conditions.length === 0) return true

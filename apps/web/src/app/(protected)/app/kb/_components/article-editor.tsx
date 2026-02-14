@@ -1,14 +1,14 @@
 // components/knowledge-base/article-editor.tsx
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@auxx/ui/components/button'
+import { toastError } from '@auxx/ui/components/toast'
+import type { JSONContent } from '@tiptap/core'
+import { PanelLeftClose } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useEffect, useRef, useState } from 'react'
 import AuxxEditor from '~/components/editor/auxx-editor'
 import { api } from '~/trpc/react'
-import { toastError } from '@auxx/ui/components/toast'
-import { JSONContent } from '@tiptap/core'
-import { PanelLeftClose } from 'lucide-react'
 import ArticleEditorFooter from './article-editor-footer'
 import ArticleEditorTop from './article-editor-top'
 import type { Article } from './kb-context'
@@ -178,7 +178,7 @@ export default function ArticleEditor({ article, knowledgeBaseId }: ArticleEdito
 
   return (
     <div
-      className="flex flex-1"
+      className='flex flex-1'
       style={
         {
           '--page-wrapper-max-width': '1200px',
@@ -187,20 +187,20 @@ export default function ArticleEditor({ article, knowledgeBaseId }: ArticleEdito
           '--block-wrapper-max-width': '760px',
         } as React.CSSProperties
       }>
-      <div className="flex flex-1 flex-col overflow-y-auto">
-        <div className="flex min-h-min flex-1 flex-col">
-          <div className="flex flex-1">
-            <div className="flex h-full flex-1">
-              <div className="z-100 sticky top-0 flex h-fit w-10 justify-center pt-2 max-lg:hidden">
-                <Button variant={'ghost'} className="rounded-full opacity-0 hover:opacity-100">
-                  <PanelLeftClose className="h-10 w-10" />
+      <div className='flex flex-1 flex-col overflow-y-auto'>
+        <div className='flex min-h-min flex-1 flex-col'>
+          <div className='flex flex-1'>
+            <div className='flex h-full flex-1'>
+              <div className='z-100 sticky top-0 flex h-fit w-10 justify-center pt-2 max-lg:hidden'>
+                <Button variant={'ghost'} className='rounded-full opacity-0 hover:opacity-100'>
+                  <PanelLeftClose className='h-10 w-10' />
                 </Button>
               </div>
-              <div className="relative mx-auto flex h-full w-full max-w-(--page-wrapper-max-width) flex-1 flex-col px-[28px]">
-                <div className="flex flex-1 flex-col justify-between pb-10">
+              <div className='relative mx-auto flex h-full w-full max-w-(--page-wrapper-max-width) flex-1 flex-col px-[28px]'>
+                <div className='flex flex-1 flex-col justify-between pb-10'>
                   <div>
                     <ArticleEditorTop article={article} onUpdateMetadata={handleMetadataUpdate} />
-                    <div className="relative min-h-0 min-w-0 flex-col items-stretch">
+                    <div className='relative min-h-0 min-w-0 flex-col items-stretch'>
                       <AuxxEditor
                         initialContent={articleData.contentJson}
                         onContentChange={handleContentChange}

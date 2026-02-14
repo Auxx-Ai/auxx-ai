@@ -1,9 +1,9 @@
 // apps/web/src/components/workflow/ui/input-editor/validation-error-badge.tsx
 
-import React from 'react'
-import { AlertTriangle } from 'lucide-react'
-import { Tooltip } from '~/components/global/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
+import { AlertTriangle } from 'lucide-react'
+import type React from 'react'
+import { Tooltip } from '~/components/global/tooltip'
 
 interface ValidationErrorBadgeProps {
   error?: string
@@ -34,7 +34,7 @@ export const ValidationErrorBadge: React.FC<ValidationErrorBadgeProps> = ({
             : 'bg-yellow-50 text-yellow-400 border-yellow-300',
           className
         )}>
-        <AlertTriangle className="size-3" />
+        <AlertTriangle className='size-3' />
       </div>
     </Tooltip>
   )

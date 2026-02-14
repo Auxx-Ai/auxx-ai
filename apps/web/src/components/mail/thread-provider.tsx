@@ -1,12 +1,12 @@
 // ~/components/mail/thread-provider.tsx
 'use client'
 
-import React, { createContext, useContext, useMemo, type RefObject } from 'react'
-import { useReplyBox } from '~/hooks/use-reply-box'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { useThread as useThreadFromStore, useThreadMutation } from '~/components/threads/hooks'
-import type { EditorMode } from '~/components/mail/email-editor/types'
 import type { ActorId } from '@auxx/types/actor'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import React, { createContext, type RefObject, useContext, useMemo } from 'react'
+import type { EditorMode } from '~/components/mail/email-editor/types'
+import { useThread as useThreadFromStore, useThreadMutation } from '~/components/threads/hooks'
+import { useReplyBox } from '~/hooks/use-reply-box'
 
 /** Reply box UI state */
 interface ReplyBoxState {
@@ -157,14 +157,7 @@ export function ThreadProvider({
         closeWithSuppress()
       },
     }),
-    [
-      thread,
-      threadId,
-      update,
-      openEditorForAction,
-      handleShowGenericReply,
-      closeWithSuppress,
-    ]
+    [thread, threadId, update, openEditorForAction, handleShowGenericReply, closeWithSuppress]
   )
 
   // Create email actions

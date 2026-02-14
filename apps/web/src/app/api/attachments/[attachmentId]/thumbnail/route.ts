@@ -1,11 +1,12 @@
 // apps/web/src/app/api/attachments/[attachmentId]/thumbnail/route.ts
 
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 export const runtime = 'nodejs'
-// Lazy-load services to avoid pulling worker-only processing code into the module graph
-import { auth } from '~/auth/server'
+
 import { createScopedLogger } from '@auxx/logger'
 import { headers } from 'next/headers'
+// Lazy-load services to avoid pulling worker-only processing code into the module graph
+import { auth } from '~/auth/server'
 
 const logger = createScopedLogger('api-attachments-thumbnail')
 
@@ -139,7 +140,9 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       },
     })
   } catch (error) {
-    logger.error('Thumbnail error', { error: error instanceof Error ? error.message : String(error) })
+    logger.error('Thumbnail error', {
+      error: error instanceof Error ? error.message : String(error),
+    })
     // Fallback to download route on any error
     const { attachmentId } = await params
     return new Response(null, {

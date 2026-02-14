@@ -1,7 +1,7 @@
 // packages/lib/src/import/hashing/count-occurrences.ts
 
-import { hashValue } from './hash-value'
 import type { UniqueValue } from '../types/resolution'
+import { hashValue } from './hash-value'
 
 /**
  * Count occurrences of each unique value in an array.

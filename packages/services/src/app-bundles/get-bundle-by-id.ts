@@ -1,7 +1,7 @@
 // apps/api/src/services/app-version-bundles/get-bundle-by-id.ts
 
 import { database } from '@auxx/database'
-import { type Result, ok, err } from 'neverthrow'
+import { err, ok, type Result } from 'neverthrow'
 // import type { AppBundleError } from './errors'
 import { fromDatabase } from '../shared/utils'
 

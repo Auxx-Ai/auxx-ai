@@ -1,15 +1,15 @@
 // packages/lib/src/workflow-engine/nodes/form-input/form-input-processor.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type {
-  WorkflowNode,
-  NodeProcessor,
-  NodeExecutionResult,
-  ValidationResult,
-  PreprocessedNodeData,
-} from '../../core/types'
-import { NodeRunningStatus, BaseType } from '../../core/types'
 import type { ExecutionContextManager } from '../../core/execution-context'
+import type {
+  NodeExecutionResult,
+  NodeProcessor,
+  PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
+} from '../../core/types'
+import { BaseType, NodeRunningStatus } from '../../core/types'
 
 const logger = createScopedLogger('form-input-processor')
 
@@ -242,15 +242,9 @@ export class FormInputNodeProcessor implements NodeProcessor {
   /**
    * Set ADDRESS type outputs (nested structure)
    */
-  private setAddressOutputs(
-    nodeId: string,
-    value: unknown,
-    ctx: ExecutionContextManager
-  ): void {
+  private setAddressOutputs(nodeId: string, value: unknown, ctx: ExecutionContextManager): void {
     const addr =
-      typeof value === 'object' && value !== null
-        ? (value as Record<string, string>)
-        : {}
+      typeof value === 'object' && value !== null ? (value as Record<string, string>) : {}
 
     ctx.setNodeVariable(nodeId, 'value', addr)
     ctx.setNodeVariable(nodeId, 'value.street1', addr.street1 || '')
@@ -283,7 +277,7 @@ export class FormInputNodeProcessor implements NodeProcessor {
     if (allowMultiple) {
       const files = Array.isArray(value)
         ? (value as FileData[])
-        : ((value as { files?: FileData[] })?.files || [])
+        : (value as { files?: FileData[] })?.files || []
       ctx.setNodeVariable(nodeId, 'files', files)
       ctx.setNodeVariable(nodeId, 'files.count', files.length)
       ctx.setNodeVariable(
@@ -294,7 +288,7 @@ export class FormInputNodeProcessor implements NodeProcessor {
     } else {
       const file = Array.isArray(value)
         ? (value as FileData[])[0]
-        : ((value as { file?: FileData })?.file || (value as FileData))
+        : (value as { file?: FileData })?.file || (value as FileData)
       ctx.setNodeVariable(nodeId, 'file', file || null)
       if (file) {
         ctx.setNodeVariable(nodeId, 'file.id', file.id || file.fileId || '')
@@ -309,11 +303,7 @@ export class FormInputNodeProcessor implements NodeProcessor {
   /**
    * Set TAGS/array type outputs
    */
-  private setArrayOutputs(
-    nodeId: string,
-    value: unknown,
-    ctx: ExecutionContextManager
-  ): void {
+  private setArrayOutputs(nodeId: string, value: unknown, ctx: ExecutionContextManager): void {
     const values = Array.isArray(value) ? value : []
     ctx.setNodeVariable(nodeId, 'values', values)
     ctx.setNodeVariable(nodeId, 'count', values.length)

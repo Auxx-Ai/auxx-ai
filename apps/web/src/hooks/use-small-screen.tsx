@@ -1,7 +1,7 @@
 // File: src/hooks/use-small-screen.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 /**
  * Hook to detect if the current screen size is small (sm breakpoint and below)

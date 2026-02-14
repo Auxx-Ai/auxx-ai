@@ -1,19 +1,19 @@
 // packages/lib/src/datasets/vector/postgresql.ts
 
 import { database as db, schema } from '@auxx/database'
-import { sql, eq, count, max, and } from 'drizzle-orm'
-import { VectorDatabase } from '../types/vector.types'
-import type {
-  VectorDocument,
-  VectorDbSearchOptions,
-  VectorSearchResult,
-  CollectionStats,
-} from '../types/vector.types'
 import { createScopedLogger } from '@auxx/logger'
+import { and, count, eq, max, sql } from 'drizzle-orm'
+import type {
+  CollectionStats,
+  VectorDbSearchOptions,
+  VectorDocument,
+  VectorSearchResult,
+} from '../types/vector.types'
+import { VectorDatabase } from '../types/vector.types'
 import {
+  type EmbeddingDimension,
   getEmbeddingColumnName,
   isSupportedDimension,
-  type EmbeddingDimension,
 } from '../utils/embedding-columns'
 
 const logger = createScopedLogger('postgresql-vector-db')
@@ -34,9 +34,7 @@ export class PostgreSQLVectorDB extends VectorDatabase {
    */
   setDimension(dimension: number): void {
     if (!isSupportedDimension(dimension)) {
-      throw new Error(
-        `Unsupported dimension: ${dimension}. Supported: 512, 768, 1024, 1536, 3072`
-      )
+      throw new Error(`Unsupported dimension: ${dimension}. Supported: 512, 768, 1024, 1536, 3072`)
     }
     this.dimension = dimension
     logger.debug('Dimension set for vector DB', {
@@ -222,8 +220,7 @@ export class PostgreSQLVectorDB extends VectorDatabase {
 
         if (document.embedding.length !== this.dimension) {
           throw new Error(
-            `Embedding has ${document.embedding.length} dimensions, ` +
-              `expected ${this.dimension}`
+            `Embedding has ${document.embedding.length} dimensions, ` + `expected ${this.dimension}`
           )
         }
 

@@ -1,7 +1,7 @@
 // packages/lib/src/providers/google/shared/error-handler.ts
 import { createScopedLogger } from '@auxx/logger'
-import { RateLimitError, CircuitBreakerError } from '../../../utils/rate-limiter'
 import type { Common } from 'googleapis'
+import { CircuitBreakerError, RateLimitError } from '../../../utils/rate-limiter'
 
 type GaxiosError = Common.GaxiosError
 

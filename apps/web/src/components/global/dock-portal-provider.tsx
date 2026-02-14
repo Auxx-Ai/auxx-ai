@@ -3,12 +3,12 @@
 
 import {
   createContext,
+  type ReactNode,
+  type RefObject,
+  useCallback,
   useContext,
   useRef,
   useState,
-  useCallback,
-  type RefObject,
-  type ReactNode,
 } from 'react'
 
 /** Identifies which panel slot to use */
@@ -123,7 +123,7 @@ export function DockedPanelTarget({ slot = 'primary', panelFilter }: DockedPanel
       ref={setRef}
       data-panel-filter={panelFilter}
       data-panel-slot={slot}
-      className="contents h-full"
+      className='contents h-full'
     />
   )
 }

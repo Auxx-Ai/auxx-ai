@@ -1,9 +1,15 @@
 // packages/lib/src/field-values/field-value-validator.ts
 
-import { z } from 'zod'
-import { formatEmail } from '@auxx/utils/email'
+import {
+  isRecordId,
+  parseRecordId,
+  type RecordId,
+  recordIdSchema,
+  toRecordId,
+} from '@auxx/types/resource'
 import { formatPhoneNumber } from '@auxx/utils/contact'
-import { recordIdSchema, isRecordId, toRecordId, parseRecordId, type RecordId } from '@auxx/types/resource'
+import { formatEmail } from '@auxx/utils/email'
+import { z } from 'zod'
 
 /**
  * Validation schemas for each field type using Zod.
@@ -17,23 +23,19 @@ const textSchema = z
 
 const numberSchema = z.number().finite()
 
-const booleanSchema = z
-  .unknown()
-  .transform((v) => {
-    if (typeof v === 'boolean') return v
-    if (v === 'true' || v === '1' || v === 1) return true
-    if (v === 'false' || v === '0' || v === 0) return false
-    return z.NEVER
-  })
+const booleanSchema = z.unknown().transform((v) => {
+  if (typeof v === 'boolean') return v
+  if (v === 'true' || v === '1' || v === 1) return true
+  if (v === 'false' || v === '0' || v === 0) return false
+  return z.NEVER
+})
 
-const dateSchema = z
-  .unknown()
-  .transform((v) => {
-    if (v instanceof Date) return v.toISOString()
-    const date = new Date(String(v))
-    if (isNaN(date.getTime())) return z.NEVER
-    return date.toISOString()
-  })
+const dateSchema = z.unknown().transform((v) => {
+  if (v instanceof Date) return v.toISOString()
+  const date = new Date(String(v))
+  if (isNaN(date.getTime())) return z.NEVER
+  return date.toISOString()
+})
 
 // Field-specific schemas
 export const fieldValueSchemas = {
@@ -57,13 +59,11 @@ export const fieldValueSchemas = {
     .pipe(z.url('Invalid URL format')),
 
   // PHONE_INTL - format to E.164
-  phone: z
-    .unknown()
-    .transform((v) => {
-      const formatted = formatPhoneNumber(String(v).trim())
-      if (!formatted) return z.NEVER
-      return formatted
-    }),
+  phone: z.unknown().transform((v) => {
+    const formatted = formatPhoneNumber(String(v).trim())
+    if (!formatted) return z.NEVER
+    return formatted
+  }),
 
   // NUMBER, CURRENCY
   number: numberSchema,
@@ -81,27 +81,29 @@ export const fieldValueSchemas = {
     .refine((v) => v.length > 0, { message: 'Option ID required' }),
 
   // RELATIONSHIP - uses RecordId format, also accepts legacy format
-  relationship: z.union([
-    // New format: { recordId }
-    z.object({ recordId: recordIdSchema }),
-    // Legacy format: { relatedEntityId, relatedEntityDefinitionId }
-    z.object({
-      relatedEntityId: z.string().min(1, 'Related entity ID required'),
-      relatedEntityDefinitionId: z.string().min(1, 'Related entity definition ID required'),
+  relationship: z
+    .union([
+      // New format: { recordId }
+      z.object({ recordId: recordIdSchema }),
+      // Legacy format: { relatedEntityId, relatedEntityDefinitionId }
+      z.object({
+        relatedEntityId: z.string().min(1, 'Related entity ID required'),
+        relatedEntityDefinitionId: z.string().min(1, 'Related entity definition ID required'),
+      }),
+      // Direct RecordId string
+      recordIdSchema,
+    ])
+    .transform((val): { recordId: RecordId } => {
+      // Normalize to new format
+      if (typeof val === 'string') {
+        return { recordId: val }
+      }
+      if ('recordId' in val) {
+        return { recordId: val.recordId }
+      }
+      // Legacy format
+      return { recordId: toRecordId(val.relatedEntityDefinitionId, val.relatedEntityId) }
     }),
-    // Direct RecordId string
-    recordIdSchema,
-  ]).transform((val): { recordId: RecordId } => {
-    // Normalize to new format
-    if (typeof val === 'string') {
-      return { recordId: val }
-    }
-    if ('recordId' in val) {
-      return { recordId: val.recordId }
-    }
-    // Legacy format
-    return { recordId: toRecordId(val.relatedEntityDefinitionId, val.relatedEntityId) }
-  }),
 
   // NAME JSON: { firstName?: string, lastName?: string }
   nameJson: z
@@ -207,7 +209,11 @@ export class FieldValueValidator {
    * Accepts both new format (RecordId) and legacy format ({ relatedEntityId, relatedEntityDefinitionId })
    */
   async batchValidateRelationships(
-    relationships: Array<RecordId | { relatedEntityId: string; relatedEntityDefinitionId: string } | { recordId: RecordId }>,
+    relationships: Array<
+      | RecordId
+      | { relatedEntityId: string; relatedEntityDefinitionId: string }
+      | { recordId: RecordId }
+    >,
     ctx: {
       db: any // Database instance
       organizationId: string // User's organization
@@ -237,7 +243,9 @@ export class FieldValueValidator {
       for (const id of entityInstanceIds) {
         result.set(id, { success: true })
       }
-      console.warn('[FieldValueValidator] Database context not available for batch relationship validation, skipping access checks')
+      console.warn(
+        '[FieldValueValidator] Database context not available for batch relationship validation, skipping access checks'
+      )
       return result
     }
 
@@ -248,7 +256,9 @@ export class FieldValueValidator {
         select: { id: true, organizationId: true },
       })
 
-      const entitiesByid = new Map(entities.map((e: { id: string; organizationId: string }) => [e.id, e]))
+      const entitiesByid = new Map(
+        entities.map((e: { id: string; organizationId: string }) => [e.id, e])
+      )
 
       // Check each entity instance
       for (const entityId of entityInstanceIds) {
@@ -312,7 +322,9 @@ export class FieldValueValidator {
     // NOTE: This is a soft validation - if it fails, we still allow the relationship but log a warning
     try {
       if (!ctx.db?.entityInstance) {
-        console.warn('[FieldValueValidator] Database context not available for relationship validation, skipping access check')
+        console.warn(
+          '[FieldValueValidator] Database context not available for relationship validation, skipping access check'
+        )
         return {
           success: true as const,
           data: { recordId },
@@ -325,7 +337,9 @@ export class FieldValueValidator {
       })
 
       if (!relatedEntity) {
-        console.warn(`[FieldValueValidator] Related entity not found: ${entityInstanceId}, allowing relationship`)
+        console.warn(
+          `[FieldValueValidator] Related entity not found: ${entityInstanceId}, allowing relationship`
+        )
         return {
           success: true as const,
           data: { recordId },

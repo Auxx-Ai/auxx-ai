@@ -1,6 +1,6 @@
 // packages/services/src/contacts/types.ts
 
-import type { CustomerStatus, CustomerSourceType } from '@auxx/database/types'
+import type { CustomerSourceType, CustomerStatus } from '@auxx/database/types'
 
 /**
  * Base context for all contact operations

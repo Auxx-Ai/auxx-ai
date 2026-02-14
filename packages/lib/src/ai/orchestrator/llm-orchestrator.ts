@@ -1,24 +1,9 @@
 // packages/lib/src/ai/orchestrator/llm-orchestrator.ts
-import { createScopedLogger, Logger } from '@auxx/logger'
 
+import type { Database } from '@auxx/database'
+import { createScopedLogger, type Logger } from '@auxx/logger'
 // import { createScopedLogger, Logger } from '../../../logger'
-import { LLMClient } from '../clients/base/llm-client'
-import { ModelType } from '../providers/types'
-import { ProviderManager } from '../providers/provider-manager'
-import { ProviderRegistry } from '../providers/provider-registry'
-import type {
-  LLMInvocationRequest,
-  LLMInvocationResponse,
-  AICallbacks,
-  ToolExecutor,
-  ToolExecutionResult,
-  UsageTrackingService,
-  OrchestratorConfig,
-  BatchLLMRequest,
-  BatchLLMResponse,
-  UsageSource,
-} from './types'
-import { OrchestratorError, ToolExecutionError } from './types'
+import type { LLMClient } from '../clients/base/llm-client'
 import type {
   LLMInvokeParams,
   LLMResponse,
@@ -27,7 +12,22 @@ import type {
   ToolCall,
   UsageMetrics,
 } from '../clients/base/types'
-import type { Database } from '@auxx/database'
+import { ProviderManager } from '../providers/provider-manager'
+import { ProviderRegistry } from '../providers/provider-registry'
+import { ModelType } from '../providers/types'
+import type {
+  AICallbacks,
+  BatchLLMRequest,
+  BatchLLMResponse,
+  LLMInvocationRequest,
+  LLMInvocationResponse,
+  OrchestratorConfig,
+  ToolExecutionResult,
+  ToolExecutor,
+  UsageSource,
+  UsageTrackingService,
+} from './types'
+import { OrchestratorError, ToolExecutionError } from './types'
 
 /**
  * Universal LLM Orchestrator for all AI operations across the application
@@ -87,12 +87,11 @@ export class LLMOrchestrator {
       })
 
       // Get client with credential metadata for quota tracking
-      const { client: llmClient, providerType, credentialSource } = await this.getClientWithMetadata(
-        provider,
-        model,
-        organizationId,
-        userId
-      )
+      const {
+        client: llmClient,
+        providerType,
+        credentialSource,
+      } = await this.getClientWithMetadata(provider, model, organizationId, userId)
 
       // Build invocation parameters with enhanced features
       const invokeParams: LLMInvokeParams = {
@@ -139,7 +138,8 @@ export class LLMOrchestrator {
       if (this.config.enableUsageTracking && this.usageService && response.usage) {
         // Determine source from context
         const source = (context?.source as UsageSource) ?? 'other'
-        const sourceId = context?.workflowId ?? context?.datasetId ?? context?.sessionId ?? undefined
+        const sourceId =
+          context?.workflowId ?? context?.datasetId ?? context?.sessionId ?? undefined
 
         await this.usageService.trackUsage({
           organizationId,

@@ -1,15 +1,15 @@
 // ~/app/(protected)/app/settings/integrations/[integrationId]/page.tsx
 'use client' // Required for useParams and conditional rendering logic
 
-import React from 'react'
-import { useParams } from 'next/navigation'
-import IntegrationTabs from '../_components/integration-tabs' // For non-chat integrations
-import ChatWidgetSettings from '../_components/chat-widget-settings' // Import the new page component
-import { api } from '~/trpc/react'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { AlertCircle } from 'lucide-react'
+import { useParams } from 'next/navigation'
+import React from 'react'
 import SettingsPage from '~/components/global/settings-page'
+import { api } from '~/trpc/react'
+import ChatWidgetSettings from '../_components/chat-widget-settings' // Import the new page component
+import IntegrationTabs from '../_components/integration-tabs' // For non-chat integrations
 
 /**
  * Integration Settings/Edit Page
@@ -35,24 +35,24 @@ export default function IntegrationSettingsPage() {
 
   if (!integrationId) {
     // Should ideally not happen with correct routing setup
-    return <div className="container py-6">Invalid Integration ID.</div>
+    return <div className='container py-6'>Invalid Integration ID.</div>
   }
 
   if (isLoading) {
     return (
-      <div className="container space-y-4 py-6">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-10 w-full max-w-md" />
-        <Skeleton className="h-64 w-full" />
+      <div className='container space-y-4 py-6'>
+        <Skeleton className='h-8 w-48' />
+        <Skeleton className='h-10 w-full max-w-md' />
+        <Skeleton className='h-64 w-full' />
       </div>
     )
   }
 
   if (error || !integrationBaseInfo) {
     return (
-      <div className="container py-6">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
+      <div className='container py-6'>
+        <Alert variant='destructive'>
+          <AlertCircle className='h-4 w-4' />
           <AlertTitle>Error</AlertTitle>
           <AlertDescription>
             Failed to load integration details: {error?.message || 'Integration not found.'}

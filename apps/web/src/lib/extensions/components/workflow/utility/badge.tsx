@@ -1,7 +1,7 @@
 // apps/web/src/lib/extensions/components/workflow/utility/badge.tsx
 
 import { cn } from '@auxx/ui/lib/utils'
-import React from 'react'
+import type React from 'react'
 
 type WorkflowBadgeProps = {
   variant: 'default' | 'secondary' | 'destructive' | 'outline'

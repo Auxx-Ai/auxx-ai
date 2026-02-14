@@ -1,6 +1,6 @@
 // packages/email/src/templates/lifecycle/trial-conversion-email.tsx
 import { Container, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -124,7 +124,7 @@ export async function TrialConversionEmail({
           </Text>
         </div>
 
-        <EmailButton href={billingUrl} label="Continue with Auxx.ai" />
+        <EmailButton href={billingUrl} label='Continue with Auxx.ai' />
 
         <Text style={{ fontWeight: 'bold', marginTop: '32px' }}>
           What happens if you don't upgrade?

@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/nodes/core/list/hooks/use-pluck-field-resolver.ts
 
-import { useMemo } from 'react'
-import { useFilterFieldResolver } from './use-filter-field-resolver'
 import { BaseType } from '@auxx/lib/workflow-engine/client'
+import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { useMemo } from 'react'
 import type { FieldDefinition } from '~/components/conditions'
 import { useResourceStore } from '~/components/resources/store/resource-store'
-import { parseResourceFieldId, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { useFilterFieldResolver } from './use-filter-field-resolver'
 
 /**
  * Maximum depth for nested field expansion.
@@ -33,7 +33,7 @@ function expandFieldRecursive(
   depth: number,
   pathPrefix: string,
   labelPrefix: string,
-  visited: Set<string> = new Set(),
+  visited: Set<string> = new Set()
 ): FieldDefinition[] {
   const results: FieldDefinition[] = []
 
@@ -91,7 +91,7 @@ function expandFieldRecursive(
             depth + 1,
             newPath,
             newLabel,
-            new Set(visited),
+            new Set(visited)
           )
           results.push(...nestedFields)
         }
@@ -112,10 +112,7 @@ function expandFieldRecursive(
  * - Relations: REFERENCE, RELATION (expanded with subfields)
  * - Deep nesting: unlimited depth (configurable via MAX_NESTING_DEPTH)
  */
-export function usePluckFieldResolver({
-  nodeId,
-  inputListValue,
-}: UsePluckFieldResolverOptions) {
+export function usePluckFieldResolver({ nodeId, inputListValue }: UsePluckFieldResolverOptions) {
   // Reuse the filter field resolver for basic field detection
   const { fieldDefinitions, hasFields, isEmpty } = useFilterFieldResolver({
     nodeId,
@@ -138,7 +135,7 @@ export function usePluckFieldResolver({
           field,
           0, // Start at depth 0
           field.id, // Path prefix
-          field.label, // Label prefix
+          field.label // Label prefix
         )
         result.push(...nested)
       }

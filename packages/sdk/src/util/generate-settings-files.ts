@@ -1,9 +1,9 @@
 import fs from 'fs/promises'
 import path from 'path'
-import { combineAsync, complete, errored, isErrored } from '../errors.js'
 import { HIDDEN_AUXX_DIRECTORY } from '../constants/hidden-auxx-directory.js'
-
 import { APP_SETTINGS_FILENAME, SETTINGS_TYPES_FILENAME } from '../constants/settings-files.js'
+import { combineAsync, complete, errored, isErrored } from '../errors.js'
+
 const SETTINGS_SCHEMA_FILE_CONTENT = `import type {SettingsSchema} from "@auxx/sdk"
 
 export const appSettingsSchema = {

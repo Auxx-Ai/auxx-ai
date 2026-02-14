@@ -11,7 +11,7 @@ import type { ListNodeData } from '../types'
  */
 export function usePluckConfig(
   nodeData: ListNodeData,
-  setNodeData: (data: Partial<ListNodeData>) => void,
+  setNodeData: (data: Partial<ListNodeData>) => void
 ) {
   /**
    * Get current pluck field
@@ -43,7 +43,7 @@ export function usePluckConfig(
         })
       }
     },
-    [setNodeData, currentFlatten],
+    [setNodeData, currentFlatten]
   )
 
   /**
@@ -60,7 +60,7 @@ export function usePluckConfig(
         },
       })
     },
-    [setNodeData, currentField],
+    [setNodeData, currentField]
   )
 
   return {

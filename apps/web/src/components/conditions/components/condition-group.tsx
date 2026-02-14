@@ -2,15 +2,15 @@
 
 'use client'
 
-import { useState } from 'react'
-import { Trash2, GripVertical, ChevronDown, ChevronRight, Edit2 } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import { cn } from '@auxx/ui/lib/utils'
+import { ChevronDown, ChevronRight, Edit2, GripVertical, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import { useConditionContext } from '../condition-context'
-import ConditionList from './condition-list'
-import ConditionAdd from './condition-add'
 import type { ConditionGroupProps } from '../types'
+import ConditionAdd from './condition-add'
+import ConditionList from './condition-list'
 
 /**
  * Enhanced condition group component with naming, subtext, and sortability
@@ -96,10 +96,10 @@ const ConditionGroup = ({
         )}>
         {showDragHandle && !readOnly && (
           <button
-            className="left-1 top-3 absolute cursor-grab touch-none text-muted-foreground hover:text-foreground active:cursor-grabbing"
+            className='left-1 top-3 absolute cursor-grab touch-none text-muted-foreground hover:text-foreground active:cursor-grabbing'
             {...dragHandleAttributes}
             {...dragHandleListeners}>
-            <GripVertical className="size-3" />
+            <GripVertical className='size-3' />
           </button>
         )}
 
@@ -111,7 +111,7 @@ const ConditionGroup = ({
               onBlur={handleNameBlur}
               onKeyDown={handleNameKeyDown}
               placeholder={config.groupNamePlaceholder || 'Enter group name...'}
-              className="h-7 text-sm font-medium"
+              className='h-7 text-sm font-medium'
               autoFocus
               disabled={readOnly}
             />
@@ -122,11 +122,11 @@ const ConditionGroup = ({
                 'absolute z-10 left-4 top-1 flex items-center gap-1 text-[13px] font-semibold leading-4 text-muted-foreground',
                 readOnly ? 'cursor-default' : ''
               )}>
-              <span className="truncate">
+              <span className='truncate'>
                 {group.metadata?.name || config.defaultGroupName || 'Group'}
               </span>
               {!readOnly && (
-                <Edit2 className="h-3 w-3 opacity-0 transition-opacity group-hover/condition-group:opacity-100" />
+                <Edit2 className='h-3 w-3 opacity-0 transition-opacity group-hover/condition-group:opacity-100' />
               )}
             </button>
           )
@@ -138,7 +138,7 @@ const ConditionGroup = ({
             )}>
             {group.metadata?.name || config.defaultGroupName || 'Group'}
             {showSubtext && group.metadata?.subtext && (
-              <div className="text-[10px] font-medium text-muted-foreground">
+              <div className='text-[10px] font-medium text-muted-foreground'>
                 {group.metadata.subtext}
               </div>
             )}
@@ -148,7 +148,7 @@ const ConditionGroup = ({
         {!isCollapsed && (
           <>
             {hasConditions && (
-              <div className="pb-2">
+              <div className='pb-2'>
                 <ConditionList conditions={group.conditions} groupId={group.id} />
               </div>
             )}
@@ -157,9 +157,9 @@ const ConditionGroup = ({
               <ConditionAdd groupId={group.id} disabled={readOnly} />
               {showRemoveButton && !readOnly && (
                 <Button
-                  size="sm"
-                  variant="ghost"
-                  className="hover:bg-destructive/10 hover:text-destructive"
+                  size='sm'
+                  variant='ghost'
+                  className='hover:bg-destructive/10 hover:text-destructive'
                   onClick={handleRemove}
                   onMouseEnter={() => setWillDelete(true)}
                   onMouseLeave={() => setWillDelete(false)}>
@@ -170,7 +170,7 @@ const ConditionGroup = ({
           </>
         )}
       </div>
-      <div data-field="group-divider" className="mx-3 my-2 h-[1px] bg-primary-300/30"></div>
+      <div data-field='group-divider' className='mx-3 my-2 h-[1px] bg-primary-300/30'></div>
     </>
   )
 }

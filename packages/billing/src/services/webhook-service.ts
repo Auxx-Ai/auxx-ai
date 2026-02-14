@@ -3,19 +3,19 @@
  * Webhook processing service for Stripe events.
  */
 
+import type { Database } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import type Stripe from 'stripe'
-import { stripeClient } from './stripe-client'
 import {
   handleCheckoutSessionCompleted,
-  handleSubscriptionUpdated,
-  handleSubscriptionCreated,
-  handleSubscriptionDeleted,
   handleInvoicePaid,
   handleInvoicePaymentFailed,
+  handleSubscriptionCreated,
+  handleSubscriptionDeleted,
+  handleSubscriptionUpdated,
 } from '../hooks'
-import type { Database } from '@auxx/database'
 import type { WebhookHandlers } from '../types'
-import { createScopedLogger } from '@auxx/logger'
+import { stripeClient } from './stripe-client'
 
 /** Scoped logger for Stripe webhook service operations. */
 const logger = createScopedLogger('webhook-service')

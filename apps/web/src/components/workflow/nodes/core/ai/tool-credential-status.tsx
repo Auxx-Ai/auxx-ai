@@ -2,10 +2,10 @@
 
 'use client'
 
-import React from 'react'
-import { CheckCircle, AlertTriangle, Shield } from 'lucide-react'
 import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
+import { AlertTriangle, CheckCircle, Shield } from 'lucide-react'
+import React from 'react'
 import { getToolCredentialRequirement } from './tool-credential-registry'
 
 interface CredentialStatusIndicatorProps {
@@ -38,8 +38,8 @@ export function CredentialStatusIndicator({
   if (isRequired && !hasCredential) {
     return (
       <div className={cn('flex items-center gap-1 text-destructive', className)}>
-        <AlertTriangle className="h-3 w-3" />
-        <span className="text-xs">Auth required</span>
+        <AlertTriangle className='h-3 w-3' />
+        <span className='text-xs'>Auth required</span>
       </div>
     )
   }
@@ -47,16 +47,16 @@ export function CredentialStatusIndicator({
   if (hasCredential) {
     return (
       <div className={cn('flex items-center gap-1 text-emerald-600', className)}>
-        <CheckCircle className="h-3 w-3" />
-        <span className="text-xs">Authenticated</span>
+        <CheckCircle className='h-3 w-3' />
+        <span className='text-xs'>Authenticated</span>
       </div>
     )
   }
 
   return (
     <div className={cn('flex items-center gap-1 text-muted-foreground', className)}>
-      <Shield className="h-3 w-3" />
-      <span className="text-xs">Optional auth</span>
+      <Shield className='h-3 w-3' />
+      <span className='text-xs'>Optional auth</span>
     </div>
   )
 }
@@ -82,7 +82,7 @@ export function CredentialStatusBadge({
 
   if (isRequired && !hasCredential) {
     return (
-      <Badge variant="destructive" className={cn('text-xs', className)}>
+      <Badge variant='destructive' className={cn('text-xs', className)}>
         Auth Required
       </Badge>
     )
@@ -90,14 +90,14 @@ export function CredentialStatusBadge({
 
   if (hasCredential) {
     return (
-      <Badge variant="default" className={cn('text-xs bg-emerald-100 text-emerald-800', className)}>
+      <Badge variant='default' className={cn('text-xs bg-emerald-100 text-emerald-800', className)}>
         Authenticated
       </Badge>
     )
   }
 
   return (
-    <Badge variant="secondary" className={cn('text-xs', className)}>
+    <Badge variant='secondary' className={cn('text-xs', className)}>
       Optional
     </Badge>
   )

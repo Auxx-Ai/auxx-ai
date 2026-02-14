@@ -1,6 +1,6 @@
 // packages/lib/src/seed/entity-seeder/constants.ts
 
-import type { SystemEntityConfig, DisplayFieldConfig } from './types'
+import type { DisplayFieldConfig, SystemEntityConfig } from './types'
 
 /**
  * System entity definitions to seed

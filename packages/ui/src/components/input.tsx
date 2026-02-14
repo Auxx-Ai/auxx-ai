@@ -1,9 +1,9 @@
 // apps/web/src/components/ui/input.tsx
 'use client'
-import * as React from 'react'
-import { cva, type VariantProps } from 'class-variance-authority'
 
 import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
+import type * as React from 'react'
 
 // Input variants using cva
 const inputVariants = cva(

@@ -1,16 +1,16 @@
 'use client'
-// ~/app/(protected)/app/settings/integrations/_components/integration-list.tsx
-import React from 'react'
-import { useIntegration } from '~/hooks/use-integration'
-import { useInboxes } from '~/components/threads/hooks'
+import { FeatureKey } from '@auxx/lib/types'
 import { Button } from '@auxx/ui/components/button'
 import { Plus, Waypoints } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import IntegrationTable from './integration-table'
-import SettingsPage from '~/components/global/settings-page'
-import { useFeatureFlags } from '~/providers/feature-flag-provider'
-import { FeatureKey } from '@auxx/lib/types'
+// ~/app/(protected)/app/settings/integrations/_components/integration-list.tsx
+import React from 'react'
 import { EmptyState } from '~/components/global/empty-state'
+import SettingsPage from '~/components/global/settings-page'
+import { useInboxes } from '~/components/threads/hooks'
+import { useIntegration } from '~/hooks/use-integration'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import IntegrationTable from './integration-table'
 
 /**
  * IntegrationList component
@@ -33,13 +33,13 @@ export default function IntegrationList() {
 
   return (
     <SettingsPage
-      title="Integrations"
-      description="Manage your external service integrations for email, messaging, and telephony"
+      title='Integrations'
+      description='Manage your external service integrations for email, messaging, and telephony'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Integrations' }]}
       button={
         <Button
-          variant="outline"
-          size="sm"
+          variant='outline'
+          size='sm'
           onClick={handleNewIntegration}
           disabled={isFeatureLoading || !canUseChannels}>
           <Plus />
@@ -49,17 +49,17 @@ export default function IntegrationList() {
       {isLoading ? (
         <EmptyState
           icon={Waypoints}
-          iconClassName="animate-spin"
-          title="Loading Integrations..."
-          description="&nbsp;"
-          button={<div className="h-12"></div>}
+          iconClassName='animate-spin'
+          title='Loading Integrations...'
+          description='&nbsp;'
+          button={<div className='h-12'></div>}
         />
       ) : integrations?.integrations && integrations.integrations.length > 0 ? (
         <IntegrationTable integrations={integrations.integrations} inboxes={inboxes || []} />
       ) : (
         <EmptyState
           icon={Waypoints}
-          title="No Integrations Found"
+          title='No Integrations Found'
           description={
             <>
               Connect your first integration to start <br />
@@ -67,7 +67,7 @@ export default function IntegrationList() {
             </>
           }
           button={
-            <Button onClick={handleNewIntegration} size="sm" variant="outline">
+            <Button onClick={handleNewIntegration} size='sm' variant='outline'>
               <Plus />
               Connect your first integration
             </Button>

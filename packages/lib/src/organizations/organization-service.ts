@@ -1,17 +1,18 @@
 // packages/lib/src/organizations/organization-service.ts
 // ** CONTAINS LOGIC TO DELETE OTHER USERS - USE WITH EXTREME CAUTION **
-import { schema, type Database } from '@auxx/database'
-import { and, eq, sql } from 'drizzle-orm'
+
+import { RESERVED_ORGANIZATION_HANDLES } from '@auxx/config'
+import { type Database, schema } from '@auxx/database'
+import { OrganizationRole, type OrganizationType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
-import { RESERVED_ORGANIZATION_HANDLES } from '@auxx/config'
-
-import { MessageService, IntegrationProviderType } from '../email/message-service'
-import { OrganizationRole, OrganizationType } from '@auxx/database/enums'
-import { MemberService } from '../members/member-service'
+import { and, eq, sql } from 'drizzle-orm'
 import { DehydrationService } from '../dehydration'
-import { SystemUserService } from '../users/system-user-service'
+import { type IntegrationProviderType, MessageService } from '../email/message-service'
+import { MemberService } from '../members/member-service'
 import { OrganizationSeeder } from '../seed/organization-seeder'
+import { SystemUserService } from '../users/system-user-service'
+
 const logger = createScopedLogger('organization-service')
 /**
  * Service class for managing core Organization operations, including deletion.
@@ -78,8 +79,14 @@ export class OrganizationService {
     success: true
     userDeleted: boolean
   }> {
-    const { organizationId, requestingUserId, confirmationEmail, skipEmailConfirmation, isSystemDeletion } = params
-    
+    const {
+      organizationId,
+      requestingUserId,
+      confirmationEmail,
+      skipEmailConfirmation,
+      isSystemDeletion,
+    } = params
+
     if (isSystemDeletion) {
       logger.warn(
         `[SYSTEM DELETION] Initiating automated deletion process for organization ${organizationId}. This workflow MAY DELETE OTHER USERS if this is their only organization.`
@@ -94,7 +101,7 @@ export class OrganizationService {
     if (!isSystemDeletion && requestingUserId) {
       await this.verifyOwnerOrFail(requestingUserId, organizationId)
     }
-    
+
     // 2. Verify Email Confirmation (skip for system deletions or when explicitly skipped)
     if (!isSystemDeletion && !skipEmailConfirmation && requestingUserId && confirmationEmail) {
       const [owner] = await this.db
@@ -160,114 +167,112 @@ export class OrganizationService {
     }
     // --- Begin Transaction ---
     try {
-      await this.db.transaction(
-        async (tx) => {
-          const txId = `TX-${organizationId.substring(0, 6)}-${Date.now()}`
-          logger.info(
-            `[${txId}] Starting deletion transaction. Users identified: ${allMemberIds.length}.`
-          )
-          // Step 4: Unregister Webhooks
-          const integrations = await tx
-            .select({
-              id: schema.Integration.id,
-              provider: schema.Integration.provider,
-            })
-            .from(schema.Integration)
-            .where(eq(schema.Integration.organizationId, organizationId))
-          logger.info(`[${txId}] Found ${integrations.length} integrations for webhook removal.`)
-          const webhookPromises = integrations.map(async (integration) => {
-            try {
-              // Use static method for unregistering
-              await MessageService.unregisterWebhooks(
-                organizationId,
-                integration.provider as IntegrationProviderType, // Cast needed, ensure type exists
-                integration.id
-              )
-              logger.info(
-                `[${txId}] Successfully unregistered webhook for integration ${integration.id} (${integration.provider}).`
-              )
-            } catch (webhookError) {
-              logger.error(
-                `[${txId}] Non-critical error: Failed to unregister webhook for integration ${integration.id}. Continuing deletion...`,
-                { error: webhookError }
-              )
-              // Log but don't fail transaction
-            }
+      await this.db.transaction(async (tx) => {
+        const txId = `TX-${organizationId.substring(0, 6)}-${Date.now()}`
+        logger.info(
+          `[${txId}] Starting deletion transaction. Users identified: ${allMemberIds.length}.`
+        )
+        // Step 4: Unregister Webhooks
+        const integrations = await tx
+          .select({
+            id: schema.Integration.id,
+            provider: schema.Integration.provider,
           })
-          await Promise.all(webhookPromises) // Process webhook removals concurrently
-          // Step 5: Delete other non-cascaded sensitive data (if any)
-          await tx.delete(schema.ApiKey).where(eq(schema.ApiKey.organizationId, organizationId))
-          logger.info(`[${txId}] Deleted API keys.`)
-          // Add deletions for other models here if needed (e.g., custom integration settings)
-          // Step 6: Delete the Organization itself (Trigger Cascades)
-          // Cascades MUST handle deleting OrganizationMember records.
-          logger.warn(
-            `[${txId}] Preparing to delete organization record ${organizationId}. Cascading deletes will now occur.`
-          )
-          await tx.delete(schema.Organization).where(eq(schema.Organization.id, organizationId))
-          logger.info(`[${txId}] Organization record ${organizationId} deleted.`)
-          // **** STEP 7: Check remaining memberships for ALL former members ****
-          logger.info(
-            `[${txId}] Checking remaining memberships for ${allMemberIds.length} former members...`
-          )
+          .from(schema.Integration)
+          .where(eq(schema.Integration.organizationId, organizationId))
+        logger.info(`[${txId}] Found ${integrations.length} integrations for webhook removal.`)
+        const webhookPromises = integrations.map(async (integration) => {
+          try {
+            // Use static method for unregistering
+            await MessageService.unregisterWebhooks(
+              organizationId,
+              integration.provider as IntegrationProviderType, // Cast needed, ensure type exists
+              integration.id
+            )
+            logger.info(
+              `[${txId}] Successfully unregistered webhook for integration ${integration.id} (${integration.provider}).`
+            )
+          } catch (webhookError) {
+            logger.error(
+              `[${txId}] Non-critical error: Failed to unregister webhook for integration ${integration.id}. Continuing deletion...`,
+              { error: webhookError }
+            )
+            // Log but don't fail transaction
+          }
+        })
+        await Promise.all(webhookPromises) // Process webhook removals concurrently
+        // Step 5: Delete other non-cascaded sensitive data (if any)
+        await tx.delete(schema.ApiKey).where(eq(schema.ApiKey.organizationId, organizationId))
+        logger.info(`[${txId}] Deleted API keys.`)
+        // Add deletions for other models here if needed (e.g., custom integration settings)
+        // Step 6: Delete the Organization itself (Trigger Cascades)
+        // Cascades MUST handle deleting OrganizationMember records.
+        logger.warn(
+          `[${txId}] Preparing to delete organization record ${organizationId}. Cascading deletes will now occur.`
+        )
+        await tx.delete(schema.Organization).where(eq(schema.Organization.id, organizationId))
+        logger.info(`[${txId}] Organization record ${organizationId} deleted.`)
+        // **** STEP 7: Check remaining memberships for ALL former members ****
+        logger.info(
+          `[${txId}] Checking remaining memberships for ${allMemberIds.length} former members...`
+        )
 
-          for (const userId of allMemberIds) {
-            const membershipCountResult = await tx
-              .select({ count: sql<number>`count(*)` })
-              .from(schema.OrganizationMember)
-              .where(eq(schema.OrganizationMember.userId, userId))
-            const remainingMemberships = membershipCountResult[0]?.count ?? 0
-            // Count *after* the cascade should have removed the membership for the deleted org
-            if (remainingMemberships === 0) {
-              // User no longer belongs to ANY organization. Delete their account.
-              logger.warn(
-                `[${txId}] User ${userId} has no remaining memberships. DELETING USER ACCOUNT.`
-              )
-              try {
-                // Ensure User relations (Account, Session, etc.) have onDelete: Cascade!
-                await tx.delete(schema.User).where(eq(schema.User.id, userId))
-                logger.info(`[${txId}] Successfully deleted user ${userId}.`)
-                if (userId === requestingUserId) {
-                  requestingUserWasDeleted = true
-                } else {
-                  otherUsersDeletedCount++
-                }
-              } catch (userDeleteError) {
-                // Log critical error but continue transaction if possible
-                // If this fails due to constraints, the whole transaction might roll back.
-                logger.error(
-                  `[${txId}] CRITICAL: Failed to delete user ${userId} despite having no remaining orgs. Data inconsistency may occur.`,
-                  { error: userDeleteError }
-                )
-                // Rethrow the error to ensure transaction rollback if user deletion is critical
-                throw userDeleteError // Fail the transaction if a user couldn't be deleted
+        for (const userId of allMemberIds) {
+          const membershipCountResult = await tx
+            .select({ count: sql<number>`count(*)` })
+            .from(schema.OrganizationMember)
+            .where(eq(schema.OrganizationMember.userId, userId))
+          const remainingMemberships = membershipCountResult[0]?.count ?? 0
+          // Count *after* the cascade should have removed the membership for the deleted org
+          if (remainingMemberships === 0) {
+            // User no longer belongs to ANY organization. Delete their account.
+            logger.warn(
+              `[${txId}] User ${userId} has no remaining memberships. DELETING USER ACCOUNT.`
+            )
+            try {
+              // Ensure User relations (Account, Session, etc.) have onDelete: Cascade!
+              await tx.delete(schema.User).where(eq(schema.User.id, userId))
+              logger.info(`[${txId}] Successfully deleted user ${userId}.`)
+              if (userId === requestingUserId) {
+                requestingUserWasDeleted = true
+              } else {
+                otherUsersDeletedCount++
               }
-            } else {
-              // User still belongs to other orgs. Ensure default is nullified if needed.
-              logger.info(
-                `[${txId}] User ${userId} still has ${remainingMemberships} memberships. Ensuring default is handled.`
+            } catch (userDeleteError) {
+              // Log critical error but continue transaction if possible
+              // If this fails due to constraints, the whole transaction might roll back.
+              logger.error(
+                `[${txId}] CRITICAL: Failed to delete user ${userId} despite having no remaining orgs. Data inconsistency may occur.`,
+                { error: userDeleteError }
               )
-              // Use updateMany to avoid errors if user was already deleted in the same transaction (though unlikely with current logic flow)
-              await tx
-                .update(schema.User)
-                .set({ defaultOrganizationId: null })
-                .where(
-                  and(
-                    eq(schema.User.id, userId),
-                    eq(schema.User.defaultOrganizationId, organizationId)
-                  )
-                )
-              logger.info(
-                `[${txId}] Nullified default org for user ${userId} if it was the deleted one.`
-              )
+              // Rethrow the error to ensure transaction rollback if user deletion is critical
+              throw userDeleteError // Fail the transaction if a user couldn't be deleted
             }
-          } // End loop through former members
-          logger.info(
-            `[${txId}] Finished checking/deleting former members. ${otherUsersDeletedCount} other users deleted. Requesting owner deleted: ${requestingUserWasDeleted}.`
-          )
-          logger.info(`[${txId}] Deletion transaction completed.`)
-        }
-      ) // End Transaction
+          } else {
+            // User still belongs to other orgs. Ensure default is nullified if needed.
+            logger.info(
+              `[${txId}] User ${userId} still has ${remainingMemberships} memberships. Ensuring default is handled.`
+            )
+            // Use updateMany to avoid errors if user was already deleted in the same transaction (though unlikely with current logic flow)
+            await tx
+              .update(schema.User)
+              .set({ defaultOrganizationId: null })
+              .where(
+                and(
+                  eq(schema.User.id, userId),
+                  eq(schema.User.defaultOrganizationId, organizationId)
+                )
+              )
+            logger.info(
+              `[${txId}] Nullified default org for user ${userId} if it was the deleted one.`
+            )
+          }
+        } // End loop through former members
+        logger.info(
+          `[${txId}] Finished checking/deleting former members. ${otherUsersDeletedCount} other users deleted. Requesting owner deleted: ${requestingUserWasDeleted}.`
+        )
+        logger.info(`[${txId}] Deletion transaction completed.`)
+      }) // End Transaction
       logger.warn(
         `Organization ${organizationId} deletion process finished successfully by owner ${requestingUserId}. Requesting owner deleted: ${requestingUserWasDeleted}. Other users deleted: ${otherUsersDeletedCount}.`
       )

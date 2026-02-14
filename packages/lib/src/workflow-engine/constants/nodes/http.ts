@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/constants/nodes/http.ts
-import { createRangeValidator } from '../validation'
+
 import type { NodeConstants } from '../types'
+import { createRangeValidator } from '../validation'
 
 /**
  * Constants for HTTP node configuration

@@ -1,6 +1,6 @@
 // apps/web/src/components/file-upload/utils/upload-helpers.ts
 
-import type { UploadFile, QueueStats, EntityUploadConfig } from '@auxx/lib/files/types'
+import type { EntityUploadConfig, QueueStats, UploadFile } from '@auxx/lib/files/types'
 import { ENTITY_CONFIGS, getEntityConfig } from '@auxx/lib/files/types'
 import { formatBytes, getFileExtension } from '@auxx/utils/file'
 

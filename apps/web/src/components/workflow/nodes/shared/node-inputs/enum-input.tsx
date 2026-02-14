@@ -1,6 +1,5 @@
 // apps/web/src/components/workflow/nodes/shared/node-inputs/enum-input.tsx
 
-import React from 'react'
 import {
   Select,
   SelectContent,
@@ -8,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import React from 'react'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 interface EnumOption {
@@ -54,10 +54,10 @@ export const EnumInput = createNodeInput<EnumInputProps>(
     // Return just the Select component without wrappers or error displays
     return (
       <Select value={value} onValueChange={handleChange} disabled={isLoading}>
-        <SelectTrigger id={inputId} size="sm" variant="transparent" className="ps-0 pe-1 min-h-8">
+        <SelectTrigger id={inputId} size='sm' variant='transparent' className='ps-0 pe-1 min-h-8'>
           <SelectValue
             placeholder={
-              <span className="text-primary-400 font-normal text-sm pointer-events-none">
+              <span className='text-primary-400 font-normal text-sm pointer-events-none'>
                 {placeholderText}
               </span>
             }
@@ -66,10 +66,10 @@ export const EnumInput = createNodeInput<EnumInputProps>(
         <SelectContent>
           {normalizedOptions.map((option) => (
             <SelectItem key={option.value} value={option.value}>
-              <div className="flex flex-col">
+              <div className='flex flex-col'>
                 <span>{option.label}</span>
                 {option.description && (
-                  <span className="text-xs text-muted-foreground">{option.description}</span>
+                  <span className='text-xs text-muted-foreground'>{option.description}</span>
                 )}
               </div>
             </SelectItem>

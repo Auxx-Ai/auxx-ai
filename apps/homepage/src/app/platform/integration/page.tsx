@@ -1,14 +1,14 @@
 // apps/homepage/src/app/platform/integration/page.tsx
 import type { Metadata } from 'next'
-import Header from '../../_components/main/header'
+import { config } from '~/lib/config'
 import FooterSection from '../../_components/main/footer-section'
-import IntegrationHero from './_components/integration-hero'
-import MarketplaceSection from './_components/marketplace-section'
+import Header from '../../_components/main/header'
 import ApiSection from './_components/api-section'
 import CustomIntegrationSection from './_components/custom-integration-section'
-import { config } from '~/lib/config'
-import IntegrationCenterSection from './_components/integration-center-section'
 import IntegrationAiCenterSection from './_components/integration-ai-center-section'
+import IntegrationCenterSection from './_components/integration-center-section'
+import IntegrationHero from './_components/integration-hero'
+import MarketplaceSection from './_components/marketplace-section'
 
 export const metadata: Metadata = {
   title: `Integrations & API | ${config.shortName}`,
@@ -17,9 +17,9 @@ export const metadata: Metadata = {
 
 export default function IntegrationPage() {
   return (
-    <div id="root" className="relative h-screen overflow-y-auto bg-background">
+    <div id='root' className='relative h-screen overflow-y-auto bg-background'>
       <Header />
-      <main className="">
+      <main className=''>
         <IntegrationHero />
         <IntegrationCenterSection />
         <MarketplaceSection />

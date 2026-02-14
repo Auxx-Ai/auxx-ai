@@ -1,11 +1,12 @@
 // src/server/api/routers/embedding.ts
 // Deprecated
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+
 import { schema } from '@auxx/database'
-import { and, eq, desc, lt } from 'drizzle-orm'
 import { processNextPendingJob } from '@auxx/lib/embeddings'
 import { createScopedLogger } from '@auxx/logger'
+import { and, desc, eq, lt } from 'drizzle-orm'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api/embedding')
 
@@ -219,7 +220,7 @@ export const embeddingRouter = createTRPCRouter({
         .orderBy(desc(schema.embedding_jobs.createdAt))
         .limit(input.limit + 1)
 
-      let nextCursor: typeof input.cursor | undefined = undefined
+      let nextCursor: typeof input.cursor | undefined
       if (jobs.length > input.limit) {
         const nextItem = jobs.pop()!
         nextCursor = nextItem.id

@@ -1,13 +1,13 @@
 // app/(protected)/app/settings/plans/_components/plan-comparison.tsx
 'use client'
 
-import { useEffect, useState } from 'react'
-import { api } from '~/trpc/react'
-import { PlanCard } from './plan-card'
-import { HorizontalPlanCard } from './horizontal-plan-card'
-import { BillingCycleToggle } from './billing-cycle-toggle'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { useEffect, useState } from 'react'
 import { useUser } from '~/hooks/use-user'
+import { api } from '~/trpc/react'
+import { BillingCycleToggle } from './billing-cycle-toggle'
+import { HorizontalPlanCard } from './horizontal-plan-card'
+import { PlanCard } from './plan-card'
 
 /** Plan type for callbacks */
 export type Plan = {
@@ -84,34 +84,34 @@ export function PlanComparison({ inDialog = false, onPlanSelect }: PlanCompariso
 
   return (
     <div className={inDialog ? '' : 'p-6'}>
-      <div className="flex flex-col gap-4 justify-center items-center">
+      <div className='flex flex-col gap-4 justify-center items-center'>
         <BillingCycleToggle value={billingCycle} onChange={setBillingCycle} />
       </div>
 
       {isLoading && !initialCycleSet ? (
         <div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 pt-6">
+          <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 pt-6'>
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="rounded-2xl border p-3">
-                <Skeleton className="mb-2 h-8 w-32" />
-                <Skeleton className="mb-4 h-6 w-24" />
-                <Skeleton className="mb-2 h-6 w-full" />
-                <Skeleton className="mb-4 h-6 w-full" />
-                <div className="mb-4 space-y-2">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-full" />
+              <div key={i} className='rounded-2xl border p-3'>
+                <Skeleton className='mb-2 h-8 w-32' />
+                <Skeleton className='mb-4 h-6 w-24' />
+                <Skeleton className='mb-2 h-6 w-full' />
+                <Skeleton className='mb-4 h-6 w-full' />
+                <div className='mb-4 space-y-2'>
+                  <Skeleton className='h-4 w-full' />
+                  <Skeleton className='h-4 w-full' />
+                  <Skeleton className='h-4 w-full' />
                 </div>
-                <Skeleton className="h-8 w-full" />
+                <Skeleton className='h-8 w-full' />
               </div>
             ))}
           </div>
-          <div className="rounded-2xl border h-30 grid-cols-3 mt-3"></div>
+          <div className='rounded-2xl border h-30 grid-cols-3 mt-3'></div>
         </div>
       ) : (
         <>
           {/* Paid Plans Grid */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 pt-6">
+          <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 pt-6'>
             {paidPlans.map((plan) => (
               <PlanCard
                 key={plan.id}
@@ -127,7 +127,7 @@ export function PlanComparison({ inDialog = false, onPlanSelect }: PlanCompariso
 
           {/* Free Plan - Horizontal Card Below */}
           {freePlan && (
-            <div className="mt-6">
+            <div className='mt-6'>
               <HorizontalPlanCard
                 plan={freePlan}
                 billingCycle={billingCycle}

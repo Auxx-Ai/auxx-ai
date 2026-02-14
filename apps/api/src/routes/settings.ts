@@ -8,17 +8,17 @@
  * @module routes/settings
  */
 
-import { Hono } from 'hono'
-import { errorResponse, ERROR_STATUS_MAP } from '../lib/response'
-import type { AppContext } from '../types/context'
+import { database } from '@auxx/database'
 import {
-  getAppSettings,
   getAppSetting,
+  getAppSettings,
   saveAppSettings,
   setAppSetting,
 } from '@auxx/services/app-settings'
-import { database } from '@auxx/database'
+import { Hono } from 'hono'
 import { z } from 'zod'
+import { ERROR_STATUS_MAP, errorResponse } from '../lib/response'
+import type { AppContext } from '../types/context'
 
 /**
  * Hono router instance for settings management.
@@ -126,7 +126,7 @@ settings.get('/', async (c) => {
     }
 
     // Load schema from app version
-    let schema = undefined
+    let schema
     if (installation.currentVersionId) {
       const version = await database.query.AppVersion.findFirst({
         where: (ver, { eq }) => eq(ver.id, installation.currentVersionId!),
@@ -233,7 +233,7 @@ settings.get('/:key', async (c) => {
     }
 
     // Load schema from app version
-    let schema = undefined
+    let schema
     if (installation.currentVersionId) {
       const version = await database.query.AppVersion.findFirst({
         where: (ver, { eq }) => eq(ver.id, installation.currentVersionId!),

@@ -1,7 +1,7 @@
 // packages/lib/src/import/fields/auto-map-columns.ts
 
-import type { ImportableField } from './get-importable-fields'
 import type { ResolutionType } from '../types/resolution'
+import type { ImportableField } from './get-importable-fields'
 import { suggestResolutionType } from './suggest-resolution-type'
 
 /** Column header from CSV */
@@ -23,15 +23,17 @@ export interface ColumnAutoMapping {
  * Split a string into words, handling camelCase, snake_case, kebab-case, and spaces.
  */
 function splitIntoWords(str: string): string[] {
-  return str
-    // Insert space before uppercase letters (camelCase)
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    // Replace separators with spaces
-    .replace(/[_\-]/g, ' ')
-    // Split on spaces and filter empty
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length > 0)
+  return (
+    str
+      // Insert space before uppercase letters (camelCase)
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      // Replace separators with spaces
+      .replace(/[_-]/g, ' ')
+      // Split on spaces and filter empty
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 0)
+  )
 }
 
 /**

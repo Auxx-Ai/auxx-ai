@@ -1,17 +1,8 @@
 // packages/lib/src/datasets/services/dataset-service.ts
 
-import type {
-  CreateDatasetInput,
-  UpdateDatasetInput,
-  DatasetWithRelations,
-  DatasetListResponse,
-  DatasetFilters,
-  PaginationParams,
-  DatasetStats,
-  ChunkSettings,
-} from '../types'
-import { schema, type Database } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { DEFAULT_CHUNK_SETTINGS } from '@auxx/database/types'
+import { createScopedLogger } from '@auxx/logger'
 import {
   and,
   asc,
@@ -26,17 +17,25 @@ import {
   lte,
   ne,
   or,
+  type SQL,
   sql,
   sum,
-  type SQL,
 } from 'drizzle-orm'
-
+import { SystemModelService } from '../../ai/providers/system-model-service'
+import { ModelType } from '../../ai/providers/types'
+import type {
+  ChunkSettings,
+  CreateDatasetInput,
+  DatasetFilters,
+  DatasetListResponse,
+  DatasetStats,
+  DatasetWithRelations,
+  PaginationParams,
+  UpdateDatasetInput,
+} from '../types'
 import { DatasetError } from '../types'
 import { DatasetEmbeddingValidator } from './dataset-embedding-validator'
 import { DocumentService } from './document-service'
-import { createScopedLogger } from '@auxx/logger'
-import { SystemModelService } from '../../ai/providers/system-model-service'
-import { ModelType } from '../../ai/providers/types'
 
 const logger = createScopedLogger('dataset-service')
 
@@ -441,9 +440,7 @@ export class DatasetService {
       const systemDefault = await systemModelService.getDefault(ModelType.TEXT_EMBEDDING)
 
       return {
-        systemDefault: systemDefault
-          ? `${systemDefault.provider}:${systemDefault.model}`
-          : null,
+        systemDefault: systemDefault ? `${systemDefault.provider}:${systemDefault.model}` : null,
       }
     } catch (error) {
       logger.error('Failed to get available embedding options', {
@@ -588,7 +585,8 @@ export class DatasetService {
                       strategy:
                         (options.chunkingOptions.strategy as any) || datasetChunkSettings.strategy,
                       chunkSize: options.chunkingOptions.chunkSize || datasetChunkSettings.size,
-                      chunkOverlap: options.chunkingOptions.chunkOverlap || datasetChunkSettings.overlap,
+                      chunkOverlap:
+                        options.chunkingOptions.chunkOverlap || datasetChunkSettings.overlap,
                       preserveFormatting: options.chunkingOptions.preserveFormatting || false,
                     }
                   : {
@@ -609,9 +607,6 @@ export class DatasetService {
             fileName: file.name,
             datasetId: dataset.id,
           })
-
-          // Continue processing other files, but log the error
-          continue
         }
       }
 

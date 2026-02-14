@@ -1,21 +1,21 @@
-import { type JobsOptions, Queue } from 'bullmq'
 import { env } from '@auxx/config/server'
-import { Queues } from './types'
 import { createScopedLogger } from '@auxx/logger'
 import { getConnectionOptions } from '@auxx/redis'
+import { type JobsOptions, Queue } from 'bullmq'
+import type { Queues } from './types'
 
 const logger = createScopedLogger('jobs-queues')
 
-export { Queues } from './types'
-
 // Export flow utilities
 export {
-  getFlowProducer,
-  closeFlowProducer,
   addFlow,
   addFlows,
+  closeFlowProducer,
   type FlowJobDefinition,
+  getFlowProducer,
 } from './flow-producer'
+export { Queues } from './types'
+
 const DEFAULT_JOB_OPTIONS: JobsOptions = {
   attempts: 5, //env.JOB_RETRY_ATTEMPTS,
   backoff: { type: 'exponential', delay: 1000 },

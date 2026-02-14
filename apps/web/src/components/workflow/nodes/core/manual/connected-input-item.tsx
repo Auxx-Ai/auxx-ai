@@ -1,15 +1,15 @@
 // apps/web/src/components/workflow/nodes/core/manual/connected-input-item.tsx
 
-import { forwardRef } from 'react'
-import { GripVertical, Pencil, Trash2 } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
+import { Badge } from '@auxx/ui/components/badge'
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupText,
 } from '@auxx/ui/components/input-group'
-import { Badge } from '@auxx/ui/components/badge'
+import { cn } from '@auxx/ui/lib/utils'
+import { GripVertical, Pencil, Trash2 } from 'lucide-react'
+import { forwardRef } from 'react'
 
 /**
  * Props for ConnectedInputItem component
@@ -66,7 +66,7 @@ export const ConnectedInputItem = forwardRef<HTMLDivElement, ConnectedInputItemP
         style={style}
         className={cn('flex items-center gap-2 pe-1 ps-1', isDragging && !isOverlay && '')}>
         <InputGroup className={cn(isDragging && !isOverlay && 'opacity-20')}>
-          <InputGroupAddon align="inline-start">
+          <InputGroupAddon align='inline-start'>
             <div
               {...attributes}
               {...listeners}
@@ -76,37 +76,37 @@ export const ConnectedInputItem = forwardRef<HTMLDivElement, ConnectedInputItemP
                 isOverlay && 'cursor-grabbing'
               )}>
               {isHovered || isOverlay ? (
-                <GripVertical className="size-3 text-muted-foreground group-hover/input-group:text-primary-600" />
+                <GripVertical className='size-3 text-muted-foreground group-hover/input-group:text-primary-600' />
               ) : (
-                <span className="[&>svg]:size-3">{icon}</span>
+                <span className='[&>svg]:size-3'>{icon}</span>
               )}
             </div>
           </InputGroupAddon>
-          <InputGroupText className="ms-1 flex-1 truncate">{title}</InputGroupText>
-          <InputGroupAddon align="inline-end" className="pe-2.5 gap-1">
+          <InputGroupText className='ms-1 flex-1 truncate'>{title}</InputGroupText>
+          <InputGroupAddon align='inline-end' className='pe-2.5 gap-1'>
             {required && (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
+              <Badge variant='secondary' className='text-[10px] px-1.5 py-0 h-5'>
                 Required
               </Badge>
             )}
             <InputGroupButton
-              type="button"
-              variant="ghost"
-              className="rounded-lg"
-              aria-label="Edit input"
-              title="Edit"
-              size="icon-xs"
+              type='button'
+              variant='ghost'
+              className='rounded-lg'
+              aria-label='Edit input'
+              title='Edit'
+              size='icon-xs'
               onClick={onEdit}
               disabled={isOverlay}>
               <Pencil />
             </InputGroupButton>
             <InputGroupButton
-              type="button"
-              variant="destructive-hover"
-              className="rounded-lg"
-              aria-label="Remove input"
-              title="Remove"
-              size="icon-xs"
+              type='button'
+              variant='destructive-hover'
+              className='rounded-lg'
+              aria-label='Remove input'
+              title='Remove'
+              size='icon-xs'
               onClick={onRemove}
               disabled={isOverlay}>
               <Trash2 />

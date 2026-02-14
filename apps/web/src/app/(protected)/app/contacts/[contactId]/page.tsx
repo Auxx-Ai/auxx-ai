@@ -10,7 +10,7 @@ type Props = { params: Promise<{ contactId: string }> }
 async function ContactDetailPage({ params }: Props) {
   const { contactId } = await params
 
-  return <DetailView apiSlug="contact" instanceId={contactId} />
+  return <DetailView apiSlug='contact' instanceId={contactId} />
 }
 
 export default ContactDetailPage

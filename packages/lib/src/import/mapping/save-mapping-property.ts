@@ -1,9 +1,9 @@
 // packages/lib/src/import/mapping/save-mapping-property.ts
 
-import { eq, and } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import type { SelectOption } from '@auxx/types/custom-field'
+import { and, eq } from 'drizzle-orm'
 
 /** Relation configuration for a mapping */
 export interface RelationConfig {
@@ -31,10 +31,7 @@ export interface SaveMappingInput {
  * @param db - Database instance
  * @param input - Mapping input
  */
-export async function saveMappingProperty(
-  db: Database,
-  input: SaveMappingInput
-): Promise<void> {
+export async function saveMappingProperty(db: Database, input: SaveMappingInput): Promise<void> {
   // Build resolution config if we have options or relation data
   let resolutionConfig: string | null = null
   if (input.matchField || input.relationConfig || input.options) {
@@ -101,9 +98,7 @@ export async function batchUpdateMappingsFromAutoMap(
 
   for (const mapping of input.mappings) {
     // Build resolutionConfig with options if present
-    const resolutionConfig = mapping.options
-      ? JSON.stringify({ options: mapping.options })
-      : null
+    const resolutionConfig = mapping.options ? JSON.stringify({ options: mapping.options }) : null
 
     await db
       .update(schema.ImportMappingProperty)

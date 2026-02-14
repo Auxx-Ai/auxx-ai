@@ -7,7 +7,7 @@
  * This file should be placed in your public directory:
  * /public/js/bundle.js
  */
-;(function (window) {
+;((window) => {
   // Check for dependencies
   if (typeof fetch === 'undefined') {
     console.error('AuxxChat Error: Fetch API not supported in this browser.')
@@ -48,19 +48,16 @@
   }
 
   const AuxxChat = {
-    init: function (config) {
+    init: (config) => {
       console.log('[AuxxChat init] Received config:', config)
 
       // --- Configuration with Defaults ---
       let userTypingTimer = null
       let lastTypingState = false
 
-      const baseTrpcUrl =
-        config.trpcBaseUrl || window.location.origin + '/api/trpc'
-      const initEndpoint =
-        config.initEndpoint || `${baseTrpcUrl}/chat.initialize`
-      const sendMessageEndpoint =
-        config.sendMessageEndpoint || `${baseTrpcUrl}/chat.sendMessage`
+      const baseTrpcUrl = config.trpcBaseUrl || window.location.origin + '/api/trpc'
+      const initEndpoint = config.initEndpoint || `${baseTrpcUrl}/chat.initialize`
+      const sendMessageEndpoint = config.sendMessageEndpoint || `${baseTrpcUrl}/chat.sendMessage`
       const pusherKey = config.pusherKey || window.NEXT_PUBLIC_PUSHER_KEY
       const pusherCluster = config.pusherCluster || 'us3'
       const widgetId = config.widgetId || config.integrationId || 'preview'
@@ -73,9 +70,7 @@
 
       // Core Visual Config
       const primaryColor = config.primaryColor || '#4F46E5'
-      const position = (config.position || 'bottom-right')
-        .toLowerCase()
-        .replace('_', '-')
+      const position = (config.position || 'bottom-right').toLowerCase().replace('_', '-')
       const autoOpen = config.autoOpen || false
       const welcomeMessage = config.welcomeMessage || null
       const logoUrl = config.logoUrl || null
@@ -124,19 +119,14 @@
         safeLocalStorage.getItem(LS_KEY_VISITOR_ID_FALLBACK)
 
       if (initialSessionId && initialThreadId) {
-        console.log(
-          '[AuxxChat init] Found existing session info in localStorage:',
-          {
-            sessionId: initialSessionId,
-            threadId: initialThreadId,
-            visitorId: initialVisitorId,
-          }
-        )
+        console.log('[AuxxChat init] Found existing session info in localStorage:', {
+          sessionId: initialSessionId,
+          threadId: initialThreadId,
+          visitorId: initialVisitorId,
+        })
         visitorId = initialVisitorId
       } else {
-        console.log(
-          '[AuxxChat init] No existing session info found in localStorage.'
-        )
+        console.log('[AuxxChat init] No existing session info found in localStorage.')
         visitorId = initialVisitorId
       }
 
@@ -157,10 +147,7 @@
         rootElement.id = rootElementId
         container.appendChild(rootElement)
       } else {
-        console.warn(
-          '[AuxxChat init] Root element already exists:',
-          rootElementId
-        )
+        console.warn('[AuxxChat init] Root element already exists:', rootElementId)
         rootElement.innerHTML = ''
       }
 
@@ -209,20 +196,10 @@
         if (primaryColor.startsWith('#')) {
           try {
             const rgb = hexToRgb(primaryColor)
-            rootElement.style.setProperty(
-              '--auxx-chat-primary-color-rgb',
-              rgb || '79, 70, 229'
-            )
+            rootElement.style.setProperty('--auxx-chat-primary-color-rgb', rgb || '79, 70, 229')
           } catch (e) {
-            console.warn(
-              '[AuxxChat] Could not parse primaryColor hex to RGB:',
-              primaryColor,
-              e
-            )
-            rootElement.style.setProperty(
-              '--auxx-chat-primary-color-rgb',
-              '79, 70, 229'
-            )
+            console.warn('[AuxxChat] Could not parse primaryColor hex to RGB:', primaryColor, e)
+            rootElement.style.setProperty('--auxx-chat-primary-color-rgb', '79, 70, 229')
           }
         } else {
           rootElement.style.setProperty(
@@ -235,9 +212,7 @@
           if (key.startsWith('--') && typeof value === 'string') {
             rootElement.style.setProperty(key, value)
           } else {
-            console.warn(
-              `[AuxxChat] Invalid custom CSS variable format: ${key}: ${value}`
-            )
+            console.warn(`[AuxxChat] Invalid custom CSS variable format: ${key}: ${value}`)
           }
         }
       }
@@ -247,10 +222,7 @@
         let errorMessage = `Failed to ${operation}.`
         if (response && response.status) {
           errorMessage += ` Status: ${response.status}`
-        } else if (
-          error instanceof TypeError &&
-          error.message.includes('fetch')
-        ) {
+        } else if (error instanceof TypeError && error.message.includes('fetch')) {
           errorMessage += ' Network error or CORS issue.'
         } else if (error.message) {
           errorMessage += ` ${error.message}`
@@ -269,10 +241,7 @@
           errorInfoElement.textContent = temporaryError
           errorInfoElement.style.display = 'block'
           setTimeout(() => {
-            if (
-              errorInfoElement &&
-              errorInfoElement.textContent === temporaryError
-            ) {
+            if (errorInfoElement && errorInfoElement.textContent === temporaryError) {
               errorInfoElement.textContent = ''
               errorInfoElement.style.display = 'none'
             }
@@ -331,19 +300,13 @@
       function addMessageToDOM(message) {
         if (!messageListElement || !message || !message.id) return
 
-        const existingMsgDiv = messageListElement.querySelector(
-          `[data-id="${message.id}"]`
-        )
+        const existingMsgDiv = messageListElement.querySelector(`[data-id="${message.id}"]`)
         if (existingMsgDiv) {
-          const statusSpan = existingMsgDiv.querySelector(
-            '.auxx-chat-message-status'
-          )
+          const statusSpan = existingMsgDiv.querySelector('.auxx-chat-message-status')
           if (statusSpan) {
             if (message.status === 'sent') statusSpan.textContent = ''
-            else if (message.status === 'error')
-              statusSpan.textContent = ' (Failed)'
-            else if (message.status === 'sending')
-              statusSpan.textContent = ' (Sending...)'
+            else if (message.status === 'error') statusSpan.textContent = ' (Failed)'
+            else if (message.status === 'sending') statusSpan.textContent = ' (Sending...)'
           }
           return
         }
@@ -374,10 +337,7 @@
       function updateTypingIndicator() {
         if (!messageListElement) return
 
-        if (
-          typingIndicatorElement &&
-          typingIndicatorElement.parentNode === messageListElement
-        ) {
+        if (typingIndicatorElement && typingIndicatorElement.parentNode === messageListElement) {
           messageListElement.removeChild(typingIndicatorElement)
           typingIndicatorElement = null
         }
@@ -411,15 +371,12 @@
           connectingInfoElement.style.display = isConnecting ? 'block' : 'none'
         }
         if (errorInfoElement) {
-          errorInfoElement.textContent = connectionError
-            ? `Error: ${connectionError}`
-            : ''
+          errorInfoElement.textContent = connectionError ? `Error: ${connectionError}` : ''
           errorInfoElement.style.display = connectionError ? 'block' : 'none'
         }
 
         // --- Modified Disable Logic ---
-        const disableInput =
-          isConnecting || !!connectionError || isSessionClosed
+        const disableInput = isConnecting || !!connectionError || isSessionClosed
 
         if (inputElement) {
           inputElement.disabled = disableInput
@@ -436,8 +393,7 @@
           }
         }
         if (sendButtonElement) {
-          sendButtonElement.disabled =
-            disableInput || !inputText.trim() || isSending
+          sendButtonElement.disabled = disableInput || !inputText.trim() || isSending
           sendButtonElement.textContent = isSending ? '...' : 'Send'
         }
 
@@ -448,29 +404,15 @@
         isOpen = !isOpen
         updateUIState()
         // Only initialize if opening, not closed, not connecting, no error, and no session ID yet
-        if (
-          isOpen &&
-          !sessionId &&
-          !isConnecting &&
-          !connectionError &&
-          !isSessionClosed
-        ) {
-          console.log(
-            '[AuxxChat toggleChat] Opening chat, initiating session...'
-          )
+        if (isOpen && !sessionId && !isConnecting && !connectionError && !isSessionClosed) {
+          console.log('[AuxxChat toggleChat] Opening chat, initiating session...')
           initializeSession()
         }
         if (isOpen && messages.length > 0) {
           setTimeout(() => scrollToBottom('auto'), 50)
         }
         // Focus input only if chat is usable
-        if (
-          isOpen &&
-          inputElement &&
-          !isConnecting &&
-          !connectionError &&
-          !isSessionClosed
-        ) {
+        if (isOpen && inputElement && !isConnecting && !connectionError && !isSessionClosed) {
           setTimeout(() => inputElement.focus(), 100)
         }
       }
@@ -479,10 +421,8 @@
         inputText = event.target.value
         if (sendButtonElement) {
           // Disable based on new condition
-          const disableInput =
-            isConnecting || !!connectionError || isSessionClosed
-          sendButtonElement.disabled =
-            disableInput || !inputText.trim() || isSending
+          const disableInput = isConnecting || !!connectionError || isSessionClosed
+          sendButtonElement.disabled = disableInput || !inputText.trim() || isSending
         }
 
         if (sessionId && !isSessionClosed) {
@@ -517,29 +457,18 @@
             Accept: 'application/json',
           },
           body: JSON.stringify({ json: { sessionId, threadId, isTyping } }),
-        }).catch((err) =>
-          console.warn('[AuxxChat] Failed to send typing state:', err)
-        )
+        }).catch((err) => console.warn('[AuxxChat] Failed to send typing state:', err))
       }
 
       function handleSendMessage() {
         // --- Added Session Closed Check ---
         if (isSessionClosed) {
-          console.log(
-            '[AuxxChat] Attempted to send message, but session is closed.'
-          )
+          console.log('[AuxxChat] Attempted to send message, but session is closed.')
           return // Prevent sending
         }
 
         const content = inputText.trim()
-        if (
-          !content ||
-          !sessionId ||
-          !threadId ||
-          isSending ||
-          isConnecting ||
-          connectionError
-        )
+        if (!content || !sessionId || !threadId || isSending || isConnecting || connectionError)
           return
 
         isSending = true
@@ -587,21 +516,15 @@
           })
           .then((data) => {
             console.log('[AuxxChat] Send message success response:', data)
-            const responseData =
-              data?.result?.data?.json || data?.result?.data || data
+            const responseData = data?.result?.data?.json || data?.result?.data || data
             const serverMessageId = responseData?.messageId
-            const messageIndex = messages.findIndex(
-              (m) => m.id === clientMessageId
-            )
+            const messageIndex = messages.findIndex((m) => m.id === clientMessageId)
 
             if (messageIndex > -1) {
               if (messages[messageIndex].status === 'sending') {
                 messages[messageIndex].status = 'sent'
                 const finalMessageId = serverMessageId || clientMessageId
-                if (
-                  serverMessageId &&
-                  messages[messageIndex].id === clientMessageId
-                ) {
+                if (serverMessageId && messages[messageIndex].id === clientMessageId) {
                   messages[messageIndex].id = serverMessageId
                   const msgElement = messageListElement?.querySelector(
                     `[data-id="${clientMessageId}"]`
@@ -611,9 +534,7 @@
                 const msgElement = messageListElement?.querySelector(
                   `[data-id="${finalMessageId}"]`
                 )
-                const statusSpan = msgElement?.querySelector(
-                  '.auxx-chat-message-status'
-                )
+                const statusSpan = msgElement?.querySelector('.auxx-chat-message-status')
                 if (statusSpan) statusSpan.textContent = ''
               }
             }
@@ -622,17 +543,11 @@
           })
           .catch((error) => {
             console.error('[AuxxChat] Error sending message:', error)
-            const messageIndex = messages.findIndex(
-              (m) => m.id === clientMessageId
-            )
+            const messageIndex = messages.findIndex((m) => m.id === clientMessageId)
             if (messageIndex > -1) {
               messages[messageIndex].status = 'error'
-              const msgElement = messageListElement?.querySelector(
-                `[data-id="${clientMessageId}"]`
-              )
-              const statusSpan = msgElement?.querySelector(
-                '.auxx-chat-message-status'
-              )
+              const msgElement = messageListElement?.querySelector(`[data-id="${clientMessageId}"]`)
+              const statusSpan = msgElement?.querySelector('.auxx-chat-message-status')
               if (statusSpan) statusSpan.textContent = ' (Failed)'
             }
             isSending = false
@@ -647,9 +562,7 @@
           return
         }
         if (pusher) {
-          console.warn(
-            '[AuxxChat setupPusher] Pusher already initialized. Disconnecting first.'
-          )
+          console.warn('[AuxxChat setupPusher] Pusher already initialized. Disconnecting first.')
           pusher.disconnect()
           pusher = null
           channel = null
@@ -657,8 +570,7 @@
         if (typeof window.Pusher === 'undefined') {
           console.error('[AuxxChat setupPusher] Pusher library not loaded.')
           if (errorInfoElement) {
-            errorInfoElement.textContent =
-              'Real-time updates unavailable (library missing).'
+            errorInfoElement.textContent = 'Real-time updates unavailable (library missing).'
             errorInfoElement.style.display = 'block'
           }
           return
@@ -675,19 +587,13 @@
           })
 
           const channelName = `private-chat-${sessionId}`
-          console.log(
-            '[AuxxChat setupPusher] Subscribing to channel:',
-            channelName
-          )
+          console.log('[AuxxChat setupPusher] Subscribing to channel:', channelName)
           channel = pusher.subscribe(channelName)
 
           // --- Pusher Bindings ---
           pusher.connection.bind('connected', () => {
             console.log('[AuxxChat Pusher] Connected.')
-            if (
-              errorInfoElement &&
-              errorInfoElement.textContent?.includes('Real-time')
-            ) {
+            if (errorInfoElement && errorInfoElement.textContent?.includes('Real-time')) {
               errorInfoElement.textContent = ''
               errorInfoElement.style.display = 'none'
             }
@@ -697,8 +603,7 @@
             console.error('[AuxxChat Pusher] Connection error:', err)
             if (errorInfoElement) {
               let errorMsg = 'Real-time connection issue'
-              if (err.error?.data?.message)
-                errorMsg += `: ${err.error.data.message}`
+              if (err.error?.data?.message) errorMsg += `: ${err.error.data.message}`
               errorInfoElement.textContent = errorMsg
               errorInfoElement.style.display = 'block'
             }
@@ -740,20 +645,11 @@
             }
           })
           channel.bind('message-sent', (data) => {
-            console.log(
-              '[AuxxChat Pusher] Received event: message-sent confirmation',
-              data
-            )
+            console.log('[AuxxChat Pusher] Received event: message-sent confirmation', data)
             if (data && data.clientMessageId) {
-              const messageIndex = messages.findIndex(
-                (msg) => msg.id === data.clientMessageId
-              )
-              if (
-                messageIndex > -1 &&
-                messages[messageIndex].status !== 'sent'
-              ) {
-                const serverMessageId =
-                  data.messageId || messages[messageIndex].id
+              const messageIndex = messages.findIndex((msg) => msg.id === data.clientMessageId)
+              if (messageIndex > -1 && messages[messageIndex].status !== 'sent') {
+                const serverMessageId = data.messageId || messages[messageIndex].id
                 messages[messageIndex].id = serverMessageId
                 messages[messageIndex].status = 'sent'
                 const msgElement = messageListElement?.querySelector(
@@ -761,9 +657,7 @@
                 )
                 if (msgElement) {
                   msgElement.dataset.id = serverMessageId
-                  const statusSpan = msgElement.querySelector(
-                    '.auxx-chat-message-status'
-                  )
+                  const statusSpan = msgElement.querySelector('.auxx-chat-message-status')
                   if (statusSpan) statusSpan.textContent = ''
                 }
               }
@@ -772,10 +666,7 @@
 
           // --- New Binding for Session Closure ---
           channel.bind('session-closed', (data) => {
-            console.log(
-              '[AuxxChat Pusher] Received session-closed event:',
-              data
-            )
+            console.log('[AuxxChat Pusher] Received session-closed event:', data)
             isSessionClosed = true // Set the state flag
 
             // Create and add system message
@@ -799,9 +690,7 @@
 
             // Optionally disconnect Pusher for this closed session
             if (pusher) {
-              console.log(
-                '[AuxxChat] Disconnecting Pusher as session is closed.'
-              )
+              console.log('[AuxxChat] Disconnecting Pusher as session is closed.')
               pusher.disconnect()
               // No need to nullify pusher/channel here if destroy handles it
             }
@@ -810,8 +699,7 @@
         } catch (error) {
           console.error('[AuxxChat setupPusher] Error:', error)
           if (errorInfoElement) {
-            errorInfoElement.textContent =
-              'Failed to setup real-time connection: ' + error.message
+            errorInfoElement.textContent = 'Failed to setup real-time connection: ' + error.message
             errorInfoElement.style.display = 'block'
           }
           if (pusher) {
@@ -827,16 +715,11 @@
         const currentVisitorId = visitorId
 
         if (isConnecting) {
-          console.warn(
-            '[AuxxChat initializeSession] Initialization already in progress.'
-          )
+          console.warn('[AuxxChat initializeSession] Initialization already in progress.')
           return
         }
         if (sessionId && threadId && !connectionError) {
-          console.log(
-            '[AuxxChat initializeSession] Session already active:',
-            sessionId
-          )
+          console.log('[AuxxChat initializeSession] Session already active:', sessionId)
           if (!pusher || pusher.connection.state !== 'connected') {
             console.log(
               '[AuxxChat initializeSession] Session active, ensuring Pusher is connected.'
@@ -853,9 +736,7 @@
         renderMessages()
         updateUIState()
 
-        console.log(
-          `[AuxxChat initializeSession] Initializing session via: ${initEndpoint}`
-        )
+        console.log(`[AuxxChat initializeSession] Initializing session via: ${initEndpoint}`)
         const payload = {
           integrationId: widgetId,
           url: window.location.href,
@@ -904,8 +785,7 @@
           })
           .then((data) => {
             console.log('[AuxxChat Init] Raw success response data:', data)
-            const responseData =
-              data?.result?.data?.json || data?.result?.data || data
+            const responseData = data?.result?.data?.json || data?.result?.data || data
 
             if (
               !responseData ||
@@ -913,20 +793,12 @@
               !responseData.threadId ||
               !responseData.visitorId
             ) {
-              console.error(
-                '[AuxxChat Init] Invalid response structure:',
-                responseData
-              )
+              console.error('[AuxxChat Init] Invalid response structure:', responseData)
               throw new Error('Initialization failed: Invalid data received.')
             }
 
-            const isNewSession =
-              !resumeSessionId || responseData.sessionId !== resumeSessionId
-            console.log(
-              '[AuxxChat Init] Session initialized.',
-              'Is new session:',
-              isNewSession
-            )
+            const isNewSession = !resumeSessionId || responseData.sessionId !== resumeSessionId
+            console.log('[AuxxChat Init] Session initialized.', 'Is new session:', isNewSession)
 
             sessionId = responseData.sessionId
             threadId = responseData.threadId
@@ -971,10 +843,7 @@
             setupPusherConnection()
           })
           .catch((error) => {
-            console.error(
-              '[AuxxChat Init] Initialization fetch/processing error:',
-              error
-            )
+            console.error('[AuxxChat Init] Initialization fetch/processing error:', error)
             handleFetchError(
               'chat initialization',
               new Error(error.message || 'Unknown initialization error')
@@ -1060,8 +929,7 @@
         chatWindow.appendChild(messageListElement)
 
         connectingInfoElement = document.createElement('div')
-        connectingInfoElement.className =
-          'auxx-chat-info auxx-chat-connecting-info'
+        connectingInfoElement.className = 'auxx-chat-info auxx-chat-connecting-info'
         connectingInfoElement.textContent = 'Connecting...'
         connectingInfoElement.style.display = 'none'
         messageListElement.appendChild(connectingInfoElement)
@@ -1101,18 +969,14 @@
           console.log('[AuxxChat init] Auto-opening, initiating session...')
           initializeSession()
         } else {
-          console.log(
-            '[AuxxChat init] AutoOpen is false. Session will initialize on first open.'
-          )
+          console.log('[AuxxChat init] AutoOpen is false. Session will initialize on first open.')
         }
 
         console.log('[AuxxChat init] DOM created successfully.')
       } // End createDOM
 
       function injectStyles() {
-        const existingStyleElement = document.getElementById(
-          `auxx-chat-styles-${widgetId}`
-        )
+        const existingStyleElement = document.getElementById(`auxx-chat-styles-${widgetId}`)
         if (existingStyleElement) {
           existingStyleElement.parentNode.removeChild(existingStyleElement)
         }
@@ -1275,7 +1139,7 @@
     }, // End of init function
 
     // --- Destroy Function ---
-    destroy: function (widgetIdOrRootId) {
+    destroy: (widgetIdOrRootId) => {
       const widgetId = widgetIdOrRootId?.startsWith('auxx-chat-widget-root-')
         ? widgetIdOrRootId.replace('auxx-chat-widget-root-', '')
         : widgetIdOrRootId || 'preview' // Allow passing full ID or just widget ID
@@ -1311,10 +1175,7 @@
       const styleElementId = `auxx-chat-styles-${widgetId}`
       const styleEl = document.getElementById(styleElementId)
       if (styleEl && styleEl.parentNode) {
-        console.log(
-          '[AuxxChat destroy] Removing widget styles:',
-          styleElementId
-        )
+        console.log('[AuxxChat destroy] Removing widget styles:', styleElementId)
         styleEl.parentNode.removeChild(styleEl)
       }
 
@@ -1322,10 +1183,7 @@
       const LS_KEY_SESSION_ID = `auxx_chat_${widgetId}_session_id`
       const LS_KEY_THREAD_ID = `auxx_chat_${widgetId}_thread_id`
       const LS_KEY_VISITOR_ID = `auxx_chat_${widgetId}_visitor_id`
-      console.log(
-        '[AuxxChat destroy] Clearing localStorage session data for widget:',
-        widgetId
-      )
+      console.log('[AuxxChat destroy] Clearing localStorage session data for widget:', widgetId)
       safeLocalStorage.removeItem(LS_KEY_SESSION_ID)
       safeLocalStorage.removeItem(LS_KEY_THREAD_ID)
       safeLocalStorage.removeItem(LS_KEY_VISITOR_ID)

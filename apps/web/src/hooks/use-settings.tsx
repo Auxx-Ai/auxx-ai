@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { api } from '~/trpc/react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { useSettingsCatalog, useDehydratedSettings } from '~/providers/dehydrated-state-provider'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useDehydratedSettings, useSettingsCatalog } from '~/providers/dehydrated-state-provider'
+import { api } from '~/trpc/react'
 
 // Type for setting values
 type SettingValue = string | number | boolean | object | null

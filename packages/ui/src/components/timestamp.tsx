@@ -1,8 +1,8 @@
 // apps/web/src/components/ui/timestamp.tsx
 
-import React, { useState } from 'react'
-import { formatDistanceToNow, format } from 'date-fns'
 import { cn } from '@auxx/ui/lib/utils'
+import { format, formatDistanceToNow } from 'date-fns'
+import React, { useState } from 'react'
 
 interface TimestampProps {
   /**

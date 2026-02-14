@@ -1,9 +1,10 @@
-import { z } from 'zod'
-import { and, eq, desc, asc } from 'drizzle-orm'
 import { database as db, schema } from '@auxx/database'
 import { ArticleStatus } from '@auxx/database/enums'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 import { createScopedLogger } from '@auxx/logger'
+import { and, asc, desc, eq } from 'drizzle-orm'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+
 const logger = createScopedLogger('api/article')
 // Helper function to get article with tags and author
 const getArticleWithRelations = async (whereCondition: any) => {

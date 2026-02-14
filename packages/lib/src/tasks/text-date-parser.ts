@@ -1,7 +1,7 @@
 // packages/lib/src/tasks/text-date-parser.ts
 
-import { getSortedPatterns, type DatePattern } from './date-patterns'
 import type { RelativeDate } from '@auxx/types/task'
+import { type DatePattern, getSortedPatterns } from './date-patterns'
 
 /**
  * Result of parsing text for date expressions

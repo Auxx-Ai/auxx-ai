@@ -1,14 +1,14 @@
 // apps/web/src/components/global/docked-panels-container.tsx
 'use client'
 
-import { usePanelStore, type DockPanelType } from '~/components/workflow/store/panel-store'
-import { useDockStore, type DockLayoutMode } from '~/stores/dock-store'
-import { DockedPanelTarget } from './dock-portal-provider'
-import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { Settings, Play, Columns2, Layers } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
+import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
+import { Columns2, Layers, Play, Settings } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
+import { type DockPanelType, usePanelStore } from '~/components/workflow/store/panel-store'
 import { useMedia } from '~/hooks/use-media'
+import { type DockLayoutMode, useDockStore } from '~/stores/dock-store'
+import { DockedPanelTarget } from './dock-portal-provider'
 
 interface DockedPanelsContainerProps {
   /** Fallback content when no panels are open */
@@ -57,7 +57,7 @@ export function DockedPanelsContainer({ fallback }: DockedPanelsContainerProps) 
 
   // Single panel mode - just the portal target (no tabs needed)
   if (effectiveLayout === 'single') {
-    return <DockedPanelTarget slot="primary" />
+    return <DockedPanelTarget slot='primary' />
   }
 
   // Side-by-side mode is handled at the page level, not here.
@@ -65,39 +65,37 @@ export function DockedPanelsContainer({ fallback }: DockedPanelsContainerProps) 
   // If we're in side-by-side mode but got here, it means the page
   // is rendering separate PanelFrames so we just show primary target.
   if (effectiveLayout === 'side-by-side') {
-    return <DockedPanelTarget slot="primary" />
+    return <DockedPanelTarget slot='primary' />
   }
 
   // Tabbed mode - single container with tabs inside
   return (
-    <div className="flex flex-col h-full">
+    <div className='flex flex-col h-full'>
       {/* Tab header */}
-      <div className="flex items-center justify-between border-b px-2 py-1 shrink-0 bg-secondary/30">
-        <Tabs
-          value={activeDockTab}
-          onValueChange={(v) => setActiveDockTab(v as DockPanelType)}>
-          <TabsList className="h-7 gap-0.5 bg-transparent">
+      <div className='flex items-center justify-between border-b px-2 py-1 shrink-0 bg-secondary/30'>
+        <Tabs value={activeDockTab} onValueChange={(v) => setActiveDockTab(v as DockPanelType)}>
+          <TabsList className='h-7 gap-0.5 bg-transparent'>
             {hasPropertyPanel && (
               <TabsTrigger
-                value="property"
-                className="h-6 text-xs px-2 data-[state=active]:bg-background">
-                <Settings className="size-3 mr-1" />
+                value='property'
+                className='h-6 text-xs px-2 data-[state=active]:bg-background'>
+                <Settings className='size-3 mr-1' />
                 Properties
               </TabsTrigger>
             )}
             {hasSettingsPanel && (
               <TabsTrigger
-                value="settings"
-                className="h-6 text-xs px-2 data-[state=active]:bg-background">
-                <Settings className="size-3 mr-1" />
+                value='settings'
+                className='h-6 text-xs px-2 data-[state=active]:bg-background'>
+                <Settings className='size-3 mr-1' />
                 Settings
               </TabsTrigger>
             )}
             {hasRunPanel && (
               <TabsTrigger
-                value="run"
-                className="h-6 text-xs px-2 data-[state=active]:bg-background">
-                <Play className="size-3 mr-1" />
+                value='run'
+                className='h-6 text-xs px-2 data-[state=active]:bg-background'>
+                <Play className='size-3 mr-1' />
                 Run
               </TabsTrigger>
             )}
@@ -106,8 +104,8 @@ export function DockedPanelsContainer({ fallback }: DockedPanelsContainerProps) 
         <LayoutToggle currentLayout={effectiveLayout} onLayoutChange={setLayoutMode} />
       </div>
       {/* Tab content - portal target with filter */}
-      <div className="flex-1 overflow-hidden">
-        <DockedPanelTarget slot="primary" panelFilter={activeDockTab} />
+      <div className='flex-1 overflow-hidden'>
+        <DockedPanelTarget slot='primary' panelFilter={activeDockTab} />
       </div>
     </div>
   )
@@ -128,11 +126,11 @@ function LayoutToggle({
   return (
     <Tooltip content={isTabbed ? 'Split panels side by side' : 'Stack panels in tabs'}>
       <Button
-        variant="ghost"
-        size="icon-xs"
-        className="h-6 w-6 shrink-0"
+        variant='ghost'
+        size='icon-xs'
+        className='h-6 w-6 shrink-0'
         onClick={() => onLayoutChange(isTabbed ? 'side-by-side' : 'tabbed')}>
-        {isTabbed ? <Columns2 className="size-3.5" /> : <Layers className="size-3.5" />}
+        {isTabbed ? <Columns2 className='size-3.5' /> : <Layers className='size-3.5' />}
       </Button>
     </Tooltip>
   )

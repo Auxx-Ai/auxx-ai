@@ -1,18 +1,18 @@
 // apps/web/src/components/detail-view/utils.ts
 
 import {
-  HouseIcon,
-  Clock,
-  MessagesSquare,
-  ListTodo,
-  Ticket,
-  ShoppingBag,
-  Mail,
-  Package,
-  Layers,
-  Truck,
   Box,
+  Clock,
+  HouseIcon,
+  Layers,
+  ListTodo,
   type LucideIcon,
+  Mail,
+  MessagesSquare,
+  Package,
+  ShoppingBag,
+  Ticket,
+  Truck,
 } from 'lucide-react'
 
 /**

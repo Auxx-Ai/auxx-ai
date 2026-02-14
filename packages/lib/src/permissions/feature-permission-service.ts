@@ -1,11 +1,10 @@
 // packages/lib/src/permissions/feature-permission-service.ts
-import { database as ddb, schema, type Database } from '@auxx/database'
-import { eq } from 'drizzle-orm'
-import type { FeatureDefinition, FeatureLimit, FeatureMapObject } from './types'
-import { DEFAULT_FREE_PLAN_FEATURES } from './types'
-import { FeatureKey } from './types'
-import { createScopedLogger } from '../logger'
+import { type Database, database as ddb, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
+import { eq } from 'drizzle-orm'
+import { createScopedLogger } from '../logger'
+import type { FeatureDefinition, FeatureLimit, FeatureMapObject } from './types'
+import { DEFAULT_FREE_PLAN_FEATURES, type FeatureKey } from './types'
 
 const logger = createScopedLogger('feature-permission-service')
 

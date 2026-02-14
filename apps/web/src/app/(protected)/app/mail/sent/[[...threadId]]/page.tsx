@@ -9,5 +9,5 @@ export default async function SentPage({ params }: Props) {
   const { threadId } = await params
   const contextType: ContextType = 'sent'
 
-  return <Mailbox key="sent" contextType={contextType} />
+  return <Mailbox key='sent' contextType={contextType} />
 }

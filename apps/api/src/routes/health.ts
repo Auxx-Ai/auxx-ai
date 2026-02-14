@@ -1,8 +1,8 @@
 // apps/api/src/routes/health.ts
 
-import { Hono } from 'hono'
 import { database } from '@auxx/database'
-import { successResponse, errorResponse } from '../lib/response'
+import { Hono } from 'hono'
+import { errorResponse, successResponse } from '../lib/response'
 
 const health = new Hono()
 

@@ -2,24 +2,24 @@
 
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
-import { Badge } from '@auxx/ui/components/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Switch } from '@auxx/ui/components/switch'
-import { Wrench, Globe, Database, Search, Type, Variable, Code, Calendar } from 'lucide-react'
+import { Calendar, Code, Database, Globe, Search, Type, Variable, Wrench } from 'lucide-react'
+import React, { useMemo, useState } from 'react'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
-import type { AiToolsConfig } from './types'
-import { CredentialStatusIndicator, hasCredentialIssue } from './tool-credential-status'
 import { InlineToolCredentialSelector } from './tool-credential-dialog'
+import { CredentialStatusIndicator, hasCredentialIssue } from './tool-credential-status'
+import type { AiToolsConfig } from './types'
 
 interface ToolsSelectionDialogProps {
   isOpen: boolean
@@ -137,27 +137,27 @@ export function ToolsSelectionDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-        <DialogHeader className="pb-0">
-          <DialogTitle className="flex items-center gap-2">Select Tools</DialogTitle>
-          <div className="text-sm text-muted-foreground">
+      <DialogContent className='max-w-2xl max-h-[80vh] overflow-hidden flex flex-col'>
+        <DialogHeader className='pb-0'>
+          <DialogTitle className='flex items-center gap-2'>Select Tools</DialogTitle>
+          <div className='text-sm text-muted-foreground'>
             Available tools ({availableNodes.length + BUILTIN_TOOLS.length})
           </div>
         </DialogHeader>
 
-        <div className="flex-1 overflow-auto space-y-4">
+        <div className='flex-1 overflow-auto space-y-4'>
           {/* Workflow Node Tools */}
           {availableNodes.map((node) => (
-            <Card key={node.id} className="p-3">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <node.icon className="h-4 w-4 text-muted-foreground" />
+            <Card key={node.id} className='p-3'>
+              <div className='space-y-3'>
+                <div className='flex items-center justify-between'>
+                  <div className='flex items-center gap-3'>
+                    <node.icon className='h-4 w-4 text-muted-foreground' />
                     <div>
-                      <div className="font-medium text-sm">{node.name}</div>
-                      <div className="text-xs text-muted-foreground">{node.description}</div>
+                      <div className='font-medium text-sm'>{node.name}</div>
+                      <div className='text-xs text-muted-foreground'>{node.description}</div>
                     </div>
-                    <Badge variant="outline" className="text-xs">
+                    <Badge variant='outline' className='text-xs'>
                       {node.type}
                     </Badge>
                   </div>
@@ -169,17 +169,17 @@ export function ToolsSelectionDialog({
 
                 {/* Credential configuration for enabled tools */}
                 {isToolEnabled(node.id, 'workflow_node') && (
-                  <div className="flex items-center justify-between border-t pt-3">
+                  <div className='flex items-center justify-between border-t pt-3'>
                     <CredentialStatusIndicator
                       toolId={node.id}
-                      toolType="workflow_node"
+                      toolType='workflow_node'
                       nodeType={node.type}
                       currentCredential={getToolCredentialId(node.id)}
                     />
                     <InlineToolCredentialSelector
                       toolId={node.id}
                       toolName={node.name}
-                      toolType="workflow_node"
+                      toolType='workflow_node'
                       nodeType={node.type}
                       currentCredentialId={getToolCredentialId(node.id)}
                       onCredentialSelect={(credentialId) =>
@@ -194,16 +194,16 @@ export function ToolsSelectionDialog({
 
           {/* Built-in Tools */}
           {BUILTIN_TOOLS.map((tool) => (
-            <Card key={tool.id} className="p-3">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <tool.icon className="h-4 w-4 text-muted-foreground" />
+            <Card key={tool.id} className='p-3'>
+              <div className='space-y-3'>
+                <div className='flex items-center justify-between'>
+                  <div className='flex items-center gap-3'>
+                    <tool.icon className='h-4 w-4 text-muted-foreground' />
                     <div>
-                      <div className="font-medium text-sm">{tool.name}</div>
-                      <div className="text-xs text-muted-foreground">{tool.description}</div>
+                      <div className='font-medium text-sm'>{tool.name}</div>
+                      <div className='text-xs text-muted-foreground'>{tool.description}</div>
                     </div>
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant='secondary' className='text-xs'>
                       {tool.category}
                     </Badge>
                   </div>
@@ -215,16 +215,16 @@ export function ToolsSelectionDialog({
 
                 {/* Credential configuration for enabled tools */}
                 {isToolEnabled(tool.id, 'built_in') && (
-                  <div className="flex items-center justify-between border-t pt-3">
+                  <div className='flex items-center justify-between border-t pt-3'>
                     <CredentialStatusIndicator
                       toolId={tool.id}
-                      toolType="built_in"
+                      toolType='built_in'
                       currentCredential={getToolCredentialId(tool.id)}
                     />
                     <InlineToolCredentialSelector
                       toolId={tool.id}
                       toolName={tool.name}
-                      toolType="built_in"
+                      toolType='built_in'
                       currentCredentialId={getToolCredentialId(tool.id)}
                       onCredentialSelect={(credentialId) =>
                         handleToolCredentialSelect(tool.id, credentialId)
@@ -238,11 +238,11 @@ export function ToolsSelectionDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+          <Button variant='ghost' size='sm' onClick={onClose}>
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
-          <Button variant="outline" size="sm" onClick={handleSave} data-dialog-submit>
-            Save <KbdSubmit variant="outline" size="sm" />
+          <Button variant='outline' size='sm' onClick={handleSave} data-dialog-submit>
+            Save <KbdSubmit variant='outline' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

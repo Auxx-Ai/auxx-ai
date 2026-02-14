@@ -1,41 +1,40 @@
 // apps/web/src/components/mail/mail-thread-item.tsx
 'use client'
 
-import React, { useMemo, useCallback, memo } from 'react'
-import { formatDistanceToNowStrict } from 'date-fns'
-import DOMPurify from 'dompurify'
-import { useDraggable } from '@dnd-kit/core'
-import { useMailFilter } from './mail-filter-context'
-import { MoreVertical, Archive, Trash2, MailWarning } from 'lucide-react'
 import { evaluateConditions } from '@auxx/lib/conditions'
-import { threadFieldResolver } from '~/components/threads/utils/thread-field-resolver'
-
-import { cn } from '@auxx/ui/lib/utils'
+import { toRecordId } from '@auxx/types/resource'
+import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
-import { getIntegrationIcon } from './mail-status-config'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
   DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { Button } from '@auxx/ui/components/button'
+import { OverflowRow } from '@auxx/ui/components/overflow-row'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
-import { toRecordId } from '@auxx/types/resource'
-
+import { cn } from '@auxx/ui/lib/utils'
+import { useDraggable } from '@dnd-kit/core'
+import { formatDistanceToNowStrict } from 'date-fns'
+import DOMPurify from 'dompurify'
+import { Archive, MailWarning, MoreVertical, Trash2 } from 'lucide-react'
+import type React from 'react'
+import { memo, useCallback, useMemo } from 'react'
+import { TagBadge } from '~/components/tags/ui/tag-badge'
 // NEW: Import from new hooks
 import {
-  useThread,
   useMessage,
-  useThreadReadStatus,
-  useThreadMutation,
   useMessageParticipants,
+  useThread,
+  useThreadMutation,
+  useThreadReadStatus,
 } from '~/components/threads/hooks'
 import { useThreadSelectionStore } from '~/components/threads/store'
-import { TagBadge } from '~/components/tags/ui/tag-badge'
-import { OverflowRow } from '@auxx/ui/components/overflow-row'
+import { threadFieldResolver } from '~/components/threads/utils/thread-field-resolver'
+import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
+import { useMailFilter } from './mail-filter-context'
+import { getIntegrationIcon } from './mail-status-config'
 
 /**
  * Processing menu component for triggering manual message processing
@@ -56,11 +55,11 @@ function ProcessingMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm" className="rounded-[8px]!">
+        <Button variant='ghost' size='icon-sm' className='rounded-[8px]!'>
           <MoreVertical />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align='end'>
         <WorkflowSubMenu recordId={toRecordId('thread', threadId)} onSuccess={onSuccess} />
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -72,7 +71,7 @@ function ProcessingMenu({
         <DropdownMenuItem
           onClick={() => update(threadId, { status: 'TRASH' })}
           disabled={isUpdating}
-          variant="destructive">
+          variant='destructive'>
           <Trash2 />
           Trash Thread
         </DropdownMenuItem>
@@ -214,7 +213,7 @@ export const MailThreadItem = memo(function MailThreadItem({
   }
 
   return (
-    <div className="flex flex-row items-stretch relative" style={{ contain: 'layout style' }}>
+    <div className='flex flex-row items-stretch relative' style={{ contain: 'layout style' }}>
       <div
         ref={setNodeRef}
         {...listeners}
@@ -240,7 +239,7 @@ export const MailThreadItem = memo(function MailThreadItem({
           />
         )}
 
-        <div className="absolute top-3 left-1">
+        <div className='absolute top-3 left-1'>
           {viewMode === 'edit' ? (
             <div
               onClick={(e) => {
@@ -251,27 +250,27 @@ export const MailThreadItem = memo(function MailThreadItem({
               <Checkbox checked={isMultiSelected} />
             </div>
           ) : (
-            <div className="flex-none rounded-full border p-0.5 text-blue-500 group-aria-selected:bg-background group-aria-selected:border-info/90">
+            <div className='flex-none rounded-full border p-0.5 text-blue-500 group-aria-selected:bg-background group-aria-selected:border-info/90'>
               {getIntegrationIcon(thread.integrationProvider)}
             </div>
           )}
         </div>
 
         {/* Content */}
-        <div className="flex w-full flex-col gap-1">
-          <div className="flex items-center">
-            <div className="flex items-center ms-0.5 gap-0.5 overflow-hidden">
-              <div className="flex-1 truncate font-semibold group-aria-selected:text-white">
+        <div className='flex w-full flex-col gap-1'>
+          <div className='flex items-center'>
+            <div className='flex items-center ms-0.5 gap-0.5 overflow-hidden'>
+              <div className='flex-1 truncate font-semibold group-aria-selected:text-white'>
                 {senderName}
               </div>
             </div>
-            <div className="ml-auto shrink-0 whitespace-nowrap pl-2 text-xs text-muted-foreground group-aria-selected:text-background/50">
+            <div className='ml-auto shrink-0 whitespace-nowrap pl-2 text-xs text-muted-foreground group-aria-selected:text-background/50'>
               {formattedDate}
             </div>
           </div>
 
           {/* Subject */}
-          <div className="flex w-full items-center gap-1 min-w-0">
+          <div className='flex w-full items-center gap-1 min-w-0'>
             <div
               className={cn(
                 'min-w-0 truncate text-xs font-medium group-aria-selected:text-background/80',
@@ -279,13 +278,13 @@ export const MailThreadItem = memo(function MailThreadItem({
               )}>
               {thread.subject || '(no subject)'}
             </div>
-            <div className="min-w-0 flex-1">
-              <OverflowRow collapseSlot="text" className="justify-end" gap={4}>
+            <div className='min-w-0 flex-1'>
+              <OverflowRow collapseSlot='text' className='justify-end' gap={4}>
                 {thread.tagIds?.map((tagId) => (
                   <TagBadge
                     key={tagId}
                     recordId={tagId}
-                    size="sm"
+                    size='sm'
                     className={cn(isMultiSelected && 'text-background/80 border-black/20')}
                   />
                 ))}
@@ -295,18 +294,18 @@ export const MailThreadItem = memo(function MailThreadItem({
         </div>
 
         <div
-          className="line-clamp-2 w-full break-words text-xs text-muted-foreground group-aria-selected:text-background/50"
+          className='line-clamp-2 w-full break-words text-xs text-muted-foreground group-aria-selected:text-background/50'
           dangerouslySetInnerHTML={{ __html: snippet }}
         />
       </div>
 
       {/* Processing menu */}
-      <div className="z-1 me-0.5 relative border-primary-500 rounded-r-lg -ms-1.5 ps-2 py-0.5 pe-0.5 bg-primary-200 dark:bg-slate-800 flex flex-row shrink-0">
+      <div className='z-1 me-0.5 relative border-primary-500 rounded-r-lg -ms-1.5 ps-2 py-0.5 pe-0.5 bg-primary-200 dark:bg-slate-800 flex flex-row shrink-0'>
         <div
-          className="absolute inset-0 rounded-r-lg pointer-events-none mask-y-from-98% mask-y-to-100%"
+          className='absolute inset-0 rounded-r-lg pointer-events-none mask-y-from-98% mask-y-to-100%'
           style={{ boxShadow: 'inset 25px 0 25px -25px #000, 1px 1px 3px rgba(0,0,0,0.2)' }}
         />
-        <div className="flex flex-col justify-start h-full">
+        <div className='flex flex-col justify-start h-full'>
           <ProcessingMenu threadId={threadId} update={update} isUpdating={isUpdating} />
         </div>
       </div>
@@ -317,15 +316,15 @@ export const MailThreadItem = memo(function MailThreadItem({
 /** Skeleton for loading thread item */
 function ThreadItemSkeleton() {
   return (
-    <div className="flex flex-row items-stretch relative">
-      <div className="z-2 group relative flex w-full flex-col items-start gap-1 rounded-lg border bg-background ps-6 pe-2 py-3">
-        <div className="flex w-full flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <Skeleton className="h-4 w-1/3" />
-            <Skeleton className="h-3 w-16" />
+    <div className='flex flex-row items-stretch relative'>
+      <div className='z-2 group relative flex w-full flex-col items-start gap-1 rounded-lg border bg-background ps-6 pe-2 py-3'>
+        <div className='flex w-full flex-col gap-2'>
+          <div className='flex items-center justify-between'>
+            <Skeleton className='h-4 w-1/3' />
+            <Skeleton className='h-3 w-16' />
           </div>
-          <Skeleton className="h-3 w-2/3" />
-          <Skeleton className="h-3 w-full" />
+          <Skeleton className='h-3 w-2/3' />
+          <Skeleton className='h-3 w-full' />
         </div>
       </div>
     </div>

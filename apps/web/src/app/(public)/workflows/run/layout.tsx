@@ -7,5 +7,5 @@ import type { ReactNode } from 'react'
  * Minimal layout without app chrome
  */
 export default function PublicWorkflowRunLayout({ children }: { children: ReactNode }) {
-  return <div className="min-h-screen bg-background">{children}</div>
+  return <div className='min-h-screen bg-background'>{children}</div>
 }

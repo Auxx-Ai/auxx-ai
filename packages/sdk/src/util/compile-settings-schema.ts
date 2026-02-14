@@ -1,12 +1,12 @@
 // packages/sdk/src/util/compile-settings-schema.ts
 
+import * as esbuild from 'esbuild'
 import fs from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import * as esbuild from 'esbuild'
-import { complete, errored, type Result } from '../errors.js'
-import { APP_SETTINGS_FILENAME } from '../constants/settings-files.js'
 import { HIDDEN_AUXX_DIRECTORY } from '../constants/hidden-auxx-directory.js'
+import { APP_SETTINGS_FILENAME } from '../constants/settings-files.js'
+import { complete, errored, type Result } from '../errors.js'
 
 // Get the SDK package root directory (where we're running from)
 const __filename = fileURLToPath(import.meta.url)

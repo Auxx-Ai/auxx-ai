@@ -6,10 +6,10 @@
  * is the canonical field and all other type information is derived.
  */
 
-import { eq } from 'drizzle-orm'
-import type { IntegrationProviderType, MessageType } from './types'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { eq } from 'drizzle-orm'
+import type { IntegrationProviderType, MessageType } from './types'
 
 /**
  * Derives the primary message type from a provider.

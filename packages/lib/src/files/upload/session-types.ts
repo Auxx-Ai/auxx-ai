@@ -1,8 +1,8 @@
 // packages/lib/src/files/upload/session-types.ts
 
-import { ProviderId } from '../adapters/base-adapter'
-import { EntityType } from '../types/entities'
-import { UploadPolicy, UploadPlan } from './init-types'
+import type { ProviderId } from '../adapters/base-adapter'
+import type { EntityType } from '../types/entities'
+import type { UploadPlan, UploadPolicy } from './init-types'
 
 /**
  * Enhanced session types for presigned upload implementation

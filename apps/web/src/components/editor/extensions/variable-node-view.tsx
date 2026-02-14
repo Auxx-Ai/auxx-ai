@@ -1,10 +1,11 @@
 // apps/web/src/components/editor/extensions/variable-node-view.tsx
 
-import React, { useCallback } from 'react'
-import { NodeViewWrapper } from '@tiptap/react'
-import type { NodeViewProps } from '@tiptap/react'
-import VariableTag from '~/components/workflow/ui/variables/variable-tag'
 import { cn } from '@auxx/ui/lib/utils'
+import type { NodeViewProps } from '@tiptap/react'
+import { NodeViewWrapper } from '@tiptap/react'
+import type React from 'react'
+import { useCallback } from 'react'
+import VariableTag from '~/components/workflow/ui/variables/variable-tag'
 
 /**
  * React component for rendering variable nodes in TipTap editor
@@ -79,13 +80,13 @@ const VariableNodeView: React.FC<NodeViewProps> = ({ node, getPos, editor, selec
   // console.log('variable-node-view', variableId, editor.storage.nodeId)
   return (
     <NodeViewWrapper
-      as="span"
+      as='span'
       className={cn('group/var inline-block cursor-pointer transition-all duration-200 rounded-sm')}
-      data-type="variable"
+      data-type='variable'
       data-variable-id={variableId}
       onClick={handleClick}
       tabIndex={0}
-      role="button"
+      role='button'
       aria-selected={selected}>
       <VariableTag
         variableId={variableId}

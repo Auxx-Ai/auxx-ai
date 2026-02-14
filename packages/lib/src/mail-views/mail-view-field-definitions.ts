@@ -1,11 +1,11 @@
 // packages/lib/src/mail-views/mail-view-field-definitions.ts
 
+import { FieldType } from '@auxx/database/enums'
+import { getOperatorsForFieldType, type Operator } from '../conditions/operator-definitions'
+import type { FieldOptions } from '../custom-fields/field-options'
 // NOTE: This file is used on both client and server.
 // Only import from client-safe paths.
 import { BaseType } from '../workflow-engine/types'
-import { FieldType } from '@auxx/database/enums'
-import type { FieldOptions } from '../custom-fields/field-options'
-import { getOperatorsForFieldType, type Operator } from '../conditions/operator-definitions'
 
 /**
  * Field definition for mail view filters.

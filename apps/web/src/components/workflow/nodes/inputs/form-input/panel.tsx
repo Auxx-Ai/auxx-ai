@@ -2,31 +2,30 @@
 
 'use client'
 
-import React, { useCallback } from 'react'
 import { produce } from 'immer'
-import type { FormInputNodeData, TypeOptions } from './types'
-import { BasePanel } from '../../shared/base/base-panel'
-import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import Section from '~/components/workflow/ui/section'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
-import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
-import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
-import { InputTypePicker } from '~/components/workflow/ui/input-type-picker'
-import { getFormInputOutputVariables } from './output-variables'
-import { BaseType } from '~/components/workflow/types/unified-types'
-
+import React, { useCallback } from 'react'
+import { AddressComponentsEditor } from '~/components/custom-fields/ui/address-component-editor'
+import {
+  type CurrencyOptions,
+  CurrencyOptionsEditor,
+} from '~/components/custom-fields/ui/currency-options-editor'
+import { FileOptionsEditor } from '~/components/custom-fields/ui/file-options-editor'
 // Reuse existing editors from custom-fields for type configuration
 import { OptionsEditor } from '~/components/custom-fields/ui/options-editor'
-import { AddressComponentsEditor } from '~/components/custom-fields/ui/address-component-editor'
-import { FileOptionsEditor } from '~/components/custom-fields/ui/file-options-editor'
 import {
-  CurrencyOptionsEditor,
-  type CurrencyOptions,
-} from '~/components/custom-fields/ui/currency-options-editor'
-import {
-  TextOptionsEditor,
   type TextOptions,
+  TextOptionsEditor,
 } from '~/components/custom-fields/ui/text-options-editor'
+import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { BaseType } from '~/components/workflow/types/unified-types'
+import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
+import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { InputTypePicker } from '~/components/workflow/ui/input-type-picker'
+import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import Section from '~/components/workflow/ui/section'
+import { BasePanel } from '../../shared/base/base-panel'
+import { getFormInputOutputVariables } from './output-variables'
+import type { FormInputNodeData, TypeOptions } from './types'
 
 /**
  * Props for FormInputPanel component
@@ -219,11 +218,11 @@ const FormInputPanelComponent: React.FC<FormInputPanelProps> = ({ nodeId, data }
 
   return (
     <BasePanel nodeId={nodeId} data={data}>
-      <Section title="Form Input Configuration" isRequired>
-        <VarEditorField className="p-0">
+      <Section title='Form Input Configuration' isRequired>
+        <VarEditorField className='p-0'>
           {/* Input Type */}
-          <VarEditorFieldRow title="Type" description="The type of input to collect" isRequired>
-            <div className="flex-1 pe-2 h-8 flex items-center">
+          <VarEditorFieldRow title='Type' description='The type of input to collect' isRequired>
+            <div className='flex-1 pe-2 h-8 flex items-center'>
               <InputTypePicker
                 value={inputType}
                 onChange={handleInputTypeChange}
@@ -234,15 +233,15 @@ const FormInputPanelComponent: React.FC<FormInputPanelProps> = ({ nodeId, data }
 
           {/* Label - uses ConstantInputAdapter with STRING type */}
           <VarEditorFieldRow
-            title="Label"
-            description="The label shown to users"
+            title='Label'
+            description='The label shown to users'
             type={BaseType.STRING}
             isRequired>
             <ConstantInputAdapter
               value={nodeData.label || ''}
               onChange={handleFieldChange('label')}
               varType={BaseType.STRING}
-              placeholder="Enter field label"
+              placeholder='Enter field label'
               disabled={isReadOnly}
             />
           </VarEditorFieldRow>
@@ -250,14 +249,14 @@ const FormInputPanelComponent: React.FC<FormInputPanelProps> = ({ nodeId, data }
           {/* Placeholder - uses ConstantInputAdapter with STRING type */}
           {inputType !== BaseType.BOOLEAN && (
             <VarEditorFieldRow
-              title="Placeholder"
-              description="Hint text when empty"
+              title='Placeholder'
+              description='Hint text when empty'
               type={BaseType.STRING}>
               <ConstantInputAdapter
                 value={nodeData.placeholder || ''}
                 onChange={handleFieldChange('placeholder')}
                 varType={BaseType.STRING}
-                placeholder="Optional placeholder"
+                placeholder='Optional placeholder'
                 disabled={isReadOnly}
               />
             </VarEditorFieldRow>
@@ -265,22 +264,22 @@ const FormInputPanelComponent: React.FC<FormInputPanelProps> = ({ nodeId, data }
 
           {/* Hint - Helper text shown to users when filling this field */}
           <VarEditorFieldRow
-            title="Hint"
-            description="Helper text shown to users when filling this field"
+            title='Hint'
+            description='Helper text shown to users when filling this field'
             type={BaseType.STRING}>
             <ConstantInputAdapter
               value={nodeData.hint || ''}
               onChange={handleFieldChange('hint')}
               varType={BaseType.STRING}
-              placeholder="Optional hint for users"
+              placeholder='Optional hint for users'
               disabled={isReadOnly}
             />
           </VarEditorFieldRow>
 
           {/* Required - uses ConstantInputAdapter with BOOLEAN type */}
           <VarEditorFieldRow
-            title="Required"
-            description="Make field mandatory"
+            title='Required'
+            description='Make field mandatory'
             type={BaseType.BOOLEAN}>
             <ConstantInputAdapter
               value={nodeData.required || false}
@@ -294,15 +293,15 @@ const FormInputPanelComponent: React.FC<FormInputPanelProps> = ({ nodeId, data }
           {/* Default Value - uses ConstantInputAdapter with dynamic type */}
           {typeSupportsDefaultValue(inputType) && (
             <VarEditorFieldRow
-              title="Default"
-              description="Optional default value"
+              title='Default'
+              description='Optional default value'
               type={inputType}
               showIcon>
               <ConstantInputAdapter
                 value={nodeData.defaultValue}
                 onChange={handleFieldChange('defaultValue')}
                 varType={inputType}
-                placeholder="Enter default value"
+                placeholder='Enter default value'
                 disabled={isReadOnly}
                 fieldOptions={{
                   enum: nodeData.typeOptions?.enum,
@@ -316,8 +315,8 @@ const FormInputPanelComponent: React.FC<FormInputPanelProps> = ({ nodeId, data }
           {/* Switch Label - only for boolean inputs with switch variant */}
           {inputType === BaseType.BOOLEAN && (
             <VarEditorFieldRow
-              title="Switch Label"
-              description="Label shown next to the switch"
+              title='Switch Label'
+              description='Label shown next to the switch'
               type={BaseType.STRING}>
               <ConstantInputAdapter
                 value={nodeData.typeOptions?.boolean?.label || ''}
@@ -327,7 +326,7 @@ const FormInputPanelComponent: React.FC<FormInputPanelProps> = ({ nodeId, data }
                   })
                 }}
                 varType={BaseType.STRING}
-                placeholder="e.g., Enable notifications"
+                placeholder='e.g., Enable notifications'
                 disabled={isReadOnly}
               />
             </VarEditorFieldRow>
@@ -337,7 +336,7 @@ const FormInputPanelComponent: React.FC<FormInputPanelProps> = ({ nodeId, data }
 
       {/* Type-specific configuration */}
       {typeNeedsConfiguration(inputType) && (
-        <Section title="Type Configuration">{renderTypeConfiguration()}</Section>
+        <Section title='Type Configuration'>{renderTypeConfiguration()}</Section>
       )}
 
       {/* Output Variables */}

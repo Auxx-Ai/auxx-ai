@@ -2,16 +2,17 @@
 
 'use client'
 
-import React, { useState, useCallback } from 'react'
-import { Trash2 } from 'lucide-react'
-import { Input } from '@auxx/ui/components/input'
 import { Button } from '@auxx/ui/components/button'
+import { Input } from '@auxx/ui/components/input'
 import { cn } from '@auxx/ui/lib/utils'
+import { Trash2 } from 'lucide-react'
+import type React from 'react'
+import { useCallback, useState } from 'react'
 import { BaseType } from '~/components/workflow/types/unified-types'
-import { VarTypeSelector } from './var-type-selector'
 import { VarEditor } from '~/components/workflow/ui/input-editor/var-editor'
 import { VarEditorArray } from '~/components/workflow/ui/input-editor/var-editor-array'
-import { type VariableAssignment } from '../types'
+import type { VariableAssignment } from '../types'
+import { VarTypeSelector } from './var-type-selector'
 
 interface VarAssignItemProps {
   assignment: VariableAssignment
@@ -147,18 +148,18 @@ export const VarAssignItem: React.FC<VarAssignItemProps> = ({
           'grow rounded-xl bg-primary-100 border',
           isHovered && 'bg-destructive/10 border-destructive/20'
         )}>
-        <div className="flex items-center p-1 gap-1">
-          <div className="w-0 grow">
+        <div className='flex items-center p-1 gap-1'>
+          <div className='w-0 grow'>
             <Input
               value={assignment.name || ''}
               onChange={handleNameChange}
-              placeholder="Variable name"
+              placeholder='Variable name'
               disabled={readOnly}
-              variant="transparent"
-              className="h-6.5 text-sm px-1"
+              variant='transparent'
+              className='h-6.5 text-sm px-1'
             />
           </div>
-          <div className="mx-1 h-4 w-[1px] bg-divider" />
+          <div className='mx-1 h-4 w-[1px] bg-divider' />
           <div>
             <VarTypeSelector
               value={assignment.type || BaseType.STRING}
@@ -168,7 +169,7 @@ export const VarAssignItem: React.FC<VarAssignItemProps> = ({
             />
           </div>
         </div>
-        <div className="border-t border-t-divider p-0.5">
+        <div className='border-t border-t-divider p-0.5'>
           {!assignment.isArray ? (
             // Single value: Use VarEditor directly
             <VarEditor
@@ -185,7 +186,7 @@ export const VarAssignItem: React.FC<VarAssignItemProps> = ({
                   isConstantMode: isConstant,
                 })
               }}
-              placeholder="Enter value or use variables"
+              placeholder='Enter value or use variables'
               placeholderConstant={getConstantPlaceholder(assignment.type)}
             />
           ) : (
@@ -200,7 +201,7 @@ export const VarAssignItem: React.FC<VarAssignItemProps> = ({
               disabled={readOnly}
               allowConstant={true}
               modes={assignment.itemConstantModes}
-              placeholder="Enter value or use variables"
+              placeholder='Enter value or use variables'
               placeholderConstant={getConstantPlaceholder(assignment.type)}
             />
           )}
@@ -208,14 +209,14 @@ export const VarAssignItem: React.FC<VarAssignItemProps> = ({
       </div>
       {!readOnly && (
         <Button
-          className="ml-1"
+          className='ml-1'
           onClick={onRemove}
-          variant="destructive-hover"
-          size="icon"
+          variant='destructive-hover'
+          size='icon'
           disabled={!canDelete}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}>
-          <Trash2 className="size-4" />
+          <Trash2 className='size-4' />
         </Button>
       )}
     </div>

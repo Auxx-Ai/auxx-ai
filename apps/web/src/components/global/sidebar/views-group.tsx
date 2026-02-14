@@ -1,9 +1,7 @@
 // ~/components/global/sidebar/views-group.tsx
 'use client'
 
-import { useCallback, useState } from 'react'
-import { usePathname } from 'next/navigation'
-
+import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import {
   SidebarGroup,
   SidebarMenu,
@@ -11,38 +9,39 @@ import {
   SidebarMenuItem,
   SidebarMenuSubItem,
 } from '@auxx/ui/components/sidebar'
-import { CollapsibleSidebarSection } from '~/components/global/sidebar/collapsible-sidebar-section'
-import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
-import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
-import { EditableSidebarItem } from '~/components/global/sidebar/editable-sidebar-item'
-import { Lock, Mail, TableProperties, Trash2, Users } from 'lucide-react'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { useSidebarStateContext } from './sidebar-state-context'
+import { toastError } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
 import {
-  DndContext,
   closestCenter,
+  DndContext,
+  type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
-  DragEndEvent,
-  useDroppable,
 } from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-import { cn } from '@auxx/ui/lib/utils'
-import { useDndState } from '~/app/context/dnd-state-context'
-import { useMailCountsStore } from '~/components/mail/store'
-import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
+import { Lock, Mail, TableProperties, Trash2, Users } from 'lucide-react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { useCallback, useState } from 'react'
+import { useDndState } from '~/app/context/dnd-state-context'
+import { CollapsibleSidebarSection } from '~/components/global/sidebar/collapsible-sidebar-section'
+import { EditableSidebarItem } from '~/components/global/sidebar/editable-sidebar-item'
+import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
+import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
+import { useMailCountsStore } from '~/components/mail/store'
 import { MailViewDialog } from '~/components/mail-views/mail-view-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
-import { toastError } from '@auxx/ui/components/toast'
+import { useSidebarStateContext } from './sidebar-state-context'
 
 // import { useDndState } from '~/context/dnd-state-context'; // <-- IMPORT NEW HOOK
 
@@ -131,7 +130,7 @@ const DroppableViewSidebarItem = ({
         <TableProperties />
         Edit View
       </DropdownMenuItem>
-      <DropdownMenuItem variant="destructive" onClick={handleDelete}>
+      <DropdownMenuItem variant='destructive' onClick={handleDelete}>
         <Trash2 />
         Delete View
       </DropdownMenuItem>
@@ -249,9 +248,9 @@ export function ViewsGroup({
         .fill(0)
         .map((_, i) => (
           <SidebarMenuItem key={`skeleton-${i}`}>
-            <div className="flex items-center space-x-2 px-2 py-1.5">
-              <Skeleton className="h-4 w-4 rounded-full" />
-              <Skeleton className="h-4 w-24" />
+            <div className='flex items-center space-x-2 px-2 py-1.5'>
+              <Skeleton className='h-4 w-4 rounded-full' />
+              <Skeleton className='h-4 w-24' />
             </div>
           </SidebarMenuItem>
         ))
@@ -260,7 +259,7 @@ export function ViewsGroup({
     if (!isEditMode) {
       if (visibleViews.length === 0) {
         return (
-          <SidebarMenuButton variant="dashed" size="sm" onClick={() => setShowCreateView(true)}>
+          <SidebarMenuButton variant='dashed' size='sm' onClick={() => setShowCreateView(true)}>
             Create a view
           </SidebarMenuButton>
         )
@@ -296,7 +295,7 @@ export function ViewsGroup({
             items={allViewsIds} // Use IDs of all inboxes for context
             strategy={verticalListSortingStrategy}>
             {views.map((view) => (
-              <SidebarMenuItem key={view.id} className="p-0">
+              <SidebarMenuItem key={view.id} className='p-0'>
                 <EditableSidebarItem
                   id={view.id}
                   name={view.name}
@@ -312,7 +311,7 @@ export function ViewsGroup({
         </DndContext>
       ) : (
         <SidebarMenuItem>
-          <div className="px-2 py-1.5 text-sm text-muted-foreground">No views to edit</div>
+          <div className='px-2 py-1.5 text-sm text-muted-foreground'>No views to edit</div>
         </SidebarMenuItem>
       )
     }
@@ -338,9 +337,9 @@ export function ViewsGroup({
   return (
     <>
       <MailViewDialog isOpen={showCreateView} onClose={() => setShowCreateView(false)} />
-      <SidebarGroup className="group">
+      <SidebarGroup className='group'>
         <SidebarGroupHeader
-          title="Views"
+          title='Views'
           isEditMode={isEditMode}
           onToggleEditMode={onToggleEditMode}
           toggleOpen={handleToggleOpen}
@@ -349,7 +348,7 @@ export function ViewsGroup({
           isGroupVisible={isGroupVisible}
           onToggleGroupVisibility={onToggleGroupVisibility}
         />
-        {(isEditMode || isOpen) && <SidebarMenu className="gap-0">{renderViewList()}</SidebarMenu>}
+        {(isEditMode || isOpen) && <SidebarMenu className='gap-0'>{renderViewList()}</SidebarMenu>}
       </SidebarGroup>
     </>
   )

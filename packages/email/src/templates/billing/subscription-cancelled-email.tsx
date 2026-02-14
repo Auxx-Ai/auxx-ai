@@ -1,6 +1,6 @@
 // packages/email/src/templates/billing/subscription-cancelled-email.tsx
 import { Container, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -46,7 +46,7 @@ export async function SubscriptionCancelledEmail({
 
         <Text>Changed your mind? You can reactivate your subscription at any time:</Text>
 
-        <EmailButton href={reactivateUrl} label="Reactivate Subscription" />
+        <EmailButton href={reactivateUrl} label='Reactivate Subscription' />
 
         <Text>
           We'd love to hear your feedback. If there's anything we could do better, please let us

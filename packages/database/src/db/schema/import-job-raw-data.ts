@@ -1,7 +1,7 @@
 // packages/database/src/db/schema/import-job-raw-data.ts
 
-import { pgTable, index, text, integer, timestamp, type AnyPgColumn } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, index, integer, pgTable, text, timestamp } from './_shared'
 import { ImportJob } from './import-job'
 
 /**

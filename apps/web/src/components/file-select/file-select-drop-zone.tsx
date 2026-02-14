@@ -2,10 +2,11 @@
 
 'use client'
 
-import React, { useCallback, useId } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
-import { Upload, FileUp, FolderOpen } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
+import { cn } from '@auxx/ui/lib/utils'
+import { FileUp, FolderOpen, Upload } from 'lucide-react'
+import type React from 'react'
+import { useCallback, useId } from 'react'
 
 /**
  * Props for FileSelectDropZone component
@@ -122,10 +123,10 @@ export function FileSelectDropZone({
       onDrop={handleDrop}>
       {/* Hidden file input */}
       <input
-        type="file"
+        type='file'
         multiple
         onChange={handleFileInput}
-        className="sr-only"
+        className='sr-only'
         id={inputId}
         accept={acceptString}
         disabled={disabled}
@@ -142,7 +143,7 @@ export function FileSelectDropZone({
           !disabled && 'cursor-pointer'
         )}>
         {/* Drop zone content */}
-        <div className="flex flex-col items-center gap-4">
+        <div className='flex flex-col items-center gap-4'>
           {/* Icon */}
           <div
             className={cn(
@@ -158,7 +159,7 @@ export function FileSelectDropZone({
           </div>
 
           {/* Text content */}
-          <div className="space-y-2">
+          <div className='space-y-2'>
             <label
               htmlFor={inputId}
               className={cn(
@@ -172,7 +173,7 @@ export function FileSelectDropZone({
             </label>
 
             {/* File constraints info */}
-            <div className="space-y-1 text-sm text-gray-500">
+            <div className='space-y-1 text-sm text-gray-500'>
               {maxFiles && <p>Maximum {maxFiles} files</p>}
               {fileExtensions && fileExtensions.length > 0 && (
                 <p>Allowed types: {fileExtensions.join(', ')}</p>
@@ -181,15 +182,15 @@ export function FileSelectDropZone({
           </div>
 
           {/* Action buttons */}
-          <div className="flex gap-3">
+          <div className='flex gap-3'>
             {/* Upload button */}
             <Button
-              type="button"
-              variant="outline"
-              size="sm"
+              type='button'
+              variant='outline'
+              size='sm'
               onClick={() => document.getElementById(inputId)?.click()}
               disabled={disabled}
-              className="cursor-pointer">
+              className='cursor-pointer'>
               <FileUp />
               Choose Files
             </Button>
@@ -197,9 +198,9 @@ export function FileSelectDropZone({
             {/* Browse existing button */}
             {showFilePicker && (
               <Button
-                type="button"
-                variant="outline"
-                size="sm"
+                type='button'
+                variant='outline'
+                size='sm'
                 onClick={onBrowseExisting}
                 disabled={disabled}>
                 <FolderOpen />
@@ -211,10 +212,10 @@ export function FileSelectDropZone({
 
         {/* Drag overlay for visual feedback */}
         {dragActive && (
-          <div className="absolute inset-0 bg-primary-500/10 rounded-lg flex items-center justify-center backdrop-blur-sm">
-            <div className="text-center">
-              <Upload className="size-8 text-primary-600 mx-auto mb-2 animate-bounce" />
-              <p className="text-lg font-semibold text-primary-700 dark:text-primary-300">
+          <div className='absolute inset-0 bg-primary-500/10 rounded-lg flex items-center justify-center backdrop-blur-sm'>
+            <div className='text-center'>
+              <Upload className='size-8 text-primary-600 mx-auto mb-2 animate-bounce' />
+              <p className='text-lg font-semibold text-primary-700 dark:text-primary-300'>
                 Drop files to add them
               </p>
             </div>

@@ -1,11 +1,11 @@
 // apps/web/src/components/virtual-list/virtual-list-header.tsx
 'use client'
 
-import { type ReactNode } from 'react'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { InputSearch } from '@auxx/ui/components/input-search'
-import { useVirtualListContext } from './virtual-list'
 import { cn } from '@auxx/ui/lib/utils'
+import type { ReactNode } from 'react'
+import { useVirtualListContext } from './virtual-list'
 
 /**
  * Props for the VirtualListHeader component
@@ -40,9 +40,9 @@ export function VirtualListHeader({
         'sticky top-0 z-10 bg-background/50 backdrop-blur-sm space-y-3 py-2 px-4 border-b',
         className
       )}>
-      <div className="flex flex-row items-center gap-2">
+      <div className='flex flex-row items-center gap-2'>
         {showSelectAll && onSelectAll && (
-          <div className="flex items-center gap-2">
+          <div className='flex items-center gap-2'>
             <Checkbox
               checked={isAllSelected}
               onCheckedChange={(checked) => onSelectAll(!!checked)}
@@ -57,17 +57,17 @@ export function VirtualListHeader({
         {/* Search Bar */}
         {showSearch && onSearch && (
           <InputSearch
-            size="sm"
+            size='sm'
             value={searchQuery}
             onChange={(e) => onSearch(e.target.value)}
             onClear={() => onSearch('')}
             placeholder={searchPlaceholder}
-            className="w-full"
+            className='w-full'
           />
         )}
 
         {/* Select All and Custom Controls */}
-        <div className="flex items-center justify-between">
+        <div className='flex items-center justify-between'>
           {/* Custom actions/filters passed as children */}
           {children}
         </div>

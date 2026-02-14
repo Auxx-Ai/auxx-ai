@@ -106,9 +106,11 @@ export class SettingsBooleanNode extends BaseNode<'boolean', boolean, BooleanSet
 /**
  * Select setting node for dropdown/enum values
  */
-export class SettingsSelectNode<
-  T extends readonly string[] = readonly string[],
-> extends BaseNode<'select', T[number], SelectSettingOptions<T>> {
+export class SettingsSelectNode<T extends readonly string[] = readonly string[]> extends BaseNode<
+  'select',
+  T[number],
+  SelectSettingOptions<T>
+> {
   get type(): 'select' {
     return 'select'
   }

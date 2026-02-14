@@ -11,11 +11,13 @@ import { CreateDatasetDialog } from './create-dataset-dialog'
  */
 export function CreateDatasetButton({
   variant = 'default',
-}: { variant?: 'default' | 'outline' } = {}) {
+}: {
+  variant?: 'default' | 'outline'
+} = {}) {
   return (
     <CreateDatasetDialog
       trigger={
-        <Button variant={variant} size="sm">
+        <Button variant={variant} size='sm'>
           <Plus />
           Create Dataset
         </Button>

@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/ui/code-editor/__tests__/workflow-completions.test.ts
 
 import {
-  transformWorkflowVariableSyntax,
   extractVariableReferences,
+  transformWorkflowVariableSyntax,
 } from '../monaco-workflow-completions'
 
 describe('Workflow Variable Syntax', () => {

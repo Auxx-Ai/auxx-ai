@@ -1,16 +1,16 @@
 // packages/lib/src/workflow-engine/nodes/triggers/resource-trigger-base.ts
 
-import { BaseNodeProcessor } from '../base-node'
-import type { WorkflowNode, NodeExecutionResult, ValidationResult } from '../../core/types'
-import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
 import { RESOURCE_CONFIGS, RESOURCE_OPERATIONS } from '../../../resources/definitions'
 import {
-  setResourceVariables,
-  setEntityVariables,
   isCustomResourceId,
+  setEntityVariables,
+  setResourceVariables,
 } from '../../../resources/registry'
 import type { TableId } from '../../../resources/registry/field-registry'
+import type { ExecutionContextManager } from '../../core/execution-context'
+import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
+import { NodeRunningStatus, type WorkflowNodeType } from '../../core/types'
+import { BaseNodeProcessor } from '../base-node'
 
 /**
  * Unified trigger node processor for all resource-based triggers

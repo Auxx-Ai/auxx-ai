@@ -2,8 +2,8 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Session } from '~/lib/auth'
+import { useEffect, useState } from 'react'
+import type { Session } from '~/lib/auth'
 
 /**
  * Client-side hook to access session data

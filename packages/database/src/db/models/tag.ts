@@ -15,12 +15,7 @@ export type CreateTagInput = typeof Tag.$inferInsert
 /** Updatable Tag input type */
 export type UpdateTagInput = Partial<CreateTagInput>
 
-export class TagModel extends BaseModel<
-  typeof Tag,
-  CreateTagInput,
-  TagEntity,
-  UpdateTagInput
-> {
+export class TagModel extends BaseModel<typeof Tag, CreateTagInput, TagEntity, UpdateTagInput> {
   get table() {
     return Tag
   }
@@ -35,4 +30,3 @@ export class TagModel extends BaseModel<
     }
   }
 }
-

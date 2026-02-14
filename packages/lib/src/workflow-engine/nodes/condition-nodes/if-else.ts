@@ -1,33 +1,33 @@
 // packages/lib/src/workflow-engine/nodes/condition-nodes/if-else.ts
 
-import { BaseNodeProcessor } from '../base-node'
+import { getOperatorDefinition, type Operator } from '../../../conditions/operator-definitions'
+import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
-  WorkflowNode,
   NodeExecutionResult,
-  ValidationResult,
   PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
-import type { NodeCondition, NodeCase, IfElseNodeConfig } from './if-else-types'
 import {
-  type WorkflowFileData,
   analyzeFileName,
   isExtensionInCategory,
   isFileValid,
   isUploadedToday,
   isUploadedWithinDays,
   isWithinSizeLimit,
+  type WorkflowFileData,
 } from '../../types/file-variable'
-import { getOperatorDefinition, type Operator } from '../../../conditions/operator-definitions'
+import { BaseNodeProcessor } from '../base-node'
 import {
-  isSameDay,
-  isWithinDays,
   isOlderThanDays,
-  isThisWeek,
+  isSameDay,
   isThisMonth,
+  isThisWeek,
+  isWithinDays,
   parseDate,
 } from '../utils/date-helpers'
+import type { IfElseNodeConfig, NodeCase, NodeCondition } from './if-else-types'
 
 /**
  * Condition node that evaluates an if/else condition

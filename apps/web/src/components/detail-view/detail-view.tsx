@@ -1,8 +1,6 @@
 // apps/web/src/components/detail-view/detail-view.tsx
 'use client'
 
-import { useState } from 'react'
-import { useQueryState } from 'nuqs'
 import { getDetailViewConfig, type ModelType } from '@auxx/lib/resources/client'
 import {
   MainPage,
@@ -11,13 +9,15 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { useResourceProperty, useRecord, toRecordId } from '~/components/resources'
+import { useQueryState } from 'nuqs'
+import { useState } from 'react'
+import { toRecordId, useRecord, useResourceProperty } from '~/components/resources'
 import { useDockStore } from '~/stores/dock-store'
-import { DetailViewSidebar } from './detail-view-sidebar'
-import { DetailViewMainTabs } from './detail-view-main-tabs'
 import { DetailViewActions } from './components/detail-view-actions'
-import { DetailViewSkeleton } from './detail-view-skeleton'
+import { DetailViewMainTabs } from './detail-view-main-tabs'
 import { DetailViewNotFound } from './detail-view-not-found'
+import { DetailViewSidebar } from './detail-view-sidebar'
+import { DetailViewSkeleton } from './detail-view-skeleton'
 import type { DetailViewProps } from './types'
 
 /**
@@ -50,7 +50,9 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
   const config = getDetailViewConfig(entityType)
 
   // Tab state
-  const [mainTab, setMainTab] = useQueryState('tab', { defaultValue: config.defaultTab ?? 'overview' })
+  const [mainTab, setMainTab] = useQueryState('tab', {
+    defaultValue: config.defaultTab ?? 'overview',
+  })
   const [sidebarTab, setSidebarTab] = useState(config.defaultSidebarTab ?? 'overview')
 
   // Dock state for resizable sidebar

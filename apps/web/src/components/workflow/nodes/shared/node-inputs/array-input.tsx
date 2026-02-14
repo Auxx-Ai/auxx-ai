@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/nodes/shared/node-inputs/array-input.tsx
 
-import React from 'react'
 import { Button } from '@auxx/ui/components/button'
-import { InputGroup, InputGroupInput, InputGroupAddon } from '@auxx/ui/components/input-group'
-import { Plus, Trash2, GripVertical } from 'lucide-react'
-import { createNodeInput, type NodeInputProps } from './base-node-input'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
 import { cn } from '@auxx/ui/lib/utils'
+import { GripVertical, Plus, Trash2 } from 'lucide-react'
+import type React from 'react'
+import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 interface ArrayInputProps extends NodeInputProps {
   /** Field name */
@@ -78,35 +78,35 @@ export const ArrayInput = createNodeInput<ArrayInputProps>(
     // Return just the array input UI without wrappers or error displays
     return (
       <div className={cn('w-full min-h-7', items.length > 0 && 'space-y-2')}>
-        <div className="flex items-center justify-between">
-          <div className="pt-0.5">
+        <div className='flex items-center justify-between'>
+          <div className='pt-0.5'>
             <Button
-              type="button"
-              variant="outline"
-              className=""
-              size="xs"
+              type='button'
+              variant='outline'
+              className=''
+              size='xs'
               onClick={handleAddItem}
               disabled={isLoading || (maxItems !== undefined && items.length >= maxItems)}>
               <Plus />
               Add Item
             </Button>
           </div>
-          <span className="text-sm text-muted-foreground pe-1">
+          <span className='text-sm text-muted-foreground pe-1'>
             {items.length} item{items.length !== 1 ? 's' : ''}
           </span>
         </div>
 
         <div className={cn('space-y-2 -ml-6 w-[calc(100%+2.5rem)] pb-1')}>
           {items.map((item: any, index: number) => (
-            <div key={index} className="flex items-center">
-              <GripVertical className="size-4 text-muted-foreground cursor-move" />
+            <div key={index} className='flex items-center'>
+              <GripVertical className='size-4 text-muted-foreground cursor-move' />
 
               {renderItem ? (
-                <div className="flex-1">
+                <div className='flex-1'>
                   {renderItem(item, index, (value) => handleUpdateItem(index, value))}
                 </div>
               ) : (
-                <InputGroup className="flex-1">
+                <InputGroup className='flex-1'>
                   <InputGroupInput
                     type={itemType === 'number' ? 'number' : 'text'}
                     value={item}
@@ -119,10 +119,10 @@ export const ArrayInput = createNodeInput<ArrayInputProps>(
                     placeholder={placeholder}
                     disabled={isLoading}
                   />
-                  <InputGroupAddon align="inline-end">
+                  <InputGroupAddon align='inline-end'>
                     <Button
-                      size="icon-xs"
-                      variant="destructive-hover"
+                      size='icon-xs'
+                      variant='destructive-hover'
                       onClick={() => handleRemoveItem(index)}
                       disabled={isLoading || (minItems !== undefined && items.length <= minItems)}>
                       <Trash2 />

@@ -1,8 +1,9 @@
 // apps/homepage/src/app/_components/login-button.tsx
+
+import Link from 'next/link'
 import React from 'react'
 // import { auth } from '~/auth/server'
 import { Button } from '~/components/ui/button'
-import Link from 'next/link'
 import { config } from '~/lib/config'
 
 export default async function LoginButton() {

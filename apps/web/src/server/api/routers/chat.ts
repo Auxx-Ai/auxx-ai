@@ -1,12 +1,13 @@
 // src/server/api/routers/chat.ts
-import { z } from 'zod'
-import { TRPCError } from '@trpc/server'
-import { createTRPCRouter, publicProcedure, protectedProcedure } from '~/server/api/trpc' // Use publicProcedure for initialization
+
 import { database as db } from '@auxx/database'
 import { OrganizationMemberModel } from '@auxx/database/models'
-import { createScopedLogger } from '@auxx/logger'
 import { createChatService } from '@auxx/lib/chat'
 import { RealTimeService } from '@auxx/lib/realtime'
+import { createScopedLogger } from '@auxx/logger'
+import { TRPCError } from '@trpc/server'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure, publicProcedure } from '~/server/api/trpc' // Use publicProcedure for initialization
 
 const logger = createScopedLogger('chat-router')
 

@@ -1,13 +1,13 @@
 // packages/lib/src/seed/entity-seeder/link-relationships.ts
 
 import { type Database, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
-import { createScopedLogger } from '@auxx/logger'
 import { FieldType } from '@auxx/database/enums'
+import { createScopedLogger } from '@auxx/logger'
 import { toResourceFieldId } from '@auxx/types/field'
-import type { EntityDefMap, FieldMap } from './types'
+import { eq } from 'drizzle-orm'
 import type { ResourceField } from '../../resources/registry/field-types'
 import { SPECIAL_ENTITY_TYPES } from './constants'
+import type { EntityDefMap, FieldMap } from './types'
 
 const logger = createScopedLogger('entity-seeder:link-relationships')
 

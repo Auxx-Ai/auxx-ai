@@ -1,12 +1,12 @@
 // packages/lib/src/seed/user-seeder.ts
-import { database as defaultDb, schema, type Database } from '@auxx/database'
-import { SignatureModel } from '@auxx/database/models'
-import { createScopedLogger } from '../logger'
-import { UserAvatarService } from '../users/user-avatar-service'
-import { SignatureService } from '../signatures'
+import { type Database, database as defaultDb, schema } from '@auxx/database'
 import { SignatureSharingType } from '@auxx/database/enums'
 import type { UserEntity as User } from '@auxx/database/models'
+import { SignatureModel } from '@auxx/database/models'
 import { and, eq, inArray } from 'drizzle-orm'
+import { createScopedLogger } from '../logger'
+import { SignatureService } from '../signatures'
+import { UserAvatarService } from '../users/user-avatar-service'
 
 const logger = createScopedLogger('user-seeder')
 

@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/hooks/use-workflow-run-node-sync.ts
 
-import { useEffect } from 'react'
 import { useReactFlow } from '@xyflow/react'
+import { useEffect } from 'react'
 import { useRunStore } from '../store/run-store'
 import { NodeRunningStatus } from '../types'
 

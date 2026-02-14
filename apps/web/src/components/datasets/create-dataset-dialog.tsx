@@ -2,11 +2,9 @@
 
 'use client'
 
-import { useState, useMemo } from 'react'
-import { useForm } from 'react-hook-form'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import { z } from 'zod'
+import { ModelType } from '@auxx/lib/ai/providers/types'
+import { EMBEDDING_DIMENSIONS, type EmbeddingDimension } from '@auxx/lib/datasets/types'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -16,7 +14,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
   FormControl,
@@ -25,6 +22,8 @@ import {
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
+import { Input } from '@auxx/ui/components/input'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Select,
   SelectContent,
@@ -32,16 +31,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Input } from '@auxx/ui/components/input'
 import { Textarea } from '@auxx/ui/components/textarea'
-import { Button } from '@auxx/ui/components/button'
-import { Plus } from 'lucide-react'
-import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { Plus } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { AiModelPicker, type ModelPickerItem } from '~/components/pickers/ai-model-picker'
-import { ModelType } from '@auxx/lib/ai/providers/types'
-import { EMBEDDING_DIMENSIONS, type EmbeddingDimension } from '@auxx/lib/datasets/types'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { api } from '~/trpc/react'
 
 const createDatasetSchema = z.object({
   name: z.string().min(1, 'Name is required').max(255, 'Name must be less than 255 characters'),
@@ -72,13 +71,13 @@ export function CreateDatasetDialog({ trigger, onSuccess }: CreateDatasetDialogP
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger || (
-          <Button size="sm">
+          <Button size='sm'>
             <Plus />
             Create Dataset
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent position="tc" size="sm">
+      <DialogContent position='tc' size='sm'>
         <CreateDatasetDialogContent onSuccess={onSuccess} onClose={() => setOpen(false)} />
       </DialogContent>
     </Dialog>
@@ -200,15 +199,15 @@ function CreateDatasetDialogContent({ onSuccess, onClose }: CreateDatasetDialogC
       </DialogHeader>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
           <FormField
             control={form.control}
-            name="name"
+            name='name'
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Dataset Name *</FormLabel>
                 <FormControl>
-                  <Input placeholder="Enter dataset name..." {...field} />
+                  <Input placeholder='Enter dataset name...' {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -217,14 +216,14 @@ function CreateDatasetDialogContent({ onSuccess, onClose }: CreateDatasetDialogC
 
           <FormField
             control={form.control}
-            name="description"
+            name='description'
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Description</FormLabel>
                 <FormControl>
                   <Textarea
-                    placeholder="Describe what this dataset will contain..."
-                    className="resize-none"
+                    placeholder='Describe what this dataset will contain...'
+                    className='resize-none'
                     rows={3}
                     {...field}
                   />
@@ -234,24 +233,24 @@ function CreateDatasetDialogContent({ onSuccess, onClose }: CreateDatasetDialogC
             )}
           />
 
-          <VarEditorField className="p-0 [&_[data-slot=field-row-label]]:w-30">
+          <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-30'>
             <VarEditorFieldRow
-              title="Model"
-              description="Select a text embedding model from your configured providers">
+              title='Model'
+              description='Select a text embedding model from your configured providers'>
               <FormField
                 control={form.control}
-                name="embeddingModel"
+                name='embeddingModel'
                 render={({ field }) => (
-                  <FormItem className="flex-1 space-y-0! mb-0">
+                  <FormItem className='flex-1 space-y-0! mb-0'>
                     <AiModelPicker
                       data={unifiedModelData.data}
                       value={field.value ?? null}
                       onChange={handleModelChange}
                       modelTypes={[ModelType.TEXT_EMBEDDING]}
                       showUnconfigured={false}
-                      placeholder="Select embedding model..."
-                      triggerVariant="transparent"
-                      triggerClassName="w-full justify-between h-6"
+                      placeholder='Select embedding model...'
+                      triggerVariant='transparent'
+                      triggerClassName='w-full justify-between h-6'
                       isUpdating={unifiedModelData.isLoading}
                     />
                     <FormMessage />
@@ -263,21 +262,21 @@ function CreateDatasetDialogContent({ onSuccess, onClose }: CreateDatasetDialogC
             {/* Dimension selector - only show if model supports configurable dimensions */}
             {hasConfigurableDimensions && (
               <VarEditorFieldRow
-                title="Dimensions"
+                title='Dimensions'
                 description={
                   dimensionRule?.help ||
                   'Smaller dimensions use less storage but may reduce accuracy.'
                 }>
                 <FormField
                   control={form.control}
-                  name="vectorDimension"
+                  name='vectorDimension'
                   render={({ field }) => (
-                    <FormItem className="flex-1 mb-0 space-y-0!">
+                    <FormItem className='flex-1 mb-0 space-y-0!'>
                       <Select
                         value={field.value?.toString() ?? defaultDimension.toString()}
                         onValueChange={(v) => field.onChange(parseInt(v))}>
-                        <SelectTrigger className="w-full" size="sm" variant="transparent">
-                          <SelectValue placeholder="Select dimension" />
+                        <SelectTrigger className='w-full' size='sm' variant='transparent'>
+                          <SelectValue placeholder='Select dimension' />
                         </SelectTrigger>
                         <SelectContent>
                           {availableDimensions.map((dim) => (
@@ -297,20 +296,20 @@ function CreateDatasetDialogContent({ onSuccess, onClose }: CreateDatasetDialogC
 
           <DialogFooter>
             <Button
-              type="button"
-              variant="ghost"
-              size="sm"
+              type='button'
+              variant='ghost'
+              size='sm'
               onClick={onClose}
               disabled={createDataset.isPending}>
-              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
             <Button
-              variant="outline"
-              size="sm"
-              type="submit"
+              variant='outline'
+              size='sm'
+              type='submit'
               loading={createDataset.isPending}
-              loadingText="Creating...">
-              Create Dataset <KbdSubmit variant="outline" size="sm" />
+              loadingText='Creating...'>
+              Create Dataset <KbdSubmit variant='outline' size='sm' />
             </Button>
           </DialogFooter>
         </form>

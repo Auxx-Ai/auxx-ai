@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/core/loop-context-extensions.ts
 
-import { ExecutionContextManager } from './execution-context'
 import { createScopedLogger } from '@auxx/logger'
+import type { ExecutionContextManager } from './execution-context'
 
 const logger = createScopedLogger('loop-context')
 
@@ -44,8 +44,8 @@ export class LoopContextManager {
    * Initialize loop extensions for a context manager
    */
   static initializeLoopExtensions(contextManager: ExecutionContextManager): void {
-    if (!this.loopExtensions.has(contextManager)) {
-      this.loopExtensions.set(contextManager, {
+    if (!LoopContextManager.loopExtensions.has(contextManager)) {
+      LoopContextManager.loopExtensions.set(contextManager, {
         activeLoops: new Map(),
         loopIterationHistory: [],
         loopScopes: new Map(),
@@ -60,8 +60,8 @@ export class LoopContextManager {
     contextManager: ExecutionContextManager,
     loopState: LoopExecutionState
   ): void {
-    this.initializeLoopExtensions(contextManager)
-    const extensions = this.loopExtensions.get(contextManager)!
+    LoopContextManager.initializeLoopExtensions(contextManager)
+    const extensions = LoopContextManager.loopExtensions.get(contextManager)!
 
     // Check for nested loops
     if (extensions.activeLoops.size > 0) {
@@ -74,14 +74,14 @@ export class LoopContextManager {
     }
 
     extensions.activeLoops.set(loopState.loopNodeId, loopState)
-    this.createLoopScope(contextManager, loopState.loopNodeId)
+    LoopContextManager.createLoopScope(contextManager, loopState.loopNodeId)
   }
 
   /**
    * Unregister an active loop
    */
   static unregisterActiveLoop(contextManager: ExecutionContextManager, loopNodeId: string): void {
-    const extensions = this.loopExtensions.get(contextManager)
+    const extensions = LoopContextManager.loopExtensions.get(contextManager)
     if (extensions) {
       extensions.activeLoops.delete(loopNodeId)
       extensions.loopScopes.delete(loopNodeId)
@@ -96,13 +96,13 @@ export class LoopContextManager {
     loopNodeId: string,
     iteration: number
   ): void {
-    const extensions = this.loopExtensions.get(contextManager)
+    const extensions = LoopContextManager.loopExtensions.get(contextManager)
     if (!extensions) return
 
     const loopState = extensions.activeLoops.get(loopNodeId)
     if (loopState) {
       loopState.currentIteration = iteration
-      this.injectLoopVariables(contextManager, loopState)
+      LoopContextManager.injectLoopVariables(contextManager, loopState)
     }
   }
 
@@ -113,7 +113,7 @@ export class LoopContextManager {
     contextManager: ExecutionContextManager,
     loopNodeId: string
   ): void {
-    const extensions = this.loopExtensions.get(contextManager)
+    const extensions = LoopContextManager.loopExtensions.get(contextManager)
     if (extensions) {
       extensions.loopScopes.set(loopNodeId, new Map())
     }
@@ -128,7 +128,7 @@ export class LoopContextManager {
     key: string,
     value: any
   ): void {
-    const extensions = this.loopExtensions.get(contextManager)
+    const extensions = LoopContextManager.loopExtensions.get(contextManager)
     if (!extensions) return
 
     const scope = extensions.loopScopes.get(loopNodeId)
@@ -141,7 +141,7 @@ export class LoopContextManager {
    * Get variable with loop scope resolution
    */
   static getVariableWithLoopScope(contextManager: ExecutionContextManager, key: string): any {
-    const extensions = this.loopExtensions.get(contextManager)
+    const extensions = LoopContextManager.loopExtensions.get(contextManager)
     if (!extensions) return contextManager.getVariable(key)
 
     // Check loop scopes from innermost to outermost
@@ -195,7 +195,7 @@ export class LoopContextManager {
     iteration: number,
     duration: number
   ): void {
-    const extensions = this.loopExtensions.get(contextManager)
+    const extensions = LoopContextManager.loopExtensions.get(contextManager)
     if (!extensions) return
 
     extensions.loopIterationHistory.push({
@@ -215,7 +215,7 @@ export class LoopContextManager {
    * Get active loop states
    */
   static getActiveLoops(contextManager: ExecutionContextManager): Map<string, LoopExecutionState> {
-    const extensions = this.loopExtensions.get(contextManager)
+    const extensions = LoopContextManager.loopExtensions.get(contextManager)
     return extensions?.activeLoops || new Map()
   }
 
@@ -223,7 +223,7 @@ export class LoopContextManager {
    * Check if a loop is active
    */
   static isLoopActive(contextManager: ExecutionContextManager, loopNodeId: string): boolean {
-    const extensions = this.loopExtensions.get(contextManager)
+    const extensions = LoopContextManager.loopExtensions.get(contextManager)
     return extensions?.activeLoops.has(loopNodeId) || false
   }
 
@@ -233,7 +233,7 @@ export class LoopContextManager {
   static getLoopIterationHistory(
     contextManager: ExecutionContextManager
   ): Array<{ loopNodeId: string; iteration: number; timestamp: Date; duration: number }> {
-    const extensions = this.loopExtensions.get(contextManager)
+    const extensions = LoopContextManager.loopExtensions.get(contextManager)
     return extensions?.loopIterationHistory || []
   }
 
@@ -241,7 +241,7 @@ export class LoopContextManager {
    * Request loop break
    */
   static requestLoopBreak(contextManager: ExecutionContextManager, loopNodeId: string): void {
-    const extensions = this.loopExtensions.get(contextManager)
+    const extensions = LoopContextManager.loopExtensions.get(contextManager)
     if (!extensions) return
 
     const loopState = extensions.activeLoops.get(loopNodeId)
@@ -255,7 +255,7 @@ export class LoopContextManager {
    * Check if loop break is requested
    */
   static isBreakRequested(contextManager: ExecutionContextManager, loopNodeId: string): boolean {
-    const extensions = this.loopExtensions.get(contextManager)
+    const extensions = LoopContextManager.loopExtensions.get(contextManager)
     if (!extensions) return false
 
     const loopState = extensions.activeLoops.get(loopNodeId)
@@ -266,7 +266,7 @@ export class LoopContextManager {
    * Get current loop depth (for nested loops)
    */
   static getCurrentLoopDepth(contextManager: ExecutionContextManager): number {
-    const extensions = this.loopExtensions.get(contextManager)
+    const extensions = LoopContextManager.loopExtensions.get(contextManager)
     return extensions?.activeLoops.size || 0
   }
 
@@ -277,7 +277,7 @@ export class LoopContextManager {
     contextManager: ExecutionContextManager,
     currentLoopId: string
   ): string | null {
-    const extensions = this.loopExtensions.get(contextManager)
+    const extensions = LoopContextManager.loopExtensions.get(contextManager)
     if (!extensions) return null
 
     const loopIds = Array.from(extensions.activeLoops.keys())

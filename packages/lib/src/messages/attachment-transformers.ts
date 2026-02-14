@@ -53,11 +53,10 @@ export function transformAttachmentsForMessages(
   attachmentMap: Map<string, GroupedAttachmentInfo[]>
 ): Map<string, MessageAttachmentInfo[]> {
   const transformedMap = new Map<string, MessageAttachmentInfo[]>()
-  
+
   for (const [messageId, attachments] of attachmentMap.entries()) {
     transformedMap.set(messageId, transformAttachmentsForMessage(attachments))
   }
-  
+
   return transformedMap
 }
-

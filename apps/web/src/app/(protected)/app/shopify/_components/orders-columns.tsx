@@ -1,22 +1,23 @@
 'use client'
-import { ColumnDef } from '@tanstack/react-table'
+import { ORDER_FULFILLMENT_STATUS } from '@auxx/database/enums'
+import type { Order } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
+import type { ColumnDef } from '@tanstack/react-table'
+import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
+import Link from 'next/link'
+import { ContactHoverCard } from '~/components/contacts/contact-hover-card'
+import { DataTableColumnHeader } from '~/components/data-table/data-table-column-header'
 // import { DataTableRowActions } from './data-table-row-actions'
 import { labels, priorities, statuses } from '~/constants/products'
-import { DataTableColumnHeader } from '~/components/data-table/data-table-column-header'
+import { formatRelativeDate } from '~/utils/date'
+import { formatMoney } from '~/utils/strings'
 // import { Order } from './schema'
 // import { DataTableRowActions } from './data-table-row-actions'
 // import { Order } from './schema'
 import { DataTableRowActions } from './orders-data-table-row-actions'
-import { formatRelativeDate } from '~/utils/date'
-import { formatMoney } from '~/utils/strings'
-import { Button } from '@auxx/ui/components/button'
-import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
-import Link from 'next/link'
-import { ContactHoverCard } from '~/components/contacts/contact-hover-card'
-import { ORDER_FULFILLMENT_STATUS } from '@auxx/database/enums'
-import type { Order } from '@auxx/database/types'
+
 function renderName(row: any) {
   if (!row.firstName && !row.lastName) {
     if (row.email) {
@@ -70,9 +71,9 @@ export const columns: ColumnDef<Order>[] = [
             variant: 'ghost',
           }}>
           {row.getIsExpanded() ? (
-            <ChevronUpIcon className="opacity-60" size={16} aria-hidden="true" />
+            <ChevronUpIcon className='opacity-60' size={16} aria-hidden='true' />
           ) : (
-            <ChevronDownIcon className="opacity-60" size={16} aria-hidden="true" />
+            <ChevronDownIcon className='opacity-60' size={16} aria-hidden='true' />
           )}
         </Button>
       ) : undefined
@@ -88,16 +89,16 @@ export const columns: ColumnDef<Order>[] = [
           table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')
         }
         onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-        aria-label="Select all"
-        className="translate-y-[2px]"
+        aria-label='Select all'
+        className='translate-y-[2px]'
       />
     ),
     cell: ({ row }) => (
       <Checkbox
         checked={row.getIsSelected()}
         onCheckedChange={(value) => row.toggleSelected(!!value)}
-        aria-label="Select row"
-        className="translate-y-[2px]"
+        aria-label='Select row'
+        className='translate-y-[2px]'
       />
     ),
     enableSorting: false,
@@ -108,9 +109,9 @@ export const columns: ColumnDef<Order>[] = [
     minSize: 70,
     size: 75,
     maxSize: 85,
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Order" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title='Order' />,
     cell: ({ row }) => (
-      <Link className="text-sm font-bold" href={`/app/shopify/orders/${row.original.id}`}>
+      <Link className='text-sm font-bold' href={`/app/shopify/orders/${row.original.id}`}>
         {row.original?.name || '--'}
       </Link>
     ),
@@ -124,14 +125,14 @@ export const columns: ColumnDef<Order>[] = [
     size: 155,
     maxSize: 200,
     // size: 100,
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Date" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title='Date' />,
     cell: ({ row }) => {
       // const label = labels.find((label) => label.value === row.original.label)
       const date = formatRelativeDate(row.original?.createdAt)
       return (
-        <div className="flex space-x-2">
+        <div className='flex space-x-2'>
           {/* {label && <Badge variant='outline'>{label.label}</Badge>} */}
-          <span className="truncate text-sm">{date}</span>
+          <span className='truncate text-sm'>{date}</span>
         </div>
       )
     },
@@ -140,15 +141,15 @@ export const columns: ColumnDef<Order>[] = [
     accessorKey: 'customer',
     minSize: 150,
     maxSize: Number.MAX_SAFE_INTEGER,
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Customer" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title='Customer' />,
     cell: ({ row }) => {
       // const label = labels.find((label) => label.value === row.original.label)
       const name = renderName(row.original?.customer)
       return (
-        <div className="flex space-x-2">
+        <div className='flex space-x-2'>
           {/* {label && <Badge variant='outline'>{label.label}</Badge>} */}
           <ContactHoverCard contact={row.original.customer.contact}>
-            <span className="truncate text-sm">{name}</span>
+            <span className='truncate text-sm'>{name}</span>
           </ContactHoverCard>
         </div>
       )
@@ -158,11 +159,11 @@ export const columns: ColumnDef<Order>[] = [
     accessorKey: 'total',
     minSize: 60,
     maxSize: 70,
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Total" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title='Total' />,
     cell: ({ row }) => {
       // const label = labels.find((label) => label.value === row.original.label)
       return (
-        <div className="flex space-x-2 text-sm">
+        <div className='flex space-x-2 text-sm'>
           {formatMoney(row.original.totalPrice || 0, '${{amount_no_decimals}}')}
         </div>
       )
@@ -171,12 +172,12 @@ export const columns: ColumnDef<Order>[] = [
   {
     id: 'Fulfillment Status',
     accessorKey: 'fulfillmentStatus',
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Fulfillment Status" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title='Fulfillment Status' />,
     cell: ({ row }) => {
       // const label = labels.find((label) => label.value === row.original.label)
       return (
-        <div className="flex space-x-2 text-xs">
-          <Badge variant="outline" className="font-normal">
+        <div className='flex space-x-2 text-xs'>
+          <Badge variant='outline' className='font-normal'>
             {orderFulfillmentStatuses[row.original.fulfillmentStatus]}
           </Badge>
         </div>
@@ -188,12 +189,12 @@ export const columns: ColumnDef<Order>[] = [
     minSize: 90,
     maxSize: 120,
     accessorKey: 'trackings',
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Delivery Status" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title='Delivery Status' />,
     cell: ({ row }) => {
       // const label = labels.find((label) => label.value === row.original.label)
       return (
-        <div className="flex space-x-2 text-xs">
-          <Badge variant="outline" className="font-normal">
+        <div className='flex space-x-2 text-xs'>
+          <Badge variant='outline' className='font-normal'>
             In transit
           </Badge>
         </div>

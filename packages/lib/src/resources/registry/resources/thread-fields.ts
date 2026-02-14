@@ -1,10 +1,10 @@
 // packages/lib/src/workflow-engine/resources/registry/resources/thread-fields.ts
 
 import { FieldType } from '@auxx/database/enums'
+import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
-import { toFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { ReadStatus, ThreadStatus } from '../enum-values'
 import type { ResourceField } from '../field-types'
-import { ThreadStatus, ReadStatus } from '../enum-values'
 
 /**
  * Field definitions for the Thread resource

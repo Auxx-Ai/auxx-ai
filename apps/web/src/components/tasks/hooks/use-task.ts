@@ -1,8 +1,8 @@
 // apps/web/src/components/tasks/hooks/use-task.ts
 
+import type { TaskWithRelations } from '@auxx/lib/tasks'
 import { api } from '~/trpc/react'
 import { useTaskStore } from '../stores/task-store'
-import type { TaskWithRelations } from '@auxx/lib/tasks'
 
 /**
  * Options for useTask hook

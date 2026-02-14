@@ -1,12 +1,15 @@
 // src/app/(auth)/reset-password/_components/reset-password-form.tsx
 'use client'
 
-import React, { useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import { z } from 'zod'
 import { Button } from '@auxx/ui/components/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@auxx/ui/components/card'
 import {
   Form,
   FormControl,
@@ -16,17 +19,13 @@ import {
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  CardFooter,
-} from '@auxx/ui/components/card'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { useRouter } from 'next/navigation' // For redirection
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation' // For redirection
+import React, { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { client } from '~/auth/auth-client'
 
 // Schema with password confirmation
@@ -76,22 +75,22 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
   }
 
   return (
-    <Card className="w-full max-w-md shadow-md shadow-black/20 border-transparent">
-      <CardHeader className="text-center">
+    <Card className='w-full max-w-md shadow-md shadow-black/20 border-transparent'>
+      <CardHeader className='text-center'>
         <CardTitle>Reset Your Password</CardTitle>
         <CardDescription>Enter and confirm your new password below.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
             <FormField
               control={form.control}
-              name="newPassword"
+              name='newPassword'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>New Password</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} disabled={isLoading} />
+                    <Input type='password' placeholder='••••••••' {...field} disabled={isLoading} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -99,30 +98,30 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
             />
             <FormField
               control={form.control}
-              name="confirmPassword"
+              name='confirmPassword'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Confirm New Password</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} disabled={isLoading} />
+                    <Input type='password' placeholder='••••••••' {...field} disabled={isLoading} />
                   </FormControl>
                   <FormMessage /> {/* Will show "Passwords don't match" here */}
                 </FormItem>
               )}
             />
             <Button
-              type="submit"
-              className="w-full"
+              type='submit'
+              className='w-full'
               loading={isLoading}
-              loadingText="Resetting Password...">
+              loadingText='Resetting Password...'>
               Reset Password
             </Button>
           </form>
         </Form>
       </CardContent>
-      <CardFooter className="flex justify-center">
-        <Button variant="link" asChild className="text-sm">
-          <Link href="/login">Back to Login</Link>
+      <CardFooter className='flex justify-center'>
+        <Button variant='link' asChild className='text-sm'>
+          <Link href='/login'>Back to Login</Link>
         </Button>
       </CardFooter>
     </Card>

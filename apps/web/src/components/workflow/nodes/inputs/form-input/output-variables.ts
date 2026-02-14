@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/nodes/inputs/form-input/output-variables.ts
 
-import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { BaseType } from '~/components/workflow/types/unified-types'
+import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import {
-  createUnifiedOutputVariable,
   createNestedVariable,
+  createUnifiedOutputVariable,
 } from '~/components/workflow/utils/variable-conversion'
 import type { FormInputNodeData } from './types'
 

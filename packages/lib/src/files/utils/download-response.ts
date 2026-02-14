@@ -35,16 +35,19 @@ export function createFileDownloadResponse(
   } = {}
 ): FileDownloadResponse {
   const { range, inline = false, cacheControl = 'private, no-cache' } = options
-  
+
   let buffer = fileContent
   let status = 200
   const headers: Record<string, string> = {}
 
   // Handle range requests for video/audio streaming
-  if (range && (fileInfo.mimeType?.startsWith('video/') || fileInfo.mimeType?.startsWith('audio/'))) {
+  if (
+    range &&
+    (fileInfo.mimeType?.startsWith('video/') || fileInfo.mimeType?.startsWith('audio/'))
+  ) {
     const start = range.start
     const end = range.end ?? fileContent.length - 1
-    
+
     buffer = fileContent.subarray(start, end + 1)
     status = 206 // Partial Content
     headers['Content-Range'] = `bytes ${start}-${end}/${fileContent.length}`
@@ -54,11 +57,11 @@ export function createFileDownloadResponse(
   // Set content headers
   headers['Content-Type'] = fileInfo.mimeType || 'application/octet-stream'
   headers['Content-Length'] = buffer.length.toString()
-  
+
   // Set disposition (inline for images/videos, attachment for downloads)
   const disposition = inline ? 'inline' : 'attachment'
   headers['Content-Disposition'] = `${disposition}; filename="${fileInfo.name}"`
-  
+
   // Set cache control
   headers['Cache-Control'] = cacheControl
 
@@ -74,13 +77,13 @@ export function createFileDownloadResponse(
  */
 export function parseRangeHeader(rangeHeader: string | null): RangeRequest | null {
   if (!rangeHeader) return null
-  
+
   const match = rangeHeader.match(/bytes=(\d+)-(\d*)?/)
   if (!match) return null
-  
+
   const start = parseInt(match[1], 10)
   const end = match[2] ? parseInt(match[2], 10) : undefined
-  
+
   return { start, end }
 }
 

@@ -1,10 +1,15 @@
 // apps/web/src/components/threads/hooks/use-messages.ts
 
+import { extractUniqueParticipantIds } from '@auxx/types'
 import { useCallback, useEffect } from 'react'
 import { useShallow } from 'zustand/shallow'
-import { extractUniqueParticipantIds } from '@auxx/types'
-import { useMessageListStore, useMessageStore, useParticipantStore, type MessageMeta } from '../store'
 import { api } from '~/trpc/react'
+import {
+  type MessageMeta,
+  useMessageListStore,
+  useMessageStore,
+  useParticipantStore,
+} from '../store'
 
 interface UseMessagesOptions {
   threadId: string | null | undefined

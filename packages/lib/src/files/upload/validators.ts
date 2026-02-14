@@ -1,7 +1,7 @@
 // packages/lib/src/files/file-upload/validators.ts
 
-import path from 'path'
 import { createScopedLogger } from '@auxx/logger'
+import path from 'path'
 import type { FileValidationOptions } from './types'
 import { FileValidationError } from './types'
 

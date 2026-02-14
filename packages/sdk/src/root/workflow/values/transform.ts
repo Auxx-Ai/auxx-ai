@@ -1,7 +1,7 @@
 // packages/sdk/src/root/workflow/values/transform.ts
 
-import type { TransformationContext } from './types.js'
 import type { WorkflowFieldNode } from '../base-node.js'
+import type { TransformationContext } from './types.js'
 
 /**
  * Transform a schema object's values to config format

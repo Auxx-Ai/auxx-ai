@@ -2,22 +2,23 @@
 
 'use client'
 
-import React, { useState, useMemo } from 'react'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Button } from '@auxx/ui/components/button'
 import {
   Command,
-  CommandInput,
-  CommandList,
   CommandEmpty,
+  CommandInput,
   CommandItem,
+  CommandList,
 } from '@auxx/ui/components/command'
-import { Switch } from '@auxx/ui/components/switch'
 import { Label } from '@auxx/ui/components/label'
-import { Button } from '@auxx/ui/components/button'
-import { Check, ChevronDown } from 'lucide-react'
-import { VarTypeIcon, getVarTypeName } from '~/components/workflow/utils/icon-helper'
-import { BaseType } from '~/components/workflow/types/unified-types'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Switch } from '@auxx/ui/components/switch'
 import { cn } from '@auxx/ui/lib/utils'
+import { Check, ChevronDown } from 'lucide-react'
+import type React from 'react'
+import { useMemo, useState } from 'react'
+import { BaseType } from '~/components/workflow/types/unified-types'
+import { getVarTypeName, VarTypeIcon } from '~/components/workflow/utils/icon-helper'
 
 /**
  * Value format for variable type picker
@@ -119,21 +120,21 @@ export const VariableTypePicker: React.FC<VariableTypePickerProps> = ({
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <Button
-          variant="outline"
-          role="combobox"
-          size="xs"
+          variant='outline'
+          role='combobox'
+          size='xs'
           aria-expanded={open}
           className={cn('justify-between', className)}
           disabled={disabled}>
-          <div className="flex items-center gap-1.5">
-            {showIcons && <VarTypeIcon type={value.baseType} className="size-3.5" />}
+          <div className='flex items-center gap-1.5'>
+            {showIcons && <VarTypeIcon type={value.baseType} className='size-3.5' />}
             {displayValue}
           </div>
-          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          <ChevronDown className='ml-2 h-4 w-4 shrink-0 opacity-50' />
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="p-0"
+        className='p-0'
         align={align}
         side={side}
         style={{ width: `${popoverWidth}px`, maxHeight: `${popoverHeight}px` }}>
@@ -145,16 +146,16 @@ export const VariableTypePicker: React.FC<VariableTypePickerProps> = ({
               onValueChange={setSearchQuery}
             />
           )}
-          <CommandList className="p-0.5">
+          <CommandList className='p-0.5'>
             <CommandEmpty>No type found.</CommandEmpty>
 
             {/* Flat list of all available types */}
             {availableTypes.map((type) => (
               <CommandItem key={type} value={type} onSelect={() => handleTypeSelect(type)}>
-                <div className="flex items-center gap-2 flex-1">
+                <div className='flex items-center gap-2 flex-1'>
                   {showIcons && (
-                    <div className="rounded-full ring-1 shrink-0 ring-ring bg-secondary flex items-center justify-center size-4">
-                      <VarTypeIcon type={type} className="size-3! text-blue-500" />
+                    <div className='rounded-full ring-1 shrink-0 ring-ring bg-secondary flex items-center justify-center size-4'>
+                      <VarTypeIcon type={type} className='size-3! text-blue-500' />
                     </div>
                   )}
                   {getVarTypeName(type)}
@@ -171,13 +172,13 @@ export const VariableTypePicker: React.FC<VariableTypePickerProps> = ({
 
           {/* Array Toggle */}
           {includeArrayToggle && (
-            <div className="border-t py-2 px-3">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="array-toggle" className="text-sm font-medium">
+            <div className='border-t py-2 px-3'>
+              <div className='flex items-center justify-between'>
+                <Label htmlFor='array-toggle' className='text-sm font-medium'>
                   Array
                 </Label>
                 <Switch
-                  id="array-toggle"
+                  id='array-toggle'
                   checked={value.isArray}
                   onCheckedChange={handleArrayToggle}
                 />

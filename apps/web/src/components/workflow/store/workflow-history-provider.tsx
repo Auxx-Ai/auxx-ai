@@ -1,7 +1,8 @@
 // apps/web/src/components/workflow/store/workflow-history-provider.tsx
 
-import React, { useEffect } from 'react'
 import { useStoreApi } from '@xyflow/react'
+import type React from 'react'
+import { useEffect } from 'react'
 import { useWorkflowHistory } from '../hooks/use-save-to-history'
 import { useHistoryManager } from './workflow-store-provider'
 

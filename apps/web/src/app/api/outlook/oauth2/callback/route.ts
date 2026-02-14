@@ -1,9 +1,9 @@
 // app/api/outlook/oauth2/callback/route.ts
 
-import { type NextRequest } from 'next/server'
 import { WEBAPP_URL } from '@auxx/config/server'
 import { OutlookOAuthService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
+import type { NextRequest } from 'next/server'
 
 const logger = createScopedLogger('outlook-oauth-callback')
 

@@ -1,21 +1,21 @@
 // packages/lib/src/ai-features/compose/ai-compose.service.ts
 import { type Database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
-import { createScopedLogger } from '../../logger'
-import { LLMOrchestrator } from '../../ai/orchestrator/llm-orchestrator'
-import { UsageTrackingService } from '../../ai/usage/usage-tracking-service'
-import { MessageQueryService } from '../../messages/message-query.service'
-import type { LLMInvocationRequest } from '../../ai/orchestrator/types'
 import type { Message } from '../../ai/clients/base/types'
+import { LLMOrchestrator } from '../../ai/orchestrator/llm-orchestrator'
+import type { LLMInvocationRequest } from '../../ai/orchestrator/types'
+import { UsageTrackingService } from '../../ai/usage/usage-tracking-service'
+import { createScopedLogger } from '../../logger'
+import { MessageQueryService } from '../../messages/message-query.service'
+import { formatThreadContext, getPrompt } from './prompts'
 import {
   AI_OPERATION,
-  type AIOperation,
   type AIComposeRequest,
   type AIComposeResponse,
-  type OutputFormat,
+  type AIOperation,
   OUTPUT_FORMAT,
+  type OutputFormat,
 } from './types'
-import { getPrompt, formatThreadContext } from './prompts'
 import { convertHtmlToTiptap, convertTiptapToHtml, stripHtml } from './utils'
 
 const logger = createScopedLogger('ai-compose-service')
@@ -159,7 +159,9 @@ export class AIComposeService {
       const [thread] = await this.db
         .select({ id: schema.Thread.id, subject: schema.Thread.subject })
         .from(schema.Thread)
-        .where(and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, organizationId)))
+        .where(
+          and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, organizationId))
+        )
         .limit(1)
 
       if (!thread) {
@@ -313,10 +315,11 @@ export class AIComposeService {
         // Trust the AI to return proper HTML
         return content.trim()
 
-      case OUTPUT_FORMAT.EDITOR:
+      case OUTPUT_FORMAT.EDITOR: {
         // Convert to TipTap JSON format
         const htmlContent = await this.formatOutput(content, OUTPUT_FORMAT.HTML)
         return JSON.stringify(convertHtmlToTiptap(htmlContent))
+      }
 
       default:
         return content

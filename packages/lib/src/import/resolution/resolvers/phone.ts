@@ -1,6 +1,6 @@
 // packages/lib/src/import/resolution/resolvers/phone.ts
 
-import type { ResolvedValue, ResolutionConfig } from '../../types/resolution'
+import type { ResolutionConfig, ResolvedValue } from '../../types/resolution'
 
 /**
  * Resolve and normalize phone number.

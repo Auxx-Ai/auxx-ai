@@ -2,11 +2,11 @@
 
 import { BaseSpecializedClient } from './base-specialized-client'
 import type {
+  BatchEmbeddingParams,
+  BatchEmbeddingResponse,
   ClientConfig,
   EmbeddingParams,
   EmbeddingResponse,
-  BatchEmbeddingParams,
-  BatchEmbeddingResponse,
 } from './types'
 
 /**
@@ -66,7 +66,7 @@ export abstract class TextEmbeddingClient extends BaseSpecializedClient {
   async defaultBatchInvoke(params: BatchEmbeddingParams): Promise<BatchEmbeddingResponse> {
     const { texts, batchSize = 100, ...singleParams } = params
     const allEmbeddings: number[][] = []
-    let totalUsage = {
+    const totalUsage = {
       prompt_tokens: 0,
       completion_tokens: 0,
       total_tokens: 0,
@@ -75,7 +75,7 @@ export abstract class TextEmbeddingClient extends BaseSpecializedClient {
     // Process in batches
     for (let i = 0; i < texts.length; i += batchSize) {
       const batch = texts.slice(i, i + batchSize)
-      
+
       const response = await this.invoke({
         ...singleParams,
         text: batch,
@@ -136,11 +136,9 @@ export abstract class TextEmbeddingClient extends BaseSpecializedClient {
   ): Array<{ index: number; similarity: number }> {
     const similarities = embeddings.map((embedding, index) => ({
       index,
-      similarity: this.calculateCosineSimilarity(queryEmbedding, embedding),
+      similarity: TextEmbeddingClient.calculateCosineSimilarity(queryEmbedding, embedding),
     }))
 
-    return similarities
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, topK)
+    return similarities.sort((a, b) => b.similarity - a.similarity).slice(0, topK)
   }
 }

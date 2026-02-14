@@ -2,13 +2,13 @@
 
 'use client'
 
-import { useCallback, useMemo } from 'react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { VirtualTableRow } from './virtual-table-row'
-import { useViewMetadata } from '../context/view-metadata-context'
-import type { DragDropConfig } from '../types'
 import type { Row } from '@tanstack/react-table'
 import type { VirtualItem, Virtualizer } from '@tanstack/react-virtual'
+import { useCallback, useMemo } from 'react'
+import { useViewMetadata } from '../context/view-metadata-context'
+import type { DragDropConfig } from '../types'
+import { VirtualTableRow } from './virtual-table-row'
 
 interface DragDropRowProps<TData> {
   row: Row<TData>

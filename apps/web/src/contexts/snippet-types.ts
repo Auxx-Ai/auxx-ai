@@ -1,4 +1,4 @@
-import { SnippetSharingType } from '@auxx/database/enums'
+import type { SnippetSharingType } from '@auxx/database/enums'
 /**
  * Input types for snippet operations
  */

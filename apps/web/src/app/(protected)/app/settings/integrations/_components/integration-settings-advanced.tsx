@@ -1,9 +1,9 @@
 'use client'
-// ~/app/(protected)/app/settings/integrations/_components/integration-settings-advanced.tsx
-import React, { useEffect, useState } from 'react'
-import { MailPlus, Users, UserCheck, UserX } from 'lucide-react'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
+import { MailPlus, UserCheck, Users, UserX } from 'lucide-react'
+// ~/app/(protected)/app/settings/integrations/_components/integration-settings-advanced.tsx
+import React, { useEffect, useState } from 'react'
 import { useIntegration } from '~/hooks/use-integration'
 
 interface IntegrationSettingsAdvancedProps {
@@ -51,12 +51,12 @@ export default function IntegrationSettingsAdvanced({
   }
 
   return (
-    <div className="space-y-10 p-6">
-      <div className="space-y-1">
-        <div className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
-          <MailPlus className="size-4" /> Record Creation
+    <div className='space-y-10 p-6'>
+      <div className='space-y-1'>
+        <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
+          <MailPlus className='size-4' /> Record Creation
         </div>
-        <p className="text-sm text-muted-foreground">Manage how records will be created.</p>
+        <p className='text-sm text-muted-foreground'>Manage how records will be created.</p>
       </div>
 
       <RadioGroup
@@ -64,22 +64,22 @@ export default function IntegrationSettingsAdvanced({
         onValueChange={handleRecordCreationChange}
         disabled={updateSettings.isPending}>
         <RadioGroupItemCard
-          label="All contacts"
-          value="all"
+          label='All contacts'
+          value='all'
           icon={<Users />}
-          description="Records will be created for all contacts who appear in the messages of your members."
+          description='Records will be created for all contacts who appear in the messages of your members.'
         />
         <RadioGroupItemCard
-          label="Selective contact creation"
-          value="selective"
+          label='Selective contact creation'
+          value='selective'
           icon={<UserCheck />}
-          description="Records will only be created for contacts who receive messages from your members, preventing spam from polluting your contacts."
+          description='Records will only be created for contacts who receive messages from your members, preventing spam from polluting your contacts.'
         />
         <RadioGroupItemCard
-          label="None"
-          value="none"
+          label='None'
+          value='none'
           icon={<UserX />}
-          description="No records will automatically be created. Message events will still be associated with records created manually."
+          description='No records will automatically be created. Message events will still be associated with records created manually.'
         />
       </RadioGroup>
     </div>

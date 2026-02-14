@@ -1,7 +1,7 @@
 // packages/lib/src/shopify/shopify-initial-sync.ts
 
+import { type Database, database } from '@auxx/database'
 import type { AdminApiClient } from '@shopify/admin-api-client'
-import { database, type Database } from '@auxx/database'
 
 export class ShopifyInitialSync {
   //  private account: AccountType

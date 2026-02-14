@@ -1,19 +1,19 @@
 // apps/web/src/stores/custom-field-value-store.ts
 
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import type { TypedFieldValue } from '@auxx/types/field-value'
-import { toRecordId, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import {
-  type FieldReference,
   type FieldPath,
-  type ResourceFieldId,
+  type FieldReference,
   fieldRefToKey,
-  keyToFieldRef,
   isFieldPath,
   isResourceFieldId,
+  keyToFieldRef,
+  type ResourceFieldId,
   toResourceFieldId,
 } from '@auxx/types/field'
+import type { TypedFieldValue } from '@auxx/types/field-value'
+import { create } from 'zustand'
+import { subscribeWithSelector } from 'zustand/middleware'
 import { computeDependentCalcValues } from './calc-value-computer'
 
 /**
@@ -282,7 +282,7 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
 
       set((state) => {
         // First, apply the new values
-        let newValues = { ...state.values }
+        const newValues = { ...state.values }
         const newUpdatedAt = { ...state.updatedAt }
 
         // Clear fetchingKeys for values that have arrived
@@ -310,7 +310,7 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
     setValue: (key, value) => {
       set((state) => {
         const now = Date.now()
-        let newValues = { ...state.values, [key]: value }
+        const newValues = { ...state.values, [key]: value }
         const newUpdatedAt = { ...state.updatedAt, [key]: now }
 
         // Compute dependent CALC values
@@ -328,7 +328,7 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
       set((state) => {
         const now = Date.now()
         const original = state.values[key]
-        let newValues = { ...state.values, [key]: newValue }
+        const newValues = { ...state.values, [key]: newValue }
         const newUpdatedAt = { ...state.updatedAt, [key]: now }
 
         // Compute dependent CALC values
@@ -517,12 +517,12 @@ export type { CustomFieldValueState }
 // ─────────────────────────────────────────────────────────────────
 // RE-EXPORTS for convenience
 // ─────────────────────────────────────────────────────────────────
-export { toRecordId, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+export { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 export {
-  type FieldReference,
   type FieldPath,
-  type ResourceFieldId,
+  type FieldReference,
   fieldRefToKey,
-  keyToFieldRef,
   isFieldPath,
+  keyToFieldRef,
+  type ResourceFieldId,
 } from '@auxx/types/field'

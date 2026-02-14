@@ -1,13 +1,13 @@
 // packages/lib/src/import/planning/find-existing-record.ts
 
-import { eq, and, ilike } from 'drizzle-orm'
-import type { PgTableWithColumns } from 'drizzle-orm/pg-core'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { getValueType } from '@auxx/types'
+import { and, eq, ilike } from 'drizzle-orm'
+import type { PgTableWithColumns } from 'drizzle-orm/pg-core'
 import type { Resource, ResourceField } from '../../resources'
 import { BaseType } from '../../workflow-engine/core/types'
-import { getValueType } from '@auxx/types'
 
 const logger = createScopedLogger('find-existing-record')
 
@@ -81,7 +81,13 @@ export function createFindExistingRecord(options: FindExistingRecordOptions) {
 
     // Custom entities - query via CustomFieldValue
     if (resource.type === 'custom' && resource.entityDefinitionId) {
-      const result = await findInCustomEntity(db, resource.entityDefinitionId, organizationId, identifierField, value)
+      const result = await findInCustomEntity(
+        db,
+        resource.entityDefinitionId,
+        organizationId,
+        identifierField,
+        value
+      )
       logger.debug('Custom entity lookup', {
         entityDefinitionId: resource.entityDefinitionId,
         identifierField: identifierField.key,

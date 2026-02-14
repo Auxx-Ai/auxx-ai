@@ -1,11 +1,11 @@
 // ~/app/(protected)/app/settings/aiModels/_components/connection-tester.tsx
 'use client'
 
-import React from 'react'
-import { CheckCircle, XCircle, Loader2, AlertCircle } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { AlertCircle, CheckCircle, Loader2, XCircle } from 'lucide-react'
+import React from 'react'
 
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error'
 
@@ -36,20 +36,20 @@ export function ConnectionTester({
     switch (status) {
       case 'testing':
         return {
-          icon: <Loader2 className="h-4 w-4 animate-spin" />,
+          icon: <Loader2 className='h-4 w-4 animate-spin' />,
           text: 'Testing connection...',
           variant: 'secondary' as const,
         }
       case 'success':
         return {
-          icon: <CheckCircle className="h-4 w-4" />,
+          icon: <CheckCircle className='h-4 w-4' />,
           text: 'Connected',
           variant: 'default' as const,
           className: 'bg-green-100 text-green-800 hover:bg-green-100',
         }
       case 'error':
         return {
-          icon: <XCircle className="h-4 w-4" />,
+          icon: <XCircle className='h-4 w-4' />,
           text: 'Connection failed',
           variant: 'destructive' as const,
         }
@@ -61,24 +61,24 @@ export function ConnectionTester({
   const statusDisplay = getStatusDisplay()
 
   return (
-    <div className="space-y-3">
+    <div className='space-y-3'>
       {/* Test Button and Status Badge */}
-      <div className="flex items-center justify-between">
+      <div className='flex items-center justify-between'>
         {showTestButton && (
           <Button
-            variant="outline"
-            size="sm"
+            variant='outline'
+            size='sm'
             onClick={onTest}
             disabled={disabled || status === 'testing'}
             loading={status === 'testing'}
-            loadingText="Testing...">
+            loadingText='Testing...'>
             Test Connection
           </Button>
         )}
 
         {statusDisplay && (
           <Badge variant={statusDisplay.variant} className={statusDisplay.className}>
-            <div className="flex items-center gap-1">
+            <div className='flex items-center gap-1'>
               {statusDisplay.icon}
               {statusDisplay.text}
             </div>
@@ -89,19 +89,19 @@ export function ConnectionTester({
       {/* Success Message */}
       {status === 'success' && (
         <Alert>
-          <CheckCircle className="h-4 w-4 text-green-600" />
-          <AlertDescription className="text-green-800">{successMessage}</AlertDescription>
+          <CheckCircle className='h-4 w-4 text-green-600' />
+          <AlertDescription className='text-green-800'>{successMessage}</AlertDescription>
         </Alert>
       )}
 
       {/* Error Message */}
       {status === 'error' && errorMessage && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
+        <Alert variant='destructive'>
+          <AlertCircle className='h-4 w-4' />
           <AlertDescription>
-            <div className="space-y-1">
-              <p className="font-medium">Connection test failed</p>
-              <p className="text-sm">{errorMessage}</p>
+            <div className='space-y-1'>
+              <p className='font-medium'>Connection test failed</p>
+              <p className='text-sm'>{errorMessage}</p>
             </div>
           </AlertDescription>
         </Alert>
@@ -110,7 +110,7 @@ export function ConnectionTester({
       {/* Testing Progress */}
       {status === 'testing' && (
         <Alert>
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className='h-4 w-4 animate-spin' />
           <AlertDescription>Testing your credentials with the provider...</AlertDescription>
         </Alert>
       )}

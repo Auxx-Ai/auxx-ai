@@ -1,8 +1,8 @@
 // packages/lib/src/import/resolution/get-resolution-progress.ts
 
-import { eq } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { eq } from 'drizzle-orm'
 
 /** Resolution progress for a job */
 export interface ResolutionProgress {

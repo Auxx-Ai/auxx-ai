@@ -1,8 +1,8 @@
 // packages/lib/src/import/raw-data/get-row-data.ts
 
-import { eq, and, asc, inArray } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 
 /**
  * Get all values for a specific row in an import job.

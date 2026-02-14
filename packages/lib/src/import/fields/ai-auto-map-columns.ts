@@ -3,13 +3,13 @@
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { LLMOrchestrator } from '../../ai/orchestrator/llm-orchestrator'
-import { UsageTrackingService } from '../../ai/usage/usage-tracking-service'
+import type { LLMInvocationRequest } from '../../ai/orchestrator/types'
 import { SystemModelService } from '../../ai/providers/system-model-service'
 import { ModelType } from '../../ai/providers/types'
-import type { LLMInvocationRequest } from '../../ai/orchestrator/types'
+import { UsageTrackingService } from '../../ai/usage/usage-tracking-service'
 import type { AIColumnMappingInput, AIColumnMappingResult } from '../types/ai-mapping'
-import { suggestResolutionType } from './suggest-resolution-type'
 import type { ImportableField } from './get-importable-fields'
+import { suggestResolutionType } from './suggest-resolution-type'
 
 const logger = createScopedLogger('ai-auto-map-columns')
 

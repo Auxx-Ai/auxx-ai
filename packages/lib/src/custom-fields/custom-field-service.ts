@@ -1,21 +1,17 @@
 // packages/lib/src/custom-fields/custom-field-service.ts
 
-import { database, type Database } from '@auxx/database'
-import {
-  getCustomFields,
-  createCustomField,
-  updateCustomField,
-  deleteCustomField,
-  getRelationshipPair,
-  ModelTypes,
-  type ModelType,
-  type RelationshipOptions,
-} from '@auxx/services/custom-fields'
+import { type Database, database } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
-import type {
-  SelectOption,
-  FileOptions,
-  DisplayOptions,
+import type { DisplayOptions, FileOptions, SelectOption } from '@auxx/services/custom-fields'
+import {
+  createCustomField,
+  deleteCustomField,
+  getCustomFields,
+  getRelationshipPair,
+  type ModelType,
+  ModelTypes,
+  type RelationshipOptions,
+  updateCustomField,
 } from '@auxx/services/custom-fields'
 import type { CurrencyOptions } from '@auxx/types/custom-field'
 import type { ResourceFieldId } from '@auxx/types/field'
@@ -70,7 +66,11 @@ export class CustomFieldService {
     description?: string
     required?: boolean
     defaultValue?: string
-    options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions } | DisplayOptions
+    options?:
+      | SelectOption[]
+      | { file: FileOptions }
+      | { currency: CurrencyOptions }
+      | DisplayOptions
     addressComponents?: string[]
     icon?: string
     isCustom?: boolean
@@ -102,7 +102,11 @@ export class CustomFieldService {
     description?: string
     required?: boolean
     defaultValue?: string
-    options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions } | DisplayOptions
+    options?:
+      | SelectOption[]
+      | { file: FileOptions }
+      | { currency: CurrencyOptions }
+      | DisplayOptions
     addressComponents?: string[]
     icon?: string
     isCustom?: boolean

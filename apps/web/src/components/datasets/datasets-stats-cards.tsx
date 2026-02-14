@@ -2,9 +2,9 @@
 
 'use client'
 
-import { StatCards, type StatCardData } from '@auxx/ui/components/stat-card'
-import { Database, FileText, AlertCircle, Activity } from 'lucide-react'
+import { type StatCardData, StatCards } from '@auxx/ui/components/stat-card'
 import { formatBytes } from '@auxx/utils/file'
+import { Activity, AlertCircle, Database, FileText } from 'lucide-react'
 import type { OrganizationDatasetStats } from './datasets-provider'
 
 interface DatasetsStatsCardsProps {
@@ -19,7 +19,7 @@ export function DatasetsStatsCards({ stats }: DatasetsStatsCardsProps) {
     {
       title: 'Total Datasets',
       body: stats?.total.toString() || '0',
-      icon: <Database className="size-4" />,
+      icon: <Database className='size-4' />,
       description: stats ? `${stats.active} active, ${stats.processing} processing` : '',
       color: 'text-accent-500',
       iconPosition: 'right',
@@ -27,7 +27,7 @@ export function DatasetsStatsCards({ stats }: DatasetsStatsCardsProps) {
     {
       title: 'Total Documents',
       body: stats?.totalDocuments.toString() || '0',
-      icon: <FileText className="size-4" />,
+      icon: <FileText className='size-4' />,
       description: 'Across all datasets',
       color: 'text-comparison-500',
       iconPosition: 'right',
@@ -35,7 +35,7 @@ export function DatasetsStatsCards({ stats }: DatasetsStatsCardsProps) {
     {
       title: 'Storage Used',
       body: stats ? formatBytes(Number(stats.totalSize)) : '0 B',
-      icon: <Activity className="size-4" />,
+      icon: <Activity className='size-4' />,
       description: 'Total storage consumed',
       color: 'text-good-500',
       iconPosition: 'right',
@@ -43,7 +43,7 @@ export function DatasetsStatsCards({ stats }: DatasetsStatsCardsProps) {
     {
       title: 'Processing Issues',
       body: stats?.error.toString() || '0',
-      icon: <AlertCircle className="size-4" />,
+      icon: <AlertCircle className='size-4' />,
       description: stats && stats.error > 0 ? 'Datasets with errors' : 'No issues detected',
       color: 'text-bad-500',
       iconPosition: 'right',

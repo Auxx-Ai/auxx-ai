@@ -1,8 +1,5 @@
 // components/editor/SlashCommand.tsx
-import { ReactRenderer } from '@tiptap/react'
-import tippy, { type Instance, type Props as TippyProps } from 'tippy.js' // Import types
-import { Extension } from '@tiptap/core'
-import Suggestion, { type SuggestionOptions, type SuggestionProps } from '@tiptap/suggestion'
+
 import {
   Command,
   CommandEmpty,
@@ -11,10 +8,14 @@ import {
   CommandItem,
   CommandList,
 } from '@auxx/ui/components/command'
+import { Extension } from '@tiptap/core'
+import type { Editor } from '@tiptap/react' // Import Editor type
+import { ReactRenderer } from '@tiptap/react'
+import Suggestion, { type SuggestionOptions, type SuggestionProps } from '@tiptap/suggestion'
 // Use appropriate icons
 import {
-  Folder,
   File,
+  Folder,
   // SmilePlus,
   Heading1,
   Heading2,
@@ -23,15 +24,16 @@ import {
   ListOrdered,
   Quote,
 } from 'lucide-react'
-import React, {
+import type React from 'react'
+import {
+  useCallback, // Import useCallback
   useEffect,
   useImperativeHandle,
   useState,
-  useCallback, // Import useCallback
   // useLayoutEffect, // Import useLayoutEffect for positioning
 } from 'react'
+import tippy, { type Instance, type Props as TippyProps } from 'tippy.js' // Import types
 import { api } from '~/trpc/react'
-import type { Editor } from '@tiptap/react' // Import Editor type
 
 // Define the command items structure more robustly
 interface CommandItemBase {
@@ -99,7 +101,7 @@ function SlashCommandList(props: SlashCommandListProps) {
       type: 'action',
       title: 'Insert snippet',
       description: 'Search and insert reusable content',
-      icon: <Folder className="mr-2 h-4 w-4" />,
+      icon: <Folder className='mr-2 h-4 w-4' />,
       command: () => {
         setSnippetMode(true)
         setSearchQuery('') // Clear search when entering snippet mode
@@ -111,7 +113,7 @@ function SlashCommandList(props: SlashCommandListProps) {
       type: 'action',
       title: 'Heading 1',
       description: 'Big section heading',
-      icon: <Heading1 className="mr-2 h-4 w-4" />,
+      icon: <Heading1 className='mr-2 h-4 w-4' />,
       command: ({ editor, range }) => {
         editor.chain().focus().deleteRange(range).setNode('heading', { level: 1 }).run()
       },
@@ -120,7 +122,7 @@ function SlashCommandList(props: SlashCommandListProps) {
       type: 'action',
       title: 'Heading 2',
       description: 'Medium section heading',
-      icon: <Heading2 className="mr-2 h-4 w-4" />,
+      icon: <Heading2 className='mr-2 h-4 w-4' />,
       command: ({ editor, range }) => {
         editor.chain().focus().deleteRange(range).setNode('heading', { level: 2 }).run()
       },
@@ -129,7 +131,7 @@ function SlashCommandList(props: SlashCommandListProps) {
       type: 'action',
       title: 'Heading 3',
       description: 'Small section heading',
-      icon: <Heading3 className="mr-2 h-4 w-4" />,
+      icon: <Heading3 className='mr-2 h-4 w-4' />,
       command: ({ editor, range }) => {
         editor.chain().focus().deleteRange(range).setNode('heading', { level: 3 }).run()
       },
@@ -138,7 +140,7 @@ function SlashCommandList(props: SlashCommandListProps) {
       type: 'action',
       title: 'Bullet List',
       description: 'Create a bullet list',
-      icon: <List className="mr-2 h-4 w-4" />,
+      icon: <List className='mr-2 h-4 w-4' />,
       command: ({ editor, range }) => {
         editor.chain().focus().deleteRange(range).toggleBulletList().run()
       },
@@ -147,7 +149,7 @@ function SlashCommandList(props: SlashCommandListProps) {
       type: 'action',
       title: 'Numbered List',
       description: 'Create a numbered list',
-      icon: <ListOrdered className="mr-2 h-4 w-4" />,
+      icon: <ListOrdered className='mr-2 h-4 w-4' />,
       command: ({ editor, range }) => {
         editor.chain().focus().deleteRange(range).toggleOrderedList().run()
       },
@@ -156,7 +158,7 @@ function SlashCommandList(props: SlashCommandListProps) {
       type: 'action',
       title: 'Blockquote',
       description: 'Create a quote block',
-      icon: <Quote className="mr-2 h-4 w-4" />,
+      icon: <Quote className='mr-2 h-4 w-4' />,
       command: ({ editor, range }) => {
         editor.chain().focus().deleteRange(range).toggleBlockquote().run()
       },
@@ -190,7 +192,7 @@ function SlashCommandList(props: SlashCommandListProps) {
           id: snippet.id,
           title: snippet.title,
           description: snippet.description || 'Insert snippet content',
-          icon: <File className="mr-2 h-4 w-4" />, // Use File icon for snippet items
+          icon: <File className='mr-2 h-4 w-4' />, // Use File icon for snippet items
           content: snippet.contentHtml || snippet.content,
           command: ({ editor, range }) => {
             editor
@@ -272,7 +274,7 @@ function SlashCommandList(props: SlashCommandListProps) {
 
   // --- Render Logic ---
   return (
-    <Command className="w-72 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md">
+    <Command className='w-72 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md'>
       <CommandInput
         // autoFocus // Consider autoFocusing for better UX
         placeholder={snippetMode ? 'Search snippets...' : 'Type a command or search...'}
@@ -294,10 +296,10 @@ function SlashCommandList(props: SlashCommandListProps) {
           {/* Add dedicated "Back" item for mouse users */}
           {snippetMode && (
             <CommandItem
-              key="back"
+              key='back'
               onSelect={goBack} // Use onSelect for clicks
-              className="cursor-pointer text-sm text-muted-foreground"
-              value="--back--" // Add a value to prevent potential key conflicts
+              className='cursor-pointer text-sm text-muted-foreground'
+              value='--back--' // Add a value to prevent potential key conflicts
             >
               ← Back to commands
             </CommandItem>
@@ -310,13 +312,13 @@ function SlashCommandList(props: SlashCommandListProps) {
               className={`cursor-pointer ${selectedIndex === index ? 'bg-accent text-accent-foreground' : ''}`}
               value={item.title} // Set value for Command Primitive interaction
             >
-              <div className="flex w-full items-center justify-between">
-                <div className="flex items-center">
+              <div className='flex w-full items-center justify-between'>
+                <div className='flex items-center'>
                   {item.icon}
-                  <div className="ml-2">
-                    <p className="text-sm font-medium">{item.title}</p>
+                  <div className='ml-2'>
+                    <p className='text-sm font-medium'>{item.title}</p>
                     {item.description && (
-                      <p className="text-xs text-muted-foreground">{item.description}</p>
+                      <p className='text-xs text-muted-foreground'>{item.description}</p>
                     )}
                   </div>
                 </div>
@@ -329,7 +331,6 @@ function SlashCommandList(props: SlashCommandListProps) {
     </Command>
   )
 }
-
 // Keep displayName for devtools clarity
 ;(SlashCommandList as any).displayName = 'SlashCommandList'
 

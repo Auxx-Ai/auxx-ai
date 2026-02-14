@@ -1,6 +1,6 @@
-import { Container, Heading, Text, Section, Row, Column } from '@react-email/components'
+import { Column, Container, Heading, Row, Section, Text } from '@react-email/components'
 
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -61,23 +61,23 @@ export async function ApprovalRequestEmail({
         </Text>
 
         <Section>
-          <Row className="bg-gray-50 p-10 rounded-xl">
-            <Column className="text-center w-1/3">
+          <Row className='bg-gray-50 p-10 rounded-xl'>
+            <Column className='text-center w-1/3'>
               <EmailButton
                 href={`${approvalUrl}?action=approve`}
-                label="Approve"
-                className="bg-green-500"
+                label='Approve'
+                className='bg-green-500'
               />
             </Column>
-            <Column className="text-center w-1/3">
+            <Column className='text-center w-1/3'>
               <Text style={{ margin: 0 }}>or</Text>
             </Column>
 
-            <Column className="text-center w-1/3">
+            <Column className='text-center w-1/3'>
               <EmailButton
                 href={`${approvalUrl}?action=deny`}
-                label="Deny"
-                className="bg-red-500"
+                label='Deny'
+                className='bg-red-500'
               />
             </Column>
           </Row>

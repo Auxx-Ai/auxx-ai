@@ -51,7 +51,7 @@ export function TicketPriorityBadge({ priority, closed }: TicketPriorityBadgePro
 
   return (
     <div className={cn('flex inline-flex', { 'opacity-50': closed })}>
-      <Badge size="default" variant={variant}>
+      <Badge size='default' variant={variant}>
         {priority}
       </Badge>
     </div>

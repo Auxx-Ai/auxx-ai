@@ -2,12 +2,12 @@
 
 'use client'
 
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
 import type { Actor, ActorId, ActorType } from '@auxx/types/actor'
 import { parseActorId } from '@auxx/types/actor'
 import type { GroupMember } from '@auxx/types/groups'
+import { create } from 'zustand'
+import { subscribeWithSelector } from 'zustand/middleware'
+import { immer } from 'zustand/middleware/immer'
 
 /** Batch configuration */
 const BATCH_DELAY = 50
@@ -266,11 +266,9 @@ export const useActorStore = create<ActorStoreState>()(
 
       getActor: (actorId) => get().actors.get(actorId),
 
-      getActorsByType: (type) =>
-        Array.from(get().actors.values()).filter((a) => a.type === type),
+      getActorsByType: (type) => Array.from(get().actors.values()).filter((a) => a.type === type),
 
-      isActorLoading: (actorId) =>
-        get().loadingIds.has(actorId) || get().pendingIds.has(actorId),
+      isActorLoading: (actorId) => get().loadingIds.has(actorId) || get().pendingIds.has(actorId),
     }))
   )
 )

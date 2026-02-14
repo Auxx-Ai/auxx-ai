@@ -2,41 +2,41 @@
 
 'use client'
 
-import { memo, useMemo } from 'react'
-import { useNodes } from '@xyflow/react'
-import {
-  Copy,
-  Trash2,
-  RefreshCw,
-  PowerOff,
-  Power,
-  Target,
-  FoldVertical,
-  UnfoldVertical,
-} from 'lucide-react'
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuSub,
-  DropdownMenuSubTrigger,
   DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { useWorkflowStore } from '../store/workflow-store'
-import { useContextMenu } from '../hooks/use-context-menu'
-import {
-  useNodesInteractions,
-  useReadOnly,
-  useNonTriggerDefinitions,
-  useNodeAddition,
-} from '../hooks'
-import { unifiedNodeRegistry } from '../nodes/unified-registry'
-import { BlockSelector } from './block-selector'
-import { NodeType } from '../types/node-types'
 import type { Node } from '@xyflow/react'
+import { useNodes } from '@xyflow/react'
+import {
+  Copy,
+  FoldVertical,
+  Power,
+  PowerOff,
+  RefreshCw,
+  Target,
+  Trash2,
+  UnfoldVertical,
+} from 'lucide-react'
+import { memo, useMemo } from 'react'
+import {
+  useNodeAddition,
+  useNodesInteractions,
+  useNonTriggerDefinitions,
+  useReadOnly,
+} from '../hooks'
+import { useContextMenu } from '../hooks/use-context-menu'
+import { unifiedNodeRegistry } from '../nodes/unified-registry'
+import { useWorkflowStore } from '../store/workflow-store'
+import { NodeType } from '../types/node-types'
+import { BlockSelector } from './block-selector'
 
 /**
  * Node context menu - single instance using existing DropdownMenu
@@ -105,14 +105,14 @@ export const NodeContextMenu = memo(() => {
       {/* Invisible trigger positioned at click location */}
       <DropdownMenuTrigger asChild>
         <div
-          className="absolute w-0 h-0 pointer-events-none"
+          className='absolute w-0 h-0 pointer-events-none'
           style={{
             left: nodeMenu?.left ?? 0,
             top: nodeMenu?.top ?? 0,
           }}
         />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <DropdownMenuContent align='start'>
         {/* Change Block - only for non-triggers */}
         {!isTrigger && !isReadOnly && (
           <>
@@ -121,7 +121,7 @@ export const NodeContextMenu = memo(() => {
                 <RefreshCw />
                 Change Block
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="p-0">
+              <DropdownMenuSubContent className='p-0'>
                 <BlockSelector
                   inline={true}
                   open={true}
@@ -181,7 +181,7 @@ export const NodeContextMenu = memo(() => {
         {/* Delete - only for non-triggers */}
         {!isTrigger && !isReadOnly && (
           <DropdownMenuItem
-            variant="destructive"
+            variant='destructive'
             onClick={() => {
               handleDeleteNode(currentNode.id)
               handleNodeContextMenuClose()

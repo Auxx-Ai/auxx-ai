@@ -2,18 +2,18 @@
 
 'use client'
 
-import { ChevronDown, ChevronUp, Settings2, RotateCcw, ChevronRight } from 'lucide-react'
+import { Button } from '@auxx/ui/components/button'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@auxx/ui/components/collapsible'
-import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
-import { SearchMethodSelector, type SearchType } from './search-method-selector'
-import { VectorSearchOptions } from './vector-search-options'
-import { TextSearchOptions } from './text-search-options'
+import { ChevronDown, ChevronRight, ChevronUp, RotateCcw, Settings2 } from 'lucide-react'
 import { HybridSearchOptions } from './hybrid-search-options'
+import { SearchMethodSelector, type SearchType } from './search-method-selector'
+import { TextSearchOptions } from './text-search-options'
+import { VectorSearchOptions } from './vector-search-options'
 
 export interface SearchConfiguration {
   searchType: SearchType
@@ -74,30 +74,30 @@ export function AdvancedSearchOptions({
     <Collapsible open={isOpen} onOpenChange={onToggle}>
       <CollapsibleTrigger asChild>
         <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-between hover:bg-muted/50"
+          variant='ghost'
+          size='sm'
+          className='w-full justify-between hover:bg-muted/50'
           disabled={disabled}>
-          <span className="flex items-center gap-2">
-            <Settings2 className="size-4" />
+          <span className='flex items-center gap-2'>
+            <Settings2 className='size-4' />
             Advanced Search Options
           </span>
           {isOpen ? <ChevronDown /> : <ChevronRight />}
         </Button>
       </CollapsibleTrigger>
 
-      <CollapsibleContent className="space-y-4 pt-4">
+      <CollapsibleContent className='space-y-4 pt-4'>
         {/* Search Method Selection */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h4 className="text-sm font-medium">Retrieval Method</h4>
+        <div className='space-y-3'>
+          <div className='flex items-center justify-between'>
+            <h4 className='text-sm font-medium'>Retrieval Method</h4>
             <Button
-              variant="ghost"
-              size="xs"
+              variant='ghost'
+              size='xs'
               onClick={handleResetToDefaults}
               disabled={disabled}
-              className="h-6 text-xs">
-              <RotateCcw className="size-3 mr-1" />
+              className='h-6 text-xs'>
+              <RotateCcw className='size-3 mr-1' />
               Reset
             </Button>
           </div>
@@ -111,8 +111,8 @@ export function AdvancedSearchOptions({
         <Separator />
 
         {/* Dynamic Options Based on Search Type */}
-        <div className="space-y-3">
-          <h4 className="text-sm font-medium">Configuration</h4>
+        <div className='space-y-3'>
+          <h4 className='text-sm font-medium'>Configuration</h4>
 
           {config.searchType === 'vector' && (
             <VectorSearchOptions

@@ -2,15 +2,13 @@
 
 'use client'
 
-import { cva, type VariantProps } from 'class-variance-authority'
-import { cn } from '@auxx/ui/lib/utils'
-import { User, Users, X } from 'lucide-react'
-
 import type { ActorId } from '@auxx/types/actor'
 import { parseActorId } from '@auxx/types/actor'
-
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { User, Users, X } from 'lucide-react'
 
 import { useActor } from '~/components/resources/hooks/use-actor'
 
@@ -92,36 +90,36 @@ export function ActorBadge({
 
   return (
     <div
-      data-slot="actor-badge"
+      data-slot='actor-badge'
       aria-busy={showLoading}
       className={cn(actorBadgeVariants({ variant }), className)}
       {...props}>
       {showLoading ? (
         <>
-          {showIcon && <Skeleton className="size-4 rounded-full" />}
-          <Skeleton className="h-4 w-20 rounded-full" />
+          {showIcon && <Skeleton className='size-4 rounded-full' />}
+          <Skeleton className='h-4 w-20 rounded-full' />
         </>
       ) : (
         <>
           {showIcon && (
-            <Avatar className="size-4" data-slot="actor-icon">
+            <Avatar className='size-4' data-slot='actor-icon'>
               <AvatarImage src={actor?.avatarUrl ?? undefined} />
-              <AvatarFallback className="text-[10px] bg-neutral-200 dark:bg-neutral-700">
-                {type === 'user' ? <User className="size-2.5" /> : <Users className="size-2.5" />}
+              <AvatarFallback className='text-[10px] bg-neutral-200 dark:bg-neutral-700'>
+                {type === 'user' ? <User className='size-2.5' /> : <Users className='size-2.5' />}
               </AvatarFallback>
             </Avatar>
           )}
-          <span data-slot="actor-display">{displayName}</span>
+          <span data-slot='actor-display'>{displayName}</span>
           {onRemove && actorId && (
             <button
-              type="button"
+              type='button'
               onClick={(e) => {
                 e.stopPropagation()
                 onRemove(actorId)
               }}
-              className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
+              className='ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20'
               aria-label={`Remove ${displayName}`}>
-              <X className="h-3 w-3" />
+              <X className='h-3 w-3' />
             </button>
           )}
         </>

@@ -1,26 +1,22 @@
 export { MessageService } from './message-service'
+
 import { IntegrationProviderType } from '../providers/types'
 
 export { IntegrationProviderType }
 
+export type { EmailAttachment, MessageData, ParticipantInputData } from './email-storage'
 // Email storage: services, enums, and types
 export {
-  MessageStorageService,
-  IntegrationType,
-  MessageType,
   EmailLabel,
   IdentifierType,
+  IntegrationType,
+  MessageStorageService,
+  MessageType,
   ParticipantRole,
   ThreadStatus,
 } from './email-storage'
-export type { MessageData, ParticipantInputData, EmailAttachment } from './email-storage'
-
-export { getUserOrganizationId, requireAdminAccess } from './permissions'
-
-export { LabelService } from './labels/label-service'
-
-export { ReauthenticationRequiredError } from './errors-handlers'
-
 export { EmailTemplateService } from './email-templates'
-
+export { ReauthenticationRequiredError } from './errors-handlers'
 export { LabelRepo } from './labels/label-repo'
+export { LabelService } from './labels/label-service'
+export { getUserOrganizationId, requireAdminAccess } from './permissions'

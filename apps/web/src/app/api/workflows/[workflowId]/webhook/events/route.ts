@@ -1,8 +1,9 @@
 // apps/web/src/app/api/workflows/[workflowId]/webhook/events/route.ts
-import { type NextRequest } from 'next/server'
-import { auth } from '~/auth/server'
-import { headers } from 'next/headers'
+
 import { getRedisClient } from '@auxx/redis'
+import { headers } from 'next/headers'
+import type { NextRequest } from 'next/server'
+import { auth } from '~/auth/server'
 // import { getRedisClient } from '~/lib/redis'
 
 export async function GET(

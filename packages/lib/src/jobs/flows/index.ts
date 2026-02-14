@@ -1,8 +1,8 @@
 // packages/lib/src/jobs/flows/index.ts
 
 export {
-  DocumentFlowJobs,
   createDocumentProcessingFlow,
+  DocumentFlowJobs,
   type FinalizeDocumentJobData,
   type FlowEmbeddingGenerationJobData,
   type WorkflowResumeInfo,

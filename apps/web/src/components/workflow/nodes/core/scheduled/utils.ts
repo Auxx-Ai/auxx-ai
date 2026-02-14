@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/scheduled-trigger/utils.ts
 
 import { Cron } from 'croner'
-import type { ScheduledTriggerUIConfig, ProcessedScheduleConfig, SchedulePreview } from './types'
+import type { ProcessedScheduleConfig, ScheduledTriggerUIConfig, SchedulePreview } from './types'
 
 /**
  * Convert UI configuration to backend-compatible format
@@ -22,7 +22,8 @@ export function convertUIConfigToBackend(ui: ScheduledTriggerUIConfig): Processe
   }
 
   // Convert to number if it's a string
-  const numericValue = typeof intervalValue === 'string' ? parseInt(intervalValue, 10) : intervalValue
+  const numericValue =
+    typeof intervalValue === 'string' ? parseInt(intervalValue, 10) : intervalValue
 
   const config: ProcessedScheduleConfig = {
     type: 'interval',

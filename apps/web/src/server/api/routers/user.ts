@@ -1,13 +1,12 @@
-import { TRPCError } from '@trpc/server'
-import { z } from 'zod'
+import { database as db, schema } from '@auxx/database'
+import { MediaAssetService } from '@auxx/lib/files'
+import { FeaturePermissionService } from '@auxx/lib/permissions'
 import { SettingsService, UserSettingsService } from '@auxx/lib/settings'
 import { autoSyncShopify } from '@auxx/lib/shopify'
-import { MediaAssetService } from '@auxx/lib/files'
-import { database as db, schema } from '@auxx/database'
-import { eq, count } from 'drizzle-orm'
-
+import { TRPCError } from '@trpc/server'
+import { count, eq } from 'drizzle-orm'
+import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { FeaturePermissionService } from '@auxx/lib/permissions'
 
 export const userRouter = createTRPCRouter({
   // getUser: protectedProcedure.input()

@@ -1,17 +1,17 @@
 // packages/database/src/db/schema/connection-definition.ts
 // Drizzle table for connection definition
 
+import { createId } from '@paralleldrive/cuid2'
 import {
+  type AnyPgColumn,
+  boolean,
+  index,
+  integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
-  jsonb,
-  boolean,
-  integer,
-  index,
-  type AnyPgColumn,
 } from './_shared'
-import { createId } from '@paralleldrive/cuid2'
 import { App } from './app'
 import { DeveloperAccount } from './developer-account'
 
@@ -25,7 +25,10 @@ export const ConnectionDefinition = pgTable(
       .notNull(),
     developerAccountId: text()
       .notNull()
-      .references((): AnyPgColumn => DeveloperAccount.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
+      .references((): AnyPgColumn => DeveloperAccount.id, {
+        onUpdate: 'cascade',
+        onDelete: 'cascade',
+      }),
     appId: text()
       .notNull()
       .references((): AnyPgColumn => App.id, { onUpdate: 'cascade', onDelete: 'cascade' }),

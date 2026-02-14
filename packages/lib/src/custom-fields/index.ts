@@ -1,51 +1,48 @@
 // packages/lib/src/custom-fields/index.ts
 
-export { CustomFieldService, normalizeCustomFieldValue } from './custom-field-service'
-export { checkUniqueValueTyped, type CheckUniqueValueTypedInput } from './check-unique-value-typed'
-
-// Export unified types from @auxx/database
-export {
-  ModelTypes,
-  type ModelType,
-  type FieldTypeOption,
-  getFieldTypeMinWidth,
-  getFieldTypeMaxWidth,
-  fieldTypeOptions,
-  PRIMARY_DISPLAY_ELIGIBLE_TYPES,
-} from './types'
-
-// Export built-in field utilities
-export { isBuiltInField, getBuiltInFieldHandler, BUILT_IN_FIELDS } from './built-in-fields'
 export type {
-  BuiltInFieldHandler,
   BuiltInFieldConfig,
+  BuiltInFieldHandler,
   BuiltInFieldRegistry,
 } from './built-in-fields'
-
-// Export field options types (for converters and seeder)
-export {
-  type FieldOptions,
-  type NumberFieldOptions,
-  type DateFieldOptions,
-  type BooleanFieldOptions,
-  type TextFieldOptions,
-  type PhoneFieldOptions,
-  type SelectFieldOptions,
-  type CalcOptions,
-  type CalcFieldOptions,
-  type NameFieldOptions,
-} from './field-options'
-
+// Export built-in field utilities
+export { BUILT_IN_FIELDS, getBuiltInFieldHandler, isBuiltInField } from './built-in-fields'
+export { type CheckUniqueValueTypedInput, checkUniqueValueTyped } from './check-unique-value-typed'
+export { CustomFieldService, normalizeCustomFieldValue } from './custom-field-service'
 // Export default display options (for converters and seeder)
 export {
-  DEFAULT_TEXT_OPTIONS,
-  DEFAULT_NUMBER_OPTIONS,
+  DEFAULT_BOOLEAN_OPTIONS,
   DEFAULT_CURRENCY_OPTIONS,
   DEFAULT_DATE_OPTIONS,
   DEFAULT_DATETIME_OPTIONS,
-  DEFAULT_TIME_OPTIONS,
-  DEFAULT_BOOLEAN_OPTIONS,
-  DEFAULT_PHONE_OPTIONS,
   DEFAULT_FILE_OPTIONS,
+  DEFAULT_NUMBER_OPTIONS,
+  DEFAULT_PHONE_OPTIONS,
+  DEFAULT_TEXT_OPTIONS,
+  DEFAULT_TIME_OPTIONS,
   fieldTypeDisplayDefaults,
 } from './defaults'
+
+// Export field options types (for converters and seeder)
+export type {
+  BooleanFieldOptions,
+  CalcFieldOptions,
+  CalcOptions,
+  DateFieldOptions,
+  FieldOptions,
+  NameFieldOptions,
+  NumberFieldOptions,
+  PhoneFieldOptions,
+  SelectFieldOptions,
+  TextFieldOptions,
+} from './field-options'
+// Export unified types from @auxx/database
+export {
+  type FieldTypeOption,
+  fieldTypeOptions,
+  getFieldTypeMaxWidth,
+  getFieldTypeMinWidth,
+  type ModelType,
+  ModelTypes,
+  PRIMARY_DISPLAY_ELIGIBLE_TYPES,
+} from './types'

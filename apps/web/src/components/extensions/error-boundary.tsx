@@ -75,9 +75,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       }
 
       return (
-        <div className="rounded-md border border-destructive bg-destructive/10 p-4">
-          <p className="text-sm font-medium text-destructive">Extension Error</p>
-          <p className="mt-1 text-xs text-muted-foreground">
+        <div className='rounded-md border border-destructive bg-destructive/10 p-4'>
+          <p className='text-sm font-medium text-destructive'>Extension Error</p>
+          <p className='mt-1 text-xs text-muted-foreground'>
             {this.state.error?.message || 'An error occurred in the extension'}
           </p>
         </div>

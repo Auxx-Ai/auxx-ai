@@ -1,35 +1,35 @@
 // apps/web/src/components/fields/inputs/field-input-adapter.tsx
 'use client'
 
-import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from 'react'
 import { FieldType } from '@auxx/database/enums'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { isMultiRelationship } from '@auxx/lib/field-values/client'
+import { toRecordId } from '@auxx/lib/resources/client'
+import type { ActorId } from '@auxx/types/actor'
 import {
-  getRelatedEntityDefinitionId,
-  type SelectOption,
-  type RelationshipConfig,
   type ActorOptions,
+  getRelatedEntityDefinitionId,
+  type RelationshipConfig,
+  type SelectOption,
 } from '@auxx/types/custom-field'
 import type { RecordId } from '@auxx/types/resource'
-import type { ActorId } from '@auxx/types/actor'
-import { toRecordId } from '@auxx/lib/resources/client'
-import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { ActorPicker } from '~/components/pickers/actor-picker/actor-picker'
-import { SelectFieldInput, getSelectConfig } from './select-input-field'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
+import { ActorPicker } from '~/components/pickers/actor-picker/actor-picker'
+import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import {
-  StringInput,
-  NumberInput,
+  AddressInput,
   BooleanInput,
+  CurrencyInput,
   DateTimeInput,
   FileInput,
-  CurrencyInput,
-  AddressInput,
+  NumberInput,
   PhoneInput,
+  StringInput,
 } from '~/components/workflow/nodes/shared/node-inputs'
 import { NameFieldInput, type NameValue } from './name-field-input'
+import { getSelectConfig, SelectFieldInput } from './select-input-field'
 
 /**
  * Wrapper for inline inputs that focuses the input when `open` becomes true.
@@ -176,14 +176,14 @@ export function FieldInputAdapter({
     case FieldType.RELATIONSHIP: {
       const relationship = fieldOptions?.relationship
       if (!relationship) {
-        return <div className="text-muted-foreground text-sm">Missing relationship config</div>
+        return <div className='text-muted-foreground text-sm'>Missing relationship config</div>
       }
 
       // Derive entityDefinitionId from relationship config
       const entityDefinitionId = getRelatedEntityDefinitionId(relationship as RelationshipConfig)
 
       if (!entityDefinitionId) {
-        return <div className="text-muted-foreground text-sm">Missing entity definition</div>
+        return <div className='text-muted-foreground text-sm'>Missing entity definition</div>
       }
 
       // Use allowMultiple if provided (from operator), otherwise derive from relationship type
@@ -328,14 +328,24 @@ export function FieldInputAdapter({
     case FieldType.EMAIL:
       return (
         <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
-          <StringInput {...nodeInputProps} validationType="email" className={inputClassName} autoGrow={autoGrow} />
+          <StringInput
+            {...nodeInputProps}
+            validationType='email'
+            className={inputClassName}
+            autoGrow={autoGrow}
+          />
         </FocusableInputWrapper>
       )
 
     case FieldType.URL:
       return (
         <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
-          <StringInput {...nodeInputProps} validationType="url" className={inputClassName} autoGrow={autoGrow} />
+          <StringInput
+            {...nodeInputProps}
+            validationType='url'
+            className={inputClassName}
+            autoGrow={autoGrow}
+          />
         </FocusableInputWrapper>
       )
 
@@ -397,7 +407,7 @@ export function FieldInputAdapter({
       return (
         <DateTimeInput
           {...nodeInputProps}
-          type="date"
+          type='date'
           triggerProps={triggerProps}
           open={open}
           onOpenChange={onOpenChange}
@@ -408,7 +418,7 @@ export function FieldInputAdapter({
       return (
         <DateTimeInput
           {...nodeInputProps}
-          type="datetime"
+          type='datetime'
           triggerProps={triggerProps}
           open={open}
           onOpenChange={onOpenChange}
@@ -419,7 +429,7 @@ export function FieldInputAdapter({
       return (
         <DateTimeInput
           {...nodeInputProps}
-          type="time"
+          type='time'
           triggerProps={triggerProps}
           open={open}
           onOpenChange={onOpenChange}

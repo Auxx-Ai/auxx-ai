@@ -4,9 +4,9 @@
  * Test utilities for web app (React components and Next.js)
  */
 
-import React from 'react'
-import { render, RenderOptions } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { type RenderOptions, render } from '@testing-library/react'
+import type React from 'react'
 // import { ThemeProvider } from 'next-themes' // Commented out to avoid dependency issues
 import { vi } from 'vitest'
 
@@ -43,13 +43,11 @@ interface TestProvidersProps {
 
 export function TestProviders({ children, queryClient, theme = 'light' }: TestProvidersProps) {
   const client = queryClient || createTestQueryClient()
-  
+
   return (
     <QueryClientProvider client={client}>
       {/* Simple theme wrapper instead of next-themes to avoid dependencies */}
-      <div data-theme={theme}>
-        {children}
-      </div>
+      <div data-theme={theme}>{children}</div>
     </QueryClientProvider>
   )
 }
@@ -62,12 +60,9 @@ interface CustomRenderOptions extends Omit<RenderOptions, 'wrapper'> {
   theme?: string
 }
 
-export function renderWithProviders(
-  ui: React.ReactElement,
-  options: CustomRenderOptions = {}
-) {
+export function renderWithProviders(ui: React.ReactElement, options: CustomRenderOptions = {}) {
   const { queryClient, theme, ...renderOptions } = options
-  
+
   function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <TestProviders queryClient={queryClient} theme={theme}>
@@ -232,7 +227,7 @@ export function mockLocation(url = 'http://localhost:3000/') {
  */
 export function mockLocalStorage() {
   const store: Record<string, string> = {}
-  
+
   Object.defineProperty(window, 'localStorage', {
     value: {
       getItem: vi.fn((key: string) => store[key] || null),
@@ -243,7 +238,7 @@ export function mockLocalStorage() {
         delete store[key]
       }),
       clear: vi.fn(() => {
-        Object.keys(store).forEach(key => delete store[key])
+        Object.keys(store).forEach((key) => delete store[key])
       }),
       length: 0,
       key: vi.fn(),
@@ -257,7 +252,7 @@ export function mockLocalStorage() {
  */
 export function mockSessionStorage() {
   const store: Record<string, string> = {}
-  
+
   Object.defineProperty(window, 'sessionStorage', {
     value: {
       getItem: vi.fn((key: string) => store[key] || null),
@@ -268,7 +263,7 @@ export function mockSessionStorage() {
         delete store[key]
       }),
       clear: vi.fn(() => {
-        Object.keys(store).forEach(key => delete store[key])
+        Object.keys(store).forEach((key) => delete store[key])
       }),
       length: 0,
       key: vi.fn(),
@@ -292,14 +287,14 @@ export function createMockFileList(files: File[]) {
       yield* files
     },
   }
-  
+
   files.forEach((file, index) => {
     Object.defineProperty(fileList, index, {
       value: file,
       enumerable: true,
     })
   })
-  
+
   return fileList as FileList
 }
 
@@ -324,7 +319,7 @@ export function createUserEvent() {
  * Waits for a specified amount of time
  */
 export function wait(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /**

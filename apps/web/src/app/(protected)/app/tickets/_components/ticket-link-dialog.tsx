@@ -1,7 +1,8 @@
 // apps/web/src/app/(protected)/app/tickets/_components/ticket-link-dialog.tsx
 'use client'
 
-import { useMemo, useState, useCallback } from 'react'
+import { getInstanceId, type RecordId, toRecordId } from '@auxx/lib/field-values/client'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -12,7 +13,6 @@ import {
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
 import {
   Select,
   SelectContent,
@@ -20,9 +20,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { api } from '~/trpc/react'
+import { useCallback, useMemo, useState } from 'react'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { toRecordId, getInstanceId, type RecordId } from '@auxx/lib/field-values/client'
+import { api } from '~/trpc/react'
 
 /**
  * Relation types with human-readable labels
@@ -69,7 +69,7 @@ export function TicketLinkDialog({
   return (
     <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-      <DialogContent size="sm">
+      <DialogContent size='sm'>
         <TicketLinkDialogContent
           ticketId={ticketId}
           relatedTicketIds={relatedTicketIds}
@@ -100,10 +100,7 @@ function TicketLinkDialogContent({
   const [relationType, setRelationType] = useState<string>('RELATED')
 
   // Combine current ticket + already related into excludeIds
-  const excludeIds = useMemo(
-    () => [ticketId, ...relatedTicketIds],
-    [ticketId, relatedTicketIds]
-  )
+  const excludeIds = useMemo(() => [ticketId, ...relatedTicketIds], [ticketId, relatedTicketIds])
 
   // Convert selectedTicketId to RecordId[]
   const selectedRecordIds = useMemo(
@@ -139,17 +136,17 @@ function TicketLinkDialogContent({
 
   return (
     <>
-      <DialogHeader className="mb-4">
+      <DialogHeader className='mb-4'>
         <DialogTitle>Link a related ticket</DialogTitle>
         <DialogDescription>Connect this ticket to another existing ticket.</DialogDescription>
       </DialogHeader>
 
-      <div className="grid gap-4">
-        <div className="space-y-1 flex flex-col">
-          <label className="text-sm font-medium">Relation type</label>
+      <div className='grid gap-4'>
+        <div className='space-y-1 flex flex-col'>
+          <label className='text-sm font-medium'>Relation type</label>
           <Select value={relationType} onValueChange={setRelationType}>
             <SelectTrigger>
-              <SelectValue placeholder="Select relation type" />
+              <SelectValue placeholder='Select relation type' />
             </SelectTrigger>
             <SelectContent>
               {RELATION_TYPES.map((type) => (
@@ -161,32 +158,32 @@ function TicketLinkDialogContent({
           </Select>
         </div>
 
-        <div className="space-y-1 flex flex-col">
-          <label className="text-sm font-medium">Select ticket</label>
+        <div className='space-y-1 flex flex-col'>
+          <label className='text-sm font-medium'>Select ticket</label>
           <MultiRelationInput
-            entityDefinitionId="ticket"
+            entityDefinitionId='ticket'
             value={selectedRecordIds}
             onChange={handleChange}
             excludeIds={excludeIds}
-            placeholder="Search tickets..."
+            placeholder='Search tickets...'
             multi={false}
           />
         </div>
       </div>
 
       <DialogFooter>
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          Cancel <Kbd shortcut="esc" variant="outline" size="sm" />
+        <Button variant='ghost' size='sm' onClick={onClose}>
+          Cancel <Kbd shortcut='esc' variant='outline' size='sm' />
         </Button>
         <Button
-          variant="outline"
-          size="sm"
+          variant='outline'
+          size='sm'
           onClick={handleAddRelation}
           disabled={!selectedTicketId || addRelationMutation.isPending}
           loading={addRelationMutation.isPending}
-          loadingText="Adding..."
+          loadingText='Adding...'
           data-dialog-submit>
-          Add Link <KbdSubmit variant="outline" size="sm" />
+          Add Link <KbdSubmit variant='outline' size='sm' />
         </Button>
       </DialogFooter>
     </>

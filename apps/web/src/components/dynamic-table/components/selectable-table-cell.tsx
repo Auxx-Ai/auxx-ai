@@ -1,16 +1,15 @@
 // apps/web/src/components/dynamic-table/components/selectable-table-cell.tsx
 'use client'
 
-import { memo } from 'react'
-import { flexRender, type Cell } from '@tanstack/react-table'
 import { cn } from '@auxx/ui/lib/utils'
+import { type Cell, flexRender } from '@tanstack/react-table'
+import { memo, useCallback, useRef } from 'react'
 import { useCellSelection } from '../context/cell-selection-context'
-import { CellSelectionOverlay } from './cell-selection-overlay'
-import { CellFieldEditor } from './cell-field-editor'
-import { InlineCellEditor } from './inline-cell-editor'
 import { getEditModeForFieldType } from '../utils/edit-mode'
-import { useCallback, useRef } from 'react'
 import { sanitizeColumnId } from '../utils/sanitize-column-id'
+import { CellFieldEditor } from './cell-field-editor'
+import { CellSelectionOverlay } from './cell-selection-overlay'
+import { InlineCellEditor } from './inline-cell-editor'
 
 interface SelectableTableCellProps<TData> {
   cell: Cell<TData, unknown>

@@ -1,14 +1,15 @@
 // apps/web/src/components/fields/inputs/number-input-field.tsx
-import { usePropertyContext } from '../property-provider'
-import { useFieldNavigationOptional } from '../field-navigation-context'
-import { useRef, useEffect, useCallback } from 'react'
+
+import { InputGroup } from '@auxx/ui/components/input-group'
 import {
   NumberInput,
-  NumberInputField as NumberInputFieldBase,
   NumberInputArrows,
+  NumberInputField as NumberInputFieldBase,
 } from '@auxx/ui/components/input-number'
-import { InputGroup } from '@auxx/ui/components/input-group'
 import { cn } from '@auxx/ui/lib/utils'
+import { useCallback, useEffect, useRef } from 'react'
+import { useFieldNavigationOptional } from '../field-navigation-context'
+import { usePropertyContext } from '../property-provider'
 
 /**
  * NumberInputField
@@ -88,7 +89,7 @@ export function NumberInputField() {
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           autoFocus
-          className="text-left ps-2"
+          className='text-left ps-2'
         />
         <NumberInputArrows />
       </InputGroup>

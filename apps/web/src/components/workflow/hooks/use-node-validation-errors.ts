@@ -2,9 +2,9 @@
 
 import { useMemo } from 'react'
 import { useDebounce } from '~/hooks/use-debounced-value'
-import { useNodeConnections } from './use-node-connections'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
 import type { BaseNodeData } from '../types'
+import { useNodeConnections } from './use-node-connections'
 
 interface UseNodeValidationProps {
   nodeId: string

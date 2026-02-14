@@ -1,28 +1,19 @@
 // src/app/(protected)/app/kb/_components/kb-tab-general.tsx
 'use client'
 
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import React, { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
+import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   Form,
+  FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
-  FormControl,
   FormMessage,
-  FormDescription,
 } from '@auxx/ui/components/form'
-import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
-import { CheckIcon, MinusIcon, Loader2 } from 'lucide-react'
 import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { Switch } from '@auxx/ui/components/switch'
 import {
   Select,
   SelectContent,
@@ -32,10 +23,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { api, type RouterOutputs } from '~/trpc/react'
-import { ImagePreview } from '~/components/global/image-preview'
+import { Switch } from '@auxx/ui/components/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
+import { Textarea } from '@auxx/ui/components/textarea'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { CheckIcon, Loader2, MinusIcon } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { useFileSelect } from '~/components/file-select'
+import { ImagePreview } from '~/components/global/image-preview'
 import { FileSelectPicker } from '~/components/pickers/file-select-picker'
+import { api, type RouterOutputs } from '~/trpc/react'
+
 type KBType = RouterOutputs['kb']['byId'] // Or adjust if using a combined type
 
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
@@ -255,10 +255,10 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
   // }
 
   return (
-    <div className="relative p-4 pb-16">
+    <div className='relative p-4 pb-16'>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          <div className="flex justify-end">
+        <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+          <div className='flex justify-end'>
             {/* <Button
               type='submit'
               disabled={updateKnowledgeBase.isPending}
@@ -270,23 +270,23 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
             </Button> */}
           </div>
           {/* Basic */}
-          <Card className="shadow-none">
-            <CardHeader className="border-b py-4">
-              <CardTitle className="font-normal">Basic</CardTitle>
+          <Card className='shadow-none'>
+            <CardHeader className='border-b py-4'>
+              <CardTitle className='font-normal'>Basic</CardTitle>
             </CardHeader>
-            <CardContent className="group/panel-body group-data-[variant=opened]/panel:bg-base group-data-[variant=opened]/panel:group-data-[kind=danger]/panel:border-danger flex flex-col gap-6 p-4 group-data-[variant=opened]/panel:rounded-lg group-data-[variant=opened]/panel:border">
+            <CardContent className='group/panel-body group-data-[variant=opened]/panel:bg-base group-data-[variant=opened]/panel:group-data-[kind=danger]/panel:border-danger flex flex-col gap-6 p-4 group-data-[variant=opened]/panel:rounded-lg group-data-[variant=opened]/panel:border'>
               <FormField
                 control={form.control}
-                name="name"
+                name='name'
                 render={({ field }) => (
-                  <FormItem className="group/actionable-container flex min-w-0 flex-1 flex-col gap-x-4 gap-y-2">
+                  <FormItem className='group/actionable-container flex min-w-0 flex-1 flex-col gap-x-4 gap-y-2'>
                     <FormLabel>Title & Icon</FormLabel>
-                    <p className="text-sm text-muted-foreground">
+                    <p className='text-sm text-muted-foreground'>
                       Overwrite the title and icon of your content when published.
                     </p>
 
                     <FormControl>
-                      <Input {...field} placeholder="My Knowledge Base" />
+                      <Input {...field} placeholder='My Knowledge Base' />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -295,18 +295,18 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
 
               <FormField
                 control={form.control}
-                name="slug"
+                name='slug'
                 render={({ field }) => (
-                  <FormItem className="group/actionable-container flex min-w-0 flex-1 flex-col gap-x-4 gap-y-2">
+                  <FormItem className='group/actionable-container flex min-w-0 flex-1 flex-col gap-x-4 gap-y-2'>
                     <FormLabel>URL Slug</FormLabel>
-                    <p className="text-sm text-muted-foreground">
+                    <p className='text-sm text-muted-foreground'>
                       This will be used in the URL of your knowledge base.
                     </p>
 
                     <FormControl>
                       <Input
                         {...field}
-                        placeholder="my-knowledge-base"
+                        placeholder='my-knowledge-base'
                         disabled={updateKnowledgeBase.isPending}
                       />
                     </FormControl>
@@ -317,18 +317,18 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
 
               <FormField
                 control={form.control}
-                name="description"
+                name='description'
                 render={({ field }) => (
-                  <FormItem className="group/actionable-container flex min-w-0 flex-1 flex-col gap-x-4 gap-y-2">
+                  <FormItem className='group/actionable-container flex min-w-0 flex-1 flex-col gap-x-4 gap-y-2'>
                     <FormLabel>Description</FormLabel>
-                    <p className="text-sm text-muted-foreground">
+                    <p className='text-sm text-muted-foreground'>
                       A brief description of your knowledge base.
                     </p>
 
                     <FormControl>
                       <Textarea
                         {...field}
-                        placeholder="Enter a description..."
+                        placeholder='Enter a description...'
                         disabled={updateKnowledgeBase.isPending}
                         value={field.value || ''}
                       />
@@ -340,11 +340,11 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
 
               <FormField
                 control={form.control}
-                name="isPublic"
+                name='isPublic'
                 render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                    <div className="space-y-0.5">
-                      <FormLabel className="text-base">Public Access</FormLabel>
+                  <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                    <div className='space-y-0.5'>
+                      <FormLabel className='text-base'>Public Access</FormLabel>
                       <FormDescription>
                         Allow anyone to access your knowledge base without authentication
                       </FormDescription>
@@ -363,11 +363,11 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
 
               <FormField
                 control={form.control}
-                name="customDomain"
+                name='customDomain'
                 render={({ field }) => (
-                  <FormItem className="group/actionable-container flex min-w-0 flex-1 flex-col gap-x-4 gap-y-2">
+                  <FormItem className='group/actionable-container flex min-w-0 flex-1 flex-col gap-x-4 gap-y-2'>
                     <FormLabel>Custom Domain (Optional)</FormLabel>
-                    <p className="text-sm text-muted-foreground">
+                    <p className='text-sm text-muted-foreground'>
                       Set a custom domain for your knowledge base.
                     </p>
 
@@ -375,7 +375,7 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                       <Input
                         {...field}
                         value={field.value || ''}
-                        placeholder="docs.example.com"
+                        placeholder='docs.example.com'
                         disabled={updateKnowledgeBase.isPending}
                       />
                     </FormControl>
@@ -385,61 +385,61 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
               />
 
               {/* Logo Upload Fields */}
-              <div className="space-y-3">
+              <div className='space-y-3'>
                 <FormLabel>Custom Logo</FormLabel>
-                <p className="text-sm text-muted-foreground">
+                <p className='text-sm text-muted-foreground'>
                   Replace the content's title with a custom logo.
                   <br />
                   Recommended width: 600px or wider.
                 </p>
 
-                <div className="grid grid-cols-2 gap-6">
+                <div className='grid grid-cols-2 gap-6'>
                   {/* Light Logo Upload */}
-                  <div className="space-y-2">
+                  <div className='space-y-2'>
                     <FormField
                       control={form.control}
-                      name="logoLight"
+                      name='logoLight'
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-sm">Light Mode Logo</FormLabel>
+                          <FormLabel className='text-sm'>Light Mode Logo</FormLabel>
                           <FormControl>
-                            <div className="flex flex-col items-center space-y-2">
+                            <div className='flex flex-col items-center space-y-2'>
                               {field.value ? (
-                                <div className="relative flex h-32 w-full items-center justify-center rounded-md border bg-white">
+                                <div className='relative flex h-32 w-full items-center justify-center rounded-md border bg-white'>
                                   <ImagePreview
                                     storageKey={field.value}
-                                    alt="Light logo"
-                                    className="max-h-24 max-w-full object-contain"
+                                    alt='Light logo'
+                                    className='max-h-24 max-w-full object-contain'
                                   />
                                 </div>
                               ) : (
-                                <div className="flex h-32 w-full items-center justify-center rounded-md border bg-white">
-                                  <p className="text-sm text-muted-foreground">No logo uploaded</p>
+                                <div className='flex h-32 w-full items-center justify-center rounded-md border bg-white'>
+                                  <p className='text-sm text-muted-foreground'>No logo uploaded</p>
                                 </div>
                               )}
-                              <div className="flex items-center">
+                              <div className='flex items-center'>
                                 <FileSelectPicker fileSelect={fileSelectLight}>
                                   <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
+                                    type='button'
+                                    variant='outline'
+                                    size='sm'
                                     disabled={updateKnowledgeBase.isPending}>
                                     {field.value ? 'Change Logo' : 'Upload Logo'}
                                   </Button>
                                 </FileSelectPicker>
                                 {field.value && (
                                   <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="ml-2 text-destructive"
+                                    type='button'
+                                    variant='ghost'
+                                    size='sm'
+                                    className='ml-2 text-destructive'
                                     onClick={() => form.setValue('logoLight', '')}
                                     disabled={updateKnowledgeBase.isPending}>
                                     Remove
                                   </Button>
                                 )}
                               </div>
-                              <input type="hidden" {...field} value={field.value || ''} />
+                              <input type='hidden' {...field} value={field.value || ''} />
                             </div>
                           </FormControl>
                           <FormMessage />
@@ -449,51 +449,51 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                   </div>
 
                   {/* Dark Logo Upload */}
-                  <div className="space-y-2">
+                  <div className='space-y-2'>
                     <FormField
                       control={form.control}
-                      name="logoDark"
+                      name='logoDark'
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-sm">Dark Mode Logo</FormLabel>
+                          <FormLabel className='text-sm'>Dark Mode Logo</FormLabel>
                           <FormControl>
-                            <div className="flex flex-col items-center space-y-2">
+                            <div className='flex flex-col items-center space-y-2'>
                               {field.value ? (
-                                <div className="relative flex h-32 w-full items-center justify-center rounded-md border bg-gray-800">
+                                <div className='relative flex h-32 w-full items-center justify-center rounded-md border bg-gray-800'>
                                   <img
                                     src={field.value}
-                                    alt="Dark logo"
-                                    className="max-h-24 max-w-full object-contain"
+                                    alt='Dark logo'
+                                    className='max-h-24 max-w-full object-contain'
                                   />
                                 </div>
                               ) : (
-                                <div className="flex h-32 w-full items-center justify-center rounded-md border bg-gray-800">
-                                  <p className="text-sm text-gray-300">No logo uploaded</p>
+                                <div className='flex h-32 w-full items-center justify-center rounded-md border bg-gray-800'>
+                                  <p className='text-sm text-gray-300'>No logo uploaded</p>
                                 </div>
                               )}
-                              <div className="flex items-center">
+                              <div className='flex items-center'>
                                 <FileSelectPicker fileSelect={fileSelectDark}>
                                   <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
+                                    type='button'
+                                    variant='outline'
+                                    size='sm'
                                     disabled={updateKnowledgeBase.isPending}>
                                     {field.value ? 'Change Logo' : 'Upload Logo'}
                                   </Button>
                                 </FileSelectPicker>
                                 {field.value && (
                                   <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="ml-2 text-destructive"
+                                    type='button'
+                                    variant='ghost'
+                                    size='sm'
+                                    className='ml-2 text-destructive'
                                     onClick={() => form.setValue('logoDark', '')}
                                     disabled={updateKnowledgeBase.isPending}>
                                     Remove
                                   </Button>
                                 )}
                               </div>
-                              <input type="hidden" {...field} value={field.value || ''} />
+                              <input type='hidden' {...field} value={field.value || ''} />
                             </div>
                           </FormControl>
                           <FormMessage />
@@ -506,19 +506,19 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
             </CardContent>
           </Card>
           {/* Themes */}
-          <Card className="shadow-none">
-            <CardHeader className="border-b py-4">
-              <CardTitle className="font-normal">Themes</CardTitle>
+          <Card className='shadow-none'>
+            <CardHeader className='border-b py-4'>
+              <CardTitle className='font-normal'>Themes</CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col gap-6 p-4">
+            <CardContent className='flex flex-col gap-6 p-4'>
               <FormField
                 control={form.control}
-                name="theme"
+                name='theme'
                 render={({ field }) => (
-                  <FormItem className="group/actionable-container flex min-w-0 flex-1 flex-col gap-x-4 gap-y-2">
+                  <FormItem className='group/actionable-container flex min-w-0 flex-1 flex-col gap-x-4 gap-y-2'>
                     <FormControl>
                       <RadioGroup
-                        className="relative grid w-full grid-cols-2 gap-5"
+                        className='relative grid w-full grid-cols-2 gap-5'
                         value={field.value}
                         onValueChange={field.onChange}
                         disabled={updateKnowledgeBase.isPending}>
@@ -527,22 +527,22 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                             <RadioGroupItem
                               id={`theme-${item.value}`}
                               value={item.value}
-                              className="peer sr-only after:absolute after:inset-0"
+                              className='peer sr-only after:absolute after:inset-0'
                             />
                             <img
                               src={item.image}
                               alt={item.label}
                               width={88}
                               height={70}
-                              className="shadow-2xs peer-data-disabled:cursor-not-allowed peer-data-disabled:opacity-50 border-transparentpeer-data-[state=checked]:bg-accent relative w-full cursor-pointer overflow-hidden rounded-md border border-2 border-input outline-hidden transition-[color,box-shadow] peer-focus-visible:ring-[3px] peer-focus-visible:ring-ring/50 peer-data-[state=checked]:border-ring"
+                              className='shadow-2xs peer-data-disabled:cursor-not-allowed peer-data-disabled:opacity-50 border-transparentpeer-data-[state=checked]:bg-accent relative w-full cursor-pointer overflow-hidden rounded-md border border-2 border-input outline-hidden transition-[color,box-shadow] peer-focus-visible:ring-[3px] peer-focus-visible:ring-ring/50 peer-data-[state=checked]:border-ring'
                             />
-                            <span className="group mt-2 flex items-center gap-1 peer-data-[state=unchecked]:text-muted-foreground/70">
+                            <span className='group mt-2 flex items-center gap-1 peer-data-[state=unchecked]:text-muted-foreground/70'>
                               <CheckIcon
                                 size={16}
-                                className="group-peer-data-[state=unchecked]:hidden"
-                                aria-hidden="true"
+                                className='group-peer-data-[state=unchecked]:hidden'
+                                aria-hidden='true'
                               />
-                              <span className="text-xs font-medium">{item.label}</span>
+                              <span className='text-xs font-medium'>{item.label}</span>
                             </span>
                           </label>
                         ))}
@@ -556,21 +556,21 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
               <Tabs
                 defaultValue={activeTab}
                 onValueChange={(v) => setActiveTab(v as 'light' | 'dark')}>
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="light">Light mode</TabsTrigger>
-                  <TabsTrigger value="dark">Dark mode</TabsTrigger>
+                <TabsList className='grid w-full grid-cols-2'>
+                  <TabsTrigger value='light'>Light mode</TabsTrigger>
+                  <TabsTrigger value='dark'>Dark mode</TabsTrigger>
                 </TabsList>
-                <TabsContent value="light">
-                  <div className="flex flex-col gap-4">
+                <TabsContent value='light'>
+                  <div className='flex flex-col gap-4'>
                     <FormField
                       control={form.control}
-                      name="primaryColorLight"
+                      name='primaryColorLight'
                       render={({ field }) => (
-                        <FormItem className="group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 gap-y-2">
+                        <FormItem className='group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 gap-y-2'>
                           <div>
                             <FormLabel>Primary Color</FormLabel>
 
-                            <p className="text-sm text-muted-foreground">
+                            <p className='text-sm text-muted-foreground'>
                               Used for main elements such as buttons and links
                             </p>
                           </div>
@@ -579,9 +579,9 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                             <Input
                               {...field}
                               value={field.value || ''}
-                              placeholder="#3B82F6"
-                              className="w-[100px]"
-                              type="color"
+                              placeholder='#3B82F6'
+                              className='w-[100px]'
+                              type='color'
                               disabled={updateKnowledgeBase.isPending}
                             />
                           </FormControl>
@@ -591,13 +591,13 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                     />
                     <FormField
                       control={form.control}
-                      name="tintColorLight"
+                      name='tintColorLight'
                       render={({ field }) => (
-                        <FormItem className="group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 gap-y-2">
+                        <FormItem className='group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 gap-y-2'>
                           <div>
                             <FormLabel>Tint Color</FormLabel>
 
-                            <p className="text-sm text-muted-foreground">
+                            <p className='text-sm text-muted-foreground'>
                               Add some color to the background and secondary elements. Try out some
                               of the suggested colors below.
                             </p>
@@ -607,9 +607,9 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                             <Input
                               {...field}
                               value={field.value || ''}
-                              placeholder="#EFF6FF"
-                              className="w-[100px]"
-                              type="color"
+                              placeholder='#EFF6FF'
+                              className='w-[100px]'
+                              type='color'
                               disabled={updateKnowledgeBase.isPending}
                             />
                           </FormControl>
@@ -619,26 +619,26 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                     />
 
                     <div>
-                      <h2 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                      <h2 className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'>
                         Semantic colors
                       </h2>
-                      <p className="text-sm text-muted-foreground">
+                      <p className='text-sm text-muted-foreground'>
                         Used to quickly convey meaning in elements across your site.
                       </p>
                     </div>
-                    <div className="flex flex-row gap-4">
+                    <div className='flex flex-row gap-4'>
                       <FormField
                         control={form.control}
-                        name="infoColorLight"
+                        name='infoColorLight'
                         render={({ field }) => (
-                          <FormItem className="group/actionable-container flex grid min-w-0 flex-1 flex-col gap-x-4 gap-y-2">
+                          <FormItem className='group/actionable-container flex grid min-w-0 flex-1 flex-col gap-x-4 gap-y-2'>
                             <FormLabel>Info</FormLabel>
                             <FormControl>
                               <Input
                                 {...field}
                                 value={field.value || ''}
-                                placeholder="#3B82F6"
-                                type="color"
+                                placeholder='#3B82F6'
+                                type='color'
                                 disabled={updateKnowledgeBase.isPending}
                               />
                             </FormControl>
@@ -648,16 +648,16 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                       />
                       <FormField
                         control={form.control}
-                        name="successColorLight"
+                        name='successColorLight'
                         render={({ field }) => (
-                          <FormItem className="group/actionable-container flex grid min-w-0 flex-1 flex-col gap-x-4 gap-y-2">
+                          <FormItem className='group/actionable-container flex grid min-w-0 flex-1 flex-col gap-x-4 gap-y-2'>
                             <FormLabel>Success</FormLabel>
                             <FormControl>
                               <Input
                                 {...field}
                                 value={field.value || ''}
-                                placeholder="#10B981"
-                                type="color"
+                                placeholder='#10B981'
+                                type='color'
                                 disabled={updateKnowledgeBase.isPending}
                               />
                             </FormControl>
@@ -667,16 +667,16 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                       />
                       <FormField
                         control={form.control}
-                        name="warningColorLight"
+                        name='warningColorLight'
                         render={({ field }) => (
-                          <FormItem className="group/actionable-container flex grid min-w-0 flex-1 flex-col gap-x-4 gap-y-2">
+                          <FormItem className='group/actionable-container flex grid min-w-0 flex-1 flex-col gap-x-4 gap-y-2'>
                             <FormLabel>Warning</FormLabel>
                             <FormControl>
                               <Input
                                 {...field}
                                 value={field.value || ''}
-                                placeholder="#F59E0B"
-                                type="color"
+                                placeholder='#F59E0B'
+                                type='color'
                                 disabled={updateKnowledgeBase.isPending}
                               />
                             </FormControl>
@@ -686,16 +686,16 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                       />
                       <FormField
                         control={form.control}
-                        name="dangerColorLight"
+                        name='dangerColorLight'
                         render={({ field }) => (
-                          <FormItem className="group/actionable-container flex grid min-w-0 flex-1 flex-col gap-x-4 gap-y-2">
+                          <FormItem className='group/actionable-container flex grid min-w-0 flex-1 flex-col gap-x-4 gap-y-2'>
                             <FormLabel>Danger</FormLabel>
                             <FormControl>
                               <Input
                                 {...field}
                                 value={field.value || ''}
-                                placeholder="#EF4444"
-                                type="color"
+                                placeholder='#EF4444'
+                                type='color'
                                 disabled={updateKnowledgeBase.isPending}
                               />
                             </FormControl>
@@ -706,17 +706,17 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                     </div>
                   </div>
                 </TabsContent>
-                <TabsContent value="dark">
-                  <div className="flex flex-col gap-4">
+                <TabsContent value='dark'>
+                  <div className='flex flex-col gap-4'>
                     <FormField
                       control={form.control}
-                      name="primaryColorDark"
+                      name='primaryColorDark'
                       render={({ field }) => (
-                        <FormItem className="group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 gap-y-2">
+                        <FormItem className='group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 gap-y-2'>
                           <div>
                             <FormLabel>Primary Color</FormLabel>
 
-                            <p className="text-sm text-muted-foreground">
+                            <p className='text-sm text-muted-foreground'>
                               Used for main elements such as buttons and links
                             </p>
                           </div>
@@ -725,9 +725,9 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                             <Input
                               {...field}
                               value={field.value || ''}
-                              placeholder="#60A5FA"
-                              className="w-[100px]"
-                              type="color"
+                              placeholder='#60A5FA'
+                              className='w-[100px]'
+                              type='color'
                               disabled={updateKnowledgeBase.isPending}
                             />
                           </FormControl>
@@ -737,13 +737,13 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                     />
                     <FormField
                       control={form.control}
-                      name="tintColorDark"
+                      name='tintColorDark'
                       render={({ field }) => (
-                        <FormItem className="group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 gap-y-2">
+                        <FormItem className='group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 gap-y-2'>
                           <div>
                             <FormLabel>Tint Color</FormLabel>
 
-                            <p className="text-sm text-muted-foreground">
+                            <p className='text-sm text-muted-foreground'>
                               Add some color to the background and secondary elements. Try out some
                               of the suggested colors below.
                             </p>
@@ -753,9 +753,9 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                             <Input
                               {...field}
                               value={field.value || ''}
-                              placeholder="#1F2937"
-                              className="w-[100px]"
-                              type="color"
+                              placeholder='#1F2937'
+                              className='w-[100px]'
+                              type='color'
                               disabled={updateKnowledgeBase.isPending}
                             />
                           </FormControl>
@@ -765,26 +765,26 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                     />
 
                     <div>
-                      <h2 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                      <h2 className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'>
                         Semantic colors
                       </h2>
-                      <p className="text-sm text-muted-foreground">
+                      <p className='text-sm text-muted-foreground'>
                         Used to quickly convey meaning in elements across your site.
                       </p>
                     </div>
-                    <div className="flex flex-row gap-4">
+                    <div className='flex flex-row gap-4'>
                       <FormField
                         control={form.control}
-                        name="infoColorDark"
+                        name='infoColorDark'
                         render={({ field }) => (
-                          <FormItem className="group/actionable-container flex grid min-w-0 flex-1 flex-col gap-x-4 gap-y-2">
+                          <FormItem className='group/actionable-container flex grid min-w-0 flex-1 flex-col gap-x-4 gap-y-2'>
                             <FormLabel>Info</FormLabel>
                             <FormControl>
                               <Input
                                 {...field}
                                 value={field.value || ''}
-                                placeholder="#93C5FD"
-                                type="color"
+                                placeholder='#93C5FD'
+                                type='color'
                                 disabled={updateKnowledgeBase.isPending}
                               />
                             </FormControl>
@@ -794,16 +794,16 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                       />
                       <FormField
                         control={form.control}
-                        name="successColorDark"
+                        name='successColorDark'
                         render={({ field }) => (
-                          <FormItem className="group/actionable-container flex grid min-w-0 flex-1 flex-col gap-x-4 gap-y-2">
+                          <FormItem className='group/actionable-container flex grid min-w-0 flex-1 flex-col gap-x-4 gap-y-2'>
                             <FormLabel>Success</FormLabel>
                             <FormControl>
                               <Input
                                 {...field}
                                 value={field.value || ''}
-                                placeholder="#34D399"
-                                type="color"
+                                placeholder='#34D399'
+                                type='color'
                                 disabled={updateKnowledgeBase.isPending}
                               />
                             </FormControl>
@@ -813,16 +813,16 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                       />
                       <FormField
                         control={form.control}
-                        name="warningColorDark"
+                        name='warningColorDark'
                         render={({ field }) => (
-                          <FormItem className="group/actionable-container flex grid min-w-0 flex-1 flex-col gap-x-4 gap-y-2">
+                          <FormItem className='group/actionable-container flex grid min-w-0 flex-1 flex-col gap-x-4 gap-y-2'>
                             <FormLabel>Warning</FormLabel>
                             <FormControl>
                               <Input
                                 {...field}
                                 value={field.value || ''}
-                                placeholder="#FBBF24"
-                                type="color"
+                                placeholder='#FBBF24'
+                                type='color'
                                 disabled={updateKnowledgeBase.isPending}
                               />
                             </FormControl>
@@ -832,16 +832,16 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                       />
                       <FormField
                         control={form.control}
-                        name="dangerColorDark"
+                        name='dangerColorDark'
                         render={({ field }) => (
-                          <FormItem className="group/actionable-container flex grid min-w-0 flex-1 flex-col gap-x-4 gap-y-2">
+                          <FormItem className='group/actionable-container flex grid min-w-0 flex-1 flex-col gap-x-4 gap-y-2'>
                             <FormLabel>Danger</FormLabel>
                             <FormControl>
                               <Input
                                 {...field}
                                 value={field.value || ''}
-                                placeholder="#F87171"
-                                type="color"
+                                placeholder='#F87171'
+                                type='color'
                                 disabled={updateKnowledgeBase.isPending}
                               />
                             </FormControl>
@@ -856,18 +856,18 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
             </CardContent>
           </Card>
           {/* Modes */}
-          <Card className="shadow-none">
-            <CardHeader className="border-b py-4">
-              <CardTitle className="font-normal">Modes</CardTitle>
+          <Card className='shadow-none'>
+            <CardHeader className='border-b py-4'>
+              <CardTitle className='font-normal'>Modes</CardTitle>
             </CardHeader>
-            <CardContent className="group/panel-body group-data-[variant=opened]/panel:bg-base group-data-[variant=opened]/panel:group-data-[kind=danger]/panel:border-danger flex flex-col gap-6 p-4 group-data-[variant=opened]/panel:rounded-lg group-data-[variant=opened]/panel:border">
+            <CardContent className='group/panel-body group-data-[variant=opened]/panel:bg-base group-data-[variant=opened]/panel:group-data-[kind=danger]/panel:border-danger flex flex-col gap-6 p-4 group-data-[variant=opened]/panel:rounded-lg group-data-[variant=opened]/panel:border'>
               <FormField
                 control={form.control}
-                name="showMode"
+                name='showMode'
                 render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                    <div className="space-y-0.5">
-                      <FormLabel className="text-base">Show Theme Switcher</FormLabel>
+                  <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                    <div className='space-y-0.5'>
+                      <FormLabel className='text-base'>Show Theme Switcher</FormLabel>
                       <FormDescription>
                         Allow users to switch between light and dark mode
                       </FormDescription>
@@ -886,11 +886,11 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
 
               <FormField
                 control={form.control}
-                name="defaultMode"
+                name='defaultMode'
                 render={({ field }) => (
-                  <FormItem className="group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 gap-y-2">
-                    <div className="space-y-0.5">
-                      <FormLabel className="text-base">Default mode</FormLabel>
+                  <FormItem className='group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 gap-y-2'>
+                    <div className='space-y-0.5'>
+                      <FormLabel className='text-base'>Default mode</FormLabel>
                       <FormDescription>
                         All your viewers will see this mode by default
                       </FormDescription>
@@ -900,14 +900,14 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                         onValueChange={field.onChange}
                         value={field.value}
                         disabled={updateKnowledgeBase.isPending}>
-                        <SelectTrigger className="w-full h-8 py-1">
-                          <SelectValue placeholder="Pick..." />
+                        <SelectTrigger className='w-full h-8 py-1'>
+                          <SelectValue placeholder='Pick...' />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
                             <SelectLabel>Mode</SelectLabel>
-                            <SelectItem value="dark">Dark</SelectItem>
-                            <SelectItem value="light">Light</SelectItem>
+                            <SelectItem value='dark'>Dark</SelectItem>
+                            <SelectItem value='light'>Light</SelectItem>
                           </SelectGroup>
                         </SelectContent>
                       </Select>
@@ -919,36 +919,36 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
             </CardContent>
           </Card>
           {/* Site styles */}
-          <Card className="shadow-none">
-            <CardHeader className="border-b py-4">
-              <CardTitle className="font-normal">Site styles</CardTitle>
+          <Card className='shadow-none'>
+            <CardHeader className='border-b py-4'>
+              <CardTitle className='font-normal'>Site styles</CardTitle>
             </CardHeader>
-            <CardContent className="group/panel-body group-data-[variant=opened]/panel:bg-base group-data-[variant=opened]/panel:group-data-[kind=danger]/panel:border-danger flex flex-col gap-6 p-4 group-data-[variant=opened]/panel:rounded-lg group-data-[variant=opened]/panel:border">
+            <CardContent className='group/panel-body group-data-[variant=opened]/panel:bg-base group-data-[variant=opened]/panel:group-data-[kind=danger]/panel:border-danger flex flex-col gap-6 p-4 group-data-[variant=opened]/panel:rounded-lg group-data-[variant=opened]/panel:border'>
               <FormField
                 control={form.control}
-                name="fontFamily"
+                name='fontFamily'
                 render={({ field }) => (
-                  <FormItem className="group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 space-y-0">
-                    <div className="flex items-center justify-between">
-                      <FormLabel className="text-base">Font Family</FormLabel>
+                  <FormItem className='group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 space-y-0'>
+                    <div className='flex items-center justify-between'>
+                      <FormLabel className='text-base'>Font Family</FormLabel>
                     </div>
                     <FormControl>
                       <Select
                         onValueChange={field.onChange}
                         value={field.value || ''}
                         disabled={updateKnowledgeBase.isPending}
-                        className="mt-0">
-                        <SelectTrigger className="w-full h-8 py-1">
-                          <SelectValue placeholder="System Default" />
+                        className='mt-0'>
+                        <SelectTrigger className='w-full h-8 py-1'>
+                          <SelectValue placeholder='System Default' />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
                             <SelectLabel>Font</SelectLabel>
-                            <SelectItem value="default">System Default</SelectItem>
-                            <SelectItem value="inter">Inter</SelectItem>
-                            <SelectItem value="roboto">Roboto</SelectItem>
-                            <SelectItem value="opensans">Open Sans</SelectItem>
-                            <SelectItem value="montserrat">Montserrat</SelectItem>
+                            <SelectItem value='default'>System Default</SelectItem>
+                            <SelectItem value='inter'>Inter</SelectItem>
+                            <SelectItem value='roboto'>Roboto</SelectItem>
+                            <SelectItem value='opensans'>Open Sans</SelectItem>
+                            <SelectItem value='montserrat'>Montserrat</SelectItem>
                           </SelectGroup>
                         </SelectContent>
                       </Select>
@@ -959,26 +959,26 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
               />
               <FormField
                 control={form.control}
-                name="iconsFamily"
+                name='iconsFamily'
                 render={({ field }) => (
-                  <FormItem className="group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 space-y-0">
-                    <div className="flex flex-row items-center justify-between">
-                      <FormLabel className="text-base">Icons</FormLabel>
+                  <FormItem className='group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 space-y-0'>
+                    <div className='flex flex-row items-center justify-between'>
+                      <FormLabel className='text-base'>Icons</FormLabel>
                     </div>
                     <FormControl>
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
                         disabled={updateKnowledgeBase.isPending}>
-                        <SelectTrigger className="w-full h-8 py-1">
-                          <SelectValue placeholder="Pick..." />
+                        <SelectTrigger className='w-full h-8 py-1'>
+                          <SelectValue placeholder='Pick...' />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
                             <SelectLabel>Style</SelectLabel>
-                            <SelectItem value="solid">Solid</SelectItem>
-                            <SelectItem value="regular">Regular</SelectItem>
-                            <SelectItem value="light">Light</SelectItem>
+                            <SelectItem value='solid'>Solid</SelectItem>
+                            <SelectItem value='regular'>Regular</SelectItem>
+                            <SelectItem value='light'>Light</SelectItem>
                           </SelectGroup>
                         </SelectContent>
                       </Select>
@@ -989,25 +989,25 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
               />
               <FormField
                 control={form.control}
-                name="cornerStyle"
+                name='cornerStyle'
                 render={({ field }) => (
-                  <FormItem className="group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 space-y-0">
-                    <div className="flex flex-row items-center justify-between">
-                      <FormLabel className="text-base">Corner Style</FormLabel>
+                  <FormItem className='group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 space-y-0'>
+                    <div className='flex flex-row items-center justify-between'>
+                      <FormLabel className='text-base'>Corner Style</FormLabel>
                     </div>
                     <FormControl>
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
                         disabled={updateKnowledgeBase.isPending}>
-                        <SelectTrigger className="w-full h-8 py-1">
-                          <SelectValue placeholder="Pick..." />
+                        <SelectTrigger className='w-full h-8 py-1'>
+                          <SelectValue placeholder='Pick...' />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
                             <SelectLabel>Corner Style</SelectLabel>
-                            <SelectItem value="rounded">Rounded</SelectItem>
-                            <SelectItem value="straight">Straight</SelectItem>
+                            <SelectItem value='rounded'>Rounded</SelectItem>
+                            <SelectItem value='straight'>Straight</SelectItem>
                           </SelectGroup>
                         </SelectContent>
                       </Select>
@@ -1018,25 +1018,25 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
               />
               <FormField
                 control={form.control}
-                name="searchbarPosition"
+                name='searchbarPosition'
                 render={({ field }) => (
-                  <FormItem className="group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 space-y-0">
-                    <div className="flex flex-row items-center justify-between">
-                      <FormLabel className="text-base">Search Bar Position</FormLabel>
+                  <FormItem className='group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 space-y-0'>
+                    <div className='flex flex-row items-center justify-between'>
+                      <FormLabel className='text-base'>Search Bar Position</FormLabel>
                     </div>
                     <FormControl>
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
                         disabled={updateKnowledgeBase.isPending}>
-                        <SelectTrigger className="w-full h-8 py-1">
-                          <SelectValue placeholder="Pick..." />
+                        <SelectTrigger className='w-full h-8 py-1'>
+                          <SelectValue placeholder='Pick...' />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
                             <SelectLabel>Position</SelectLabel>
-                            <SelectItem value="center">Center</SelectItem>
-                            <SelectItem value="corner">Corner</SelectItem>
+                            <SelectItem value='center'>Center</SelectItem>
+                            <SelectItem value='corner'>Corner</SelectItem>
                           </SelectGroup>
                         </SelectContent>
                       </Select>
@@ -1048,21 +1048,21 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
             </CardContent>
           </Card>
           {/* Sidebar styles */}
-          <Card className="shadow-none">
-            <CardHeader className="border-b py-4">
-              <CardTitle className="font-normal">Sidebar Style</CardTitle>
+          <Card className='shadow-none'>
+            <CardHeader className='border-b py-4'>
+              <CardTitle className='font-normal'>Sidebar Style</CardTitle>
             </CardHeader>
-            <CardContent className="group/panel-body group-data-[variant=opened]/panel:bg-base group-data-[variant=opened]/panel:group-data-[kind=danger]/panel:border-danger flex flex-col gap-6 p-4 group-data-[variant=opened]/panel:rounded-lg group-data-[variant=opened]/panel:border">
+            <CardContent className='group/panel-body group-data-[variant=opened]/panel:bg-base group-data-[variant=opened]/panel:group-data-[kind=danger]/panel:border-danger flex flex-col gap-6 p-4 group-data-[variant=opened]/panel:rounded-lg group-data-[variant=opened]/panel:border'>
               <FormField
                 control={form.control}
-                name="sidebarListStyle"
+                name='sidebarListStyle'
                 render={({ field }) => (
-                  <FormItem className="group/actionable-container flex min-w-0 flex-1 flex-col gap-x-4 gap-y-2">
+                  <FormItem className='group/actionable-container flex min-w-0 flex-1 flex-col gap-x-4 gap-y-2'>
                     <FormLabel>List style</FormLabel>
                     <FormDescription>Choose sidebar list and selected items style</FormDescription>
                     <FormControl>
                       <RadioGroup
-                        className="relative grid w-full grid-cols-3 gap-3"
+                        className='relative grid w-full grid-cols-3 gap-3'
                         value={field.value}
                         onValueChange={field.onChange}
                         disabled={updateKnowledgeBase.isPending}>
@@ -1071,27 +1071,27 @@ function KBTabGeneral({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) {
                             <RadioGroupItem
                               id={`list-style-${item.value}`}
                               value={item.value}
-                              className="peer sr-only after:absolute after:inset-0"
+                              className='peer sr-only after:absolute after:inset-0'
                             />
                             <img
                               src={item.image}
                               alt={item.label}
                               width={88}
                               height={70}
-                              className="shadow-2xs peer-data-disabled:cursor-not-allowed peer-data-disabled:opacity-50 relative w-full cursor-pointer overflow-hidden rounded-md border border-input outline-hidden transition-[color,box-shadow] peer-focus-visible:ring-[3px] peer-focus-visible:ring-ring/50 peer-data-[state=checked]:border-ring peer-data-[state=checked]:bg-accent"
+                              className='shadow-2xs peer-data-disabled:cursor-not-allowed peer-data-disabled:opacity-50 relative w-full cursor-pointer overflow-hidden rounded-md border border-input outline-hidden transition-[color,box-shadow] peer-focus-visible:ring-[3px] peer-focus-visible:ring-ring/50 peer-data-[state=checked]:border-ring peer-data-[state=checked]:bg-accent'
                             />
-                            <span className="group mt-2 flex items-center gap-1 peer-data-[state=unchecked]:text-muted-foreground/70">
+                            <span className='group mt-2 flex items-center gap-1 peer-data-[state=unchecked]:text-muted-foreground/70'>
                               <CheckIcon
                                 size={16}
-                                className="group-peer-data-[state=unchecked]:hidden"
-                                aria-hidden="true"
+                                className='group-peer-data-[state=unchecked]:hidden'
+                                aria-hidden='true'
                               />
                               <MinusIcon
                                 size={16}
-                                className="group-peer-data-[state=checked]:hidden"
-                                aria-hidden="true"
+                                className='group-peer-data-[state=checked]:hidden'
+                                aria-hidden='true'
                               />
-                              <span className="text-xs font-medium">{item.label}</span>
+                              <span className='text-xs font-medium'>{item.label}</span>
                             </span>
                           </label>
                         ))}

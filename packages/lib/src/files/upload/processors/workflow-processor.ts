@@ -1,14 +1,10 @@
 // packages/lib/src/files/upload/processors/workflow-processor.ts
 
-import { BaseAssetProcessor } from './base-asset-processor'
-import type {
-  ProcessorMetadata,
-  CreateSessionRequest,
-  ProcessorResult,
-} from './types'
-import type { PresignedUploadSession } from '../session-types'
-import type { UploadInitConfig, ProcessorConfigResult } from '../init-types'
 import type { AssetKind } from '../../core/types'
+import type { ProcessorConfigResult, UploadInitConfig } from '../init-types'
+import type { PresignedUploadSession } from '../session-types'
+import { BaseAssetProcessor } from './base-asset-processor'
+import type { CreateSessionRequest, ProcessorMetadata, ProcessorResult } from './types'
 
 /**
  * Workflow processor for temporary workflow files
@@ -25,21 +21,24 @@ export class WorkflowProcessor extends BaseAssetProcessor {
     }
   }
 
-  protected async executeProcess(session: PresignedUploadSession, storageLocationId: string): Promise<ProcessorResult> {
+  protected async executeProcess(
+    session: PresignedUploadSession,
+    storageLocationId: string
+  ): Promise<ProcessorResult> {
     // For WORKFLOW_RUN entities, automatically set temporary expiration (1 hour for test runs)
     if (session.entityType === 'WORKFLOW_RUN') {
       // Set automatic 1-hour expiration for workflow run files
       const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000)
-      
+
       // Update session metadata with temporary settings if not already set
       if (!session.metadata) {
         session.metadata = {}
       }
-      
+
       // Set temporary file properties for workflow runs
       session.metadata.isTemporary = true
       session.metadata.expiresAt = session.metadata.expiresAt || oneHourFromNow
-      
+
       // Include nodeId from metadata for workflow context
       if (session.metadata.nodeId) {
         this.logger.debug('Processing workflow run file', {
@@ -144,10 +143,10 @@ export class WorkflowProcessor extends BaseAssetProcessor {
     // For workflow run files, set expiration on MediaAsset for automatic cleanup
     if (session.entityType === 'WORKFLOW_RUN' && session.metadata?.isTemporary) {
       const expiresAt = session.metadata.expiresAt
-      
+
       if (expiresAt) {
         await this.setAssetExpiration(assetId, expiresAt)
-        
+
         this.logger.info('Set MediaAsset expiration for workflow run file', {
           assetId,
           workflowId: session.entityId,
@@ -156,7 +155,7 @@ export class WorkflowProcessor extends BaseAssetProcessor {
         })
       }
     }
-    
+
     // Schedule cleanup if temporary (fallback for non-workflow entities)
     if (session.metadata?.isTemporary && session.entityType !== 'WORKFLOW_RUN') {
       await this.scheduleCleanup(assetId, session.metadata.expiresAt)
@@ -172,7 +171,7 @@ export class WorkflowProcessor extends BaseAssetProcessor {
       await this.mediaAssetService.update(assetId, {
         expiresAt,
       })
-      
+
       this.logger.debug('Set MediaAsset expiration', {
         assetId,
         expiresAt,

@@ -2,18 +2,14 @@
 
 'use client'
 
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { useEditor, type Editor, type JSONContent } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
-import { createInlinePickerExtension } from '../core/inline-picker-extension'
-import { createInlineNode } from '../core/inline-node'
+import { type Editor, type JSONContent, useEditor } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { escapeHtml } from '~/lib/sanitize'
-import type {
-  InlinePickerState,
-  UseInlinePickerOptions,
-  UseInlinePickerReturn,
-} from '../types'
+import { createInlineNode } from '../core/inline-node'
+import { createInlinePickerExtension } from '../core/inline-picker-extension'
+import type { InlinePickerState, UseInlinePickerOptions, UseInlinePickerReturn } from '../types'
 
 /**
  * Preprocesses content by converting pattern matches to HTML spans.
@@ -149,9 +145,7 @@ export function useInlinePicker({
       }),
       nodeExtension,
       pickerExtension,
-      ...(placeholder
-        ? [Placeholder.configure({ placeholder, showOnlyWhenEditable: true })]
-        : []),
+      ...(placeholder ? [Placeholder.configure({ placeholder, showOnlyWhenEditable: true })] : []),
       ...extensions,
     ],
     content: processedInitialContent,
@@ -220,9 +214,7 @@ export function useInlinePicker({
     (content: string | JSONContent) => {
       if (!editor) return
       const processed =
-        typeof content === 'string'
-          ? preprocessContent(content, type, pastePattern)
-          : content
+        typeof content === 'string' ? preprocessContent(content, type, pastePattern) : content
       editor.commands.setContent(processed)
     },
     [editor, type, pastePattern]

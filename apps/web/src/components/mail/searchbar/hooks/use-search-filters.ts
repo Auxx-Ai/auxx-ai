@@ -1,9 +1,9 @@
 // apps/web/src/components/mail/searchbar/hooks/use-search-filters.ts
 'use client'
 
+import type { SearchCondition } from '@auxx/lib/mail-query/client'
 import { useMemo } from 'react'
-import { useSearchStore, selectHasActiveConditions } from '../store'
-import { type SearchCondition } from '@auxx/lib/mail-query/client'
+import { selectHasActiveConditions, useSearchStore } from '../store'
 
 /**
  * Get raw search conditions from the store.
@@ -28,8 +28,6 @@ export function useSearchConditions(): SearchCondition[] | undefined {
   return useMemo(() => {
     if (!hasConditions) return undefined
     // Filter out conditions without valid values
-    return conditions.filter(
-      (c) => c.value !== undefined && c.value !== '' && c.value !== null
-    )
+    return conditions.filter((c) => c.value !== undefined && c.value !== '' && c.value !== null)
   }, [conditions, hasConditions])
 }

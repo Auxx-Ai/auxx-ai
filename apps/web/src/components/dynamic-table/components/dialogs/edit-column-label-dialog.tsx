@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -11,9 +11,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { useEffect, useState } from 'react'
 
 interface EditColumnLabelDialogProps {
   open: boolean
@@ -37,7 +37,7 @@ export function EditColumnLabelDialog({
 }: EditColumnLabelDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="sm" position="tc">
+      <DialogContent size='sm' position='tc'>
         <EditColumnLabelDialogContent
           open={open}
           originalLabel={originalLabel}
@@ -99,9 +99,9 @@ function EditColumnLabelDialogContent({
         <DialogDescription>Customize the display name for "{originalLabel}"</DialogDescription>
       </DialogHeader>
 
-      <div className="grid gap-2">
+      <div className='grid gap-2'>
         <Input
-          id="column-label"
+          id='column-label'
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder={originalLabel}
@@ -109,24 +109,24 @@ function EditColumnLabelDialogContent({
       </div>
 
       <DialogFooter>
-        <div className="flex w-full items-center justify-between">
+        <div className='flex w-full items-center justify-between'>
           <div>
             {hasCustomLabel && (
               <Button
-                size="sm"
-                variant="ghost"
-                className="text-destructive border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
+                size='sm'
+                variant='ghost'
+                className='text-destructive border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30'
                 onClick={handleClear}>
                 Clear label
               </Button>
             )}
           </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="ghost" onClick={onClose}>
-              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+          <div className='flex gap-2'>
+            <Button size='sm' variant='ghost' onClick={onClose}>
+              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
-            <Button onClick={handleSave} size="sm" variant="outline" data-dialog-submit>
-              Save <KbdSubmit variant="outline" size="sm" />
+            <Button onClick={handleSave} size='sm' variant='outline' data-dialog-submit>
+              Save <KbdSubmit variant='outline' size='sm' />
             </Button>
           </div>
         </div>

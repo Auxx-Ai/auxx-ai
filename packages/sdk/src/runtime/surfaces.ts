@@ -1,7 +1,7 @@
 // packages/sdk/src/runtime/surfaces.ts
 
-import { EventBroker } from './event-broker.js'
 import { SurfaceError } from '../shared/errors.js'
+import { EventBroker } from './event-broker.js'
 
 /**
  * Valid surface types in the Auxx platform.
@@ -207,7 +207,7 @@ class SurfacesManager {
               handles: block.schema?.handles,
             },
             config: block.config,
-          }
+          },
         }
       } else {
         // Normal surfaces - just strip onTrigger

@@ -1,38 +1,38 @@
 // packages/lib/src/files/core/file-service.ts
 
 import { database as db, schema } from '@auxx/database'
+import type {
+  FileVersionEntity as FileVersion,
+  FolderFileEntity as FolderFile,
+} from '@auxx/database/models'
 import {
-  eq,
   and,
-  desc,
   asc,
+  count,
+  desc,
+  eq,
+  gte,
+  ilike,
   inArray,
   isNull,
-  count,
-  sql,
-  gte,
   lte,
-  ilike,
   or,
   type SQL,
+  sql,
 } from 'drizzle-orm'
-import type {
-  FolderFileEntity as FolderFile,
-  FileVersionEntity as FileVersion,
-} from '@auxx/database/models'
-import type {
-  CreateFileRequest,
-  UpdateFileRequest,
-  FileListOptions,
-  SearchOptions,
-  FileSearchResult,
-  FileDownloadInfo,
-  FolderFileWithRelations,
-} from './types'
+import type { DownloadRef } from '../adapters/base-adapter'
 import { BaseService, type DatabaseClient } from './base-service'
 import type { ContentAccessible } from './mixins/content-accessible'
 import type { Versioned } from './mixins/versioned'
-import type { DownloadRef } from '../adapters/base-adapter'
+import type {
+  CreateFileRequest,
+  FileDownloadInfo,
+  FileListOptions,
+  FileSearchResult,
+  FolderFileWithRelations,
+  SearchOptions,
+  UpdateFileRequest,
+} from './types'
 
 /**
  * Enhanced service for managing FolderFile operations
@@ -1859,7 +1859,7 @@ export class FileService
    */
   private async generateFilePath(folderId: string | null, fileName: string): Promise<string> {
     // Sanitize filename (remove path separators and control chars)
-    const safeName = fileName.replace(/[\/\\]/g, '').trim() || 'untitled'
+    const safeName = fileName.replace(/[/\\]/g, '').trim() || 'untitled'
 
     const basePath = folderId
       ? (

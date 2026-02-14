@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/share/share-gate.tsx
 'use client'
 
-import { useEffect, useRef, type ReactNode } from 'react'
-import { useWorkflowShareStore } from './workflow-share-provider'
-import { useWorkflowShare } from './hooks/use-workflow-share'
-import { useWorkflowPassport } from './hooks/use-workflow-passport'
 import { Loader2 } from 'lucide-react'
+import { type ReactNode, useEffect, useRef } from 'react'
+import { useWorkflowPassport } from './hooks/use-workflow-passport'
+import { useWorkflowShare } from './hooks/use-workflow-share'
+import { useWorkflowShareStore } from './workflow-share-provider'
 
 /**
  * Props for ShareGate component
@@ -74,8 +74,8 @@ export function ShareGate({ shareToken, children }: ShareGateProps) {
   // Loading state
   if (isLoadingSite || isLoadingPassport) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className='flex h-screen items-center justify-center'>
+        <Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
       </div>
     )
   }
@@ -83,9 +83,9 @@ export function ShareGate({ shareToken, children }: ShareGateProps) {
   // Site error state
   if (siteError) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4">
-        <h1 className="text-2xl font-bold">Workflow Not Found</h1>
-        <p className="text-muted-foreground">{siteError}</p>
+      <div className='flex h-screen flex-col items-center justify-center gap-4'>
+        <h1 className='text-2xl font-bold'>Workflow Not Found</h1>
+        <p className='text-muted-foreground'>{siteError}</p>
       </div>
     )
   }
@@ -93,9 +93,9 @@ export function ShareGate({ shareToken, children }: ShareGateProps) {
   // Passport error state
   if (passportError) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4">
-        <h1 className="text-2xl font-bold">Access Denied</h1>
-        <p className="text-muted-foreground">{passportError}</p>
+      <div className='flex h-screen flex-col items-center justify-center gap-4'>
+        <h1 className='text-2xl font-bold'>Access Denied</h1>
+        <p className='text-muted-foreground'>{passportError}</p>
       </div>
     )
   }

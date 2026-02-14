@@ -1,6 +1,6 @@
-import { memo } from 'react'
 import type { ConnectionLineComponentProps } from '@xyflow/react'
-import { Position, getBezierPath } from '@xyflow/react'
+import { getBezierPath, Position } from '@xyflow/react'
+import { memo } from 'react'
 
 const CustomConnectionLine = ({ fromX, fromY, toX, toY }: ConnectionLineComponentProps) => {
   const [edgePath] = getBezierPath({
@@ -15,8 +15,8 @@ const CustomConnectionLine = ({ fromX, fromY, toX, toY }: ConnectionLineComponen
 
   return (
     <g>
-      <path fill="none" stroke="#D0D5DD" strokeWidth={2} d={edgePath} />
-      <rect x={toX} y={toY - 4} width={2} height={8} fill="#2970FF" />
+      <path fill='none' stroke='#D0D5DD' strokeWidth={2} d={edgePath} />
+      <rect x={toX} y={toY - 4} width={2} height={8} fill='#2970FF' />
     </g>
   )
 }

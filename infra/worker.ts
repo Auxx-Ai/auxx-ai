@@ -1,8 +1,9 @@
 // infra/worker.ts
+
+import { rds, redis } from './db'
 import { cluster, vpc } from './router-vpc'
 import { getAllSecretsForLinking, getSelectedEnvVars } from './secrets'
-import { rds, redis } from './db'
-import { publicBucket, privateBucket } from './storage'
+import { privateBucket, publicBucket } from './storage'
 
 /**
  * Worker service - only created in non-dev mode

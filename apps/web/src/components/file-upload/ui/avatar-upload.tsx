@@ -2,15 +2,15 @@
 
 'use client'
 
-import { useCallback, useState } from 'react'
-import { Upload, Trash2, User, Loader2 } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import { Button } from '@auxx/ui/components/button'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { useConfirm } from '~/hooks/use-confirm'
-import { useFileUpload } from '../hooks/use-file-upload'
 import { cn } from '@auxx/ui/lib/utils'
+import { Loader2, Trash2, Upload, User } from 'lucide-react'
+import { useCallback, useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
+import { useFileUpload } from '../hooks/use-file-upload'
 
 /**
  * Props for the AvatarUpload component
@@ -229,35 +229,35 @@ export function AvatarUpload({
             config.avatar,
             'border-2 border-dashed border-transparent group-hover:border-border transition-colors'
           )}>
-          {hasAvatar && <AvatarImage src={displayUrl} alt="Profile" />}
+          {hasAvatar && <AvatarImage src={displayUrl} alt='Profile' />}
           <AvatarFallback>
             {isUploading ? (
-              <Loader2 className="size-6 animate-spin" />
+              <Loader2 className='size-6 animate-spin' />
             ) : (
-              <User className="size-6" />
+              <User className='size-6' />
             )}
           </AvatarFallback>
         </Avatar>
 
         {/* Upload overlay */}
         {!disabled && (
-          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-full flex items-center justify-center">
-            <Upload className="size-4 text-white" />
+          <div className='absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-full flex items-center justify-center'>
+            <Upload className='size-4 text-white' />
           </div>
         )}
       </div>
 
       {/* Controls */}
-      <div className="flex flex-col gap-2 flex-1">
-        <div className="flex gap-2">
+      <div className='flex flex-col gap-2 flex-1'>
+        <div className='flex gap-2'>
           {/* Upload button */}
           <Button
-            variant="outline"
-            type="button"
+            variant='outline'
+            type='button'
             size={config.buttonSize}
             disabled={disabled || isUploading}
             loading={isUploading}
-            loadingText="Uploading..."
+            loadingText='Uploading...'
             onClick={() => document.getElementById('avatar-upload-input')?.click()}>
             <Upload />
             Upload
@@ -266,12 +266,12 @@ export function AvatarUpload({
           {/* Remove button */}
           {hasAvatar && (
             <Button
-              variant="outline"
-              type="button"
+              variant='outline'
+              type='button'
               size={config.buttonSize}
               disabled={disabled || isRemoving}
               loading={isRemoving}
-              loadingText="Removing..."
+              loadingText='Removing...'
               onClick={handleRemove}>
               <Trash2 />
               Remove
@@ -281,26 +281,26 @@ export function AvatarUpload({
 
         {/* Upload progress, errors, or instructions */}
         {isUploading ? (
-          <div className="w-full h-8">
-            <div className="flex justify-between text-xs text-primary-500 mb-1">
+          <div className='w-full h-8'>
+            <div className='flex justify-between text-xs text-primary-500 mb-1'>
               <span>Uploading...</span>
               <span>{fileUpload.uploadSummary?.overallProgress || 0}%</span>
             </div>
-            <div className="w-full bg-muted rounded-full h-1.5">
+            <div className='w-full bg-muted rounded-full h-1.5'>
               <div
-                className="bg-info h-1.5 rounded-full transition-all"
+                className='bg-info h-1.5 rounded-full transition-all'
                 style={{ width: `${fileUpload.uploadSummary?.overallProgress || 0}%` }}
               />
             </div>
           </div>
         ) : fileUpload.errors.length > 0 ? (
-          <div className="w-full h-8">
-            <div className="text-xs text-destructive">
+          <div className='w-full h-8'>
+            <div className='text-xs text-destructive'>
               Upload failed: {fileUpload.errors[0]?.message || 'Unknown error'}
             </div>
           </div>
         ) : (
-          <div className="w-full h-8">
+          <div className='w-full h-8'>
             <p className={cn('text-primary-500 max-w-xs text-xs', config.uploadText)}>
               Upload a photo to use as your profile picture. Max 5MB. Supports JPEG, PNG, WebP, and
               GIF.
@@ -311,10 +311,10 @@ export function AvatarUpload({
 
       {/* Hidden file input */}
       <input
-        id="avatar-upload-input"
-        type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif"
-        className="hidden"
+        id='avatar-upload-input'
+        type='file'
+        accept='image/jpeg,image/png,image/webp,image/gif'
+        className='hidden'
         onChange={handleInputChange}
         disabled={disabled}
       />

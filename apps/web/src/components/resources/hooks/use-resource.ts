@@ -1,7 +1,7 @@
 // apps/web/src/components/resources/hooks/use-resource.ts
 
-import { useResourceStore } from '../store/resource-store'
 import type { Resource } from '@auxx/lib/resources/client'
+import { useResourceStore } from '../store/resource-store'
 
 interface UseResourceResult {
   /** The resource (or undefined if not found) */

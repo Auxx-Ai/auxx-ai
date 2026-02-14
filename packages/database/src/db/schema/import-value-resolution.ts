@@ -1,18 +1,18 @@
 // packages/database/src/db/schema/import-value-resolution.ts
 
-import {
-  pgTable,
-  index,
-  uniqueIndex,
-  text,
-  integer,
-  boolean,
-  timestamp,
-  jsonb,
-  type AnyPgColumn,
-  importResolutionStatus,
-} from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import {
+  type AnyPgColumn,
+  boolean,
+  importResolutionStatus,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from './_shared'
 import { ImportJobProperty } from './import-job-property'
 
 /**

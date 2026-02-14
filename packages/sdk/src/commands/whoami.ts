@@ -1,10 +1,10 @@
 // packages/sdk/src/commands/whoami.ts
 
-import { Command } from 'commander'
 import chalk from 'chalk'
 import Table from 'cli-table3'
-import { authenticator } from '../auth/auth.js'
+import { Command } from 'commander'
 import { api } from '../api/api.js'
+import { authenticator } from '../auth/auth.js'
 import { isErrored } from '../errors.js'
 import { isError } from '../types/result.js'
 

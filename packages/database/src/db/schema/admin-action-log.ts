@@ -1,11 +1,10 @@
 // packages/database/src/db/schema/admin-action-log.ts
 // Drizzle table: adminActionLog
 
-import { pgTable, index, text, timestamp, jsonb, type AnyPgColumn } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
-
-import { User } from './user'
+import { type AnyPgColumn, index, jsonb, pgTable, text, timestamp } from './_shared'
 import { Organization } from './organization'
+import { User } from './user'
 
 /** Drizzle table for adminActionLog - tracks all admin actions for audit purposes */
 export const AdminActionLog = pgTable(
@@ -33,7 +32,10 @@ export const AdminActionLog = pgTable(
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
-    index('AdminActionLog_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
+    index('AdminActionLog_organizationId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast()
+    ),
     index('AdminActionLog_adminUserId_idx').using('btree', table.adminUserId.asc().nullsLast()),
     index('AdminActionLog_createdAt_idx').using('btree', table.createdAt.desc().nullsLast()),
     index('AdminActionLog_actionType_idx').using('btree', table.actionType.asc().nullsLast()),

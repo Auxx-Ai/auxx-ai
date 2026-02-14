@@ -1,8 +1,8 @@
 // packages/lib/src/workflow-engine/events/types.ts
 
 import { z } from 'zod'
-import { NodeRunningStatus } from '../types'
 import { WorkflowEventType } from '../shared/types'
+import { NodeRunningStatus } from '../types'
 
 // Re-export WorkflowEventType for convenience
 export { WorkflowEventType }

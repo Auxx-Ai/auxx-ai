@@ -1,33 +1,33 @@
 // apps/web/src/components/dynamic-table/dynamic-view.tsx
 'use client'
 
-import { useMemo, useRef, Children, isValidElement, useState, useCallback } from 'react'
-import { useDynamicTable } from './hooks/use-dynamic-table'
-import { useCellNavigation } from './hooks/use-cell-navigation'
-import { TableToolbar } from './components/table-toolbar'
-import { TableBody } from './components/table-body'
-import { KanbanViewBody } from './components/kanban-view-body'
+import { cn } from '@auxx/ui/lib/utils'
+import { Children, isValidElement, useCallback, useMemo, useRef, useState } from 'react'
+import { useResourceFields } from '~/components/resources/hooks'
 import { FloatingBulkActionBar } from './components/floating-bulk-action-bar'
+import { KanbanViewBody } from './components/kanban-view-body'
+import { TableBody } from './components/table-body'
 import { TableContentSkeleton } from './components/table-content-skeleton'
+import { TableToolbar } from './components/table-toolbar'
 import { ToolbarSkeleton } from './components/toolbar-skeleton'
+import { CellSelectionConfigProvider, useCellSelection } from './context/cell-selection-context'
 import { TableConfigProvider, useTableConfig } from './context/table-config-context'
 import { TableInstanceProvider, useTableInstance } from './context/table-instance-context'
-import { ViewMetadataProvider, useViewMetadata } from './context/view-metadata-context'
-import { CellSelectionConfigProvider, useCellSelection } from './context/cell-selection-context'
+import { useViewMetadata, ViewMetadataProvider } from './context/view-metadata-context'
+import { useCellNavigation } from './hooks/use-cell-navigation'
+import { useDynamicTable } from './hooks/use-dynamic-table'
+import { useReconciledColumns } from './hooks/use-reconciled-columns'
 import { useDynamicTableStore } from './stores/dynamic-table-store'
 import { useColumnOrder } from './stores/store-selectors'
-import { useReconciledColumns } from './hooks/use-reconciled-columns'
-import { cn } from '@auxx/ui/lib/utils'
 import type {
-  DynamicTableProps,
-  ViewType,
-  KanbanViewConfig,
-  ViewConfig,
   CellSelectionState,
-  ResourceField,
   CustomField,
+  DynamicTableProps,
+  KanbanViewConfig,
+  ResourceField,
+  ViewConfig,
+  ViewType,
 } from './types'
-import { useResourceFields } from '~/components/resources/hooks'
 import './styles/table.css'
 
 /**
@@ -143,10 +143,10 @@ function DynamicViewInner<TData extends object>({
   const isInitialLoading = !isViewsLoaded || (isLoading && !hasData)
 
   return (
-    <div ref={scrollContainerRef} className="flex flex-col relative h-full flex-1 overflow-auto">
+    <div ref={scrollContainerRef} className='flex flex-col relative h-full flex-1 overflow-auto'>
       {/* Toolbar */}
       {!hideToolbar && (
-        <div className="sticky top-0 z-20 bg-background left-0">
+        <div className='sticky top-0 z-20 bg-background left-0'>
           {isViewsLoaded ? (
             <TableToolbar
               searchQuery={searchQuery}
@@ -170,15 +170,15 @@ function DynamicViewInner<TData extends object>({
       ) : (
         <>
           <TableBody hideToolbar={hideToolbar} scrollContainerRef={scrollContainerRef} />
-          <div className="grow" />
+          <div className='grow' />
         </>
       )}
 
       {/* Inline loading indicator */}
       {!isInitialLoading && isLoading && hasData && (
-        <div className="absolute inset-0 bg-background/50 flex items-center justify-center pointer-events-none z-10">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-background px-3 py-2 rounded-md shadow-sm">
-            <div className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className='absolute inset-0 bg-background/50 flex items-center justify-center pointer-events-none z-10'>
+          <div className='flex items-center gap-2 text-sm text-muted-foreground bg-background px-3 py-2 rounded-md shadow-sm'>
+            <div className='size-4 animate-spin rounded-full border-2 border-primary border-t-transparent' />
             <span>Loading...</span>
           </div>
         </div>

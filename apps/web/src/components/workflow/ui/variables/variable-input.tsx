@@ -2,13 +2,13 @@
 
 'use client'
 
-import React, { useState, useCallback, useMemo } from 'react'
-import { Variable } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
-import VariableTag from './variable-tag'
-import { VariablePicker } from './variable-picker'
-import type { BaseType, UnifiedVariable } from '~/components/workflow/types/variable-types'
+import { Variable } from 'lucide-react'
+import React, { useCallback, useMemo, useState } from 'react'
 import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
+import type { BaseType, UnifiedVariable } from '~/components/workflow/types/variable-types'
+import { VariablePicker } from './variable-picker'
+import VariableTag from './variable-tag'
 
 /**
  * Props for the VariableInput component
@@ -102,9 +102,9 @@ const VariableInput = React.memo<VariableInputProps>(
           {selectedVariable ? (
             <VariableTag variableId={variableId} nodeId={nodeId} isShort />
           ) : (
-            <span className="text-muted-foreground">{placeholder}</span>
+            <span className='text-muted-foreground'>{placeholder}</span>
           )}
-          <Variable className="h-4 w-4 text-muted-foreground" />
+          <Variable className='h-4 w-4 text-muted-foreground' />
         </div>
       ),
       [triggerClassName, selectedVariable, variableId, nodeId, placeholder]

@@ -1,19 +1,19 @@
 // apps/api/src/routes/workflows/run/execute.ts
 
-import { Hono } from 'hono'
-import { streamSSE } from 'hono/streaming'
-import { getWorkflowByApiKey } from '@auxx/services/workflow-share'
-import { WorkflowExecutionService } from '@auxx/lib/workflows'
+import { database } from '@auxx/database'
 import {
   RedisWorkflowExecutionReporter,
-  WorkflowEventType,
   validateFormInputs,
+  WorkflowEventType,
 } from '@auxx/lib/workflow-engine'
 import { safeJsonStringify } from '@auxx/lib/workflow-engine/utils/serialization'
-import { RedisEventRouter } from '@auxx/redis'
-import { database } from '@auxx/database'
+import { WorkflowExecutionService } from '@auxx/lib/workflows'
 import { createScopedLogger } from '@auxx/logger'
-import { successResponse, errorResponse } from '../../../lib/response'
+import { RedisEventRouter } from '@auxx/redis'
+import { getWorkflowByApiKey } from '@auxx/services/workflow-share'
+import { Hono } from 'hono'
+import { streamSSE } from 'hono/streaming'
+import { errorResponse, successResponse } from '../../../lib/response'
 
 const logger = createScopedLogger('workflow-run-execute')
 
@@ -112,10 +112,7 @@ executeRoute.post('/', async (c) => {
 
   // Check if workflow has a published version
   if (!workflow.publishedWorkflowId) {
-    return c.json(
-      errorResponse('WORKFLOW_NOT_PUBLISHED', 'Workflow has no published version'),
-      400
-    )
+    return c.json(errorResponse('WORKFLOW_NOT_PUBLISHED', 'Workflow has no published version'), 400)
   }
 
   // Create execution service
@@ -149,10 +146,7 @@ executeRoute.post('/', async (c) => {
       error: error instanceof Error ? error.message : String(error),
       workflowAppId: workflow.id,
     })
-    return c.json(
-      errorResponse('EXECUTION_ERROR', 'Failed to execute workflow'),
-      500
-    )
+    return c.json(errorResponse('EXECUTION_ERROR', 'Failed to execute workflow'), 500)
   }
 })
 
@@ -216,10 +210,7 @@ async function handleBlockingExecution(
       error: error instanceof Error ? error.message : String(error),
     })
 
-    return c.json(
-      errorResponse('EXECUTION_ERROR', 'Workflow execution failed'),
-      500
-    )
+    return c.json(errorResponse('EXECUTION_ERROR', 'Workflow execution failed'), 500)
   }
 }
 

@@ -1,15 +1,19 @@
 // apps/web/src/server/api/routers/record.ts
 
+import { schema } from '@auxx/database'
+import { conditionGroupSchema } from '@auxx/lib/conditions'
+import { getDescendantIds } from '@auxx/lib/field-values'
+import {
+  NEW_SYSTEM_ENTITY_TYPES,
+  RESOURCE_TABLE_REGISTRY,
+  UnifiedCrudHandler,
+} from '@auxx/lib/resources'
+import { type FieldId, parseResourceFieldId, resourceFieldIdSchema } from '@auxx/types/field'
+import { parseRecordId, type RecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
+import { TRPCError } from '@trpc/server'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { TRPCError } from '@trpc/server'
-import { UnifiedCrudHandler, RESOURCE_TABLE_REGISTRY, NEW_SYSTEM_ENTITY_TYPES } from '@auxx/lib/resources'
-import { conditionGroupSchema } from '@auxx/lib/conditions'
-import { recordIdSchema, type RecordId, parseRecordId, toRecordId } from '@auxx/types/resource'
-import { resourceFieldIdSchema, parseResourceFieldId, type FieldId } from '@auxx/types/field'
-import { getDescendantIds } from '@auxx/lib/field-values'
-import { schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
 
 /**
  * Validate entity definition ID - accepts system TableId, new system entity type, or custom entity UUID
@@ -24,7 +28,10 @@ const entityDefinitionIdSchema = z.string().refine(
     if (val.length >= 20) return true
     return false
   },
-  { message: 'Invalid resource ID. Must be system TableId, system entity type, or EntityDefinitionId (UUID).' }
+  {
+    message:
+      'Invalid resource ID. Must be system TableId, system entity type, or EntityDefinitionId (UUID).',
+  }
 )
 
 /**

@@ -1,15 +1,23 @@
 // apps/web/src/server/api/routers/entityGroup.ts
 
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import {
+  GroupVisibility,
+  MemberType,
+  ResourceGranteeType,
+  ResourcePermission,
+} from '@auxx/database/enums'
 import * as groups from '@auxx/lib/groups'
 import type { GroupContext } from '@auxx/types/groups'
-import { MemberType, GroupVisibility, ResourcePermission, ResourceGranteeType } from '@auxx/database/enums'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 /**
  * Helper to create GroupContext from tRPC context
  */
-function toGroupContext(ctx: { db: any; session: { organizationId: string; userId: string } }): GroupContext {
+function toGroupContext(ctx: {
+  db: any
+  session: { organizationId: string; userId: string }
+}): GroupContext {
   return {
     db: ctx.db,
     organizationId: ctx.session.organizationId,
@@ -51,7 +59,9 @@ export const entityGroupRouter = createTRPCRouter({
         name: z.string().min(1),
         description: z.string().optional(),
         memberType: z.string().default('any'),
-        visibility: z.enum([GroupVisibility.public, GroupVisibility.private]).default(GroupVisibility.private),
+        visibility: z
+          .enum([GroupVisibility.public, GroupVisibility.private])
+          .default(GroupVisibility.private),
         color: z.string().optional(),
         icon: z.string().optional(),
       })
@@ -126,26 +136,32 @@ export const entityGroupRouter = createTRPCRouter({
     }),
 
   /** Get groups a user belongs to */
-  forUser: protectedProcedure.input(z.object({ userId: z.string() })).query(async ({ ctx, input }) => {
-    const groupCtx = toGroupContext(ctx)
-    return groups.getGroupsForUser(groupCtx, input.userId)
-  }),
+  forUser: protectedProcedure
+    .input(z.object({ userId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const groupCtx = toGroupContext(ctx)
+      return groups.getGroupsForUser(groupCtx, input.userId)
+    }),
 
   /** Get groups an entity belongs to */
-  forEntity: protectedProcedure.input(z.object({ entityId: z.string() })).query(async ({ ctx, input }) => {
-    const groupCtx = toGroupContext(ctx)
-    return groups.getGroupsForEntity(groupCtx, input.entityId)
-  }),
+  forEntity: protectedProcedure
+    .input(z.object({ entityId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const groupCtx = toGroupContext(ctx)
+      return groups.getGroupsForEntity(groupCtx, input.entityId)
+    }),
 
   // ═══════════════════════════════════════════════════════════════════════════
   // PERMISSION OPERATIONS
   // ═══════════════════════════════════════════════════════════════════════════
 
   /** Get permissions for a group */
-  permissions: protectedProcedure.input(z.object({ groupId: z.string() })).query(async ({ ctx, input }) => {
-    const groupCtx = toGroupContext(ctx)
-    return groups.getPermissions(groupCtx, input.groupId)
-  }),
+  permissions: protectedProcedure
+    .input(z.object({ groupId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const groupCtx = toGroupContext(ctx)
+      return groups.getPermissions(groupCtx, input.groupId)
+    }),
 
   /** Grant permission on a group */
   grantPermission: protectedProcedure
@@ -197,9 +213,11 @@ export const entityGroupRouter = createTRPCRouter({
     }),
 
   /** Check current user's permission on a group */
-  myPermission: protectedProcedure.input(z.object({ groupId: z.string() })).query(async ({ ctx, input }) => {
-    const groupCtx = toGroupContext(ctx)
-    const permission = await groups.getGroupPermission(groupCtx, input.groupId)
-    return { permission }
-  }),
+  myPermission: protectedProcedure
+    .input(z.object({ groupId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const groupCtx = toGroupContext(ctx)
+      const permission = await groups.getGroupPermission(groupCtx, input.groupId)
+      return { permission }
+    }),
 })

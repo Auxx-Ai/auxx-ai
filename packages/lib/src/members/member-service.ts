@@ -2,23 +2,23 @@
  * src/lib/members/member-service.ts
  * Service for managing organization members and invitations.
  */
-import { database, type Database } from '@auxx/database'
-import { eq, and, gt, count, sql, asc, ilike } from 'drizzle-orm'
-import { schema } from '@auxx/database'
+
+import { SubscriptionService } from '@auxx/billing'
+import { WEBAPP_URL } from '@auxx/config/server'
+import { type Database, database, schema } from '@auxx/database'
 import {
-  OrganizationMemberModel,
   type OrganizationInvitationEntity as OrganizationInvitation,
+  OrganizationMemberModel,
 } from '@auxx/database/models'
-import { type OrganizationRole } from '@auxx/database/types'
+import type { OrganizationRole } from '@auxx/database/types'
+import { sendInviteEmail, sendJoinOrganizationEmail } from '@auxx/email'
+import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import crypto from 'crypto'
-import { sendInviteEmail, sendJoinOrganizationEmail } from '@auxx/email'
-import { WEBAPP_URL } from '@auxx/config/server'
-import { createScopedLogger } from '@auxx/logger'
-import { FeaturePermissionService } from '../permissions/feature-permission-service'
-import { SubscriptionService } from '@auxx/billing'
-import { FeatureKey } from '../permissions/types'
+import { and, asc, count, eq, gt, ilike, sql } from 'drizzle-orm'
 import { publisher } from '../events'
+import { FeaturePermissionService } from '../permissions/feature-permission-service'
+import { FeatureKey } from '../permissions/types'
 
 const logger = createScopedLogger('member-service')
 
@@ -104,14 +104,9 @@ export class MemberService {
   /**
    * Get membership record for a user in an organization
    */
-  static async getMembership(
-    userId: string,
-    organizationId: string,
-    db: Database = database
-  ) {
+  static async getMembership(userId: string, organizationId: string, db: Database = database) {
     return db.query.OrganizationMember.findFirst({
-      where: (om, { and, eq }) =>
-        and(eq(om.userId, userId), eq(om.organizationId, organizationId)),
+      where: (om, { and, eq }) => and(eq(om.userId, userId), eq(om.organizationId, organizationId)),
     })
   }
 

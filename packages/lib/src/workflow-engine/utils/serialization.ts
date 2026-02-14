@@ -47,7 +47,7 @@ export function safeDeepClone<T>(obj: T): T {
 
   const cloned: any = {}
   for (const key in obj) {
-    if (obj.hasOwnProperty(key)) {
+    if (Object.hasOwn(obj, key)) {
       cloned[key] = safeDeepClone(obj[key])
     }
   }
@@ -78,7 +78,7 @@ export function prepareForSerialization(obj: any): any {
   if (typeof obj === 'object') {
     const prepared: any = {}
     for (const key in obj) {
-      if (obj.hasOwnProperty(key)) {
+      if (Object.hasOwn(obj, key)) {
         prepared[key] = prepareForSerialization(obj[key])
       }
     }

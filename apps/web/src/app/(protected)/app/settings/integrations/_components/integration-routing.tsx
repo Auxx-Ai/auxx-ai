@@ -1,6 +1,6 @@
 'use client'
-// ~/app/(protected)/app/settings/integrations/_components/integration-routing.tsx
-import React, { useState, useMemo } from 'react'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -18,16 +18,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Badge } from '@auxx/ui/components/badge'
-import { AlertCircle, AlertTriangle, CloudDownload, Edit, InboxIcon, MailPlus } from 'lucide-react'
-import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import MessageSyncStatus from '~/components/mail/message-sync-status'
-import { useConfirm } from '~/hooks/use-confirm'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { AlertCircle, AlertTriangle, CloudDownload, Edit, InboxIcon, MailPlus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useResource, useRecord, useRecordList, toRecordId } from '~/components/resources'
+// ~/app/(protected)/app/settings/integrations/_components/integration-routing.tsx
+import React, { useMemo, useState } from 'react'
+import MessageSyncStatus from '~/components/mail/message-sync-status'
+import { toRecordId, useRecord, useRecordList, useResource } from '~/components/resources'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 /** Props for the IntegrationRouting component */
 interface IntegrationRoutingProps {
@@ -136,58 +136,58 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
   }
 
   return (
-    <div className="p-6 space-y-10">
-      <div className="space-y-1">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2  tracking-tight font-semibold text-foreground text-base">
-              <CloudDownload className="size-4" /> Data Sync
+    <div className='p-6 space-y-10'>
+      <div className='space-y-1'>
+        <div className='flex items-center justify-between'>
+          <div className='space-y-1'>
+            <div className='flex items-center gap-2  tracking-tight font-semibold text-foreground text-base'>
+              <CloudDownload className='size-4' /> Data Sync
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className='text-sm text-muted-foreground'>
               Configure how data from this integration is synced to your inboxes.
             </p>
           </div>
           <MessageSyncStatus integrationId={integration.id} />
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-start">
-          <div className="text-sm text-muted-foreground">Last synced</div>
-          <Badge variant="green" size="sm">
+        <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-start'>
+          <div className='text-sm text-muted-foreground'>Last synced</div>
+          <Badge variant='green' size='sm'>
             {lastSynced}
           </Badge>
         </div>
       </div>
-      <div className="space-y-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2  tracking-tight font-semibold text-foreground text-base">
-            <MailPlus className="size-4" /> Message Routing
+      <div className='space-y-4'>
+        <div className='space-y-1'>
+          <div className='flex items-center gap-2  tracking-tight font-semibold text-foreground text-base'>
+            <MailPlus className='size-4' /> Message Routing
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className='text-sm text-muted-foreground'>
             Configure how messages from this integration are routed to your inboxes.
           </p>
         </div>
         <div>
           {connectedInbox || isLoadingConnectedInbox ? (
-            <div className="space-y-4">
-              <div className="group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200">
-                <div className="flex items-center gap-3">
-                  <div className="size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors overflow-hidden shrink-0">
-                    <InboxIcon className="size-4" />
+            <div className='space-y-4'>
+              <div className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200'>
+                <div className='flex items-center gap-3'>
+                  <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors overflow-hidden shrink-0'>
+                    <InboxIcon className='size-4' />
                   </div>
-                  <div className="flex flex-col">
+                  <div className='flex flex-col'>
                     {isLoadingConnectedInbox ? (
-                      <Skeleton className="h-3 w-24" />
+                      <Skeleton className='h-3 w-24' />
                     ) : (
-                      <span className="text-sm font-medium">{connectedInbox?.displayName}</span>
+                      <span className='text-sm font-medium'>{connectedInbox?.displayName}</span>
                     )}
-                    <span className="text-xs text-muted-foreground">
+                    <span className='text-xs text-muted-foreground'>
                       Messages will be routed to this inbox
                     </span>
                   </div>
                 </div>
                 {isLoadingConnectedInbox ? (
-                  <Skeleton className="h-7 w-32" />
+                  <Skeleton className='h-7 w-32' />
                 ) : (
-                  <Button variant="outline" onClick={handleOpenDialog} size="sm">
+                  <Button variant='outline' onClick={handleOpenDialog} size='sm'>
                     <Edit />
                     Edit default inbox
                   </Button>
@@ -195,9 +195,9 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
+            <div className='space-y-4'>
+              <Alert variant='destructive'>
+                <AlertCircle className='h-4 w-4' />
                 <AlertTitle>Not connected</AlertTitle>
                 <AlertDescription>
                   This integration is not connected to any inbox. Messages won't be received until
@@ -205,7 +205,7 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
                 </AlertDescription>
               </Alert>
 
-              <Button variant="default" onClick={handleOpenDialog}>
+              <Button variant='default' onClick={handleOpenDialog}>
                 Connect to inbox
               </Button>
             </div>
@@ -215,8 +215,8 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
         {/* Dialog for selecting inbox */}
         {dialogOpen ? (
           <Dialog open onOpenChange={setDialogOpen}>
-            <DialogContent size="sm">
-              <DialogHeader className="mb-4">
+            <DialogContent size='sm'>
+              <DialogHeader className='mb-4'>
                 <DialogTitle>{connectedInbox ? 'Change inbox' : 'Connect to inbox'}</DialogTitle>
                 <DialogDescription>
                   {connectedInbox
@@ -225,10 +225,10 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="">
+              <div className=''>
                 <Select value={selectedRecordId} onValueChange={setSelectedRecordId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select an inbox" />
+                    <SelectValue placeholder='Select an inbox' />
                   </SelectTrigger>
                   <SelectContent>
                     {inboxes?.map((inbox) => (
@@ -242,25 +242,25 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
                 </Select>
 
                 {(!inboxes || inboxes.length === 0) && (
-                  <p className="mt-2 text-sm text-muted-foreground">
+                  <p className='mt-2 text-sm text-muted-foreground'>
                     No inboxes available. Please create an inbox first.
                   </p>
                 )}
               </div>
 
               <DialogFooter>
-                <Button variant="ghost" size="sm" onClick={() => setDialogOpen(false)}>
-                  Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+                <Button variant='ghost' size='sm' onClick={() => setDialogOpen(false)}>
+                  Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
                 </Button>
                 <Button
                   data-dialog-submit
                   onClick={handleConnectInbox}
                   disabled={!selectedRecordId || addIntegration.isPending}
-                  variant="outline"
-                  size="sm"
+                  variant='outline'
+                  size='sm'
                   loading={addIntegration.isPending}
-                  loadingText="Connecting...">
-                  Connect <KbdSubmit variant="outline" size="sm" />
+                  loadingText='Connecting...'>
+                  Connect <KbdSubmit variant='outline' size='sm' />
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -268,29 +268,29 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
         ) : null}
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center gap-2  tracking-tight font-semibold text-foreground text-base">
-          <AlertTriangle className="size-4" /> Danger Zone
+      <div className='space-y-2'>
+        <div className='flex items-center gap-2  tracking-tight font-semibold text-foreground text-base'>
+          <AlertTriangle className='size-4' /> Danger Zone
         </div>
-        <div className="group flex items-center border py-2 px-3 hover:bg-destructive/2 transition-colors duration-200 rounded-2xl border-destructive/50">
-          <div className="flex flex-col justify-between gap-4 w-full md:flex-row md:items-center">
-            <div className="flex items-center gap-3">
-              <div className="size-8 border border-destructive/10 bg-destructive/2 rounded-lg flex items-center justify-center group-hover:bg-destructive/5 transition-colors overflow-hidden shrink-0">
-                <AlertTriangle className="size-4 text-destructive" />
+        <div className='group flex items-center border py-2 px-3 hover:bg-destructive/2 transition-colors duration-200 rounded-2xl border-destructive/50'>
+          <div className='flex flex-col justify-between gap-4 w-full md:flex-row md:items-center'>
+            <div className='flex items-center gap-3'>
+              <div className='size-8 border border-destructive/10 bg-destructive/2 rounded-lg flex items-center justify-center group-hover:bg-destructive/5 transition-colors overflow-hidden shrink-0'>
+                <AlertTriangle className='size-4 text-destructive' />
               </div>
-              <div className="flex flex-col">
-                <span className="text-sm text-destructive">Delete Integration</span>
-                <span className="text-xs text-destructive/80">
+              <div className='flex flex-col'>
+                <span className='text-sm text-destructive'>Delete Integration</span>
+                <span className='text-xs text-destructive/80'>
                   Permanently delete integration and all associated messages.
                 </span>
               </div>
             </div>
-            <div className="shrink-0">
+            <div className='shrink-0'>
               <Button
-                variant="destructive"
+                variant='destructive'
                 onClick={handleRemoveIntegration}
                 disabled={isRemoving}
-                size="sm">
+                size='sm'>
                 Delete Integration
               </Button>
             </div>

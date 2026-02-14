@@ -1,7 +1,7 @@
 // packages/lib/src/field-values/converters/calc.ts
 
-import type { TypedFieldValueInput, TypedFieldValue } from '@auxx/types/field-value'
-import type { FieldValueConverter, FieldOptions, ConverterOptions } from './index'
+import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types/field-value'
+import type { ConverterOptions, FieldOptions, FieldValueConverter } from './index'
 
 /**
  * Converter for CALC (calculated) fields.

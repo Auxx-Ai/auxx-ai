@@ -1,6 +1,7 @@
 // infra/homepage.ts
-import { router, vpc } from './router-vpc'
+
 import { getHomepageDomain } from './dns'
+import { router, vpc } from './router-vpc'
 import { getHomepageSecretsForLinking, getSelectedEnvVars } from './secrets'
 
 export const homepage = new sst.aws.Nextjs('AuxxAiHomepage', {

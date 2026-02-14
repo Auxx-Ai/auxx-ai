@@ -1,6 +1,7 @@
 // packages/lib/src/ai/providers/anthropic/anthropic-llm-client.ts
 
-import Anthropic from '@anthropic-ai/sdk'
+import type Anthropic from '@anthropic-ai/sdk'
+import { createScopedLogger, type Logger } from '../../../logger'
 import { LLMClient } from '../../clients/base/llm-client'
 import type {
   ClientConfig,
@@ -8,16 +9,15 @@ import type {
   LLMResponse,
   LLMStreamChunk,
   LLMStreamResult,
+  Message,
+  ModelCapabilities,
   MultiModalContent,
+  StreamingError,
   Tool,
   ToolCall,
-  Message,
   UsageMetrics,
-  ModelCapabilities,
-  StreamingError,
 } from '../../clients/base/types'
 import { InvalidParameterError } from '../../clients/base/types'
-import { createScopedLogger, Logger } from '../../../logger'
 import { ANTHROPIC_MODELS } from './anthropic-defaults'
 
 /**
@@ -98,7 +98,7 @@ export class AnthropicLLMClient extends LLMClient {
 
     let fullContent = ''
     let chunkCount = 0
-    let toolCalls: ToolCall[] = []
+    const toolCalls: ToolCall[] = []
     let finalUsage: UsageMetrics | undefined
 
     try {

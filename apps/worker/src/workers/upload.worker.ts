@@ -1,6 +1,6 @@
 import { Worker } from 'bullmq'
-import { Server } from 'socket.io'
 import dotenv from 'dotenv'
+import type { Server } from 'socket.io'
 
 dotenv.config()
 

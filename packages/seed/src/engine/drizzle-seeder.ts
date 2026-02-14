@@ -1,16 +1,16 @@
 // packages/seed/src/engine/drizzle-seeder.ts
 // Core orchestrator that coordinates reset, service integrations, auth seeding, and drizzle-seed generation
 
-import { drizzle } from 'drizzle-orm/postgres-js'
-import postgres from 'postgres'
-import { seed, reset } from 'drizzle-seed'
 import { env } from '@auxx/config'
 import { schema } from '@auxx/database'
-import type { SeedingConfig, SeedingContext, SeedingResult, SeedingScenario } from '../types'
+import { drizzle } from 'drizzle-orm/postgres-js'
+import { reset, seed } from 'drizzle-seed'
+import postgres from 'postgres'
 import { ScenarioBuilder } from '../scenarios/scenario-builder'
+import type { SeedingConfig, SeedingContext, SeedingResult, SeedingScenario } from '../types'
+import { ProgressTracker } from '../utils/progress-tracker'
 import { AuthSeeder } from './auth-seeder'
 import { ServiceIntegrator } from './service-integrator'
-import { ProgressTracker } from '../utils/progress-tracker'
 
 /** DrizzleSeeder coordinates the multi-phase database seeding workflow. */
 export class DrizzleSeeder {

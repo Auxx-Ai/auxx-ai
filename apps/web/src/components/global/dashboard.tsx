@@ -1,34 +1,33 @@
 // File: src/app/(protected)/app/mail/_components/dashboard.tsx
 'use client'
-import React, { useCallback, useState } from 'react'
-import AppSidebar from '~/components/global/sidebar'
-import { usePathname } from 'next/navigation'
-import { useRouter } from 'next/navigation'
+import { toRecordId } from '@auxx/types/resource'
+import { SidebarInset, SidebarProvider } from '@auxx/ui/components/sidebar'
+import { toastSuccess } from '@auxx/ui/components/toast'
 import {
+  type Active,
   DndContext,
   type DragEndEvent,
-  type DragStartEvent,
   DragOverlay,
+  type DragStartEvent,
+  KeyboardSensor,
+  PointerSensor,
+  pointerWithin,
   useSensor,
   useSensors,
-  PointerSensor,
-  KeyboardSensor,
-  pointerWithin,
-  type Active,
 } from '@dnd-kit/core'
-import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import { createPortal } from 'react-dom'
-import { toastSuccess } from '@auxx/ui/components/toast'
-import MailThreadItemDragOverlay from '~/components/mail/mail-thread-item-drag-overlay'
-import { DndStateProvider } from '~/app/context/dnd-state-context'
 import { snapCenterToCursor } from '@dnd-kit/modifiers'
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
+import { usePathname, useRouter } from 'next/navigation'
+import React, { useCallback, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { DndStateProvider } from '~/app/context/dnd-state-context'
+import AppSidebar from '~/components/global/sidebar'
+import MailThreadItemDragOverlay from '~/components/mail/mail-thread-item-drag-overlay'
 import { useThreadMutation } from '~/components/threads/hooks'
-import { SidebarInset, SidebarProvider } from '@auxx/ui/components/sidebar'
 import {
   useDehydratedOrganization,
   useDehydratedOrganizationId,
 } from '~/providers/dehydrated-state-provider'
-import { toRecordId } from '@auxx/types/resource'
 
 type Props = { user?: any; children: React.ReactNode }
 
@@ -78,7 +77,7 @@ export const Dashboard = ({
       // Show nothing while redirecting
       return null
     } else {
-      return <div className="onboarding">{children}</div>
+      return <div className='onboarding'>{children}</div>
     }
   }
 
@@ -119,8 +118,8 @@ export const Dashboard = ({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}>
         <DndStateProvider activeDndItem={activeDndItem}>
-          <div className="flex h-screen overflow-hidden w-full">
-            <AppSidebar className="min-w-0" user={user} />
+          <div className='flex h-screen overflow-hidden w-full'>
+            <AppSidebar className='min-w-0' user={user} />
             <SidebarInset>{children}</SidebarInset>
           </div>
         </DndStateProvider>
@@ -131,7 +130,7 @@ export const Dashboard = ({
               adjustScale={false}
               modifiers={[snapCenterToCursor]}
               style={{ width: 'auto' }}
-              className="w-auto">
+              className='w-auto'>
               {activeDndItem?.data.current?.type === 'thread' ? (
                 <MailThreadItemDragOverlay
                   items={activeDragData?.draggedThreadIds ?? []}

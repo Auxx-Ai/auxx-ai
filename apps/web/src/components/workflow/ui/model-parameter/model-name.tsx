@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/ui/model-parameter/model-name.tsx
 
-import type { FC, PropsWithChildren } from 'react'
-import { ModelData } from './types'
-import ModelBadge from './model-badge'
 import { cn } from '@auxx/ui/lib/utils'
-import { Eye, MessageCircle, FileText, Image, Volume2, Computer, Settings2 } from 'lucide-react'
+import { Computer, Eye, FileText, Image, MessageCircle, Settings2, Volume2 } from 'lucide-react'
+import type { FC, PropsWithChildren } from 'react'
+import ModelBadge from './model-badge'
+import type { ModelData } from './types'
 
 type ModelNameProps = {
   modelItem: ModelData
@@ -35,15 +35,15 @@ const ModelName = ({
 
   const getFeatureIcon = (feature: string) => {
     const iconMap: Record<string, React.ReactNode> = {
-      vision: <Eye className="size-3" />,
-      chat: <MessageCircle className="size-3" />,
-      text: <FileText className="size-3" />,
-      image: <Image className="size-3" />,
-      audio: <Volume2 className="size-3" />,
-      computer_use: <Computer className="size-3" />,
-      tools: <Settings2 className="size-3" />,
+      vision: <Eye className='size-3' />,
+      chat: <MessageCircle className='size-3' />,
+      text: <FileText className='size-3' />,
+      image: <Image className='size-3' />,
+      audio: <Volume2 className='size-3' />,
+      computer_use: <Computer className='size-3' />,
+      tools: <Settings2 className='size-3' />,
     }
-    return iconMap[feature] || <MessageCircle className="size-3" />
+    return iconMap[feature] || <MessageCircle className='size-3' />
   }
 
   const formatModelType = (modelType: string) => {
@@ -74,10 +74,10 @@ const ModelName = ({
         'text-sm flex items-center gap-0.5 overflow-hidden truncate text-ellipsis text-foreground',
         className
       )}>
-      <div className="truncate" title={modelItem.displayName}>
+      <div className='truncate' title={modelItem.displayName}>
         {modelItem.displayName}
       </div>
-      <div className="flex items-center gap-0.5">
+      <div className='flex items-center gap-0.5'>
         {showModelType && modelItem.modelType && (
           <ModelBadge className={modelTypeClassName}>
             {formatModelType(modelItem.modelType)}

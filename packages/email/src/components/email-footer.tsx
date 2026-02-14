@@ -1,5 +1,5 @@
 import { Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 
 export function EmailFooter(): React.JSX.Element {
   return (

@@ -1,9 +1,9 @@
 // packages/lib/src/jobs/maintenance/integration-token-refresh-scanner-job.ts
 
-import type { Job } from 'bullmq'
-import { createScopedLogger } from '@auxx/logger'
 import { database as db, schema } from '@auxx/database'
-import { and, eq, isNotNull, or, lt, inArray, sql } from 'drizzle-orm'
+import { createScopedLogger } from '@auxx/logger'
+import type { Job } from 'bullmq'
+import { and, eq, inArray, isNotNull, lt, or, sql } from 'drizzle-orm'
 import { getQueue, Queues } from '../queues'
 
 const logger = createScopedLogger('integration-token-refresh-scanner')

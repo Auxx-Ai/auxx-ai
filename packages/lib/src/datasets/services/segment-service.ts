@@ -1,11 +1,26 @@
 // packages/lib/src/datasets/services/segment-service.ts
 
-import { database, type Database, schema } from '@auxx/database'
-import { and, eq, gt, gte, lte, ilike, or, isNull, count, asc, desc, SQL, inArray, sql } from 'drizzle-orm'
-import type { IndexStatus } from '@auxx/database/types'
+import { type Database, database, schema } from '@auxx/database'
 import { IndexStatus as IndexStatusEnum } from '@auxx/database/enums'
 import { DocumentSegmentEntity as DocumentSegment } from '@auxx/database/models'
+import type { IndexStatus } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  ilike,
+  inArray,
+  isNull,
+  lte,
+  or,
+  type SQL,
+  sql,
+} from 'drizzle-orm'
 import { DocumentProcessingError } from '../types'
 
 const logger = createScopedLogger('segment-service')
@@ -46,10 +61,8 @@ export class SegmentService {
   async getById(segmentId: string, organizationId: string) {
     try {
       return await this.db.query.DocumentSegment.findFirst({
-        where: (segments, { eq, and }) => and(
-          eq(segments.id, segmentId),
-          eq(segments.organizationId, organizationId)
-        ),
+        where: (segments, { eq, and }) =>
+          and(eq(segments.id, segmentId), eq(segments.organizationId, organizationId)),
         with: {
           document: {
             columns: {
@@ -167,11 +180,11 @@ export class SegmentService {
       // Use transaction to delete and reorder
       await this.db.transaction(async (tx) => {
         // Delete the segment
-        await tx.delete(schema.DocumentSegment)
-          .where(eq(schema.DocumentSegment.id, segmentId))
+        await tx.delete(schema.DocumentSegment).where(eq(schema.DocumentSegment.id, segmentId))
 
         // Reorder remaining segments
-        await tx.update(schema.DocumentSegment)
+        await tx
+          .update(schema.DocumentSegment)
           .set({
             position: sql`${schema.DocumentSegment.position} - 1`,
             updatedAt: new Date(),
@@ -296,7 +309,7 @@ export class SegmentService {
       // Add search condition if provided
       if (filters?.search) {
         const searchConditions: SQL[] = [
-          ilike(schema.DocumentSegment.content, `%${filters.search}%`)
+          ilike(schema.DocumentSegment.content, `%${filters.search}%`),
         ]
 
         // If search query is a number, also search by position
@@ -309,9 +322,10 @@ export class SegmentService {
       }
 
       // Build orderBy
-      const orderByClause = sortOrder === 'desc'
-        ? desc(schema.DocumentSegment[sortBy as keyof typeof schema.DocumentSegment])
-        : asc(schema.DocumentSegment[sortBy as keyof typeof schema.DocumentSegment])
+      const orderByClause =
+        sortOrder === 'desc'
+          ? desc(schema.DocumentSegment[sortBy as keyof typeof schema.DocumentSegment])
+          : asc(schema.DocumentSegment[sortBy as keyof typeof schema.DocumentSegment])
 
       const [segments, totalCountResult] = await Promise.all([
         this.db
@@ -336,7 +350,7 @@ export class SegmentService {
         this.db
           .select({ count: count() })
           .from(schema.DocumentSegment)
-          .where(and(...whereConditions))
+          .where(and(...whereConditions)),
       ])
 
       const totalCount = totalCountResult[0]?.count || 0

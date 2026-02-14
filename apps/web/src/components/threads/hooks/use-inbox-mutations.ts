@@ -1,7 +1,7 @@
 // apps/web/src/components/threads/hooks/use-inbox-mutations.ts
 
-import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
+import { api } from '~/trpc/react'
 
 /**
  * Hook for inbox mutation operations.

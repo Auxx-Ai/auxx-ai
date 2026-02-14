@@ -2,13 +2,10 @@
 
 import type { Database } from '@auxx/database'
 import type { Resource } from '../../resources/registry/types'
+import { type ColumnHeaderWithSamples, orchestrateAutoMap } from '../fields/auto-map-orchestrator'
+import { getImportableFields } from '../fields/get-importable-fields'
 import { getMappablePropertiesWithSamples } from './get-mappable-properties'
 import { batchUpdateMappingsFromAutoMap } from './save-mapping-property'
-import {
-  orchestrateAutoMap,
-  type ColumnHeaderWithSamples,
-} from '../fields/auto-map-orchestrator'
-import { getImportableFields } from '../fields/get-importable-fields'
 
 /** Auto-map strategy type */
 export type AutoMapStrategy = 'ai' | 'fallback' | 'auto'
@@ -49,7 +46,14 @@ export async function runAutoMap(
   resource: Resource,
   input: RunAutoMapInput
 ): Promise<RunAutoMapResult> {
-  const { jobId, importMappingId, entityDefinitionId, organizationId, userId, strategy = 'auto' } = input
+  const {
+    jobId,
+    importMappingId,
+    entityDefinitionId,
+    organizationId,
+    userId,
+    strategy = 'auto',
+  } = input
 
   // 1. Get mappable properties with samples
   const properties = await getMappablePropertiesWithSamples(db, jobId, importMappingId)

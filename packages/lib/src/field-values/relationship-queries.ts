@@ -2,10 +2,10 @@
 // Query helpers for relationship fields stored in FieldValue table.
 // Used by query builders to replace TagsOnThread junction table queries.
 
-import { schema, type Database } from '@auxx/database'
-import { and, eq, inArray, isNotNull, sql, type SQL } from 'drizzle-orm'
-import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
+import { type Database, schema } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
+import { and, eq, inArray, isNotNull, type SQL, sql } from 'drizzle-orm'
+import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 
 /**
  * Build subquery to check if a thread has any tags.
@@ -99,7 +99,10 @@ export function threadHasTags(
     WHERE cf."systemAttribute" = 'thread_tags'
       AND ed."organizationId" = ${organizationId}
       AND fv."entityId" = ${threadIdExpr}
-      AND fv."relatedEntityId" IN (${sql.join(tagIds.map((id) => sql`${id}`), sql`, `)})
+      AND fv."relatedEntityId" IN (${sql.join(
+        tagIds.map((id) => sql`${id}`),
+        sql`, `
+      )})
   )`
 }
 
@@ -143,7 +146,10 @@ export function threadDoesNotHaveTags(
     WHERE cf."systemAttribute" = 'thread_tags'
       AND ed."organizationId" = ${organizationId}
       AND fv."entityId" = ${threadIdExpr}
-      AND fv."relatedEntityId" IN (${sql.join(tagIds.map((id) => sql`${id}`), sql`, `)})
+      AND fv."relatedEntityId" IN (${sql.join(
+        tagIds.map((id) => sql`${id}`),
+        sql`, `
+      )})
   )`
 }
 

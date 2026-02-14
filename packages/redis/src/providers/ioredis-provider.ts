@@ -1,7 +1,8 @@
 // packages/redis/src/providers/ioredis-provider.ts
-import { Redis } from 'ioredis'
-import { type RedisClient, logger } from '../types'
+
 import { env } from '@auxx/config/server'
+import { Redis } from 'ioredis'
+import { logger, type RedisClient } from '../types'
 
 /**
  * Enhanced IORedis provider that supports all Redis operations
@@ -25,7 +26,7 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
       retryStrategy: (times: number) => {
-        const delay = Math.min(Math.pow(2, times) * 100, 10000)
+        const delay = Math.min(2 ** times * 100, 10000)
         logger.warn(`AWS Redis reconnecting in ${delay}ms (attempt ${times})`)
         return delay
       },
@@ -52,7 +53,7 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
       retryStrategy: (times: number) => {
-        const delay = Math.min(Math.pow(2, times) * 100, 10000)
+        const delay = Math.min(2 ** times * 100, 10000)
         logger.warn(`Hosted Redis reconnecting in ${delay}ms (attempt ${times})`)
         return delay
       },

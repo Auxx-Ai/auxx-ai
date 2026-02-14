@@ -2,16 +2,16 @@
 
 'use client'
 
-import React, { useCallback, useEffect } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
-import { AlertCircle, Upload, Trash2, Play, Square } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
-import { Tooltip } from '~/components/global/tooltip'
-import { useFileSelect } from './hooks/use-file-select'
-import { FileSelectDropZone } from './file-select-drop-zone'
+import { Button } from '@auxx/ui/components/button'
+import { cn } from '@auxx/ui/lib/utils'
+import { AlertCircle, Play, Square, Trash2, Upload } from 'lucide-react'
+import React, { useCallback, useEffect } from 'react'
 import { FileItem } from '~/components/file-upload/ui/file-item'
+import { Tooltip } from '~/components/global/tooltip'
+import { FileSelectDropZone } from './file-select-drop-zone'
 import { FileSelectPickerButton } from './file-select-picker-button'
+import { useFileSelect } from './hooks/use-file-select'
 import type { FileSelectProps } from './types'
 
 /**
@@ -134,15 +134,15 @@ export function FileSelect({
     <div className={cn('space-y-4', className)}>
       {/* Error display */}
       {fileSelect.errors.length > 0 && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
+        <Alert variant='destructive'>
+          <AlertCircle className='h-4 w-4' />
           <AlertDescription>
-            <ul className="list-disc list-inside space-y-1">
+            <ul className='list-disc list-inside space-y-1'>
               {fileSelect.errors.map((error, index) => (
                 <li key={index}>{error}</li>
               ))}
             </ul>
-            <Button variant="outline" size="sm" onClick={fileSelect.clearErrors} className="mt-2">
+            <Button variant='outline' size='sm' onClick={fileSelect.clearErrors} className='mt-2'>
               Dismiss
             </Button>
           </AlertDescription>
@@ -167,43 +167,43 @@ export function FileSelect({
         )
       ) : (
         /* Items list with controls */
-        <div className="space-y-4">
+        <div className='space-y-4'>
           {/* Header with controls */}
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium">
+          <div className='flex items-center justify-between'>
+            <h3 className='text-sm font-medium'>
               Selected Files ({fileSelect.selectedItems.length}){maxFiles && ` / ${maxFiles}`}
             </h3>
 
-            <div className="flex items-center gap-2">
+            <div className='flex items-center gap-2'>
               {/* Upload controls */}
               {hasUploadFiles && !hasUploadInProgress && (
-                <Tooltip content="Start Upload">
-                  <Button size="sm" onClick={handleStartUpload} disabled={disabled}>
+                <Tooltip content='Start Upload'>
+                  <Button size='sm' onClick={handleStartUpload} disabled={disabled}>
                     <Play />
-                    <span className="sr-only sm:not-sr-only ml-2">Start Upload</span>
+                    <span className='sr-only sm:not-sr-only ml-2'>Start Upload</span>
                   </Button>
                 </Tooltip>
               )}
 
               {hasUploadInProgress && (
-                <Tooltip content="Cancel Upload">
+                <Tooltip content='Cancel Upload'>
                   <Button
-                    variant="outline"
-                    size="sm"
+                    variant='outline'
+                    size='sm'
                     onClick={handleCancelUpload}
                     disabled={disabled}>
                     <Square />
-                    <span className="sr-only sm:not-sr-only ml-2">Cancel</span>
+                    <span className='sr-only sm:not-sr-only ml-2'>Cancel</span>
                   </Button>
                 </Tooltip>
               )}
 
               {/* Add more files */}
               {showDropZone && (
-                <Tooltip content="Add Files">
+                <Tooltip content='Add Files'>
                   <Button
-                    variant="outline"
-                    size="sm"
+                    variant='outline'
+                    size='sm'
                     onClick={() => {
                       const input = document.createElement('input')
                       input.type = 'file'
@@ -219,7 +219,7 @@ export function FileSelect({
                     }}
                     disabled={disabled}>
                     <Upload />
-                    <span className="sr-only sm:not-sr-only ml-2">Add Files</span>
+                    <span className='sr-only sm:not-sr-only ml-2'>Add Files</span>
                   </Button>
                 </Tooltip>
               )}
@@ -234,16 +234,16 @@ export function FileSelect({
                   onFilesSelected={handleExistingFilesSelected}
                   allowMultiple={allowMultiple}
                   disabled={disabled}
-                  variant="inline"
-                  size="sm"
+                  variant='inline'
+                  size='sm'
                 />
               )}
 
               {/* Clear all */}
-              <Tooltip content="Remove All">
-                <Button variant="outline" size="sm" onClick={handleClearAll} disabled={disabled}>
+              <Tooltip content='Remove All'>
+                <Button variant='outline' size='sm' onClick={handleClearAll} disabled={disabled}>
                   <Trash2 />
-                  <span className="sr-only sm:not-sr-only ml-2">Clear</span>
+                  <span className='sr-only sm:not-sr-only ml-2'>Clear</span>
                 </Button>
               </Tooltip>
             </div>
@@ -275,7 +275,7 @@ export function FileSelect({
           onFilesSelected={handleExistingFilesSelected}
           allowMultiple={allowMultiple}
           disabled={disabled}
-          variant="button"
+          variant='button'
         />
       )}
     </div>
@@ -283,4 +283,4 @@ export function FileSelect({
 }
 
 // Export types for consumers
-export type { FileSelectProps, FileSelectItem } from './types'
+export type { FileSelectItem, FileSelectProps } from './types'

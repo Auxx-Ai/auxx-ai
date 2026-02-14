@@ -2,25 +2,22 @@
 
 'use client'
 
+import type { InventoryEntity as Inventory } from '@auxx/database/models'
 import { Badge } from '@auxx/ui/components/badge'
+import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import {
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from '@auxx/ui/components/dropdown-menu'
-import {
-  Package,
-  Tag,
-  Hash,
-  DollarSign,
   Boxes,
+  Calculator,
+  DollarSign,
+  Hash,
+  Package,
   PanelRight,
   SquarePen,
+  Tag,
   Trash2,
-  Calculator,
 } from 'lucide-react'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { FormattedCell, PrimaryCell } from '~/components/dynamic-table'
-import type { InventoryEntity as Inventory } from '@auxx/database/models'
 
 /**
  * Part row type for the table
@@ -76,7 +73,7 @@ export function createPartColumns(actions: PartColumnActions): ExtendedColumnDef
             Recalculate Cost
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onClick={() => actions.onDelete(row.original.id)}>
+          <DropdownMenuItem variant='destructive' onClick={() => actions.onDelete(row.original.id)}>
             <Trash2 />
             Delete Part
           </DropdownMenuItem>
@@ -96,7 +93,7 @@ export function createPartColumns(actions: PartColumnActions): ExtendedColumnDef
       accessorKey: 'sku',
       id: 'sku',
       header: 'SKU',
-      cell: ({ getValue }) => <FormattedCell value={getValue()} fieldType="TEXT" columnId="sku" />,
+      cell: ({ getValue }) => <FormattedCell value={getValue()} fieldType='TEXT' columnId='sku' />,
       enableSorting: true,
       enableResizing: true,
       size: 120,
@@ -111,16 +108,16 @@ export function createPartColumns(actions: PartColumnActions): ExtendedColumnDef
       cell: ({ row }) => {
         const category = row.original.category
         if (!category) {
-          return <FormattedCell value={null} fieldType="TEXT" columnId="category" />
+          return <FormattedCell value={null} fieldType='TEXT' columnId='category' />
         }
         return (
           <FormattedCell
             value={null}
-            fieldType="ITEMS"
-            columnId="category"
+            fieldType='ITEMS'
+            columnId='category'
             items={[{ id: category, name: category }]}
             renderItem={(item: { id: string; name: string }) => (
-              <Badge variant="pill" shape="tag">
+              <Badge variant='pill' shape='tag'>
                 {item.name}
               </Badge>
             )}
@@ -138,7 +135,7 @@ export function createPartColumns(actions: PartColumnActions): ExtendedColumnDef
       id: 'cost',
       header: 'Cost',
       cell: ({ getValue }) => (
-        <FormattedCell value={getValue()} fieldType="CURRENCY" columnId="cost" />
+        <FormattedCell value={getValue()} fieldType='CURRENCY' columnId='cost' />
       ),
       enableSorting: true,
       enableResizing: true,
@@ -154,15 +151,15 @@ export function createPartColumns(actions: PartColumnActions): ExtendedColumnDef
       cell: ({ row }) => {
         const inventory = row.original.inventory
         if (!inventory) {
-          return <FormattedCell value={null} fieldType="NUMBER" columnId="quantity" />
+          return <FormattedCell value={null} fieldType='NUMBER' columnId='quantity' />
         }
         const isLow =
           inventory.reorderPoint !== null && inventory.quantity <= inventory.reorderPoint
         return (
           <FormattedCell
             value={null}
-            fieldType="ITEMS"
-            columnId="quantity"
+            fieldType='ITEMS'
+            columnId='quantity'
             items={[{ id: String(inventory.quantity), isLow }]}
             renderItem={(item: { id: string; isLow: boolean }) => (
               <span className={item.isLow ? 'text-red-500 font-medium' : ''}>{item.id}</span>

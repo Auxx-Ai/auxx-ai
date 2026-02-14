@@ -1,10 +1,9 @@
-import * as React from 'react'
-
 import { cn } from '@auxx/ui/lib/utils'
+import type * as React from 'react'
 
 function Table({ className, ...props }: React.HTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="relative w-full overflow-auto">
+    <div className='relative w-full overflow-auto'>
       <table className={cn('w-full caption-bottom text-sm', className)} {...props} />
     </div>
   )

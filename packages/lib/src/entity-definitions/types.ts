@@ -1,7 +1,7 @@
 // packages/lib/src/entity-definitions/types.ts
 
-import { z } from 'zod'
 import { EntityTypeValues, StandardTypeValues } from '@auxx/database/enums'
+import { z } from 'zod'
 
 export type { EntityType, StandardType } from '@auxx/database/types'
 

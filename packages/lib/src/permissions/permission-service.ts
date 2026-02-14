@@ -1,10 +1,10 @@
 // packages/lib/src/permissions/permission-service.ts
-import { and, eq, inArray, placeholder } from 'drizzle-orm'
+
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-
-import { SignatureSharingType, OrganizationRole } from '@auxx/database/enums'
+import { OrganizationRole, SignatureSharingType } from '@auxx/database/enums'
 import { TRPCError } from '@trpc/server'
+import { and, eq, inArray, placeholder } from 'drizzle-orm'
 import { createScopedLogger } from '../logger'
 import { SystemUserService } from '../users/system-user-service'
 
@@ -374,10 +374,7 @@ export class PermissionService {
    * @param instanceId - The EntityInstance ID
    * @param entityDefinitionId - The EntityDefinition ID (stored in entityType field)
    */
-  async canAccessEntityInstance(
-    instanceId: string,
-    entityDefinitionId: string
-  ): Promise<boolean> {
+  async canAccessEntityInstance(instanceId: string, entityDefinitionId: string): Promise<boolean> {
     try {
       // System users have access to all instances in their organization
       if (await this.isSystemUser()) {

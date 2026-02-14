@@ -1,18 +1,17 @@
 // ~/components/widget/chat-widget.tsx
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
-import { X, Send, Paperclip, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
+import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
-import { Loader2 } from 'lucide-react'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { api } from '~/trpc/react'
-import { useDropzone } from 'react-dropzone'
+import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
+import { ChevronDown, ChevronUp, Loader2, MessageSquare, Paperclip, Send, X } from 'lucide-react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useDropzone } from 'react-dropzone'
+import { api } from '~/trpc/react'
 
 export type ChatMessage = {
   id: string
@@ -310,24 +309,24 @@ export function ChatWidget({
     if (!collectUserInfo || userInfo.hasProvided) return null
 
     return (
-      <div className="border-b border-gray-200 p-4 dark:border-gray-700">
-        <h3 className="mb-2 text-sm font-medium">Let us know who you are</h3>
-        <div className="space-y-3">
+      <div className='border-b border-gray-200 p-4 dark:border-gray-700'>
+        <h3 className='mb-2 text-sm font-medium'>Let us know who you are</h3>
+        <div className='space-y-3'>
           <Input
-            placeholder="Your name"
+            placeholder='Your name'
             onChange={(e) => setUserInfo((prev) => ({ ...prev, name: e.target.value }))}
             value={userInfo.name || ''}
           />
           <Input
-            placeholder="Email address"
-            type="email"
+            placeholder='Email address'
+            type='email'
             onChange={(e) => setUserInfo((prev) => ({ ...prev, email: e.target.value }))}
             value={userInfo.email || ''}
           />
           <Button
             onClick={() => setUserInfo((prev) => ({ ...prev, hasProvided: true }))}
-            size="sm"
-            className="w-full"
+            size='sm'
+            className='w-full'
             style={{ backgroundColor: widgetColor }}>
             Continue
           </Button>
@@ -340,7 +339,7 @@ export function ChatWidget({
   const renderChatButton = () => (
     <Button
       onClick={toggleChat}
-      className="h-12 w-12 rounded-full p-3 shadow-lg"
+      className='h-12 w-12 rounded-full p-3 shadow-lg'
       style={{ backgroundColor: widgetColor }}>
       {isOpen ? <X size={24} /> : <MessageSquare size={24} />}
     </Button>
@@ -360,20 +359,20 @@ export function ChatWidget({
       <div className={cn(chatContainerClasses, positionStyles)}>
         {/* Chat header */}
         <div
-          className="flex items-center justify-between rounded-t-lg p-3"
+          className='flex items-center justify-between rounded-t-lg p-3'
           style={{ backgroundColor: widgetColor }}>
-          <div className="flex items-center">
+          <div className='flex items-center'>
             {logoUrl && (
-              <div className="mr-2 h-8 w-8 overflow-hidden rounded-full">
-                <img src={logoUrl} alt="Company logo" className="h-full w-full object-contain" />
+              <div className='mr-2 h-8 w-8 overflow-hidden rounded-full'>
+                <img src={logoUrl} alt='Company logo' className='h-full w-full object-contain' />
               </div>
             )}
             <div>
-              <h3 className="font-medium text-white">{title}</h3>
-              <p className="text-xs text-white/80">{subtitle}</p>
+              <h3 className='font-medium text-white'>{title}</h3>
+              <p className='text-xs text-white/80'>{subtitle}</p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={toggleChat} className="text-white">
+          <Button variant='ghost' size='icon' onClick={toggleChat} className='text-white'>
             {isMobile && mobileFullScreen ? <ChevronDown size={18} /> : <X size={18} />}
           </Button>
         </div>
@@ -384,19 +383,19 @@ export function ChatWidget({
         {/* Chat message area */}
         {(!collectUserInfo || userInfo.hasProvided) && (
           <>
-            <ScrollArea className="flex-1 p-4">
+            <ScrollArea className='flex-1 p-4'>
               {isConnecting || isLoadingHistory ? (
-                <div className="flex h-full items-center justify-center">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <div className='flex h-full items-center justify-center'>
+                  <Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
                 </div>
               ) : messages.length === 0 ? (
-                <div className="flex h-full items-center justify-center p-4 text-center">
-                  <p className="text-sm text-muted-foreground">
+                <div className='flex h-full items-center justify-center p-4 text-center'>
+                  <p className='text-sm text-muted-foreground'>
                     Send a message to start chatting with our support team.
                   </p>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className='space-y-4'>
                   {messages.map((message) => (
                     <div
                       key={message.id}
@@ -407,12 +406,12 @@ export function ChatWidget({
                           : 'bg-muted'
                       )}>
                       {message.sender === 'agent' && (
-                        <div className="mb-1 flex items-center">
-                          <Avatar className="mr-2 h-6 w-6">
+                        <div className='mb-1 flex items-center'>
+                          <Avatar className='mr-2 h-6 w-6'>
                             <AvatarImage src={message.agentAvatar} alt={message.agentName} />
                             <AvatarFallback>{message.agentName?.[0] || 'A'}</AvatarFallback>
                           </Avatar>
-                          <span className="text-xs font-medium">
+                          <span className='text-xs font-medium'>
                             {message.agentName || 'Agent'}
                           </span>
                         </div>
@@ -421,13 +420,13 @@ export function ChatWidget({
                       <div>{message.content}</div>
 
                       {message.attachments && message.attachments.length > 0 && (
-                        <div className="mt-2 space-y-1">
+                        <div className='mt-2 space-y-1'>
                           {message.attachments.map((attachment) => (
                             <div
                               key={attachment.id}
-                              className="flex items-center rounded bg-background/20 p-1 text-xs">
-                              <Paperclip size={12} className="mr-1" />
-                              <span className="truncate">{attachment.name}</span>
+                              className='flex items-center rounded bg-background/20 p-1 text-xs'>
+                              <Paperclip size={12} className='mr-1' />
+                              <span className='truncate'>{attachment.name}</span>
                             </div>
                           ))}
                         </div>
@@ -454,11 +453,11 @@ export function ChatWidget({
                   <div ref={messagesEndRef} />
 
                   {isTyping && (
-                    <div className="flex max-w-[80%] rounded-lg bg-muted p-3">
-                      <div className="flex space-x-1">
-                        <div className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" />
-                        <div className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:0.2s]" />
-                        <div className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:0.4s]" />
+                    <div className='flex max-w-[80%] rounded-lg bg-muted p-3'>
+                      <div className='flex space-x-1'>
+                        <div className='h-2 w-2 animate-bounce rounded-full bg-muted-foreground' />
+                        <div className='h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:0.2s]' />
+                        <div className='h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:0.4s]' />
                       </div>
                     </div>
                   )}
@@ -468,16 +467,16 @@ export function ChatWidget({
 
             {/* Attachments preview */}
             {uploadedFiles.length > 0 && (
-              <div className="px-4 pt-2">
-                <div className="flex flex-wrap gap-2">
+              <div className='px-4 pt-2'>
+                <div className='flex flex-wrap gap-2'>
                   {uploadedFiles.map((file, index) => (
-                    <div key={index} className="flex items-center rounded bg-muted p-1 text-xs">
-                      <Paperclip size={12} className="mr-1" />
-                      <span className="max-w-[150px] truncate">{file.name}</span>
+                    <div key={index} className='flex items-center rounded bg-muted p-1 text-xs'>
+                      <Paperclip size={12} className='mr-1' />
+                      <span className='max-w-[150px] truncate'>{file.name}</span>
                       <Button
-                        variant="ghost"
-                        size="icon"
-                        className="ml-1 h-4 w-4"
+                        variant='ghost'
+                        size='icon'
+                        className='ml-1 h-4 w-4'
                         onClick={() =>
                           setUploadedFiles((prev) => prev.filter((_, i) => i !== index))
                         }>
@@ -490,7 +489,7 @@ export function ChatWidget({
             )}
 
             {/* Message input area */}
-            <div className="border-t border-border p-3">
+            <div className='border-t border-border p-3'>
               <div
                 {...getRootProps()}
                 className={cn(
@@ -499,8 +498,8 @@ export function ChatWidget({
                 )}>
                 <input {...getInputProps()} />
                 <Textarea
-                  placeholder="Type your message..."
-                  className="min-h-10 flex-1 border-0 p-2 text-sm focus-visible:ring-0"
+                  placeholder='Type your message...'
+                  className='min-h-10 flex-1 border-0 p-2 text-sm focus-visible:ring-0'
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
                   onKeyPress={(e) => {
@@ -510,17 +509,17 @@ export function ChatWidget({
                     }
                   }}
                 />
-                <div className="flex pr-1">
+                <div className='flex pr-1'>
                   <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
+                    type='button'
+                    variant='ghost'
+                    size='icon'
                     onClick={() => document.getElementById('file-upload')?.click()}>
                     <Paperclip size={18} />
                   </Button>
                   <Button
-                    type="button"
-                    size="icon"
+                    type='button'
+                    size='icon'
                     onClick={() => handleSendMessage()}
                     disabled={(!messageText.trim() && uploadedFiles.length === 0) || isConnecting}
                     style={{ backgroundColor: widgetColor }}>

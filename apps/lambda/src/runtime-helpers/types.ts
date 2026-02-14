@@ -20,10 +20,10 @@
  * ```
  */
 
+import type * as RootSDK from '@auxx/sdk'
 import type { RuntimeContext } from '../types.ts'
-import type { SettingsSchema } from './settings.ts'
 import type { ServerSDK } from './server-sdk.ts'
-import * as RootSDK from '@auxx/sdk'
+import type { SettingsSchema } from './settings.ts'
 
 /**
  * Global extensions injected by runtime helpers

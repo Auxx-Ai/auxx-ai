@@ -2,13 +2,13 @@
 
 'use client'
 
-import type { ExtendedColumnDef } from '~/components/dynamic-table'
-import { FormattedCell, CellPadding } from '~/components/dynamic-table'
-import { formatBytes, getDirectoryPath } from '@auxx/utils/file'
-import { getStandardFileType } from './utils/file-type'
-import type { FileItem } from './files-store'
-import { FileNameCell } from './file-name-cell'
 import { cn } from '@auxx/ui/lib/utils'
+import { formatBytes, getDirectoryPath } from '@auxx/utils/file'
+import type { ExtendedColumnDef } from '~/components/dynamic-table'
+import { CellPadding, FormattedCell } from '~/components/dynamic-table'
+import { FileNameCell } from './file-name-cell'
+import type { FileItem } from './files-store'
+import { getStandardFileType } from './utils/file-type'
 
 /**
  * Interface for actions that can be performed on files
@@ -59,17 +59,17 @@ export function createFileColumns(actions: FileColumnsActions): ExtendedColumnDe
         const isUploading = item.isUploading
 
         if (item.type === 'folder') {
-          return <CellPadding className="text-sm text-muted-foreground">—</CellPadding>
+          return <CellPadding className='text-sm text-muted-foreground'>—</CellPadding>
         }
 
         return (
           <CellPadding>
-            <div className="flex items-center gap-2">
+            <div className='flex items-center gap-2'>
               <span className={cn('text-sm text-muted-foreground', isUploading && 'text-blue-600')}>
                 {formatBytes(item.displaySize)}
               </span>
               {isUploading && item.status === 'uploading' && item.progress !== undefined && (
-                <div className="text-xs text-blue-600">({item.progress}%)</div>
+                <div className='text-xs text-blue-600'>({item.progress}%)</div>
               )}
             </div>
           </CellPadding>
@@ -85,10 +85,10 @@ export function createFileColumns(actions: FileColumnsActions): ExtendedColumnDe
       cell: ({ row }) => {
         const item = row.original
         if (item.type === 'folder') {
-          return <CellPadding className="text-sm font-medium">Folder</CellPadding>
+          return <CellPadding className='text-sm font-medium'>Folder</CellPadding>
         }
         const standardType = getStandardFileType(item.mimeType, item.ext)
-        return <CellPadding className="text-sm font-mono">{standardType}</CellPadding>
+        return <CellPadding className='text-sm font-mono'>{standardType}</CellPadding>
       },
     },
 
@@ -100,7 +100,7 @@ export function createFileColumns(actions: FileColumnsActions): ExtendedColumnDe
       columnType: 'date',
       defaultVisible: true,
       cell: ({ getValue }) => (
-        <FormattedCell value={getValue()} fieldType="DATE" columnId="createdAt" />
+        <FormattedCell value={getValue()} fieldType='DATE' columnId='createdAt' />
       ),
     },
 
@@ -115,7 +115,7 @@ export function createFileColumns(actions: FileColumnsActions): ExtendedColumnDe
         const displayPath = item.hierarchy?.folderPath || getDirectoryPath(fullPath)
 
         return (
-          <CellPadding className="text-sm text-muted-foreground font-mono" title={fullPath}>
+          <CellPadding className='text-sm text-muted-foreground font-mono' title={fullPath}>
             {displayPath}
           </CellPadding>
         )

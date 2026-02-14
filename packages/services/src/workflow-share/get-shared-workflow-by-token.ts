@@ -7,10 +7,10 @@ import { fromDatabase } from '../shared/utils'
 import type { WorkflowShareError } from './errors'
 import type {
   SharedWorkflow,
-  WorkflowShareIcon,
-  WorkflowShareConfig,
   WorkflowRateLimitConfig,
   WorkflowShareAccessMode,
+  WorkflowShareConfig,
+  WorkflowShareIcon,
 } from './types'
 
 /**

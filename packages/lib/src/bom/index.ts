@@ -3,8 +3,8 @@
 export { BomService } from './bom-service'
 export { updatePartCostAndPropagate } from './cost'
 export {
+  handlePartDelete,
+  handlePartSubpartChange,
   handleVendorPartChange,
   handleVendorPartDelete,
-  handlePartSubpartChange,
-  handlePartDelete,
 } from './cost-handler'

@@ -1,11 +1,11 @@
 // packages/lib/src/participants/participant-service.ts
 
-import { database, schema, type Database } from '@auxx/database'
+import { type Database, database, schema } from '@auxx/database'
 import type { ParticipantEntity } from '@auxx/database/models'
-import { createScopedLogger } from '@auxx/logger'
-import { eq, and, inArray } from 'drizzle-orm'
 import type { IdentifierType } from '@auxx/database/types'
-import type { ParticipantMeta, ParticipantIdentifierType } from './client'
+import { createScopedLogger } from '@auxx/logger'
+import { and, eq, inArray } from 'drizzle-orm'
+import type { ParticipantIdentifierType, ParticipantMeta } from './client'
 
 const logger = createScopedLogger('participant-service')
 
@@ -256,6 +256,8 @@ export class ParticipantService {
       })
     )
 
-    return ids.map((id) => participantMap.get(id)).filter((p): p is ParticipantMeta => p !== undefined)
+    return ids
+      .map((id) => participantMap.get(id))
+      .filter((p): p is ParticipantMeta => p !== undefined)
   }
 }

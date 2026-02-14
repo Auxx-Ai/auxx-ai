@@ -1,19 +1,18 @@
 // packages/lib/src/workflows/index.ts
 
+export { OAuth2WorkflowService } from './oauth2-workflow.service'
+export { TemplateGraphTransformer } from './template-graph-transformer'
 // Export all types
 export * from './types'
-
-// Export all services
-export { WorkflowService } from './workflow-service'
-export { WorkflowExecutionService } from './workflow-execution-service'
 export {
-  WorkflowExecutionEvents,
-  workflowExecutionEvents,
   getWorkflowExecutionEvents,
   type SSEResponse,
   type WorkflowEvent,
+  WorkflowExecutionEvents,
+  workflowExecutionEvents,
 } from './workflow-execution-events'
-export { WorkflowVersionService } from './workflow-version-service'
+export { WorkflowExecutionService } from './workflow-execution-service'
+// Export all services
+export { WorkflowService } from './workflow-service'
 export { WorkflowStatsService } from './workflow-stats-service'
-export { OAuth2WorkflowService } from './oauth2-workflow.service'
-export { TemplateGraphTransformer } from './template-graph-transformer'
+export { WorkflowVersionService } from './workflow-version-service'

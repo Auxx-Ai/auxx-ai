@@ -48,9 +48,7 @@ export interface FetchResponse<T = any> {
  * })
  * ```
  */
-export async function fetch<T = any>(
-  options: FetchOptions
-): Promise<FetchResponse<T>> {
+export async function fetch<T = any>(options: FetchOptions): Promise<FetchResponse<T>> {
   if (typeof (global as any).AUXX_SERVER_SDK !== 'undefined') {
     const sdk = (global as any).AUXX_SERVER_SDK
     if (typeof sdk.fetch === 'function') {

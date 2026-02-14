@@ -1,18 +1,18 @@
 // apps/web/src/components/workflow/nodes/core/text-classifier/schema.ts
 
+import { AI_NODE_CONSTANTS } from '@auxx/lib/workflow-engine/constants'
 import { z } from 'zod'
 import {
-  type NodeDefinition,
+  BaseType,
   NodeCategory,
+  type NodeDefinition,
   type ValidationResult,
 } from '~/components/workflow/types'
-import { BaseType } from '~/components/workflow/types'
-import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
-import { type TextClassifierNodeData, AiModelMode } from './types'
-import { TextClassifierPanel } from './panel'
 import { NodeType } from '~/components/workflow/types/node-types'
-import { AI_NODE_CONSTANTS } from '@auxx/lib/workflow-engine/constants'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
+import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
+import { TextClassifierPanel } from './panel'
+import { AiModelMode, type TextClassifierNodeData } from './types'
 
 /**
  * Zod schema for AI model completion parameters

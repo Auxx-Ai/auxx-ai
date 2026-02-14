@@ -2,17 +2,16 @@
 
 'use client'
 
-import React, { useEffect } from 'react'
-import { useForm, FormProvider } from 'react-hook-form'
+import { Button } from '@auxx/ui/components/button'
 // import { zodResolver } from '@hookform/resolvers/zod'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import { Button } from '@auxx/ui/components/button'
-import { deserializeSchema } from './deserialize-schema'
-import { FieldRenderer } from './field-renderer'
-import { handleFormError } from './error-handler'
-import type { SerializedSchema, FormValidationMode } from './types'
+import React, { useEffect } from 'react'
+import { FormProvider, useForm } from 'react-hook-form'
 import { getComponent } from '../component-registry'
+import { deserializeSchema } from './deserialize-schema'
+import { handleFormError } from './error-handler'
+import { FieldRenderer } from './field-renderer'
+import type { FormValidationMode, SerializedSchema } from './types'
 
 interface FormProps {
   /** Serialized schema from SDK */
@@ -73,14 +72,12 @@ export const Form = React.memo(function Form({
     }
 
     // Recursively reconstruct any nested children
-    const reconstructedChildren = child.children?.map(
-      (nestedChild: any, i: number) => {
-        if (nestedChild.instance_type === 'text') {
-          return nestedChild.text
-        }
-        return reconstructChild(nestedChild, i)
+    const reconstructedChildren = child.children?.map((nestedChild: any, i: number) => {
+      if (nestedChild.instance_type === 'text') {
+        return nestedChild.text
       }
-    )
+      return reconstructChild(nestedChild, i)
+    })
 
     return React.createElement(
       Component,
@@ -182,7 +179,7 @@ export const Form = React.memo(function Form({
 
   return (
     <FormProvider {...form}>
-      <form onSubmit={onSubmit} className="space-y-6" noValidate>
+      <form onSubmit={onSubmit} className='space-y-6' noValidate>
         {/* Render form children */}
         {children?.map((child: any, index: number) => {
           // Handle FormField specially (needs schema)
@@ -190,9 +187,7 @@ export const Form = React.memo(function Form({
             const fieldSchema = schema.fields[child.attributes.name]
 
             if (!fieldSchema) {
-              console.warn(
-                `[Form] Field "${child.attributes.name}" not found in schema`
-              )
+              console.warn(`[Form] Field "${child.attributes.name}" not found in schema`)
               return null
             }
 
@@ -214,7 +209,7 @@ export const Form = React.memo(function Form({
             return (
               <Button
                 key={index}
-                type="submit"
+                type='submit'
                 variant={child.attributes.variant || 'default'}
                 disabled={child.attributes.disabled}
                 loading={isSubmitting}

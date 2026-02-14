@@ -1,10 +1,10 @@
 // packages/lib/src/users/system-user-service.ts
 import { database as db, schema } from '@auxx/database'
 import type { UserEntity } from '@auxx/database/models'
+import type { UserType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient, type RedisClient } from '@auxx/redis'
-import { eq, and } from 'drizzle-orm'
-import type { UserType } from '@auxx/database/types'
+import { and, eq } from 'drizzle-orm'
 
 const logger = createScopedLogger('system-user-service')
 
@@ -46,7 +46,7 @@ export class SystemUserService {
    */
   static async getOrganizationSystemUser(organizationId: string): Promise<UserEntity | null> {
     try {
-      const redisClient = await this.getRedisClient()
+      const redisClient = await SystemUserService.getRedisClient()
       // Check Redis cache first
       if (redisClient) {
         const cachedUserId = await redisClient.get(`system-user:org:${organizationId}`)
@@ -97,7 +97,7 @@ export class SystemUserService {
   ): Promise<UserEntity> {
     try {
       // Check if organization already has a system user
-      const existingSystemUser = await this.getOrganizationSystemUser(organizationId)
+      const existingSystemUser = await SystemUserService.getOrganizationSystemUser(organizationId)
       if (existingSystemUser) {
         logger.warn('Organization already has a system user', {
           organizationId,
@@ -107,7 +107,7 @@ export class SystemUserService {
       }
 
       // Invalidate any stale cache before creating
-      await this.invalidateSystemUserCache(organizationId)
+      await SystemUserService.invalidateSystemUserCache(organizationId)
 
       // Use transaction to ensure atomicity
       const systemUser = await db.transaction(async (tx) => {
@@ -135,7 +135,7 @@ export class SystemUserService {
       })
 
       // Cache the new system user ID AFTER transaction commits
-      const redisClient = await this.getRedisClient()
+      const redisClient = await SystemUserService.getRedisClient()
       if (redisClient) {
         await redisClient.setex(`system-user:org:${organizationId}`, 86400, systemUser.id)
       }
@@ -158,7 +158,7 @@ export class SystemUserService {
    */
   static async isSystemUser(userId: string): Promise<boolean> {
     try {
-      const redisClient = await this.getRedisClient()
+      const redisClient = await SystemUserService.getRedisClient()
       // Check Redis cache first
       if (redisClient) {
         const cachedResult = await redisClient.get(`user-type:${userId}`)
@@ -186,7 +186,7 @@ export class SystemUserService {
    * @returns The system user ID or throws if not found
    */
   static async getSystemUserForActions(organizationId: string): Promise<string> {
-    const systemUser = await this.getOrganizationSystemUser(organizationId)
+    const systemUser = await SystemUserService.getOrganizationSystemUser(organizationId)
     if (!systemUser) {
       logger.error('No system user found for organization', { organizationId })
       throw new Error(`No system user found for organization ${organizationId}`)
@@ -198,7 +198,7 @@ export class SystemUserService {
    * @param organizationId The organization ID
    */
   static async invalidateSystemUserCache(organizationId: string): Promise<void> {
-    const redisClient = await this.getRedisClient()
+    const redisClient = await SystemUserService.getRedisClient()
     if (redisClient) {
       try {
         await redisClient.del(`system-user:org:${organizationId}`)

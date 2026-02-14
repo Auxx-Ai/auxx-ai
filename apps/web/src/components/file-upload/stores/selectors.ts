@@ -1,7 +1,7 @@
 // apps/web/src/components/file-upload/stores/selectors.ts
 
-import type { UploadStore, FileState, SessionState } from './types'
 import { calculateOverallProgress, calculateQueueStats } from '../utils'
+import type { FileState, SessionState, UploadStore } from './types'
 
 /**
  * Optimized selectors to prevent unnecessary re-renders

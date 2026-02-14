@@ -1,29 +1,30 @@
 'use client'
 
-import React, { createContext, useContext, useCallback, useState, useMemo } from 'react'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useQueryState } from 'nuqs'
+import type React from 'react'
+import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import {
-  type CreateSnippetInput,
-  type UpdateSnippetInput,
-  type CreateFolderInput,
-  type UpdateFolderInput,
-  type SharingInput,
-  type Snippet,
-  type SnippetFolder,
-  type SnippetContextState,
-  type PanelState,
+import type {
+  CreateFolderInput,
+  CreateSnippetInput,
+  PanelState,
+  SharingInput,
+  Snippet,
+  SnippetContextState,
+  SnippetFolder,
+  UpdateFolderInput,
+  UpdateSnippetInput,
 } from './snippet-types'
 import {
-  createOptimisticSnippet,
-  createOptimisticFolder,
   buildBreadcrumbTrail,
-  getCurrentFolderName,
-  isTempSnippet,
-  isTempFolder,
-  validatePanelSize,
   calculatePanelSizes,
+  createOptimisticFolder,
+  createOptimisticSnippet,
+  getCurrentFolderName,
+  isTempFolder,
+  isTempSnippet,
+  validatePanelSize,
 } from './snippet-utils'
 
 /**

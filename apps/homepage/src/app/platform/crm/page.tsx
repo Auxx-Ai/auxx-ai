@@ -1,12 +1,12 @@
 // apps/homepage/src/app/platform/crm/page.tsx
 import type { Metadata } from 'next'
-import Header from '../../_components/main/header'
+import { config } from '~/lib/config'
 import FooterSection from '../../_components/main/footer-section'
+import Header from '../../_components/main/header'
+import CrmCenterSection from './_components/crm-center-section'
 import CrmHero from './_components/crm-hero'
 import CustomerProfilesSection from './_components/customer-profiles-section'
 import HowItWorksSection from './_components/how-it-works-section'
-import { config } from '~/lib/config'
-import CrmCenterSection from './_components/crm-center-section'
 
 export const metadata: Metadata = {
   title: `AI-Powered CRM | ${config.shortName}`,
@@ -15,9 +15,9 @@ export const metadata: Metadata = {
 
 export default function CrmPage() {
   return (
-    <div id="root" className="relative h-screen overflow-y-auto bg-background">
+    <div id='root' className='relative h-screen overflow-y-auto bg-background'>
       <Header />
-      <main className="">
+      <main className=''>
         <CrmHero />
         <CustomerProfilesSection />
         <HowItWorksSection />

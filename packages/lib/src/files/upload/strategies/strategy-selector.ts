@@ -1,19 +1,19 @@
 // packages/lib/src/files/upload/strategies/strategy-selector.ts
 
+import { createScopedLogger } from '@auxx/logger'
+import { formatBytes } from '@auxx/utils/file'
+import type { ProviderId, StorageCapabilities } from '../../adapters/base-adapter'
+import type { StorageManager } from '../../storage/storage-manager'
 import type {
+  UploadPreferences,
   UploadRequest,
   UploadStrategy,
-  UploadPreferences,
   UploadStrategyHandler,
 } from '../enhanced-types'
-import type { ProviderId, StorageCapabilities } from '../../adapters/base-adapter'
 import { DirectUploadStrategy } from './direct-upload'
 import { MultipartUploadStrategy } from './multipart-upload'
 import { PresignedUploadStrategy } from './presigned-upload'
-import type { StorageManager } from '../../storage/storage-manager'
-import { createScopedLogger } from '@auxx/logger'
 
-import { formatBytes } from '@auxx/utils/file'
 const logger = createScopedLogger('upload-strategy-selector')
 
 /**

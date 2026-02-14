@@ -1,9 +1,9 @@
 // packages/lib/src/seed/entity-seeder/utils.ts
 
-import type { ResourceField, FieldCapabilities } from '../../resources/registry/field-types'
-import type { FieldType } from '@auxx/database/types'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
-import { fieldTypeDisplayDefaults, type FieldOptions } from '../../custom-fields'
+import type { FieldType } from '@auxx/database/types'
+import { type FieldOptions, fieldTypeDisplayDefaults } from '../../custom-fields'
+import type { FieldCapabilities, ResourceField } from '../../resources/registry/field-types'
 
 /**
  * Build options object for CustomField from field definition
@@ -83,7 +83,5 @@ export function shouldCreateField(
   field: ResourceField,
   entityInstanceColumns: readonly string[]
 ): boolean {
-  return Boolean(
-    field.systemAttribute && !entityInstanceColumns.includes(field.systemAttribute)
-  )
+  return Boolean(field.systemAttribute && !entityInstanceColumns.includes(field.systemAttribute))
 }

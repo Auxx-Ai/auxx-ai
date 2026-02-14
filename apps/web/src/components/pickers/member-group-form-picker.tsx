@@ -1,15 +1,15 @@
 // /app/settings/inbox/_components/member-group-form-field.tsx
 'use client'
 
-import { useController, Control } from 'react-hook-form'
-import { Button } from '@auxx/ui/components/button'
-import { FormControl, FormField, FormItem, FormMessage } from '@auxx/ui/components/form'
 // import { MemberGroupPicker } from './member-group-popover'
 import { Badge } from '@auxx/ui/components/badge'
-import { Plus, Users, User, X } from 'lucide-react'
+import { Button } from '@auxx/ui/components/button'
+import { FormControl, FormField, FormItem, FormMessage } from '@auxx/ui/components/form'
+import { Plus, User, Users, X } from 'lucide-react'
+import { type Control, useController } from 'react-hook-form'
+import { useMembersGroups } from '~/hooks/use-members-groups'
 // import { useMembersAndGroups } from '../_hooks/use-members-and-groups'
 import { MemberGroupPicker } from './member-group-picker'
-import { useMembersGroups } from '~/hooks/use-members-groups'
 
 interface MemberGroupFormFieldProps {
   name: string
@@ -71,23 +71,23 @@ export function MemberGroupFormField({
         <FormItem>
           {/* <FormLabel>{label}</FormLabel> */}
           <FormControl>
-            <div className="space-y-3">
+            <div className='space-y-3'>
               {/* Selection summary */}
-              <div className="flex flex-wrap gap-2">
+              <div className='flex flex-wrap gap-2'>
                 {selectedGroups.map((group) => (
                   <Badge
                     key={`group-${group.id}`}
-                    variant="secondary"
-                    className="flex items-center gap-1 py-1.5 pl-1.5">
-                    <Users className="h-3.5 w-3.5" />
+                    variant='secondary'
+                    className='flex items-center gap-1 py-1.5 pl-1.5'>
+                    <Users className='h-3.5 w-3.5' />
                     <span>{group.name}</span>
                     <button
-                      type="button"
+                      type='button'
                       onClick={() => handleRemoveGroup(group.id)}
-                      className="ml-1 rounded-full hover:bg-muted-foreground/20"
+                      className='ml-1 rounded-full hover:bg-muted-foreground/20'
                       disabled={disabled}>
-                      <X className="h-3.5 w-3.5" />
-                      <span className="sr-only">Remove</span>
+                      <X className='h-3.5 w-3.5' />
+                      <span className='sr-only'>Remove</span>
                     </button>
                   </Badge>
                 ))}
@@ -95,23 +95,23 @@ export function MemberGroupFormField({
                 {selectedMembers.map((member) => (
                   <Badge
                     key={`member-${member.id}`}
-                    variant="outline"
-                    className="flex items-center gap-1 py-1.5">
-                    <User className="h-3.5 w-3.5" />
+                    variant='outline'
+                    className='flex items-center gap-1 py-1.5'>
+                    <User className='h-3.5 w-3.5' />
                     <span>{member.name}</span>
                     <button
-                      type="button"
+                      type='button'
                       onClick={() => handleRemoveMember(member.id)}
-                      className="ml-1 rounded-full hover:bg-muted-foreground/20"
+                      className='ml-1 rounded-full hover:bg-muted-foreground/20'
                       disabled={disabled}>
-                      <X className="h-3.5 w-3.5" />
-                      <span className="sr-only">Remove</span>
+                      <X className='h-3.5 w-3.5' />
+                      <span className='sr-only'>Remove</span>
                     </button>
                   </Badge>
                 ))}
 
                 {selectedGroups.length === 0 && selectedMembers.length === 0 && (
-                  <div className="text-sm text-muted-foreground">No members or groups selected</div>
+                  <div className='text-sm text-muted-foreground'>No members or groups selected</div>
                 )}
               </div>
 
@@ -121,7 +121,7 @@ export function MemberGroupFormField({
                 selectedGroups={field.value?.groupIds || []}
                 onChange={handleSelectionChange}
                 disabled={disabled}>
-                <Button type="button" variant="outline" size="sm" disabled={disabled}>
+                <Button type='button' variant='outline' size='sm' disabled={disabled}>
                   <Plus />
                   Add Members or Groups
                 </Button>

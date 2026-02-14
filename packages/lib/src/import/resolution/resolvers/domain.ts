@@ -1,6 +1,6 @@
 // packages/lib/src/import/resolution/resolvers/domain.ts
 
-import type { ResolvedValue, ResolutionConfig } from '../../types/resolution'
+import type { ResolutionConfig, ResolvedValue } from '../../types/resolution'
 
 /**
  * Extract domain from URL or email, or validate as domain.

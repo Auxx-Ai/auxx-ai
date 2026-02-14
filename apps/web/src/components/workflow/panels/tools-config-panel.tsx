@@ -2,14 +2,14 @@
 
 'use client'
 
-import React, { useState } from 'react'
-import { Switch } from '@auxx/ui/components/switch'
-import { Label } from '@auxx/ui/components/label'
+import { Badge } from '@auxx/ui/components/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Input } from '@auxx/ui/components/input'
-import { Badge } from '@auxx/ui/components/badge'
+import { Label } from '@auxx/ui/components/label'
 import { Separator } from '@auxx/ui/components/separator'
+import { Switch } from '@auxx/ui/components/switch'
 import { Wrench } from 'lucide-react'
+import React, { useState } from 'react'
 import type { AiToolsConfig } from '../nodes/core/ai/types'
 import { useWorkflowStore } from '../store/workflow-store'
 
@@ -90,15 +90,15 @@ export function ToolsConfigPanel({ nodeId, toolsConfig, onUpdate }: ToolsConfigP
   }
 
   return (
-    <div className="space-y-6">
+    <div className='space-y-6'>
       {/* Main Toggle */}
-      <div className="flex items-center justify-between">
-        <div className="space-y-0.5">
-          <Label className="text-base font-medium flex items-center gap-2">
-            <Wrench className="h-4 w-4" />
+      <div className='flex items-center justify-between'>
+        <div className='space-y-0.5'>
+          <Label className='text-base font-medium flex items-center gap-2'>
+            <Wrench className='h-4 w-4' />
             Enable Tools
           </Label>
-          <p className="text-sm text-muted-foreground">
+          <p className='text-sm text-muted-foreground'>
             Allow AI to use workflow nodes and built-in functions as tools
           </p>
         </div>
@@ -115,22 +115,22 @@ export function ToolsConfigPanel({ nodeId, toolsConfig, onUpdate }: ToolsConfigP
           {/* Available Tools */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Available Tools</CardTitle>
+              <CardTitle className='text-sm'>Available Tools</CardTitle>
               <CardDescription>Select which tools the AI can use during execution</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className='space-y-2'>
               {/* Workflow Node Tools */}
               {availableNodes.map((node) => (
                 <div
                   key={node.id}
-                  className="flex items-center justify-between p-2 border rounded-md">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">{node.type}</Badge>
-                      <span className="text-sm font-medium">{node.data?.title || node.id}</span>
+                  className='flex items-center justify-between p-2 border rounded-md'>
+                  <div className='flex-1'>
+                    <div className='flex items-center gap-2'>
+                      <Badge variant='outline'>{node.type}</Badge>
+                      <span className='text-sm font-medium'>{node.data?.title || node.id}</span>
                     </div>
                     {node.data?.desc && (
-                      <p className="text-xs text-muted-foreground mt-1">{node.data.desc}</p>
+                      <p className='text-xs text-muted-foreground mt-1'>{node.data.desc}</p>
                     )}
                   </div>
                   <Switch
@@ -144,13 +144,13 @@ export function ToolsConfigPanel({ nodeId, toolsConfig, onUpdate }: ToolsConfigP
               {builtInTools.map((tool) => (
                 <div
                   key={tool.id}
-                  className="flex items-center justify-between p-2 border rounded-md">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary">Built-in</Badge>
-                      <span className="text-sm font-medium">{tool.name}</span>
+                  className='flex items-center justify-between p-2 border rounded-md'>
+                  <div className='flex-1'>
+                    <div className='flex items-center gap-2'>
+                      <Badge variant='secondary'>Built-in</Badge>
+                      <span className='text-sm font-medium'>{tool.name}</span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">{tool.description}</p>
+                    <p className='text-xs text-muted-foreground mt-1'>{tool.description}</p>
                   </div>
                   <Switch
                     checked={config.allowedBuiltInTools?.includes(tool.id) || false}
@@ -160,7 +160,7 @@ export function ToolsConfigPanel({ nodeId, toolsConfig, onUpdate }: ToolsConfigP
               ))}
 
               {availableNodes.length === 0 && builtInTools.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">No tools available</p>
+                <p className='text-sm text-muted-foreground text-center py-4'>No tools available</p>
               )}
             </CardContent>
           </Card>
@@ -168,13 +168,13 @@ export function ToolsConfigPanel({ nodeId, toolsConfig, onUpdate }: ToolsConfigP
           {/* Advanced Settings */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Advanced Settings</CardTitle>
+              <CardTitle className='text-sm'>Advanced Settings</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-sm">Max Concurrent Tools</Label>
+            <CardContent className='space-y-4'>
+              <div className='space-y-2'>
+                <Label className='text-sm'>Max Concurrent Tools</Label>
                 <Input
-                  type="number"
+                  type='number'
                   min={1}
                   max={20}
                   value={config.maxConcurrentTools || 5}
@@ -182,15 +182,15 @@ export function ToolsConfigPanel({ nodeId, toolsConfig, onUpdate }: ToolsConfigP
                     handleConfigChange({ maxConcurrentTools: parseInt(e.target.value) || 5 })
                   }
                 />
-                <p className="text-xs text-muted-foreground">
+                <p className='text-xs text-muted-foreground'>
                   Maximum number of tools that can run simultaneously
                 </p>
               </div>
 
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-sm">Auto-invoke Tools</Label>
-                  <p className="text-xs text-muted-foreground">
+              <div className='flex items-center justify-between'>
+                <div className='space-y-0.5'>
+                  <Label className='text-sm'>Auto-invoke Tools</Label>
+                  <p className='text-xs text-muted-foreground'>
                     Automatically execute tools or require manual approval
                   </p>
                 </div>
@@ -203,17 +203,17 @@ export function ToolsConfigPanel({ nodeId, toolsConfig, onUpdate }: ToolsConfigP
           </Card>
 
           {/* Summary */}
-          <Card className="bg-muted/50">
-            <CardContent className="pt-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
+          <Card className='bg-muted/50'>
+            <CardContent className='pt-4'>
+              <div className='space-y-2'>
+                <div className='flex items-center justify-between text-sm'>
                   <span>Available Tools:</span>
                   <Badge>
                     {(config.allowedNodeIds?.length || 0) +
                       (config.allowedBuiltInTools?.length || 0)}
                   </Badge>
                 </div>
-                <div className="flex items-center justify-between text-sm">
+                <div className='flex items-center justify-between text-sm'>
                   <span>Auto-invoke:</span>
                   <Badge variant={config.autoInvoke ? 'default' : 'secondary'}>
                     {config.autoInvoke ? 'Yes' : 'No'}

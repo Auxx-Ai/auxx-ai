@@ -75,7 +75,7 @@ export function DndDebugOverlay({
   if (!enabled) return null
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-[9999]">
+    <div className='fixed inset-0 pointer-events-none z-[9999]'>
       {/* Debug rectangles */}
       {showRects &&
         debugRects.map((debugRect) => (
@@ -140,7 +140,7 @@ export function DndDebugOverlay({
 
       {/* Debug distances */}
       {showDistances && active && over && (
-        <div className="absolute top-4 left-4 bg-black/80 text-white p-2 rounded text-sm font-mono">
+        <div className='absolute top-4 left-4 bg-black/80 text-white p-2 rounded text-sm font-mono'>
           <div>Active: {active.id}</div>
           <div>Over: {over.id}</div>
           {active.rect.current && over.rect && (
@@ -148,18 +148,14 @@ export function DndDebugOverlay({
               Distance:{' '}
               {Math.round(
                 Math.sqrt(
-                  Math.pow(
-                    active.rect.current.left +
-                      active.rect.current.width / 2 -
-                      (over.rect.left + over.rect.width / 2),
-                    2
-                  ) +
-                    Math.pow(
-                      active.rect.current.top +
-                        active.rect.current.height / 2 -
-                        (over.rect.top + over.rect.height / 2),
+                  (active.rect.current.left +
+                    active.rect.current.width / 2 -
+                    (over.rect.left + over.rect.width / 2)) **
+                    2 +
+                    (active.rect.current.top +
+                      active.rect.current.height / 2 -
+                      (over.rect.top + over.rect.height / 2)) **
                       2
-                    )
                 )
               )}
               px

@@ -1,45 +1,45 @@
 // packages/lib/src/threads/thread-query.service.ts
 
 import { type Database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import { toActorId } from '@auxx/types/actor'
+import type { RecordId } from '@auxx/types/resource'
+import { toRecordId } from '@auxx/types/resource'
 import {
   and,
-  eq,
-  gt,
-  lt,
+  asc,
+  type Column,
   count,
   desc,
-  asc,
+  eq,
+  gt,
   inArray,
+  lt,
   or,
-  sql,
   type SQL,
-  type Column,
+  sql,
 } from 'drizzle-orm'
+import { batchGetThreadTagIds } from '../field-values/relationship-queries'
 import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
 import {
-  isDraftsContextQuery,
-  hasUnsupportedDraftConditions,
   buildDraftConditions,
+  hasUnsupportedDraftConditions,
+  isDraftsContextQuery,
 } from '../mail-query/draft-condition-builder'
+import { parseSearchQuery } from '../mail-query/search-query-parser'
 import { InternalFilterContextType } from '../mail-query/types'
 import { MailViewService } from '../mail-views/mail-view-service'
-import { createScopedLogger } from '@auxx/logger'
-import { parseSearchQuery } from '../mail-query/search-query-parser'
-import { toActorId } from '@auxx/types/actor'
-import { toRecordId } from '@auxx/types/resource'
 import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
-
-import {
-  type ThreadSortDescriptor,
-  type ThreadSortField,
-  type ListThreadIdsInput,
-  type PaginatedIdsResult,
-  type ThreadMeta,
-  type ThreadStatus,
-  type IntegrationProvider,
+import type {
+  IntegrationProvider,
+  ListThreadIdsInput,
+  PaginatedIdsResult,
+  ThreadMeta,
+  ThreadSortDescriptor,
+  ThreadSortField,
+  ThreadStatus,
 } from './types'
-import { batchGetThreadTagIds } from '../field-values/relationship-queries'
-import type { RecordId } from '@auxx/types/resource'
+
 const logger = createScopedLogger('thread-query-service')
 
 /** Default ordering used when no explicit sort is requested. */

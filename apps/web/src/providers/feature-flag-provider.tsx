@@ -1,8 +1,9 @@
 // apps/web/src/providers/feature-flag-provider.tsx
 'use client'
 
-import React, { createContext, useContext, useMemo, useState, useEffect } from 'react'
 import type { FeatureKey, FeatureLimit } from '@auxx/lib/types'
+import type React from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { useDehydratedOrganization } from './dehydrated-state-provider'
 
 // Type for the feature map object
@@ -38,9 +39,7 @@ export function OrganizationIdProvider({
   children: React.ReactNode
   initialOrganizationId?: string | null
 }) {
-  const [organizationId, setOrganizationId] = useState<string | null>(
-    initialOrganizationId ?? null
-  )
+  const [organizationId, setOrganizationId] = useState<string | null>(initialOrganizationId ?? null)
 
   return (
     <OrganizationIdContext.Provider value={{ organizationId, setOrganizationId }}>

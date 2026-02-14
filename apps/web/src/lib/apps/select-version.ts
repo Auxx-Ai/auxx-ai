@@ -14,10 +14,12 @@ export function selectVersionToInstall(
     versionType: 'dev' | 'prod'
     status: string
   }>
-): {
-  versionId: string
-  installationType: 'development' | 'production'
-} | undefined {
+):
+  | {
+      versionId: string
+      installationType: 'development' | 'production'
+    }
+  | undefined {
   // Filter active versions
   const activeVersions = versions.filter((v) => v.status === 'active')
 

@@ -1,14 +1,14 @@
 // apps/web/src/components/workflow/utils/node-layout/position-calculator.ts
 
-import type { FlowNode, FlowEdge } from '~/components/workflow/types'
-import { NODE_ADDITION_CONFIG, LAYOUT_SPACING } from '../layout-constants'
+import type { FlowEdge, FlowNode } from '~/components/workflow/types'
+import { LAYOUT_SPACING, NODE_ADDITION_CONFIG } from '../layout-constants'
 import { CollisionDetector, type Point, type Size } from './collision-detector'
 import {
   buildHandleLanes,
-  findLaneForHandle,
   checkLaneShiftRequired,
-  isMultiHandleNode,
+  findLaneForHandle,
   type HandleLane,
+  isMultiHandleNode,
   type LaneShiftConfig,
 } from './handle-lanes'
 
@@ -68,19 +68,19 @@ export class PositionCalculator {
     // Calculate position based on type
     switch (position) {
       case 'after':
-        return this.calculateAfterPosition(context, size)
+        return PositionCalculator.calculateAfterPosition(context, size)
       case 'before':
-        return this.calculateBeforePosition(context, size)
+        return PositionCalculator.calculateBeforePosition(context, size)
       case 'parallel':
-        return this.calculateParallelPosition(context, size)
+        return PositionCalculator.calculateParallelPosition(context, size)
       case 'between':
-        return this.calculateBetweenPosition(context, size)
+        return PositionCalculator.calculateBetweenPosition(context, size)
       case 'standalone':
-        return this.calculateStandalonePosition(context, size)
+        return PositionCalculator.calculateStandalonePosition(context, size)
       case 'inside':
-        return this.calculateInsidePosition(context, size)
+        return PositionCalculator.calculateInsidePosition(context, size)
       default:
-        return this.calculateStandalonePosition(context, size)
+        return PositionCalculator.calculateStandalonePosition(context, size)
     }
   }
 
@@ -106,11 +106,23 @@ export class PositionCalculator {
 
     // Check if anchor is a multi-handle node
     if (isMultiHandleNode(anchor)) {
-      return this.calculateMultiHandleAfterPosition(anchor, sourceHandle, nodes, edges, nodeSize)
+      return PositionCalculator.calculateMultiHandleAfterPosition(
+        anchor,
+        sourceHandle,
+        nodes,
+        edges,
+        nodeSize
+      )
     }
 
     // Fallback to simple positioning for single-handle nodes
-    return this.calculateSimpleAfterPosition(anchor, sourceHandle, nodes, edges, nodeSize)
+    return PositionCalculator.calculateSimpleAfterPosition(
+      anchor,
+      sourceHandle,
+      nodes,
+      edges,
+      nodeSize
+    )
   }
 
   /**
@@ -132,11 +144,22 @@ export class PositionCalculator {
 
     if (!targetLane) {
       // Fallback if lane not found
-      return this.calculateSimpleAfterPosition(anchor, sourceHandle, nodes, edges, nodeSize)
+      return PositionCalculator.calculateSimpleAfterPosition(
+        anchor,
+        sourceHandle,
+        nodes,
+        edges,
+        nodeSize
+      )
     }
 
     // Calculate position based on lane context
-    const position = this.calculateLaneAwarePosition(anchor, targetLane, nodeSize, nodes)
+    const position = PositionCalculator.calculateLaneAwarePosition(
+      anchor,
+      targetLane,
+      nodeSize,
+      nodes
+    )
 
     // Check if lane shift is needed
     const shiftConfig = checkLaneShiftRequired(targetLane, handleLanes, nodeSize)
@@ -225,7 +248,11 @@ export class PositionCalculator {
 
     if (siblingTargets.length > 0) {
       // Position aligned with existing siblings but offset vertically
-      preferredPosition = this.calculateSiblingAlignedPosition(anchor, siblingTargets, nodeSize)
+      preferredPosition = PositionCalculator.calculateSiblingAlignedPosition(
+        anchor,
+        siblingTargets,
+        nodeSize
+      )
     } else {
       // No existing siblings - use default position to the right of anchor
       preferredPosition = {
@@ -545,10 +572,19 @@ export class PositionCalculator {
     const childNodes = nodes.filter((n) => n.parentId === parentNodeId)
 
     // Calculate optimal position
-    const position = this.calculateOptimalChildPosition(parentNode, childNodes, nodeSize)
+    const position = PositionCalculator.calculateOptimalChildPosition(
+      parentNode,
+      childNodes,
+      nodeSize
+    )
 
     // Check if parent needs resizing
-    const parentResize = this.checkIfParentNeedsResize(parentNode, childNodes, position, nodeSize)
+    const parentResize = PositionCalculator.checkIfParentNeedsResize(
+      parentNode,
+      childNodes,
+      position,
+      nodeSize
+    )
 
     return {
       position,
@@ -591,7 +627,7 @@ export class PositionCalculator {
     )
 
     // Find the next available grid position
-    const nextPosition = this.findNextGridPosition(
+    const nextPosition = PositionCalculator.findNextGridPosition(
       existingChildren,
       nodeSize,
       maxColumns,

@@ -1,27 +1,26 @@
 // apps/api/src/index.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { logger } from 'hono/logger'
 import { prettyJSON } from 'hono/pretty-json'
-import { createScopedLogger } from '@auxx/logger'
-import { PORT, NODE_ENV, allowedOrigins } from './config'
+import { allowedOrigins, NODE_ENV, PORT } from './config'
 
 // Middleware
 import { corsMiddleware } from './middleware/cors'
 import { errorMiddleware } from './middleware/error'
-
+import appRuntime from './routes/app-runtime'
+import apps from './routes/apps'
+import developers from './routes/developers'
 // Routes
 import health from './routes/health'
-import developers from './routes/developers'
-import me from './routes/me'
-import apps from './routes/apps'
-import versions from './routes/versions'
 import installations from './routes/installations'
+import me from './routes/me'
 import organizations from './routes/organizations'
-import appRuntime from './routes/app-runtime'
-import webhookHandlers from './routes/webhook-handlers'
 import settings from './routes/settings'
+import versions from './routes/versions'
+import webhookHandlers from './routes/webhook-handlers'
 import webhooks from './routes/webhooks'
 import workflows from './routes/workflows'
 

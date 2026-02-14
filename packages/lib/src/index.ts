@@ -7,28 +7,23 @@ export const libTest = 'lib-test'
 
 export { createScopedLogger, stripeService, KBService }
 
-// AI Provider System exports
-export * from './ai/providers'
-
-// Workflow Engine exports
-export * from './workflow-engine/utils'
-
-// User services exports
-export * from './users'
-
-// Dehydration exports
-export { DehydrationService, DehydrationCacheService } from './dehydration'
-export type {
-  DehydratedState,
-  DehydratedUser,
-  DehydratedOrganization,
-  DehydratedEnvironment,
-} from './dehydration'
-
-// Admin exports
-export { AdminService } from './admin'
-export type { OrganizationWithMetrics, OrganizationDetails } from './admin'
-
+export type { ListActorsOptions, SearchActorsOptions } from './actors'
 // Actor exports
 export { ActorService, GroupMemberService } from './actors'
-export type { ListActorsOptions, SearchActorsOptions } from './actors'
+export type { OrganizationDetails, OrganizationWithMetrics } from './admin'
+// Admin exports
+export { AdminService } from './admin'
+// AI Provider System exports
+export * from './ai/providers'
+export type {
+  DehydratedEnvironment,
+  DehydratedOrganization,
+  DehydratedState,
+  DehydratedUser,
+} from './dehydration'
+// Dehydration exports
+export { DehydrationCacheService, DehydrationService } from './dehydration'
+// User services exports
+export * from './users'
+// Workflow Engine exports
+export * from './workflow-engine/utils'

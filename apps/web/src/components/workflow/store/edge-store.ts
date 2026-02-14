@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/store/edge-store.ts
 
+import { applyEdgeChanges, type Connection, type EdgeChange } from '@xyflow/react'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import type { FlowEdge, EdgeUpdate } from './types'
-import { historyManager } from './history-manager'
 import { storeEventBus } from './event-bus'
-import { applyEdgeChanges, type EdgeChange, type Connection } from '@xyflow/react'
+import { historyManager } from './history-manager'
+import type { EdgeUpdate, FlowEdge } from './types'
 import { useWorkflowStore } from './workflow-store'
 // import { calculateEdgeZIndex } from '../utils/edge-utils'
 

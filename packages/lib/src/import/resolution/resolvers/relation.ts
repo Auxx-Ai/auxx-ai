@@ -1,6 +1,6 @@
 // packages/lib/src/import/resolution/resolvers/relation.ts
 
-import type { ResolvedValue, ResolutionConfig } from '../../types/resolution'
+import type { ResolutionConfig, ResolvedValue } from '../../types/resolution'
 
 /**
  * Relation resolver context - passed when resolving relation values
@@ -140,9 +140,12 @@ export function isPendingRelationLookup(value: unknown): value is PendingRelatio
 /**
  * Type guard for direct ID relation lookup values
  */
-export function isDirectIdRelationLookup(
-  value: unknown
-): value is { __pendingRelationLookup: true; __isDirectId: true; targetTable: string; searchValue: string } {
+export function isDirectIdRelationLookup(value: unknown): value is {
+  __pendingRelationLookup: true
+  __isDirectId: true
+  targetTable: string
+  searchValue: string
+} {
   return (
     isPendingRelationLookup(value) &&
     '__isDirectId' in value &&

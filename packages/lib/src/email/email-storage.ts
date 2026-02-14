@@ -1,30 +1,28 @@
 // packages/lib/src/email/email-storage.ts
 
-import { createScopedLogger } from '@auxx/logger'
 import { database as db, schema } from '@auxx/database'
-import { sql, and, eq, desc, inArray, isNull, asc } from 'drizzle-orm'
-import type {
-  ParticipantEntity as Participant,
-  ContactEntity as Contact,
-  MessageParticipantEntity as MessageParticipant,
-  CustomerSourceEntity as CustomerSource,
-} from '@auxx/database/models'
-import { MessageReconcilerService } from '../messages/message-reconciler.service'
-import { ThreadManagerService } from '../messages/thread-manager.service'
 import {
-  IdentifierType as IdentifierTypeEnum,
-  ParticipantRole as ParticipantRoleEnum,
-  MessageType,
   EmailLabel,
+  IdentifierType as IdentifierTypeEnum,
+  MessageType,
+  ParticipantRole as ParticipantRoleEnum,
   ThreadStatus,
 } from '@auxx/database/enums'
-
+import type {
+  ContactEntity as Contact,
+  CustomerSourceEntity as CustomerSource,
+  MessageEntity as Message,
+  MessageParticipantEntity as MessageParticipant,
+  ParticipantEntity as Participant,
+  ThreadEntity as Thread,
+} from '@auxx/database/models'
 import type { IdentifierType, ParticipantRole } from '@auxx/database/types'
-
-import type { MessageEntity as Message, ThreadEntity as Thread } from '@auxx/database/models'
-
-import { SelectiveModeCache } from '../cache/selective-mode-cache'
+import { createScopedLogger } from '@auxx/logger'
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
+import { SelectiveModeCache } from '../cache/selective-mode-cache'
+import { MessageReconcilerService } from '../messages/message-reconciler.service'
+import { ThreadManagerService } from '../messages/thread-manager.service'
 
 const logger = createScopedLogger('message-storage')
 

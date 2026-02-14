@@ -1,11 +1,11 @@
 // packages/lib/src/seed/entity-seeder/link-name-fields.ts
 
 import { type Database, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
-import { createScopedLogger } from '@auxx/logger'
 import { FieldType } from '@auxx/database/enums'
-import type { FieldMap } from './types'
+import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
 import type { ResourceField } from '../../resources/registry/field-types'
+import type { FieldMap } from './types'
 
 const logger = createScopedLogger('entity-seeder:link-name-fields')
 

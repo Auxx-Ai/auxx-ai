@@ -1,14 +1,14 @@
 // apps/web/src/app/admin/layout.tsx
 
-import { type Metadata } from 'next'
-import { redirect } from 'next/navigation'
-import { SidebarInset, SidebarProvider } from '@auxx/ui/components/sidebar'
-import { AdminAppSidebar } from './_components/app-sidebar'
-import { auth } from '~/auth/server'
-import { headers } from 'next/headers'
 import { DehydrationService } from '@auxx/lib/dehydration'
+import { SidebarInset, SidebarProvider } from '@auxx/ui/components/sidebar'
+import type { Metadata } from 'next'
+import { headers } from 'next/headers'
+import { redirect } from 'next/navigation'
+import { auth } from '~/auth/server'
 import { DehydratedStateProvider } from '~/providers/dehydrated-state-provider'
-import { OrganizationIdProvider, FeatureFlagProvider } from '~/providers/feature-flag-provider'
+import { FeatureFlagProvider, OrganizationIdProvider } from '~/providers/feature-flag-provider'
+import { AdminAppSidebar } from './_components/app-sidebar'
 
 export const metadata: Metadata = {
   title: {
@@ -65,13 +65,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   return (
-    <div className="h-screen flex flex-1 flex-col w-full h-full">
+    <div className='h-screen flex flex-1 flex-col w-full h-full'>
       <DehydratedStateProvider initialState={dehydratedState}>
         <OrganizationIdProvider initialOrganizationId={dehydratedState.organizationId}>
           <FeatureFlagProvider>
             <SidebarProvider>
-              <AdminAppSidebar user={user} variant="inset" />
-              <SidebarInset className="p-0 m-0!">{children}</SidebarInset>
+              <AdminAppSidebar user={user} variant='inset' />
+              <SidebarInset className='p-0 m-0!'>{children}</SidebarInset>
             </SidebarProvider>
           </FeatureFlagProvider>
         </OrganizationIdProvider>

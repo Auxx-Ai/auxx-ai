@@ -1,10 +1,10 @@
 // packages/sdk/src/commands/dev/bundle-javascript.ts
 
 import chokidar from 'chokidar'
-import { prepareBuildContext, type BuildContextError } from './prepare-build-context.js'
-import { isErrored, isComplete, complete, type Fetchable } from '../../errors.js'
+import { complete, type Fetchable, isComplete, isErrored } from '../../errors.js'
 import { compileAndExtractSettingsSchema } from '../../util/compile-and-extract-settings.js'
-import { type SettingsSchema } from '../../util/extract-settings-schema.js'
+import type { SettingsSchema } from '../../util/extract-settings-schema.js'
+import { type BuildContextError, prepareBuildContext } from './prepare-build-context.js'
 
 /**
  * Build context interface for managing client and server builds

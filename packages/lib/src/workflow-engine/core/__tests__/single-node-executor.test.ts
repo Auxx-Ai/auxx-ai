@@ -1,8 +1,8 @@
 // packages/lib/src/workflow-engine/core/__tests__/single-node-executor.test.ts
 
-import { describe, it, expect, beforeEach } from 'vitest'
-import { executeSingleNode } from '../single-node-executor'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { NodeProcessorRegistry } from '../node-processor-registry'
+import { executeSingleNode } from '../single-node-executor'
 import type { WorkflowNode } from '../types'
 
 describe('executeSingleNode', () => {

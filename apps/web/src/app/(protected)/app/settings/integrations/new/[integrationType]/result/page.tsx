@@ -2,12 +2,12 @@
 
 'use client'
 
-import React, { useEffect } from 'react'
-import { useSearchParams, useParams, useRouter } from 'next/navigation'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { CheckCircle, XCircle } from 'lucide-react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import React, { useEffect } from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 
@@ -57,25 +57,25 @@ export default function NewIntegrationSuccess() {
   return (
     <SettingsPage
       title={`${integrationType} Integration`}
-      description="Setup your new integration"
+      description='Setup your new integration'
       breadcrumbs={[
         { title: 'Settings', href: '/app/settings' },
         { title: 'Integrations', href: '/app/settings/integrations' },
         { title: 'Add New Integration', href: '/app/settings/integrations/new' },
         { title: integrationType },
       ]}>
-      <div className="p-6">
-        <Card className="max-w-md mx-auto mt-10">
+      <div className='p-6'>
+        <Card className='max-w-md mx-auto mt-10'>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className='flex items-center gap-2'>
               {success ? (
                 <>
-                  <CheckCircle className="text-green-500" />
+                  <CheckCircle className='text-green-500' />
                   Integration Successful
                 </>
               ) : (
                 <>
-                  <XCircle className="text-red-500" />
+                  <XCircle className='text-red-500' />
                   Integration Failed
                 </>
               )}
@@ -85,7 +85,7 @@ export default function NewIntegrationSuccess() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="mb-4">
+            <p className='mb-4'>
               {success
                 ? `Your ${integrationType} integration has been successfully set up.`
                 : `There was an error setting up your ${integrationType} integration: ${errorDescription || 'Unknown error'}`}

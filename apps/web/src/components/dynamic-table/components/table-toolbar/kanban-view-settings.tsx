@@ -1,39 +1,39 @@
 // apps/web/src/components/dynamic-table/components/table-toolbar/kanban-view-settings.tsx
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
-import { Settings2, Plus, LayoutGrid, Trash2, Columns3 } from 'lucide-react'
+import { getColorSwatch } from '@auxx/lib/custom-fields/client'
+import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
 import { Button } from '@auxx/ui/components/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
   Command,
+  CommandBreadcrumb,
+  CommandCheckboxItem,
+  CommandDescription,
   CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
-  CommandDescription,
-  CommandNavigation,
-  CommandBreadcrumb,
   CommandNavigableItem,
-  CommandCheckboxItem,
+  CommandNavigation,
   CommandRadioGroup,
   CommandRadioItem,
+  CommandSeparator,
   CommandSortable,
   CommandSortableItem,
-  useCommandNavigation,
   type NavigationItem,
+  useCommandNavigation,
 } from '@auxx/ui/components/command'
+import { EntityIcon } from '@auxx/ui/components/icons'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { cn } from '@auxx/ui/lib/utils'
+import { Columns3, LayoutGrid, Plus, Settings2, Trash2 } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
 import { useTableConfig } from '../../context/table-config-context'
 import { useViewMetadata } from '../../context/view-metadata-context'
-import { useKanbanConfig } from '../../stores/store-selectors'
 import { useUpdateKanbanConfig } from '../../stores/store-actions'
-import { Tooltip } from '~/components/global/tooltip'
-import { getColorSwatch } from '@auxx/lib/custom-fields/client'
-import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
-import { cn } from '@auxx/ui/lib/utils'
-import { EntityIcon } from '@auxx/ui/components/icons'
+import { useKanbanConfig } from '../../stores/store-selectors'
 
 /** Navigation item type for KanbanViewSettings */
 interface SettingsNavigationItem extends NavigationItem {
@@ -96,14 +96,14 @@ function RootStack() {
   return (
     <CommandList>
       {/* View Settings Group */}
-      <CommandGroup heading="View Settings">
+      <CommandGroup heading='View Settings'>
         <CommandNavigableItem
           item={{ id: 'pipeline', label: 'Grouped by pipeline', type: 'pipeline' }}
           hasChildren
           onSelect={() => handleNavigate('pipeline', 'Grouped by pipeline')}>
           <LayoutGrid />
-          <span className="flex-1">Grouped by pipeline</span>
-          <span className="text-xs text-muted-foreground truncate max-w-24">
+          <span className='flex-1'>Grouped by pipeline</span>
+          <span className='text-xs text-muted-foreground truncate max-w-24'>
             {groupByField?.name ?? 'Not set'}
           </span>
         </CommandNavigableItem>
@@ -119,26 +119,26 @@ function RootStack() {
 
       <CommandSeparator />
       {/* Card Fields Group - Sortable */}
-      <CommandGroup heading="Card Fields">
+      <CommandGroup heading='Card Fields'>
         {cardFields.length === 0 ? (
-          <div className="text-sm text-muted-foreground px-2">No card fields configured</div>
+          <div className='text-sm text-muted-foreground px-2'>No card fields configured</div>
         ) : (
           <CommandSortable items={cardFields} onReorder={handleCardFieldsReorder}>
             {cardFields.map((fieldId) => {
               const field = customFields?.find((f) => f.id === fieldId)
               return (
-                <CommandSortableItem key={fieldId} id={fieldId} className="py-0 pe-0.5">
-                  <span className="truncate flex-1 flex items-center">
+                <CommandSortableItem key={fieldId} id={fieldId} className='py-0 pe-0.5'>
+                  <span className='truncate flex-1 flex items-center'>
                     {field?.name ?? fieldId}
                   </span>
                   <button
-                    type="button"
+                    type='button'
                     onClick={(e) => {
                       e.stopPropagation()
                       handleRemoveCardField(fieldId)
                     }}
-                    className="shrink-0  size-6.5 flex items-center justify-center rounded-full hover:bg-bad-100 hover:text-bad-500">
-                    <Trash2 className="size-3" />
+                    className='shrink-0  size-6.5 flex items-center justify-center rounded-full hover:bg-bad-100 hover:text-bad-500'>
+                    <Trash2 className='size-3' />
                   </button>
                 </CommandSortableItem>
               )
@@ -266,8 +266,8 @@ function VisibleColumnsStack() {
               value={stage.value}
               checked={isVisible}
               onCheckedChange={(checked) => handleToggleColumn(stage.value, checked)}
-              variant="switch">
-              <div className="flex items-center gap-2">
+              variant='switch'>
+              <div className='flex items-center gap-2'>
                 {stage.color && (
                   <div className={cn('size-3 rounded-full', getColorSwatch(stage.color))} />
                 )}
@@ -323,7 +323,7 @@ function AddCardFieldStack() {
 
   return (
     <>
-      <CommandInput placeholder="Search fields..." value={search} onValueChange={setSearch} />
+      <CommandInput placeholder='Search fields...' value={search} onValueChange={setSearch} />
       <CommandList>
         <CommandEmpty>No fields found.</CommandEmpty>
         {filteredFields.length > 0 && (
@@ -333,11 +333,11 @@ function AddCardFieldStack() {
                 key={field.id}
                 value={field.id}
                 onSelect={() => handleAddField(field.id)}
-                className="ps-0.5 py-0">
+                className='ps-0.5 py-0'>
                 <EntityIcon
                   iconId={field.fieldType ? fieldTypeOptions[field.fieldType].iconId : 'circle'}
-                  variant="default"
-                  size="default"
+                  variant='default'
+                  size='default'
                 />
                 {field.name}
               </CommandItem>
@@ -383,19 +383,19 @@ export function KanbanViewSettings({ className }: KanbanViewSettingsProps) {
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <div className={className}>
-          <Tooltip content="Kanban settings">
-            <Button variant="ghost" size="sm">
-              <Settings2 className="size-3" />
-              <span className="hidden @lg/controls:block">Settings</span>
+          <Tooltip content='Kanban settings'>
+            <Button variant='ghost' size='sm'>
+              <Settings2 className='size-3' />
+              <span className='hidden @lg/controls:block'>Settings</span>
             </Button>
           </Tooltip>
         </div>
       </PopoverTrigger>
 
-      <PopoverContent className="w-[280px] p-0" align="start">
+      <PopoverContent className='w-[280px] p-0' align='start'>
         <CommandNavigation<SettingsNavigationItem>>
           <Command shouldFilter={false}>
-            <CommandBreadcrumb rootLabel="Settings" />
+            <CommandBreadcrumb rootLabel='Settings' />
             <KanbanViewSettingsContent />
           </Command>
         </CommandNavigation>

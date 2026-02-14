@@ -1,5 +1,5 @@
-import { isErrored } from '../../errors.js'
 import { api } from '../../api/api.js'
+import { isErrored } from '../../errors.js'
 import {
   printCliVersionError,
   printDetermineOrganizationError,

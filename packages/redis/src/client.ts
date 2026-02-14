@@ -1,8 +1,8 @@
 // packages/redis/src/client.ts
 import { env } from '@auxx/config/server'
-import { logger, type RedisClient } from './types'
 import { RedisClientFactory } from './core/redis-client-factory'
 import { parseRedisUrl, type RedisUrlComponents } from './parse-redis-url'
+import { logger, type RedisClient } from './types'
 
 // Channel prefixes
 export const CHANNELS = {

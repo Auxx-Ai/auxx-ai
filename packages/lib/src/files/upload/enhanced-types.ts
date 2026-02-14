@@ -157,9 +157,7 @@ export type UploadErrorCode =
 /**
  * Callback function for tracking upload progress
  */
-export interface UploadProgressCallback {
-  (progress: UploadProgress): void
-}
+export type UploadProgressCallback = (progress: UploadProgress) => void
 
 /**
  * Upload preferences for strategy selection

@@ -1,20 +1,21 @@
 // apps/web/src/components/workflow/panels/run/tabs/tracing-tab.tsx
-import React, { useCallback, useState, useMemo } from 'react'
-import { useRunStore } from '~/components/workflow/store/run-store'
-import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
-import { useWorkflowRun } from '~/hooks/use-workflow-run'
+
+import { WorkflowRunStatus } from '@auxx/database/enums'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
-import { NodeExecutionCard } from '../components/node-execution-card'
-import { LoopExecutionCard } from '../components/loop-execution-card'
-import { BranchGroup } from '../components/branch-group'
-import { groupExecutionsByBranch } from '../utils/group-executions'
-import { Loader2, AlertCircle, CheckCircle, StopCircle, Clock } from 'lucide-react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { Tooltip } from '~/components/global/tooltip'
-import { WorkflowRunStatus } from '@auxx/database/enums'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useStoreApi } from '@xyflow/react'
+import { AlertCircle, CheckCircle, Clock, Loader2, StopCircle } from 'lucide-react'
+import React, { useCallback, useMemo, useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
+import { useRunStore } from '~/components/workflow/store/run-store'
+import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
 import type { FlowNode } from '~/components/workflow/types'
+import { useWorkflowRun } from '~/hooks/use-workflow-run'
+import { BranchGroup } from '../components/branch-group'
+import { LoopExecutionCard } from '../components/loop-execution-card'
+import { NodeExecutionCard } from '../components/node-execution-card'
+import { groupExecutionsByBranch } from '../utils/group-executions'
 /**
  * Tracing tab showing node-by-node execution details
  */
@@ -87,10 +88,10 @@ export function TracingTab() {
     displayExecutions.length === 0
   ) {
     return (
-      <div className="flex flex-col items-center justify-center py-12">
-        <Loader2 className="h-12 w-12 text-muted-foreground mb-4 animate-spin" />
-        <p className="text-lg font-medium text-muted-foreground">Workflow is running</p>
-        <p className="text-sm text-muted-foreground mt-1">Execution tree will appear shortly</p>
+      <div className='flex flex-col items-center justify-center py-12'>
+        <Loader2 className='h-12 w-12 text-muted-foreground mb-4 animate-spin' />
+        <p className='text-lg font-medium text-muted-foreground'>Workflow is running</p>
+        <p className='text-sm text-muted-foreground mt-1'>Execution tree will appear shortly</p>
       </div>
     )
   }
@@ -109,36 +110,36 @@ export function TracingTab() {
       }
     }
     return (
-      <div className="flex flex-col items-center justify-center py-12">
-        <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-        <p className="text-lg font-medium text-muted-foreground">No node executions recorded</p>
-        <p className="text-sm text-muted-foreground mt-1">{getEmptyStateMessage()}</p>
+      <div className='flex flex-col items-center justify-center py-12'>
+        <AlertCircle className='h-12 w-12 text-muted-foreground mb-4' />
+        <p className='text-lg font-medium text-muted-foreground'>No node executions recorded</p>
+        <p className='text-sm text-muted-foreground mt-1'>{getEmptyStateMessage()}</p>
       </div>
     )
   }
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       {/* Running indicator banner */}
       {(activeRun?.status === WorkflowRunStatus.RUNNING ||
         activeRun?.status === WorkflowRunStatus.WAITING) && (
-        <Alert variant="accent" className="flex-row flex items-between">
-          <div className="flex-1">
+        <Alert variant='accent' className='flex-row flex items-between'>
+          <div className='flex-1'>
             <AlertTitle>
-              <Loader2 className="animate-spin" />
+              <Loader2 className='animate-spin' />
               Workflow is running
             </AlertTitle>
-            <AlertDescription className="flex items-center justify-between">
+            <AlertDescription className='flex items-center justify-between'>
               Node executions will appear as they complete
             </AlertDescription>
           </div>
-          <Tooltip content="Stop workflow run" side="left" sideOffset={0}>
+          <Tooltip content='Stop workflow run' side='left' sideOffset={0}>
             <Button
-              variant="default"
-              size="icon-sm"
+              variant='default'
+              size='icon-sm'
               onClick={handleStopWorkflow}
               disabled={isStopping || !workflowAppId}
               loading={isStopping}>
-              <StopCircle className="animate-pulse" />
+              <StopCircle className='animate-pulse' />
             </Button>
           </Tooltip>
         </Alert>
@@ -146,7 +147,7 @@ export function TracingTab() {
 
       {/* Completed indicator for successful workflow */}
       {!isRunning && activeRun?.status === WorkflowRunStatus.SUCCEEDED && (
-        <Alert variant="good">
+        <Alert variant='good'>
           <AlertTitle>
             <CheckCircle />
             Workflow completed successfully
@@ -157,7 +158,7 @@ export function TracingTab() {
 
       {/* Failed indicator for failed workflow */}
       {!isRunning && activeRun?.status === WorkflowRunStatus.FAILED && (
-        <Alert variant="destructive" className=" bg-red-50/50 dark:bg-red-950/20">
+        <Alert variant='destructive' className=' bg-red-50/50 dark:bg-red-950/20'>
           <AlertTitle>
             <AlertCircle />
             Workflow execution failed
@@ -170,7 +171,7 @@ export function TracingTab() {
 
       {/* Stopped indicator for manually stopped workflow */}
       {!isRunning && activeRun?.status === WorkflowRunStatus.STOPPED && (
-        <Alert variant="comparison">
+        <Alert variant='comparison'>
           <AlertTitle>
             <StopCircle />
             Workflow was stopped
@@ -181,7 +182,7 @@ export function TracingTab() {
 
       {/* Waiting indicator for paused workflow */}
       {!isRunning && activeRun?.status === WorkflowRunStatus.WAITING && (
-        <Alert variant="bad">
+        <Alert variant='bad'>
           <AlertTitle>
             <Clock />
             Workflow is waiting
@@ -191,7 +192,7 @@ export function TracingTab() {
       )}
 
       {/* Node execution cards with branch grouping */}
-      <div className="space-y-0.5">
+      <div className='space-y-0.5'>
         {groupedExecutions.map((group, index) => {
           if (group.type === 'single') {
             // Single execution (not part of a grouped branch)

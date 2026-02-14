@@ -9,16 +9,16 @@
  * @module routes/webhook-handlers
  */
 
-import { Hono } from 'hono'
-import { errorResponse, ERROR_STATUS_MAP } from '../lib/response'
-import type { AppContext } from '../types/context'
 import {
   createWebhookHandler,
-  updateWebhookHandler,
   deleteWebhookHandler,
   listWebhookHandlers,
+  updateWebhookHandler,
 } from '@auxx/services/app-webhook-handlers'
+import { Hono } from 'hono'
 import { z } from 'zod'
+import { ERROR_STATUS_MAP, errorResponse } from '../lib/response'
+import type { AppContext } from '../types/context'
 
 /**
  * Hono router instance for webhook handler management.

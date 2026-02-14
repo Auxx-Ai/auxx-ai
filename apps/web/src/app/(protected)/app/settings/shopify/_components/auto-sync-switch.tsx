@@ -1,8 +1,8 @@
 'use client'
-import React from 'react'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import type { UserSettings } from '@auxx/lib/settings/types'
 import { Switch } from '@auxx/ui/components/switch'
-import { UserSettings } from '@auxx/lib/settings/types'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import React from 'react'
 import { api } from '~/trpc/react'
 import { isActionError } from '~/utils/error'
 

@@ -1,13 +1,16 @@
 // apps/web/src/app/(protected)/app/tickets/settings/templates/_components/template-editor-dialog.tsx
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
-import { api } from '~/trpc/react'
 import { Button } from '@auxx/ui/components/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@auxx/ui/components/dialog'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
-import { Textarea } from '@auxx/ui/components/textarea'
-import { Separator } from '@auxx/ui/components/separator'
 import {
   Select,
   SelectContent,
@@ -15,16 +18,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@auxx/ui/components/dialog'
-import { Save, Undo, LoaderIcon } from 'lucide-react'
-import { TemplateVariablesPopover } from './template-variables-popover'
+import { Separator } from '@auxx/ui/components/separator'
+import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { LoaderIcon, Save, Undo } from 'lucide-react'
+import type React from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { api } from '~/trpc/react'
+import { TemplateVariablesPopover } from './template-variables-popover'
 
 /** Template type options */
 const TEMPLATE_TYPES = [
@@ -247,7 +248,7 @@ export function TemplateEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent position="tc" size="3xl" className="max-h-[90vh] overflow-y-auto">
+      <DialogContent position='tc' size='3xl' className='max-h-[90vh] overflow-y-auto'>
         <DialogHeader>
           <DialogTitle>
             {isEditing ? 'Edit Email Template' : 'Create New Email Template'}
@@ -260,32 +261,32 @@ export function TemplateEditorDialog({
         </DialogHeader>
 
         {isTemplateLoading ? (
-          <div className="py-10 text-center">
-            <div className="flex justify-center">
-              <LoaderIcon className="h-8 w-8 animate-spin text-muted-foreground" />
+          <div className='py-10 text-center'>
+            <div className='flex justify-center'>
+              <LoaderIcon className='h-8 w-8 animate-spin text-muted-foreground' />
             </div>
-            <p className="mt-4 text-muted-foreground">Loading template...</p>
+            <p className='mt-4 text-muted-foreground'>Loading template...</p>
           </div>
         ) : (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="name">Template Name</Label>
+          <div className='space-y-6'>
+            <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
+              <div className='space-y-2'>
+                <Label htmlFor='name'>Template Name</Label>
                 <Input
-                  id="name"
-                  name="name"
+                  id='name'
+                  name='name'
                   value={formData.name}
                   onChange={handleChange}
-                  placeholder="e.g., Welcome Email"
+                  placeholder='e.g., Welcome Email'
                 />
               </div>
 
               {!isEditing && (
-                <div className="space-y-2">
-                  <Label htmlFor="type">Template Type</Label>
+                <div className='space-y-2'>
+                  <Label htmlFor='type'>Template Type</Label>
                   <Select value={formData.type} onValueChange={handleTypeChange}>
-                    <SelectTrigger id="type">
-                      <SelectValue placeholder="Select template type" />
+                    <SelectTrigger id='type'>
+                      <SelectValue placeholder='Select template type' />
                     </SelectTrigger>
                     <SelectContent>
                       {TEMPLATE_TYPES.map((type) => (
@@ -299,38 +300,38 @@ export function TemplateEditorDialog({
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+            <div className='space-y-2'>
+              <Label htmlFor='description'>Description</Label>
               <Textarea
-                id="description"
-                name="description"
+                id='description'
+                name='description'
                 value={formData.description}
                 onChange={handleChange}
-                placeholder="Brief description of when this template is used"
+                placeholder='Brief description of when this template is used'
                 rows={2}
               />
             </div>
 
             <Separator />
 
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="subject">Email Subject</Label>
+            <div className='space-y-4'>
+              <div className='space-y-2'>
+                <Label htmlFor='subject'>Email Subject</Label>
                 <Input
-                  id="subject"
-                  name="subject"
+                  id='subject'
+                  name='subject'
                   value={formData.subject}
                   onChange={handleChange}
-                  placeholder="e.g., Your ticket {{ticket.number}} has been created"
+                  placeholder='e.g., Your ticket {{ticket.number}} has been created'
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="relative flex flex-col space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="bodyHtml">HTML Body</Label>
+              <div className='grid grid-cols-2 gap-4'>
+                <div className='relative flex flex-col space-y-2'>
+                  <div className='flex items-center justify-between'>
+                    <Label htmlFor='bodyHtml'>HTML Body</Label>
                   </div>
-                  <div className="absolute right-2 bottom-2 z-10">
+                  <div className='absolute right-2 bottom-2 z-10'>
                     <TemplateVariablesPopover
                       templateType={formData.type}
                       onInsert={handleInsertPlaceholder}
@@ -338,38 +339,38 @@ export function TemplateEditorDialog({
                   </div>
                   <Textarea
                     ref={htmlTextareaRef}
-                    id="bodyHtml"
-                    name="bodyHtml"
+                    id='bodyHtml'
+                    name='bodyHtml'
                     value={formData.bodyHtml}
                     onChange={handleChange}
-                    placeholder="<p>Dear {{customer.name}},</p><p>Your ticket has been created.</p>"
+                    placeholder='<p>Dear {{customer.name}},</p><p>Your ticket has been created.</p>'
                     rows={18}
-                    className="font-mono text-sm"
+                    className='font-mono text-sm'
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="bodyPlain">Plain Text Body (Optional)</Label>
+                <div className='space-y-2'>
+                  <Label htmlFor='bodyPlain'>Plain Text Body (Optional)</Label>
                   <Textarea
-                    id="bodyPlain"
-                    name="bodyPlain"
+                    id='bodyPlain'
+                    name='bodyPlain'
                     value={formData.bodyPlain}
                     onChange={handleChange}
-                    placeholder="Dear {{customer.name}},\n\nYour ticket has been created."
+                    placeholder='Dear {{customer.name}},\n\nYour ticket has been created.'
                     rows={18}
-                    className="font-mono text-sm"
+                    className='font-mono text-sm'
                   />
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-between pt-4">
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={handleCancel}>
+            <div className='flex justify-between pt-4'>
+              <div className='flex gap-2'>
+                <Button variant='outline' onClick={handleCancel}>
                   Cancel
                 </Button>
                 {hasChanges && (
-                  <Button variant="outline" onClick={handleReset}>
+                  <Button variant='outline' onClick={handleReset}>
                     <Undo />
                     Reset Changes
                   </Button>
@@ -379,7 +380,7 @@ export function TemplateEditorDialog({
                 onClick={handleSave}
                 disabled={!hasChanges}
                 loading={createTemplate.isPending || updateTemplate.isPending}
-                loadingText="Saving...">
+                loadingText='Saving...'>
                 <Save />
                 Save Template
               </Button>

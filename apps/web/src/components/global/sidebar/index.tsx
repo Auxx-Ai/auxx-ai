@@ -1,7 +1,6 @@
 // components/global/sidebar/index.tsx
 'use client'
 
-import * as React from 'react'
 import {
   Sidebar,
   SidebarContent,
@@ -9,12 +8,13 @@ import {
   SidebarHeader,
   SidebarRail,
 } from '@auxx/ui/components/sidebar'
-import { NavMain } from './nav-main'
-import { SIDEBAR_MENU } from '~/constants/menu'
-import { NavUser } from './nav-user'
+import type * as React from 'react'
 import { MailSidebar } from '~/components/global/sidebar/mail-sidebar'
-import { EntitySidebarNav } from './entity-sidebar-nav'
+import { SIDEBAR_MENU } from '~/constants/menu'
 import AppFooter from './app-footer'
+import { EntitySidebarNav } from './entity-sidebar-nav'
+import { NavMain } from './nav-main'
+import { NavUser } from './nav-user'
 import { SidebarStateProvider } from './sidebar-state-context'
 
 const navMain = { title: 'Main', items: SIDEBAR_MENU, route: '/app' }
@@ -34,11 +34,11 @@ type Prop = {
 export default function AppSidebar({ user, ...props }: Prop) {
   return (
     <SidebarStateProvider>
-      <Sidebar collapsible="icon" {...props}>
+      <Sidebar collapsible='icon' {...props}>
         <SidebarHeader>
           <NavUser user={user} />
         </SidebarHeader>
-        <SidebarContent className="gap-0">
+        <SidebarContent className='gap-0'>
           <MailSidebar />
           <NavMain menu={navMain} />
           <EntitySidebarNav />

@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/hooks/use-node-dimensions.ts
 
-import { useEffect, useRef } from 'react'
-import { useUpdateNodeInternals, useStoreApi } from '@xyflow/react'
+import { useStoreApi, useUpdateNodeInternals } from '@xyflow/react'
 import { produce } from 'immer'
+import { useEffect, useRef } from 'react'
 
 // Tolerance in pixels to prevent infinite update loops
 const DIMENSION_TOLERANCE = 2

@@ -1,8 +1,8 @@
 // apps/web/src/server/api/routers/workflow-templates.ts
 
+import { getAllTemplates, getTemplateById } from '@auxx/services/workflow-templates'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { getAllTemplates, getTemplateById } from '@auxx/services/workflow-templates'
 
 /**
  * Public workflow templates router for users
@@ -36,15 +36,13 @@ export const workflowTemplatesRouter = createTRPCRouter({
   /**
    * Get a specific template by ID
    */
-  getById: protectedProcedure
-    .input(z.object({ id: z.string() }))
-    .query(async ({ input }) => {
-      const result = await getTemplateById(input.id)
+  getById: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
+    const result = await getTemplateById(input.id)
 
-      if (result.isErr()) {
-        throw new Error(result.error.message)
-      }
+    if (result.isErr()) {
+      throw new Error(result.error.message)
+    }
 
-      return result.value
-    }),
+    return result.value
+  }),
 })

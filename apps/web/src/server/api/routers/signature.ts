@@ -1,8 +1,9 @@
 // ~/server/api/routers/signature.ts
+
+import { SignatureSharingType } from '@auxx/database/enums'
+import { SignatureService } from '@auxx/lib/signatures'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { SignatureService } from '@auxx/lib/signatures'
-import { SignatureSharingType } from '@auxx/database/enums'
 export const signatureRouter = createTRPCRouter({
   // Get all signatures accessible to the current user
   getAll: protectedProcedure.query(async ({ ctx }) => {

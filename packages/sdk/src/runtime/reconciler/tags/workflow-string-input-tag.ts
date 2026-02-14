@@ -1,7 +1,7 @@
 // packages/sdk/src/runtime/reconciler/tags/workflow-string-input-tag.ts
 
-import { BaseTag } from './base-tag.js'
 import { registerEventHandler } from '../../register-event-handler.js'
+import { BaseTag } from './base-tag.js'
 
 /**
  * Tag for StringInput component.
@@ -23,16 +23,7 @@ export class WorkflowStringInputTag extends BaseTag {
 
   getAttributes(props: Record<string, any>): Record<string, any> {
     // ✓ Explicitly whitelist only serializable props
-    const {
-      name,
-      value,
-      label,
-      description,
-      placeholder,
-      disabled,
-      multiline,
-      rows,
-    } = props
+    const { name, value, label, description, placeholder, disabled, multiline, rows } = props
 
     return {
       name,

@@ -1,11 +1,11 @@
 // apps/build/src/server/api/routers/logs.ts
 // Logs tRPC router
 
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { TRPCError } from '@trpc/server'
 import { createScopedLogger } from '@auxx/logger'
 import { listAppEventLogs } from '@auxx/services/apps'
+import { TRPCError } from '@trpc/server'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('trpc-build-logs')
 

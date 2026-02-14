@@ -1,31 +1,34 @@
 // packages/lib/src/files/server.ts
 // Server orchestration-only exports for file operations (no image processing / sharp).
 
-export { FileService, createFileService } from './core/file-service'
-export type { CreateFileRequest, UpdateFileRequest, FolderTreeNode } from './core/types'
-
+export { cleanupService } from './cleanup/cleanup-service'
 export { AttachmentService, createAttachmentService } from './core/attachment-service'
-export type { CreateAttachmentRequest, UpdateAttachmentRequest, AttachmentRole } from './core/types'
-
-export { MediaAssetService, createMediaAssetService } from './core/media-asset-service'
-export type { CreateAssetRequest, UpdateAssetRequest, AssetKind } from './core/types'
-
-export { StorageManager, createStorageManager } from './storage/storage-manager'
+export { createFileService, FileService } from './core/file-service'
+export { createMediaAssetService, MediaAssetService } from './core/media-asset-service'
+export { enqueueEnsureThumbnail } from './core/thumbnail-enqueue'
 export type {
-  StorageUploadParams,
-  StorageDownloadParams,
+  AssetKind,
+  AttachmentRole,
+  CreateAssetRequest,
+  CreateAttachmentRequest,
+  CreateFileRequest,
+  FolderTreeNode,
+  UpdateAssetRequest,
+  UpdateAttachmentRequest,
+  UpdateFileRequest,
+} from './core/types'
+export type {
   StorageCopyParams,
-  StorageMigrationParams,
-  StorageUsageStats,
+  StorageDownloadParams,
   StorageHealthCheck,
+  StorageMigrationParams,
+  StorageUploadParams,
+  StorageUsageStats,
 } from './storage/storage-manager'
-
-export { createFileDownloadResponse, parseRangeHeader } from './utils'
-
-// Upload/session orchestration (no image processing)
-export { FileUploadSession, SessionManager } from './upload/session-index'
+export { createStorageManager, StorageManager } from './storage/storage-manager'
+export { UploadErrorHandler } from './upload/error-handling'
 export { ensureProcessorsInitialized, ProcessorRegistry } from './upload/processors'
 export { ProgressPublisher } from './upload/progress-publisher'
-export { UploadErrorHandler } from './upload/error-handling'
-export { cleanupService } from './cleanup/cleanup-service'
-export { enqueueEnsureThumbnail } from './core/thumbnail-enqueue'
+// Upload/session orchestration (no image processing)
+export { FileUploadSession, SessionManager } from './upload/session-index'
+export { createFileDownloadResponse, parseRangeHeader } from './utils'

@@ -1,8 +1,12 @@
 // packages/lib/src/field-values/converters/relationship.ts
 
-import type { TypedFieldValueInput, TypedFieldValue, RelationshipFieldValue } from '@auxx/types/field-value'
-import type { FieldValueConverter, ConverterOptions } from './index'
-import { type RecordId, toRecordId, isRecordId } from '@auxx/types/resource'
+import type {
+  RelationshipFieldValue,
+  TypedFieldValue,
+  TypedFieldValueInput,
+} from '@auxx/types/field-value'
+import { isRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
+import type { ConverterOptions, FieldValueConverter } from './index'
 
 /**
  * Relationship raw value is just RecordId.
@@ -70,7 +74,10 @@ export const relationshipConverter: FieldValueConverter = {
 
     // Raw instance ID string (requires relatedEntityDefinitionId from options)
     if (typeof value === 'string' && value.trim() && options?.relatedEntityDefinitionId) {
-      return { type: 'relationship', recordId: toRecordId(options.relatedEntityDefinitionId, value.trim()) }
+      return {
+        type: 'relationship',
+        recordId: toRecordId(options.relatedEntityDefinitionId, value.trim()),
+      }
     }
 
     return null

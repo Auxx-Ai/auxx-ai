@@ -1,17 +1,14 @@
-import React from 'react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@auxx/ui/components/card'
-import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { format } from 'date-fns'
-import { ExternalLink, Package, PackageCheck, Truck } from 'lucide-react'
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from '@auxx/ui/components/accordion'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Separator } from '@auxx/ui/components/separator'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
   Table,
   TableBody,
@@ -20,6 +17,9 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
+import { format } from 'date-fns'
+import { ExternalLink, Package, PackageCheck, Truck } from 'lucide-react'
+import React from 'react'
 import { useOrder } from '~/components/orders/order-context'
 
 // Helper function to format dates
@@ -69,9 +69,9 @@ export default function OrderFulfillments({ order: orderProp }: { order?: any } 
           <CardDescription>No fulfillments have been created for this order yet.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col items-center justify-center space-y-3 py-6">
-            <Package className="h-12 w-12 text-muted-foreground" />
-            <p className="max-w-md text-center text-muted-foreground">
+          <div className='flex flex-col items-center justify-center space-y-3 py-6'>
+            <Package className='h-12 w-12 text-muted-foreground' />
+            <p className='max-w-md text-center text-muted-foreground'>
               This order has not been fulfilled. Create a fulfillment when you're ready to ship the
               items.
             </p>
@@ -83,7 +83,7 @@ export default function OrderFulfillments({ order: orderProp }: { order?: any } 
   }
 
   return (
-    <div className="space-y-6">
+    <div className='space-y-6'>
       {/* Fulfillments section */}
       {fulfillmentsExist && (
         <Card>
@@ -91,41 +91,41 @@ export default function OrderFulfillments({ order: orderProp }: { order?: any } 
             <CardTitle>Fulfillments</CardTitle>
           </CardHeader>
           <CardContent>
-            <Accordion type="multiple" className="w-full">
+            <Accordion type='multiple' className='w-full'>
               {order.fulfillments.map((fulfillment: any, index: number) => (
                 <AccordionItem key={fulfillment.id} value={`fulfillment-${fulfillment.id}`}>
-                  <AccordionTrigger className="py-4">
-                    <div className="flex w-full items-center justify-between pr-6">
-                      <div className="flex items-center">
+                  <AccordionTrigger className='py-4'>
+                    <div className='flex w-full items-center justify-between pr-6'>
+                      <div className='flex items-center'>
                         {fulfillment.status === 'SUCCESS' ? (
-                          <PackageCheck className="mr-2 h-5 w-5 text-green-500" />
+                          <PackageCheck className='mr-2 h-5 w-5 text-green-500' />
                         ) : (
-                          <Package className="mr-2 h-5 w-5" />
+                          <Package className='mr-2 h-5 w-5' />
                         )}
                         <span>Fulfillment #{index + 1}</span>
                       </div>
-                      <div className="flex items-center space-x-3">
-                        <span className="text-sm text-muted-foreground">
+                      <div className='flex items-center space-x-3'>
+                        <span className='text-sm text-muted-foreground'>
                           {formatDate(fulfillment.createdAt)}
                         </span>
                         {getFulfillmentStatusBadge(fulfillment.status)}
                       </div>
                     </div>
                   </AccordionTrigger>
-                  <AccordionContent className="px-4 pb-4">
-                    <div className="space-y-4">
-                      <div className="grid gap-4 md:grid-cols-3">
+                  <AccordionContent className='px-4 pb-4'>
+                    <div className='space-y-4'>
+                      <div className='grid gap-4 md:grid-cols-3'>
                         <div>
-                          <h4 className="mb-1 text-sm font-medium">Status</h4>
+                          <h4 className='mb-1 text-sm font-medium'>Status</h4>
                           <p>{getFulfillmentStatusBadge(fulfillment.status)}</p>
                         </div>
                         <div>
-                          <h4 className="mb-1 text-sm font-medium">Created</h4>
+                          <h4 className='mb-1 text-sm font-medium'>Created</h4>
                           <p>{formatDate(fulfillment.createdAt)}</p>
                         </div>
                         {fulfillment.deliveredAt && (
                           <div>
-                            <h4 className="mb-1 text-sm font-medium">Delivered</h4>
+                            <h4 className='mb-1 text-sm font-medium'>Delivered</h4>
                             <p>{formatDate(fulfillment.deliveredAt)}</p>
                           </div>
                         )}
@@ -136,7 +136,7 @@ export default function OrderFulfillments({ order: orderProp }: { order?: any } 
                       {/* Tracking information */}
                       {fulfillment.trackings && fulfillment.trackings.length > 0 && (
                         <div>
-                          <h4 className="mb-2 text-sm font-medium">Tracking Information</h4>
+                          <h4 className='mb-2 text-sm font-medium'>Tracking Information</h4>
                           <Table>
                             <TableHeader>
                               <TableRow>
@@ -154,10 +154,10 @@ export default function OrderFulfillments({ order: orderProp }: { order?: any } 
                                     {tracking.url && (
                                       <a
                                         href={tracking.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center text-blue-600 hover:text-blue-800">
-                                        Track <ExternalLink className="ml-1 h-3 w-3" />
+                                        target='_blank'
+                                        rel='noopener noreferrer'
+                                        className='inline-flex items-center text-blue-600 hover:text-blue-800'>
+                                        Track <ExternalLink className='ml-1 h-3 w-3' />
                                       </a>
                                     )}
                                   </TableCell>
@@ -202,10 +202,10 @@ export default function OrderFulfillments({ order: orderProp }: { order?: any } 
                       {tracking.url && (
                         <a
                           href={tracking.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center text-blue-600 hover:text-blue-800">
-                          Track <ExternalLink className="ml-1 h-3 w-3" />
+                          target='_blank'
+                          rel='noopener noreferrer'
+                          className='inline-flex items-center text-blue-600 hover:text-blue-800'>
+                          Track <ExternalLink className='ml-1 h-3 w-3' />
                         </a>
                       )}
                     </TableCell>
@@ -218,8 +218,8 @@ export default function OrderFulfillments({ order: orderProp }: { order?: any } 
       )}
 
       {/* Actions */}
-      <div className="flex justify-end space-x-3">
-        <Button variant="outline">Add Tracking Number</Button>
+      <div className='flex justify-end space-x-3'>
+        <Button variant='outline'>Add Tracking Number</Button>
         <Button>Create Fulfillment</Button>
       </div>
     </div>
@@ -229,32 +229,32 @@ export default function OrderFulfillments({ order: orderProp }: { order?: any } 
 // Skeleton component for loading state
 function OrderFulfillmentsSkeleton() {
   return (
-    <div className="space-y-6">
+    <div className='space-y-6'>
       <Card>
         <CardHeader>
           <CardTitle>Fulfillments</CardTitle>
           <CardDescription>Loading fulfillment information...</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
+          <div className='space-y-4'>
             {[...Array(2)].map((_, index) => (
-              <div key={index} className="rounded-lg border p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <Skeleton className="h-6 w-32" />
-                  <Skeleton className="h-6 w-20" />
+              <div key={index} className='rounded-lg border p-4'>
+                <div className='flex items-center justify-between mb-4'>
+                  <Skeleton className='h-6 w-32' />
+                  <Skeleton className='h-6 w-20' />
                 </div>
-                <div className="grid gap-2">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Created</span>
-                    <Skeleton className="h-4 w-24" />
+                <div className='grid gap-2'>
+                  <div className='flex justify-between'>
+                    <span className='text-muted-foreground'>Created</span>
+                    <Skeleton className='h-4 w-24' />
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Tracking Number</span>
-                    <Skeleton className="h-4 w-32" />
+                  <div className='flex justify-between'>
+                    <span className='text-muted-foreground'>Tracking Number</span>
+                    <Skeleton className='h-4 w-32' />
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Carrier</span>
-                    <Skeleton className="h-4 w-16" />
+                  <div className='flex justify-between'>
+                    <span className='text-muted-foreground'>Carrier</span>
+                    <Skeleton className='h-4 w-16' />
                   </div>
                 </div>
               </div>

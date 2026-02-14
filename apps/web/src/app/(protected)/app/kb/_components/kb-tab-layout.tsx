@@ -1,25 +1,18 @@
 // src/app/(protected)/app/kb/_components/kb-tab-layout.tsx
 'use client'
 
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import React, { useEffect } from 'react'
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
+import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   Form,
+  FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
-  FormControl,
   FormMessage,
-  FormDescription,
 } from '@auxx/ui/components/form'
-import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
-import { GripVertical, PlusCircle, Trash2 } from 'lucide-react'
-import { Switch } from '@auxx/ui/components/switch'
 import {
   Select,
   SelectContent,
@@ -29,27 +22,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { api, type RouterOutputs } from '~/trpc/react'
+import { Switch } from '@auxx/ui/components/switch'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-
 // DND Kit imports for drag and drop functionality
 import {
-  DndContext,
   closestCenter,
+  DndContext,
+  type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
 } from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import {
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { CSS } from '@dnd-kit/utilities'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { GripVertical, PlusCircle, Trash2 } from 'lucide-react'
+import React, { useEffect } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
+import { api, type RouterOutputs } from '~/trpc/react'
 
 type KBType = RouterOutputs['kb']['byId'] // Or adjust if using a combined type
 
@@ -96,30 +94,30 @@ function SortableItem({ id, item, onRemove, onChange, disabled }: SortableItemPr
     <div
       ref={setNodeRef}
       style={style}
-      className="mb-2 flex items-center space-x-2 rounded-md border bg-background p-2">
-      <div {...attributes} {...listeners} className="cursor-grab">
-        <GripVertical className="h-5 w-5 text-muted-foreground" />
+      className='mb-2 flex items-center space-x-2 rounded-md border bg-background p-2'>
+      <div {...attributes} {...listeners} className='cursor-grab'>
+        <GripVertical className='h-5 w-5 text-muted-foreground' />
       </div>
 
-      <div className="grid flex-1 grid-cols-2 gap-2">
+      <div className='grid flex-1 grid-cols-2 gap-2'>
         <Input
           value={item.title}
           onChange={(e) => onChange('title', e.target.value)}
-          placeholder="Menu title"
-          className="w-full"
+          placeholder='Menu title'
+          className='w-full'
           disabled={disabled}
         />
         <Input
           value={item.link}
           onChange={(e) => onChange('link', e.target.value)}
-          placeholder="/url-path or https://..."
-          className="w-full"
+          placeholder='/url-path or https://...'
+          className='w-full'
           disabled={disabled}
         />
       </div>
 
-      <Button type="button" variant="ghost" size="icon" onClick={onRemove} disabled={disabled}>
-        <Trash2 className="h-4 w-4 text-destructive" />
+      <Button type='button' variant='ghost' size='icon' onClick={onRemove} disabled={disabled}>
+        <Trash2 className='h-4 w-4 text-destructive' />
       </Button>
     </div>
   )
@@ -180,14 +178,14 @@ function NavigationManager({ type, value, onChange, disabled }: NavigationManage
   }
 
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
         modifiers={[restrictToVerticalAxis]}>
         <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2">
+          <div className='space-y-2'>
             {items.map((item, index) => (
               <SortableItem
                 key={itemIds[index]}
@@ -204,13 +202,13 @@ function NavigationManager({ type, value, onChange, disabled }: NavigationManage
       </DndContext>
 
       <Button
-        type="button"
-        variant="outline"
-        size="sm"
+        type='button'
+        variant='outline'
+        size='sm'
         onClick={handleAddItem}
         disabled={disabled}
-        className="w-full">
-        <PlusCircle className="mr-2 h-4 w-4" />
+        className='w-full'>
+        <PlusCircle className='mr-2 h-4 w-4' />
         Add Navigation Item
       </Button>
     </div>
@@ -296,16 +294,16 @@ function KBTabLayout({ knowledgeBaseId, knowledgeBase }: LayoutTabProps) {
   // }
 
   return (
-    <div className="p-4 pb-16">
+    <div className='p-4 pb-16'>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          <Card className="shadow-none">
-            <CardHeader className="border-b py-4">
-              <CardTitle className="flex items-center justify-between gap-2 font-normal">
+        <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+          <Card className='shadow-none'>
+            <CardHeader className='border-b py-4'>
+              <CardTitle className='flex items-center justify-between gap-2 font-normal'>
                 <div>Header</div>
                 <FormField
                   control={form.control}
-                  name="headerEnabled"
+                  name='headerEnabled'
                   render={({ field }) => (
                     <FormItem>
                       <FormControl>
@@ -320,14 +318,14 @@ function KBTabLayout({ knowledgeBaseId, knowledgeBase }: LayoutTabProps) {
                 />
               </CardTitle>
             </CardHeader>
-            <CardContent className="group/panel-body group-data-[variant=opened]/panel:bg-base group-data-[variant=opened]/panel:group-data-[kind=danger]/panel:border-danger flex flex-col gap-6 p-4 group-data-[variant=opened]/panel:rounded-lg group-data-[variant=opened]/panel:border">
+            <CardContent className='group/panel-body group-data-[variant=opened]/panel:bg-base group-data-[variant=opened]/panel:group-data-[kind=danger]/panel:border-danger flex flex-col gap-6 p-4 group-data-[variant=opened]/panel:rounded-lg group-data-[variant=opened]/panel:border'>
               <FormField
                 control={form.control}
-                name="searchbarPosition"
+                name='searchbarPosition'
                 render={({ field }) => (
-                  <FormItem className="group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 gap-y-2">
-                    <div className="space-y-0.5">
-                      <FormLabel className="text-base">Search bar</FormLabel>
+                  <FormItem className='group/actionable-container flex grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] flex-col gap-x-4 gap-y-2'>
+                    <div className='space-y-0.5'>
+                      <FormLabel className='text-base'>Search bar</FormLabel>
                       <FormDescription>
                         Pick the style of the search bar. On small screens it's displayed as an icon
                         button.
@@ -338,14 +336,14 @@ function KBTabLayout({ knowledgeBaseId, knowledgeBase }: LayoutTabProps) {
                         onValueChange={field.onChange}
                         value={field.value}
                         disabled={updateKnowledgeBase.isPending}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Pick..." />
+                        <SelectTrigger className='w-full'>
+                          <SelectValue placeholder='Pick...' />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
                             <SelectLabel>Position</SelectLabel>
-                            <SelectItem value="center">Center</SelectItem>
-                            <SelectItem value="corner">Corner</SelectItem>
+                            <SelectItem value='center'>Center</SelectItem>
+                            <SelectItem value='corner'>Corner</SelectItem>
                           </SelectGroup>
                         </SelectContent>
                       </Select>
@@ -357,9 +355,9 @@ function KBTabLayout({ knowledgeBaseId, knowledgeBase }: LayoutTabProps) {
 
               <FormField
                 control={form.control}
-                name="headerNavigation"
+                name='headerNavigation'
                 render={({ field }) => (
-                  <FormItem className="group/actionable-container flex min-w-0 flex-1 flex-col gap-x-4 gap-y-2">
+                  <FormItem className='group/actionable-container flex min-w-0 flex-1 flex-col gap-x-4 gap-y-2'>
                     <FormLabel>Navigation</FormLabel>
                     <FormDescription>
                       Configure the navigation menu items for the header. You can rearrange them by
@@ -368,7 +366,7 @@ function KBTabLayout({ knowledgeBaseId, knowledgeBase }: LayoutTabProps) {
 
                     <FormControl>
                       <NavigationManager
-                        type="header"
+                        type='header'
                         value={field.value}
                         onChange={field.onChange}
                         disabled={!form.watch('headerEnabled') || updateKnowledgeBase.isPending}
@@ -381,13 +379,13 @@ function KBTabLayout({ knowledgeBaseId, knowledgeBase }: LayoutTabProps) {
             </CardContent>
           </Card>
 
-          <Card className="shadow-none">
-            <CardHeader className="border-b py-4">
-              <CardTitle className="flex items-center justify-between gap-2 font-normal">
+          <Card className='shadow-none'>
+            <CardHeader className='border-b py-4'>
+              <CardTitle className='flex items-center justify-between gap-2 font-normal'>
                 <div>Footer</div>
                 <FormField
                   control={form.control}
-                  name="footerEnabled"
+                  name='footerEnabled'
                   render={({ field }) => (
                     <FormItem>
                       <FormControl>
@@ -402,12 +400,12 @@ function KBTabLayout({ knowledgeBaseId, knowledgeBase }: LayoutTabProps) {
                 />
               </CardTitle>
             </CardHeader>
-            <CardContent className="group/panel-body group-data-[variant=opened]/panel:bg-base group-data-[variant=opened]/panel:group-data-[kind=danger]/panel:border-danger flex flex-col gap-6 p-4 group-data-[variant=opened]/panel:rounded-lg group-data-[variant=opened]/panel:border">
+            <CardContent className='group/panel-body group-data-[variant=opened]/panel:bg-base group-data-[variant=opened]/panel:group-data-[kind=danger]/panel:border-danger flex flex-col gap-6 p-4 group-data-[variant=opened]/panel:rounded-lg group-data-[variant=opened]/panel:border'>
               <FormField
                 control={form.control}
-                name="footerNavigation"
+                name='footerNavigation'
                 render={({ field }) => (
-                  <FormItem className="group/actionable-container flex min-w-0 flex-1 flex-col gap-x-4 gap-y-2">
+                  <FormItem className='group/actionable-container flex min-w-0 flex-1 flex-col gap-x-4 gap-y-2'>
                     <FormLabel>Footer Navigation</FormLabel>
                     <FormDescription>
                       Configure the navigation menu items for the footer. You can rearrange them by
@@ -416,7 +414,7 @@ function KBTabLayout({ knowledgeBaseId, knowledgeBase }: LayoutTabProps) {
 
                     <FormControl>
                       <NavigationManager
-                        type="footer"
+                        type='footer'
                         value={field.value}
                         onChange={field.onChange}
                         disabled={!form.watch('footerEnabled') || updateKnowledgeBase.isPending}

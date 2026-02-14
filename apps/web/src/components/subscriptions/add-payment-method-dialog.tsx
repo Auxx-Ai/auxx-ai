@@ -1,10 +1,7 @@
 // app/(protected)/app/settings/plans/_components/add-payment-method-dialog.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
-import { api } from '~/trpc/react'
-import { loadStripe } from '@stripe/stripe-js'
-import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -12,8 +9,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
+import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js'
+import { loadStripe } from '@stripe/stripe-js'
+import { useEffect, useState } from 'react'
+import { api } from '~/trpc/react'
 
 /** Initialize Stripe */
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
@@ -33,7 +33,7 @@ type AddPaymentMethodDialogProps = {
 export function AddPaymentMethodDialog({ open, onOpenChange }: AddPaymentMethodDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="md">
+      <DialogContent size='md'>
         <DialogHeader>
           <DialogTitle>Add Payment Method</DialogTitle>
           <DialogDescription>Add a new card to your account for billing purposes</DialogDescription>
@@ -112,10 +112,10 @@ function PaymentMethodForm({ onSuccess }: { onSuccess: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Card Information</label>
-        <div className="p-2 border rounded-lg">
+    <form onSubmit={handleSubmit} className='space-y-4'>
+      <div className='space-y-2'>
+        <label className='text-sm font-medium'>Card Information</label>
+        <div className='p-2 border rounded-lg'>
           <CardElement
             options={{
               style: {
@@ -135,16 +135,16 @@ function PaymentMethodForm({ onSuccess }: { onSuccess: () => void }) {
         </div>
       </div>
 
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={onSuccess} disabled={isProcessing}>
+      <div className='flex justify-end gap-2'>
+        <Button type='button' variant='ghost' size='sm' onClick={onSuccess} disabled={isProcessing}>
           Cancel
         </Button>
         <Button
-          type="submit"
-          variant="outline"
-          size="sm"
+          type='submit'
+          variant='outline'
+          size='sm'
           loading={isProcessing || createSetupIntent.isPending}
-          loadingText="Adding..."
+          loadingText='Adding...'
           disabled={!stripe || !clientSecret}>
           Add Payment Method
         </Button>

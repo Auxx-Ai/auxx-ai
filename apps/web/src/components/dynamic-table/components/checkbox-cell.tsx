@@ -2,12 +2,12 @@
 
 'use client'
 
-import { memo, useCallback, useRef, useEffect, startTransition } from 'react'
 import { Checkbox } from '@auxx/ui/components/checkbox'
-import { useTableConfig } from '../context/table-config-context'
-import { useRowSelection } from '../context/row-selection-context'
-import type { CellContext } from '@tanstack/react-table'
 import { cn } from '@auxx/ui/lib/utils'
+import type { CellContext } from '@tanstack/react-table'
+import { memo, startTransition, useCallback, useEffect, useRef } from 'react'
+import { useRowSelection } from '../context/row-selection-context'
+import { useTableConfig } from '../context/table-config-context'
 
 /**
  * Checkbox cell component that shows row number by default and checkbox on hover.
@@ -48,7 +48,9 @@ function CheckboxCellInner<TData>({ row, table }: CellContext<TData, unknown>) {
           const start = Math.min(lastIndex, rowIndex)
           const end = Math.max(lastIndex, rowIndex)
           const allRows = tableRef.current.getRowModel().rows
-          const newSelection: Record<string, boolean> = { ...tableRef.current.getState().rowSelection }
+          const newSelection: Record<string, boolean> = {
+            ...tableRef.current.getState().rowSelection,
+          }
 
           for (let i = start; i <= end; i++) {
             const rowId = allRows[i]?.id
@@ -72,13 +74,10 @@ function CheckboxCellInner<TData>({ row, table }: CellContext<TData, unknown>) {
   )
 
   return (
-    <div
-      className="relative cursor-pointer"
-      style={{ width: 40 }}
-      onClick={handleCellClick}>
-      <div className="flex size-full justify-end pr-2">
+    <div className='relative cursor-pointer' style={{ width: 40 }} onClick={handleCellClick}>
+      <div className='flex size-full justify-end pr-2'>
         {shouldShowRowNumbers && !isSelected && (
-          <span className="flex-1 pl-2 pr-1 text-right text-[10px] tabular-nums text-primary-500 group-hover/tablerow:hidden">
+          <span className='flex-1 pl-2 pr-1 text-right text-[10px] tabular-nums text-primary-500 group-hover/tablerow:hidden'>
             {rowIndex + 1}
           </span>
         )}
@@ -89,7 +88,7 @@ function CheckboxCellInner<TData>({ row, table }: CellContext<TData, unknown>) {
           {/* Display-only checkbox - cell click handles selection */}
           <Checkbox
             checked={isSelected}
-            className="text-accent-500 bg-primary-100 border-primary-300 hover:border-primary-400 rounded transition-colors focus:ring-accent-400 pointer-events-none"
+            className='text-accent-500 bg-primary-100 border-primary-300 hover:border-primary-400 rounded transition-colors focus:ring-accent-400 pointer-events-none'
           />
         </div>
       </div>

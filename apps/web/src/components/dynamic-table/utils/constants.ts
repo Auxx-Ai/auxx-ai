@@ -1,25 +1,25 @@
 // apps/web/src/components/dynamic-table/utils/constants.ts
 
-import {
-  ArrowUpAZ,
-  ArrowDownZA,
-  ArrowUp01,
-  ArrowDown10,
-  CalendarArrowUp,
-  CalendarArrowDown,
-  ArrowUp,
-  ArrowDown,
-} from 'lucide-react'
+import type { FieldType } from '@auxx/database/types'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type {
-  SortingState,
-  VisibilityState,
   ColumnOrderState,
   ColumnSizingState,
   RowSelectionState,
+  SortingState,
+  VisibilityState,
 } from '@tanstack/react-table'
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import type { SortOption, TableView, ColumnFormatting } from '../types'
-import type { FieldType } from '@auxx/database/types'
+import {
+  ArrowDown,
+  ArrowDown10,
+  ArrowDownZA,
+  ArrowUp,
+  ArrowUp01,
+  ArrowUpAZ,
+  CalendarArrowDown,
+  CalendarArrowUp,
+} from 'lucide-react'
+import type { ColumnFormatting, SortOption, TableView } from '../types'
 
 // ============================================================================
 // STABLE EMPTY REFERENCES (prevent re-renders)

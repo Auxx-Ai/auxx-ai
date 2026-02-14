@@ -2,20 +2,22 @@
 
 'use client'
 
-import React, { useCallback, memo, useState } from 'react'
-import type { VariableAssignment, VarAssignNodeData } from './types'
-import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
+import { Button } from '@auxx/ui/components/button'
 import { Label } from '@auxx/ui/components/label'
 import { Switch } from '@auxx/ui/components/switch'
-import Section from '~/components/workflow/ui/section'
+import { Plus } from 'lucide-react'
+import type React from 'react'
+import { memo, useCallback, useState } from 'react'
+import { v4 as uuidv4 } from 'uuid'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
+import { BaseType } from '~/components/workflow/types'
+import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import Section from '~/components/workflow/ui/section'
 import { VarAssignList } from './components/var-assign-list'
 import { varAssignDefinition } from './schema'
-import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
-import { Plus } from 'lucide-react'
-import { v4 as uuidv4 } from 'uuid'
-import { BaseType } from '~/components/workflow/types'
-import { Button } from '@auxx/ui/components/button'
+import type { VarAssignNodeData, VariableAssignment } from './types'
+
 interface VarAssignPanelProps {
   nodeId: string
   data: VarAssignNodeData
@@ -65,13 +67,13 @@ const VarAssignPanelComponent: React.FC<VarAssignPanelProps> = ({ nodeId, data }
     <BasePanel nodeId={nodeId} data={data}>
       {/* Variable Assignments Section */}
       <Section
-        title="Variable Assignments"
-        description="Define variables to create and their values"
+        title='Variable Assignments'
+        description='Define variables to create and their values'
         isRequired
         open={isOpen}
         onOpenChange={setIsOpen}
         actions={
-          <Button variant="ghost" size="xs" onClick={handleAddAssignment} disabled={isReadOnly}>
+          <Button variant='ghost' size='xs' onClick={handleAddAssignment} disabled={isReadOnly}>
             <Plus /> Add
           </Button>
         }>
@@ -86,20 +88,20 @@ const VarAssignPanelComponent: React.FC<VarAssignPanelProps> = ({ nodeId, data }
 
       {/* Advanced Settings Section */}
       <Section
-        title="Advanced Settings"
-        description="Additional configuration options"
+        title='Advanced Settings'
+        description='Additional configuration options'
         initialOpen={false}>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="ignoreTypeError" className="text-sm">
+        <div className='space-y-4'>
+          <div className='flex items-center justify-between'>
+            <Label htmlFor='ignoreTypeError' className='text-sm'>
               Ignore Type Errors
-              <span className="block text-xs text-muted-foreground mt-1">
+              <span className='block text-xs text-muted-foreground mt-1'>
                 Continue execution even if type conversion fails
               </span>
             </Label>
             <Switch
-              id="ignoreTypeError"
-              size="sm"
+              id='ignoreTypeError'
+              size='sm'
               checked={nodeData.ignoreTypeError || false}
               onCheckedChange={handleIgnoreTypeErrorChange}
               disabled={isReadOnly}

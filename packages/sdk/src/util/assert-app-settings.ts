@@ -1,7 +1,7 @@
 import fs from 'fs/promises'
 import path from 'path'
-import { complete, errored, fromPromise, isErrored } from '../errors.js'
 import { APP_SETTINGS_FILENAME } from '../constants/settings-files.js'
+import { complete, errored, fromPromise, isErrored } from '../errors.js'
 
 export async function assertAppSettings() {
   const srcDirAbsolute = path.resolve('src')

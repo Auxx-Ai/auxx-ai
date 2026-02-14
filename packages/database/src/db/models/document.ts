@@ -59,7 +59,7 @@ export class DocumentModel extends BaseModel<
         const s = `%${input.search}%`
         whereParts.push(
           // title ILIKE search OR filename ILIKE search
-          (ilike(Document.title, s) as any) as SQL<unknown>
+          ilike(Document.title, s) as any as SQL<unknown>
         )
       }
 

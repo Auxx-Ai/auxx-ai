@@ -1,8 +1,8 @@
 // apps/web/src/components/threads/utils/thread-field-resolver.ts
 
-import type { ThreadMeta } from '../store'
 import type { FieldResolver } from '@auxx/lib/conditions'
 import { parseRecordId } from '@auxx/types/resource'
+import type { ThreadMeta } from '../store'
 
 /**
  * Field resolver for ThreadMeta entities.

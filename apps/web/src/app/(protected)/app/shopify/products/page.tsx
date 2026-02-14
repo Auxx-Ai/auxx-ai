@@ -1,7 +1,7 @@
 import React from 'react'
-import { ProductsOverview } from '../_components/products-overview'
 import { api } from '~/trpc/server'
 import NoShopifyIntegration from '../_components/no-shopify-integration'
+import { ProductsOverview } from '../_components/products-overview'
 
 async function ProductsPage() {
   const data = await api.shopify.hasIntegration()

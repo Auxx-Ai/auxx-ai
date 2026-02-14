@@ -1,6 +1,7 @@
 // packages/lib/src/providers/google/operations/trash.ts
-import { gmail_v1 } from 'googleapis'
+
 import { createScopedLogger } from '@auxx/logger'
+import type { gmail_v1 } from 'googleapis'
 import { getGmailQuotaCost, type UniversalThrottler } from '../../../utils/rate-limiter'
 import { executeWithThrottle } from '../shared/utils'
 
@@ -21,9 +22,7 @@ export async function trash(
     // Use the specific trash endpoint
     const operation = type === 'message' ? 'messages.trash' : 'threads.trash'
     const cost =
-      type === 'message'
-        ? getGmailQuotaCost('messages.trash')
-        : getGmailQuotaCost('threads.trash')
+      type === 'message' ? getGmailQuotaCost('messages.trash') : getGmailQuotaCost('threads.trash')
     await executeWithThrottle(
       `gmail.${operation}`,
       async () =>

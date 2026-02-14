@@ -1,9 +1,10 @@
 // src/server/api/routers/auth.trpc.ts
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { createScopedLogger } from '@auxx/logger'
+
 import { DehydrationService } from '@auxx/lib/dehydration'
+import { createScopedLogger } from '@auxx/logger'
+import { z } from 'zod'
 import { auth } from '~/auth/server'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api-auth')
 

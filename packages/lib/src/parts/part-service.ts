@@ -4,7 +4,7 @@ import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import * as partDb from '@auxx/services/parts'
 import { insertVendorPartTx } from '@auxx/services/vendor-parts'
-import { updatePartCostAndPropagate, handlePartDelete, handleVendorPartChange } from '../bom'
+import { handlePartDelete, handleVendorPartChange, updatePartCostAndPropagate } from '../bom'
 
 const logger = createScopedLogger('part-service')
 
@@ -120,8 +120,16 @@ export class PartService {
    * Create a new part with optional inventory and vendor part
    */
   async createPart(input: CreatePartInput): Promise<PartWithInventory> {
-    const { title, sku, description, hsCode, category, shopifyProductLinkId, inventory, vendorPart } =
-      input
+    const {
+      title,
+      sku,
+      description,
+      hsCode,
+      category,
+      shopifyProductLinkId,
+      inventory,
+      vendorPart,
+    } = input
 
     // Check SKU uniqueness
     const skuExistsResult = await partDb.checkSkuExists({
@@ -268,8 +276,7 @@ export class PartService {
    * Update part with optional inventory
    */
   async updatePart(input: UpdatePartInput): Promise<PartWithInventory> {
-    const { id, title, sku, description, hsCode, category, shopifyProductLinkId, inventory } =
-      input
+    const { id, title, sku, description, hsCode, category, shopifyProductLinkId, inventory } = input
 
     // Get existing part with inventory
     const existingResult = await partDb.getPartWithInventory({

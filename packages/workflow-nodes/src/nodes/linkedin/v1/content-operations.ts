@@ -1,6 +1,6 @@
 // packages/workflow-nodes/src/nodes/linkedin/v1/content-operations.ts
 
-import type { IExecuteFunctions, ExecuteContext } from '../../../types'
+import type { ExecuteContext, IExecuteFunctions } from '../../../types'
 import type { ProfessionalNetworkClient } from './api-client'
 
 /**

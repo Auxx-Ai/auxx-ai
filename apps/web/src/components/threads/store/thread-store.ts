@@ -1,13 +1,13 @@
 // apps/web/src/components/threads/store/thread-store.ts
 
 import '~/lib/immer-config' // Enables Map/Set support for immer
-import { create } from 'zustand'
-import { immer } from 'zustand/middleware/immer'
-import { subscribeWithSelector } from 'zustand/middleware'
 import type { ThreadClientFilter } from '@auxx/lib/mail-query/client'
 import type { ActorId } from '@auxx/types/actor'
-import type { RecordId } from '@auxx/types/resource'
 import type { StandaloneDraftMeta } from '@auxx/types/draft'
+import type { RecordId } from '@auxx/types/resource'
+import { create } from 'zustand'
+import { subscribeWithSelector } from 'zustand/middleware'
+import { immer } from 'zustand/middleware/immer'
 
 /** Re-export filter type for convenience */
 export type { ThreadClientFilter as ThreadFilter }

@@ -2,18 +2,18 @@
 
 // Client functions
 export {
-  getRedisClient,
-  getPublishingClient,
-  getSubscriptionClient,
   createDedicatedClient,
-  getConnectionOptions,
-  getRedisProvider,
-  setRedisData,
-  getRedisData,
   deleteRedisData,
+  getConnectionOptions,
+  getPublishingClient,
+  getRedisClient,
+  getRedisData,
+  getRedisProvider,
+  getSubscriptionClient,
   // Constants
   KEYS,
   SESSION_EXPIRATION,
+  setRedisData,
 } from './client'
 
 // Core classes

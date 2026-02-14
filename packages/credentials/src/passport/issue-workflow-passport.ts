@@ -1,8 +1,13 @@
 // packages/credentials/src/passport/issue-workflow-passport.ts
 
 import { SignJWT } from 'jose'
-import { ok, err, type Result } from 'neverthrow'
-import type { IssueWorkflowPassportOptions, WorkflowPassportResult, WorkflowPassportPayload, PassportError } from './types'
+import { err, ok, type Result } from 'neverthrow'
+import type {
+  IssueWorkflowPassportOptions,
+  PassportError,
+  WorkflowPassportPayload,
+  WorkflowPassportResult,
+} from './types'
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.PUBLIC_WORKFLOW_JWT_SECRET || 'public-workflow-secret-change-me'

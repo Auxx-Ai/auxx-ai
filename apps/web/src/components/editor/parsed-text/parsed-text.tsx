@@ -2,9 +2,9 @@
 
 'use client'
 
-import { useMemo, type ReactNode } from 'react'
-import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import type { ActorId } from '@auxx/types/actor'
+import { type ReactNode, useMemo } from 'react'
+import { ActorBadge } from '~/components/resources/ui/actor-badge'
 
 /** Pattern configuration for parsing */
 interface PatternConfig {
@@ -22,12 +22,12 @@ const MENTION_PATTERN: PatternConfig = {
   getId: (match) => match[1]!,
   render: (id, key) => (
     <>
-      <span className="text-info">@</span>
+      <span className='text-info'>@</span>
       <ActorBadge
         key={key}
-        variant="text"
+        variant='text'
         showIcon={false}
-        className="inline-flex text-info"
+        className='inline-flex text-info'
         actorId={id as ActorId}
       />
     </>

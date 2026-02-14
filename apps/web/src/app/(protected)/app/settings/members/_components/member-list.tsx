@@ -1,28 +1,10 @@
 'use client'
-// src/app/(auth)/app/settings/members/_components/member-list.tsx
-import { useState } from 'react'
-import {
-  Clock,
-  Mail,
-  MoreHorizontal,
-  Send,
-  Shield,
-  ShieldAlert,
-  Trash2,
-  UserCircle2,
-  X,
-  Copy,
-  Users,
-} from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
+import { OrganizationRole as OrganizationRoleEnum } from '@auxx/database/enums'
+import type { OrganizationRole } from '@auxx/database/types'
+import { FeatureKey } from '@auxx/lib/types'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -32,22 +14,40 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { api } from '~/trpc/react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { useRouter } from 'next/navigation'
 import { formatDistanceToNow } from 'date-fns' // For showing relative time
-import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import {
+  Clock,
+  Copy,
+  Mail,
+  MoreHorizontal,
+  Send,
+  Shield,
+  ShieldAlert,
+  Trash2,
+  UserCircle2,
+  Users,
+  X,
+} from 'lucide-react'
+import { useRouter } from 'next/navigation'
+// src/app/(auth)/app/settings/members/_components/member-list.tsx
+import { useState } from 'react'
 import { useUser } from '~/hooks/use-user'
-import { FeatureKey } from '@auxx/lib/types'
-import { Badge } from '@auxx/ui/components/badge'
-import { OrganizationRole as OrganizationRoleEnum } from '@auxx/database/enums'
-import type { OrganizationRole } from '@auxx/database/types'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { api } from '~/trpc/react'
 
 type DisplayMember =
   | {
@@ -258,14 +258,14 @@ export function MemberList({
     return 0
   })
   const getRoleIcon = (role: OrganizationRole | 'PENDING') => {
-    if (role === 'PENDING') return <Clock className="size-3" />
+    if (role === 'PENDING') return <Clock className='size-3' />
     switch (role) {
       case OrganizationRoleEnum.OWNER:
-        return <ShieldAlert className="size-3" />
+        return <ShieldAlert className='size-3' />
       case OrganizationRoleEnum.ADMIN:
-        return <Shield className="size-3" />
+        return <Shield className='size-3' />
       case OrganizationRoleEnum.USER:
-        return <UserCircle2 className="size-3" />
+        return <UserCircle2 className='size-3' />
     }
   }
   const getInitials = (name?: string | null, email?: string | null) => {
@@ -291,10 +291,10 @@ export function MemberList({
     }
   }
   return (
-    <div className="p-6">
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 tracking-tight font-semibold text-foreground text-base">
-          <Users className="size-4" /> Members
+    <div className='p-6'>
+      <div className='space-y-4'>
+        <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
+          <Users className='size-4' /> Members
         </div>
         {displayList.map((item) => {
           const isCopyingThisLink =
@@ -303,13 +303,13 @@ export function MemberList({
           return (
             <div
               key={item.data.id}
-              className="group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200">
+              className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200'>
               {/* === Member Cell === */}
-              <div className="flex flex-row items-center gap-4 ">
-                <div className="size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0">
+              <div className='flex flex-row items-center gap-4 '>
+                <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0'>
                   <Avatar
                     className={`h-7 w-7 rounded-none shadow-none ${item.type === 'pending' ? 'opacity-60' : ''}`}>
-                    <AvatarFallback className="rounded-none bg-transparent">
+                    <AvatarFallback className='rounded-none bg-transparent'>
                       {item.type === 'member'
                         ? getInitials(item.data.user.name, item.data.user.email)
                         : getInitials(undefined, item.data.email)}
@@ -317,32 +317,32 @@ export function MemberList({
                     {/* Note: No AvatarImage for pending */}
                   </Avatar>
                 </div>
-                <div className="flex flex-col">
-                  <div className="text-sm font-medium flex flex-row items-center gap-1">
+                <div className='flex flex-col'>
+                  <div className='text-sm font-medium flex flex-row items-center gap-1'>
                     <span>
                       {item.type === 'member'
                         ? item.data.user.name || 'Unnamed User'
                         : item.data.email}
                     </span>
                     {item.type === 'member' && item.data.userId === userId && (
-                      <span className="text-xs text-muted-foreground">(You)</span>
+                      <span className='text-xs text-muted-foreground'>(You)</span>
                     )}
-                    <Badge variant="user" className="ml-1" size="xs">
+                    <Badge variant='user' className='ml-1' size='xs'>
                       {getRoleIcon(item.type === 'member' ? item.data.role : 'PENDING')}
                       <span>
                         {item.type === 'member' ? item.data.role : `Pending ${item.data.role}`}
                       </span>
                     </Badge>
                   </div>
-                  <div className="text-muted-foreground text-xs">
+                  <div className='text-muted-foreground text-xs'>
                     {item.type === 'member' ? (
-                      <div className="flex items-center gap-2 ">
-                        <Mail className="size-3 " />
+                      <div className='flex items-center gap-2 '>
+                        <Mail className='size-3 ' />
                         <span>{item.data.user.email}</span>
                       </div>
                     ) : (
-                      <div className="flex flex-row gap-1 ">
-                        <span className="">Invited {formatRelativeDate(item.data.createdAt)}</span>
+                      <div className='flex flex-row gap-1 '>
+                        <span className=''>Invited {formatRelativeDate(item.data.createdAt)}</span>
                         <span>Expires {formatRelativeDate(item.data.expiresAt)}</span>
                       </div>
                     )}
@@ -362,11 +362,11 @@ export function MemberList({
                       item.data.role !== OrganizationRoleEnum.ADMIN) && ( // Admin cannot manage other Admins
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon-sm">
+                          <Button variant='ghost' size='icon-sm'>
                             <MoreHorizontal />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                        <DropdownMenuContent align='end'>
                           {/* Change Role */}
                           {(currentUserRole === OrganizationRoleEnum.OWNER ||
                             (currentUserRole === OrganizationRoleEnum.ADMIN &&
@@ -391,7 +391,7 @@ export function MemberList({
                             (currentUserRole === OrganizationRoleEnum.ADMIN &&
                               item.data.role === OrganizationRoleEnum.USER)) && (
                             <DropdownMenuItem
-                              variant="destructive"
+                              variant='destructive'
                               onClick={() => {
                                 setSelectedMember(item.data)
                                 setIsRemoveDialogOpen(true)
@@ -408,8 +408,8 @@ export function MemberList({
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
-                          variant="ghost"
-                          size="icon-sm"
+                          variant='ghost'
+                          size='icon-sm'
                           disabled={
                             resendInviteMutation.isPending ||
                             cancelInviteMutation.isPending ||
@@ -419,7 +419,7 @@ export function MemberList({
                           <MoreHorizontal />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
+                      <DropdownMenuContent align='end'>
                         <DropdownMenuItem
                           onClick={() => handleResendInvite(item.data.id)}
                           disabled={
@@ -445,7 +445,7 @@ export function MemberList({
                         {/* TODO: Add Cancel Invite */}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
-                          variant="destructive"
+                          variant='destructive'
                           onClick={() => {
                             setSelectedInvitation(item.data)
                             setIsCancelInviteDialogOpen(true)
@@ -479,13 +479,13 @@ export function MemberList({
           </DialogHeader>
           <DialogFooter>
             <Button
-              variant="outline"
+              variant='outline'
               onClick={() => setIsRemoveDialogOpen(false)}
               disabled={removeUserMutation.isPending}>
               Cancel
             </Button>
             <Button
-              variant="destructive"
+              variant='destructive'
               onClick={handleRemoveMember}
               disabled={removeUserMutation.isPending}>
               {removeUserMutation.isPending ? 'Removing...' : 'Remove'}
@@ -507,13 +507,13 @@ export function MemberList({
           </DialogHeader>
           <DialogFooter>
             <Button
-              variant="outline"
+              variant='outline'
               onClick={() => setIsCancelInviteDialogOpen(false)}
               disabled={false /* Replace with cancelInviteMutation.isPending */}>
               Cancel
             </Button>
             <Button
-              variant="destructive"
+              variant='destructive'
               onClick={handleCancelInvite}
               disabled={false /* Replace with cancelInviteMutation.isPending */}>
               {false /* Replace with cancelInviteMutation.isPending */
@@ -531,22 +531,22 @@ export function MemberList({
             <DialogTitle>Change member role</DialogTitle>
             <DialogDescription>
               Update the role for{' '}
-              <Badge variant="user" size="sm">
+              <Badge variant='user' size='sm'>
                 {selectedMember?.user.name || selectedMember?.user.email}
               </Badge>
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4">
-            <div className="space-y-2">
-              <label htmlFor="role" className="text-sm font-medium">
+          <div className='grid gap-4'>
+            <div className='space-y-2'>
+              <label htmlFor='role' className='text-sm font-medium'>
                 Role
               </label>
               <Select
                 value={newRole || undefined}
                 onValueChange={(value: OrganizationRole) => setNewRole(value)}>
-                <SelectTrigger id="role">
-                  <SelectValue placeholder="Select a role" />
+                <SelectTrigger id='role'>
+                  <SelectValue placeholder='Select a role' />
                 </SelectTrigger>
                 <SelectContent>
                   {/* Only show options the current user has permission to assign */}
@@ -557,7 +557,7 @@ export function MemberList({
                   <SelectItem value={OrganizationRoleEnum.USER}>User</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">
+              <p className='text-xs text-muted-foreground'>
                 {newRole === OrganizationRoleEnum.OWNER
                   ? 'Owners have full control over the organization and can manage all settings and members.'
                   : newRole === OrganizationRoleEnum.ADMIN
@@ -569,21 +569,21 @@ export function MemberList({
 
           <DialogFooter>
             <Button
-              variant="ghost"
-              size="sm"
+              variant='ghost'
+              size='sm'
               onClick={() => setIsRoleDialogOpen(false)}
               disabled={updateRoleMutation.isPending}>
               Cancel
             </Button>
             <Button
               onClick={handleUpdateRole}
-              size="sm"
-              variant="outline"
+              size='sm'
+              variant='outline'
               disabled={
                 updateRoleMutation.isPending || !newRole || newRole === selectedMember?.role
               }
               loading={updateRoleMutation.isPending}
-              loadingText="Updating...">
+              loadingText='Updating...'>
               Update role
             </Button>
           </DialogFooter>

@@ -4,12 +4,12 @@ import type { Database } from '@auxx/database'
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import {
-  type FileReference,
   type FileContentOptions,
+  type FileReference,
   type FileSource,
-  isUrlExpired,
   isFileReference,
   isLegacyWorkflowFileData,
+  isUrlExpired,
   toFileReference,
 } from '../types/file-reference'
 import type { WorkflowFileData } from '../types/file-variable'

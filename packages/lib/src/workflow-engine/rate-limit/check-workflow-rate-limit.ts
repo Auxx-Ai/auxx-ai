@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/rate-limit/check-workflow-rate-limit.ts
 
-import { ok, type Result } from 'neverthrow'
 import { getRedisClient } from '@auxx/redis'
+import { ok, type Result } from 'neverthrow'
 
 /**
  * Rate limit configuration

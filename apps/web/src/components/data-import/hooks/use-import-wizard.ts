@@ -5,7 +5,7 @@
 import { useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { IMPORT_STEPS } from '../constants'
-import type { ImportStep, StepStatus, StepData } from '../types'
+import type { ImportStep, StepData, StepStatus } from '../types'
 
 interface UseImportWizardOptions {
   entityDefinitionId: string
@@ -57,11 +57,7 @@ export function useImportWizard({ jobId, currentStep, mapColumnsData }: UseImpor
               : 'active'
             : 'pending',
       confirm:
-        job?.status === 'completed'
-          ? 'complete'
-          : currentStep === 'confirm'
-            ? 'active'
-            : 'pending',
+        job?.status === 'completed' ? 'complete' : currentStep === 'confirm' ? 'active' : 'pending',
     }
   }, [currentStep, jobId, job?.status, mappedColumns])
 
@@ -69,9 +65,8 @@ export function useImportWizard({ jobId, currentStep, mapColumnsData }: UseImpor
   const stepData = useMemo((): StepData => {
     // Use override from child component if available (on map-columns step)
     // Otherwise fall back to query data or job.columnCount
-    const mappedCount = mapColumnsData?.mappedCount
-      ?? mappedColumns?.filter((c) => c.targetFieldKey).length
-      ?? 0
+    const mappedCount =
+      mapColumnsData?.mappedCount ?? mappedColumns?.filter((c) => c.targetFieldKey).length ?? 0
     const totalColumns = mapColumnsData?.totalColumns ?? job?.columnCount ?? 0
     const errorCount = mappedColumns?.reduce((sum, c) => sum + (c.errorCount ?? 0), 0) ?? 0
     const warningCount = mappedColumns?.reduce((sum, c) => sum + (c.warningCount ?? 0), 0) ?? 0

@@ -3,7 +3,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import { complete, fromPromise, isErrored, type Result } from '../errors.js'
 import { findSurfaceExports } from './find-surface-exports/find-surface-exports.js'
-import { type SurfaceExport } from './find-surface-exports/parse-file-exports.js'
+import type { SurfaceExport } from './find-surface-exports/parse-file-exports.js'
 import { toCamelCase } from './to-camel-case.js'
 
 // Ordered list of supported surface types used to assemble the generated entry point.
@@ -80,10 +80,14 @@ export async function generateAppEntryPoint(
         transcript: {
             textActions: [${getSurfaceNamesArray('callRecordingTranscriptTextSelectionAction')}]
         },
-    },${hasOrganizationSettings ? `
+    },${
+      hasOrganizationSettings
+        ? `
     settings: {
         organization: ${organizationSettings},
-    },` : ''}
+    },`
+        : ''
+    }
 }`
 
   const appComponentExport = `/**

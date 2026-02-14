@@ -1,10 +1,10 @@
 // packages/ui/src/components/input-number.tsx
 'use client'
 
-import * as React from 'react'
-import { Plus, Minus, ChevronUp, ChevronDown } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
-import { clampValue, incrementValue, decrementValue } from './input-number-utils'
+import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-react'
+import * as React from 'react'
+import { clampValue, decrementValue, incrementValue } from './input-number-utils'
 
 // ============================================================================
 // Types & Interfaces
@@ -454,10 +454,10 @@ const NumberInputField = React.forwardRef<HTMLInputElement, NumberInputFieldProp
     return (
       <input
         ref={ref}
-        type="number"
-        data-slot="input-group-control"
-        role="spinbutton"
-        autoComplete="off"
+        type='number'
+        data-slot='input-group-control'
+        role='spinbutton'
+        autoComplete='off'
         aria-valuenow={value}
         aria-valuemin={min}
         aria-valuemax={max}
@@ -626,7 +626,7 @@ const NumberInputIncrement = React.forwardRef<HTMLButtonElement, NumberInputStep
     return (
       <button
         ref={ref}
-        type="button"
+        type='button'
         onClick={handleClick}
         disabled={isDisabled}
         className={cn(
@@ -636,9 +636,9 @@ const NumberInputIncrement = React.forwardRef<HTMLButtonElement, NumberInputStep
           'disabled:opacity-50 disabled:cursor-not-allowed',
           className
         )}
-        aria-label="Increment"
+        aria-label='Increment'
         {...props}>
-        {children || <Plus className="size-4" />}
+        {children || <Plus className='size-4' />}
       </button>
     )
   }
@@ -688,7 +688,7 @@ const NumberInputDecrement = React.forwardRef<HTMLButtonElement, NumberInputStep
     return (
       <button
         ref={ref}
-        type="button"
+        type='button'
         onClick={handleClick}
         disabled={isDisabled}
         className={cn(
@@ -698,9 +698,9 @@ const NumberInputDecrement = React.forwardRef<HTMLButtonElement, NumberInputStep
           'disabled:opacity-50 disabled:cursor-not-allowed',
           className
         )}
-        aria-label="Decrement"
+        aria-label='Decrement'
         {...props}>
-        {children || <Minus className="size-4" />}
+        {children || <Minus className='size-4' />}
       </button>
     )
   }
@@ -754,7 +754,7 @@ const NumberInputArrows = React.forwardRef<HTMLDivElement, NumberInputArrowsProp
             // Separator between buttons
             'border-b border-primary-200'
           )}>
-          <ChevronUp className="size-3" />
+          <ChevronUp className='size-3' />
         </NumberInputIncrement>
 
         <NumberInputDecrement
@@ -767,7 +767,7 @@ const NumberInputArrows = React.forwardRef<HTMLDivElement, NumberInputArrowsProp
             // Round bottom-right corner to match InputGroup
             'rounded-br-[calc(var(--radius)-5px)]'
           )}>
-          <ChevronDown className="size-3" />
+          <ChevronDown className='size-3' />
         </NumberInputDecrement>
       </div>
     )

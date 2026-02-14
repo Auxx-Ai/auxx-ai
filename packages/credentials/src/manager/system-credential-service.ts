@@ -1,15 +1,18 @@
 // packages/credentials/src/manager/system-credential-service.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import type { ICredentialType, OAuth2Config } from '@auxx/workflow-nodes/types'
 import type {
   ISystemCredentialService,
+  OAuth2SystemCredentials,
   SystemCredentialInfo,
   ValidationResult,
-  OAuth2SystemCredentials,
 } from '../types'
-import { RequiredEnvironmentVariableError, SystemCredentialNotAvailableError } from '../types/errors'
-import { CredentialTypeRegistry } from './credential-type-registry'
-import { createScopedLogger } from '@auxx/logger'
+import {
+  RequiredEnvironmentVariableError,
+  SystemCredentialNotAvailableError,
+} from '../types/errors'
+import type { CredentialTypeRegistry } from './credential-type-registry'
 
 const logger = createScopedLogger('system-credential-service')
 

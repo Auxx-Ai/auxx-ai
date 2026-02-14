@@ -1,10 +1,11 @@
 // packages/lib/src/providers/google/threads/update-status.ts
-import { gmail_v1 } from 'googleapis'
-import { UniversalThrottler } from '../../../utils/rate-limiter'
+
+import { createScopedLogger } from '@auxx/logger'
+import type { gmail_v1 } from 'googleapis'
+import type { UniversalThrottler } from '../../../utils/rate-limiter'
+import { MessageStatus } from '../../integration-provider.interface'
 import { handleGmailError } from '../shared/error-handler'
 import { modifyWithThrottling } from '../shared/utils'
-import { MessageStatus } from '../../integration-provider.interface'
-import { createScopedLogger } from '@auxx/logger'
 
 const logger = createScopedLogger('google-threads:update-status')
 

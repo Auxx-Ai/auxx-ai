@@ -1,15 +1,9 @@
 // packages/lib/src/actors/actor-service.ts
 
-import { and, eq, inArray, like } from 'drizzle-orm'
 import { schema } from '@auxx/database'
-import type {
-  ActorId,
-  Actor,
-  UserActor,
-  GroupActor,
-  ActorContext,
-} from '@auxx/types/actor'
-import { toActorId, parseActorId } from '@auxx/types/actor'
+import type { Actor, ActorContext, ActorId, GroupActor, UserActor } from '@auxx/types/actor'
+import { parseActorId, toActorId } from '@auxx/types/actor'
+import { and, eq, inArray, like } from 'drizzle-orm'
 
 // ============================================================================
 // Service Options Types
@@ -92,10 +86,7 @@ export class ActorService {
         const { type, id } = parseActorId(actorId)
         if (type === 'user') userIds.push(id)
         else groupIds.push(id)
-      } catch {
-        // Skip invalid ActorIds
-        continue
-      }
+      } catch {}
     }
 
     // Batch fetch
@@ -314,7 +305,9 @@ export class ActorService {
 
     // Filter by groupIds if specified
     if (options.groupIds?.length) {
-      return groups.filter((g: any) => options.groupIds!.includes(g.id)).map((g: any) => this.toGroupActor(g))
+      return groups
+        .filter((g: any) => options.groupIds!.includes(g.id))
+        .map((g: any) => this.toGroupActor(g))
     }
 
     return groups.map((g: any) => this.toGroupActor(g))

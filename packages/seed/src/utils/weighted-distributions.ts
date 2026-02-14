@@ -12,7 +12,9 @@ export interface WeightedDistributionEntry<T> {
 /** WeightedDistributions centralizes common probability distributions used by generators. */
 export class WeightedDistributions {
   /** customerSpending models realistic e-commerce customer lifetime spend buckets. */
-  static customerSpending(): Array<WeightedDistributionEntry<{ minValue: number; maxValue: number }>> {
+  static customerSpending(): Array<
+    WeightedDistributionEntry<{ minValue: number; maxValue: number }>
+  > {
     return [
       { weight: 0.4, value: { minValue: 0, maxValue: 5000 } },
       { weight: 0.3, value: { minValue: 5000, maxValue: 20000 } },

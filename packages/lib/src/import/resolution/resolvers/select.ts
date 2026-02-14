@@ -1,6 +1,6 @@
 // packages/lib/src/import/resolution/resolvers/select.ts
 
-import type { ResolvedValue, ResolutionConfig } from '../../types/resolution'
+import type { ResolutionConfig, ResolvedValue } from '../../types/resolution'
 
 /** Normalize a value for fuzzy comparison by removing separators and lowercasing */
 function normalizeForComparison(value: string): string {

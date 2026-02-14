@@ -1,4 +1,4 @@
-import { VectorDbType } from '@auxx/database/enums'
+import type { VectorDbType } from '@auxx/database/enums'
 // packages/lib/src/datasets/types/vector.types.ts
 /**
  * Vector search result with similarity score

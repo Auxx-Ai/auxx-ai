@@ -2,13 +2,13 @@
 
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { api } from '~/trpc/react'
-import { useFileSystemStore, type FileItem, type FolderTreeNode } from '../files-store'
-import { useUploadStore } from '~/components/file-upload/stores'
-import { useFileUpload } from '~/components/file-upload/hooks/use-file-upload'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { keepPreviousData } from '@tanstack/react-query'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useFileUpload } from '~/components/file-upload/hooks/use-file-upload'
+import { useUploadStore } from '~/components/file-upload/stores'
+import { api } from '~/trpc/react'
+import { type FileItem, type FolderTreeNode, useFileSystemStore } from '../files-store'
 
 /** Stable empty arrays to prevent unnecessary re-renders */
 const EMPTY_IDS: string[] = []
@@ -224,7 +224,7 @@ export function useFilesystem() {
     const fileIds = filesByParent.get(currentFolderId) || []
     const folderIds = foldersByParent.get(currentFolderId) || []
 
-    let baseItems = [...fileIds, ...folderIds]
+    const baseItems = [...fileIds, ...folderIds]
       .map((id) => itemsById.get(id))
       .filter(Boolean) as FileItem[]
 

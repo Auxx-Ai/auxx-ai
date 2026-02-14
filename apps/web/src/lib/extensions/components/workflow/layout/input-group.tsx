@@ -2,7 +2,7 @@
 
 'use client'
 
-import React from 'react'
+import type React from 'react'
 
 /** Gap size options for InputGroup */
 type GapSize = 'sm' | 'md' | 'lg'
@@ -21,11 +21,7 @@ interface InputGroupProps {
  * InputGroup component.
  * Layout container for arranging inputs horizontally.
  */
-export const InputGroup = ({
-  children,
-  gap = 'md',
-  className = '',
-}: InputGroupProps) => {
+export const InputGroup = ({ children, gap = 'md', className = '' }: InputGroupProps) => {
   const gapClasses: Record<GapSize, string> = {
     sm: 'gap-2',
     md: 'gap-3',

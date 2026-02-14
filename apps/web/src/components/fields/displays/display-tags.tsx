@@ -1,7 +1,8 @@
 // apps/web/src/components/fields/displays/display-tags.tsx
+
+import { resolveTagLabels, TagsView } from '~/components/ui/tags-view'
 import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
-import { TagsView, resolveTagLabels } from '~/components/ui/tags-view'
 
 /**
  * DisplayTags component
@@ -15,7 +16,7 @@ export function DisplayTags() {
 
   return (
     <DisplayWrapper copyValue={copyText || null}>
-      <TagsView value={value} options={options} variant="pill" />
+      <TagsView value={value} options={options} variant='pill' />
     </DisplayWrapper>
   )
 }

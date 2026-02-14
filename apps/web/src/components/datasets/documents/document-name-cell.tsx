@@ -1,14 +1,11 @@
 // apps/web/src/components/datasets/documents/document-name-cell.tsx
 'use client'
 
-import {
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from '@auxx/ui/components/dropdown-menu'
-import { Download, Eye, Trash2, Archive, ArchiveRestore } from 'lucide-react'
-import { FileIcon } from '~/components/files/utils/file-icon'
 import type { DocumentEntity as Document } from '@auxx/database/models'
+import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
+import { Archive, ArchiveRestore, Download, Eye, Trash2 } from 'lucide-react'
 import { PrimaryCell } from '~/components/dynamic-table'
+import { FileIcon } from '~/components/files/utils/file-icon'
 
 /**
  * Props for DocumentNameCell component
@@ -45,7 +42,7 @@ export function DocumentNameCell({
         <FileIcon
           mimeType={document.mimeType || undefined}
           ext={fileExtension}
-          className="size-4 shrink-0"
+          className='size-4 shrink-0'
         />
       }
       onTitleClick={() => onViewDetails(document)}>
@@ -69,7 +66,7 @@ export function DocumentNameCell({
           Archive
         </DropdownMenuItem>
       )}
-      <DropdownMenuItem variant="destructive" onClick={() => onDelete(document)}>
+      <DropdownMenuItem variant='destructive' onClick={() => onDelete(document)}>
         <Trash2 />
         Delete
       </DropdownMenuItem>

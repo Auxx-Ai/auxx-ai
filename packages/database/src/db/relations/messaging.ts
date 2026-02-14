@@ -159,15 +159,12 @@ export const messageParticipantRelations = relations(MessageParticipant, ({ one 
   }),
 }))
 
-
-
 export const threadParticipantRelations = relations(ThreadParticipant, ({ one }) => ({
   thread: one(Thread, {
     fields: [ThreadParticipant.threadId],
     references: [Thread.id],
   }),
 }))
-
 
 export const promptHistoryRelations = relations(PromptHistory, ({ one }) => ({
   user: one(User, {
@@ -263,10 +260,6 @@ export const draftRelations = relations(Draft, ({ one }) => ({
     references: [Integration.id],
   }),
 }))
-
-
-
-
 
 export const labelsOnThreadRelations = relations(LabelsOnThread, ({ one }) => ({
   label: one(Label, {

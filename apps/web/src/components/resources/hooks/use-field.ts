@@ -1,13 +1,12 @@
 // apps/web/src/components/resources/hooks/use-field.ts
 
-import { useMemo } from 'react'
-import { useResourceStore } from '../store/resource-store'
-import { useShallow } from 'zustand/react/shallow'
-import type { ResourceFieldId } from '@auxx/types/field'
 import type { FieldType } from '@auxx/database/types'
-import type { ResourceField } from '@auxx/lib/resources/client'
-import type { Resource } from '@auxx/lib/resources/client'
+import type { Resource, ResourceField } from '@auxx/lib/resources/client'
 import type { SelectOption } from '@auxx/types/custom-field'
+import type { ResourceFieldId } from '@auxx/types/field'
+import { useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
+import { useResourceStore } from '../store/resource-store'
 
 /**
  * Extended ResourceField with effectiveFieldType for CALC fields.
@@ -130,9 +129,7 @@ export function useFields(
  * const isPending = useFieldIsPending(resourceFieldId)
  * // Show spinner or saving indicator when isPending is true
  */
-export function useFieldIsPending(
-  resourceFieldId: ResourceFieldId | null | undefined
-): boolean {
+export function useFieldIsPending(resourceFieldId: ResourceFieldId | null | undefined): boolean {
   return useResourceStore((state) => {
     if (!resourceFieldId) return false
     return resourceFieldId in state.pendingFieldUpdates
@@ -146,9 +143,7 @@ export function useFieldIsPending(
  * @param resourceFieldId - ResourceFieldId (or null/undefined for conditional usage)
  * @returns boolean - true if field has been optimistically deleted
  */
-export function useFieldIsDeleted(
-  resourceFieldId: ResourceFieldId | null | undefined
-): boolean {
+export function useFieldIsDeleted(resourceFieldId: ResourceFieldId | null | undefined): boolean {
   return useResourceStore((state) => {
     if (!resourceFieldId) return false
     return state.optimisticDeletedFields.has(resourceFieldId)

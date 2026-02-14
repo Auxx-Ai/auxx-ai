@@ -1,9 +1,9 @@
 // apps/web/src/lib/workflow/utils/type-mapping.ts
 
-import type { WorkflowBlockField } from '../types'
+import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { BaseType } from '~/components/workflow/types/variable-types'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
-import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
+import type { WorkflowBlockField } from '../types'
 
 /**
  * Validate that a field has required properties
@@ -140,7 +140,7 @@ export function convertFieldToOutputVariable(
   return createUnifiedOutputVariable({
     nodeId,
     path: field.name, // Changed from 'name' to 'path'
-    type: baseType,  // Now format-aware
+    type: baseType, // Now format-aware
     description: field.description,
     properties,
     items,

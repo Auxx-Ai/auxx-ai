@@ -1,17 +1,8 @@
 // apps/build/src/app/(portal)/[slug]/apps/[:app_slug]/layout.tsx
 'use client'
 
-import { useParams, usePathname } from 'next/navigation'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { SidebarInset, SidebarProvider } from '@auxx/ui/components/sidebar'
-import { BuildAppSidebar } from '~/components/build-app-sidebar'
-import { SiteHeader } from '~/components/site-header'
-import {
-  useAuthenticatedUser,
-  useDeveloperAccount,
-  useApp,
-} from '~/components/providers/dehydrated-state-provider'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -19,12 +10,20 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { SidebarInset, SidebarProvider } from '@auxx/ui/components/sidebar'
 import { tabsTriggerVariants } from '@auxx/ui/components/tabs'
-import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
-import { Cable, GitBranch, Info, Lock, Logs, Target } from 'lucide-react'
-import { AppPublishButton } from '~/components/apps/app-publish-button'
 import { cn } from '@auxx/ui/lib/utils'
+import { Cable, GitBranch, Info, Lock, Logs, Target } from 'lucide-react'
+import Link from 'next/link'
+import { redirect, useParams, usePathname } from 'next/navigation'
+import { AppPublishButton } from '~/components/apps/app-publish-button'
+import { BuildAppSidebar } from '~/components/build-app-sidebar'
+import {
+  useApp,
+  useAuthenticatedUser,
+  useDeveloperAccount,
+} from '~/components/providers/dehydrated-state-provider'
+import { SiteHeader } from '~/components/site-header'
 /**
  * Layout for individual app pages in developer portal
  * Uses server-fetched dehydrated state from parent layout
@@ -91,12 +90,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="h-screen flex flex-1 flex-col w-full h-full">
+    <div className='h-screen flex flex-1 flex-col w-full h-full'>
       <SidebarProvider>
         <BuildAppSidebar user={user} accountSlug={slug} />
         <SidebarInset>
           <MainPage>
-            <MainPageHeader action={<AppPublishButton app={app} size="sm" />}>
+            <MainPageHeader action={<AppPublishButton app={app} size='sm' />}>
               <MainPageBreadcrumb>
                 <MainPageBreadcrumbItem
                   title={app.title}
@@ -107,8 +106,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </MainPageHeader>
 
             <MainPageContent>
-              <div className="flex-1 h-full flex flex-col">
-                <div className="border-b w-full justify-start rounded-b-none bg-primary-150 inline-flex items-center text-muted-foreground justify-start h-auto gap-1 rounded-none px-2 py-1 border-foreground/10">
+              <div className='flex-1 h-full flex flex-col'>
+                <div className='border-b w-full justify-start rounded-b-none bg-primary-150 inline-flex items-center text-muted-foreground justify-start h-auto gap-1 rounded-none px-2 py-1 border-foreground/10'>
                   {tabs.map((tab) => {
                     const Icon = tab.icon
                     const isActive = isActiveTab(tab.href)

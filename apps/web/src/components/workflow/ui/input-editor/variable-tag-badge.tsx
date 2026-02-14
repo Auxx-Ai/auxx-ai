@@ -2,8 +2,8 @@
 
 'use client'
 
-import VariableTag from '../variables/variable-tag'
 import type { InlineNodeBadgeProps } from '~/components/editor/inline-picker'
+import VariableTag from '../variables/variable-tag'
 
 /**
  * Adapter to use VariableTag with the inline-picker system.

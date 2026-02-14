@@ -2,7 +2,7 @@
 
 import type { RecordId } from '@auxx/types'
 import { useMemo } from 'react'
-import { useAllRecords, type FieldInfo } from '~/components/resources/hooks/use-all-records'
+import { type FieldInfo, useAllRecords } from '~/components/resources/hooks/use-all-records'
 import type { RecordMeta } from '~/components/resources/store/record-store'
 
 /**

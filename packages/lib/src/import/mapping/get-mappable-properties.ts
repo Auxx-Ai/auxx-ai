@@ -1,8 +1,8 @@
 // packages/lib/src/import/mapping/get-mappable-properties.ts
 
-import { eq, and, asc } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { and, asc, eq } from 'drizzle-orm'
 
 /** Mappable property with sample values and mapping info */
 export interface MappablePropertyWithSamples {
@@ -42,9 +42,7 @@ export async function getMappablePropertiesWithSamples(
   })
 
   // Create a map for quick lookup by column index
-  const mappingByIndex = new Map(
-    mappingProperties.map((mp) => [mp.sourceColumnIndex, mp])
-  )
+  const mappingByIndex = new Map(mappingProperties.map((mp) => [mp.sourceColumnIndex, mp]))
 
   // Combine column headers with saved mappings and sample values
   const propertiesWithMappings = await Promise.all(
@@ -124,7 +122,10 @@ export async function getColumnSamples(
         )
         .limit(limit)
 
-      result.set(columnIndex, samples.map((s) => s.value))
+      result.set(
+        columnIndex,
+        samples.map((s) => s.value)
+      )
     })
   )
 

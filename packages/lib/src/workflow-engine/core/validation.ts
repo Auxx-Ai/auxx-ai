@@ -1,11 +1,11 @@
 // packages/lib/src/workflow-engine/core/validation.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { Workflow } from './types'
-import { isNonExecutableNodeType } from './types'
-import type { NodeProcessorRegistry } from './node-processor-registry'
 import { isTerminalNodeType } from '../utils/terminal-nodes'
 import { findEntryNode } from './graph-navigation'
+import type { NodeProcessorRegistry } from './node-processor-registry'
+import type { Workflow } from './types'
+import { isNonExecutableNodeType } from './types'
 
 const logger = createScopedLogger('workflow-validation')
 
@@ -73,9 +73,7 @@ export async function validateWorkflow(
   // since they're source/annotation nodes that don't require incoming connections
   const orphanedNodes = workflow.nodes.filter(
     (node) =>
-      node !== entryNode &&
-      !referencedNodes.has(node.nodeId) &&
-      !isNonExecutableNodeType(node.type)
+      node !== entryNode && !referencedNodes.has(node.nodeId) && !isNonExecutableNodeType(node.type)
   )
 
   if (orphanedNodes.length > 0) {

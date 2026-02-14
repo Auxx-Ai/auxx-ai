@@ -1,13 +1,13 @@
 // packages/lib/src/datasets/events/document-execution-reporter.ts
 
-import { getPublishingClient } from '@auxx/redis'
 import { createScopedLogger } from '@auxx/logger'
+import { getPublishingClient } from '@auxx/redis'
 import {
-  DocumentEventType,
-  type DocumentEvent,
-  type ExtractionCompletedData,
   type ChunkingCompletedData,
+  type DocumentEvent,
+  DocumentEventType,
   type EmbeddingProgressData,
+  type ExtractionCompletedData,
   type ProcessingCompletedData,
   type ProcessingFailedData,
 } from './types'

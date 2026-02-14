@@ -29,17 +29,17 @@ export function CheckboxHeaderCell<TData>({ header }: CheckboxHeaderCellProps<TD
         ...(isPinned && { position: 'sticky', left: header.column.getStart('left'), zIndex: 20 }),
       }}
       className={`relative border-t ${isPinned ? 'z-10 from-white to-white/50 bg-gradient-to-b dark:from-transparent dark:to-transparent  backdrop-blur' : ''}`}>
-      <div className="group min-w-min h-full font-inter font-medium">
-        <div className=" h-full relative flex">
-          <div className="flex items-center justify-end px-2 " style={{ width: 40 }}>
+      <div className='group min-w-min h-full font-inter font-medium'>
+        <div className=' h-full relative flex'>
+          <div className='flex items-center justify-end px-2 ' style={{ width: 40 }}>
             <Checkbox
               checked={
                 table.getIsAllPageRowsSelected() ||
                 (table.getIsSomePageRowsSelected() && 'indeterminate')
               }
               onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-              aria-label="Select all"
-              className="w-4 h-4 text-accent-500 bg-primary-100 border-primary-300 hover:border-primary-400 rounded transition-colors focus:ring-accent-400 cursor-pointer focus:ring-2"
+              aria-label='Select all'
+              className='w-4 h-4 text-accent-500 bg-primary-100 border-primary-300 hover:border-primary-400 rounded transition-colors focus:ring-accent-400 cursor-pointer focus:ring-2'
             />
           </div>
         </div>

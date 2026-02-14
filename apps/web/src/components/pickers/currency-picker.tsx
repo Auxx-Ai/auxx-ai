@@ -1,21 +1,21 @@
 // apps/web/src/components/pickers/currency-picker.tsx
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { CURRENCIES } from '@auxx/config/client'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   Command,
-  CommandInput,
-  CommandList,
   CommandEmpty,
   CommandGroup,
+  CommandInput,
   CommandItem,
+  CommandList,
 } from '@auxx/ui/components/command'
-import { Badge } from '@auxx/ui/components/badge'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { CURRENCIES } from '@auxx/config/client'
 import { Check, ChevronDown } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
+import { useEffect, useMemo, useState } from 'react'
 
 /**
  * Process currency data for display and search
@@ -103,49 +103,49 @@ export function CurrencyPicker({
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         {children || (
-          <Button variant="input" size="default" className="w-full justify-between">
+          <Button variant='input' size='default' className='w-full justify-between'>
             {selectedCurrency ? (
-              <div className="flex items-center gap-2 truncate">
-                <span className="truncate">{selectedCurrency.label}</span>
-                <Badge variant="gray" size="xs" className="font-mono shrink-0 me-1">
+              <div className='flex items-center gap-2 truncate'>
+                <span className='truncate'>{selectedCurrency.label}</span>
+                <Badge variant='gray' size='xs' className='font-mono shrink-0 me-1'>
                   {selectedCurrency.code}
                 </Badge>
               </div>
             ) : (
-              <span className="text-muted-foreground">Select currency...</span>
+              <span className='text-muted-foreground'>Select currency...</span>
             )}
-            <ChevronDown className="size-4 shrink-0 opacity-50" />
+            <ChevronDown className='size-4 shrink-0 opacity-50' />
           </Button>
         )}
       </PopoverTrigger>
       <PopoverContent className={cn('w-[350px] p-0', className)} align={align} {...props}>
         <Command shouldFilter={false}>
-          <CommandInput placeholder="Search currency..." value={search} onValueChange={setSearch} />
+          <CommandInput placeholder='Search currency...' value={search} onValueChange={setSearch} />
           <CommandList>
             {filteredCurrencies.length === 0 ? (
               <CommandEmpty>No currency found.</CommandEmpty>
             ) : (
-              <div className="max-h-[300px] overflow-auto">
+              <div className='max-h-[300px] overflow-auto'>
                 <CommandGroup>
                   {filteredCurrencies.map((currency) => (
                     <CommandItem
                       key={currency.code}
                       value={currency.code}
                       onSelect={() => handleSelect(currency.code)}
-                      className="px-2 ps-1">
-                      <div className="flex flex-row items-center gap-2 w-full">
+                      className='px-2 ps-1'>
+                      <div className='flex flex-row items-center gap-2 w-full'>
                         <Badge
-                          size="sm"
-                          variant="gray"
-                          className="font-mono shrink-0 w-12 justify-center">
+                          size='sm'
+                          variant='gray'
+                          className='font-mono shrink-0 w-12 justify-center'>
                           {currency.code}
                         </Badge>
-                        <div className="flex-1">
-                          <span className="truncate">{currency.label}</span>
-                          <span className="text-info shrink-0 ps-1">{currency.symbol}</span>
+                        <div className='flex-1'>
+                          <span className='truncate'>{currency.label}</span>
+                          <span className='text-info shrink-0 ps-1'>{currency.symbol}</span>
                         </div>
                         {selected === currency.code && (
-                          <Check className="size-4 shrink-0 text-muted-foregorund" />
+                          <Check className='size-4 shrink-0 text-muted-foregorund' />
                         )}
                       </div>
                     </CommandItem>

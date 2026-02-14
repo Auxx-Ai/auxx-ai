@@ -1,9 +1,8 @@
 import { env } from '@auxx/config/server'
 import type { Job } from 'bullmq'
-
-import { type AuxxEvent } from '../types'
-import { PostHogClient } from '../../posthog/posthog-client'
 import { createScopedLogger } from '../../logger'
+import { PostHogClient } from '../../posthog/posthog-client'
+import type { AuxxEvent } from '../types'
 
 const logger = createScopedLogger('publish-to-analytics-job')
 

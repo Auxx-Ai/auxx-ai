@@ -1,17 +1,17 @@
 // packages/lib/src/messages/message-query.service.ts
 
 import { type Database, schema } from '@auxx/database'
-import { toParticipantId, type ParticipantId } from '@auxx/types'
-import { and, eq, inArray, sql } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
-import type {
-  MessageMeta,
-  SendStatus,
-  ListMessageIdsOptions,
-  ListMessagesByThreadResult,
-} from './types/message-query.types'
+import { type ParticipantId, toParticipantId } from '@auxx/types'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { getOrgProviderMap } from '../providers/integration-cache'
 import { getMessageTypeFromProvider } from '../providers/type-utils'
+import type {
+  ListMessageIdsOptions,
+  ListMessagesByThreadResult,
+  MessageMeta,
+  SendStatus,
+} from './types/message-query.types'
 
 const logger = createScopedLogger('message-query-service')
 

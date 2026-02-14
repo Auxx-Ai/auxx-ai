@@ -1,4 +1,4 @@
-import { WorkflowRunStatus } from '@auxx/database/enums'
+import type { WorkflowRunStatus } from '@auxx/database/enums'
 // apps/web/src/app/(protected)/app/workflows/_components/executions/types.ts
 /**
  * Filter state for workflow runs

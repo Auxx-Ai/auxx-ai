@@ -1,6 +1,6 @@
 // packages/lib/src/providers/google/types.ts
-import { gmail_v1 } from 'googleapis'
-import { UniversalThrottler } from '../../utils/rate-limiter'
+import type { gmail_v1 } from 'googleapis'
+import type { UniversalThrottler } from '../../utils/rate-limiter'
 import { SendMessageOptions } from '../integration-provider.interface'
 import { AttachmentFile } from '../message-provider-interface'
 
@@ -71,10 +71,4 @@ export interface GmailMessageWithPayload extends gmail_v1.Schema$Message {
 /**
  * Throttler context for Gmail operations
  */
-export type GoogleThrottleContext =
-  | 'sync'
-  | 'history'
-  | 'batch'
-  | 'send'
-  | 'webhook'
-  | 'labels'
+export type GoogleThrottleContext = 'sync' | 'history' | 'batch' | 'send' | 'webhook' | 'labels'

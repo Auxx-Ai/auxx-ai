@@ -1,10 +1,11 @@
 // --- Chat Message Bubble Component ---
-import React from 'react'
+
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
-import { Loader2, AlertCircle } from 'lucide-react'
-import { format } from 'date-fns'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChatMessageType } from './chat-interface'
+import { format } from 'date-fns'
+import { AlertCircle, Loader2 } from 'lucide-react'
+import React from 'react'
+import type { ChatMessageType } from './chat-interface'
 
 export const ChatMessageBubble = ({
   message,
@@ -34,17 +35,17 @@ export const ChatMessageBubble = ({
       {/* Avatar for User (on right) or Other Agent (on left) */}
       {!isSystem &&
         (isUser || isOwnAgentMessage) && ( // Show avatar on right for user and own agent messages
-          <Avatar className="order-2 ml-2 h-6 w-6 shrink-0">
+          <Avatar className='order-2 ml-2 h-6 w-6 shrink-0'>
             <AvatarImage src={isUser ? undefined : (agentAvatar ?? undefined)} />
-            <AvatarFallback className="text-xs">{isUser ? 'U' : agentInitials}</AvatarFallback>
+            <AvatarFallback className='text-xs'>{isUser ? 'U' : agentInitials}</AvatarFallback>
           </Avatar>
         )}
       {!isSystem &&
         !isUser &&
         !isOwnAgentMessage && ( // Show avatar on left for other agents/system
-          <Avatar className="order-1 mr-2 h-6 w-6 shrink-0">
+          <Avatar className='order-1 mr-2 h-6 w-6 shrink-0'>
             <AvatarImage src={agentAvatar ?? undefined} />
-            <AvatarFallback className="text-xs">{agentInitials}</AvatarFallback>
+            <AvatarFallback className='text-xs'>{agentInitials}</AvatarFallback>
           </Avatar>
         )}
 
@@ -61,13 +62,13 @@ export const ChatMessageBubble = ({
                 : 'order-2 rounded-bl-none bg-muted', // Other agent bubble style
           isSystem && 'max-w-full!' // Allow system messages to take full width
         )}>
-        <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+        <p className='whitespace-pre-wrap text-sm'>{message.content}</p>
         {/* Optionally add timestamp or status */}
-        <span className="block pt-1 text-right text-xs text-muted-foreground/70 opacity-80">
+        <span className='block pt-1 text-right text-xs text-muted-foreground/70 opacity-80'>
           {format(new Date(message.createdAt), 'p')} {/* Ensure timestamp is a Date object */}
-          {message.status === 'sending' && <Loader2 className="ml-1 inline h-3 w-3 animate-spin" />}
+          {message.status === 'sending' && <Loader2 className='ml-1 inline h-3 w-3 animate-spin' />}
           {message.status === 'error' && (
-            <AlertCircle className="ml-1 inline h-3 w-3 text-destructive" />
+            <AlertCircle className='ml-1 inline h-3 w-3 text-destructive' />
           )}
         </span>
       </div>

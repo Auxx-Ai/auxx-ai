@@ -1,9 +1,9 @@
 // apps/web/src/stores/hydrate-field-values.ts
 
-import { useFieldValueStore, buildFieldValueKey, type StoredFieldValue } from './field-value-store'
-import { formatToTypedInput } from '@auxx/lib/field-values/client'
-import { isComputedField, type Resource, type RecordId } from '@auxx/lib/resources/client'
 import type { FieldType } from '@auxx/database/types'
+import { formatToTypedInput } from '@auxx/lib/field-values/client'
+import { isComputedField, type RecordId, type Resource } from '@auxx/lib/resources/client'
+import { buildFieldValueKey, type StoredFieldValue, useFieldValueStore } from './field-value-store'
 
 interface HydrationOptions {
   resource: Resource

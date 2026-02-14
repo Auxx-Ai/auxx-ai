@@ -1,7 +1,7 @@
 // packages/sdk/src/client/workflow/components/inputs/select-input.tsx
 
 import type React from 'react'
-import { SelectOption } from '../../../forms/types.js'
+import type { SelectOption } from '../../../forms/types.js'
 // import type { SelectOption } from '../../../root/schema/select-node.js'
 
 /**

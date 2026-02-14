@@ -1,9 +1,10 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/code-editor.tsx
-import React, { type FC, useCallback, useEffect, useMemo, useRef } from 'react'
+
 import { cn } from '@auxx/ui/lib/utils'
 import { Editor } from '@monaco-editor/react'
 import { Clipboard, IndentIncrease } from 'lucide-react'
 import { useTheme } from 'next-themes'
+import React, { type FC, useCallback, useEffect, useMemo, useRef } from 'react'
 // import copy from 'copy-to-clipboard'
 import { Tooltip } from '~/components/global/tooltip'
 
@@ -104,27 +105,27 @@ const CodeEditor: FC<CodeEditorProps> = ({
         className
       )}>
       {!hideTopMenu && (
-        <div className="flex items-center justify-between pl-2 pr-1 pt-1">
-          <div className="uppercase text-sm font-semibold py-0.5 text-primary-500">
-            <span className="px-1 py-0.5">JSON</span>
+        <div className='flex items-center justify-between pl-2 pr-1 pt-1'>
+          <div className='uppercase text-sm font-semibold py-0.5 text-primary-500'>
+            <span className='px-1 py-0.5'>JSON</span>
           </div>
-          <div className="flex items-center gap-x-0.5">
+          <div className='flex items-center gap-x-0.5'>
             {showFormatButton && (
-              <Tooltip content="Format">
+              <Tooltip content='Format'>
                 <button
-                  type="button"
-                  className="flex h-6 w-6 items-center justify-center"
+                  type='button'
+                  className='flex h-6 w-6 items-center justify-center'
                   onClick={formatJsonContent}>
-                  <IndentIncrease className="h-4 w-4" />
+                  <IndentIncrease className='h-4 w-4' />
                 </button>
               </Tooltip>
             )}
-            <Tooltip content="Copy">
+            <Tooltip content='Copy'>
               <button
-                type="button"
-                className="flex h-6 w-6 items-center justify-center"
+                type='button'
+                className='flex h-6 w-6 items-center justify-center'
                 onClick={() => navigator.clipboard.writeText(value)}>
-                <Clipboard className="h-4 w-4" />
+                <Clipboard className='h-4 w-4' />
               </button>
             </Tooltip>
           </div>
@@ -132,7 +133,7 @@ const CodeEditor: FC<CodeEditorProps> = ({
       )}
       <div className={cn('relative overflow-hidden', editorWrapperClassName)}>
         <Editor
-          defaultLanguage="json"
+          defaultLanguage='json'
           theme={
             isMounted
               ? theme === 'dark'

@@ -1,14 +1,14 @@
 // packages/lib/src/tickets/ticket-mutations.ts
 
-import { schema, type Database } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import {
-  TicketStatus as TicketStatusEnum,
   TicketPriority as TicketPriorityEnum,
+  TicketStatus as TicketStatusEnum,
 } from '@auxx/database/enums'
 import type { TicketPriority, TicketStatus } from '@auxx/database/types'
-import { eq, inArray, or } from 'drizzle-orm'
-import { TRPCError } from '@trpc/server'
 import { publisher } from '@auxx/lib/events'
+import { TRPCError } from '@trpc/server'
+import { eq, inArray, or } from 'drizzle-orm'
 
 /**
  * Input for updating multiple tickets' status
@@ -204,23 +204,19 @@ export async function updateMultipleAssignments(
 
         // Remove assignments that are no longer needed
         if (assignmentsToRemove.length > 0) {
-          await tx
-            .delete(schema.TicketAssignment)
-            .where(
-              inArray(
-                schema.TicketAssignment.id,
-                assignmentsToRemove.map((a) => a.id)
-              )
+          await tx.delete(schema.TicketAssignment).where(
+            inArray(
+              schema.TicketAssignment.id,
+              assignmentsToRemove.map((a) => a.id)
             )
+          )
         }
 
         // Add new assignments
         if (agentIdsToAdd.length > 0) {
           await tx
             .insert(schema.TicketAssignment)
-            .values(
-              agentIdsToAdd.map((agentId) => ({ ticketId, agentId, updatedAt: new Date() }))
-            )
+            .values(agentIdsToAdd.map((agentId) => ({ ticketId, agentId, updatedAt: new Date() })))
         }
 
         // Mark ticket as updated
@@ -262,9 +258,7 @@ export async function deleteMultipleTickets(
       await tx.delete(schema.TicketReply).where(eq(schema.TicketReply.ticketId, ticketId))
 
       // Delete ticket assignments
-      await tx
-        .delete(schema.TicketAssignment)
-        .where(eq(schema.TicketAssignment.ticketId, ticketId))
+      await tx.delete(schema.TicketAssignment).where(eq(schema.TicketAssignment.ticketId, ticketId))
 
       // Delete related ticket relationships
       await tx

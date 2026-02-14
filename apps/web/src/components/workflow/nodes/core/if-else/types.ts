@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/nodes/core/if-else/types.ts
 
+import type { Operator } from '@auxx/lib/conditions/client'
 import type { Node as FlowNode } from '@xyflow/react'
+import type { TargetBranch } from '~/components/workflow/types'
+import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
 import { BaseType, type UnifiedVariable } from '~/components/workflow/types/variable-types'
 import type { TiptapJSON } from '~/components/workflow/ui/input-editor'
-import { type TargetBranch } from '~/components/workflow/types'
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
-import type { Operator } from '@auxx/lib/conditions/client'
 
 export type Node = FlowNode
 export type ValueSelector = string[]

@@ -1,15 +1,14 @@
 // packages/lib/src/drafts/index.ts
 
-export { DraftService } from './draft-service'
-
 // Re-export types from @auxx/types for convenience
 export {
-  type DraftParticipant,
+  type CreateDraftInput,
+  DEFAULT_DRAFT_CONTENT,
+  type Draft,
   type DraftAttachment,
   type DraftContent,
-  type Draft,
-  type CreateDraftInput,
+  type DraftParticipant,
   type UpdateDraftInput,
   type UpsertDraftInput,
-  DEFAULT_DRAFT_CONTENT,
 } from '@auxx/types/draft'
+export { DraftService } from './draft-service'

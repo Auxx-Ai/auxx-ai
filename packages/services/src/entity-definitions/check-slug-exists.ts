@@ -1,8 +1,8 @@
 // packages/services/src/entity-definitions/check-slug-exists.ts
 
-import { database } from '@auxx/database'
 import { RESERVED_API_SLUGS } from '@auxx/config/client'
-import { ok, err } from 'neverthrow'
+import { database } from '@auxx/database'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 
 /**

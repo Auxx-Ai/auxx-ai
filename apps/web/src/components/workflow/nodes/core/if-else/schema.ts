@@ -1,18 +1,18 @@
 // apps/web/src/components/workflow/nodes/core/if-else/schema.ts
 
+import { ALL_OPERATOR_KEYS } from '@auxx/lib/conditions/client'
 import { z } from 'zod'
 import {
-  type NodeDefinition,
+  BaseType,
   NodeCategory,
+  type NodeDefinition,
+  NodeType,
   type ValidationResult,
 } from '~/components/workflow/types'
-import { type IfElseNodeData } from './types'
-import { IfElsePanel } from './panel'
-import { NodeType } from '~/components/workflow/types'
-import { BaseType } from '~/components/workflow/types'
-import { createUnifiedOutputVariable } from '../../../utils/variable-conversion'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
-import { ALL_OPERATOR_KEYS } from '@auxx/lib/conditions/client'
+import { createUnifiedOutputVariable } from '../../../utils/variable-conversion'
+import { IfElsePanel } from './panel'
+import type { IfElseNodeData } from './types'
 
 /**
  * Zod schema for if-else condition

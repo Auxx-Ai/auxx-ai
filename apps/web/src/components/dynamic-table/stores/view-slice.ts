@@ -1,9 +1,9 @@
 // apps/web/src/components/dynamic-table/stores/view-slice.ts
 
-import type { SliceCreator, ViewSlice, TableUIConfig } from './store-types'
+import type { FieldViewConfig, ViewContextType } from '@auxx/lib/conditions'
 import type { ViewConfig } from '../types'
-import type { ViewContextType, FieldViewConfig } from '@auxx/lib/conditions'
 import { EMPTY_FILTERS } from '../utils/constants'
+import type { SliceCreator, TableUIConfig, ViewSlice } from './store-types'
 
 /** Extract UI config from ViewConfig (strips filters) */
 function toUIConfig(config: ViewConfig): TableUIConfig {
@@ -56,8 +56,14 @@ export const createViewSlice: SliceCreator<ViewSlice> = (set, get) => ({
     })
   },
 
-  setInitialized: (value) => set((state) => { state.initialized = value }),
-  setError: (error) => set((state) => { state.error = error }),
+  setInitialized: (value) =>
+    set((state) => {
+      state.initialized = value
+    }),
+  setError: (error) =>
+    set((state) => {
+      state.error = error
+    }),
 
   addView: (view) => {
     const config = view.config as ViewConfig
@@ -72,8 +78,9 @@ export const createViewSlice: SliceCreator<ViewSlice> = (set, get) => ({
 
   removeView: (viewId, tableId) => {
     set((state) => {
-      state.viewsByTableId[tableId] = (state.viewsByTableId[tableId] ?? [])
-        .filter((v) => v.id !== viewId)
+      state.viewsByTableId[tableId] = (state.viewsByTableId[tableId] ?? []).filter(
+        (v) => v.id !== viewId
+      )
     })
   },
 

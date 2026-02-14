@@ -1,9 +1,9 @@
 // apps/web/src/app/(protected)/app/tickets/_components/ticket-form-dialog.tsx
 'use client'
-import { useEffect, useState } from 'react'
-import { z } from 'zod'
-import { useForm } from 'react-hook-form'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { TicketPriority, TicketType } from '@auxx/database/enums'
+import { getInstanceId, type RecordId, toRecordId } from '@auxx/lib/field-values/client'
+import { Button } from '@auxx/ui/components/button'
+import { Calendar } from '@auxx/ui/components/calendar'
 
 import {
   Dialog,
@@ -13,7 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
   FormControl,
@@ -22,6 +21,9 @@ import {
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
+import { Input } from '@auxx/ui/components/input'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
   Select,
   SelectContent,
@@ -29,27 +31,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
 import { Textarea } from '@auxx/ui/components/textarea'
-import { Calendar } from '@auxx/ui/components/calendar'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { CalendarIcon, ChevronDown } from 'lucide-react'
-import { format } from 'date-fns'
-import { MissingItemForm } from './missing-item-form'
-import { ShippingIssueForm } from './shipping-issue-form'
-import { RefundForm } from './refund-form'
-import { ReturnForm } from './return-form'
-import { ProductIssueForm } from './product-issue-form'
-import { api } from '~/trpc/react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { format } from 'date-fns'
+import { CalendarIcon, ChevronDown } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { RecordPicker } from '~/components/pickers/record-picker'
 import { useRecord } from '~/components/resources'
-import { TicketPriorityColors, TicketTypeIcons } from '~/components/tickets/shared'
-import { TicketType, TicketPriority } from '@auxx/database/enums'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { toRecordId, getInstanceId, type RecordId } from '@auxx/lib/field-values/client'
-import { cn } from '@auxx/ui/lib/utils'
+import { TicketPriorityColors, TicketTypeIcons } from '~/components/tickets/shared'
+import { api } from '~/trpc/react'
+import { MissingItemForm } from './missing-item-form'
+import { ProductIssueForm } from './product-issue-form'
+import { RefundForm } from './refund-form'
+import { ReturnForm } from './return-form'
+import { ShippingIssueForm } from './shipping-issue-form'
 
 /** Base form schema for ticket creation/editing */
 const baseFormSchema = z.object({
@@ -78,14 +78,14 @@ interface TicketFormDialogProps {
 function StatusDot({ className }: { className?: string }) {
   return (
     <svg
-      width="8"
-      height="8"
-      fill="currentColor"
-      viewBox="0 0 8 8"
-      xmlns="http://www.w3.org/2000/svg"
+      width='8'
+      height='8'
+      fill='currentColor'
+      viewBox='0 0 8 8'
+      xmlns='http://www.w3.org/2000/svg'
       className={className}
-      aria-hidden="true">
-      <circle cx="4" cy="4" r="4" />
+      aria-hidden='true'>
+      <circle cx='4' cy='4' r='4' />
     </svg>
   )
 }
@@ -350,23 +350,23 @@ export default function TicketFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-screen max-w-3xl overflow-y-scroll">
-        <DialogHeader className="mb-4">
+      <DialogContent className='max-h-screen max-w-3xl overflow-y-scroll'>
+        <DialogHeader className='mb-4'>
           <DialogTitle>{dialogTitle}</DialogTitle>
           <DialogDescription>{dialogDescription}</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form id="ticket-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <form id='ticket-form' onSubmit={form.handleSubmit(onSubmit)} className='space-y-6'>
+            <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
               <FormField
                 control={form.control}
-                name="title"
+                name='title'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Title</FormLabel>
                     <FormControl>
-                      <Input placeholder="Ticket title" {...field} />
+                      <Input placeholder='Ticket title' {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -375,21 +375,21 @@ export default function TicketFormDialog({
 
               <FormField
                 control={form.control}
-                name="type"
+                name='type'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Type</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger className="[&>span]:flex [&>span]:items-center [&>span]:gap-2 [&>span_svg]:shrink-0 [&>span_svg]:text-muted-foreground/80">
-                          <SelectValue placeholder="Select type" />
+                        <SelectTrigger className='[&>span]:flex [&>span]:items-center [&>span]:gap-2 [&>span_svg]:shrink-0 [&>span_svg]:text-muted-foreground/80'>
+                          <SelectValue placeholder='Select type' />
                         </SelectTrigger>
                       </FormControl>
-                      <SelectContent className="[&_*[role=option]>span>svg]:shrink-0 [&_*[role=option]>span>svg]:text-muted-foreground/80 [&_*[role=option]>span]:flex [&_*[role=option]>span]:gap-2">
+                      <SelectContent className='[&_*[role=option]>span>svg]:shrink-0 [&_*[role=option]>span>svg]:text-muted-foreground/80 [&_*[role=option]>span]:flex [&_*[role=option]>span]:gap-2'>
                         {Object.values(TicketType).map((type) => (
                           <SelectItem key={type} value={type}>
                             {TicketTypeIcons[type]}
-                            <span className="truncate">{type.replace(/_/g, ' ')}</span>
+                            <span className='truncate'>{type.replace(/_/g, ' ')}</span>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -402,14 +402,14 @@ export default function TicketFormDialog({
 
             <FormField
               control={form.control}
-              name="description"
+              name='description'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Description</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Detailed description of the issue"
-                      className="min-h-[100px]"
+                      placeholder='Detailed description of the issue'
+                      className='min-h-[100px]'
                       {...field}
                     />
                   </FormControl>
@@ -418,35 +418,35 @@ export default function TicketFormDialog({
               )}
             />
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className='grid grid-cols-1 gap-4 md:grid-cols-3'>
               <FormField
                 control={form.control}
-                name="contactId"
+                name='contactId'
                 render={({ field }) => (
-                  <FormItem className="flex flex-col">
+                  <FormItem className='flex flex-col'>
                     <FormLabel>
                       Customer
-                      <span className="ml-1 text-destructive">*</span>
+                      <span className='ml-1 text-destructive'>*</span>
                     </FormLabel>
                     <FormControl>
                       <RecordPicker
-                        entityDefinitionId="contact"
+                        entityDefinitionId='contact'
                         value={field.value ? [toRecordId('contact', field.value)] : []}
                         onChange={(recordIds: RecordId[]) =>
                           field.onChange(recordIds[0] ? getInstanceId(recordIds[0]) : '')
                         }
                         multi={false}
-                        placeholder="Search for a customer..."
-                        emptyLabel="Select customer">
+                        placeholder='Search for a customer...'
+                        emptyLabel='Select customer'>
                         <Button
-                          variant="outline"
-                          role="combobox"
+                          variant='outline'
+                          role='combobox'
                           loading={isLoadingContact}
-                          className="w-full justify-between border-input focus-visible:ring-1 focus-visible:ring-blue-500 bg-background px-3 font-normal">
+                          className='w-full justify-between border-input focus-visible:ring-1 focus-visible:ring-blue-500 bg-background px-3 font-normal'>
                           <span className={cn(!field.value && 'text-muted-foreground', 'truncate')}>
                             {contactDisplayName || (field.value ? 'Loading...' : 'Select customer')}
                           </span>
-                          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          <ChevronDown className='ml-2 h-4 w-4 shrink-0 opacity-50' />
                         </Button>
                       </RecordPicker>
                     </FormControl>
@@ -457,22 +457,22 @@ export default function TicketFormDialog({
 
               <FormField
                 control={form.control}
-                name="priority"
+                name='priority'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Priority</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger className="[&>span]:flex [&>span]:items-center [&>span]:gap-2 [&>span_svg]:shrink-0">
-                          <SelectValue placeholder="Select priority" />
+                        <SelectTrigger className='[&>span]:flex [&>span]:items-center [&>span]:gap-2 [&>span_svg]:shrink-0'>
+                          <SelectValue placeholder='Select priority' />
                         </SelectTrigger>
                       </FormControl>
-                      <SelectContent className="[&_*[role=option]>span>svg]:shrink-0 [&_*[role=option]>span>svg]:text-muted-foreground/80 [&_*[role=option]>span]:end-2 [&_*[role=option]>span]:start-auto [&_*[role=option]>span]:flex [&_*[role=option]>span]:items-center [&_*[role=option]>span]:gap-2 [&_*[role=option]]:pe-8 [&_*[role=option]]:ps-2">
+                      <SelectContent className='[&_*[role=option]>span>svg]:shrink-0 [&_*[role=option]>span>svg]:text-muted-foreground/80 [&_*[role=option]>span]:end-2 [&_*[role=option]>span]:start-auto [&_*[role=option]>span]:flex [&_*[role=option]>span]:items-center [&_*[role=option]>span]:gap-2 [&_*[role=option]]:pe-8 [&_*[role=option]]:ps-2'>
                         {Object.values(TicketPriority).map((priority) => (
                           <SelectItem key={priority} value={priority}>
-                            <span className="flex items-center gap-2">
+                            <span className='flex items-center gap-2'>
                               <StatusDot className={TicketPriorityColors[priority]} />
-                              <span className="truncate">{priority}</span>
+                              <span className='truncate'>{priority}</span>
                             </span>
                           </SelectItem>
                         ))}
@@ -485,20 +485,20 @@ export default function TicketFormDialog({
 
               <FormField
                 control={form.control}
-                name="assignedToId"
+                name='assignedToId'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Assign To</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Unassigned" />
+                          <SelectValue placeholder='Unassigned' />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="unassigned">Unassigned</SelectItem>
+                        <SelectItem value='unassigned'>Unassigned</SelectItem>
                         {agentsLoading ? (
-                          <SelectItem value="loading" disabled>
+                          <SelectItem value='loading' disabled>
                             Loading agents...
                           </SelectItem>
                         ) : (
@@ -516,27 +516,27 @@ export default function TicketFormDialog({
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
               <FormField
                 control={form.control}
-                name="dueDate"
+                name='dueDate'
                 render={({ field }) => (
-                  <FormItem className="flex flex-col">
+                  <FormItem className='flex flex-col'>
                     <FormLabel>Due Date (Optional)</FormLabel>
                     <Popover>
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button
-                            variant="outline"
+                            variant='outline'
                             className={`w-full pl-3 text-left font-normal focus-visible:ring-1 focus-visible:ring-blue-500 ${!field.value ? 'text-muted-foreground' : ''}`}>
                             {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            <CalendarIcon className='ml-auto h-4 w-4 opacity-50' />
                           </Button>
                         </FormControl>
                       </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
+                      <PopoverContent className='w-auto p-0' align='start'>
                         <Calendar
-                          mode="single"
+                          mode='single'
                           selected={field.value}
                           onSelect={field.onChange}
                           disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
@@ -551,19 +551,19 @@ export default function TicketFormDialog({
 
               <FormField
                 control={form.control}
-                name="parentTicketId"
+                name='parentTicketId'
                 render={({ field }) => (
-                  <FormItem className="flex flex-col">
+                  <FormItem className='flex flex-col'>
                     <FormLabel>Parent Ticket (Optional)</FormLabel>
                     <FormControl>
                       <MultiRelationInput
-                        entityDefinitionId="ticket"
+                        entityDefinitionId='ticket'
                         value={field.value ? [toRecordId('ticket', field.value)] : []}
                         onChange={(recordIds: RecordId[]) =>
                           field.onChange(recordIds[0] ? getInstanceId(recordIds[0]) : '')
                         }
                         excludeIds={ticket?.id ? [ticket.id] : []}
-                        placeholder="No parent ticket"
+                        placeholder='No parent ticket'
                         multi={false}
                       />
                     </FormControl>
@@ -575,8 +575,8 @@ export default function TicketFormDialog({
 
             {/* Conditional form sections based on ticket type */}
             {currentType !== TicketType.GENERAL && (
-              <div className="rounded-md border p-4">
-                <h3 className="mb-4 text-lg font-medium">
+              <div className='rounded-md border p-4'>
+                <h3 className='mb-4 text-lg font-medium'>
                   {(currentType + '').replace(/_/g, ' ')} Details
                 </h3>
 
@@ -603,18 +603,18 @@ export default function TicketFormDialog({
         </Form>
 
         <DialogFooter>
-          <Button type="button" size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+          <Button type='button' size='sm' variant='ghost' onClick={() => onOpenChange(false)}>
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
           <Button
-            type="submit"
-            size="sm"
-            form="ticket-form"
-            variant="outline"
+            type='submit'
+            size='sm'
+            form='ticket-form'
+            variant='outline'
             loading={isPending}
             loadingText={isEditing ? 'Updating...' : 'Creating...'}>
             {isEditing ? 'Update Ticket' : 'Create Ticket'}{' '}
-            <KbdSubmit variant="outline" size="sm" />
+            <KbdSubmit variant='outline' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

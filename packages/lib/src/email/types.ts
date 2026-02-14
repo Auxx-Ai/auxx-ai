@@ -180,4 +180,3 @@ export interface DeliveryEvent {
   /** Provider-specific data */
   raw?: unknown
 }
-

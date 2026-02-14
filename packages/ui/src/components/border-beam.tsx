@@ -1,7 +1,7 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { motion, type MotionStyle, type Transition } from 'motion/react'
+import { type MotionStyle, motion, type Transition } from 'motion/react'
 
 interface BorderBeamProps {
   /**
@@ -65,7 +65,7 @@ export const BorderBeam = ({
 }: BorderBeamProps) => {
   return (
     <div
-      className="pointer-events-none absolute inset-0 rounded-[inherit] border-transparent [mask-clip:padding-box,border-box] [mask-composite:intersect] [mask-image:linear-gradient(transparent,transparent),linear-gradient(#000,#000)] border-(length:--border-beam-width)"
+      className='pointer-events-none absolute inset-0 rounded-[inherit] border-transparent [mask-clip:padding-box,border-box] [mask-composite:intersect] [mask-image:linear-gradient(transparent,transparent),linear-gradient(#000,#000)] border-(length:--border-beam-width)'
       style={
         {
           '--border-beam-width': `${borderWidth}px`,

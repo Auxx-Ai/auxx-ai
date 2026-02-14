@@ -1,8 +1,8 @@
 // packages/database/src/db/schema/oauth-access-token.ts
 // OAuth access and refresh tokens for OIDC Provider
 
-import { pgTable, text, timestamp, type AnyPgColumn } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, pgTable, text, timestamp } from './_shared'
 import { User } from './user'
 
 /** OAuth access and refresh tokens */

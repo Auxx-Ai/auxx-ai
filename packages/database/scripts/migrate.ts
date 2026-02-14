@@ -1,10 +1,10 @@
 // packages/database/scripts/migrate.ts
 import 'dotenv/config'
-import { migrate } from 'drizzle-orm/node-postgres/migrator'
-import { drizzle } from 'drizzle-orm/node-postgres'
-import pg from 'pg'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { drizzle } from 'drizzle-orm/node-postgres'
+import { migrate } from 'drizzle-orm/node-postgres/migrator'
+import pg from 'pg'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)

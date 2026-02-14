@@ -2,46 +2,46 @@
 
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { format, formatDistanceToNow } from 'date-fns'
-import {
-  Download,
-  Trash2,
-  MoreHorizontal,
-  Calendar,
-  Database,
-  FileText,
-  Folder,
-} from 'lucide-react'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { formatBytes } from '@auxx/utils/file'
-import { getFileIconId } from './utils/file-icon'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { getStandardFileType } from './utils/file-type'
-import type { FileItem } from './files-store'
-import { useConfirm } from '~/hooks/use-confirm'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { Tooltip } from '~/components/global/tooltip'
 import { Input } from '@auxx/ui/components/input'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { api } from '~/trpc/react'
-import { useFileSystemStore } from './files-store'
-import { AttachmentPreview } from '../attachments/attachment-preview'
+import { formatBytes } from '@auxx/utils/file'
+import { format, formatDistanceToNow } from 'date-fns'
+import {
+  Calendar,
+  Database,
+  Download,
+  FileText,
+  Folder,
+  MoreHorizontal,
+  Trash2,
+} from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
+import { Tooltip } from '~/components/global/tooltip'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
+import { api } from '~/trpc/react'
+import { AttachmentPreview } from '../attachments/attachment-preview'
+import type { FileItem } from './files-store'
+import { useFileSystemStore } from './files-store'
+import { getFileIconId } from './utils/file-icon'
+import { getStandardFileType } from './utils/file-type'
 
 /**
  * Props for the FileDetailDrawer component
@@ -56,7 +56,7 @@ interface FileDetailDrawerProps {
  * Keyboard shortcut component
  */
 const KeyboardShortcut = ({ shortcut }: { shortcut: string }) => (
-  <span className="ml-auto pl-2 text-xs text-muted-foreground">{shortcut}</span>
+  <span className='ml-auto pl-2 text-xs text-muted-foreground'>{shortcut}</span>
 )
 
 /**
@@ -263,17 +263,17 @@ export function FileDetailDrawer({ file, onOpenChange, setSelectedFile }: FileDe
         maxWidth={600}
         title={file.name || 'File'}>
         {/* Content */}
-        <div className="flex-1 overflow-y-auto h-full flex flex-col rounded-t-xl">
+        <div className='flex-1 overflow-y-auto h-full flex flex-col rounded-t-xl'>
           <DrawerHeader
-            icon={<EntityIcon iconId={iconId} color={color} className="size-6" />}
+            icon={<EntityIcon iconId={iconId} color={color} className='size-6' />}
             title={
               <Input
-                id="title"
+                id='title'
                 value={editingName}
                 onChange={(e) => setEditingName(e.target.value)}
                 onBlur={handleNameBlur}
                 onKeyDown={handleNameKeyDown}
-                placeholder="Enter name"
+                placeholder='Enter name'
                 disabled={isRenaming || renameItem.isPending}
                 className={cn(
                   'mr-2 h-7 min-w-0 w-full appearance-none rounded-md border bg-transparent px-1 outline-none',
@@ -287,15 +287,15 @@ export function FileDetailDrawer({ file, onOpenChange, setSelectedFile }: FileDe
             actions={
               <>
                 {file.isUploading && file.status && (
-                  <Badge variant="secondary" className="text-xs capitalize mr-2">
+                  <Badge variant='secondary' className='text-xs capitalize mr-2'>
                     {file.status}
                   </Badge>
                 )}
-                <Tooltip content="Download">
+                <Tooltip content='Download'>
                   <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="rounded-full"
+                    variant='ghost'
+                    size='icon-sm'
+                    className='rounded-full'
                     onClick={handleDownload}
                     disabled={file.isUploading || isDownloadLoading}>
                     <Download />
@@ -304,11 +304,11 @@ export function FileDetailDrawer({ file, onOpenChange, setSelectedFile }: FileDe
 
                 <DropdownMenu modal={false}>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" className="rounded-full">
+                    <Button variant='ghost' size='icon-sm' className='rounded-full'>
                       <MoreHorizontal />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuContent align='end' className='w-48'>
                     <DropdownMenuItem
                       onClick={handleDownload}
                       disabled={file.isUploading || isDownloadLoading}>
@@ -319,10 +319,10 @@ export function FileDetailDrawer({ file, onOpenChange, setSelectedFile }: FileDe
                     <DropdownMenuItem
                       onClick={handleDelete}
                       disabled={file.isUploading}
-                      variant="destructive">
+                      variant='destructive'>
                       <Trash2 />
                       Delete
-                      <KeyboardShortcut shortcut="Del" />
+                      <KeyboardShortcut shortcut='Del' />
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -332,57 +332,57 @@ export function FileDetailDrawer({ file, onOpenChange, setSelectedFile }: FileDe
           />
 
           {/* Metrics */}
-          <div className="grid grid-cols-2 border-b bg-background">
+          <div className='grid grid-cols-2 border-b bg-background'>
             {/* File Size */}
-            <div className="border-r border-b">
-              <CardHeader className="pb-2 pt-3">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
+            <div className='border-r border-b'>
+              <CardHeader className='pb-2 pt-3'>
+                <CardTitle className='text-sm font-medium text-muted-foreground'>
                   File Size
                 </CardTitle>
               </CardHeader>
-              <CardContent className="pb-3">
-                <div className="flex items-center gap-2">
-                  <Database className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-lg font-semibold">{formatBytes(file.displaySize)}</span>
+              <CardContent className='pb-3'>
+                <div className='flex items-center gap-2'>
+                  <Database className='h-4 w-4 text-muted-foreground' />
+                  <span className='text-lg font-semibold'>{formatBytes(file.displaySize)}</span>
                 </div>
               </CardContent>
             </div>
 
             {/* File Type */}
-            <div className="border-b">
-              <CardHeader className="pb-2 pt-3">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
+            <div className='border-b'>
+              <CardHeader className='pb-2 pt-3'>
+                <CardTitle className='text-sm font-medium text-muted-foreground'>
                   File Type
                 </CardTitle>
               </CardHeader>
-              <CardContent className="pb-3">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-lg font-semibold">
+              <CardContent className='pb-3'>
+                <div className='flex items-center gap-2'>
+                  <FileText className='h-4 w-4 text-muted-foreground' />
+                  <span className='text-lg font-semibold'>
                     {getStandardFileType(file.mimeType || undefined, file.ext || undefined)}
                   </span>
                 </div>
                 {file.mimeType && (
-                  <p className="text-xs text-muted-foreground mt-1">{file.mimeType}</p>
+                  <p className='text-xs text-muted-foreground mt-1'>{file.mimeType}</p>
                 )}
               </CardContent>
             </div>
 
             {/* Created Date */}
-            <div className="border-r">
-              <CardHeader className="pb-2 pt-3">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Created</CardTitle>
+            <div className='border-r'>
+              <CardHeader className='pb-2 pt-3'>
+                <CardTitle className='text-sm font-medium text-muted-foreground'>Created</CardTitle>
               </CardHeader>
-              <CardContent className="pb-3">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
+              <CardContent className='pb-3'>
+                <div className='flex items-center gap-2'>
+                  <Calendar className='h-4 w-4 text-muted-foreground' />
                   <div>
-                    <div className="text-sm font-medium">
+                    <div className='text-sm font-medium'>
                       {formatDistanceToNow(new Date(file.createdAt), {
                         addSuffix: true,
                       })}
                     </div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className='text-xs text-muted-foreground'>
                       {format(new Date(file.createdAt), 'MMM d, yyyy HH:mm')}
                     </div>
                   </div>
@@ -392,21 +392,21 @@ export function FileDetailDrawer({ file, onOpenChange, setSelectedFile }: FileDe
 
             {/* Modified Date */}
             <div>
-              <CardHeader className="pb-2 pt-3">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
+              <CardHeader className='pb-2 pt-3'>
+                <CardTitle className='text-sm font-medium text-muted-foreground'>
                   Modified
                 </CardTitle>
               </CardHeader>
-              <CardContent className="pb-3">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
+              <CardContent className='pb-3'>
+                <div className='flex items-center gap-2'>
+                  <Calendar className='h-4 w-4 text-muted-foreground' />
                   <div>
-                    <div className="text-sm font-medium">
+                    <div className='text-sm font-medium'>
                       {formatDistanceToNow(new Date(file.updatedAt), {
                         addSuffix: true,
                       })}
                     </div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className='text-xs text-muted-foreground'>
                       {format(new Date(file.updatedAt), 'MMM d, yyyy HH:mm')}
                     </div>
                   </div>
@@ -417,48 +417,48 @@ export function FileDetailDrawer({ file, onOpenChange, setSelectedFile }: FileDe
 
           {/* Tabs */}
           <Tabs
-            defaultValue="details"
-            className="flex-1 flex flex-col h-full bg-secondary/20 backdrop-blur-sm rounded-b-xl">
-            <TabsList variant="outline">
-              <TabsTrigger value="details" variant="outline" size="sm">
+            defaultValue='details'
+            className='flex-1 flex flex-col h-full bg-secondary/20 backdrop-blur-sm rounded-b-xl'>
+            <TabsList variant='outline'>
+              <TabsTrigger value='details' variant='outline' size='sm'>
                 <FileText />
                 Details
               </TabsTrigger>
             </TabsList>
 
             {/* Details Tab */}
-            <TabsContent value="details" className="flex-1 flex flex-col h-full rounded-b-xl">
-              <div className="flex-1 p-3">
+            <TabsContent value='details' className='flex-1 flex flex-col h-full rounded-b-xl'>
+              <div className='flex-1 p-3'>
                 {/* Preview Section */}
                 <div>
-                  <h4 className="text-sm font-medium mb-2">Preview</h4>
+                  <h4 className='text-sm font-medium mb-2'>Preview</h4>
                   <AttachmentPreview
-                    type="file"
+                    type='file'
                     id={file.id}
-                    version="current"
-                    className="h-64"
+                    version='current'
+                    className='h-64'
                     interactive
                   />
                 </div>
               </div>
-              <div className="border-t bg-background/50 rounded-b-xl">
+              <div className='border-t bg-background/50 rounded-b-xl'>
                 <CardHeader>
-                  <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
-                    <Folder className="size-4" />
-                    <div className="text-xs font-semibold uppercase ">Location</div>
+                  <CardTitle className='text-sm font-medium flex items-center gap-2 text-muted-foreground'>
+                    <Folder className='size-4' />
+                    <div className='text-xs font-semibold uppercase '>Location</div>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Path:</span>
-                      <span className="font-medium truncate" title={file.path || '/'}>
+                  <div className='space-y-2 text-sm'>
+                    <div className='flex justify-between gap-4'>
+                      <span className='text-muted-foreground'>Path:</span>
+                      <span className='font-medium truncate' title={file.path || '/'}>
                         {file.path || '/'}
                       </span>
                     </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">ID:</span>
-                      <span className="font-medium truncate" title={file.id}>
+                    <div className='flex justify-between gap-4'>
+                      <span className='text-muted-foreground'>ID:</span>
+                      <span className='font-medium truncate' title={file.id}>
                         {file.id}
                       </span>
                     </div>

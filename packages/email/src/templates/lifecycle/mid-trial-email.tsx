@@ -1,6 +1,6 @@
 // packages/email/src/templates/lifecycle/mid-trial-email.tsx
 import { Container, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -132,7 +132,7 @@ export async function MidTrialEmail({
         <Text>Want to maximize your remaining trial time? Our team is here to help!</Text>
 
         <div style={{ textAlign: 'center', margin: '24px 0' }}>
-          <EmailButton href={scheduleCallUrl} label="Schedule a Quick Demo" />
+          <EmailButton href={scheduleCallUrl} label='Schedule a Quick Demo' />
           <Text style={{ margin: '12px 0', fontSize: '14px', color: '#64748b' }}>or</Text>
           <a href={dashboardUrl} style={{ color: '#0ea5e9', textDecoration: 'none' }}>
             Continue to App →

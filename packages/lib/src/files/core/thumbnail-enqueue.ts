@@ -4,7 +4,7 @@
 import { database as db, schema } from '@auxx/database'
 import { and, eq, isNull } from 'drizzle-orm'
 import { getQueue, Queues } from '../../jobs/queues'
-import type { ThumbnailSource, ThumbnailOptions, PresetKey } from './thumbnail-types'
+import type { PresetKey, ThumbnailOptions, ThumbnailSource } from './thumbnail-types'
 import { THUMBNAIL_PRESETS } from './thumbnail-types'
 
 export async function enqueueEnsureThumbnail(params: {
@@ -12,7 +12,10 @@ export async function enqueueEnsureThumbnail(params: {
   userId: string
   source: ThumbnailSource
   opts: ThumbnailOptions
-}): Promise<{ status: 'queued'; jobId: string } | { status: 'ready'; assetId: string; storageLocationId: string }>{
+}): Promise<
+  | { status: 'queued'; jobId: string }
+  | { status: 'ready'; assetId: string; storageLocationId: string }
+> {
   const { organizationId, userId, source, opts } = params
 
   const preset = (opts.preset ?? 'avatar-64') as PresetKey
@@ -36,7 +39,11 @@ export async function enqueueEnsureThumbnail(params: {
     )
     .limit(1)
   if (existing?.storageLocationId) {
-    return { status: 'ready', assetId: existing.assetId!, storageLocationId: existing.storageLocationId }
+    return {
+      status: 'ready',
+      assetId: existing.assetId!,
+      storageLocationId: existing.storageLocationId,
+    }
   }
 
   const key = makeKey(versionId, preset, opts)
@@ -72,7 +79,12 @@ async function resolveVersion(
       const [asset] = await db
         .select()
         .from(schema.MediaAsset)
-        .where(and(eq(schema.MediaAsset.id, source.assetId), eq(schema.MediaAsset.organizationId, organizationId)))
+        .where(
+          and(
+            eq(schema.MediaAsset.id, source.assetId),
+            eq(schema.MediaAsset.organizationId, organizationId)
+          )
+        )
         .limit(1)
       if (!asset) throw new Error(`Asset not found: ${source.assetId}`)
       const versionId = source.assetVersionId ?? asset.currentVersionId
@@ -83,7 +95,12 @@ async function resolveVersion(
       const [file] = await db
         .select()
         .from(schema.FolderFile)
-        .where(and(eq(schema.FolderFile.id, source.fileId), eq(schema.FolderFile.organizationId, organizationId)))
+        .where(
+          and(
+            eq(schema.FolderFile.id, source.fileId),
+            eq(schema.FolderFile.organizationId, organizationId)
+          )
+        )
         .limit(1)
       if (!file || !file.currentVersionId) throw new Error('File not found or missing version')
       const versionId = source.fileVersionId ?? file.currentVersionId

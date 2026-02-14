@@ -2,19 +2,18 @@
 
 'use client'
 
-import { useEffect } from 'react'
-import { useForm } from 'react-hook-form'
-import { api } from '~/trpc/react'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import { z } from 'zod'
+import { BaseType } from '@auxx/lib/workflow-engine/types'
 import { Button } from '@auxx/ui/components/button'
 import { Form } from '@auxx/ui/components/form'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Hash } from 'lucide-react'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { useEffect } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
-import { BaseType } from '@auxx/lib/workflow-engine/types'
+import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { api } from '~/trpc/react'
 
 const formSchema = z.object({
   prefix: z.string().max(10).optional(),
@@ -170,24 +169,22 @@ export default function TicketNumberingSettings() {
   }
 
   return (
-    <div className="container mx-auto max-w-2xl overflow-y-auto pb-10 pt-4">
+    <div className='container mx-auto max-w-2xl overflow-y-auto pb-10 pt-4'>
       {/* Title Header */}
-      <div className="mb-6 space-y-1">
-        <div className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
-          <Hash className="size-4" /> Ticket Numbering
+      <div className='mb-6 space-y-1'>
+        <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
+          <Hash className='size-4' /> Ticket Numbering
         </div>
-        <p className="text-sm text-muted-foreground">
-          Configure how ticket numbers are generated.
-        </p>
+        <p className='text-sm text-muted-foreground'>Configure how ticket numbers are generated.</p>
       </div>
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
-          <VarEditorField className="p-0 [&_[data-slot=field-row-label]]:w-60">
+          <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-60'>
             {/* Prefix Settings */}
             <VarEditorFieldRow
-              title="Use Prefix"
-              description="Enable to use a prefix for ticket numbers (e.g., SUP-0001)"
+              title='Use Prefix'
+              description='Enable to use a prefix for ticket numbers (e.g., SUP-0001)'
               type={BaseType.BOOLEAN}
               showIcon>
               <ConstantInputAdapter
@@ -201,21 +198,21 @@ export default function TicketNumberingSettings() {
             {form.watch('usePrefix') && (
               <>
                 <VarEditorFieldRow
-                  title="Prefix Text"
-                  description="Short text to prefix the ticket number (e.g., SUP)"
+                  title='Prefix Text'
+                  description='Short text to prefix the ticket number (e.g., SUP)'
                   type={BaseType.STRING}
                   showIcon>
                   <ConstantInputAdapter
                     value={form.watch('prefix') ?? ''}
                     onChange={(_, val) => form.setValue('prefix', val)}
                     varType={BaseType.STRING}
-                    placeholder="SUP"
+                    placeholder='SUP'
                   />
                 </VarEditorFieldRow>
 
                 <VarEditorFieldRow
-                  title="Include Date"
-                  description="Add date component to prefix (e.g., SUP2403-0001)"
+                  title='Include Date'
+                  description='Add date component to prefix (e.g., SUP2403-0001)'
                   type={BaseType.BOOLEAN}
                   showIcon>
                   <ConstantInputAdapter
@@ -228,8 +225,8 @@ export default function TicketNumberingSettings() {
 
                 {form.watch('useDateInPrefix') && (
                   <VarEditorFieldRow
-                    title="Date Format"
-                    description="Format of the date component in the prefix"
+                    title='Date Format'
+                    description='Format of the date component in the prefix'
                     type={BaseType.ENUM}
                     showIcon>
                     <ConstantInputAdapter
@@ -245,8 +242,8 @@ export default function TicketNumberingSettings() {
 
             {/* Suffix Settings */}
             <VarEditorFieldRow
-              title="Use Suffix"
-              description="Enable to use a suffix for ticket numbers (e.g., 0001-SUP)"
+              title='Use Suffix'
+              description='Enable to use a suffix for ticket numbers (e.g., 0001-SUP)'
               type={BaseType.BOOLEAN}
               showIcon>
               <ConstantInputAdapter
@@ -259,73 +256,73 @@ export default function TicketNumberingSettings() {
 
             {form.watch('useSuffix') && (
               <VarEditorFieldRow
-                title="Suffix Text"
-                description="Text to append after the ticket number"
+                title='Suffix Text'
+                description='Text to append after the ticket number'
                 type={BaseType.STRING}
                 showIcon>
                 <ConstantInputAdapter
                   value={form.watch('suffix') ?? ''}
                   onChange={(_, val) => form.setValue('suffix', val)}
                   varType={BaseType.STRING}
-                  placeholder="SUP"
+                  placeholder='SUP'
                 />
               </VarEditorFieldRow>
             )}
 
             {/* Number Format */}
             <VarEditorFieldRow
-              title="Padding Length"
-              description="Number of digits to pad the numeric part (e.g., 4 for 0001)"
+              title='Padding Length'
+              description='Number of digits to pad the numeric part (e.g., 4 for 0001)'
               type={BaseType.NUMBER}
               showIcon>
               <ConstantInputAdapter
                 value={form.watch('paddingLength')}
                 onChange={(_, val) => form.setValue('paddingLength', val)}
                 varType={BaseType.NUMBER}
-                placeholder="4"
+                placeholder='4'
               />
             </VarEditorFieldRow>
 
             <VarEditorFieldRow
-              title="Separator"
-              description="Character(s) to separate parts (e.g., -, ., _)"
+              title='Separator'
+              description='Character(s) to separate parts (e.g., -, ., _)'
               type={BaseType.STRING}
               showIcon>
               <ConstantInputAdapter
                 value={form.watch('separator')}
                 onChange={(_, val) => form.setValue('separator', val)}
                 varType={BaseType.STRING}
-                placeholder="-"
+                placeholder='-'
               />
             </VarEditorFieldRow>
           </VarEditorField>
 
           {/* Preview Section */}
-          <div className="mt-6 rounded-xl border bg-primary-100/30 p-4">
-            <div className="mb-2 text-sm font-medium">Preview</div>
-            <div className="grid grid-cols-2 gap-4">
+          <div className='mt-6 rounded-xl border bg-primary-100/30 p-4'>
+            <div className='mb-2 text-sm font-medium'>Preview</div>
+            <div className='grid grid-cols-2 gap-4'>
               <div>
-                <div className="text-xs text-muted-foreground">Current sequence</div>
-                <div className="text-lg font-bold">{currentNumber}</div>
+                <div className='text-xs text-muted-foreground'>Current sequence</div>
+                <div className='text-lg font-bold'>{currentNumber}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground">Next ticket</div>
-                <div className="font-mono text-lg font-bold">{sampleSequence}</div>
+                <div className='text-xs text-muted-foreground'>Next ticket</div>
+                <div className='font-mono text-lg font-bold'>{sampleSequence}</div>
               </div>
             </div>
           </div>
 
           {/* Action Buttons */}
-          <div className="mt-6 flex justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => form.reset()}>
+          <div className='mt-6 flex justify-end gap-2'>
+            <Button type='button' variant='ghost' size='sm' onClick={() => form.reset()}>
               Reset
             </Button>
             <Button
-              type="submit"
-              size="sm"
-              variant="outline"
+              type='submit'
+              size='sm'
+              variant='outline'
               loading={updateSequence.isPending}
-              loadingText="Saving...">
+              loadingText='Saving...'>
               Save Settings
             </Button>
           </div>

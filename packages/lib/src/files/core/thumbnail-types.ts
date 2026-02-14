@@ -179,7 +179,7 @@ export const THUMBNAIL_PRESETS: Record<PresetKey, PresetConfig> = {
   // Attachment previews (PNG for quality)
   'attachment-preview': { w: 400, h: 400, fit: 'inside', format: 'png', quality: 100 },
   'attachment-thumb': { w: 150, h: 150, fit: 'cover', format: 'webp', quality: 85 },
-  
+
   // Comment attachment previews (WebP for efficiency)
   'comment-preview': { w: 200, h: 200, fit: 'cover', format: 'webp', quality: 85 },
   'comment-preview-large': { w: 400, h: 300, fit: 'inside', format: 'webp', quality: 90 },

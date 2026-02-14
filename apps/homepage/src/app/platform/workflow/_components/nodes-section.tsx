@@ -1,27 +1,27 @@
-import * as React from 'react'
-import { cn } from '~/lib/utils'
 import {
-  Send,
-  Code,
-  GitBranch,
-  Mail,
-  Variable,
-  Database,
-  Globe,
   Brain,
-  Search,
-  Repeat,
-  Play,
   Calendar,
   Clock,
-  List,
-  UserCheck,
-  Octagon,
-  StickyNote,
-  Webhook,
-  Tags,
+  Code,
+  Database,
   FileJson,
+  GitBranch,
+  Globe,
+  List,
+  Mail,
+  Octagon,
+  Play,
+  Repeat,
+  Search,
+  Send,
+  StickyNote,
+  Tags,
+  UserCheck,
+  Variable,
+  Webhook,
 } from 'lucide-react'
+import type * as React from 'react'
+import { cn } from '~/lib/utils'
 
 const nodes = [
   {
@@ -175,27 +175,27 @@ const nodes = [
 
 export default function NodesSection() {
   return (
-    <section id="ai-responses" className="relative border-foreground/10 border-b">
-      <div className="relative z-10 mx-auto max-w-6xl border-x px-3">
-        <div className="border-x">
-          <div className="bg-muted/50 @container py-24">
-            <div className="mx-auto mb-12 max-w-xl text-center">
-              <h2 className="text-balance text-3xl font-semibold md:text-4xl">
-                Build with <span className="text-muted-foreground">powerful</span> blocks.
+    <section id='ai-responses' className='relative border-foreground/10 border-b'>
+      <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
+        <div className='border-x'>
+          <div className='bg-muted/50 @container py-24'>
+            <div className='mx-auto mb-12 max-w-xl text-center'>
+              <h2 className='text-balance text-3xl font-semibold md:text-4xl'>
+                Build with <span className='text-muted-foreground'>powerful</span> blocks.
               </h2>
-              <p className="text-muted-foreground mb-6 mt-4 text-balance">
+              <p className='text-muted-foreground mb-6 mt-4 text-balance'>
                 Build powerful automation workflows with our comprehensive collection of nodes for
                 every use case.
               </p>
             </div>
 
-            <div className="mx-auto max-w-5xl px-6">
-              <div className="relative">
-                <PlusDecorator className="-translate-[calc(50%-0.5px)]" />
-                <PlusDecorator className="right-0 -translate-y-[calc(50%-0.5px)] translate-x-[calc(50%-0.5px)]" />
-                <PlusDecorator className="bottom-0 right-0 translate-x-[calc(50%-0.5px)] translate-y-[calc(50%-0.5px)]" />
-                <PlusDecorator className="bottom-0 -translate-x-[calc(50%-0.5px)] translate-y-[calc(50%-0.5px)]" />
-                <div className="@md:grid-cols-2 @2xl:grid-cols-3 grid border overflow-hidden">
+            <div className='mx-auto max-w-5xl px-6'>
+              <div className='relative'>
+                <PlusDecorator className='-translate-[calc(50%-0.5px)]' />
+                <PlusDecorator className='right-0 -translate-y-[calc(50%-0.5px)] translate-x-[calc(50%-0.5px)]' />
+                <PlusDecorator className='bottom-0 right-0 translate-x-[calc(50%-0.5px)] translate-y-[calc(50%-0.5px)]' />
+                <PlusDecorator className='bottom-0 -translate-x-[calc(50%-0.5px)] translate-y-[calc(50%-0.5px)]' />
+                <div className='@md:grid-cols-2 @2xl:grid-cols-3 grid border overflow-hidden'>
                   {nodes.map((node) => (
                     <NodeCard
                       key={node.nodeType}
@@ -206,8 +206,8 @@ export default function NodesSection() {
                   ))}
                 </div>
               </div>
-              <div className="text-center max-w-lg mx-auto mt-10 mb-0">
-                <p className="text-muted-foreground text-balance max-w-5xl">
+              <div className='text-center max-w-lg mx-auto mt-10 mb-0'>
+                <p className='text-muted-foreground text-balance max-w-5xl'>
                   ...and many more nodes available
                 </p>
               </div>
@@ -229,14 +229,14 @@ const NodeCard = ({
   icon: React.ReactNode
 }) => {
   return (
-    <div className=" hover:z-10 relative p-6 border-r border-b -mr-px -mb-px transition-all">
-      <div className="bg-card ring-border-illustration flex size-8 items-center justify-center rounded-md shadow ring-1">
+    <div className=' hover:z-10 relative p-6 border-r border-b -mr-px -mb-px transition-all'>
+      <div className='bg-card ring-border-illustration flex size-8 items-center justify-center rounded-md shadow ring-1'>
         {icon}
       </div>
 
-      <div className="space-y-2 pt-6">
-        <h3 className="text-base font-medium">{title}</h3>
-        <p className="text-muted-foreground line-clamp-2">{description}</p>
+      <div className='space-y-2 pt-6'>
+        <h3 className='text-base font-medium'>{title}</h3>
+        <p className='text-muted-foreground line-clamp-2'>{description}</p>
       </div>
     </div>
   )

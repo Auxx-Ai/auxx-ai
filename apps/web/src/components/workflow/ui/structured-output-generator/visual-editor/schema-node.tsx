@@ -1,16 +1,17 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/visual-editor/schema-node.tsx
-import type { FC } from 'react'
-import React, { useMemo, useState, useCallback } from 'react'
-import { type Field, Type, JSON_SCHEMA_MAX_DEPTH, type StructuredField } from '../types'
+
+import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { getFieldType, getHasChildren } from '../utils'
-import { Separator } from '@auxx/ui/components/separator'
-import EditCard from './edit-card'
-import Card from './card'
-import { useVisualEditorStore } from './store'
+import type { FC } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import { useDebounceCallback } from 'usehooks-ts'
+import { type Field, JSON_SCHEMA_MAX_DEPTH, type StructuredField, Type } from '../types'
+import { getFieldType, getHasChildren } from '../utils'
 import AddField from './add-field'
+import Card from './card'
+import EditCard from './edit-card'
+import { useVisualEditorStore } from './store'
 
 type SchemaNodeProps = {
   name: string
@@ -113,7 +114,7 @@ const SchemaNode: FC<SchemaNodeProps> = ({
   }, [advancedEditing, isAddingNewField, setHoveringPropertyDebounced])
 
   return (
-    <div className="relative">
+    <div className='relative'>
       <div className={cn('relative z-10', indentPadding[depth])}>
         {depth > 0 && hasChildren && (
           <div
@@ -121,11 +122,11 @@ const SchemaNode: FC<SchemaNodeProps> = ({
               'flex items-center absolute top-0 w-5 h-7 px-0.5 z-10 bg-primary-100',
               indentLeft[depth - 1]
             )}>
-            <button onClick={handleExpand} className="py-0.5 text-tertiary hover:text-accent">
+            <button onClick={handleExpand} className='py-0.5 text-tertiary hover:text-accent'>
               {isExpanded ? (
-                <ChevronDown className="h-4 w-4" />
+                <ChevronDown className='h-4 w-4' />
               ) : (
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight className='h-4 w-4' />
               )}
             </button>
           </div>
@@ -154,7 +155,7 @@ const SchemaNode: FC<SchemaNodeProps> = ({
           indentLeft[depth]
         )}>
         <Separator
-          orientation="vertical"
+          orientation='vertical'
           className={cn('mx-0', isHovering ? 'bg-divider-deep' : 'bg-primary-200')}
         />
       </div>

@@ -2,23 +2,24 @@
 
 'use client'
 
-import React, { memo, useCallback } from 'react'
-import { produce } from 'immer'
-import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { InputGroup, InputGroupAddon } from '@auxx/ui/components/input-group'
-import { type KnowledgeRetrievalNodeData, type DatasetEntry } from './types'
-import { BasePanel } from '../../shared/base/base-panel'
+import { produce } from 'immer'
+import { Plus, Trash2 } from 'lucide-react'
+import type React from 'react'
+import { memo, useCallback } from 'react'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import Section from '~/components/workflow/ui/section'
-import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import {
   VarEditor,
   VarEditorField,
   VarEditorFieldRow,
 } from '~/components/workflow/ui/input-editor/var-editor'
-import { VAR_MODE, BaseType } from '~/components/workflow/types'
+import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import Section from '~/components/workflow/ui/section'
+import { BasePanel } from '../../shared/base/base-panel'
 import { getKnowledgeRetrievalOutputVariables } from './output-variables'
+import type { DatasetEntry, KnowledgeRetrievalNodeData } from './types'
 
 interface KnowledgeRetrievalPanelProps {
   nodeId: string
@@ -143,11 +144,11 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
     <BasePanel nodeId={nodeId} data={nodeData}>
       {/* Query Section */}
       <Section
-        title="Query"
+        title='Query'
         isRequired
         initialOpen
-        description="The text query to search for in datasets">
-        <VarEditorField className="">
+        description='The text query to search for in datasets'>
+        <VarEditorField className=''>
           <VarEditor
             nodeId={nodeId}
             value={nodeData.query}
@@ -155,8 +156,8 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
             varType={BaseType.STRING}
             allowedTypes={[BaseType.STRING]}
             mode={VAR_MODE.PICKER}
-            placeholder="Enter search query or select variable"
-            placeholderConstant="Enter search query..."
+            placeholder='Enter search query or select variable'
+            placeholderConstant='Enter search query...'
             allowConstant
             isConstantMode={nodeData.fieldModes?.['query'] ?? false}
           />
@@ -165,26 +166,26 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
 
       {/* Datasets Section */}
       <Section
-        title="Datasets"
-        description="Select one or more datasets to search across"
+        title='Datasets'
+        description='Select one or more datasets to search across'
         isRequired
         initialOpen
         actions={
           !isReadOnly && (
-            <Button variant="ghost" size="xs" onClick={handleAddDataset}>
+            <Button variant='ghost' size='xs' onClick={handleAddDataset}>
               <Plus /> Add
             </Button>
           )
         }>
-        <div className="space-y-4">
+        <div className='space-y-4'>
           {datasets.length > 0 && (
-            <div className="space-y-2">
+            <div className='space-y-2'>
               {datasets.map((entry, index) => {
                 const fieldKey = `datasets.${index}.datasetId`
                 const isConstantMode = nodeData.fieldModes?.[fieldKey] ?? true
 
                 return (
-                  <InputGroup key={index} className="flex items-center gap-2 ps-1 rounded-2xl">
+                  <InputGroup key={index} className='flex items-center gap-2 ps-1 rounded-2xl'>
                     <VarEditor
                       nodeId={nodeId}
                       value={entry.datasetId}
@@ -193,18 +194,18 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
                       fieldOptions={{ fieldReference: 'dataset' }}
                       allowedTypes={['dataset' as BaseType, BaseType.STRING]}
                       mode={VAR_MODE.PICKER}
-                      placeholder="Select dataset"
-                      placeholderConstant="Select dataset"
+                      placeholder='Select dataset'
+                      placeholderConstant='Select dataset'
                       allowConstant
                       hideClearButton
                       isConstantMode={isConstantMode}
                     />
 
                     {!isReadOnly && (
-                      <InputGroupAddon align="inline-end">
+                      <InputGroupAddon align='inline-end'>
                         <Button
-                          size="icon-xs"
-                          variant="destructive-hover"
+                          size='icon-xs'
+                          variant='destructive-hover'
                           onClick={() => handleRemoveDataset(index)}>
                           <Trash2 />
                         </Button>
@@ -217,7 +218,7 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
           )}
 
           {datasets.length === 0 && (
-            <div className="text-sm text-muted-foreground text-center py-4">
+            <div className='text-sm text-muted-foreground text-center py-4'>
               No datasets selected. Click the + button to add datasets to search.
             </div>
           )}
@@ -225,11 +226,11 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
       </Section>
 
       {/* Search Settings Section */}
-      <Section title="Search Settings" initialOpen={true}>
-        <VarEditorField className="p-0">
+      <Section title='Search Settings' initialOpen={true}>
+        <VarEditorField className='p-0'>
           <VarEditorFieldRow
-            title="Search Type"
-            description="Strategy for searching: hybrid combines vector and text search"
+            title='Search Type'
+            description='Strategy for searching: hybrid combines vector and text search'
             type={BaseType.ENUM}>
             <VarEditor
               nodeId={nodeId}
@@ -239,16 +240,16 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
               allowedTypes={[BaseType.ENUM, BaseType.STRING]}
               fieldOptions={{ enum: searchTypeOptions }}
               mode={VAR_MODE.PICKER}
-              placeholder="Select search type"
-              placeholderConstant="Select search type"
+              placeholder='Select search type'
+              placeholderConstant='Select search type'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['searchType'] ?? true}
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
-            title="Limit"
-            description="Maximum number of results to return (1-100)"
+            title='Limit'
+            description='Maximum number of results to return (1-100)'
             type={BaseType.NUMBER}>
             <VarEditor
               nodeId={nodeId}
@@ -257,16 +258,16 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
               varType={BaseType.NUMBER}
               allowedTypes={[BaseType.NUMBER]}
               mode={VAR_MODE.PICKER}
-              placeholder="20"
-              placeholderConstant="20"
+              placeholder='20'
+              placeholderConstant='20'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['limit'] ?? true}
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
-            title="Similarity Threshold"
-            description="Minimum similarity score for vector search (0.0-1.0)"
+            title='Similarity Threshold'
+            description='Minimum similarity score for vector search (0.0-1.0)'
             type={BaseType.NUMBER}>
             <VarEditor
               nodeId={nodeId}
@@ -275,8 +276,8 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
               varType={BaseType.NUMBER}
               allowedTypes={[BaseType.NUMBER]}
               mode={VAR_MODE.PICKER}
-              placeholder="0.7"
-              placeholderConstant="0.7"
+              placeholder='0.7'
+              placeholderConstant='0.7'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['similarityThreshold'] ?? true}
             />

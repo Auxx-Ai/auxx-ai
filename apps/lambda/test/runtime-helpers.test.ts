@@ -6,11 +6,11 @@
 
 import { assertEquals, assertExists } from 'jsr:@std/assert'
 import {
-  registerSettingsSchema,
-  getRegisteredSettingsSchema,
-  resetSettingsSchema,
-  injectServerRuntimeHelpers,
   cleanupServerRuntimeHelpers,
+  getRegisteredSettingsSchema,
+  injectServerRuntimeHelpers,
+  registerSettingsSchema,
+  resetSettingsSchema,
 } from '../src/runtime-helpers/index.ts'
 import type { RuntimeContext } from '../src/types.ts'
 

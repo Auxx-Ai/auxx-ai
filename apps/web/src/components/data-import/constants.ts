@@ -1,6 +1,6 @@
 // apps/web/src/components/data-import/constants.ts
 
-import { Upload, GitBranch, Search, Play } from 'lucide-react'
+import { GitBranch, Play, Search, Upload } from 'lucide-react'
 import type { ImportStep } from './types'
 
 /** Maximum file size: 20MB */

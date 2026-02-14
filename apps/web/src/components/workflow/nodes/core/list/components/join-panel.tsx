@@ -2,7 +2,9 @@
 
 'use client'
 
-import React, { useState } from 'react'
+import { BaseType } from '@auxx/lib/workflow-engine/client'
+import { Input } from '@auxx/ui/components/input'
+import { Label } from '@auxx/ui/components/label'
 import {
   Select,
   SelectContent,
@@ -10,13 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Input } from '@auxx/ui/components/input'
-import { Label } from '@auxx/ui/components/label'
-import { usePluckFieldResolver } from '../hooks/use-pluck-field-resolver'
-import type { ListNodeData } from '../types'
+import type React from 'react'
+import { useState } from 'react'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { VarTypeIcon } from '~/components/workflow/utils/icon-helper'
-import { BaseType } from '@auxx/lib/workflow-engine/client'
+import { usePluckFieldResolver } from '../hooks/use-pluck-field-resolver'
+import type { ListNodeData } from '../types'
 
 interface JoinPanelProps {
   config: ListNodeData
@@ -101,24 +102,24 @@ export const JoinPanel: React.FC<JoinPanelProps> = ({ config, onChange, isReadOn
   }
 
   return (
-    <VarEditorField className="p-0">
+    <VarEditorField className='p-0'>
       {/* Delimiter Selector */}
-      <div className="p-2 space-y-2">
-        <div className="flex gap-2">
+      <div className='p-2 space-y-2'>
+        <div className='flex gap-2'>
           <Select
             value={selectValue}
             onValueChange={handleDelimiterPresetChange}
             disabled={isReadOnly}>
-            <SelectTrigger className="w-40" size="sm">
+            <SelectTrigger className='w-40' size='sm'>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {DELIMITER_PRESETS.map((preset) => (
                 <SelectItem key={preset.value} value={preset.value}>
-                  <div className="flex items-center gap-2">
+                  <div className='flex items-center gap-2'>
                     <span>{preset.label}</span>
                     {preset.display && (
-                      <code className="text-xs bg-muted px-1 rounded">{preset.display}</code>
+                      <code className='text-xs bg-muted px-1 rounded'>{preset.display}</code>
                     )}
                   </div>
                 </SelectItem>
@@ -130,12 +131,12 @@ export const JoinPanel: React.FC<JoinPanelProps> = ({ config, onChange, isReadOn
           {isCustomMode && (
             <Input
               value={currentDelimiter}
-              size="sm"
-              variant="transparent"
+              size='sm'
+              variant='transparent'
               onChange={handleCustomDelimiterChange}
-              placeholder="Enter delimiter"
+              placeholder='Enter delimiter'
               disabled={isReadOnly}
-              className="flex-1"
+              className='flex-1'
             />
           )}
         </div>
@@ -143,22 +144,22 @@ export const JoinPanel: React.FC<JoinPanelProps> = ({ config, onChange, isReadOn
 
       {/* Field Selector (only for object arrays) */}
       {hasPluckableFields && joinableFields.length > 0 && (
-        <VarEditorFieldRow title="Field to Join" className="border-t">
+        <VarEditorFieldRow title='Field to Join' className='border-t'>
           <Select
             value={currentField || 'none'}
             onValueChange={handleFieldChange}
             disabled={isReadOnly}>
-            <SelectTrigger className="w-full" variant="transparent" size="xs">
-              <SelectValue placeholder="Use whole item" />
+            <SelectTrigger className='w-full' variant='transparent' size='xs'>
+              <SelectValue placeholder='Use whole item' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">
-                <span className="text-muted-foreground">Use whole item</span>
+              <SelectItem value='none'>
+                <span className='text-muted-foreground'>Use whole item</span>
               </SelectItem>
               {joinableFields.map((field) => (
                 <SelectItem key={field.id} value={field.id}>
-                  <div className="flex items-center gap-1.5">
-                    <VarTypeIcon type={field.type} className="size-3" />
+                  <div className='flex items-center gap-1.5'>
+                    <VarTypeIcon type={field.type} className='size-3' />
                     <span>{field.label}</span>
                   </div>
                 </SelectItem>
@@ -169,18 +170,18 @@ export const JoinPanel: React.FC<JoinPanelProps> = ({ config, onChange, isReadOn
       )}
 
       {/* Preview hint */}
-      <div className="px-3 py-2 border-t bg-muted/30">
-        <div className="text-xs text-muted-foreground">
+      <div className='px-3 py-2 border-t bg-muted/30'>
+        <div className='text-xs text-muted-foreground'>
           <div>
             Joins all items with "
-            <code className="bg-background px-1 rounded">
+            <code className='bg-background px-1 rounded'>
               {currentDelimiter === '\n' ? '\\n' : currentDelimiter}
             </code>
             "
             {currentField && (
               <span>
                 {' '}
-                using <span className="font-medium">{currentField}</span> field
+                using <span className='font-medium'>{currentField}</span> field
               </span>
             )}
           </div>

@@ -5,16 +5,16 @@
  * Uses createUnifiedOutputVariable pattern for consistency with other nodes
  */
 
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import {
   RESOURCE_FIELD_REGISTRY,
   RESOURCE_TABLE_MAP,
   type TableId,
 } from './registry/field-registry'
 import type { ResourceField } from './registry/field-types'
-import { BaseType } from './types'
 import { createRelationshipCollection } from './registry/relationship-utils'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
-import { toResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { BaseType } from './types'
 
 // Import types - these will resolve at runtime in the frontend
 type UnifiedVariable = any

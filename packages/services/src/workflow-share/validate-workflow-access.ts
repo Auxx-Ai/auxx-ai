@@ -1,9 +1,9 @@
 // packages/services/src/workflow-share/validate-workflow-access.ts
 
-import { ok, err, type Result } from 'neverthrow'
+import { err, ok, type Result } from 'neverthrow'
+import { verifyOrgMembership } from '../organization-members'
 import type { WorkflowShareError } from './errors'
 import type { SharedWorkflow } from './types'
-import { verifyOrgMembership } from '../organization-members'
 
 /**
  * Options for web access validation

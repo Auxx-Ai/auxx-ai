@@ -1,17 +1,17 @@
-import { database as db, schema, type Database } from '@auxx/database'
-import { eq, and, inArray, lt, or } from 'drizzle-orm'
+import { type Database, database as db, schema } from '@auxx/database'
+import { SYNC_STATUS } from '@auxx/database/enums'
+import type { SYNC_STATUS as SyncStatus } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
+import { and, eq, inArray, lt, or } from 'drizzle-orm'
+import type { IntegrationProviderType } from '../email/message-service'
 import { type MessageSyncFailedEvent, type MessageSyncPendingEvent, publisher } from '../events'
-import { getQueue, Queues } from '../jobs/queues'
 import {
   MONITOR_INITIAL_DELAY_MS,
   type MonitorMessageSyncJobData,
   type StartMessageSyncJobData,
   type SyncSingleIntegrationMessagesJobData,
 } from '../jobs'
-import { IntegrationProviderType } from '../email/message-service'
-import { SYNC_STATUS } from '@auxx/database/enums'
-import { type SYNC_STATUS as SyncStatus } from '@auxx/database/types'
+import { getQueue, Queues } from '../jobs/queues'
 
 const logger = createScopedLogger('lib:messages:sync-messages')
 type SyncInputProps = {
@@ -295,10 +295,7 @@ export class SyncMessages {
       })
       .from(schema.SyncJob)
       .where(
-        and(
-          eq(schema.SyncJob.id, syncJobId),
-          eq(schema.SyncJob.organizationId, organizationId)
-        )
+        and(eq(schema.SyncJob.id, syncJobId), eq(schema.SyncJob.organizationId, organizationId))
       )
       .limit(1)
 
@@ -358,7 +355,9 @@ export class SyncMessages {
       (r) => r.status === 'fulfilled' && r.value.cancelled
     ).length
 
-    logger.info(`Cancelled ${cancelledCount}/${childJobIds.length} BullMQ jobs for sync ${syncJobId}`)
+    logger.info(
+      `Cancelled ${cancelledCount}/${childJobIds.length} BullMQ jobs for sync ${syncJobId}`
+    )
 
     // 5. Publish cancellation event
     await publisher.publishLater({
@@ -470,7 +469,9 @@ export class SyncMessages {
     const childJobIds = staleJob.integrationSyncJobIds || []
 
     if (childJobIds.length > 0) {
-      logger.info(`Attempting to cancel ${childJobIds.length} BullMQ jobs for stale sync ${syncJobId}`)
+      logger.info(
+        `Attempting to cancel ${childJobIds.length} BullMQ jobs for stale sync ${syncJobId}`
+      )
 
       await Promise.allSettled(
         childJobIds.map(async (jobId) => {

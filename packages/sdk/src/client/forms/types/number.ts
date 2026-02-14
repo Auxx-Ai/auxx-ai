@@ -1,7 +1,7 @@
 // packages/sdk/src/client/forms/types/number.ts
 
 import { FormValue } from '../base.js'
-import type { SerializedFormValue, FormNumberMetadata } from '../types.js'
+import type { FormNumberMetadata, SerializedFormValue } from '../types.js'
 
 /**
  * Number field builder.

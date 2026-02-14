@@ -1,15 +1,16 @@
 // packages/lib/src/providers/google/messages/sync-messages.ts
-import { gmail_v1 } from 'googleapis'
+
 import { database as db, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
-import { UniversalThrottler, getGmailQuotaCost } from '../../../utils/rate-limiter'
+import type { gmail_v1 } from 'googleapis'
+import type { MessageData, MessageStorageService } from '../../../email/email-storage'
+import { getGmailQuotaCost, type UniversalThrottler } from '../../../utils/rate-limiter'
+import { isDefined } from '../../provider-utils'
 import { handleGmailError } from '../shared/error-handler'
 import { executeWithThrottle } from '../shared/utils'
-import { MessageStorageService, type MessageData } from '../../../email/email-storage'
-import { createScopedLogger } from '@auxx/logger'
-import { getMessagesBatch, type GetMessagesBatchInput } from './batch-fetch'
+import { type GetMessagesBatchInput, getMessagesBatch } from './batch-fetch'
 import { convertMessagesToMessageData } from './parse-message'
-import { isDefined } from '../../provider-utils'
 
 const logger = createScopedLogger('google-sync-messages')
 
@@ -174,7 +175,7 @@ async function syncViaHistory(
   userEmails: string[],
   accessToken: string
 ): Promise<{ messagesProcessed: number; newHistoryId: string }> {
-  let nextPageToken: string | undefined | null = undefined
+  let nextPageToken: string | undefined | null
   let highestHistoryId = BigInt(startHistoryId)
   let totalProcessed = 0
 
@@ -309,7 +310,7 @@ async function syncViaMessageList(
   accessToken: string
 ): Promise<{ messagesProcessed: number; newHistoryId: string }> {
   const query = since ? `after:${Math.floor(since.getTime() / 1000)}` : 'in:inbox'
-  let nextPageToken: string | undefined | null = undefined
+  let nextPageToken: string | undefined | null
   let highestHistoryId = BigInt(0)
   let totalProcessed = 0
 

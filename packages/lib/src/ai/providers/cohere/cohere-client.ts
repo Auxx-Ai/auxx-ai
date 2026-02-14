@@ -1,17 +1,17 @@
 // packages/lib/src/ai/providers/cohere/cohere-client.ts
 
 import { CohereClient as CohereAPIClient } from 'cohere-ai'
+import type { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
+import { DEFAULT_CLIENT_CONFIG } from '../../clients/base/types'
 import { ProviderClient } from '../base/provider-client'
 import {
-  ValidationResult,
-  ConnectionTestResult,
-  ProviderCredentials,
+  type ConnectionTestResult,
   CredentialValidationError,
+  type ProviderCredentials,
+  type ValidationResult,
 } from '../base/types'
-import { ModelCapabilities, ModelType } from '../types'
-import { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
+import { type ModelCapabilities, ModelType } from '../types'
 import { CohereTextEmbeddingClient } from './cohere-embedding-client'
-import { DEFAULT_CLIENT_CONFIG } from '../../clients/base/types'
 
 // Define Cohere capabilities and models
 const COHERE_CAPABILITIES = {
@@ -82,7 +82,7 @@ const COHERE_MODELS: Record<string, ModelCapabilities> = {
  */
 export class CohereClient extends ProviderClient {
   private embeddingClient?: CohereTextEmbeddingClient
-  
+
   constructor(organizationId: string, userId: string, cache?: any) {
     super(COHERE_CAPABILITIES, organizationId, userId, cache)
   }
@@ -127,7 +127,10 @@ export class CohereClient extends ProviderClient {
     }
   }
 
-  async testConnection(credentials: Record<string, any>, model?: string): Promise<ConnectionTestResult> {
+  async testConnection(
+    credentials: Record<string, any>,
+    model?: string
+  ): Promise<ConnectionTestResult> {
     const startTime = Date.now()
     const testModel = model || 'embed-english-v3.0'
 
@@ -208,9 +211,11 @@ export class CohereClient extends ProviderClient {
           )
         }
         return this.embeddingClient
-      
+
       default:
-        throw new Error(`Cohere specialized clients not yet implemented for model type: ${modelType}`)
+        throw new Error(
+          `Cohere specialized clients not yet implemented for model type: ${modelType}`
+        )
     }
   }
 

@@ -1,40 +1,38 @@
 // packages/services/src/parts/index.ts
 
-// Query operations
-export {
-  getAllParts,
-  getPartById,
-  checkSkuExists,
-  getPartAttachments,
-  getLeafParts,
-  getParentPartIds,
-} from './part-queries'
+// Errors
+export type { PartError, PartNotFoundError, SkuAlreadyExistsError } from './errors'
 
 // Mutation operations
 export {
-  insertPart,
-  insertPartTx,
+  deleteInventory,
+  deletePart,
+  getPartWithInventory,
   insertInventory,
   insertInventoryTx,
-  updatePart,
-  updatePartTx,
+  insertPart,
+  insertPartTx,
   updateInventory,
   updateInventoryTx,
-  deletePart,
-  deleteInventory,
-  getPartWithInventory,
+  updatePart,
+  updatePartTx,
 } from './part-mutations'
-
+// Query operations
+export {
+  checkSkuExists,
+  getAllParts,
+  getLeafParts,
+  getParentPartIds,
+  getPartAttachments,
+  getPartById,
+} from './part-queries'
 // Types
 export type {
-  PartContext,
-  CreatePartInput,
-  CreateInventoryInput,
-  UpdatePartInput,
-  UpdateInventoryInput,
-  GetAllPartsInput,
   CheckSkuExistsInput,
+  CreateInventoryInput,
+  CreatePartInput,
+  GetAllPartsInput,
+  PartContext,
+  UpdateInventoryInput,
+  UpdatePartInput,
 } from './types'
-
-// Errors
-export type { PartError, PartNotFoundError, SkuAlreadyExistsError } from './errors'

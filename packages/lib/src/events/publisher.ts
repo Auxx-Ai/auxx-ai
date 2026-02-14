@@ -1,6 +1,6 @@
-import { type AuxxEvent } from './types'
 import { getQueue } from '../jobs/queues'
 import { Queues } from '../jobs/queues/types'
+import type { AuxxEvent } from './types'
 
 /**
  * Responsible for publishing events to the event bus and webhooks

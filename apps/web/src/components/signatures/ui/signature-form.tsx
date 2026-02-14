@@ -1,13 +1,8 @@
 // apps/web/src/components/signatures/ui/signature-form.tsx
 'use client'
 
-import React, { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
+import { Card, CardContent } from '@auxx/ui/components/card'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   Form,
@@ -17,6 +12,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
+import { Input } from '@auxx/ui/components/input'
 import {
   Select,
   SelectContent,
@@ -24,12 +20,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Card, CardContent } from '@auxx/ui/components/card'
 import { toastSuccess } from '@auxx/ui/components/toast'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { useRouter } from 'next/navigation'
+import React, { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
+import { EditorToolbar } from '~/components/editor/editor-button'
 import { EditorProvider } from '~/components/editor/editor-context'
 import TiptapEditor from '~/components/editor/tiptap-editor'
-import { EditorToolbar } from '~/components/editor/editor-button'
-import { useSignatureMutations, type SignatureVisibility } from '../hooks'
+import { type SignatureVisibility, useSignatureMutations } from '../hooks'
 
 /**
  * Form validation schema for signatures (new visibility model)
@@ -131,41 +131,41 @@ export function SignatureForm({ signature, isAdmin = false, onSuccess }: Signatu
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6'>
         <FormField
           control={form.control}
-          name="name"
+          name='name'
           render={({ field }) => (
             <FormItem>
               <FormLabel>Signature Name</FormLabel>
               <FormControl>
-                <Input placeholder="e.g., Professional, Casual, Support Team" {...field} />
+                <Input placeholder='e.g., Professional, Casual, Support Team' {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        <div className="space-y-2">
+        <div className='space-y-2'>
           <EditorProvider>
             <FormLabel>Signature Content</FormLabel>
-            <Card className="overflow-hidden">
-              <CardContent className="p-0">
-                <div className="border-b px-3 py-2">
+            <Card className='overflow-hidden'>
+              <CardContent className='p-0'>
+                <div className='border-b px-3 py-2'>
                   <EditorToolbar showSend={false} />
                 </div>
-                <div className="">
+                <div className=''>
                   <TiptapEditor
                     content={html}
                     onChange={handleEditorChange}
-                    placeholder="Design your signature here..."
-                    className="h-full"
+                    placeholder='Design your signature here...'
+                    className='h-full'
                   />
                 </div>
               </CardContent>
             </Card>
             {form.formState.errors.body && (
-              <p className="text-sm font-medium text-destructive">
+              <p className='text-sm font-medium text-destructive'>
                 {form.formState.errors.body.message}
               </p>
             )}
@@ -174,16 +174,16 @@ export function SignatureForm({ signature, isAdmin = false, onSuccess }: Signatu
 
         <FormField
           control={form.control}
-          name="isDefault"
+          name='isDefault'
           render={({ field }) => (
-            <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+            <FormItem className='flex flex-row items-start space-x-3 space-y-0'>
               <FormControl>
                 <Checkbox
                   checked={!!field.value}
                   onCheckedChange={(v) => field.onChange(Boolean(v))}
                 />
               </FormControl>
-              <div className="space-y-1 leading-none">
+              <div className='space-y-1 leading-none'>
                 <FormLabel>Set as default signature</FormLabel>
               </div>
             </FormItem>
@@ -192,20 +192,20 @@ export function SignatureForm({ signature, isAdmin = false, onSuccess }: Signatu
 
         <FormField
           control={form.control}
-          name="visibility"
+          name='visibility'
           render={({ field }) => (
             <FormItem>
               <FormLabel>Visibility</FormLabel>
               <Select onValueChange={field.onChange} value={field.value}>
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select visibility" />
+                    <SelectValue placeholder='Select visibility' />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="private">Private (only you)</SelectItem>
-                  <SelectItem value="org_members">All Members</SelectItem>
-                  {isAdmin && <SelectItem value="custom">Custom</SelectItem>}
+                  <SelectItem value='private'>Private (only you)</SelectItem>
+                  <SelectItem value='org_members'>All Members</SelectItem>
+                  {isAdmin && <SelectItem value='custom'>Custom</SelectItem>}
                 </SelectContent>
               </Select>
               <FormMessage />
@@ -213,14 +213,14 @@ export function SignatureForm({ signature, isAdmin = false, onSuccess }: Signatu
           )}
         />
 
-        <div className="flex justify-end gap-3">
+        <div className='flex justify-end gap-3'>
           <Button
-            type="button"
-            variant="ghost"
+            type='button'
+            variant='ghost'
             onClick={() => router.push('/app/settings/signatures')}>
             Cancel
           </Button>
-          <Button variant="outline" type="submit" loading={isPending} loadingText="Saving...">
+          <Button variant='outline' type='submit' loading={isPending} loadingText='Saving...'>
             {signature ? 'Update Signature' : 'Create Signature'}
           </Button>
         </div>

@@ -1,59 +1,56 @@
 // packages/services/src/contacts/index.ts
 
-// Query operations
-export {
-  searchContacts,
-  getAllContacts,
-  getContactById,
-  getContactsByIds,
-  getTicketCountsForContacts,
-  getRecentTickets,
-  findContactByEmail,
-  getCustomFieldsForContacts,
-  getCustomFieldValuesForContacts,
-} from './contact-queries'
+// Bulk operations
+export { bulkDeleteContacts, bulkUpdate, bulkUpdateToSpam } from './contact-bulk'
 
 // Mutation operations
 export {
+  deleteContactWithRelations,
+  getContactForDeletion,
   insertContact,
   insertCustomerSource,
   updateContact,
   updateContactStatus,
-  deleteContactWithRelations,
-  getContactForDeletion,
 } from './contact-mutations'
-
-// Bulk operations
-export { bulkUpdate, bulkUpdateToSpam, bulkDeleteContacts } from './contact-bulk'
+// Query operations
+export {
+  findContactByEmail,
+  getAllContacts,
+  getContactById,
+  getContactsByIds,
+  getCustomFieldsForContacts,
+  getCustomFieldValuesForContacts,
+  getRecentTickets,
+  getTicketCountsForContacts,
+  searchContacts,
+} from './contact-queries'
 
 // Customer group operations
 export {
-  getCustomerGroups,
-  getCustomerGroupById,
-  checkGroupNameExists,
-  insertCustomerGroup,
-  updateCustomerGroup,
-  deleteCustomerGroup,
   addContactsToGroup,
-  removeContactsFromGroup,
+  checkGroupNameExists,
+  deleteCustomerGroup,
+  getCustomerGroupById,
+  getCustomerGroups,
   getGroupsForContacts,
+  insertCustomerGroup,
+  removeContactsFromGroup,
+  updateCustomerGroup,
 } from './customer-groups'
-
-// Types
-export type {
-  ContactContext,
-  ContactCursor,
-  SearchContactsInput,
-  GetAllContactsInput,
-  InsertContactInput,
-  InsertCustomerSourceInput,
-  UpdateContactInput,
-} from './types'
-
 // Errors
 export type {
   ContactError,
   ContactNotFoundError,
-  CustomerGroupNotFoundError,
   CustomerGroupAlreadyExistsError,
+  CustomerGroupNotFoundError,
 } from './errors'
+// Types
+export type {
+  ContactContext,
+  ContactCursor,
+  GetAllContactsInput,
+  InsertContactInput,
+  InsertCustomerSourceInput,
+  SearchContactsInput,
+  UpdateContactInput,
+} from './types'

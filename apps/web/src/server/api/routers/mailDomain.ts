@@ -1,10 +1,11 @@
 // server/api/routers/mail-domains.ts
-import { z } from 'zod'
-import { DomainService } from '@auxx/lib/mail-domains'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+
 import { schema } from '@auxx/database'
-import { eq, desc, and } from 'drizzle-orm'
+import { DomainService } from '@auxx/lib/mail-domains'
 import { createScopedLogger } from '@auxx/logger'
+import { and, desc, eq } from 'drizzle-orm'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('mailgun-router')
 
@@ -30,7 +31,12 @@ export const mailDomainsRouter = createTRPCRouter({
       const [domain] = await ctx.db
         .select()
         .from(schema.MailDomain)
-        .where(and(eq(schema.MailDomain.id, input.id), eq(schema.MailDomain.organizationId, organizationId)))
+        .where(
+          and(
+            eq(schema.MailDomain.id, input.id),
+            eq(schema.MailDomain.organizationId, organizationId)
+          )
+        )
         .limit(1)
 
       if (!domain) {
@@ -67,7 +73,9 @@ export const mailDomainsRouter = createTRPCRouter({
 
   /** Register a new provider subdomain */
   registerProviderDomain: protectedProcedure
-    .input(z.object({ subdomain: z.string().min(3), routingPrefix: z.string().min(1).default('ticket') }))
+    .input(
+      z.object({ subdomain: z.string().min(3), routingPrefix: z.string().min(1).default('ticket') })
+    )
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
@@ -97,12 +105,15 @@ export const mailDomainsRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       try {
-        const [domain] = await ctx.db.select()
+        const [domain] = await ctx.db
+          .select()
           .from(schema.MailDomain)
-          .where(and(
-            eq(schema.MailDomain.id, input.id),
-            eq(schema.MailDomain.organizationId, organizationId)
-          ))
+          .where(
+            and(
+              eq(schema.MailDomain.id, input.id),
+              eq(schema.MailDomain.organizationId, organizationId)
+            )
+          )
           .limit(1)
 
         if (!domain) {
@@ -110,7 +121,8 @@ export const mailDomainsRouter = createTRPCRouter({
           throw new Error('Domain not found')
         }
 
-        const [updatedDomain] = await ctx.db.update(schema.MailDomain)
+        const [updatedDomain] = await ctx.db
+          .update(schema.MailDomain)
           .set({
             routingPrefix: input.routingPrefix,
             isActive: input.isActive,

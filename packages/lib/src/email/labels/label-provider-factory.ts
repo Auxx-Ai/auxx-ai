@@ -1,7 +1,8 @@
 // lib/email/providers/label-provider-factory.ts
-import { LabelProvider } from './label-provider.interface'
-import { GmailLabelProvider } from './gmail-label-provider'
+
 import { createScopedLogger } from '@auxx/logger'
+import { GmailLabelProvider } from './gmail-label-provider'
+import type { LabelProvider } from './label-provider.interface'
 import { OutlookLabelProvider } from './outlook-label-provider'
 
 const logger = createScopedLogger('label-provider-factory')

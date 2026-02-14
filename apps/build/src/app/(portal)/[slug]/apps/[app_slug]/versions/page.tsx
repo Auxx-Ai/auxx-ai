@@ -1,14 +1,16 @@
 'use client'
 
+import { formatVersion } from '@auxx/services/shared/utils'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   Empty,
+  EmptyContent,
+  EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-  EmptyDescription,
-  EmptyContent,
 } from '@auxx/ui/components/empty'
-import { Button } from '@auxx/ui/components/button'
 import {
   Table,
   TableBody,
@@ -17,17 +19,15 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import { Badge } from '@auxx/ui/components/badge'
-import { PackageOpen, Copy, Check, Loader2 } from 'lucide-react'
-import React, { useState } from 'react'
+import { format } from 'date-fns'
+import { Check, Copy, Loader2, PackageOpen } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
+import React, { useState } from 'react'
+import { useConfirm } from '@/hooks/use-confirm'
+import { PublishAppDialog } from '~/components/apps/publish-app-dialog'
+import { toastError } from '~/components/global/toast'
 import { useApp } from '~/components/providers/dehydrated-state-provider'
 import { api, type RouterOutputs } from '~/trpc/react'
-import { formatVersion } from '@auxx/services/shared/utils'
-import { format } from 'date-fns'
-import { PublishAppDialog } from '~/components/apps/publish-app-dialog'
-import { useConfirm } from '@/hooks/use-confirm'
-import { toastError } from '~/components/global/toast'
 
 type Props = {}
 
@@ -135,11 +135,11 @@ function VersionsPage({}: Props) {
   // Loading state
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 overflow-y-auto">
-        <Empty className="border-0">
+      <div className='flex flex-col items-center justify-center flex-1 overflow-y-auto'>
+        <Empty className='border-0'>
           <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Loader2 className="animate-spin" />
+            <EmptyMedia variant='icon'>
+              <Loader2 className='animate-spin' />
             </EmptyMedia>
             <EmptyTitle>Loading versions...</EmptyTitle>
             <EmptyDescription>Fetching version history</EmptyDescription>
@@ -152,10 +152,10 @@ function VersionsPage({}: Props) {
   // Empty state
   if (!versions || versions.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 overflow-y-auto">
-        <Empty className="border-0">
+      <div className='flex flex-col items-center justify-center flex-1 overflow-y-auto'>
+        <Empty className='border-0'>
           <EmptyHeader>
-            <EmptyMedia variant="icon">
+            <EmptyMedia variant='icon'>
               <PackageOpen />
             </EmptyMedia>
             <EmptyTitle>No versions yet</EmptyTitle>
@@ -163,12 +163,12 @@ function VersionsPage({}: Props) {
               Run this command in your project's directory to create a version and upload your code:
             </EmptyDescription>
           </EmptyHeader>
-          <EmptyContent className="bg-primary-150 px-4 py-4 rounded-2xl relative">
-            <code className="font-mono text-sm flex-1">{CREATE_VERSION_COMMAND}</code>
+          <EmptyContent className='bg-primary-150 px-4 py-4 rounded-2xl relative'>
+            <code className='font-mono text-sm flex-1'>{CREATE_VERSION_COMMAND}</code>
             <Button
-              className="absolute right-3 top-1/2 -translate-y-1/2"
-              variant="ghost"
-              size="icon-sm"
+              className='absolute right-3 top-1/2 -translate-y-1/2'
+              variant='ghost'
+              size='icon-sm'
               onClick={handleCopy}>
               {copied ? <Check /> : <Copy />}
             </Button>
@@ -182,7 +182,7 @@ function VersionsPage({}: Props) {
   return (
     <>
       <ConfirmDialog />
-      <div className="flex flex-col flex-1 overflow-y-auto p-6">
+      <div className='flex flex-col flex-1 overflow-y-auto p-6'>
         <Table>
           <TableHeader>
             <TableRow>
@@ -196,21 +196,21 @@ function VersionsPage({}: Props) {
           <TableBody>
             {versions.map((version) => (
               <TableRow key={version.id}>
-                <TableCell className="font-mono">
-                  <div className="truncate">
+                <TableCell className='font-mono'>
+                  <div className='truncate'>
                     {formatVersion(version.major, version.minor ?? 0, version.patch ?? 0)}
                   </div>
                 </TableCell>
                 <TableCell>
-                  <div className="truncate">
+                  <div className='truncate'>
                     {format(new Date(version.createdAt), 'MMM dd, yyyy')}
                   </div>
                 </TableCell>
                 <TableCell>
-                  <div className="truncate">{version.numInstallations || 0}</div>
+                  <div className='truncate'>{version.numInstallations || 0}</div>
                 </TableCell>
                 <TableCell>
-                  <div className="flex gap-2">
+                  <div className='flex gap-2'>
                     {version.reviewStatus ? (
                       <Badge
                         variant={
@@ -228,18 +228,18 @@ function VersionsPage({}: Props) {
                           : version.reviewStatus}
                       </Badge>
                     ) : (
-                      <Badge variant="outline">draft</Badge>
+                      <Badge variant='outline'>draft</Badge>
                     )}
                     {version.publicationStatus === 'published' && (
-                      <Badge variant="default">published</Badge>
+                      <Badge variant='default'>published</Badge>
                     )}
                   </div>
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell className='text-right'>
                   {version.publicationStatus === 'published' ? (
                     <Button
-                      variant="outline"
-                      size="sm"
+                      variant='outline'
+                      size='sm'
                       onClick={() => handleUnpublish(version)}
                       loading={updateVersionStatus.isPending}>
                       Unpublish
@@ -247,27 +247,27 @@ function VersionsPage({}: Props) {
                   ) : version.reviewStatus === 'pending-review' ||
                     version.reviewStatus === 'in-review' ? (
                     <Button
-                      variant="outline"
-                      size="sm"
+                      variant='outline'
+                      size='sm'
                       onClick={() => handleWithdraw(version)}
                       loading={updateVersionStatus.isPending}>
                       Withdraw
                     </Button>
                   ) : version.reviewStatus === 'approved' ? (
                     <Button
-                      variant="default"
-                      size="sm"
+                      variant='default'
+                      size='sm'
                       onClick={() => handlePublish(version)}
                       loading={updateVersionStatus.isPending}>
                       Publish
                     </Button>
                   ) : (
                     <PublishAppDialog
-                      mode="version"
+                      mode='version'
                       appSlug={params.app_slug}
                       version={version}
                       trigger={
-                        <Button variant="outline" size="sm">
+                        <Button variant='outline' size='sm'>
                           Submit for Review
                         </Button>
                       }

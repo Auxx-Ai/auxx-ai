@@ -1,16 +1,17 @@
 // apps/web/src/app/(protected)/app/contacts/_components/customer-orders-tab.tsx
-import { useState } from 'react'
-import { api } from '~/trpc/react'
+
 import { Button } from '@auxx/ui/components/button'
 import {
   Empty,
+  EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-  EmptyDescription,
 } from '@auxx/ui/components/empty'
-import { ShoppingCart, Loader2, Unlink } from 'lucide-react'
+import { Loader2, ShoppingCart, Unlink } from 'lucide-react'
+import { useState } from 'react'
 import OrderRow from '~/components/orders/order-row'
+import { api } from '~/trpc/react'
 
 interface CustomerOrdersTabProps {
   customer: any // Replace with proper type
@@ -40,10 +41,10 @@ export default function CustomerOrdersTab({ customer, shopifyCustomers }: Custom
   // No Shopify account linked
   if (!hasShopifyCustomers) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1">
+      <div className='flex flex-col items-center justify-center flex-1'>
         <Empty>
           <EmptyHeader>
-            <EmptyMedia variant="icon">
+            <EmptyMedia variant='icon'>
               <Unlink />
             </EmptyMedia>
             <EmptyTitle>No Shopify account linked</EmptyTitle>
@@ -59,11 +60,11 @@ export default function CustomerOrdersTab({ customer, shopifyCustomers }: Custom
   // Loading state
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1">
+      <div className='flex flex-col items-center justify-center flex-1'>
         <Empty>
           <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Loader2 className="animate-spin" />
+            <EmptyMedia variant='icon'>
+              <Loader2 className='animate-spin' />
             </EmptyMedia>
             <EmptyTitle>Loading orders...</EmptyTitle>
             <EmptyDescription>Fetching orders from Shopify</EmptyDescription>
@@ -76,10 +77,10 @@ export default function CustomerOrdersTab({ customer, shopifyCustomers }: Custom
   // No orders found
   if (!ordersData?.orders || ordersData.orders.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1">
+      <div className='flex flex-col items-center justify-center flex-1'>
         <Empty>
           <EmptyHeader>
-            <EmptyMedia variant="icon">
+            <EmptyMedia variant='icon'>
               <ShoppingCart />
             </EmptyMedia>
             <EmptyTitle>No orders found</EmptyTitle>
@@ -92,24 +93,24 @@ export default function CustomerOrdersTab({ customer, shopifyCustomers }: Custom
 
   // Orders list
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       {ordersData.orders.map((order) => (
         <OrderRow key={order.id.toString()} order={order} />
       ))}
 
       {ordersData.totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between">
+        <div className='mt-4 flex items-center justify-between'>
           <Button
-            variant="outline"
+            variant='outline'
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}>
             Previous
           </Button>
-          <span className="text-sm text-muted-foreground">
+          <span className='text-sm text-muted-foreground'>
             Page {page} of {ordersData.totalPages}
           </span>
           <Button
-            variant="outline"
+            variant='outline'
             onClick={() => setPage((p) => p + 1)}
             disabled={page >= ordersData.totalPages}>
             Next

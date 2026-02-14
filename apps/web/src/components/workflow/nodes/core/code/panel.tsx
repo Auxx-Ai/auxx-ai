@@ -1,13 +1,14 @@
 // apps/web/src/components/workflow/nodes/core/code/panel.tsx
 
-import React, { memo, useCallback } from 'react'
-import type { CodeNodeOutput, CodeNodeInput, CodeNodeData } from './types'
-import { BasePanel } from '../../shared/base/base-panel'
+import type React from 'react'
+import { memo, useCallback } from 'react'
+import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import CodeEditor, { CodeLanguage } from '~/components/workflow/ui/code-editor'
 import Section from '../../../ui/section'
-import { CodeOutputEditor } from './components/code-output-editor'
+import { BasePanel } from '../../shared/base/base-panel'
 import { CodeInputEditor } from './components/code-input-editor'
-import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { CodeOutputEditor } from './components/code-output-editor'
+import type { CodeNodeData, CodeNodeInput, CodeNodeOutput } from './types'
 import { smartUpdateTemplate } from './utils/template-generator'
 
 interface CodePanelProps {
@@ -48,7 +49,7 @@ const CodePanelComponent: React.FC<CodePanelProps> = ({ nodeId, data }) => {
   )
 
   return (
-    <BasePanel title="Code Configuration" nodeId={nodeId} data={data} showNextStep={true}>
+    <BasePanel title='Code Configuration' nodeId={nodeId} data={data} showNextStep={true}>
       <CodeInputEditor
         inputs={nodeData.inputs || []}
         onChange={handleInputsChange}
@@ -61,15 +62,15 @@ const CodePanelComponent: React.FC<CodePanelProps> = ({ nodeId, data }) => {
         isReadOnly={isReadOnly}
       />
       <Section
-        title="Code Editor"
-        description="Write your custom code in the main() function. Input variables are available as direct variables."
+        title='Code Editor'
+        description='Write your custom code in the main() function. Input variables are available as direct variables.'
         initialOpen={true}>
         <CodeEditor
           value={nodeData.code || ''}
           onChange={handleCodeChange}
           language={CodeLanguage.javascript}
-          title="Code Editor"
-          placeholder="const main = async () => {\n  // Your code here\n  return {\n    output1: undefined\n  }\n}"
+          title='Code Editor'
+          placeholder='const main = async () => {\n  // Your code here\n  return {\n    output1: undefined\n  }\n}'
           minHeight={200}
           readOnly={isReadOnly}
           nodeId={nodeId}

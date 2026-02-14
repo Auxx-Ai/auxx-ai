@@ -3,8 +3,8 @@
 'use client'
 
 import '@xyflow/react/dist/style.css'
-import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import { Toaster } from '@auxx/ui/components/sonner'
+import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import { ThemeProvider } from '~/providers/theme-provider'
 
 /**
@@ -20,7 +20,7 @@ interface WorkflowLayoutProps {
  */
 export default function PublicWorkflowLayout({ children }: WorkflowLayoutProps) {
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+    <ThemeProvider attribute='class' defaultTheme='system' enableSystem disableTransitionOnChange>
       <TooltipProvider>{children}</TooltipProvider>
       <Toaster />
     </ThemeProvider>

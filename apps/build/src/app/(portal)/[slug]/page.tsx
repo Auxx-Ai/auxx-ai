@@ -1,6 +1,6 @@
 // apps/build/src/app/(portal)/[slug]/page.tsx
 
-import { redirect, RedirectType } from 'next/navigation'
+import { RedirectType, redirect } from 'next/navigation'
 import { api } from '~/trpc/server'
 
 /** Developer account page - redirects to first app or onboarding */

@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/share/workflow-share-provider.tsx
 'use client'
 
-import { createContext, useContext, useRef, type ReactNode } from 'react'
-import { createStore, useStore, type StoreApi } from 'zustand'
-import type { WorkflowSiteInfo } from './hooks/use-workflow-share'
 import type { ContentSegment } from '@auxx/lib/workflow-engine/types'
+import { createContext, type ReactNode, useContext, useRef } from 'react'
+import { createStore, type StoreApi, useStore } from 'zustand'
+import type { WorkflowSiteInfo } from './hooks/use-workflow-share'
 
 /**
  * End node execution result
@@ -102,7 +102,9 @@ const createWorkflowShareStore = () =>
       set((state) => {
         if (!state.currentRun) return state
 
-        const existing = state.currentRun.endNodeResults.findIndex((r) => r.nodeId === result.nodeId)
+        const existing = state.currentRun.endNodeResults.findIndex(
+          (r) => r.nodeId === result.nodeId
+        )
 
         const newResults = [...state.currentRun.endNodeResults]
         if (existing >= 0) {

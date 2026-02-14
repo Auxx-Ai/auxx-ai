@@ -120,7 +120,7 @@ export class LoopErrorHandler {
           }
 
           // Wait before next retry with exponential backoff
-          const delay = this.strategy.retryDelayMs * Math.pow(2, attempt - 1)
+          const delay = this.strategy.retryDelayMs * 2 ** (attempt - 1)
           await new Promise((resolve) => setTimeout(resolve, delay))
         }
       }

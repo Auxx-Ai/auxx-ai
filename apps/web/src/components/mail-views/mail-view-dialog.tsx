@@ -1,31 +1,30 @@
 // apps/web/src/components/mail-views/mail-view-dialog.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useForm, FormProvider } from 'react-hook-form'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import * as z from 'zod'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { FileText, Filter, Sliders, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { FormProvider, useForm } from 'react-hook-form'
+import * as z from 'zod'
+import type { ConditionGroup } from '~/components/conditions'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
+import { api } from '~/trpc/react'
 import { MailViewDetailsForm } from './mail-view-details-form'
 import { MailViewFilterBuilder } from './mail-view-filter-builder'
-import { MailViewSortOptions } from './mail-view-sort-options'
 import { MailViewSharingOptions } from './mail-view-sharing-options'
-import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import type { ConditionGroup } from '~/components/conditions'
+import { MailViewSortOptions } from './mail-view-sort-options'
 
 // Define the form schema using zod
 const mailViewFormSchema = z.object({
@@ -67,7 +66,11 @@ export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogPr
   })
 
   // Guard against accidental close with unsaved changes
-  const { guardProps, guardedClose, ConfirmDialog: UnsavedChangesDialog } = useUnsavedChangesGuard({
+  const {
+    guardProps,
+    guardedClose,
+    ConfirmDialog: UnsavedChangesDialog,
+  } = useUnsavedChangesGuard({
     isDirty: methods.formState.isDirty,
     onConfirmedClose: onClose,
     confirmOptions: {
@@ -200,12 +203,11 @@ export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogPr
   }
 
   // Compute disabled state for submit
-  const isSubmitDisabled =
-    isLoadingMailView || createMailView.isPending || updateMailView.isPending
+  const isSubmitDisabled = isLoadingMailView || createMailView.isPending || updateMailView.isPending
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && guardedClose()}>
-      <DialogContent size="xl" variant="default" position="tc" {...guardProps}>
+      <DialogContent size='xl' variant='default' position='tc' {...guardProps}>
         <DialogHeader>
           <DialogTitle>{mailViewId ? 'Edit Mail View' : 'Create Mail View'}</DialogTitle>
         </DialogHeader>
@@ -215,25 +217,25 @@ export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogPr
             <RadioTab
               value={activeTab}
               onValueChange={setActiveTab}
-              size="sm"
-              radioGroupClassName="grid w-full"
-              className="border border-primary-200 flex flex-1 w-full mb-4">
-              <RadioTabItem value="details" size="sm">
+              size='sm'
+              radioGroupClassName='grid w-full'
+              className='border border-primary-200 flex flex-1 w-full mb-4'>
+              <RadioTabItem value='details' size='sm'>
                 <FileText />
                 Details
               </RadioTabItem>
-              <RadioTabItem value="filters" size="sm">
+              <RadioTabItem value='filters' size='sm'>
                 <Filter />
                 Filters
               </RadioTabItem>
-              <RadioTabItem value="options" size="sm">
+              <RadioTabItem value='options' size='sm'>
                 <Sliders />
                 Options
               </RadioTabItem>
             </RadioTab>
 
             {activeTab === 'details' && (
-              <div className="space-y-4 ">
+              <div className='space-y-4 '>
                 <MailViewDetailsForm />
               </div>
             )}
@@ -241,36 +243,37 @@ export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogPr
             {activeTab === 'filters' && <MailViewFilterBuilder />}
 
             {activeTab === 'options' && (
-              <div className="space-y-4">
+              <div className='space-y-4'>
                 <MailViewSortOptions />
                 <MailViewSharingOptions />
               </div>
             )}
 
-            <DialogFooter className="mt-0">
+            <DialogFooter className='mt-0'>
               {mailViewId && (
                 <Button
-                  type="button"
-                  size="sm"
-                  variant="destructive-hover"
+                  type='button'
+                  size='sm'
+                  variant='destructive-hover'
                   onClick={handleDelete}
                   loading={deleteMailView.isPending}
-                  loadingText="Deleting..."
-                  className="mr-auto">
+                  loadingText='Deleting...'
+                  className='mr-auto'>
                   <Trash2 />
                   Delete View
                 </Button>
               )}
-              <Button size="sm" variant="ghost" type="button" onClick={guardedClose}>
-                Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+              <Button size='sm' variant='ghost' type='button' onClick={guardedClose}>
+                Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
               </Button>
               <Button
-                type="submit"
-                size="sm"
-                variant="outline"
-                loadingText="Saving..."
+                type='submit'
+                size='sm'
+                variant='outline'
+                loadingText='Saving...'
                 loading={isLoadingMailView || createMailView.isPending || updateMailView.isPending}>
-                {mailViewId ? 'Update View' : 'Create View'} <KbdSubmit variant="outline" size="sm" />
+                {mailViewId ? 'Update View' : 'Create View'}{' '}
+                <KbdSubmit variant='outline' size='sm' />
               </Button>
             </DialogFooter>
           </form>

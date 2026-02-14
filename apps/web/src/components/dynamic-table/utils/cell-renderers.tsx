@@ -1,25 +1,25 @@
 // apps/web/src/components/dynamic-table/utils/cell-renderers.tsx
 
-import { useMemo } from 'react'
-import { format, formatDistanceToNow } from 'date-fns'
-import { formatCurrency, formatBytes, type CurrencyDisplayOptions } from '@auxx/utils'
-import { CheckSquare, Paperclip } from 'lucide-react'
-import { CopyableLinkCell } from '../components/copyable-link-cell'
-import { CellPadding, type CellConfig } from '../components/formatted-cell'
-import { TagsCellView } from '~/components/ui/tags-view'
-import { ItemsCellView } from '~/components/ui/items-list-view'
-import { RecordBadge, ActorBadge } from '~/components/resources/ui'
-import { isActorId, toActorId, type ActorId } from '@auxx/types/actor'
 import {
-  formatToRawValue,
-  formatToDisplayValue,
+  type BooleanFieldOptions,
+  type DateFieldOptions,
   extractRelationshipRecordIds,
+  formatToDisplayValue,
+  formatToRawValue,
   getInstanceId,
   type NumberFieldOptions,
-  type DateFieldOptions,
-  type BooleanFieldOptions,
   type PhoneFieldOptions,
 } from '@auxx/lib/field-values/client'
+import { type ActorId, isActorId, toActorId } from '@auxx/types/actor'
+import { type CurrencyDisplayOptions, formatBytes, formatCurrency } from '@auxx/utils'
+import { format, formatDistanceToNow } from 'date-fns'
+import { CheckSquare, Paperclip } from 'lucide-react'
+import { useMemo } from 'react'
+import { ActorBadge, RecordBadge } from '~/components/resources/ui'
+import { ItemsCellView } from '~/components/ui/items-list-view'
+import { TagsCellView } from '~/components/ui/tags-view'
+import { CopyableLinkCell } from '../components/copyable-link-cell'
+import { type CellConfig, CellPadding } from '../components/formatted-cell'
 import type {
   ColumnFormatting,
   CurrencyColumnFormatting,
@@ -147,7 +147,7 @@ type CellRenderer = (
 export function EmptyCell() {
   return (
     <CellPadding>
-      <span className="text-muted-foreground">-</span>
+      <span className='text-muted-foreground'>-</span>
     </CellPadding>
   )
 }
@@ -166,7 +166,7 @@ export function renderDateValue(
   try {
     const date = new Date(value as string | number)
     if (isNaN(date.getTime())) {
-      return <CellPadding expandDirection="horizontal">{String(value)}</CellPadding>
+      return <CellPadding expandDirection='horizontal'>{String(value)}</CellPadding>
     }
 
     const opts = config?.options as DateFieldOptions | undefined
@@ -194,9 +194,9 @@ export function renderDateValue(
       default:
         formatted = format(date, 'MMM d, yyyy')
     }
-    return <CellPadding expandDirection="horizontal">{formatted}</CellPadding>
+    return <CellPadding expandDirection='horizontal'>{formatted}</CellPadding>
   } catch {
-    return <CellPadding expandDirection="horizontal">{String(value)}</CellPadding>
+    return <CellPadding expandDirection='horizontal'>{String(value)}</CellPadding>
   }
 }
 
@@ -209,14 +209,14 @@ export function renderTimeValue(value: unknown, config?: CellConfig): React.Reac
   try {
     const date = new Date(value as string | number)
     if (isNaN(date.getTime())) {
-      return <CellPadding expandDirection="horizontal">{String(value)}</CellPadding>
+      return <CellPadding expandDirection='horizontal'>{String(value)}</CellPadding>
     }
     const opts = config?.options as DateFieldOptions | undefined
     const timeFormat = opts?.timeFormat ?? '12h'
     const formatStr = timeFormat === '24h' ? 'HH:mm' : 'h:mm a'
-    return <CellPadding expandDirection="horizontal">{format(date, formatStr)}</CellPadding>
+    return <CellPadding expandDirection='horizontal'>{format(date, formatStr)}</CellPadding>
   } catch {
-    return <CellPadding expandDirection="horizontal">{String(value)}</CellPadding>
+    return <CellPadding expandDirection='horizontal'>{String(value)}</CellPadding>
   }
 }
 
@@ -234,8 +234,8 @@ export function renderNumberValue(
   const num = typeof value === 'number' ? value : parseFloat(value as string)
   if (isNaN(num)) {
     return (
-      <CellPadding expandDirection="horizontal">
-        <span className="font-mono">{String(value)}</span>
+      <CellPadding expandDirection='horizontal'>
+        <span className='font-mono'>{String(value)}</span>
       </CellPadding>
     )
   }
@@ -276,8 +276,8 @@ export function renderNumberValue(
   }
 
   return (
-    <CellPadding expandDirection="horizontal">
-      <span className="font-mono">
+    <CellPadding expandDirection='horizontal'>
+      <span className='font-mono'>
         {prefix}
         {formatted}
         {suffix}
@@ -309,8 +309,8 @@ export function renderCurrencyValue(
 
   const formatted = formatCurrency(cents, options)
   return (
-    <CellPadding expandDirection="horizontal">
-      <span className="font-mono">{formatted}</span>
+    <CellPadding expandDirection='horizontal'>
+      <span className='font-mono'>{formatted}</span>
     </CellPadding>
   )
 }
@@ -323,8 +323,8 @@ export function renderEmailValue(value: unknown): React.ReactNode {
 
   const email = String(value)
   return (
-    <CellPadding expandDirection="horizontal">
-      <CopyableLinkCell displayText={email} value={email} type="email" />
+    <CellPadding expandDirection='horizontal'>
+      <CopyableLinkCell displayText={email} value={email} type='email' />
     </CellPadding>
   )
 }
@@ -354,8 +354,8 @@ export function renderPhoneValue(
     (formatToDisplayValue({ type: 'text', value: phone }, 'PHONE_INTL', opts) as string) || phone
 
   return (
-    <CellPadding expandDirection="horizontal">
-      <CopyableLinkCell displayText={formatted} value={phone} type="phone" />
+    <CellPadding expandDirection='horizontal'>
+      <CopyableLinkCell displayText={formatted} value={phone} type='phone' />
     </CellPadding>
   )
 }
@@ -369,8 +369,8 @@ export function renderUrlValue(value: unknown): React.ReactNode {
   const url = String(value)
   const href = url.startsWith('http') ? url : `https://${url}`
   return (
-    <CellPadding expandDirection="horizontal">
-      <CopyableLinkCell displayText={url} value={href} type="url" />
+    <CellPadding expandDirection='horizontal'>
+      <CopyableLinkCell displayText={url} value={href} type='url' />
     </CellPadding>
   )
 }
@@ -387,8 +387,8 @@ export function renderCheckboxValue(value: unknown, config?: CellConfig): React.
   // Text-only display
   if (checkboxStyle === 'text') {
     return (
-      <CellPadding expandDirection="horizontal">
-        <span className="text-muted-foreground">{value ? trueLabel : falseLabel}</span>
+      <CellPadding expandDirection='horizontal'>
+        <span className='text-muted-foreground'>{value ? trueLabel : falseLabel}</span>
       </CellPadding>
     )
   }
@@ -396,11 +396,11 @@ export function renderCheckboxValue(value: unknown, config?: CellConfig): React.
   // Icon-only display
   if (checkboxStyle === 'icon') {
     return (
-      <CellPadding expandDirection="horizontal">
+      <CellPadding expandDirection='horizontal'>
         {value ? (
-          <CheckSquare className="size-4 text-green-600" />
+          <CheckSquare className='size-4 text-green-600' />
         ) : (
-          <div className="size-4 border rounded" />
+          <div className='size-4 border rounded' />
         )}
       </CellPadding>
     )
@@ -408,14 +408,14 @@ export function renderCheckboxValue(value: unknown, config?: CellConfig): React.
 
   // Icon with text display (default)
   return (
-    <CellPadding expandDirection="horizontal">
-      <div className="flex items-center gap-2">
+    <CellPadding expandDirection='horizontal'>
+      <div className='flex items-center gap-2'>
         {value ? (
-          <CheckSquare className="size-4 text-green-600" />
+          <CheckSquare className='size-4 text-green-600' />
         ) : (
-          <div className="size-4 border rounded" />
+          <div className='size-4 border rounded' />
         )}
-        <span className="text-muted-foreground">{value ? trueLabel : falseLabel}</span>
+        <span className='text-muted-foreground'>{value ? trueLabel : falseLabel}</span>
       </div>
     </CellPadding>
   )
@@ -440,13 +440,13 @@ export function renderAddressValue(value: unknown): React.ReactNode {
     if (parts.length === 0) return <EmptyCell />
     return (
       <CellPadding>
-        <span className="text-sm">{parts.join(', ')}</span>
+        <span className='text-sm'>{parts.join(', ')}</span>
       </CellPadding>
     )
   }
   return (
     <CellPadding>
-      <span className="text-sm">{String(value)}</span>
+      <span className='text-sm'>{String(value)}</span>
     </CellPadding>
   )
 }
@@ -462,7 +462,7 @@ export function renderRichTextValue(value: unknown): React.ReactNode {
 
   return (
     <CellPadding>
-      <span className="text-sm" title={textOnly}>
+      <span className='text-sm' title={textOnly}>
         {textOnly}
       </span>
     </CellPadding>
@@ -478,8 +478,8 @@ export function renderFileValue(value: unknown): React.ReactNode {
   if (typeof value !== 'object') {
     if (typeof value === 'string') {
       return (
-        <CellPadding expandDirection="horizontal">
-          <span className="text-sm">{value}</span>
+        <CellPadding expandDirection='horizontal'>
+          <span className='text-sm'>{value}</span>
         </CellPadding>
       )
     }
@@ -494,9 +494,9 @@ export function renderFileValue(value: unknown): React.ReactNode {
       ? fileValue.attachmentIds
       : [fileValue.attachmentIds]
     return (
-      <CellPadding expandDirection="horizontal">
-        <span className="text-muted-foreground flex items-center gap-1">
-          <Paperclip className="size-3" />
+      <CellPadding expandDirection='horizontal'>
+        <span className='text-muted-foreground flex items-center gap-1'>
+          <Paperclip className='size-3' />
           {ids.length} file{ids.length !== 1 ? 's' : ''}
         </span>
       </CellPadding>
@@ -506,13 +506,13 @@ export function renderFileValue(value: unknown): React.ReactNode {
   // Handle legacy format with name/url
   if (fileValue.name) {
     return (
-      <CellPadding expandDirection="horizontal">
+      <CellPadding expandDirection='horizontal'>
         <a
           href={fileValue.url as string}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-600 hover:underline flex items-center gap-1">
-          <Paperclip className="size-3" />
+          target='_blank'
+          rel='noopener noreferrer'
+          className='text-blue-600 hover:underline flex items-center gap-1'>
+          <Paperclip className='size-3' />
           {String(fileValue.name)}
         </a>
       </CellPadding>
@@ -546,7 +546,7 @@ export function renderTextValue(value: unknown): React.ReactNode {
   // Render primitive values
   return (
     <CellPadding>
-      <span className="text-sm">{String(value)}</span>
+      <span className='text-sm'>{String(value)}</span>
     </CellPadding>
   )
 }

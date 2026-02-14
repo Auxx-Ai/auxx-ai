@@ -1,21 +1,24 @@
 // apps/web/src/components/workflow/nodes/shared/single-run-input-tab.tsx
 
-import React, { useMemo, memo, useEffect, useState, useCallback, useRef } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
-import { AlertCircle, Play } from 'lucide-react'
-import { unifiedNodeRegistry } from '../unified-registry'
-import { useVarStore } from '../../store/use-var-store'
-import { useTestInputStore } from '../../store/test-input-store'
-import { useWorkflowStore } from '../../store/workflow-store'
-import { useRunSingleNode } from '../../hooks'
-import { type FlowNode, type UnifiedVariable, BaseType } from '~/components/workflow/types'
-import { getNodeIdFromVariableId, getVariableRelationship } from '~/components/workflow/utils/variable-utils'
-import { getUpstreamNodeIds } from '~/components/workflow/utils/graph-utils'
 import { useStoreApi } from '@xyflow/react'
-import { VarEditorField, VarEditorFieldRow } from '../../ui/input-editor/var-editor'
+import { AlertCircle, Play } from 'lucide-react'
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { BaseType, type FlowNode, type UnifiedVariable } from '~/components/workflow/types'
 import Section from '~/components/workflow/ui/section'
+import { getUpstreamNodeIds } from '~/components/workflow/utils/graph-utils'
+import {
+  getNodeIdFromVariableId,
+  getVariableRelationship,
+} from '~/components/workflow/utils/variable-utils'
+import { useRunSingleNode } from '../../hooks'
+import { useTestInputStore } from '../../store/test-input-store'
+import { useVarStore } from '../../store/use-var-store'
+import { useWorkflowStore } from '../../store/workflow-store'
 import { getInputComponent } from '../../ui/input-editor/get-input-component'
+import { VarEditorField, VarEditorFieldRow } from '../../ui/input-editor/var-editor'
+import { unifiedNodeRegistry } from '../unified-registry'
 
 export interface SingleRunInputTabProps {
   /** Node ID */
@@ -183,11 +186,11 @@ export const SingleRunInputTab = memo(function SingleRunInputTab({
   )
 
   return (
-    <Section initialOpen title="Variables">
-      <div className="space-y-4">
+    <Section initialOpen title='Variables'>
+      <div className='space-y-4'>
         {/* Variable-specific inputs */}
         {availableVariables.length > 0 && (
-          <VarEditorField className="p-0">
+          <VarEditorField className='p-0'>
             {availableVariables.map((variable) => (
               <VariableInput
                 key={variable.id}
@@ -209,7 +212,7 @@ export const SingleRunInputTab = memo(function SingleRunInputTab({
         {/* No inputs message */}
         {availableVariables.length === 0 && (
           <Alert>
-            <AlertCircle className="size-4" />
+            <AlertCircle className='size-4' />
             <AlertDescription>
               This node doesn't require any inputs. Click "Run Node" to execute.
             </AlertDescription>
@@ -218,8 +221,8 @@ export const SingleRunInputTab = memo(function SingleRunInputTab({
 
         {/* Validation errors */}
         {Object.keys(nodeErrors).length > 0 && (
-          <Alert variant="destructive">
-            <AlertCircle className="size-4" />
+          <Alert variant='destructive'>
+            <AlertCircle className='size-4' />
             <AlertDescription>
               Please fix the errors above before running the node.
             </AlertDescription>
@@ -231,8 +234,8 @@ export const SingleRunInputTab = memo(function SingleRunInputTab({
           onClick={onRun}
           disabled={!canRun}
           loading={isLoading}
-          loadingText="Running..."
-          className="w-full">
+          loadingText='Running...'
+          className='w-full'>
           <Play />
           Run Node
         </Button>

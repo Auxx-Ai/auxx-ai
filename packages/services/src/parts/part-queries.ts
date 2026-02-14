@@ -1,10 +1,10 @@
 // packages/services/src/parts/part-queries.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and, or, ilike, gt } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
+import { and, eq, gt, ilike, or } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { PartContext, GetAllPartsInput, CheckSkuExistsInput } from './types'
+import type { CheckSkuExistsInput, GetAllPartsInput, PartContext } from './types'
 
 /**
  * Get all parts with pagination and search
@@ -136,8 +136,7 @@ export async function checkSkuExists(input: CheckSkuExistsInput) {
 export async function getPartAttachments(partId: string) {
   return fromDatabase(
     database.query.File.findMany({
-      where: (file, { and, eq }) =>
-        and(eq(file.entityId, partId), eq(file.entityType, 'Part')),
+      where: (file, { and, eq }) => and(eq(file.entityId, partId), eq(file.entityType, 'Part')),
     }),
     'get-part-attachments'
   )
@@ -167,12 +166,8 @@ export async function getLeafParts(organizationId: string) {
 
   if (partsWithSubpartsResult.isErr()) return partsWithSubpartsResult
 
-  const partsWithSubpartsSet = new Set(
-    partsWithSubpartsResult.value.map((p) => p.parentPartId)
-  )
-  const leafParts = allPartsResult.value.filter(
-    (part) => !partsWithSubpartsSet.has(part.id)
-  )
+  const partsWithSubpartsSet = new Set(partsWithSubpartsResult.value.map((p) => p.parentPartId))
+  const leafParts = allPartsResult.value.filter((part) => !partsWithSubpartsSet.has(part.id))
 
   return ok(leafParts)
 }

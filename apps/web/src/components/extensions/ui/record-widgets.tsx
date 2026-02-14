@@ -1,8 +1,8 @@
 // apps/web/src/components/extensions/ui/record-widgets.tsx
 'use client'
 
-import { useSurfaces } from '~/lib/extensions/use-surfaces'
 import { ExtensionWidget } from '~/components/extensions/extension-widget'
+import { useSurfaces } from '~/lib/extensions/use-surfaces'
 
 /**
  * Props for the RecordWidgets component.
@@ -50,13 +50,13 @@ export function RecordWidgets({ recordId, objectType }: RecordWidgetsProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <h3 className="text-sm font-medium">Extensions</h3>
-      <div className="space-y-2">
+    <div className='space-y-4'>
+      <h3 className='text-sm font-medium'>Extensions</h3>
+      <div className='space-y-2'>
         {widgets.map(({ surface, appId, appInstallationId, appTitle }) => (
-          <div key={`${appId}:${surface.id}`} className="rounded-md border p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">{appTitle}</span>
+          <div key={`${appId}:${surface.id}`} className='rounded-md border p-4'>
+            <div className='mb-2 flex items-center justify-between'>
+              <span className='text-xs text-muted-foreground'>{appTitle}</span>
             </div>
             <ExtensionWidget
               appId={appId}

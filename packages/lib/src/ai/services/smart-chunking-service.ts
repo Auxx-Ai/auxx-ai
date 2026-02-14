@@ -1,10 +1,10 @@
 // packages/lib/src/ai/services/smart-chunking-service.ts
 
-import { TextChunker } from '../../datasets/processors/text-chunker'
-import { ProviderRegistry } from '../providers/provider-registry'
-import { createScopedLogger } from '../../logger'
-import { LRUCache } from 'lru-cache'
 import crypto from 'crypto'
+import { LRUCache } from 'lru-cache'
+import { TextChunker } from '../../datasets/processors/text-chunker'
+import { createScopedLogger } from '../../logger'
+import { ProviderRegistry } from '../providers/provider-registry'
 
 const logger = createScopedLogger('SmartChunkingService')
 
@@ -63,19 +63,19 @@ export class SmartChunkingService {
       'text-embedding-ada-002': 8191,
       'text-embedding-3-small': 8191,
       'text-embedding-3-large': 8191,
-      
+
       // Google
       'text-embedding-004': 2048,
       'textembedding-gecko@003': 3072,
-      
+
       // Cohere
       'embed-english-v3.0': 512,
       'embed-multilingual-v3.0': 512,
-      
+
       // Voyage AI (via Anthropic)
       'voyage-2': 4000,
       'voyage-large-2': 16000,
-      
+
       // Default per provider
       'openai:default': 8191,
       'google:default': 2048,
@@ -84,9 +84,7 @@ export class SmartChunkingService {
     }
 
     // Check specific model first, then provider default
-    const limit = embeddingLimits[model] || 
-                  embeddingLimits[`${provider}:default`] || 
-                  8000
+    const limit = embeddingLimits[model] || embeddingLimits[`${provider}:default`] || 8000
 
     // Apply safety margin (90% of limit)
     return Math.floor(limit * 0.9)
@@ -95,24 +93,21 @@ export class SmartChunkingService {
   /**
    * Smart chunking with multiple strategies
    */
-  static async chunkText(
-    text: string,
-    options: ChunkingOptions
-  ): Promise<ChunkResult> {
+  static async chunkText(text: string, options: ChunkingOptions): Promise<ChunkResult> {
     // Check cache if enabled
     if (options.cacheResults !== false) {
-      const cacheKey = this.getCacheKey(text, options)
-      const cached = this.chunkCache.get(cacheKey)
+      const cacheKey = SmartChunkingService.getCacheKey(text, options)
+      const cached = SmartChunkingService.chunkCache.get(cacheKey)
       if (cached) {
         logger.debug('Using cached chunks', { cacheKey })
         return cached
       }
     }
 
-    const maxTokens = options.maxTokens || 
-                     this.getModelTokenLimit(options.model, options.provider)
-    
-    const estimatedTokens = this.estimateTokens(text, options.model)
+    const maxTokens =
+      options.maxTokens || SmartChunkingService.getModelTokenLimit(options.model, options.provider)
+
+    const estimatedTokens = SmartChunkingService.estimateTokens(text, options.model)
 
     // No chunking needed
     if (estimatedTokens <= maxTokens) {
@@ -130,21 +125,21 @@ export class SmartChunkingService {
     }
 
     // Select chunking strategy
-    const strategy = options.strategy || this.selectStrategy(text, options)
-    
+    const strategy = options.strategy || SmartChunkingService.selectStrategy(text, options)
+
     let chunks: string[]
     switch (strategy.type) {
       case 'semantic':
-        chunks = await this.semanticChunking(text, maxTokens, options)
+        chunks = await SmartChunkingService.semanticChunking(text, maxTokens, options)
         break
       case 'token':
-        chunks = await this.tokenAwareChunking(text, maxTokens, options)
+        chunks = await SmartChunkingService.tokenAwareChunking(text, maxTokens, options)
         break
       case 'hybrid':
-        chunks = await this.hybridChunking(text, maxTokens, options)
+        chunks = await SmartChunkingService.hybridChunking(text, maxTokens, options)
         break
       default:
-        chunks = await this.characterChunking(text, maxTokens, options)
+        chunks = await SmartChunkingService.characterChunking(text, maxTokens, options)
     }
 
     const result: ChunkResult = {
@@ -153,17 +148,15 @@ export class SmartChunkingService {
         originalLength: text.length,
         chunkCount: chunks.length,
         strategy,
-        averageChunkSize: Math.floor(
-          chunks.reduce((sum, c) => sum + c.length, 0) / chunks.length
-        ),
-        estimatedTokens: chunks.map(c => this.estimateTokens(c, options.model)),
+        averageChunkSize: Math.floor(chunks.reduce((sum, c) => sum + c.length, 0) / chunks.length),
+        estimatedTokens: chunks.map((c) => SmartChunkingService.estimateTokens(c, options.model)),
       },
     }
 
     // Cache result
     if (options.cacheResults !== false) {
-      const cacheKey = this.getCacheKey(text, options)
-      this.chunkCache.set(cacheKey, result)
+      const cacheKey = SmartChunkingService.getCacheKey(text, options)
+      SmartChunkingService.chunkCache.set(cacheKey, result)
     }
 
     logger.info('Text chunked successfully', {
@@ -184,7 +177,7 @@ export class SmartChunkingService {
     options: ChunkingOptions
   ): Promise<string[]> {
     const chunkSize = maxTokens * 3.5 // Approximate chars from tokens
-    
+
     const chunker = new TextChunker()
     const chunks = await chunker.chunkText(text, {
       chunkSize: Math.floor(chunkSize),
@@ -193,7 +186,7 @@ export class SmartChunkingService {
       maxTokens,
     })
 
-    return chunks.map(c => c.content)
+    return chunks.map((c) => c.content)
   }
 
   /**
@@ -205,7 +198,7 @@ export class SmartChunkingService {
     options: ChunkingOptions
   ): Promise<string[]> {
     // For now, fall back to character-based with better estimation
-    return this.characterChunking(text, maxTokens, options)
+    return SmartChunkingService.characterChunking(text, maxTokens, options)
   }
 
   /**
@@ -217,14 +210,14 @@ export class SmartChunkingService {
     options: ChunkingOptions
   ): Promise<string[]> {
     // Try semantic first, fall back to character if chunks too large
-    const semanticChunks = await this.semanticChunking(text, maxTokens, options)
-    
+    const semanticChunks = await SmartChunkingService.semanticChunking(text, maxTokens, options)
+
     const finalChunks: string[] = []
     for (const chunk of semanticChunks) {
-      const tokens = this.estimateTokens(chunk, options.model)
+      const tokens = SmartChunkingService.estimateTokens(chunk, options.model)
       if (tokens > maxTokens) {
         // Re-chunk this piece
-        const subChunks = await this.characterChunking(chunk, maxTokens, options)
+        const subChunks = await SmartChunkingService.characterChunking(chunk, maxTokens, options)
         finalChunks.push(...subChunks)
       } else {
         finalChunks.push(chunk)
@@ -244,27 +237,27 @@ export class SmartChunkingService {
   ): Promise<string[]> {
     const targetChars = Math.floor(maxTokens * 3.5) // Conservative char to token ratio
     const overlap = Math.max(50, Math.min(500, Math.ceil(targetChars * 0.1))) // Dynamic overlap
-    
+
     const chunks: string[] = []
     let position = 0
-    
+
     while (position < text.length) {
       let chunkEnd = Math.min(position + targetChars, text.length)
-      
+
       // Find optimal break point if not at end
       if (chunkEnd < text.length) {
-        chunkEnd = this.findBreakPoint(text, chunkEnd)
+        chunkEnd = SmartChunkingService.findBreakPoint(text, chunkEnd)
       }
-      
+
       chunks.push(text.substring(position, chunkEnd))
-      
+
       // Move position with overlap
       position = chunkEnd - overlap
       if (position >= text.length - overlap) {
         break
       }
     }
-    
+
     return chunks
   }
 
@@ -314,12 +307,12 @@ export class SmartChunkingService {
     // FIXED regex patterns to actually match markdown/code
     const hasMarkdown = /^#+\s|\*\*|\[.*\]\(.*\)/m.test(text)
     const hasParagraphs = /\n\n/.test(text)
-    const hasCode = /```|{\s*}|[\[\]]|function|class|def|import|export/m.test(text)
-    
+    const hasCode = /```|{\s*}|[[\]]|function|class|def|import|export/m.test(text)
+
     if (hasMarkdown || hasParagraphs) {
       return { type: 'semantic', preserveBoundaries: true }
     }
-    
+
     if (hasCode) {
       return { type: 'hybrid', preserveBoundaries: true }
     }
@@ -342,24 +335,23 @@ export class SmartChunkingService {
   private static getCacheKey(text: string, options: ChunkingOptions): string {
     const hash = crypto.createHash('sha256')
     hash.update(text)
-    hash.update(JSON.stringify({
-      model: options.model,
-      provider: options.provider,
-      maxTokens: options.maxTokens,
-      strategy: options.strategy,
-    }))
+    hash.update(
+      JSON.stringify({
+        model: options.model,
+        provider: options.provider,
+        maxTokens: options.maxTokens,
+        strategy: options.strategy,
+      })
+    )
     return hash.digest('hex')
   }
 
   /**
    * Batch chunking for multiple texts
    */
-  static async batchChunk(
-    texts: string[],
-    options: ChunkingOptions
-  ): Promise<ChunkResult[]> {
+  static async batchChunk(texts: string[], options: ChunkingOptions): Promise<ChunkResult[]> {
     const results = await Promise.all(
-      texts.map(text => this.chunkText(text, options))
+      texts.map((text) => SmartChunkingService.chunkText(text, options))
     )
     return results
   }

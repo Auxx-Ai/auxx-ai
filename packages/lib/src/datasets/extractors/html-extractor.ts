@@ -3,9 +3,9 @@
 import * as cheerio from 'cheerio'
 // @ts-expect-error - turndown lacks type definitions
 import TurndownService from 'turndown'
+import type { ExtractionResult, ExtractorCapabilities } from '../types/extractor.types'
 import { BaseExtractor } from './base-extractor'
 import { ExtractorRegistry } from './extractor-registry'
-import type { ExtractionResult, ExtractorCapabilities } from '../types/extractor.types'
 
 /**
  * HTML extractor using cheerio for parsing and turndown for markdown conversion

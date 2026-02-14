@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/shared/node-inputs/participant-input.tsx
 
-import React from 'react'
 import { Label } from '@auxx/ui/components/label'
+import React from 'react'
 import { ParticipantPicker } from '~/components/pickers/participant-picker'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
@@ -18,16 +18,7 @@ interface ParticipantInputProps extends NodeInputProps {
  * Participant input component using ParticipantPicker
  */
 export const ParticipantInput = createNodeInput<ParticipantInputProps>(
-  ({
-    inputs,
-    errors,
-    onChange,
-    onError,
-    isLoading,
-    name,
-    allowMultiple = false,
-    type = 'any',
-  }) => {
+  ({ inputs, errors, onChange, onError, isLoading, name, allowMultiple = false, type = 'any' }) => {
     const value = inputs[name]
     const error = errors[name]
 

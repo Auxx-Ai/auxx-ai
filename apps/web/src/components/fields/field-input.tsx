@@ -1,13 +1,13 @@
 // apps/web/src/components/fields/field-input.tsx
-import { PopoverContent } from '@auxx/ui/components/popover'
-import { useCallback, type ReactNode } from 'react'
-import { usePropertyContext } from './property-provider'
-import { useFieldNavigationOptional } from './field-navigation-context'
-import { useFieldPopoverHandlers } from './use-field-popover-handlers'
-import { getInputComponentForFieldType } from './inputs/get-input-component'
-import { getFieldTypeMinWidth, getFieldTypeMaxWidth } from '@auxx/lib/custom-fields/types'
+
+import { getFieldTypeMaxWidth, getFieldTypeMinWidth } from '@auxx/lib/custom-fields/types'
+import { Popover, PopoverContent } from '@auxx/ui/components/popover'
 import { Popover as PopoverPrimitive } from 'radix-ui'
-import { Popover } from '@auxx/ui/components/popover'
+import { type ReactNode, useCallback } from 'react'
+import { useFieldNavigationOptional } from './field-navigation-context'
+import { getInputComponentForFieldType } from './inputs/get-input-component'
+import { usePropertyContext } from './property-provider'
+import { useFieldPopoverHandlers } from './use-field-popover-handlers'
 
 /**
  * field-input.tsx
@@ -71,16 +71,16 @@ export function FieldInput({ children }: FieldInputProps) {
 
   return (
     <Popover open={isOpen}>
-      <PopoverPrimitive.Trigger className="w-full focus:outline-none" asChild>
-        <div tabIndex={-1} aria-hidden="true">
+      <PopoverPrimitive.Trigger className='w-full focus:outline-none' asChild>
+        <div tabIndex={-1} aria-hidden='true'>
           {children}
         </div>
       </PopoverPrimitive.Trigger>
 
       <PopoverContent
-        align="start"
-        side="bottom"
-        className="p-0 duration-0 rounded-lg"
+        align='start'
+        side='bottom'
+        className='p-0 duration-0 rounded-lg'
         style={{
           width: 'var(--radix-popover-trigger-width)',
           minWidth: getFieldTypeMinWidth(field.fieldType),
@@ -91,7 +91,7 @@ export function FieldInput({ children }: FieldInputProps) {
         onPointerDownOutside={handleOutsideEvent}
         onEscapeKeyDown={handleEscapeKey}
         onKeyDown={handleKeyDown}>
-        <div className="flex flex-col">{InputComponent}</div>
+        <div className='flex flex-col'>{InputComponent}</div>
       </PopoverContent>
     </Popover>
   )

@@ -1,30 +1,32 @@
 // src/lib/providers/outlook/outlook-provider.ts // Adjusted path
-import { Client } from '@microsoft/microsoft-graph-client'
+
+import { env } from '@auxx/config/server'
+import { database as db, schema } from '@auxx/database'
+import { IntegrationProviderType } from '@auxx/database/enums'
+import type { IntegrationEntity } from '@auxx/database/models'
+import { createScopedLogger } from '@auxx/logger'
+import { getAttachmentByteSize, sanitizeFilename, toGraphRecipients } from '@auxx/utils'
+import type { Client } from '@microsoft/microsoft-graph-client'
+import { eq } from 'drizzle-orm'
 import {
-  BaseMessageProvider,
-  type MessageProvider,
-  type AttachmentFile,
-} from '../message-provider-interface'
-import { type ProviderCapabilities, getProviderCapabilities } from '../provider-capabilities'
+  EmailLabel, // Still needed for MessageData structure
+  type MessageData, // Use this structure for storing
+  MessageStorageService,
+  type ParticipantInputData, // Use this for participant info
+} from '../../email/email-storage' // Adjust path
 import {
   type IntegrationProvider,
-  type SendMessageOptions,
   MessageStatus,
+  type SendMessageOptions,
 } from '../integration-provider.interface' // Adjust path
-import { database as db, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
-import { createScopedLogger } from '@auxx/logger'
-import { OutlookOAuthService, type OutlookAuthContext } from './outlook-oauth' // Adjust path
 import {
-  MessageStorageService,
-  type MessageData, // Use this structure for storing
-  type ParticipantInputData, // Use this for participant info
-  EmailLabel, // Still needed for MessageData structure
-} from '../../email/email-storage' // Adjust path
-import { env } from '@auxx/config/server'
-import type { IntegrationEntity } from '@auxx/database/models'
-import { sanitizeFilename, getAttachmentByteSize, toGraphRecipients } from '@auxx/utils'
-import { IntegrationProviderType } from '@auxx/database/enums'
+  type AttachmentFile,
+  BaseMessageProvider,
+  type MessageProvider,
+} from '../message-provider-interface'
+import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
+import { type OutlookAuthContext, OutlookOAuthService } from './outlook-oauth' // Adjust path
+
 const logger = createScopedLogger('outlook-provider')
 // Interface for Graph API email address structure
 interface GraphEmailAddress {
@@ -563,7 +565,7 @@ export class OutlookProvider
       since: since?.toISOString(),
     })
     try {
-      let nextLink: string | undefined = undefined
+      let nextLink: string | undefined
       let deltaLink = (this.integration?.metadata as any)?.graphDeltaLink // Get stored delta link
       const selectFields =
         'id,conversationId,subject,from,toRecipients,ccRecipients,bccRecipients,replyTo,receivedDateTime,sentDateTime,body,internetMessageId,parentFolderId,isRead,hasAttachments,categories,internetMessageHeaders,inferenceClassification'

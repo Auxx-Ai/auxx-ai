@@ -1,10 +1,5 @@
 'use client'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
+import { OrganizationRole } from '@auxx/database/enums'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
@@ -25,8 +20,13 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { api } from '~/trpc/react'
-import { OrganizationRole } from '@auxx/database/enums'
+
 const formSchema = z.object({
   email: z.email({ error: 'Please enter a valid email address.' }),
   role: z.enum(OrganizationRole, { error: 'Please select a valid role.' }),
@@ -79,7 +79,7 @@ export default function InviteForm({ organizationId, onInviteSuccess }: InviteFo
     }
   }
   return (
-    <div className="mx-auto max-w-md py-10">
+    <div className='mx-auto max-w-md py-10'>
       <Card>
         <CardHeader>
           <CardTitle>Invite Team Members</CardTitle>
@@ -87,15 +87,15 @@ export default function InviteForm({ organizationId, onInviteSuccess }: InviteFo
         </CardHeader>
         <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+            <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-8'>
               <FormField
                 control={form.control}
-                name="email"
+                name='email'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <Input placeholder="colleague@example.com" {...field} />
+                      <Input placeholder='colleague@example.com' {...field} />
                     </FormControl>
                     <FormDescription>
                       Enter the email address of the person you want to invite.
@@ -107,14 +107,14 @@ export default function InviteForm({ organizationId, onInviteSuccess }: InviteFo
 
               <FormField
                 control={form.control}
-                name="role"
+                name='role'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Role</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select a role" />
+                          <SelectValue placeholder='Select a role' />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -131,14 +131,14 @@ export default function InviteForm({ organizationId, onInviteSuccess }: InviteFo
                 )}
               />
 
-              <div className="flex justify-between">
+              <div className='flex justify-between'>
                 <Button
-                  type="button"
-                  variant="outline"
+                  type='button'
+                  variant='outline'
                   onClick={() => router.push('/app/settings/members')}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isSubmitting}>
+                <Button type='submit' disabled={isSubmitting}>
                   {isSubmitting ? 'Sending...' : 'Send Invitation'}
                 </Button>
               </div>

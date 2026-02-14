@@ -1,7 +1,7 @@
 // packages/database/src/db/schema/import-job-property.ts
 
-import { pgTable, index, uniqueIndex, text, integer, timestamp, type AnyPgColumn } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, index, integer, pgTable, text, timestamp, uniqueIndex } from './_shared'
 import { ImportJob } from './import-job'
 import { ImportMappingProperty } from './import-mapping-property'
 

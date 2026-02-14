@@ -1,8 +1,8 @@
-export { MailViewService } from './mail-view-service'
 export {
-  MAIL_VIEW_FIELD_DEFINITIONS,
+  getDefaultOperatorForField,
   getMailViewFieldDefinition,
   getMailViewFields,
-  getDefaultOperatorForField,
+  MAIL_VIEW_FIELD_DEFINITIONS,
   type MailViewFieldDefinition,
 } from './mail-view-field-definitions'
+export { MailViewService } from './mail-view-service'

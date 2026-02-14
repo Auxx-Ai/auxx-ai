@@ -1,9 +1,9 @@
 // packages/lib/src/datasets/extractors/pdf-extractor.ts
 
+import type { ExtractionResult, ExtractorCapabilities } from '../types/extractor.types'
 // import pdfParse from 'pdf-parse'
 import { BaseExtractor } from './base-extractor'
 import { ExtractorRegistry } from './extractor-registry'
-import type { ExtractionResult, ExtractorCapabilities } from '../types/extractor.types'
 
 /**
  * PDF extractor using pdf-parse library

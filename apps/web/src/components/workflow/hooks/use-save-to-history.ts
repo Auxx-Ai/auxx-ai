@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/hooks/use-save-to-history.ts
 
-import { useCallback, useRef, useState } from 'react'
-import { useStoreApi } from '@xyflow/react'
 import { debounce } from '@auxx/utils'
-import { useHistoryManager } from '../store/workflow-store-provider'
+import { useStoreApi } from '@xyflow/react'
+import { useCallback, useRef, useState } from 'react'
 import { storeEventBus } from '../store/event-bus'
+import { useHistoryManager } from '../store/workflow-store-provider'
 
 /**
  * All supported Events that create a new history state.

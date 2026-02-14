@@ -1,7 +1,7 @@
 // apps/web/src/lib/extensions/components/workflow/workflow-node-text.tsx
 
-import React from 'react'
 import { cn } from '@auxx/ui/lib/utils'
+import type React from 'react'
 
 /** Props for WorkflowNodeText component */
 interface WorkflowNodeTextProps {

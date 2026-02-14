@@ -1,6 +1,7 @@
 // apps/web/src/app/(protected)/app/workflows/_components/executions/workflow-runs-filter-bar.tsx
 'use client'
-import { useCallback } from 'react'
+import type { WorkflowRunStatus } from '@auxx/database/enums'
+import { type DateRange, DateRangePicker } from '@auxx/ui/components/date-range-picker'
 import {
   Select,
   SelectContent,
@@ -8,10 +9,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { DateRangePicker, type DateRange } from '@auxx/ui/components/date-range-picker'
-import { addDays, startOfDay, endOfDay } from 'date-fns'
+import { addDays, endOfDay, startOfDay } from 'date-fns'
+import { useCallback } from 'react'
 import type { WorkflowRunsFilter } from './types'
-import { WorkflowRunStatus } from '@auxx/database/enums'
+
 interface WorkflowRunsFilterBarProps {
   filter: WorkflowRunsFilter
   setFilter: (
@@ -48,7 +49,7 @@ export function WorkflowRunsFilterBar({ filter, setFilter }: WorkflowRunsFilterB
     [setFilter]
   )
   return (
-    <div className="flex gap-1 items-center">
+    <div className='flex gap-1 items-center'>
       {/* Date Range Picker */}
       <DateRangePicker
         value={{
@@ -57,17 +58,17 @@ export function WorkflowRunsFilterBar({ filter, setFilter }: WorkflowRunsFilterB
         }}
         onChange={handleDateChange}
         showShortLabel
-        triggerClassName="w-[200px]"
-        triggerVariant="ghost"
+        triggerClassName='w-[200px]'
+        triggerVariant='ghost'
       />
 
       {/* Status Filter */}
       <Select value={filter.status} onValueChange={handleStatusChange}>
         <SelectTrigger
-          className="w-[140px]"
-          size="sm"
-          className="bg-transparent hover:bg-accent hover:text-accent-foreground border-0">
-          <SelectValue placeholder="Status" />
+          className='w-[140px]'
+          size='sm'
+          className='bg-transparent hover:bg-accent hover:text-accent-foreground border-0'>
+          <SelectValue placeholder='Status' />
         </SelectTrigger>
         <SelectContent>
           {statusOptions.map((option) => (

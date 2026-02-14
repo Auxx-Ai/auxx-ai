@@ -3,8 +3,8 @@
  * Stripe client singleton wrapper.
  */
 
-import Stripe from 'stripe'
 import { createScopedLogger } from '@auxx/logger'
+import Stripe from 'stripe'
 
 const logger = createScopedLogger('stripe-client')
 

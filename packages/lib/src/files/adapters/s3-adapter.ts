@@ -1,36 +1,36 @@
 // packages/lib/src/files/adapters/s3-adapter.ts
 
 import {
-  S3Client,
-  HeadObjectCommand,
-  GetObjectCommand,
-  PutObjectCommand,
-  DeleteObjectCommand,
-  CreateMultipartUploadCommand,
-  UploadPartCommand,
-  CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
-  type S3ClientConfig,
-  type HeadObjectCommandOutput,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
   type GetObjectCommandOutput,
+  HeadObjectCommand,
+  type HeadObjectCommandOutput,
+  PutObjectCommand,
+  S3Client,
+  type S3ClientConfig,
+  UploadPartCommand,
 } from '@aws-sdk/client-s3'
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import {
   BaseStorageAdapter,
-  type StorageLocationRef,
-  type ProviderAuth,
-  type StorageCapabilities,
-  type FileMetadata,
-  type PresignedUpload,
-  type MultipartUpload,
-  type FileRevision,
-  type WebhookEvent,
   type DownloadRef,
+  type FileMetadata,
+  type FileRevision,
+  type MultipartUpload,
+  type PresignedUpload,
+  type ProviderAuth,
   StorageAdapterError,
   StorageAuthError,
+  type StorageCapabilities,
   StorageFileNotFoundError,
+  type StorageLocationRef,
   StorageQuotaError,
+  type WebhookEvent,
 } from './base-adapter'
 
 // ============= Configuration Interfaces =============

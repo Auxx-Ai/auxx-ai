@@ -29,10 +29,15 @@ export class SearchHistoryModel extends BaseModel<
   }
 
   async countByUser(userId: string): Promise<TypedResult<number, Error>> {
-    return this.count({ where: and(this.scopeFilter ?? (undefined as any), eq(SearchHistory.userId, userId)) as any })
+    return this.count({
+      where: and(this.scopeFilter ?? (undefined as any), eq(SearchHistory.userId, userId)) as any,
+    })
   }
 
-  async findOldestByUser(userId: string, limit: number): Promise<TypedResult<SearchHistoryEntity[], Error>> {
+  async findOldestByUser(
+    userId: string,
+    limit: number
+  ): Promise<TypedResult<SearchHistoryEntity[], Error>> {
     try {
       const whereParts: SQL<unknown>[] = []
       if (this.scopeFilter) whereParts.push(this.scopeFilter)
@@ -48,7 +53,10 @@ export class SearchHistoryModel extends BaseModel<
     }
   }
 
-  async createForUser(userId: string, query: string): Promise<TypedResult<SearchHistoryEntity, Error>> {
+  async createForUser(
+    userId: string,
+    query: string
+  ): Promise<TypedResult<SearchHistoryEntity, Error>> {
     return this.create({ userId: userId as any, query: query as any } as any)
   }
 }

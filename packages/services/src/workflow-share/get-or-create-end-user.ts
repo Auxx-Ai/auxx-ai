@@ -1,7 +1,7 @@
 // packages/services/src/workflow-share/get-or-create-end-user.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { WorkflowShareError } from './errors'
@@ -55,7 +55,10 @@ export async function getOrCreateEndUser(
   if (userId) {
     const byUserResult = await fromDatabase(
       database.query.EndUser.findFirst({
-        where: and(eq(schema.EndUser.workflowAppId, workflowAppId), eq(schema.EndUser.userId, userId)),
+        where: and(
+          eq(schema.EndUser.workflowAppId, workflowAppId),
+          eq(schema.EndUser.userId, userId)
+        ),
       }),
       'get-end-user-by-user-id'
     )
@@ -72,7 +75,10 @@ export async function getOrCreateEndUser(
   // Priority 2: Find by sessionId
   const bySessionResult = await fromDatabase(
     database.query.EndUser.findFirst({
-      where: and(eq(schema.EndUser.workflowAppId, workflowAppId), eq(schema.EndUser.sessionId, sessionId)),
+      where: and(
+        eq(schema.EndUser.workflowAppId, workflowAppId),
+        eq(schema.EndUser.sessionId, sessionId)
+      ),
     }),
     'get-end-user-by-session-id'
   )
@@ -107,7 +113,10 @@ export async function getOrCreateEndUser(
   if (externalId) {
     const byExternalResult = await fromDatabase(
       database.query.EndUser.findFirst({
-        where: and(eq(schema.EndUser.workflowAppId, workflowAppId), eq(schema.EndUser.externalId, externalId)),
+        where: and(
+          eq(schema.EndUser.workflowAppId, workflowAppId),
+          eq(schema.EndUser.externalId, externalId)
+        ),
       }),
       'get-end-user-by-external-id'
     )

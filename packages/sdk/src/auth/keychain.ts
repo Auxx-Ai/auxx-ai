@@ -194,8 +194,7 @@ let keychainInstance: KeytarKeychain | TestKeychain | null = null
  */
 export function getKeychain(): KeytarKeychain | TestKeychain {
   if (keychainInstance === null) {
-    keychainInstance =
-      process.env.NODE_ENV === 'test' ? new TestKeychain() : new KeytarKeychain()
+    keychainInstance = process.env.NODE_ENV === 'test' ? new TestKeychain() : new KeytarKeychain()
   }
   return keychainInstance
 }

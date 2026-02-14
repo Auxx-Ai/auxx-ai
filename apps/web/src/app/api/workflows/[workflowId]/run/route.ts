@@ -1,19 +1,19 @@
 // apps/web/src/app/api/workflows/[workflowId]/run/route.ts
 
-import { NextRequest } from 'next/server'
-import { auth } from '~/auth/server'
-import { headers } from 'next/headers'
-import { RedisEventRouter } from '@auxx/redis'
-import { WorkflowExecutionService } from '@auxx/lib/workflows'
-import { RedisWorkflowExecutionReporter, WorkflowEventType } from '@auxx/lib/workflow-engine'
 import { database as db } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
+import { RedisWorkflowExecutionReporter, WorkflowEventType } from '@auxx/lib/workflow-engine'
 import { safeJsonStringify } from '@auxx/lib/workflow-engine/utils/serialization'
+import { WorkflowExecutionService } from '@auxx/lib/workflows'
+import { createScopedLogger } from '@auxx/logger'
+import { RedisEventRouter } from '@auxx/redis'
+import { headers } from 'next/headers'
+import type { NextRequest } from 'next/server'
+import { auth } from '~/auth/server'
 
 // Types for file handling
 interface UploadedFile {
   id: string // WorkflowFile ID
-  fileId: string // Actual File ID  
+  fileId: string // Actual File ID
   filename: string
   mimeType: string
   size: number
@@ -40,24 +40,26 @@ const logger = createScopedLogger('workflow-run-api')
  */
 async function processFileInputs(inputs: Record<string, any>): Promise<Record<string, any>> {
   const processedInputs = { ...inputs }
-  
+
   for (const [nodeId, value] of Object.entries(inputs)) {
     // Check if the value is an array of uploaded files
     if (Array.isArray(value) && value.length > 0 && isUploadedFileArray(value)) {
       // Convert UploadedFile[] to WorkflowFileData[]
-      processedInputs[nodeId] = value.map((file: UploadedFile): WorkflowFileData => ({
-        id: file.id,
-        fileId: file.fileId,
-        filename: file.filename,
-        mimeType: file.mimeType,
-        size: file.size,
-        url: file.url,
-        nodeId,
-        uploadedAt: new Date(file.uploadedAt),
-        // Note: expiresAt will be set by WorkflowProcessor during upload
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour default for workflow runs
-      }))
-      
+      processedInputs[nodeId] = value.map(
+        (file: UploadedFile): WorkflowFileData => ({
+          id: file.id,
+          fileId: file.fileId,
+          filename: file.filename,
+          mimeType: file.mimeType,
+          size: file.size,
+          url: file.url,
+          nodeId,
+          uploadedAt: new Date(file.uploadedAt),
+          // Note: expiresAt will be set by WorkflowProcessor during upload
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour default for workflow runs
+        })
+      )
+
       logger.info('Processed file inputs for workflow run', {
         nodeId,
         fileCount: value.length,
@@ -65,7 +67,7 @@ async function processFileInputs(inputs: Record<string, any>): Promise<Record<st
       })
     }
   }
-  
+
   return processedInputs
 }
 
@@ -73,14 +75,15 @@ async function processFileInputs(inputs: Record<string, any>): Promise<Record<st
  * Type guard to check if a value is an array of UploadedFile objects
  */
 function isUploadedFileArray(value: any[]): value is UploadedFile[] {
-  return value.every(item => 
-    typeof item === 'object' &&
-    item !== null &&
-    typeof item.id === 'string' &&
-    typeof item.fileId === 'string' &&
-    typeof item.filename === 'string' &&
-    typeof item.url === 'string' &&
-    typeof item.uploadedAt === 'string'
+  return value.every(
+    (item) =>
+      typeof item === 'object' &&
+      item !== null &&
+      typeof item.id === 'string' &&
+      typeof item.fileId === 'string' &&
+      typeof item.filename === 'string' &&
+      typeof item.url === 'string' &&
+      typeof item.uploadedAt === 'string'
   )
 }
 
@@ -119,7 +122,7 @@ export async function POST(
       try {
         // 1. Process file inputs and convert to WorkflowFileData format
         const processedInputs = await processFileInputs(inputs)
-        
+
         // 2. Create the workflow run using service with processed inputs
         const workflowExecutionService = new WorkflowExecutionService(db)
         const workflowRun = await workflowExecutionService.createRun({
@@ -181,24 +184,26 @@ export async function POST(
         const reporter = new RedisWorkflowExecutionReporter(workflowRun.id)
 
         // Execute workflow asynchronously
-        workflowExecutionService.executeWorkflowAsync(workflowRun, reporter, userEmail, userName).catch((error) => {
-          logger.error('Workflow execution failed', {
-            error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-            workflowRunId: workflowRun.id,
-          })
+        workflowExecutionService
+          .executeWorkflowAsync(workflowRun, reporter, userEmail, userName)
+          .catch((error) => {
+            logger.error('Workflow execution failed', {
+              error: error instanceof Error ? error.message : String(error),
+              stack: error instanceof Error ? error.stack : undefined,
+              workflowRunId: workflowRun.id,
+            })
 
-          // Send error event
-          send({
-            event: WorkflowEventType.ERROR,
-            workflowRunId: workflowRun.id,
-            timestamp: new Date().toISOString(),
-            data: {
-              message: error instanceof Error ? error.message : 'Workflow execution failed',
-              code: 'WORKFLOW_EXECUTION_ERROR',
-            },
+            // Send error event
+            send({
+              event: WorkflowEventType.ERROR,
+              workflowRunId: workflowRun.id,
+              timestamp: new Date().toISOString(),
+              data: {
+                message: error instanceof Error ? error.message : 'Workflow execution failed',
+                code: 'WORKFLOW_EXECUTION_ERROR',
+              },
+            })
           })
-        })
 
         // 5. Heartbeat
         const heartbeat = setInterval(() => {

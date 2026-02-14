@@ -1,4 +1,4 @@
-import { Branch } from '../types/core'
+import type { Branch } from '../types/core'
 
 export const branchNameCorrect = (branches: Branch[]) => {
   const branchLength = branches.length

@@ -1,12 +1,13 @@
 // app/kb/[knowledgeBaseId]/preview/page.tsx
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
+import { Label } from '@auxx/ui/components/label'
+import { Switch } from '@auxx/ui/components/switch'
+import { Monitor, Moon, Smartphone, Sun } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
-import { Button } from '@auxx/ui/components/button'
-import { Sun, Moon, Monitor, Smartphone } from 'lucide-react'
-import { Switch } from '@auxx/ui/components/switch'
-import { Label } from '@auxx/ui/components/label'
+
 // Knowledge base creator:
 
 // We have an existing knowledge base creator.
@@ -44,32 +45,32 @@ export default async function KnowledgeBasePreviewPage({ params }: KBPreviewPara
   const previewUrl = `/api/preview/kb/${knowledgeBaseId}?theme=${theme}&device=${device}`
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className='flex h-screen flex-col'>
       {/* Top bar */}
-      <div className="flex items-center justify-between border-b p-4">
-        <h1 className="text-xl font-semibold">
+      <div className='flex items-center justify-between border-b p-4'>
+        <h1 className='text-xl font-semibold'>
           {isLoading ? 'Loading...' : `Preview: ${knowledgeBase?.name}`}
         </h1>
 
-        <div className="flex items-center gap-4">
+        <div className='flex items-center gap-4'>
           {/* Theme toggle */}
-          <div className="flex items-center gap-2">
-            <Sun className="size-4" />
+          <div className='flex items-center gap-2'>
+            <Sun className='size-4' />
             <Switch
               checked={theme === 'dark'}
               onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
             />
-            <Moon className="size-4" />
+            <Moon className='size-4' />
           </div>
 
           {/* Device toggle */}
-          <div className="flex items-center gap-2">
-            <Smartphone className="size-4" />
+          <div className='flex items-center gap-2'>
+            <Smartphone className='size-4' />
             <Switch
               checked={device === 'desktop'}
               onCheckedChange={(checked) => setDevice(checked ? 'desktop' : 'mobile')}
             />
-            <Monitor className="size-4" />
+            <Monitor className='size-4' />
           </div>
 
           {/* Publish button */}
@@ -82,11 +83,11 @@ export default async function KnowledgeBasePreviewPage({ params }: KBPreviewPara
       </div>
 
       {/* Preview iframe */}
-      <div className="flex-1 p-4">
+      <div className='flex-1 p-4'>
         <div className={device === 'mobile' ? 'mx-auto max-w-sm' : 'h-full w-full'}>
           <iframe
             src={previewUrl}
-            className="h-full w-full rounded-lg border"
+            className='h-full w-full rounded-lg border'
             style={{ maxHeight: device === 'mobile' ? '80vh' : '100%' }}
           />
         </div>

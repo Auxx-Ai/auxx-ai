@@ -1,17 +1,19 @@
 // ~/components/global/sidebar/draggable-inbox-list.tsx
 'use client'
 
-import React from 'react'
+import { Badge } from '@auxx/ui/components/badge'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import { SidebarMenuSubItem } from '@auxx/ui/components/sidebar'
 import {
-  DndContext,
   closestCenter,
+  DndContext,
+  type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
 } from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import {
   arrayMove,
   SortableContext,
@@ -20,11 +22,9 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 // import { Inbox } from './SharedInboxesGroup'
 import { GripVertical } from 'lucide-react'
-import { Badge } from '@auxx/ui/components/badge'
-import { Checkbox } from '@auxx/ui/components/checkbox'
+import React from 'react'
 
 interface DraggableInboxListProps {
   inboxes: Inbox[]
@@ -89,19 +89,19 @@ function SortableInboxItem({ inbox, onToggleVisibility }: SortableInboxItemProps
 
   return (
     <SidebarMenuSubItem ref={setNodeRef} style={style} className={isDragging ? 'z-10' : ''}>
-      <div className="flex w-full items-center justify-between px-2 py-1.5">
-        <div className="flex items-center">
-          <div className="mr-2 cursor-move touch-none" {...attributes} {...listeners}>
-            <GripVertical className="size-4 text-muted-foreground" />
+      <div className='flex w-full items-center justify-between px-2 py-1.5'>
+        <div className='flex items-center'>
+          <div className='mr-2 cursor-move touch-none' {...attributes} {...listeners}>
+            <GripVertical className='size-4 text-muted-foreground' />
           </div>
           {inbox.color && (
-            <div className="mr-2 size-2 rounded-full" style={{ backgroundColor: inbox.color }} />
+            <div className='mr-2 size-2 rounded-full' style={{ backgroundColor: inbox.color }} />
           )}
           <span>{inbox.name}</span>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className='flex items-center space-x-2'>
           {inbox.unassignedCount ? (
-            <Badge variant="secondary">{inbox.unassignedCount}</Badge>
+            <Badge variant='secondary'>{inbox.unassignedCount}</Badge>
           ) : null}
           <Checkbox
             checked={inbox.isVisible}

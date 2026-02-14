@@ -21,8 +21,8 @@
  * accidentally created.
  */
 
+import type { OnLoadArgs, OnLoadResult, OnResolveArgs, Plugin, PluginBuild } from 'esbuild'
 import path from 'path'
-import type { Plugin, PluginBuild, OnResolveArgs, OnLoadArgs, OnLoadResult } from 'esbuild'
 
 /**
  * Reference to a handler function with its file path and export name.
@@ -100,7 +100,10 @@ interface ProxyPluginData {
  * export default schema_0;
  * ```
  */
-function getBlockModuleProxy(modulePath: string, workflowBlockModulesRef: WorkflowBlockModulesRef): string {
+function getBlockModuleProxy(
+  modulePath: string,
+  workflowBlockModulesRef: WorkflowBlockModulesRef
+): string {
   let counter = 0
   const exports = new Map<string, string>()
   for (const {
@@ -236,7 +239,7 @@ export function proxyBlockModulesPlugin({
             contents: getBlockModuleProxy(pluginData.modulePath, workflowBlockModulesRef),
             loader: 'js',
           }
-        },
+        }
       )
     },
   }

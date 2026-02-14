@@ -1,8 +1,8 @@
 // packages/database/src/db/schema/oauth-application.ts
 // OAuth application registrations (clients) for OIDC Provider
 
-import { pgTable, text, boolean, timestamp, type AnyPgColumn } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, boolean, pgTable, text, timestamp } from './_shared'
 import { User } from './user'
 
 /** OAuth application (client) registrations */

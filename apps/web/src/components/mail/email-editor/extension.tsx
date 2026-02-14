@@ -1,19 +1,20 @@
-import React from 'react'
 import { mergeAttributes, Node } from '@tiptap/core'
 import {
-  ReactNodeViewRenderer,
   NodeViewContent,
+  type NodeViewProps,
   NodeViewWrapper,
-  NodeViewProps,
+  ReactNodeViewRenderer,
 } from '@tiptap/react'
+import type React from 'react'
+
 // import GhostText from "./ghost-text";
 
 // import { NodeViewWrapper, NodeViewContent } from '@tiptap/react'
 
 const GhostText = (props: NodeViewProps) => {
   return (
-    <NodeViewWrapper as="span">
-      <NodeViewContent className="!inline select-none text-gray-300" as="span">
+    <NodeViewWrapper as='span'>
+      <NodeViewContent className='!inline select-none text-gray-300' as='span'>
         {props.node.attrs.content}
       </NodeViewContent>
     </NodeViewWrapper>

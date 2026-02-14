@@ -1,11 +1,11 @@
 // packages/lib/src/jobs/billing/apply-scheduled-subscription-changes-job.ts
 
+import { stripeClient } from '@auxx/billing'
+import { database as db, schema } from '@auxx/database'
 import type { Job } from 'bullmq'
+import { and, eq, inArray, isNotNull, lte } from 'drizzle-orm'
 import { z } from 'zod'
 import { createScopedLogger } from '../../logger'
-import { database as db, schema } from '@auxx/database'
-import { and, isNotNull, lte, inArray, eq } from 'drizzle-orm'
-import { stripeClient } from '@auxx/billing'
 
 const logger = createScopedLogger('apply-scheduled-subscription-changes-job')
 
@@ -198,9 +198,7 @@ async function applyScheduledChange(
 
     // 3. Update Stripe subscription
     const stripe = stripeClient.getClient()
-    const stripeSubscription = await stripe.subscriptions.retrieve(
-      stripeSubscriptionId!
-    )
+    const stripeSubscription = await stripe.subscriptions.retrieve(stripeSubscriptionId!)
     const subscriptionItemId = stripeSubscription.items.data[0]?.id
 
     if (!subscriptionItemId) {
@@ -282,10 +280,7 @@ export async function applyScheduledSubscriptionChangesJob(
 
   try {
     // Find subscriptions with scheduled changes
-    const subscriptions = await findScheduledChanges(
-      input.organizationId,
-      input.batchSize
-    )
+    const subscriptions = await findScheduledChanges(input.organizationId, input.batchSize)
 
     result.totalFound = subscriptions.length
 
@@ -325,9 +320,7 @@ export async function applyScheduledSubscriptionChangesJob(
 
         // Update job progress
         const progress = Math.round(
-          ((result.successful + result.skipped + result.failed) /
-            result.totalFound) *
-            100
+          ((result.successful + result.skipped + result.failed) / result.totalFound) * 100
         )
         await job.updateProgress(progress)
       } catch (error) {

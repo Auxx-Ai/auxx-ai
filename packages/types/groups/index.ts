@@ -2,10 +2,10 @@
 
 import type { Database } from '@auxx/database'
 import type {
-  MemberType,
   GroupVisibility,
-  ResourcePermission,
+  MemberType,
   ResourceGranteeType,
+  ResourcePermission,
 } from '@auxx/database/enums'
 import type { EntityInstanceEntity } from '@auxx/database/models'
 

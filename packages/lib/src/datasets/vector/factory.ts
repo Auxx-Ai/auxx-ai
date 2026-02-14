@@ -1,10 +1,10 @@
 // packages/lib/src/datasets/vector/factory.ts
 
-import type { VectorDbType } from '@auxx/database/types'
 import { VectorDbType as VectorDbTypeEnum } from '@auxx/database/enums'
+import type { VectorDbType } from '@auxx/database/types'
+import { createScopedLogger } from '@auxx/logger'
 import type { VectorDatabase, VectorDatabaseConfig } from '../types/vector.types'
 import { PostgreSQLVectorDB } from './postgresql'
-import { createScopedLogger } from '@auxx/logger'
 
 const logger = createScopedLogger('vector-db-factory')
 
@@ -24,15 +24,15 @@ export class VectorDatabaseFactory {
     const cacheKey = `${datasetId}-${config.type}`
 
     // Return cached instance if available and healthy
-    if (this.instances.has(cacheKey)) {
-      const instance = this.instances.get(cacheKey)!
+    if (VectorDatabaseFactory.instances.has(cacheKey)) {
+      const instance = VectorDatabaseFactory.instances.get(cacheKey)!
       try {
         const isHealthy = await instance.healthCheck()
         if (isHealthy) {
           return instance
         } else {
           // Remove unhealthy instance from cache
-          this.instances.delete(cacheKey)
+          VectorDatabaseFactory.instances.delete(cacheKey)
         }
       } catch (error) {
         logger.warn('Cached vector database instance unhealthy, recreating', {
@@ -40,11 +40,11 @@ export class VectorDatabaseFactory {
           type: config.type,
           error: error instanceof Error ? error.message : error,
         })
-        this.instances.delete(cacheKey)
+        VectorDatabaseFactory.instances.delete(cacheKey)
       }
     }
 
-    const collectionName = this.generateCollectionName(datasetId)
+    const collectionName = VectorDatabaseFactory.generateCollectionName(datasetId)
     let instance: VectorDatabase
 
     try {
@@ -70,7 +70,7 @@ export class VectorDatabaseFactory {
       await instance.healthCheck()
 
       // Cache the instance
-      this.instances.set(cacheKey, instance)
+      VectorDatabaseFactory.instances.set(cacheKey, instance)
 
       logger.info('Vector database instance created', {
         datasetId,
@@ -106,15 +106,15 @@ export class VectorDatabaseFactory {
   static clearCache(datasetId?: string) {
     if (datasetId) {
       // Remove specific dataset instances
-      for (const [key] of this.instances) {
+      for (const [key] of VectorDatabaseFactory.instances) {
         if (key.startsWith(datasetId)) {
-          this.instances.delete(key)
+          VectorDatabaseFactory.instances.delete(key)
         }
       }
       logger.info('Vector database cache cleared for dataset', { datasetId })
     } else {
       // Clear all instances
-      this.instances.clear()
+      VectorDatabaseFactory.instances.clear()
       logger.info('Vector database cache cleared completely')
     }
   }
@@ -133,7 +133,7 @@ export class VectorDatabaseFactory {
    * Check if a database type is supported
    */
   static isSupported(type: VectorDbType): boolean {
-    return this.getSupportedDatabases().includes(type)
+    return VectorDatabaseFactory.getSupportedDatabases().includes(type)
   }
 
   /**
@@ -141,11 +141,11 @@ export class VectorDatabaseFactory {
    */
   static getCacheStats() {
     const stats = {
-      totalInstances: this.instances.size,
+      totalInstances: VectorDatabaseFactory.instances.size,
       instancesByType: {} as Record<string, number>,
     }
 
-    for (const [key, instance] of this.instances) {
+    for (const [key, instance] of VectorDatabaseFactory.instances) {
       const type = instance.getConfig().type
       stats.instancesByType[type] = (stats.instancesByType[type] || 0) + 1
     }
@@ -167,25 +167,27 @@ export class VectorDatabaseFactory {
       details: [] as Array<{ key: string; healthy: boolean; error?: string }>,
     }
 
-    const healthChecks = Array.from(this.instances.entries()).map(async ([key, instance]) => {
-      try {
-        const isHealthy = await instance.healthCheck()
-        if (isHealthy) {
-          results.healthy++
-          results.details.push({ key, healthy: true })
-        } else {
+    const healthChecks = Array.from(VectorDatabaseFactory.instances.entries()).map(
+      async ([key, instance]) => {
+        try {
+          const isHealthy = await instance.healthCheck()
+          if (isHealthy) {
+            results.healthy++
+            results.details.push({ key, healthy: true })
+          } else {
+            results.unhealthy++
+            results.details.push({ key, healthy: false })
+          }
+        } catch (error) {
           results.unhealthy++
-          results.details.push({ key, healthy: false })
+          results.details.push({
+            key,
+            healthy: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          })
         }
-      } catch (error) {
-        results.unhealthy++
-        results.details.push({
-          key,
-          healthy: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
       }
-    })
+    )
 
     await Promise.all(healthChecks)
     return results

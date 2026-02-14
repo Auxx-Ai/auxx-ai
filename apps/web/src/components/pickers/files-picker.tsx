@@ -1,28 +1,29 @@
 // apps/web/src/components/pickers/files-picker.tsx
 'use client'
 
-import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Button } from '@auxx/ui/components/button'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   Command,
-  CommandInput,
-  CommandList,
+  CommandBreadcrumb,
   CommandEmpty,
   CommandGroup,
+  CommandInput,
   CommandItem,
+  CommandList,
   CommandNavigation,
-  CommandBreadcrumb,
-  useCommandNavigation,
   type NavigationItem,
+  useCommandNavigation,
 } from '@auxx/ui/components/command'
-import { Checkbox } from '@auxx/ui/components/checkbox'
-import { ChevronRight, File, Folder } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatBytes } from '@auxx/utils/file'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { useFilesystemContext } from '~/components/files/provider/filesystem-provider'
+import { ChevronRight, File, Folder } from 'lucide-react'
+import type React from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FileItem } from '~/components/files/files-store'
+import { useFilesystemContext } from '~/components/files/provider/filesystem-provider'
 
 /**
  * Selection state interface
@@ -213,9 +214,9 @@ function FilesList({
    */
   const getItemIcon = useCallback((item: FileItem) => {
     if (item.type === 'folder') {
-      return <Folder className="h-4 w-4" />
+      return <Folder className='h-4 w-4' />
     }
-    return <File className="h-4 w-4" />
+    return <File className='h-4 w-4' />
   }, [])
 
   /**
@@ -241,7 +242,7 @@ function FilesList({
   }
 
   return (
-    <ScrollArea className="max-h-[300px]">
+    <ScrollArea className='max-h-[300px]'>
       <CommandGroup>
         {items.map((item, index) => {
           const isSelected = allSelectedIds.has(item.id)
@@ -261,7 +262,7 @@ function FilesList({
                 'flex cursor-pointer items-center justify-between px-2',
                 isKeyboardSelected && 'bg-accent text-accent-foreground'
               )}>
-              <div className="flex items-center space-x-2 flex-1 min-w-0">
+              <div className='flex items-center space-x-2 flex-1 min-w-0'>
                 {isSelectable && (
                   <Checkbox
                     checked={isSelected}
@@ -272,18 +273,18 @@ function FilesList({
                 )}
 
                 {getItemIcon(item)}
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{item.name}</div>
+                <div className='flex-1 min-w-0'>
+                  <div className='font-medium truncate'>{item.name}</div>
 
                   {item.type === 'file' && (
-                    <div className="text-xs text-muted-foreground">
+                    <div className='text-xs text-muted-foreground'>
                       {formatBytes(item.displaySize)}
                       {item.ext && ` • ${item.ext.toUpperCase()}`}
 
                       {(showPath || (enableGlobalSearch && search.trim())) && (
                         <>
                           {' • '}
-                          <span className="truncate">
+                          <span className='truncate'>
                             {(item as FileItem & { hierarchy?: { fullPath: string } }).hierarchy
                               ?.fullPath || item.path}
                           </span>
@@ -293,23 +294,23 @@ function FilesList({
                   )}
 
                   {item.type === 'folder' && enableGlobalSearch && search.trim() && item.path && (
-                    <div className="text-xs text-muted-foreground truncate">{item.path}</div>
+                    <div className='text-xs text-muted-foreground truncate'>{item.path}</div>
                   )}
                 </div>
               </div>
 
-              <div className="flex items-center space-x-1">
+              <div className='flex items-center space-x-1'>
                 {canNavigate && (
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
+                    variant='ghost'
+                    size='icon'
+                    className='h-6 w-6'
                     onClick={(e) => {
                       e.stopPropagation()
                       handleNavigateToFolder(item)
                     }}>
-                    <ChevronRight className="h-4 w-4" />
-                    <span className="sr-only">Open folder</span>
+                    <ChevronRight className='h-4 w-4' />
+                    <span className='sr-only'>Open folder</span>
                   </Button>
                 )}
               </div>
@@ -499,21 +500,21 @@ function FilesPickerContent({
           }
           value={search}
           onValueChange={setSearch}
-          className="h-9"
+          className='h-9'
           autoFocus
         />
 
         {/* Global search indicator */}
         {isGlobalSearchActive && (
-          <div className="px-3 py-1 text-xs text-muted-foreground bg-muted/50 border-b">
+          <div className='px-3 py-1 text-xs text-muted-foreground bg-muted/50 border-b'>
             Searching across all files... ({filteredItems.length} results)
           </div>
         )}
 
-        <CommandBreadcrumb rootLabel="Files" />
+        <CommandBreadcrumb rootLabel='Files' />
 
         {isLoading ? (
-          <div className="py-6 text-center text-sm text-muted-foreground">Loading files...</div>
+          <div className='py-6 text-center text-sm text-muted-foreground'>Loading files...</div>
         ) : (
           <FilesList
             items={filteredItems}
@@ -538,24 +539,24 @@ function FilesPickerContent({
 
       {/* Keyboard shortcuts footer */}
       {enableKeyboardNavigation && (
-        <div className="border-t px-3 py-2 text-xs text-muted-foreground bg-neutral-50/50">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <span className="flex items-center gap-1">
+        <div className='border-t px-3 py-2 text-xs text-muted-foreground bg-neutral-50/50'>
+          <div className='flex items-center justify-between gap-4'>
+            <div className='flex items-center gap-3'>
+              <span className='flex items-center gap-1'>
                 <span>Select</span>
-                <kbd className="px-1.5 py-0.5 bg-white border rounded text-[10px] font-mono">↵</kbd>
+                <kbd className='px-1.5 py-0.5 bg-white border rounded text-[10px] font-mono'>↵</kbd>
               </span>
               {!isGlobalSearchActive && (
                 <>
-                  <span className="flex items-center gap-1">
+                  <span className='flex items-center gap-1'>
                     <span>Open</span>
-                    <kbd className="px-1.5 py-0.5 bg-white border rounded text-[10px] font-mono">
+                    <kbd className='px-1.5 py-0.5 bg-white border rounded text-[10px] font-mono'>
                       →
                     </kbd>
                   </span>
-                  <span className="flex items-center gap-1">
+                  <span className='flex items-center gap-1'>
                     <span>Back</span>
-                    <kbd className="px-1.5 py-0.5 bg-white border rounded text-[10px] font-mono">
+                    <kbd className='px-1.5 py-0.5 bg-white border rounded text-[10px] font-mono'>
                       ←
                     </kbd>
                   </span>
@@ -563,7 +564,7 @@ function FilesPickerContent({
               )}
             </div>
             {enableGlobalSearch && (
-              <div className="text-xs">
+              <div className='text-xs'>
                 {search.trim() ? `${totalFiles} files total` : `${filteredItems.length} items`}
                 {hasMoreFiles && search.trim() && ' (loading more...)'}
               </div>

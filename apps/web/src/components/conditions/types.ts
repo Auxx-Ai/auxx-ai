@@ -1,26 +1,23 @@
 // apps/web/src/components/conditions/types.ts
 
-import type { ReactNode } from 'react'
-import { BaseType } from '@auxx/lib/workflow-engine/types'
-import type { SelectOption } from '@auxx/types/custom-field'
-
 // Import from shared conditions module - single source of truth
-import type { Condition, ConditionGroup as BaseConditionGroup } from '@auxx/lib/conditions/client'
+import type { ConditionGroup as BaseConditionGroup, Condition } from '@auxx/lib/conditions/client'
+import type { BaseType } from '@auxx/lib/workflow-engine/types'
+import type { SelectOption } from '@auxx/types/custom-field'
+import type { ReactNode } from 'react'
 
 // Re-export core types from lib
-export type { Condition } from '@auxx/lib/conditions/client'
-
 // Re-export Operator type from conditions module
-export type { Operator } from '@auxx/lib/conditions/client'
+export type { Condition, Operator } from '@auxx/lib/conditions/client'
 
 // Import operators for re-export from conditions module
 import {
-  OPERATOR_DEFINITIONS,
-  operatorRequiresValue,
-  getOperatorsForFieldType,
   getOperatorDefinition,
-  type OperatorDefinition,
+  getOperatorsForFieldType,
+  OPERATOR_DEFINITIONS,
   type Operator,
+  type OperatorDefinition,
+  operatorRequiresValue,
 } from '@auxx/lib/conditions/client'
 
 // Re-export operator utilities
@@ -32,9 +29,9 @@ export {
   type OperatorDefinition,
 }
 
-import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import type { FieldType } from '@auxx/database/types'
 import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
+import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 
 /**
  * Group metadata for naming, descriptions, and UI state

@@ -1,12 +1,12 @@
 // apps/web/src/components/dynamic-table/types.ts
 
-import { type ColumnDef, type Table as TanstackTable } from '@tanstack/react-table'
-import { type LucideIcon } from 'lucide-react'
+import type { FieldType } from '@auxx/database/types'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { TargetTimeInStatus } from '@auxx/types/custom-field'
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import type { FieldType } from '@auxx/database/types'
 import type { FieldPath } from '@auxx/types/field'
+import type { ColumnDef, Table as TanstackTable } from '@tanstack/react-table'
+import type { LucideIcon } from 'lucide-react'
 
 // Re-export TargetTimeInStatus for backward compatibility
 export type { TargetTimeInStatus }
@@ -17,14 +17,14 @@ export type { TargetTimeInStatus }
 
 // Re-export types from schema (inferred from Zod = always in sync with validation)
 export type {
-  CurrencyColumnFormatting,
-  DateColumnFormatting,
-  NumberColumnFormatting,
-  PhoneColumnFormatting,
   CheckboxColumnFormatting,
   ColumnFormatting,
+  CurrencyColumnFormatting,
+  DateColumnFormatting,
   KanbanColumnSettings,
   KanbanViewConfig,
+  NumberColumnFormatting,
+  PhoneColumnFormatting,
   ViewConfig,
   ViewType,
 } from '@auxx/lib/conditions'

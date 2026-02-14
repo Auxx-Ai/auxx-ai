@@ -5,12 +5,11 @@
  * Types and utilities that can be used in React components.
  */
 
+// Constants
+export { PERMISSION_HIERARCHY, satisfiesPermission } from './constants'
 // Types
 export type {
   AccessCheckResult,
-  ResourceAccessInfo,
   InstanceAccess,
+  ResourceAccessInfo,
 } from './types'
-
-// Constants
-export { PERMISSION_HIERARCHY, satisfiesPermission } from './constants'

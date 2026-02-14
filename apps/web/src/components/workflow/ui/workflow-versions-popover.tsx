@@ -2,23 +2,23 @@
 
 'use client'
 
-import React from 'react'
-import { GitBranch } from 'lucide-react'
-import { useReactFlow } from '@xyflow/react'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Button } from '@auxx/ui/components/button'
 import {
   Command,
+  CommandEmpty,
+  CommandGroup,
   CommandInput,
   CommandList,
-  CommandGroup,
-  CommandEmpty,
 } from '@auxx/ui/components/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { useReactFlow } from '@xyflow/react'
+import { GitBranch } from 'lucide-react'
+import React from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useCanvasStore } from '~/components/workflow/store/canvas-store'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
 import { useConfirm } from '~/hooks/use-confirm'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { api } from '~/trpc/react'
 import { WorkflowVersionItem } from './workflow-version-item'
 
@@ -314,12 +314,12 @@ const WorkflowVersionsPopover: React.FC<WorkflowVersionsPopoverProps> = ({
   // Early return if no workflow ID
   if (!workflowId) {
     return (
-      <Tooltip content="Version History (Cmd+Shift+H)">
+      <Tooltip content='Version History (Cmd+Shift+H)'>
         <Button
-          variant="ghost"
-          size="icon"
+          variant='ghost'
+          size='icon'
           disabled
-          title="Save the workflow first to access version history">
+          title='Save the workflow first to access version history'>
           <GitBranch />
         </Button>
       </Tooltip>
@@ -330,31 +330,31 @@ const WorkflowVersionsPopover: React.FC<WorkflowVersionsPopoverProps> = ({
       <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger asChild>
           <div>
-            <Tooltip content="Version History" shortcut="⌘⇧+H">
-              <Button variant={open ? 'secondary' : 'ghost'} size="icon-sm" data-selected={open}>
+            <Tooltip content='Version History' shortcut='⌘⇧+H'>
+              <Button variant={open ? 'secondary' : 'ghost'} size='icon-sm' data-selected={open}>
                 <GitBranch />
               </Button>
             </Tooltip>
           </div>
         </PopoverTrigger>
         <PopoverContent
-          className="w-80 p-0 bg-transparent backdrop-blur-sm border-primary-900/10"
-          align="start"
+          className='w-80 p-0 bg-transparent backdrop-blur-sm border-primary-900/10'
+          align='start'
           // onInteractOutside={(e) => {
           //   e.preventDefault()
           // }}
         >
-          <Command className="bg-white/40 dark:bg-white/5">
+          <Command className='bg-white/40 dark:bg-white/5'>
             <CommandInput
-              placeholder="Search versions..."
+              placeholder='Search versions...'
               value={searchQuery}
               onValueChange={setSearchQuery}
             />
             <CommandList>
               {versionsError ? (
-                <div className="p-4 text-center text-destructive">
-                  <p className="text-sm">Failed to load versions</p>
-                  <p className="text-xs text-muted-foreground mt-1">{versionsError.message}</p>
+                <div className='p-4 text-center text-destructive'>
+                  <p className='text-sm'>Failed to load versions</p>
+                  <p className='text-xs text-muted-foreground mt-1'>{versionsError.message}</p>
                 </div>
               ) : (
                 <>

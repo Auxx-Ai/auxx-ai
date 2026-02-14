@@ -2,9 +2,7 @@
 
 'use client'
 
-import { ChartColumn, Settings, Plus, Tags } from 'lucide-react'
-import { usePathname, useRouter } from 'next/navigation'
-import { parseAsBoolean, parseAsStringLiteral, useQueryState } from 'nuqs'
+import { Button } from '@auxx/ui/components/button'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -12,7 +10,6 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { Button } from '@auxx/ui/components/button'
 import {
   Select,
   SelectContent,
@@ -20,6 +17,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { ChartColumn, Plus, Settings, Tags } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { parseAsBoolean, parseAsStringLiteral, useQueryState } from 'nuqs'
 
 /** Ticket tab types for navigation */
 type TicketTab = 'list' | 'dashboard' | 'settings'
@@ -71,33 +71,33 @@ function TicketsLayoutHeader() {
 
   return (
     <MainPageHeader
-      className="justify-start"
+      className='justify-start'
       action={
-        <div className="flex items-center gap-2">
+        <div className='flex items-center gap-2'>
           <RadioTab
             value={activeTab}
             onValueChange={handleTabChange}
-            size="sm"
-            radioGroupClassName="grid w-full"
-            className="border border-primary-200 flex flex-1 w-full">
-            <RadioTabItem value="list" size="sm">
+            size='sm'
+            radioGroupClassName='grid w-full'
+            className='border border-primary-200 flex flex-1 w-full'>
+            <RadioTabItem value='list' size='sm'>
               <Tags />
               Tickets
             </RadioTabItem>
-            <RadioTabItem value="dashboard" size="sm">
+            <RadioTabItem value='dashboard' size='sm'>
               <ChartColumn />
               Dashboard
             </RadioTabItem>
-            <RadioTabItem value="settings" size="sm">
+            <RadioTabItem value='settings' size='sm'>
               <Settings />
               Settings
             </RadioTabItem>
           </RadioTab>
           {activeTab === 'list' && (
             <Button
-              variant="info"
-              size="sm"
-              className="px-2"
+              variant='info'
+              size='sm'
+              className='px-2'
               onClick={() => setCreateDialogOpen(true)}>
               <Plus />
               New Ticket
@@ -105,21 +105,21 @@ function TicketsLayoutHeader() {
           )}
           {activeTab === 'dashboard' && (
             <Select value={period} onValueChange={(value: DashboardPeriod) => setPeriod(value)}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Select period" />
+              <SelectTrigger className='w-[140px]'>
+                <SelectValue placeholder='Select period' />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="day">Today</SelectItem>
-                <SelectItem value="week">This Week</SelectItem>
-                <SelectItem value="month">This Month</SelectItem>
-                <SelectItem value="year">This Year</SelectItem>
+                <SelectItem value='day'>Today</SelectItem>
+                <SelectItem value='week'>This Week</SelectItem>
+                <SelectItem value='month'>This Month</SelectItem>
+                <SelectItem value='year'>This Year</SelectItem>
               </SelectContent>
             </Select>
           )}
         </div>
       }>
       <MainPageBreadcrumb>
-        <MainPageBreadcrumbItem title="Support Tickets" href="/app/tickets" last />
+        <MainPageBreadcrumbItem title='Support Tickets' href='/app/tickets' last />
       </MainPageBreadcrumb>
     </MainPageHeader>
   )

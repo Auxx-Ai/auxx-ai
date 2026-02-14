@@ -1,7 +1,8 @@
 // apps/web/src/components/workflow/nodes/shared/node-inputs/phone-input.tsx
 
-import React, { useCallback, useState, useEffect } from 'react'
 import PhoneInputWithFlag from '@auxx/ui/components/phone-input'
+import type React from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 /**
@@ -57,7 +58,7 @@ export const PhoneInput = createNodeInput<PhoneInputProps>(
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         disabled={isLoading}
-        className="h-7 shadow-none! border-none ring-0! outline-none focus:ring-0 [&>input]:h-7 [&>input]:outline-none [&>input]:focus:ring-0 [&_[data-slot=country-select]]:bg-transparent [&_[data-slot=phone-input]]:w-full [&_[data-slot=phone-input]]:flex-1"
+        className='h-7 shadow-none! border-none ring-0! outline-none focus:ring-0 [&>input]:h-7 [&>input]:outline-none [&>input]:focus:ring-0 [&_[data-slot=country-select]]:bg-transparent [&_[data-slot=phone-input]]:w-full [&_[data-slot=phone-input]]:flex-1'
       />
     )
   }

@@ -1,19 +1,19 @@
 // packages/ui/src/components/action-bar.tsx
 'use client'
 
-import * as React from 'react'
-import * as ReactDOM from 'react-dom'
-import { X, ChevronDown } from 'lucide-react'
-
-import { cn } from '@auxx/ui/lib/utils'
-import { Button } from '@auxx/ui/components/button'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+
+import { cn } from '@auxx/ui/lib/utils'
+import { ChevronDown, X } from 'lucide-react'
+import * as React from 'react'
+import * as ReactDOM from 'react-dom'
 
 /** Animation duration in milliseconds (matches CSS) */
 const ANIMATION_DURATION = 200
@@ -116,11 +116,11 @@ const ActionButton = React.forwardRef<
     return (
       <div ref={ref} data-action-id={action.id} className={cn('shrink-0', className)}>
         <PickerComponent disabled={isDisabled} {...action.picker.props}>
-          <Button variant={action.variant || 'outline'} size="sm" disabled={isDisabled}>
+          <Button variant={action.variant || 'outline'} size='sm' disabled={isDisabled}>
             {Icon && <Icon />}
             {action.label}
             {action.shortcut && (
-              <span className="ml-2 text-xs text-muted-foreground">{action.shortcut}</span>
+              <span className='ml-2 text-xs text-muted-foreground'>{action.shortcut}</span>
             )}
           </Button>
         </PickerComponent>
@@ -134,14 +134,14 @@ const ActionButton = React.forwardRef<
       ref={ref as React.Ref<HTMLButtonElement>}
       data-action-id={action.id}
       variant={action.variant || 'outline'}
-      size="sm"
+      size='sm'
       disabled={isDisabled}
       onClick={action.onClick}
       className={cn('shrink-0', className)}>
       {Icon && <Icon />}
       {action.label}
       {action.shortcut && (
-        <span className="ml-2 text-xs text-muted-foreground">{action.shortcut}</span>
+        <span className='ml-2 text-xs text-muted-foreground'>{action.shortcut}</span>
       )}
     </Button>
   )
@@ -291,30 +291,29 @@ function ActionBar({
           className
         )}
         style={animationStyles}>
-        <div className="flex items-center gap-3">
+        <div className='flex items-center gap-3'>
           {/* Selection count */}
           {selectedCount !== undefined && (
-            <div className="flex items-center gap-2 shrink-0">
-              <Badge variant="pill" size="sm" className="min-w-6 justify-center">
+            <div className='flex items-center gap-2 shrink-0'>
+              <Badge variant='pill' size='sm' className='min-w-6 justify-center'>
                 {selectedCount}
               </Badge>
-              {selectedLabel && <span className="text-sm font-medium">{selectedLabel}</span>}
+              {selectedLabel && <span className='text-sm font-medium'>{selectedLabel}</span>}
             </div>
           )}
 
           {/* Hidden measurement container - all buttons for measuring */}
           <div
             ref={actionsRef}
-            className="flex items-center gap-2 absolute opacity-0 pointer-events-none"
-            aria-hidden="true"
-          >
+            className='flex items-center gap-2 absolute opacity-0 pointer-events-none'
+            aria-hidden='true'>
             {visibleActions.map((action) => (
               <ActionButton key={action.id} action={action} />
             ))}
           </div>
 
           {/* Visible actions - only ones that fit */}
-          <div className="flex items-center gap-2 flex-1">
+          <div className='flex items-center gap-2 flex-1'>
             {displayActions.map((action) => (
               <ActionButton key={action.id} action={action} />
             ))}
@@ -325,18 +324,18 @@ function ActionBar({
             <>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button ref={overflowButtonRef} variant="outline" size="sm">
+                  <Button ref={overflowButtonRef} variant='outline' size='sm'>
                     {displayActions.length === 0 ? (
                       'Actions...'
                     ) : (
                       <>
                         +{overflowActions.length} more
-                        <ChevronDown className="ml-1 h-3 w-3" />
+                        <ChevronDown className='ml-1 h-3 w-3' />
                       </>
                     )}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align='end'>
                   {overflowActions.map((action) => {
                     const Icon = action.icon
                     return (
@@ -344,7 +343,12 @@ function ActionBar({
                         key={action.id}
                         disabled={action.disabled}
                         onSelect={() => {
-                          console.log('Dropdown item selected:', action.id, 'picker:', !!action.picker)
+                          console.log(
+                            'Dropdown item selected:',
+                            action.id,
+                            'picker:',
+                            !!action.picker
+                          )
                           if (action.picker) {
                             // Delay to let dropdown fully close and animations finish
                             setTimeout(() => {
@@ -355,10 +359,10 @@ function ActionBar({
                             action.onClick?.()
                           }
                         }}>
-                        {Icon && <Icon className="mr-2 h-4 w-4" />}
+                        {Icon && <Icon className='mr-2 h-4 w-4' />}
                         {action.label}
                         {action.shortcut && (
-                          <span className="ml-auto text-xs text-muted-foreground">
+                          <span className='ml-auto text-xs text-muted-foreground'>
                             {action.shortcut}
                           </span>
                         )}
@@ -395,11 +399,11 @@ function ActionBar({
           {/* Close button */}
           {showClose && (
             <Button
-              variant="ghost"
-              size="icon"
-              className="shrink-0"
+              variant='ghost'
+              size='icon'
+              className='shrink-0'
               onClick={() => onOpenChange?.(false)}>
-              <X className="h-4 w-4" />
+              <X className='h-4 w-4' />
             </Button>
           )}
         </div>

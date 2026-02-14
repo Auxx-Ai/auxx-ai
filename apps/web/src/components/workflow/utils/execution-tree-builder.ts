@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/utils/execution-tree-builder.ts
 
-import type { FlowNode, FlowEdge } from '../types'
-import { NodeType } from '../types/node-types'
-import { NodeRunningStatus } from '../types'
 import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/models'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
+import type { FlowEdge, FlowNode } from '../types'
+import { NodeRunningStatus } from '../types'
+import { NodeType } from '../types/node-types'
 
 /**
  * Minimal execution tree node - stores only order and depth

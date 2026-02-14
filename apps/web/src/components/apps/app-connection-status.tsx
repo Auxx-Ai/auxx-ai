@@ -2,11 +2,7 @@
 
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
 import { Button } from '@auxx/ui/components/button'
-import { Field, FieldGroup, FieldLabel, FieldDescription } from '@auxx/ui/components/field'
-import { CheckCircle, XCircle, Clock, Eye, EyeOff } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -16,16 +12,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@auxx/ui/components/field'
 import {
   InputGroup,
-  InputGroupInput,
   InputGroupAddon,
   InputGroupButton,
+  InputGroupInput,
 } from '@auxx/ui/components/input-group'
-import { api } from '~/trpc/react'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
+import { CheckCircle, Clock, Eye, EyeOff, XCircle } from 'lucide-react'
+import Link from 'next/link'
+import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 interface AppConnectionStatusProps {
   appId: string
@@ -134,12 +134,12 @@ export function AppConnectionStatus({
   if (connectionStatus === 'connected') {
     return (
       <>
-        <div className="flex items-center gap-2">
-          <CheckCircle className="h-4 w-4 text-green-500" />
-          <span className="text-sm">Connected</span>
+        <div className='flex items-center gap-2'>
+          <CheckCircle className='h-4 w-4 text-green-500' />
+          <span className='text-sm'>Connected</span>
           <Button
-            variant="ghost"
-            size="sm"
+            variant='ghost'
+            size='sm'
             onClick={handleDisconnect}
             loading={deleteConnection.isPending}>
             Disconnect
@@ -152,16 +152,16 @@ export function AppConnectionStatus({
 
   if (connectionStatus === 'expired') {
     return (
-      <div className="flex items-center gap-2">
-        <Clock className="h-4 w-4 text-yellow-500" />
-        <span className="text-sm">Token expired</span>
+      <div className='flex items-center gap-2'>
+        <Clock className='h-4 w-4 text-yellow-500' />
+        <span className='text-sm'>Token expired</span>
         {isOAuth && (
           <Link href={oauthAuthorizeUrl}>
-            <Button size="sm">Reconnect</Button>
+            <Button size='sm'>Reconnect</Button>
           </Link>
         )}
         {isSecret && (
-          <Button size="sm" onClick={() => setDialogOpen(true)}>
+          <Button size='sm' onClick={() => setDialogOpen(true)}>
             Reconnect
           </Button>
         )}
@@ -172,12 +172,12 @@ export function AppConnectionStatus({
   // not_connected status
   return (
     <>
-      <div className="flex items-center gap-2">
-        <XCircle className="h-4 w-4 text-gray-400" />
-        <span className="text-sm text-gray-600">Not connected</span>
+      <div className='flex items-center gap-2'>
+        <XCircle className='h-4 w-4 text-gray-400' />
+        <span className='text-sm text-gray-600'>Not connected</span>
         {isOAuth && (
           <Link href={oauthAuthorizeUrl}>
-            <Button size="sm">Connect {connectionLabel}</Button>
+            <Button size='sm'>Connect {connectionLabel}</Button>
           </Link>
         )}
 
@@ -185,9 +185,9 @@ export function AppConnectionStatus({
         {isSecret && (
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button size="sm">Connect {connectionLabel}</Button>
+              <Button size='sm'>Connect {connectionLabel}</Button>
             </DialogTrigger>
-            <DialogContent size="sm" position="tc">
+            <DialogContent size='sm' position='tc'>
               <SecretConnectionDialogContent
                 connectionLabel={connectionLabel}
                 connectionType={connectionType}
@@ -245,49 +245,45 @@ function SecretConnectionDialogContent({
       </DialogHeader>
       <FieldGroup>
         <Field>
-          <FieldLabel htmlFor="secret">API Key</FieldLabel>
+          <FieldLabel htmlFor='secret'>API Key</FieldLabel>
           <InputGroup>
             <InputGroupInput
-              id="secret"
+              id='secret'
               type={showSecret ? 'text' : 'password'}
-              placeholder="Enter your API key"
+              placeholder='Enter your API key'
               value={secret}
-              autoComplete="off"
+              autoComplete='off'
               onChange={(e) => setSecret(e.target.value)}
             />
-            <InputGroupAddon align="inline-end">
+            <InputGroupAddon align='inline-end'>
               <InputGroupButton
                 aria-label={showSecret ? 'Hide API key' : 'Show API key'}
                 title={showSecret ? 'Hide API key' : 'Show API key'}
-                size="icon-xs"
+                size='icon-xs'
                 onClick={() => setShowSecret(!showSecret)}>
                 {showSecret ? <EyeOff /> : <Eye />}
               </InputGroupButton>
             </InputGroupAddon>
           </InputGroup>
           <FieldDescription>
-            Your API key will be encrypted and stored securely. It will be used to
-            authenticate requests to {connectionLabel}.
+            Your API key will be encrypted and stored securely. It will be used to authenticate
+            requests to {connectionLabel}.
           </FieldDescription>
         </Field>
       </FieldGroup>
 
       <DialogFooter>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onClose}
-          disabled={saveSecret.isPending}>
-          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+        <Button variant='ghost' size='sm' onClick={onClose} disabled={saveSecret.isPending}>
+          Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
         </Button>
         <Button
-          variant="outline"
-          size="sm"
+          variant='outline'
+          size='sm'
           onClick={handleSaveSecret}
           loading={saveSecret.isPending}
-          loadingText="Saving..."
+          loadingText='Saving...'
           data-dialog-submit>
-          Save Connection <KbdSubmit variant="outline" size="sm" />
+          Save Connection <KbdSubmit variant='outline' size='sm' />
         </Button>
       </DialogFooter>
     </>

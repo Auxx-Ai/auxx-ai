@@ -1,18 +1,18 @@
 // packages/lib/src/providers/integration-service.ts
-import { database, schema, type Database } from '@auxx/database'
-import { eq, and, desc, count, ne, inArray } from 'drizzle-orm'
+import { type Database, database, schema } from '@auxx/database'
+import { and, count, desc, eq, inArray, ne } from 'drizzle-orm'
+import { EmailLabel } from '../email/email-storage'
+import { withAuthErrorHandling } from '../email/errors-handlers'
+import { type IntegrationProviderType, MessageService } from '../email/message-service'
 import { createScopedLogger } from '../logger'
-import { whereThreadMessageType, whereMessageMessageType, getEmailProviders } from './query-helpers'
-import type { MessageType } from './types'
-import { MessageService, IntegrationProviderType } from '../email/message-service'
-import { GoogleOAuthService } from './google/google-oauth'
-import { OutlookOAuthService } from './outlook/outlook-oauth'
+import { SyncMessages } from '../messages/sync-messages'
 import { FacebookOAuthService } from './facebook/facebook-oauth'
+import { GoogleOAuthService } from './google/google-oauth'
 import { InstagramOAuthService } from './instagram/instagram-oauth'
 import { OpenPhoneService } from './openphone/openphone-service'
-import { SyncMessages } from '../messages/sync-messages'
-import { withAuthErrorHandling } from '../email/errors-handlers'
-import { EmailLabel } from '../email/email-storage'
+import { OutlookOAuthService } from './outlook/outlook-oauth'
+import { getEmailProviders, whereMessageMessageType, whereThreadMessageType } from './query-helpers'
+import type { MessageType } from './types'
 
 const logger = createScopedLogger('integration-service')
 
@@ -120,12 +120,7 @@ export class IntegrationService {
     if (provider === 'chat') {
       const deletedChatThreads = await tx
         .delete(schema.Thread)
-        .where(
-          and(
-            eq(schema.Thread.integrationId, integrationId),
-            whereThreadMessageType('CHAT')
-          )
-        )
+        .where(and(eq(schema.Thread.integrationId, integrationId), whereThreadMessageType('CHAT')))
       logger.info(`Deleted CHAT threads for integration ${integrationId}`)
     } else {
       const deletedMessages = await tx
@@ -277,7 +272,7 @@ export class IntegrationService {
           lastAuthError,
           lastAuthErrorAt: lastAuthErrorAt ? new Date(lastAuthErrorAt) : null,
           requiresReauth,
-          settings: (int.metadata as any)?.settings as IntegrationSettings || {},
+          settings: ((int.metadata as any)?.settings as IntegrationSettings) || {},
         }
       })
 
@@ -317,7 +312,7 @@ export class IntegrationService {
         )
 
       const emailClients = integrations.map((int) => {
-        let email: string | undefined = undefined
+        let email: string | undefined
         if (int.metadata && typeof int.metadata === 'object' && 'email' in int.metadata) {
           // @ts-expect-error: dynamic metadata shape
           email = int.metadata.email
@@ -327,7 +322,7 @@ export class IntegrationService {
           provider: int.provider,
           name: int.name,
           email,
-          settings: (int.metadata as any)?.settings as IntegrationSettings || {},
+          settings: ((int.metadata as any)?.settings as IntegrationSettings) || {},
           inboxId: int.inboxId,
         }
       })

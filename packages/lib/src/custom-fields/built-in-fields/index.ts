@@ -1,12 +1,12 @@
 // packages/lib/src/custom-fields/built-in-fields/index.ts
 
-import { ModelTypes, type ModelType } from '../types'
+import type { FieldType } from '@auxx/database/types'
+import { type ModelType, ModelTypes } from '../types'
 import { contactBuiltInFields } from './contact'
-import { ticketBuiltInFields } from './ticket'
 import { conversationBuiltInFields } from './conversation'
 import { partBuiltInFields } from './part'
+import { ticketBuiltInFields } from './ticket'
 import type { BuiltInFieldHandler, BuiltInFieldRegistry } from './types'
-import type { FieldType } from '@auxx/database/types'
 
 /**
  * Master registry of all built-in fields across all models
@@ -52,12 +52,9 @@ export function getBuiltInFieldHandler(
  * @param modelType - The model type
  * @returns The field type, or null if not found
  */
-export function getBuiltInFieldType(
-  fieldId: string,
-  modelType: ModelType
-): FieldType | null {
+export function getBuiltInFieldType(fieldId: string, modelType: ModelType): FieldType | null {
   return BUILT_IN_FIELDS[modelType]?.[fieldId]?.type ?? null
 }
 
 // Re-export types
-export type { BuiltInFieldHandler, BuiltInFieldConfig, BuiltInFieldRegistry } from './types'
+export type { BuiltInFieldConfig, BuiltInFieldHandler, BuiltInFieldRegistry } from './types'

@@ -1,19 +1,19 @@
 // apps/web/src/components/workflow/nodes/core/var-assign/schema.ts
 
-import { z } from 'zod'
 import { v4 as uuidv4 } from 'uuid'
+import { z } from 'zod'
 import {
-  type NodeDefinition,
   NodeCategory,
+  type NodeDefinition,
   type ValidationResult,
 } from '~/components/workflow/types'
-import { type VarAssignNodeData, type VariableAssignment } from './types'
-import { VarAssignPanel } from './panel'
 import { NodeType } from '~/components/workflow/types/node-types'
 import { BaseType } from '~/components/workflow/types/unified-types'
-import { type UnifiedVariable } from '~/components/workflow/types/variable-types'
-import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
+import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
+import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
+import { VarAssignPanel } from './panel'
+import type { VarAssignNodeData, VariableAssignment } from './types'
 
 /**
  * Zod schema for variable assignment

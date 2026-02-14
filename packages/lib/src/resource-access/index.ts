@@ -1,34 +1,32 @@
 // packages/lib/src/resource-access/index.ts
 
-// Types
-export type {
-  ResourceAccessContext,
-  GrantInstanceAccessInput,
-  GrantTypeAccessInput,
-  RevokeInstanceAccessInput,
-  RevokeTypeAccessInput,
-  CheckAccessInput,
-  CheckTypeAccessInput,
-  AccessCheckResult,
-  ResourceAccessInfo,
-  InstanceAccess,
-} from './types'
-
 // Constants
 export { PERMISSION_HIERARCHY, satisfiesPermission } from './constants'
-
 // Service functions
 export {
+  checkAccess,
+  checkTypeAccess,
+  getInstanceAccess,
+  getTypeAccess,
+  getUserAccessibleInstances,
   grantInstanceAccess,
   grantTypeAccess,
+  hasPermission,
   revokeInstanceAccess,
   revokeTypeAccess,
   setInstanceAccess,
   setTypeAccess,
-  checkAccess,
-  checkTypeAccess,
-  hasPermission,
-  getInstanceAccess,
-  getTypeAccess,
-  getUserAccessibleInstances,
 } from './resource-access-service'
+// Types
+export type {
+  AccessCheckResult,
+  CheckAccessInput,
+  CheckTypeAccessInput,
+  GrantInstanceAccessInput,
+  GrantTypeAccessInput,
+  InstanceAccess,
+  ResourceAccessContext,
+  ResourceAccessInfo,
+  RevokeInstanceAccessInput,
+  RevokeTypeAccessInput,
+} from './types'

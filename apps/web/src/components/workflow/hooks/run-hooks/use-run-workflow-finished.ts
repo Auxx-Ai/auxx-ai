@@ -1,9 +1,10 @@
 // apps/web/src/components/workflow/hooks/run-hooks/use-run-workflow-finished.ts
+
+import { WorkflowRunStatus } from '@auxx/database/enums'
 import { useCallback } from 'react'
-import { useRunStore } from '../../store/run-store'
 import { useCanvasStore } from '../../store/canvas-store'
 import type { ExecutionEvent } from '../../store/run-store'
-import { WorkflowRunStatus } from '@auxx/database/enums'
+import { useRunStore } from '../../store/run-store'
 export const useRunWorkflowFinished = () => {
   const setIsRunning = useRunStore((state) => state.setIsRunning)
   const updateActiveRun = useRunStore((state) => state.updateActiveRun)

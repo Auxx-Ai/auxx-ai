@@ -1,9 +1,5 @@
-import { z } from 'zod'
-import { extractShopifyId } from './utils'
-import { type Address, type Customer, ORDER_ADDRESS_TYPE } from './shopify-types'
-
-import type { AdminApiClient } from '@shopify/admin-api-client'
-import type { ResponseWithType } from '@shopify/admin-api-client'
+import type { Database } from '@auxx/database'
+import { database, schema } from '@auxx/database'
 import {
   convertToCents,
   formatCityName,
@@ -14,15 +10,19 @@ import {
   formatStreetAddress,
   withRetry,
 } from '@auxx/utils'
-import pLimit from 'p-limit'
-import { database, schema } from '@auxx/database'
-import type { Database } from '@auxx/database'
+import type { AdminApiClient, ResponseWithType } from '@shopify/admin-api-client'
 import { eq, sql } from 'drizzle-orm'
+import pLimit from 'p-limit'
+import { z } from 'zod'
+import type { Address, Customer, ORDER_ADDRESS_TYPE } from './shopify-types'
+import { extractShopifyId } from './utils'
 
 const { shopify_customers, Address: AddressTable } = schema
+
 import { createScopedLogger } from '@auxx/logger'
 import { linkShopifyCustomer } from '../contacts/sync-contact'
 import type { ShopifyAdminClient } from './shopify-webhooks'
+
 const logger = createScopedLogger('sync-customers')
 
 // Prepared statements for database operations

@@ -1,16 +1,16 @@
 // packages/database/src/db/schema/import-plan-row.ts
 
+import { createId } from '@paralleldrive/cuid2'
 import {
-  pgTable,
-  index,
-  uniqueIndex,
-  text,
-  integer,
-  timestamp,
   type AnyPgColumn,
   importPlanRowStatus,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
 } from './_shared'
-import { createId } from '@paralleldrive/cuid2'
 import { ImportPlanStrategy } from './import-plan-strategy'
 
 /**

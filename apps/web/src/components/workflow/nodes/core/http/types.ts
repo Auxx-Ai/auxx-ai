@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/http/types.ts
 
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
 import type { TargetBranch } from '~/components/workflow/types'
+import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
 import { NodeType } from '~/components/workflow/types/node-types'
 
 // HTTP methods enum

@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/nodes/shared/node-inputs/base-node-input.tsx
 
-import React from 'react'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { AlertCircle } from 'lucide-react'
+import React from 'react'
 
 /**
  * Props interface for node input components
@@ -40,13 +40,13 @@ export abstract class BaseNodeInput extends React.Component<NodeInputProps> {
     }
 
     return (
-      <Alert variant="destructive">
+      <Alert variant='destructive'>
         <AlertCircle />
         <AlertDescription>
           {errorMessages.length === 1 ? (
             errorMessages[0]
           ) : (
-            <ul className="list-disc list-inside">
+            <ul className='list-disc list-inside'>
               {errorMessages.map((error, index) => (
                 <li key={index}>{error}</li>
               ))}

@@ -1,19 +1,19 @@
 // apps/web/src/components/apps/app-settings.tsx
 'use client'
 
-import { Card } from '@auxx/ui/components/card'
-import { api } from '~/trpc/react'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { SettingsFormRenderer } from './settings-form-renderer'
 import type { SettingsSchemaField } from '@auxx/services/app-settings/client'
+import { Card } from '@auxx/ui/components/card'
 import {
   Empty,
+  EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-  EmptyDescription,
 } from '@auxx/ui/components/empty'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { SlidersHorizontal } from 'lucide-react'
+import { api } from '~/trpc/react'
+import { SettingsFormRenderer } from './settings-form-renderer'
 
 /**
  * Props for AppSettings component
@@ -56,12 +56,12 @@ export default function AppSettings({
   }
 
   return (
-    <div className="space-y-6">
+    <div className='space-y-6'>
       {Object.keys(schema).length === 0 ? (
-        <div className="flex flex-col items-center justify-center flex-1 overflow-y-auto py-12">
+        <div className='flex flex-col items-center justify-center flex-1 overflow-y-auto py-12'>
           <Empty>
             <EmptyHeader>
-              <EmptyMedia variant="icon">
+              <EmptyMedia variant='icon'>
                 <SlidersHorizontal />
               </EmptyMedia>
               <EmptyTitle>No settings available</EmptyTitle>

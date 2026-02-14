@@ -1,22 +1,22 @@
 // apps/web/src/components/resources/hooks/use-relationship-sync.ts
 
-import { useCallback } from 'react'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import {
-  useFieldValueStore,
-  buildFieldValueKey,
-  parseFieldValueKey,
-  type FieldValueKey,
-  type StoredFieldValue,
-} from '~/components/resources/store/field-value-store'
-import { parseRecordId, toRecordId, type RecordId } from '@auxx/lib/resources/client'
-import { isSingleRelationship, type RelationshipType } from '@auxx/utils'
-import type { RelationshipFieldValue } from '@auxx/types/field-value'
-import {
-  parseResourceFieldId,
   fieldRefToKey,
   getFieldId,
+  parseResourceFieldId,
   type ResourceFieldId,
 } from '@auxx/types/field'
+import type { RelationshipFieldValue } from '@auxx/types/field-value'
+import { isSingleRelationship, type RelationshipType } from '@auxx/utils'
+import { useCallback } from 'react'
+import {
+  buildFieldValueKey,
+  type FieldValueKey,
+  parseFieldValueKey,
+  type StoredFieldValue,
+  useFieldValueStore,
+} from '~/components/resources/store/field-value-store'
 
 /**
  * Info needed to sync inverse relationships.
@@ -75,12 +75,8 @@ export function useRelationshipSync() {
       const { entityInstanceId: sourceInstanceId } = parseRecordId(sourceRecordId)
 
       // Calculate changes
-      const removedRecordIds = oldRelatedRecordIds.filter(
-        (id) => !newRelatedRecordIds.includes(id)
-      )
-      const addedRecordIds = newRelatedRecordIds.filter(
-        (id) => !oldRelatedRecordIds.includes(id)
-      )
+      const removedRecordIds = oldRelatedRecordIds.filter((id) => !newRelatedRecordIds.includes(id))
+      const addedRecordIds = newRelatedRecordIds.filter((id) => !oldRelatedRecordIds.includes(id))
 
       if (removedRecordIds.length === 0 && addedRecordIds.length === 0) {
         console.log(LOG_PREFIX, 'No changes detected, skipping sync')
@@ -145,9 +141,7 @@ export function useRelationshipSync() {
             .filter((id): id is RecordId => id !== null)
 
           // Check if any of our added targets are in this owner's collection
-          const targetsToRemove = addedRecordIds.filter((id) =>
-            targetRecordIdsInOwner.includes(id)
-          )
+          const targetsToRemove = addedRecordIds.filter((id) => targetRecordIdsInOwner.includes(id))
 
           if (targetsToRemove.length > 0) {
             const filteredArray = ownerArray.filter((v) => {
@@ -241,9 +235,7 @@ export function extractRelatedRecordIds(value: StoredFieldValue): RecordId[] {
   if (!value) return []
 
   if (Array.isArray(value)) {
-    return value
-      .map((v) => extractRelatedRecordId(v))
-      .filter((id): id is RecordId => id !== null)
+    return value.map((v) => extractRelatedRecordId(v)).filter((id): id is RecordId => id !== null)
   }
 
   const id = extractRelatedRecordId(value)

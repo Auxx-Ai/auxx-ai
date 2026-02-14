@@ -1,30 +1,26 @@
 // packages/lib/src/import/mapping/index.ts
 
 export {
-  getMappablePropertiesWithSamples,
   getColumnSamples,
+  getMappablePropertiesWithSamples,
   type MappablePropertyWithSamples,
 } from './get-mappable-properties'
-
 export {
-  saveMappingProperty,
-  batchUpdateMappingsFromAutoMap,
-  type SaveMappingInput,
-  type RelationConfig,
-  type AutoMapUpdateInput,
-} from './save-mapping-property'
-
-export {
-  getMappedColumnsWithStats,
   type GetMappedColumnsInput,
+  getMappedColumnsWithStats,
   type MappedColumnWithStats,
 } from './get-mapped-columns'
-
-export { updateMappingTitle, type UpdateMappingTitleInput } from './update-mapping'
-
 export {
-  runAutoMap,
+  type AutoMapStrategy,
   type RunAutoMapInput,
   type RunAutoMapResult,
-  type AutoMapStrategy,
+  runAutoMap,
 } from './run-auto-map'
+export {
+  type AutoMapUpdateInput,
+  batchUpdateMappingsFromAutoMap,
+  type RelationConfig,
+  type SaveMappingInput,
+  saveMappingProperty,
+} from './save-mapping-property'
+export { type UpdateMappingTitleInput, updateMappingTitle } from './update-mapping'

@@ -1,11 +1,11 @@
 // apps/build/src/server/api/trpc.ts
 // tRPC initialization for developer portal
 
+import { database } from '@auxx/database'
 import { initTRPC, TRPCError } from '@trpc/server'
-import { type FetchCreateContextFnOptions } from '@trpc/server/adapters/fetch'
+import type { FetchCreateContextFnOptions } from '@trpc/server/adapters/fetch'
 import SuperJSON from 'superjson'
 import { ZodError } from 'zod'
-import { database } from '@auxx/database'
 import { getSession } from '~/lib/auth'
 
 /**

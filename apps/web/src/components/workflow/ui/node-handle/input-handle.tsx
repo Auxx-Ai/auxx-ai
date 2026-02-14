@@ -1,12 +1,13 @@
 // apps/web/src/components/workflow/ui/node-handle/input-handle.tsx
 
-import React, { memo, useCallback } from 'react'
-import { Handle, Position } from '@xyflow/react'
-import { type NodeHandleProps } from './types'
-import { useReadOnly, useAvailableBlocks, useNodeStatus } from '~/components/workflow/hooks'
-import { useNodeAddition } from '~/components/workflow/hooks/use-node-addition'
 import { cn } from '@auxx/ui/lib/utils'
+import { Handle, Position } from '@xyflow/react'
 import { Plus } from 'lucide-react'
+import type React from 'react'
+import { memo, useCallback } from 'react'
+import { useAvailableBlocks, useNodeStatus, useReadOnly } from '~/components/workflow/hooks'
+import { useNodeAddition } from '~/components/workflow/hooks/use-node-addition'
+import type { NodeHandleProps } from './types'
 
 export const NodeInputHandle = memo(
   ({ id, data, handleId, handleClassName, type = 'default' }: NodeHandleProps) => {
@@ -46,7 +47,7 @@ export const NodeInputHandle = memo(
           )}>
           <Handle
             id={handleId}
-            type="target"
+            type='target'
             position={Position.Left}
             className={cn(
               ' z-3 !h-4 !w-4 !rounded-none !border-none !bg-transparent !outline-none',
@@ -64,16 +65,16 @@ export const NodeInputHandle = memo(
                 'flex items-center justify-center shadow-md absolute pointer-events-none',
                 'hover:scale-110 transition-transform'
               )}>
-              <Plus className="w-4 h-4" />
+              <Plus className='w-4 h-4' />
             </button>
-            <div className="absolute -top-1 right-1/2 hidden translate-x-1/2 -translate-y-full z-[2] rounded-lg border-[0.5px] border-border bg-popover p-1.5 shadow-lg group-hover/handle:block pointer-events-none">
-              <div className="text-xs text-muted-foreground">
-                <div className="whitespace-nowrap">
-                  <span className="font-medium text-foreground">Click:</span>
+            <div className='absolute -top-1 right-1/2 hidden translate-x-1/2 -translate-y-full z-[2] rounded-lg border-[0.5px] border-border bg-popover p-1.5 shadow-lg group-hover/handle:block pointer-events-none'>
+              <div className='text-xs text-muted-foreground'>
+                <div className='whitespace-nowrap'>
+                  <span className='font-medium text-foreground'>Click:</span>
                   {' Add input'}
                 </div>
                 <div>
-                  <span className="font-medium text-foreground">Drag:</span>
+                  <span className='font-medium text-foreground'>Drag:</span>
                   {' Connect existing input'}
                 </div>
               </div>
@@ -86,7 +87,7 @@ export const NodeInputHandle = memo(
     return (
       <Handle
         id={handleId}
-        type="target"
+        type='target'
         position={Position.Left}
         className={cn(
           'node-handle group/handle z-[1] !h-4 !w-4 !rounded-none !border-none !bg-transparent !outline-none',
@@ -99,9 +100,9 @@ export const NodeInputHandle = memo(
         )}
         isConnectable={false}>
         {isReadOnly && (
-          <div className="absolute -top-1 right-1/2 hidden translate-x-1/2 -translate-y-full z-[2] rounded-lg border-[0.5px] border-border bg-popover p-1.5 shadow-lg group-hover/handle:block pointer-events-none">
-            <div className="text-xs text-muted-foreground">
-              <div className="whitespace-nowrap text-muted-foreground">
+          <div className='absolute -top-1 right-1/2 hidden translate-x-1/2 -translate-y-full z-[2] rounded-lg border-[0.5px] border-border bg-popover p-1.5 shadow-lg group-hover/handle:block pointer-events-none'>
+            <div className='text-xs text-muted-foreground'>
+              <div className='whitespace-nowrap text-muted-foreground'>
                 Read-only mode - editing disabled
               </div>
             </div>

@@ -1,9 +1,9 @@
 // apps/web/src/app/api/files/upload/[sessionId]/events/route.ts
 
-import { NextRequest } from 'next/server'
 import { SessionManager } from '@auxx/lib/files/server'
-import { getSubscriptionClient } from '@auxx/redis'
 import { createScopedLogger } from '@auxx/logger'
+import { getSubscriptionClient } from '@auxx/redis'
+import type { NextRequest } from 'next/server'
 
 const logger = createScopedLogger('upload-sse')
 

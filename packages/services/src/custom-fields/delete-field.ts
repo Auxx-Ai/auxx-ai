@@ -1,13 +1,13 @@
 // packages/services/src/custom-fields/delete-field.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
-import { type RelationshipConfig, getInverseFieldId } from './types'
-import type { CustomFieldNotFoundError, AccessDeniedError } from './errors'
-import { parseResourceFieldId, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { CalcOptions } from '@auxx/types/custom-field'
+import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { and, eq } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
+import { fromDatabase } from '../shared/utils'
+import type { AccessDeniedError, CustomFieldNotFoundError } from './errors'
+import { getInverseFieldId, type RelationshipConfig } from './types'
 
 /**
  * Input for deleting a custom field
@@ -32,11 +32,7 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
 
   // Get full field data to check type and options
   const fieldResult = await fromDatabase(
-    database
-      .select()
-      .from(schema.CustomField)
-      .where(eq(schema.CustomField.id, id))
-      .limit(1),
+    database.select().from(schema.CustomField).where(eq(schema.CustomField.id, id)).limit(1),
     'get-field-for-delete'
   )
 
@@ -63,7 +59,8 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
   // Check if it's a relationship field with an inverse
   const isRelationship = field.type === 'RELATIONSHIP'
   const relationshipConfig = (field.options as { relationship?: RelationshipConfig })?.relationship
-  const inverseFieldId = isRelationship && relationshipConfig ? getInverseFieldId(relationshipConfig) : null
+  const inverseFieldId =
+    isRelationship && relationshipConfig ? getInverseFieldId(relationshipConfig) : null
 
   // Delete in transaction
   const deleteResult = await fromDatabase(
@@ -73,9 +70,7 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
 
       // If relationship field with inverse, also delete inverse values and field
       if (inverseFieldId) {
-        await tx
-          .delete(schema.FieldValue)
-          .where(eq(schema.FieldValue.fieldId, inverseFieldId))
+        await tx.delete(schema.FieldValue).where(eq(schema.FieldValue.fieldId, inverseFieldId))
 
         await tx
           .delete(schema.CustomField)
@@ -109,7 +104,7 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
         // sourceFields is Record<placeholderName, ResourceFieldId>
         // Extract plain fieldId from ResourceFieldId format and check if deleted field is referenced
         const sourceFieldIds = Object.values(calcOptions.sourceFields)
-        const referencesDeletedField = sourceFieldIds.some(resourceFieldId => {
+        const referencesDeletedField = sourceFieldIds.some((resourceFieldId) => {
           if (isResourceFieldId(resourceFieldId)) {
             const { fieldId } = parseResourceFieldId(resourceFieldId as ResourceFieldId)
             return fieldId === deletedFieldId

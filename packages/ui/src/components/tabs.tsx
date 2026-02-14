@@ -1,17 +1,16 @@
 'use client'
 
-import * as React from 'react'
-import { Tabs as TabsPrimitive } from 'radix-ui'
-import { cva, type VariantProps } from 'class-variance-authority'
-
-import { cn } from '@auxx/ui/lib/utils'
-import { ChevronDown } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { ChevronDown } from 'lucide-react'
+import { Tabs as TabsPrimitive } from 'radix-ui'
+import * as React from 'react'
 
 const Tabs = TabsPrimitive.Root
 
@@ -347,7 +346,7 @@ function OverflowTabsList({
               }}
               data-tab-value={tab.value}
               onClick={() => handleTabSelect(tab.value)}>
-              <Icon className="-ms-0.5 me-1.5 opacity-60" size={16} aria-hidden="true" />
+              <Icon className='-ms-0.5 me-1.5 opacity-60' size={16} aria-hidden='true' />
               {tab.label}
               {tab.badge !== undefined && <TabsBadge count={tab.badge} />}
             </TabsTrigger>
@@ -359,7 +358,7 @@ function OverflowTabsList({
             <DropdownMenuTrigger asChild>
               <button
                 ref={dropdownButtonRef}
-                type="button"
+                type='button'
                 className={cn(
                   tabsTriggerVariants({
                     variant: overflowTriggerVariant,
@@ -370,10 +369,10 @@ function OverflowTabsList({
                 )}
                 data-state={overflowActive ? 'active' : undefined}>
                 +{overflowTabs.length} more
-                <ChevronDown aria-hidden="true" />
+                <ChevronDown aria-hidden='true' />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align='end'>
               {overflowTabs.map((tab) => {
                 const Icon = tab.icon
                 const isActive = value === tab.value

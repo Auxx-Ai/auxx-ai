@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/credentials/node-credential-button.tsx
 'use client'
 
-import { useState, useMemo } from 'react'
-import { Button } from '@auxx/ui/components/button'
 import { Badge } from '@auxx/ui/components/badge'
-import { Key, CheckCircle, AlertCircle, Settings } from 'lucide-react'
+import { Button } from '@auxx/ui/components/button'
+import { AlertCircle, CheckCircle, Key, Settings } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import { getCredentialType } from './credential-registry'
 import { NodeCredentialConnectionDialog } from './node-credential-connection-dialog'
@@ -91,7 +91,7 @@ export function NodeCredentialButton({
           disabled: true,
         }
 
-      case 'connected':
+      case 'connected': {
         const credentialName = credentialInfo?.name || 'Unknown'
         const displayName = credentialTypeInfo?.displayName || credentialInfo?.type || 'Credential'
         return {
@@ -101,6 +101,7 @@ export function NodeCredentialButton({
           disabled: false,
           badge: displayName,
         }
+      }
 
       case 'error':
         return {
@@ -134,31 +135,31 @@ export function NodeCredentialButton({
 
   return (
     <>
-      <div className="flex items-center gap-2">
+      <div className='flex items-center gap-2'>
         <Button
           variant={buttonContent.variant}
           size={size}
           onClick={handleButtonClick}
           disabled={disabled || buttonContent.disabled}
           className={className}>
-          <buttonContent.icon className="w-4 h-4" />
+          <buttonContent.icon className='w-4 h-4' />
           {buttonContent.text}
         </Button>
 
         {buttonContent.badge && (
-          <Badge variant="secondary" className="text-xs">
+          <Badge variant='secondary' className='text-xs'>
             {buttonContent.badge}
           </Badge>
         )}
 
         {connectionState === 'connected' && (
           <Button
-            variant="ghost"
-            size="sm"
+            variant='ghost'
+            size='sm'
             onClick={() => setDialogOpen(true)}
-            className="p-1 h-auto"
-            title="Credential settings">
-            <Settings className="w-3 h-3" />
+            className='p-1 h-auto'
+            title='Credential settings'>
+            <Settings className='w-3 h-3' />
           </Button>
         )}
       </div>

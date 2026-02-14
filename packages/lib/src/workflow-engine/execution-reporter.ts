@@ -1,8 +1,8 @@
 // packages/lib/src/workflow-engine/execution-reporter.ts
 
-import { getPublishingClient } from '@auxx/redis'
 import { createScopedLogger } from '@auxx/logger'
-import { WorkflowEventType, type WorkflowEventGeneric } from './events/types'
+import { getPublishingClient } from '@auxx/redis'
+import type { WorkflowEventGeneric, WorkflowEventType } from './events/types'
 import { safeJsonStringify } from './utils/serialization'
 
 const logger = createScopedLogger('workflow-execution-reporter')

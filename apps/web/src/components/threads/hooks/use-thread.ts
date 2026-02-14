@@ -1,7 +1,7 @@
 // apps/web/src/components/threads/hooks/use-thread.ts
 
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
-import { useThreadStore, type ThreadMeta } from '../store'
+import { type ThreadMeta, useThreadStore } from '../store'
 
 interface UseThreadOptions {
   /** Thread ID to fetch */

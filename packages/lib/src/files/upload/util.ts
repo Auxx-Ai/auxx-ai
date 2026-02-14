@@ -8,15 +8,14 @@
 /**
  * Clamp a number between min and max values
  */
-export const clamp = (n: number, min: number, max: number): number => 
+export const clamp = (n: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, n))
 
 /**
  * Sanitize filename to remove potentially problematic characters
  * Replaces non-alphanumeric characters (except . and -) with underscores
  */
-export const sanitizeFileName = (name: string): string => 
-  name.replace(/[^a-zA-Z0-9.-]/g, '_')
+export const sanitizeFileName = (name: string): string => name.replace(/[^a-zA-Z0-9.-]/g, '_')
 
 /**
  * Normalize entity type to kebab-case for use in storage keys
@@ -59,9 +58,7 @@ export const deriveStorageKey = (
 /**
  * Get bucket name based on file visibility
  */
-export const getBucketForVisibility = (
-  visibility: 'PUBLIC' | 'PRIVATE'
-): string => {
+export const getBucketForVisibility = (visibility: 'PUBLIC' | 'PRIVATE'): string => {
   if (visibility === 'PUBLIC') {
     return (
       process.env.S3_PUBLIC_BUCKET ||

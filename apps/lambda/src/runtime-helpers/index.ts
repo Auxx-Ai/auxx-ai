@@ -39,43 +39,41 @@
  * ```
  */
 
-import type { RuntimeContext } from '../types.ts'
 import * as RootSDK from '@auxx/sdk'
+import type { RuntimeContext } from '../types.ts'
 
 // Re-export everything from console.ts
 export {
   type ConsoleLog,
+  clearCapturedLogs,
+  getCapturedLogs,
   interceptConsole,
   restoreConsole,
-  getCapturedLogs,
-  clearCapturedLogs,
 } from './console.ts'
-
-// Re-export everything from settings.ts
-export {
-  type SettingsSchema,
-  registerSettingsSchema,
-  getRegisteredSettingsSchema,
-  resetSettingsSchema,
-} from './settings.ts'
-
 // Re-export everything from server-sdk.ts
 export {
   type Connection,
-  type WebhookHandler,
+  createServerSDK,
   type ServerSDK,
   type ServerSDKFetchOptions,
   type ServerSDKFetchResponse,
-  createServerSDK,
+  type WebhookHandler,
 } from './server-sdk.ts'
+// Re-export everything from settings.ts
+export {
+  getRegisteredSettingsSchema,
+  registerSettingsSchema,
+  resetSettingsSchema,
+  type SettingsSchema,
+} from './settings.ts'
 
 // Re-export types
-export { type GlobalThisExtensions } from './types.ts'
+export type { GlobalThisExtensions } from './types.ts'
 
 // Import functions for use in inject/cleanup
-import { interceptConsole, restoreConsole, clearCapturedLogs } from './console.ts'
-import { registerSettingsSchema, resetSettingsSchema } from './settings.ts'
+import { clearCapturedLogs, interceptConsole, restoreConsole } from './console.ts'
 import { createServerSDK } from './server-sdk.ts'
+import { registerSettingsSchema, resetSettingsSchema } from './settings.ts'
 import type { GlobalThisExtensions } from './types.ts'
 
 /**

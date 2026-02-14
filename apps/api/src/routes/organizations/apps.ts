@@ -1,24 +1,24 @@
 // apps/api/src/routes/organizations/apps.ts
 
-import { Hono } from 'hono'
-import { requireOrganizationRole } from '../../middleware/organization-role'
-import { successResponse, errorResponse, ERROR_STATUS_MAP } from '../../lib/response'
-import type { AppContext } from '../../types/context'
-import {
-  getAvailableApps,
-  getAppWithInstallationStatus,
-  getAppVersions,
-  installApp,
-  uninstallApp,
-  installAppRequestSchema,
-  listAppsQuerySchema,
-  listVersionsQuerySchema,
-  listInstalledAppsQuerySchema,
-  uninstallAppRequestSchema,
-  listAppEventLogs,
-} from '@auxx/services/apps'
 import { getInstalledApps } from '@auxx/services/app-installations'
+import {
+  getAppVersions,
+  getAppWithInstallationStatus,
+  getAvailableApps,
+  installApp,
+  installAppRequestSchema,
+  listAppEventLogs,
+  listAppsQuerySchema,
+  listInstalledAppsQuerySchema,
+  listVersionsQuerySchema,
+  uninstallApp,
+  uninstallAppRequestSchema,
+} from '@auxx/services/apps'
+import { Hono } from 'hono'
 import { z } from 'zod'
+import { ERROR_STATUS_MAP, errorResponse, successResponse } from '../../lib/response'
+import { requireOrganizationRole } from '../../middleware/organization-role'
+import type { AppContext } from '../../types/context'
 
 const apps = new Hono<AppContext>()
 

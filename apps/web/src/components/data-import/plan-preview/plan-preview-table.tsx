@@ -2,12 +2,12 @@
 
 'use client'
 
-import { useMemo } from 'react'
 import { FileSpreadsheet, Loader2 } from 'lucide-react'
+import { useMemo } from 'react'
 import { DynamicTable } from '~/components/dynamic-table'
 import { EmptyState } from '~/components/global/empty-state'
-import { usePlanPreviewColumns } from './use-plan-preview-columns'
 import type { PlanPreviewRow, PreviewColumnMapping } from './types'
+import { usePlanPreviewColumns } from './use-plan-preview-columns'
 
 interface PlanPreviewTableProps {
   /** Preview rows to display */
@@ -37,28 +37,28 @@ export function PlanPreviewTable({
   const emptyState = useMemo(() => {
     if (isPlanning) {
       return (
-        <div className="flex flex-col items-center justify-center py-12 gap-3">
-          <Loader2 className="size-8 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Analyzing rows...</p>
+        <div className='flex flex-col items-center justify-center py-12 gap-3'>
+          <Loader2 className='size-8 animate-spin text-muted-foreground' />
+          <p className='text-sm text-muted-foreground'>Analyzing rows...</p>
         </div>
       )
     }
     return (
       <EmptyState
         icon={FileSpreadsheet}
-        title="No preview available"
-        description="Generate a plan to see the preview"
+        title='No preview available'
+        description='Generate a plan to see the preview'
       />
     )
   }, [isPlanning])
 
   return (
-    <div className="h-full flex flex-col dark:bg-muted/10 overflow-hidden">
+    <div className='h-full flex flex-col dark:bg-muted/10 overflow-hidden'>
       <DynamicTable
         data={rows}
         columns={columns}
-        tableId="plan-preview"
-        className="h-full"
+        tableId='plan-preview'
+        className='h-full'
         isLoading={isLoading}
         enableSearch={false}
         enableSorting={true}

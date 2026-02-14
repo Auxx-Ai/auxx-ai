@@ -1,8 +1,8 @@
 // apps/worker/src/workers/worker-definitions/dataset-maintenance-worker.ts
 
 import * as jobs from '@auxx/lib/jobs/definitions'
-import { createWorker } from '../utils/createWorker'
 import { Queues } from '@auxx/lib/jobs/queues/types'
+import { createWorker } from '../utils/createWorker'
 
 const jobMappings = {
   'cleanup-dataset': jobs.cleanupDatasetJob,

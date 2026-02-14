@@ -1,12 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { database as db, schema } from '@auxx/database'
 // import { getServerAuthSession } from '~/server/auth'
 import { env, WEBAPP_URL } from '@auxx/config/server'
+import { database as db, schema } from '@auxx/database'
 import crypto from 'crypto'
+import { and, eq, gt, inArray } from 'drizzle-orm'
+import { headers } from 'next/headers'
+import { type NextRequest, NextResponse } from 'next/server'
 import { auth } from '~/auth/server'
 import { logger } from '../logger'
-import { headers } from 'next/headers'
-import { and, eq, gt, inArray } from 'drizzle-orm'
 // import { createScopedLogger } from '@auxx/logger'
 // const logger = createScopedLogger('api-shopify')
 // Handle initial OAuth authorization request

@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/resources/registry/relationship-utils.ts
 
-import type { ResourceField } from './field-types'
 import { BaseType } from '../types'
+import type { ResourceField } from './field-types'
 
 /**
  * Check if relationship has .referenceId accessor

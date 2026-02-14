@@ -1,9 +1,9 @@
 // packages/lib/src/workflow-engine/core/__tests__/workflow-graph-builder.test.ts
 
-import { describe, it, expect, beforeEach } from 'vitest'
-import { WorkflowGraphBuilder, WorkflowGraphHelper } from '../workflow-graph-builder'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { NodeProcessorRegistry } from '../node-processor-registry'
 import { WorkflowNodeType } from '../types'
+import { WorkflowGraphBuilder, WorkflowGraphHelper } from '../workflow-graph-builder'
 
 describe('WorkflowGraphBuilder', () => {
   let nodeRegistry: NodeProcessorRegistry
@@ -444,8 +444,20 @@ describe('WorkflowGraphBuilder', () => {
             { id: 'end-1', type: 'end', data: { type: 'end' } },
           ],
           edges: [
-            { id: 'e1', source: 'trigger', target: 'loop-1', sourceHandle: 'source', targetHandle: 'target' },
-            { id: 'e2', source: 'loop-1', target: 'end-1', sourceHandle: 'source', targetHandle: 'target' },
+            {
+              id: 'e1',
+              source: 'trigger',
+              target: 'loop-1',
+              sourceHandle: 'source',
+              targetHandle: 'target',
+            },
+            {
+              id: 'e2',
+              source: 'loop-1',
+              target: 'end-1',
+              sourceHandle: 'source',
+              targetHandle: 'target',
+            },
           ],
         },
       }
@@ -473,8 +485,20 @@ describe('WorkflowGraphBuilder', () => {
             { id: 'end-1', type: 'end', data: { type: 'end' } },
           ],
           edges: [
-            { id: 'e1', source: 'loop-1', target: 'body-1', sourceHandle: 'loop-start', targetHandle: 'target' },
-            { id: 'e2', source: 'loop-1', target: 'end-1', sourceHandle: 'source', targetHandle: 'target' },
+            {
+              id: 'e1',
+              source: 'loop-1',
+              target: 'body-1',
+              sourceHandle: 'loop-start',
+              targetHandle: 'target',
+            },
+            {
+              id: 'e2',
+              source: 'loop-1',
+              target: 'end-1',
+              sourceHandle: 'source',
+              targetHandle: 'target',
+            },
           ],
         },
       }
@@ -501,7 +525,13 @@ describe('WorkflowGraphBuilder', () => {
             { id: 'end-1', type: 'end', data: { type: 'end' } },
           ],
           edges: [
-            { id: 'e1', source: 'loop-1', target: 'end-1', sourceHandle: 'source', targetHandle: 'target' },
+            {
+              id: 'e1',
+              source: 'loop-1',
+              target: 'end-1',
+              sourceHandle: 'source',
+              targetHandle: 'target',
+            },
           ],
         },
       }

@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/text-classifier/types.ts
 
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
 import type { TargetBranch } from '~/components/workflow/types'
+import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
 
 /**
  * Text Classifier node data interface - flattened structure

@@ -1,25 +1,9 @@
 // apps/web/src/app/(protected)/app/tickets/settings/domains/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
-import { api } from '~/trpc/react'
-import {
-  MailIcon,
-  Server,
-  CheckCircle2,
-  XCircle,
-  RefreshCw,
-  Mail,
-  Loader2,
-  Globe,
-  MoreVertical,
-  Plus,
-  Trash,
-  Power,
-  PowerOff,
-} from 'lucide-react'
-import SettingsPage from '~/components/global/settings-page'
-import DomainTestingTab from '../../_components/domain-testing-tab'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -28,14 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
-import { Label } from '@auxx/ui/components/label'
-import { Separator } from '@auxx/ui/components/separator'
-import { toastError } from '@auxx/ui/components/toast'
-import { Alert, AlertTitle, AlertDescription } from '@auxx/ui/components/alert'
-import { Badge } from '@auxx/ui/components/badge'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,8 +19,32 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { EntityIcon } from '@auxx/ui/components/icons'
+import { Input } from '@auxx/ui/components/input'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { Label } from '@auxx/ui/components/label'
+import { Separator } from '@auxx/ui/components/separator'
+import { toastError } from '@auxx/ui/components/toast'
+import {
+  CheckCircle2,
+  Globe,
+  Loader2,
+  Mail,
+  MailIcon,
+  MoreVertical,
+  Plus,
+  Power,
+  PowerOff,
+  RefreshCw,
+  Server,
+  Trash,
+  XCircle,
+} from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
+import SettingsPage from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
+import DomainTestingTab from '../../_components/domain-testing-tab'
 
 /** Props for AddDomainDialog */
 interface AddDomainDialogProps {
@@ -57,7 +57,7 @@ interface AddDomainDialogProps {
 function AddDomainDialog({ open, onOpenChange, onDomainRegistered }: AddDomainDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="md" position="tc">
+      <DialogContent size='md' position='tc'>
         <AddDomainDialogContent
           onDomainRegistered={onDomainRegistered}
           onClose={() => onOpenChange(false)}
@@ -145,55 +145,55 @@ function AddDomainDialogContent({ onDomainRegistered, onClose }: AddDomainDialog
   return (
     <>
       <DialogHeader>
-        <DialogTitle className="flex items-center gap-2">Add Email Domain</DialogTitle>
+        <DialogTitle className='flex items-center gap-2'>Add Email Domain</DialogTitle>
         <DialogDescription>
           Get a subdomain on {providerInfo?.providerDomain || 'our domain'} with no DNS setup
           required
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="subdomain">Choose Your Subdomain</Label>
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
+      <div className='space-y-4'>
+        <div className='space-y-2'>
+          <Label htmlFor='subdomain'>Choose Your Subdomain</Label>
+          <div className='flex items-center gap-2'>
+            <div className='relative flex-1'>
               <Input
-                id="subdomain"
-                placeholder="your-company"
+                id='subdomain'
+                placeholder='your-company'
                 value={subdomain}
                 onChange={(e) => setSubdomain(e.target.value)}
               />
               {subdomain.length >= 3 && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                <div className='absolute right-3 top-1/2 -translate-y-1/2'>
                   {isCheckingSubdomain ? (
-                    <RefreshCw className="size-4 animate-spin text-muted-foreground" />
+                    <RefreshCw className='size-4 animate-spin text-muted-foreground' />
                   ) : subdomainData?.isAvailable ? (
-                    <CheckCircle2 className="size-4 text-green-500" />
+                    <CheckCircle2 className='size-4 text-green-500' />
                   ) : (
-                    <XCircle className="size-4 text-red-500" />
+                    <XCircle className='size-4 text-red-500' />
                   )}
                 </div>
               )}
             </div>
-            <span className="whitespace-nowrap text-sm text-muted-foreground">
+            <span className='whitespace-nowrap text-sm text-muted-foreground'>
               .{providerInfo?.providerDomain || 'our-domain.com'}
             </span>
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className='text-sm text-muted-foreground'>
             This will be your custom subdomain for receiving ticket emails
           </p>
 
           {subdomain.length >= 3 && subdomainData && !subdomainData.isAvailable && (
-            <div className="mt-2 space-y-2">
-              <p className="text-sm font-medium text-red-500">
+            <div className='mt-2 space-y-2'>
+              <p className='text-sm font-medium text-red-500'>
                 This subdomain is already taken. Try one of these instead:
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className='flex flex-wrap gap-2'>
                 {subdomainData.suggestions.map((suggestion) => (
                   <Button
                     key={suggestion}
-                    variant="outline"
-                    size="sm"
+                    variant='outline'
+                    size='sm'
                     onClick={() => setSubdomain(suggestion)}>
                     {suggestion}
                   </Button>
@@ -205,15 +205,15 @@ function AddDomainDialogContent({ onDomainRegistered, onClose }: AddDomainDialog
 
         <Separator />
 
-        <div className="space-y-2">
-          <Label htmlFor="routing-prefix">Email Prefix</Label>
+        <div className='space-y-2'>
+          <Label htmlFor='routing-prefix'>Email Prefix</Label>
           <Input
-            id="routing-prefix"
-            placeholder="ticket"
+            id='routing-prefix'
+            placeholder='ticket'
             value={routingPrefix}
             onChange={(e) => setRoutingPrefix(e.target.value)}
           />
-          <p className="text-sm text-muted-foreground">
+          <p className='text-sm text-muted-foreground'>
             Prefix for ticket emails. Example:{' '}
             {formatExampleEmail(
               `${subdomain || 'your-company'}.${providerInfo?.providerDomain || 'our-domain.com'}`
@@ -221,29 +221,28 @@ function AddDomainDialogContent({ onDomainRegistered, onClose }: AddDomainDialog
           </p>
         </div>
 
-        <Alert variant="blue">
-          <Mail className="size-4" />
+        <Alert variant='blue'>
+          <Mail className='size-4' />
           <AlertTitle>Ready immediately</AlertTitle>
           <AlertDescription>
-            No DNS setup required. Your email address will be ready to use as soon as you
-            register.
+            No DNS setup required. Your email address will be ready to use as soon as you register.
           </AlertDescription>
         </Alert>
       </div>
 
       <DialogFooter>
-        <Button size="sm" variant="ghost" onClick={onClose}>
-          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+        <Button size='sm' variant='ghost' onClick={onClose}>
+          Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
         </Button>
         <Button
-          size="sm"
-          variant="outline"
+          size='sm'
+          variant='outline'
           onClick={handleRegister}
           loading={registerDomain.isPending}
-          loadingText="Registering..."
+          loadingText='Registering...'
           disabled={subdomain.length < 3 || (subdomainData && !subdomainData.isAvailable)}
           data-dialog-submit>
-          Register Subdomain <KbdSubmit variant="outline" size="sm" />
+          Register Subdomain <KbdSubmit variant='outline' size='sm' />
         </Button>
       </DialogFooter>
     </>
@@ -281,27 +280,27 @@ export default function MailDomainsPage() {
 
   return (
     <SettingsPage
-      title="Email Domains"
-      description="Set up your email domain to receive and send ticket emails."
+      title='Email Domains'
+      description='Set up your email domain to receive and send ticket emails.'
       icon={<MailIcon />}
       breadcrumbs={[
         { title: 'Support Tickets', href: '/app/tickets' },
         { title: 'Settings', href: '/app/tickets/settings' },
         { title: 'Email Domain' },
       ]}>
-      <div className="p-8 flex-col flex-1">
+      <div className='p-8 flex-col flex-1'>
         {isLoading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="size-8 animate-spin text-muted-foreground" />
+          <div className='flex justify-center py-12'>
+            <Loader2 className='size-8 animate-spin text-muted-foreground' />
           </div>
         ) : selectedDomainId ? (
           <DomainDetailsCard domainId={selectedDomainId} onBack={handleBack} />
         ) : !hasDomains ? (
-          <div className=" flex-1 flex flex-col h-full items-center">
+          <div className=' flex-1 flex flex-col h-full items-center'>
             <EmptyState
               icon={Globe}
-              title="No email domains configured"
-              description="Set up an email domain to start receiving and sending ticket emails."
+              title='No email domains configured'
+              description='Set up an email domain to start receiving and sending ticket emails.'
               button={
                 <Button onClick={() => setIsAddDialogOpen(true)}>
                   <Plus /> Add Your First Domain
@@ -390,34 +389,34 @@ function DomainsListView({
   }
 
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       {/* Header with Add Button */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground">
-          <Globe className="size-4" /> Email Domains
+      <div className='flex items-center justify-between'>
+        <div className='flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground'>
+          <Globe className='size-4' /> Email Domains
         </div>
-        <Button size="sm" onClick={onAddDomain}>
+        <Button size='sm' onClick={onAddDomain}>
           <Plus /> Add Domain
         </Button>
       </div>
 
       {/* Domain List */}
-      <div className="space-y-2">
+      <div className='space-y-2'>
         {domains.map((domain) => (
           <div
             key={domain.id}
             onClick={() => onSelectDomain(domain.id)}
-            className="group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200 cursor-pointer">
-            <div className="flex flex-row items-center gap-2">
-              <EntityIcon iconId="mail" color="blue" variant="muted" />
-              <div className="flex flex-col">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{domain.domain}</span>
-                  <Badge size="xs" variant={domain.isActive ? 'green' : 'secondary'}>
+            className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200 cursor-pointer'>
+            <div className='flex flex-row items-center gap-2'>
+              <EntityIcon iconId='mail' color='blue' variant='muted' />
+              <div className='flex flex-col'>
+                <div className='flex items-center gap-2'>
+                  <span className='text-sm font-medium'>{domain.domain}</span>
+                  <Badge size='xs' variant={domain.isActive ? 'green' : 'secondary'}>
                     {domain.isActive ? 'Active' : 'Inactive'}
                   </Badge>
                 </div>
-                <span className="text-xs text-muted-foreground">
+                <span className='text-xs text-muted-foreground'>
                   Prefix: {domain.routingPrefix}
                 </span>
               </div>
@@ -427,14 +426,14 @@ function DomainsListView({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-8"
+                  variant='ghost'
+                  size='icon'
+                  className='size-8'
                   onClick={(e) => e.stopPropagation()}>
-                  <MoreVertical className="size-4" />
+                  <MoreVertical className='size-4' />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align='end'>
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation()
@@ -452,7 +451,7 @@ function DomainsListView({
                   )}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  variant="destructive"
+                  variant='destructive'
                   onClick={(e) => {
                     e.stopPropagation()
                     handleDelete(domain)

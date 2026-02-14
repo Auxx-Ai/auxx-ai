@@ -1,24 +1,26 @@
 // src/lib/providers/instagram/instagram-provider.ts
-import { BaseMessageProvider, MessageProvider } from '../message-provider-interface'
-import { ProviderCapabilities, getProviderCapabilities } from '../provider-capabilities'
-import {
-  IntegrationProvider,
-  SendMessageOptions,
-  MessageStatus,
-} from '../integration-provider.interface' // Adjust path based on final structure
+
+import { env } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
+import { IntegrationProviderType, MessageType } from '@auxx/database/enums'
+import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import {
-  MessageStorageService,
-  MessageData, // Data structure expected by storage service
-  ParticipantInputData, // Structure for participant info from provider
-  IntegrationType,
   EmailLabel, // Still needed for MessageData structure
+  IntegrationType,
+  type MessageData, // Data structure expected by storage service
+  MessageStorageService,
+  type ParticipantInputData, // Structure for participant info from provider
 } from '../../email/email-storage' // Adjust path
-import { createScopedLogger } from '@auxx/logger'
-import { env } from '@auxx/config/server'
-import { InstagramOAuthService, InstagramIntegrationMetadata } from './instagram-oauth'
-import { IntegrationProviderType, MessageType } from '@auxx/database/enums'
+import type {
+  IntegrationProvider,
+  MessageStatus,
+  SendMessageOptions,
+} from '../integration-provider.interface' // Adjust path based on final structure
+import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
+import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
+import { type InstagramIntegrationMetadata, InstagramOAuthService } from './instagram-oauth'
+
 const logger = createScopedLogger('instagram-provider')
 const API_VERSION = env.FACEBOOK_GRAPH_API_VERSION || 'v19.0'
 // --- Interface Definitions (Align with Graph API) ---

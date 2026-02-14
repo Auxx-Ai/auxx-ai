@@ -1,41 +1,38 @@
 // apps/web/src/components/mail/mail-thread-list.tsx
 'use client'
 
-import React, { useEffect, useRef, memo } from 'react'
-// import { useAutoAnimate } from '@formkit/auto-animate/react'
-import { useInView } from 'react-intersection-observer'
-
-import { MailThreadItem } from './mail-thread-item'
-import { StandaloneDraftItem } from './standalone-draft-item'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { ChevronDown, Loader2, Clock, User, FileText, ArrowUpDown } from 'lucide-react'
-import type { ThreadsFilterInput } from './types'
-import { Checkbox } from '@auxx/ui/components/checkbox'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
-
-// NEW: Import selection hooks from threads module
-import {
-  useThreadSelection,
-  useThreadKeyboardNav,
-  useSelectionReset,
-} from '~/components/threads/hooks'
-import {
-  useViewMode,
-  useThreadSelectionStore,
-  useSelectedThreadIds,
-} from '~/components/threads/store'
 import { Button } from '@auxx/ui/components/button'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { useMailFilter, type SortOption } from './mail-filter-context'
-import type { ViewMode } from '~/components/threads/store'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
-
-import { useThreadList } from '~/components/threads/hooks'
+import { ArrowUpDown, ChevronDown, Clock, FileText, Loader2, User } from 'lucide-react'
+import React, { memo, useEffect, useRef } from 'react'
+// import { useAutoAnimate } from '@formkit/auto-animate/react'
+import { useInView } from 'react-intersection-observer'
+// NEW: Import selection hooks from threads module
+import {
+  useSelectionReset,
+  useThreadKeyboardNav,
+  useThreadList,
+  useThreadSelection,
+} from '~/components/threads/hooks'
+import type { ViewMode } from '~/components/threads/store'
+import {
+  useSelectedThreadIds,
+  useThreadSelectionStore,
+  useViewMode,
+} from '~/components/threads/store'
+import { type SortOption, useMailFilter } from './mail-filter-context'
+import { MailThreadItem } from './mail-thread-item'
+import { StandaloneDraftItem } from './standalone-draft-item'
+import type { ThreadsFilterInput } from './types'
 
 interface ThreadListProps {
   /** Filter configuration for fetching threads */
@@ -113,7 +110,7 @@ export const ThreadList = memo(function ThreadList({
   // Loading state
   if (isLoading) {
     return (
-      <div className="space-y-4 p-4">
+      <div className='space-y-4 p-4'>
         {[...Array(10)].map((_, i) => (
           <ThreadItemSkeleton key={`skel-${i}`} />
         ))}
@@ -132,7 +129,7 @@ export const ThreadList = memo(function ThreadList({
           className={cn('relative flex flex-col gap-2 p-4 pt-0', isEmpty && 'flex-1')}
           ref={parent}>
           {isEmpty && (
-            <div className="p-8 text-center text-muted-foreground h-full flex items-center justify-center border rounded-2xl ring-inset ring-1 ring-muted/10">
+            <div className='p-8 text-center text-muted-foreground h-full flex items-center justify-center border rounded-2xl ring-inset ring-1 ring-muted/10'>
               No threads found in this view.
             </div>
           )}
@@ -158,15 +155,15 @@ export const ThreadList = memo(function ThreadList({
           })}
 
           {isFetchingNextPage && (
-            <div className="flex h-8 w-full items-center justify-center">
-              <Loader2 className="h-4 w-4 animate-spin" />
+            <div className='flex h-8 w-full items-center justify-center'>
+              <Loader2 className='h-4 w-4 animate-spin' />
             </div>
           )}
         </div>
 
-        <div ref={ref} className="h-1" />
+        <div ref={ref} className='h-1' />
         {!hasNextPage && recordIds.length > 0 && !isFetchingNextPage && (
-          <div className="pb-8 pt-4 text-center text-sm text-muted-foreground">End of list.</div>
+          <div className='pb-8 pt-4 text-center text-sm text-muted-foreground'>End of list.</div>
         )}
       </div>
     </div>
@@ -176,15 +173,15 @@ export const ThreadList = memo(function ThreadList({
 /** Skeleton for loading thread items */
 function ThreadItemSkeleton() {
   return (
-    <div className="flex items-start space-x-3 rounded-lg border p-3">
-      <div className="grow space-y-2">
-        <div className="flex justify-between">
-          <Skeleton className="h-4 w-3/5" />
-          <Skeleton className="h-3 w-16" />
+    <div className='flex items-start space-x-3 rounded-lg border p-3'>
+      <div className='grow space-y-2'>
+        <div className='flex justify-between'>
+          <Skeleton className='h-4 w-3/5' />
+          <Skeleton className='h-3 w-16' />
         </div>
-        <Skeleton className="h-3 w-2/5" />
-        <Skeleton className="h-3 w-full" />
-        <Skeleton className="h-3 w-4/5" />
+        <Skeleton className='h-3 w-2/5' />
+        <Skeleton className='h-3 w-full' />
+        <Skeleton className='h-3 w-4/5' />
       </div>
     </div>
   )
@@ -250,49 +247,49 @@ function ThreadListMenu({ threadIds }: ThreadListMenuProps) {
   }
 
   return (
-    <div className="sticky top-0 z-10 h-10 bg-primary-100 flex flex-row items-center justify-between px-4">
-      <div className="flex items-center justify-center rounded-full font-medium transition-colors text-xs py-0 w-[97px]">
+    <div className='sticky top-0 z-10 h-10 bg-primary-100 flex flex-row items-center justify-between px-4'>
+      <div className='flex items-center justify-center rounded-full font-medium transition-colors text-xs py-0 w-[97px]'>
         {viewMode === 'edit' && (
           <div
-            className="ps-3 pe-2 border border-r-0 h-6 rounded-full rounded-r-none flex items-center justify-center cursor-pointer hover:bg-foreground/10"
+            className='ps-3 pe-2 border border-r-0 h-6 rounded-full rounded-r-none flex items-center justify-center cursor-pointer hover:bg-foreground/10'
             onClick={handleSelectAll}>
             <Checkbox
               checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-              className="pointer-events-none"
+              className='pointer-events-none'
             />
           </div>
         )}
 
         <Button
-          variant="ghost"
-          size="xs"
+          variant='ghost'
+          size='xs'
           onClick={() => handleViewModeChange(viewMode === 'edit' ? 'view' : 'edit')}
           className={cn(
             'border h-6 flex text-muted-foreground px-2 hover:bg-foreground/10 flex-1',
             viewMode === 'edit' ? 'rounded-full rounded-l-none' : 'rounded-full'
           )}>
           {viewMode === 'edit' ? 'Edit' : 'View'}
-          <ChevronDown className="size-3 ml-auto" />
+          <ChevronDown className='size-3 ml-auto' />
         </Button>
       </div>
 
-      <div className="flex flex-row items-center gap-2">
+      <div className='flex flex-row items-center gap-2'>
         {viewMode === 'edit' && selectedCount > 0 && (
-          <div className="text-xs text-muted-foreground mr-2">{selectedCount} selected</div>
+          <div className='text-xs text-muted-foreground mr-2'>{selectedCount} selected</div>
         )}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
-              variant="ghost"
-              size="xs"
-              className="rounded-full hover:bg-foreground/10 w-[130px] justify-start">
-              <ArrowUpDown className="size-3 mr-1" />
+              variant='ghost'
+              size='xs'
+              className='rounded-full hover:bg-foreground/10 w-[130px] justify-start'>
+              <ArrowUpDown className='size-3 mr-1' />
               {getSortLabel()}
-              <ChevronDown className="size-3 ml-auto" />
+              <ChevronDown className='size-3 ml-auto' />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-36">
+          <DropdownMenuContent align='end' className='w-36'>
             <DropdownMenuItem
               onClick={() => handleSortChange('newest')}
               className={cn(sortBy === 'newest' && 'font-bold')}>

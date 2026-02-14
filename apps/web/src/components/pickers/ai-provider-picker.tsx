@@ -1,8 +1,7 @@
 // ~/components/pickers/ai-provider-picker.tsx
 'use client'
 
-import React, { useState, useMemo } from 'react'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Button } from '@auxx/ui/components/button'
 import {
   Command,
   CommandEmpty,
@@ -11,9 +10,11 @@ import {
   CommandItem,
   CommandList,
 } from '@auxx/ui/components/command'
-import { Button } from '@auxx/ui/components/button'
-import { Check, ChevronsUpDown } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
+import { Check, ChevronsUpDown } from 'lucide-react'
+import type React from 'react'
+import { useMemo, useState } from 'react'
 import { ProviderIcon } from '~/components/ai/ui/provider-icon'
 import type { ProviderConfiguration } from '~/components/ai/ui/utils'
 
@@ -92,20 +93,20 @@ export function AiProviderPicker({
       <PopoverTrigger asChild>
         {children || (
           <Button
-            variant="outline"
-            role="combobox"
+            variant='outline'
+            role='combobox'
             aria-expanded={isOpen}
             className={cn(
               'w-[300px] justify-between px-1',
               !selectedProvider && 'text-muted-foreground'
             )}>
-            <div className="flex items-center gap-2">
+            <div className='flex items-center gap-2'>
               {selectedProvider && (
-                <ProviderIcon provider={selectedProvider} size="sm" className="shrink-0" />
+                <ProviderIcon provider={selectedProvider} size='sm' className='shrink-0' />
               )}
               {triggerLabel}
             </div>
-            <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+            <ChevronsUpDown className='ml-2 size-4 shrink-0 opacity-50' />
           </Button>
         )}
       </PopoverTrigger>
@@ -125,20 +126,20 @@ export function AiProviderPicker({
                     key={provider.id}
                     value={provider.id}
                     onSelect={() => handleSelect(provider.id)}
-                    className="cursor-pointer flex items-center justify-between">
-                    <div className="flex flex-row items-center gap-2">
+                    className='cursor-pointer flex items-center justify-between'>
+                    <div className='flex flex-row items-center gap-2'>
                       <ProviderIcon
                         provider={provider}
-                        size="md"
-                        className="shrink-0 rounded-full"
+                        size='md'
+                        className='shrink-0 rounded-full'
                       />
-                      <div className="flex flex-col gap-0.5">
-                        <p className="text-sm font-medium truncate line-clamp-1">
+                      <div className='flex flex-col gap-0.5'>
+                        <p className='text-sm font-medium truncate line-clamp-1'>
                           {provider.displayName}
                         </p>
                         {provider.description && (
                           <span
-                            className="text-xs text-muted-foreground truncate line-clamp-1"
+                            className='text-xs text-muted-foreground truncate line-clamp-1'
                             title={provider.description}>
                             {provider.description}
                           </span>

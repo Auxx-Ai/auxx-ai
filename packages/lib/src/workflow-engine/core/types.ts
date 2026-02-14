@@ -1,8 +1,8 @@
 // packages/lib/src/workflow-engine/core/types.ts
 
+import type { Database } from '@auxx/database'
 import type { ProcessedMessage } from '../types/message'
 import type { ExecutionContextManager } from './execution-context'
-import type { Database } from '@auxx/database'
 
 // Re-export ProcessedMessage for use in this module
 export type { ProcessedMessage }
@@ -538,10 +538,7 @@ export interface ValidationResult {
 export interface WorkflowBuilder {
   setName(name: string): WorkflowBuilder
   setDescription(description: string): WorkflowBuilder
-  setTrigger(
-    type: WorkflowTriggerType,
-    entityDefinitionId?: string
-  ): WorkflowBuilder
+  setTrigger(type: WorkflowTriggerType, entityDefinitionId?: string): WorkflowBuilder
   addNode(node: Omit<WorkflowNode, 'id' | 'workflowId'>): WorkflowBuilder
   connect(fromNodeId: string, toNodeId: string, connectionType?: string): WorkflowBuilder
   build(): Workflow
@@ -816,7 +813,6 @@ export interface BranchConvergenceResult {
   pauseExceptions?: WorkflowPausedException[]
   errors?: Error[]
 }
-
 
 /**
  * Join state for tracking branch convergence

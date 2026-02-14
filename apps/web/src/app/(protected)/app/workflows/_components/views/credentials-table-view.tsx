@@ -1,18 +1,8 @@
 // apps/web/src/app/(protected)/app/workflows/_components/views/credentials-table-view.tsx
 'use client'
 
-import { useState } from 'react'
-import { MoreHorizontal, Edit, Copy, Trash, TestTube, Key } from 'lucide-react'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@auxx/ui/components/table'
-import { Button } from '@auxx/ui/components/button'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,15 +11,25 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
-import { useCredentials } from '../../../../../../components/workflow/credentials/credentials-provider'
-import { useConfirm } from '~/hooks/use-confirm'
-import { EditCredentialDialog } from '../../../../../../components/workflow/credentials/edit-credential-dialog'
 import {
-  getCredentialStyling,
-  getCredentialIcon,
-  getCredentialDisplayName,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@auxx/ui/components/table'
+import { Copy, Edit, Key, MoreHorizontal, TestTube, Trash } from 'lucide-react'
+import { useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
+import {
   getCredentialCategory,
+  getCredentialDisplayName,
+  getCredentialIcon,
+  getCredentialStyling,
 } from '../../../../../../components/workflow/credentials/credential-styling'
+import { useCredentials } from '../../../../../../components/workflow/credentials/credentials-provider'
+import { EditCredentialDialog } from '../../../../../../components/workflow/credentials/edit-credential-dialog'
 
 /**
  * Credentials table view component
@@ -91,7 +91,7 @@ export function CredentialsTableView() {
 
   return (
     <>
-      <div className="border rounded-lg">
+      <div className='border rounded-lg'>
         <Table>
           <TableHeader>
             <TableRow>
@@ -101,7 +101,7 @@ export function CredentialsTableView() {
               <TableHead>Created By</TableHead>
               <TableHead>Created</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="w-[100px]">Actions</TableHead>
+              <TableHead className='w-[100px]'>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -117,18 +117,18 @@ export function CredentialsTableView() {
 
               return (
                 <TableRow key={credential.id}>
-                  <TableCell className="font-medium">
-                    <div className="flex items-center gap-3">
+                  <TableCell className='font-medium'>
+                    <div className='flex items-center gap-3'>
                       <div
                         className={`p-1.5 rounded bg-gradient-to-br ${styling.backgroundColor} ${styling.iconColor}`}>
-                        <IconComponent className="h-4 w-4" />
+                        <IconComponent className='h-4 w-4' />
                       </div>
                       {credential.name}
                     </div>
                   </TableCell>
                   <TableCell>{displayName}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="capitalize">
+                    <Badge variant='outline' className='capitalize'>
                       {category}
                     </Badge>
                   </TableCell>
@@ -137,32 +137,32 @@ export function CredentialsTableView() {
                     <LastUpdated
                       timestamp={credential.createdAt}
                       includeSeconds={false}
-                      className="text-sm"
+                      className='text-sm'
                     />
                   </TableCell>
                   <TableCell>
                     {testResult === 'success' && (
-                      <div className="flex items-center gap-2">
-                        <div className="h-2 w-2 rounded-full bg-green-500" />
-                        <span className="text-sm text-green-600">Tested</span>
+                      <div className='flex items-center gap-2'>
+                        <div className='h-2 w-2 rounded-full bg-green-500' />
+                        <span className='text-sm text-green-600'>Tested</span>
                       </div>
                     )}
                     {testResult === 'failed' && (
-                      <div className="flex items-center gap-2">
-                        <div className="h-2 w-2 rounded-full bg-red-500" />
-                        <span className="text-sm text-red-600">Failed</span>
+                      <div className='flex items-center gap-2'>
+                        <div className='h-2 w-2 rounded-full bg-red-500' />
+                        <span className='text-sm text-red-600'>Failed</span>
                       </div>
                     )}
-                    {!testResult && <span className="text-sm text-muted-foreground">Untested</span>}
+                    {!testResult && <span className='text-sm text-muted-foreground'>Untested</span>}
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-sm">
+                        <Button variant='ghost' size='icon-sm'>
                           <MoreHorizontal />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
+                      <DropdownMenuContent align='end'>
                         <DropdownMenuItem
                           onClick={() => handleTest(credential.id)}
                           disabled={isTestLoading}>
@@ -180,7 +180,7 @@ export function CredentialsTableView() {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onClick={() => handleDelete(credential)}
-                          variant="destructive">
+                          variant='destructive'>
                           <Trash />
                           Delete
                         </DropdownMenuItem>

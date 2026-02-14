@@ -1,19 +1,19 @@
 import {} from '@auxx/database/enums'
 import type {
-  DocumentEntity as Document,
-  DocumentSegmentEntity as DocumentSegment,
   DatasetEntity as Dataset,
   DatasetSearchQueryEntity as DatasetSearchQuery,
   DatasetSearchResultEntity as DatasetSearchResult,
+  DocumentEntity as Document,
+  DocumentSegmentEntity as DocumentSegment,
   ExternalKnowledgeSourceEntity as ExternalKnowledgeSource,
 } from '@auxx/database/models'
 import type {
   ChunkingStrategy,
-  DocumentType,
-  DocumentStatus,
-  DatasetStatus,
-  VectorDbType,
   ChunkSettings,
+  DatasetStatus,
+  DocumentStatus,
+  DocumentType,
+  VectorDbType,
 } from '@auxx/database/types'
 // packages/lib/src/datasets/types/index.ts
 /**
@@ -311,7 +311,7 @@ export interface DocumentWithRelations extends Document {
     id: string
     name: string | null
     mimeType: string | null
-    size: BigInt | null
+    size: bigint | null
   } | null
   segments: DocumentSegment[]
   _count?: {
@@ -403,20 +403,20 @@ export class DatasetError extends Error {
     this.name = 'DatasetError'
   }
 }
+export type * from './embedding.types'
 // Re-export extractor types
 export type * from './extractor.types'
-export type * from './vector.types'
-export type * from './embedding.types'
 export type * from './search.types'
-// Export vector classes separately since they're not types
-export { VectorDatabase } from './vector.types'
 // Export search error classes separately since they're not types
 export {
-  SearchError,
   FullTextSearchError,
-  SearchTimeoutError,
   InvalidQueryError,
+  SearchError,
+  SearchTimeoutError,
 } from './search.types'
+export type * from './vector.types'
+// Export vector classes separately since they're not types
+export { VectorDatabase } from './vector.types'
 export class DocumentProcessingError extends DatasetError {
   constructor(message: string, details?: Record<string, any>) {
     super(message, 'DOCUMENT_PROCESSING_ERROR', details)
@@ -433,17 +433,17 @@ export {
   EMBEDDING_DIMENSIONS,
   type EmbeddingDimension,
   getEmbeddingColumnName,
-  normalizeToSupportedDimension,
-  isSupportedDimension,
   getModelDefaultDimensionFromDefinition,
-  getModelDimensionOptions,
   getModelDimensionHelp,
+  getModelDimensionOptions,
+  isSupportedDimension,
+  normalizeToSupportedDimension,
 } from '../utils/embedding-columns'
 
 // Export worker types
 export type {
+  BatchOperationJobData,
   DocumentProcessingJobData,
   EmbeddingGenerationJobData,
-  BatchOperationJobData,
   WorkerJobResult,
 } from './worker.types'

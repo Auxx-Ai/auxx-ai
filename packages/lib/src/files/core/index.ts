@@ -10,76 +10,67 @@
  * - Folder: Hierarchical folder management
  */
 
-// Export all core services
-export { FileService, createFileService } from './file-service'
-export { FolderService, createFolderService } from './folder-service'
 export { AttachmentService } from './attachment-service'
-export { MediaAssetService, createMediaAssetService } from './media-asset-service'
-export { ThumbnailService } from './thumbnail-service'
-
 // Export base service and mixins for advanced usage
 export { BaseService, type Constructor } from './base-service'
-export { withContentAccess, withVersioning } from './mixins'
+// Export all core services
+export { createFileService, FileService } from './file-service'
+export { createFolderService, FolderService } from './folder-service'
+export { createMediaAssetService, MediaAssetService } from './media-asset-service'
 export type { ContentAccessible, Versioned } from './mixins'
-
-// Export all types
-export type {
-  // Entity types
-  EntityType,
-  AttachmentRole,
-  AssetKind,
-
-  // Request types
-  CreateFileRequest,
-  UpdateFileRequest,
-  CreateFolderRequest,
-  UpdateFolderRequest,
-  CreateAttachmentRequest,
-  UpdateAttachmentRequest,
-  CreateAssetRequest,
-  UpdateAssetRequest,
-
-  // Response types
-  FolderTreeNode,
-  FolderContents,
-  FileSearchResult,
-  AssetSearchResult,
-  FileDownloadInfo,
-  AssetDownloadInfo,
-
-  // Extended model types
-  FolderFileWithRelations,
-  MediaAssetWithRelations,
-  AttachmentWithRelations,
-  FolderWithRelations,
-
-  // Service options
-  FileListOptions,
-  SearchOptions,
-  BulkOperationOptions,
-
-  // Utility types
-  ValidationResult,
-  ServiceResult,
-  BulkOperationResult,
-} from './types'
-
+export { withContentAccess, withVersioning } from './mixins'
+export { ThumbnailService } from './thumbnail-service'
 // Export thumbnail types
 export type {
-  ThumbnailSource,
+  GenerateThumbnailPayload,
+  PresetConfig,
+  PresetKey,
+  ProcessedThumbnail,
+  ThumbnailMetadata,
   ThumbnailOptions,
   ThumbnailResult,
-  PresetKey,
-  PresetConfig,
-  ThumbnailMetadata,
-  ProcessedThumbnail,
-  ThumbnailSet,
-  GenerateThumbnailPayload,
   ThumbnailServiceConfig,
+  ThumbnailSet,
+  ThumbnailSource,
 } from './thumbnail-types'
-
 export {
-  THUMBNAIL_PRESETS,
-  THUMBNAIL_LIMITS,
   ALLOWED_IMAGE_TYPES,
+  THUMBNAIL_LIMITS,
+  THUMBNAIL_PRESETS,
 } from './thumbnail-types'
+// Export all types
+export type {
+  AssetDownloadInfo,
+  AssetKind,
+  AssetSearchResult,
+  AttachmentRole,
+  AttachmentWithRelations,
+  BulkOperationOptions,
+  BulkOperationResult,
+  CreateAssetRequest,
+  CreateAttachmentRequest,
+  // Request types
+  CreateFileRequest,
+  CreateFolderRequest,
+  // Entity types
+  EntityType,
+  FileDownloadInfo,
+  // Service options
+  FileListOptions,
+  FileSearchResult,
+  FolderContents,
+  // Extended model types
+  FolderFileWithRelations,
+  // Response types
+  FolderTreeNode,
+  FolderWithRelations,
+  MediaAssetWithRelations,
+  SearchOptions,
+  ServiceResult,
+  UpdateAssetRequest,
+  UpdateAttachmentRequest,
+  UpdateFileRequest,
+  UpdateFolderRequest,
+  // Utility types
+  ValidationResult,
+} from './types'

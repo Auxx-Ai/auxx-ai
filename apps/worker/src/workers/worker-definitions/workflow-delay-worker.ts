@@ -1,12 +1,12 @@
 // apps/worker/src/workers/worker-definitions/workflow-delay-worker.ts
 
-import { Queues } from '@auxx/lib/jobs/queues/types'
 import {
-  resumeWorkflowJob,
-  approvalTimeoutJob,
   approvalReminderJob,
+  approvalTimeoutJob,
   executeResourceTrigger,
+  resumeWorkflowJob,
 } from '@auxx/lib/jobs'
+import { Queues } from '@auxx/lib/jobs/queues/types'
 import { createWorker } from '../utils/createWorker'
 
 const jobMappings = {

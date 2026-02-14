@@ -3,30 +3,30 @@
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import {
+  type AnyColumn,
   and,
-  or,
-  eq,
-  ne,
-  gt,
-  gte,
-  lt,
-  lte,
-  ilike,
-  not,
-  inArray,
-  notInArray,
-  isNull,
-  isNotNull,
   asc,
   desc,
-  sql,
-  type AnyColumn,
+  eq,
+  gt,
+  gte,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  ne,
+  not,
+  notInArray,
+  or,
   type SQL,
+  sql,
 } from 'drizzle-orm'
+import type { Operator } from '../../conditions/operator-definitions'
 import { RESOURCE_FIELD_REGISTRY, RESOURCE_TABLE_MAP } from '../../resources/registry'
 import type { TableId } from '../../resources/registry/field-registry'
 import { type FieldOptionItem, getFieldOptions } from '../../resources/registry/option-helpers'
-import type { Operator } from '../../conditions/operator-definitions'
 import { BaseConditionBuilder, type GenericCondition } from './base-condition-builder'
 
 const logger = createScopedLogger('system-condition-builder')
@@ -190,24 +190,30 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
 
       // ===== SET =====
       case 'in': {
-        const values = this.normalizeArrayWithOptions(rawValue, normalizedType, resourceType, fieldId)
+        const values = this.normalizeArrayWithOptions(
+          rawValue,
+          normalizedType,
+          resourceType,
+          fieldId
+        )
         if (!values.length) return undefined
         return this.combineColumnPredicates(columns, (col) => inArray(col, values))
       }
 
       case 'not in': {
-        const values = this.normalizeArrayWithOptions(rawValue, normalizedType, resourceType, fieldId)
+        const values = this.normalizeArrayWithOptions(
+          rawValue,
+          normalizedType,
+          resourceType,
+          fieldId
+        )
         if (!values.length) return undefined
         return this.combineColumnPredicates(columns, (col) => notInArray(col, values), 'and')
       }
 
       // ===== EXISTENCE =====
       case 'empty': {
-        return this.combineColumnPredicates(
-          columns,
-          (col) => or(isNull(col), eq(col, '')),
-          'and'
-        )
+        return this.combineColumnPredicates(columns, (col) => or(isNull(col), eq(col, '')), 'and')
       }
 
       case 'not empty': {

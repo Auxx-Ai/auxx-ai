@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/edges/custom-edge/linear-gradient.tsx
 
 import React, { memo } from 'react'
-import { CustomEdgeLinearGradientProps } from './types'
+import type { CustomEdgeLinearGradientProps } from './types'
 
 export const CustomEdgeLinearGradient = memo(
   ({ id, startColor, stopColor, position }: CustomEdgeLinearGradientProps) => {
@@ -9,16 +9,16 @@ export const CustomEdgeLinearGradient = memo(
 
     return (
       <defs>
-        <linearGradient id={id} gradientUnits="userSpaceOnUse" x1={x1} y1={y1} x2={x2} y2={y2}>
+        <linearGradient id={id} gradientUnits='userSpaceOnUse' x1={x1} y1={y1} x2={x2} y2={y2}>
           <stop
-            offset="0%"
+            offset='0%'
             style={{
               stopColor: startColor,
               stopOpacity: 1,
             }}
           />
           <stop
-            offset="100%"
+            offset='100%'
             style={{
               stopColor: stopColor,
               stopOpacity: 1,

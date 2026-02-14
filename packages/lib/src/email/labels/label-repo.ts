@@ -1,7 +1,7 @@
 // lib/email/repositories/label-repository.ts
 import { database as db, schema } from '@auxx/database'
+import type { LabelType } from '@auxx/database/types'
 import { and, asc, eq } from 'drizzle-orm'
-import { LabelType } from '@auxx/database/types'
 export class LabelRepo {
   // Find labels by various criteria
   async findByProviderLabelId(

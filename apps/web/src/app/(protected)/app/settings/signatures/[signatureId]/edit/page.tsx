@@ -1,12 +1,12 @@
 // apps/web/src/app/(protected)/app/settings/signatures/[signatureId]/edit/page.tsx
 'use client'
 
-import React, { use } from 'react'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { notFound } from 'next/navigation'
-import { SignatureForm } from '~/components/signatures/ui'
+import React, { use } from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import { useSignature } from '~/components/signatures/hooks'
-import { Skeleton } from '@auxx/ui/components/skeleton'
+import { SignatureForm } from '~/components/signatures/ui'
 
 interface EditSignaturePageProps {
   params: Promise<{ signatureId: string }>
@@ -26,17 +26,17 @@ export default function EditSignaturePage({ params }: EditSignaturePageProps) {
   if (isLoading) {
     return (
       <SettingsPage
-        title="Edit Signature"
-        description="Update the appearance of the signature"
+        title='Edit Signature'
+        description='Update the appearance of the signature'
         breadcrumbs={[
           { title: 'Settings', href: '/app/settings' },
           { title: 'Signatures', href: '/app/settings/signatures' },
           { title: 'Edit' },
         ]}>
-        <div className="p-8 space-y-4">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-40 w-full" />
-          <Skeleton className="h-10 w-1/2" />
+        <div className='p-8 space-y-4'>
+          <Skeleton className='h-10 w-full' />
+          <Skeleton className='h-40 w-full' />
+          <Skeleton className='h-10 w-1/2' />
         </div>
       </SettingsPage>
     )
@@ -48,14 +48,14 @@ export default function EditSignaturePage({ params }: EditSignaturePageProps) {
 
   return (
     <SettingsPage
-      title="Edit Signature"
-      description="Update the appearance of the signature"
+      title='Edit Signature'
+      description='Update the appearance of the signature'
       breadcrumbs={[
         { title: 'Settings', href: '/app/settings' },
         { title: 'Signatures', href: '/app/settings/signatures' },
         { title: signature.name },
       ]}>
-      <div className="p-8">
+      <div className='p-8'>
         <SignatureForm
           signature={{
             id: signature.id,

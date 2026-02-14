@@ -1,22 +1,24 @@
 // packages/credentials/src/manager/credential-manager.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import type { NodeData } from '@auxx/workflow-nodes/types'
+import { CredentialService } from '../service/credential-service'
 import type {
+  ConnectionTestResult,
+  CredentialReference,
   ICredentialManager,
   ProviderAuth,
   ProviderInfo,
-  CredentialReference,
   SystemCredentialInfo,
-  ConnectionTestResult,
   ValidationResult,
 } from '../types'
 import {
-  ProviderNotFoundError,
+  CredentialConnectionError,
   CredentialNotFoundError,
+  CredentialTransformError,
   NoCredentialsAvailableError,
   OrganizationRequiredError,
-  CredentialConnectionError,
-  CredentialTransformError,
+  ProviderNotFoundError,
 } from '../types/errors'
 import {} from // transformOrgCredentialToAuth,
 // transformSystemCredentialToAuth,
@@ -24,8 +26,6 @@ import {} from // transformOrgCredentialToAuth,
 '../types/provider-auth'
 import { CredentialTypeRegistry } from './credential-type-registry'
 import { SystemCredentialService } from './system-credential-service'
-import { CredentialService } from '../service/credential-service'
-import { createScopedLogger } from '@auxx/logger'
 
 const logger = createScopedLogger('credential-manager')
 

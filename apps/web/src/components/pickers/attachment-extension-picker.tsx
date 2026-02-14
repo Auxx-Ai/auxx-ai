@@ -2,7 +2,9 @@
 
 'use client'
 
-import { useState } from 'react'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { Input } from '@auxx/ui/components/input'
 import {
   Select,
   SelectContent,
@@ -10,10 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Badge } from '@auxx/ui/components/badge'
-import { Input } from '@auxx/ui/components/input'
-import { Button } from '@auxx/ui/components/button'
 import { Plus, X } from 'lucide-react'
+import { useState } from 'react'
 
 /**
  * Common file extensions for the picker
@@ -87,21 +87,21 @@ export function AttachmentExtensionPicker({
   )
 
   return (
-    <div className="space-y-3">
+    <div className='space-y-3'>
       {/* Selected Extensions Display */}
       {value.length > 0 && (
-        <div className="flex flex-wrap gap-1">
+        <div className='flex flex-wrap gap-1'>
           {value.map((ext) => {
             const commonExt = COMMON_FILE_EXTENSIONS.find((e) => e.value === ext)
             return (
-              <Badge key={ext} variant="secondary" className="pr-1">
+              <Badge key={ext} variant='secondary' className='pr-1'>
                 {commonExt ? commonExt.label : ext}
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  className="ml-1 h-auto p-0.5 hover:bg-transparent"
+                  variant='ghost'
+                  size='sm'
+                  className='ml-1 h-auto p-0.5 hover:bg-transparent'
                   onClick={() => removeExtension(ext)}>
-                  <X className="h-3 w-3" />
+                  <X className='h-3 w-3' />
                 </Button>
               </Badge>
             )
@@ -114,11 +114,11 @@ export function AttachmentExtensionPicker({
         <SelectTrigger>
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
-        <SelectContent className="max-h-96">
+        <SelectContent className='max-h-96'>
           {Object.entries(extensionsByCategory).map(([category, extensions]) => (
             <div key={category}>
-              <div className="px-2 py-1.5">
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              <div className='px-2 py-1.5'>
+                <div className='text-xs font-semibold text-muted-foreground uppercase tracking-wide'>
                   {category}
                 </div>
               </div>
@@ -130,13 +130,13 @@ export function AttachmentExtensionPicker({
                     value={ext.value}
                     className={`pl-4 ${isSelected ? 'bg-muted' : ''}`}
                     disabled={isSelected}>
-                    <div className="flex items-center gap-2 w-full">
-                      <div className="flex-1">
-                        <div className="font-medium">{ext.label}</div>
-                        <div className="text-xs text-muted-foreground">{ext.value}</div>
+                    <div className='flex items-center gap-2 w-full'>
+                      <div className='flex-1'>
+                        <div className='font-medium'>{ext.label}</div>
+                        <div className='text-xs text-muted-foreground'>{ext.value}</div>
                       </div>
                       {isSelected && (
-                        <Badge variant="secondary" className="ml-auto">
+                        <Badge variant='secondary' className='ml-auto'>
                           Selected
                         </Badge>
                       )}
@@ -150,16 +150,16 @@ export function AttachmentExtensionPicker({
       </Select>
 
       {/* Custom Extension Input */}
-      <div className="flex gap-2">
+      <div className='flex gap-2'>
         <Input
-          placeholder="Custom extension (e.g., .xyz)"
+          placeholder='Custom extension (e.g., .xyz)'
           value={customExtension}
           onChange={(e) => setCustomExtension(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && addCustomExtension()}
-          className="flex-1"
+          className='flex-1'
         />
-        <Button variant="outline" size="sm" onClick={addCustomExtension}>
-          <Plus className="h-4 w-4" />
+        <Button variant='outline' size='sm' onClick={addCustomExtension}>
+          <Plus className='h-4 w-4' />
         </Button>
       </div>
     </div>

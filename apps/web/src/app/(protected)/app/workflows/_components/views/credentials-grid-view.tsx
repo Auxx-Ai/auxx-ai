@@ -1,11 +1,9 @@
 // apps/web/src/app/(protected)/app/workflows/_components/views/credentials-grid-view.tsx
 'use client'
 
-import { useState } from 'react'
-import { MoreVertical, Edit, Copy, Trash, TestTube, Key, User } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@auxx/ui/components/card'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,15 +12,17 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
-import { useCredentials } from '~/components/workflow/credentials/credentials-provider'
-import { useConfirm } from '~/hooks/use-confirm'
-import { EditCredentialDialog } from '~/components/workflow/credentials/edit-credential-dialog'
+import { Copy, Edit, Key, MoreVertical, TestTube, Trash, User } from 'lucide-react'
+import { useState } from 'react'
 import {
-  getCredentialStyling,
-  getCredentialIcon,
-  getCredentialDisplayName,
   getCredentialCategory,
+  getCredentialDisplayName,
+  getCredentialIcon,
+  getCredentialStyling,
 } from '~/components/workflow/credentials/credential-styling'
+import { useCredentials } from '~/components/workflow/credentials/credentials-provider'
+import { EditCredentialDialog } from '~/components/workflow/credentials/edit-credential-dialog'
+import { useConfirm } from '~/hooks/use-confirm'
 
 interface CredentialCardProps {
   credential: {
@@ -87,24 +87,24 @@ function CredentialCard({ credential, onEdit }: CredentialCardProps) {
 
   return (
     <>
-      <Card className="group hover:shadow-md transition-all duration-200">
+      <Card className='group hover:shadow-md transition-all duration-200'>
         <CardHeader>
-          <div className="flex items-start justify-between">
-            <div className="relative">
-              <div className="rounded-xl overflow-hidden">
-                <IconComponent className="size-8" />
+          <div className='flex items-start justify-between'>
+            <div className='relative'>
+              <div className='rounded-xl overflow-hidden'>
+                <IconComponent className='size-8' />
               </div>
-              <div className="absolute -top-1 -right-1">
+              <div className='absolute -top-1 -right-1'>
                 {lastTestResult !== 'success' && (
                   <div
-                    className="size-2.5 rounded-full bg-green-500 flex-shrink-0"
-                    title="Last test: Success"
+                    className='size-2.5 rounded-full bg-green-500 flex-shrink-0'
+                    title='Last test: Success'
                   />
                 )}
                 {lastTestResult === 'failed' && (
                   <div
-                    className="size-2.5 rounded-full bg-red-500 flex-shrink-0"
-                    title="Last test: Failed"
+                    className='size-2.5 rounded-full bg-red-500 flex-shrink-0'
+                    title='Last test: Failed'
                   />
                 )}
               </div>
@@ -113,13 +113,13 @@ function CredentialCard({ credential, onEdit }: CredentialCardProps) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="opacity-0 group-hover:opacity-100 transition-opacity">
+                  variant='ghost'
+                  size='icon-sm'
+                  className='opacity-0 group-hover:opacity-100 transition-opacity'>
                   <MoreVertical />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align='end'>
                 <DropdownMenuItem onClick={handleTest} disabled={isLoading}>
                   <TestTube />
                   {isLoading ? 'Testing...' : 'Test Connection'}
@@ -133,7 +133,7 @@ function CredentialCard({ credential, onEdit }: CredentialCardProps) {
                   Duplicate
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleDelete} variant="destructive">
+                <DropdownMenuItem onClick={handleDelete} variant='destructive'>
                   <Trash />
                   Delete
                 </DropdownMenuItem>
@@ -141,17 +141,17 @@ function CredentialCard({ credential, onEdit }: CredentialCardProps) {
             </DropdownMenu>
           </div>
 
-          <div className="flex items-start justify-between">
-            <div className="flex-1 min-w-0">
-              <CardTitle className="text-sm truncate flex items-center gap-2">
+          <div className='flex items-start justify-between'>
+            <div className='flex-1 min-w-0'>
+              <CardTitle className='text-sm truncate flex items-center gap-2'>
                 {credential.name}
               </CardTitle>
-              <CardDescription className="truncate">{displayName}</CardDescription>
+              <CardDescription className='truncate'>{displayName}</CardDescription>
             </div>
           </div>
         </CardHeader>
 
-        <CardContent className="">
+        <CardContent className=''>
           {/* Type Badge & Category
           <div className="flex items-center justify-between">
             <Badge variant="outline" className="text-xs capitalize">
@@ -160,14 +160,14 @@ function CredentialCard({ credential, onEdit }: CredentialCardProps) {
           </div> */}
 
           {/* Creator Info */}
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className='flex items-center gap-2 text-xs text-muted-foreground'>
             <span>
               Created{' '}
               <LastUpdated
                 timestamp={credential.createdAt}
-                prefix=""
+                prefix=''
                 includeSeconds={false}
-                className="text-xs"
+                className='text-xs'
               />{' '}
               by {credential.createdBy.name || 'Unknown'}{' '}
             </span>
@@ -204,7 +204,7 @@ export function CredentialsGridView() {
 
   return (
     <>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
         {credentials.map((credential) => (
           <CredentialCard key={credential.id} credential={credential} onEdit={handleEdit} />
         ))}

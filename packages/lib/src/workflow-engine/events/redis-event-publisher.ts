@@ -1,10 +1,10 @@
 // packages/lib/src/workflow-engine/events/redis-event-publisher.ts
 
-import { getRedisClient } from '@auxx/redis'
 import { createScopedLogger } from '@auxx/logger'
-import { type WorkflowEvent, WorkflowEventSchema, WorkflowEventType } from './types'
+import { getRedisClient } from '@auxx/redis'
 import type { NodeRunningStatus } from '../types'
 import { safeJsonStringify } from '../utils/serialization'
+import { type WorkflowEvent, WorkflowEventSchema, WorkflowEventType } from './types'
 
 const logger = createScopedLogger('workflow-event-publisher')
 
@@ -22,10 +22,10 @@ export class WorkflowEventPublisher {
    * Get singleton instance
    */
   static getInstance(): WorkflowEventPublisher {
-    if (!this.instance) {
-      this.instance = new WorkflowEventPublisher()
+    if (!WorkflowEventPublisher.instance) {
+      WorkflowEventPublisher.instance = new WorkflowEventPublisher()
     }
-    return this.instance
+    return WorkflowEventPublisher.instance
   }
 
   /**

@@ -1,6 +1,6 @@
 // packages/lib/src/providers/google/shared/utils.ts
-import { gmail_v1 } from 'googleapis'
-import { UniversalThrottler, getGmailQuotaCost } from '../../../utils/rate-limiter'
+import type { gmail_v1 } from 'googleapis'
+import { getGmailQuotaCost, type UniversalThrottler } from '../../../utils/rate-limiter'
 import type { GoogleThrottleContext } from '../types'
 
 /**

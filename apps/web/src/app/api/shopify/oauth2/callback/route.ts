@@ -1,12 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { database as db, schema } from '@auxx/database'
 import { env, WEBAPP_URL } from '@auxx/config/server'
+import { database as db, schema } from '@auxx/database'
+import { setupShopifyWebhooks } from '@auxx/lib/shopify'
 import crypto from 'crypto'
+import { and, eq, gt, inArray } from 'drizzle-orm'
+import { headers } from 'next/headers'
+import { type NextRequest, NextResponse } from 'next/server'
 import { auth } from '~/auth/server'
 import { logger } from '../../logger'
-import { setupShopifyWebhooks } from '@auxx/lib/shopify'
-import { headers } from 'next/headers'
-import { and, eq, gt, inArray } from 'drizzle-orm'
 
 // Handle OAuth callback from Shopify
 export async function GET(req: NextRequest) {
@@ -151,9 +151,7 @@ export async function GET(req: NextRequest) {
       })
 
     // Clean up used state
-    await db
-      .delete(schema.ShopifyAuthState)
-      .where(eq(schema.ShopifyAuthState.id, storedState.id))
+    await db.delete(schema.ShopifyAuthState).where(eq(schema.ShopifyAuthState.id, storedState.id))
 
     // Set up webhooks for the connected store
     try {

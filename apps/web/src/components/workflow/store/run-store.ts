@@ -1,23 +1,23 @@
 // apps/web/src/components/workflow/store/run-store.ts
 // Import immer config before creating the store to ensure Map/Set support is enabled
 import '~/lib/immer-config'
+import { WorkflowRunStatus } from '@auxx/database/enums'
+import type {
+  WorkflowNodeExecutionEntity as WorkflowNodeExecution,
+  WorkflowRunEntity as WorkflowRun,
+} from '@auxx/database/models'
+import type { WorkflowEventType } from '@auxx/lib/workflow-engine/types'
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { NodeRunningStatus } from '~/components/workflow/types'
-import { WorkflowEventType } from '@auxx/lib/workflow-engine/types'
-import { useCanvasStore } from './canvas-store'
-import { usePanelStore } from './panel-store'
-import { WorkflowRunStatus } from '@auxx/database/enums'
-import type {
-  WorkflowRunEntity as WorkflowRun,
-  WorkflowNodeExecutionEntity as WorkflowNodeExecution,
-} from '@auxx/database/models'
-import type { FlowNode, FlowEdge } from '../types'
+import type { FlowEdge, FlowNode } from '../types'
 import {
   buildExecutionTree,
-  treeToExecutions,
   type ExecutionTreeNode,
+  treeToExecutions,
 } from '../utils/execution-tree-builder'
+import { useCanvasStore } from './canvas-store'
+import { usePanelStore } from './panel-store'
 export interface ExecutionEvent {
   eventType: WorkflowEventType | string
   timestamp: Date
@@ -120,7 +120,11 @@ export interface RunActions {
     variables?: Record<string, any>
   ) => void
   getLoopIterations: (loopNodeId: string) => LoopIterationData[]
-  completeLoopIterations: (loopId: string, totalIterations: number, outputs?: Record<string, any>) => void
+  completeLoopIterations: (
+    loopId: string,
+    totalIterations: number,
+    outputs?: Record<string, any>
+  ) => void
 }
 export const useRunStore = create<RunState & RunActions>()(
   immer((set, get) => ({
@@ -495,7 +499,11 @@ export const useRunStore = create<RunState & RunActions>()(
 
       if (graphSnapshot) {
         set((state) => {
-          state.displayExecutions = treeToExecutions(executionTree, nodeExecutions, graphSnapshot.nodes)
+          state.displayExecutions = treeToExecutions(
+            executionTree,
+            nodeExecutions,
+            graphSnapshot.nodes
+          )
         })
       }
     },
@@ -538,7 +546,11 @@ export const useRunStore = create<RunState & RunActions>()(
       return loopIterations.get(loopNodeId) || []
     },
 
-    completeLoopIterations: (loopId: string, totalIterations: number, outputs?: Record<string, any>) => {
+    completeLoopIterations: (
+      loopId: string,
+      totalIterations: number,
+      outputs?: Record<string, any>
+    ) => {
       set((state) => {
         const iterations = state.loopIterations.get(loopId)
         if (iterations) {

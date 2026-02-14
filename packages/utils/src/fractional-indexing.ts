@@ -284,7 +284,11 @@ export function generateNKeysBetween(
   }
   const mid = Math.floor(n / 2)
   const c = generateKeyBetween(a, b, digits)
-  return [...generateNKeysBetween(a, c, mid, digits), c, ...generateNKeysBetween(c, b, n - mid - 1, digits)]
+  return [
+    ...generateNKeysBetween(a, c, mid, digits),
+    c,
+    ...generateNKeysBetween(c, b, n - mid - 1, digits),
+  ]
 }
 
 /**
@@ -333,8 +337,8 @@ export function getSmartSortPositions<T extends SmartSortItem>(
 
   // Generate fractional keys between surrounding items
   const keys = generateNKeysBetween(
-    min > 0 ? newItems[min - 1]?.sortOrder ?? null : null,
-    max < newItems.length - 1 ? newItems[max + 1]?.sortOrder ?? null : null,
+    min > 0 ? (newItems[min - 1]?.sortOrder ?? null) : null,
+    max < newItems.length - 1 ? (newItems[max + 1]?.sortOrder ?? null) : null,
     affectedItems.length
   )
 

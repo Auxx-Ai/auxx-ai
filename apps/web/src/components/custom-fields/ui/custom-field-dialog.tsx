@@ -1,24 +1,28 @@
 // apps/web/src/components/custom-fields/ui/custom-field-dialog.tsx
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useForm } from 'react-hook-form'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { ChevronDown, ChevronsUpDown } from 'lucide-react'
-
+import { FieldType } from '@auxx/database/enums'
+import type { FieldType as FieldTypeType } from '@auxx/database/types'
+import {
+  type CustomFieldFormValues,
+  customFieldFormSchema,
+  FIELD_TYPE_GROUPS,
+  fieldTypeOptions,
+} from '@auxx/lib/custom-fields/types'
+import type { FieldOptions } from '@auxx/lib/field-values/client'
+import type { RelationshipConfig } from '@auxx/types/custom-field'
+import { canFieldBeUnique, type SelectOptionColor } from '@auxx/types/custom-field'
+import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
-import { Switch } from '@auxx/ui/components/switch'
-import { Button } from '@auxx/ui/components/button'
+import { Field, FieldGroup, FieldLabel } from '@auxx/ui/components/field'
 import {
   Form,
   FormControl,
@@ -28,7 +32,9 @@ import {
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
-import { ComboPicker, type OptionGroup } from '~/components/pickers/combo-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
+import { Input } from '@auxx/ui/components/input'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Select,
   SelectContent,
@@ -36,74 +42,65 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
-
-import { FieldType } from '@auxx/database/enums'
-import type { FieldType as FieldTypeType } from '@auxx/database/types'
+import { Switch } from '@auxx/ui/components/switch'
+import { Textarea } from '@auxx/ui/components/textarea'
+import { toastError } from '@auxx/ui/components/toast'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { ChevronDown, ChevronsUpDown } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
+import { ComboPicker, type OptionGroup } from '~/components/pickers/combo-picker'
+import { useField, useResourceFields } from '~/components/resources'
+import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import {
-  customFieldFormSchema,
-  type CustomFieldFormValues,
-  fieldTypeOptions,
-  FIELD_TYPE_GROUPS,
-} from '@auxx/lib/custom-fields/types'
-import { canFieldBeUnique, type SelectOptionColor } from '@auxx/types/custom-field'
-import { EntityIcon } from '@auxx/ui/components/icons'
-
-import {
-  OptionsEditor,
-  parseSelectOptions,
-  formatSelectOptions,
-  type SelectOption,
-} from './options-editor'
-import {
-  AddressComponentsEditor,
-  parseAddressComponents,
-  formatAddressComponents,
-} from './address-component-editor'
-import {
-  FileOptionsEditor,
-  parseFileOptions,
-  formatFileOptions,
-  type FileOptions,
-} from './file-options-editor'
-import { RelationshipFieldEditor, type RelationshipOptions } from './relationship-field-editor'
-import {
-  CurrencyOptionsEditor,
-  parseCurrencyOptions,
-  formatCurrencyOptions,
-  type CurrencyOptions,
-} from './currency-options-editor'
-import {
-  NumberFormattingEditor,
-  DateFormattingEditor,
-  DateTimeFormattingEditor,
-  TimeFormattingEditor,
-  BooleanFormattingEditor,
-  PhoneFormattingEditor,
-  parseDisplayOptions,
-  formatDisplayOptions,
-  type DisplayOptions,
-} from './formatting-editors'
-import {
-  CalcFieldEditor,
-  parseCalcOptions,
-  formatCalcOptions,
-  type CalcEditorOptions,
-} from './calc-editor'
-import {
+  type ActorFieldOptions,
   ActorOptionsEditor,
+  formatActorOptions,
   getDefaultActorOptions,
   parseActorOptions,
-  formatActorOptions,
-  type ActorFieldOptions,
 } from './actor-options-editor'
-import type { FieldOptions } from '@auxx/lib/field-values/client'
-import type { RelationshipConfig } from '@auxx/types/custom-field'
-import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
-import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
-import { useField, useResourceFields } from '~/components/resources'
-import { toastError } from '@auxx/ui/components/toast'
-import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
+import {
+  AddressComponentsEditor,
+  formatAddressComponents,
+  parseAddressComponents,
+} from './address-component-editor'
+import {
+  type CalcEditorOptions,
+  CalcFieldEditor,
+  formatCalcOptions,
+  parseCalcOptions,
+} from './calc-editor'
+import {
+  type CurrencyOptions,
+  CurrencyOptionsEditor,
+  formatCurrencyOptions,
+  parseCurrencyOptions,
+} from './currency-options-editor'
+import {
+  type FileOptions,
+  FileOptionsEditor,
+  formatFileOptions,
+  parseFileOptions,
+} from './file-options-editor'
+import {
+  BooleanFormattingEditor,
+  DateFormattingEditor,
+  DateTimeFormattingEditor,
+  type DisplayOptions,
+  formatDisplayOptions,
+  NumberFormattingEditor,
+  PhoneFormattingEditor,
+  parseDisplayOptions,
+  TimeFormattingEditor,
+} from './formatting-editors'
+import {
+  formatSelectOptions,
+  OptionsEditor,
+  parseSelectOptions,
+  type SelectOption,
+} from './options-editor'
+import { RelationshipFieldEditor, type RelationshipOptions } from './relationship-field-editor'
 
 /** Field types that don't support default values */
 const TYPES_WITHOUT_DEFAULT_VALUE: FieldTypeType[] = [
@@ -307,7 +304,7 @@ export function CustomFieldDialog({
       let initSelectOptions: SelectOption[] = []
       let initAddressComponents: string[] = parseAddressComponents()
       let initFileOptions: FileOptions = parseFileOptions()
-      let initRelationshipOptions: RelationshipOptions = {
+      const initRelationshipOptions: RelationshipOptions = {
         relatedResourceId: 'contact',
         relationshipType: 'belongs_to',
         inverseName: '',
@@ -543,7 +540,7 @@ export function CustomFieldDialog({
         if (isEditing && editingField?.options?.relationship) {
           return (
             <RelationshipFieldEditor
-              mode="edit"
+              mode='edit'
               storedConfig={editingField.options.relationship as RelationshipConfig}
               entityDefinitionId={effectiveEntityDefId}
               name={form.watch('name')}
@@ -555,7 +552,7 @@ export function CustomFieldDialog({
         }
         return (
           <RelationshipFieldEditor
-            mode="create"
+            mode='create'
             options={relationshipOptions}
             onChange={setRelationshipOptions}
             entityDefinitionId={effectiveEntityDefId}
@@ -625,11 +622,11 @@ export function CustomFieldDialog({
     if (!supportsDisplayOptions(selectedType)) return null
 
     return (
-      <div className="space-y-3">
+      <div className='space-y-3'>
         <Button
-          type="button"
-          variant="outline"
-          className="w-full justify-between"
+          type='button'
+          variant='outline'
+          className='w-full justify-between'
           onClick={() => setShowDisplayOptions(!showDisplayOptions)}>
           <span>Display Options</span>
           <ChevronDown
@@ -637,7 +634,7 @@ export function CustomFieldDialog({
           />
         </Button>
         {showDisplayOptions && (
-          <div className="rounded-lg border p-3">{renderDisplayOptionsContent()}</div>
+          <div className='rounded-lg border p-3'>{renderDisplayOptionsContent()}</div>
         )}
       </div>
     )
@@ -660,7 +657,7 @@ export function CustomFieldDialog({
     return (
       <FormField
         control={form.control}
-        name="defaultValue"
+        name='defaultValue'
         render={({ field }) => (
           <FormItem>
             <FormLabel>Default Value (Optional)</FormLabel>
@@ -676,16 +673,16 @@ export function CustomFieldDialog({
   const renderDefaultValueControl = (field: any) => {
     switch (selectedType) {
       case FieldType.NUMBER:
-        return <Input type="number" placeholder="0" {...field} />
+        return <Input type='number' placeholder='0' {...field} />
 
       case FieldType.CHECKBOX:
         return (
-          <div className="flex items-center gap-2 pt-2">
+          <div className='flex items-center gap-2 pt-2'>
             <Switch
               checked={field.value === 'true'}
               onCheckedChange={(checked) => field.onChange(checked ? 'true' : 'false')}
             />
-            <span className="text-sm text-muted-foreground">
+            <span className='text-sm text-muted-foreground'>
               {field.value === 'true' ? 'Checked by default' : 'Unchecked by default'}
             </span>
           </div>
@@ -697,10 +694,10 @@ export function CustomFieldDialog({
             value={field.value || '__none__'}
             onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}>
             <SelectTrigger>
-              <SelectValue placeholder="Select default option" />
+              <SelectValue placeholder='Select default option' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__none__">No default</SelectItem>
+              <SelectItem value='__none__'>No default</SelectItem>
               {selectOptions
                 .filter((opt) => opt.value && opt.value.trim() !== '')
                 .map((opt) => (
@@ -719,10 +716,10 @@ export function CustomFieldDialog({
             value={field.value || '__none__'}
             onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}>
             <SelectTrigger>
-              <SelectValue placeholder="Select default option(s)" />
+              <SelectValue placeholder='Select default option(s)' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__none__">No default</SelectItem>
+              <SelectItem value='__none__'>No default</SelectItem>
               {selectOptions
                 .filter((opt) => opt.value && opt.value.trim() !== '')
                 .map((opt) => (
@@ -735,11 +732,11 @@ export function CustomFieldDialog({
         )
 
       case FieldType.RICH_TEXT:
-        return <Textarea placeholder="Default content" {...field} />
+        return <Textarea placeholder='Default content' {...field} />
 
       // TEXT, URL, EMAIL, PHONE_INTL, DATE, TAGS - use simple text input
       default:
-        return <Input placeholder="Default value" {...field} />
+        return <Input placeholder='Default value' {...field} />
     }
   }
 
@@ -748,7 +745,7 @@ export function CustomFieldDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           size={selectedType === FieldType.RELATIONSHIP ? 'xxl' : 'md'}
-          position="tc"
+          position='tc'
           {...guardProps}>
           {/* className="max-h-3/4 overflow-y-auto" */}
           <DialogHeader>
@@ -759,7 +756,7 @@ export function CustomFieldDialog({
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleSubmit)}>
-              <FieldGroup className="gap-4">
+              <FieldGroup className='gap-4'>
                 {/* Field Type Selector - Only shown in create mode */}
                 {!isEditing && (
                   <Field>
@@ -768,7 +765,7 @@ export function CustomFieldDialog({
                       groups={fieldTypeGroups}
                       selected={selectedTypeAsOption}
                       multi={false}
-                      className="w-[var(--radix-popover-trigger-width)]!"
+                      className='w-[var(--radix-popover-trigger-width)]!'
                       open={typePickerOpen}
                       onOpen={() => setTypePickerOpen(true)}
                       onClose={() => setTypePickerOpen(false)}
@@ -780,19 +777,19 @@ export function CustomFieldDialog({
                         setTypePickerOpen(false)
                       }}
                       showSearch={true}
-                      searchPlaceholder="Search field types...">
-                      <Button variant="outline" className="w-full justify-between">
-                        <span className="flex items-center gap-2">
+                      searchPlaceholder='Search field types...'>
+                      <Button variant='outline' className='w-full justify-between'>
+                        <span className='flex items-center gap-2'>
                           {selectedTypeOption && (
                             <EntityIcon
                               iconId={selectedTypeOption.iconId}
-                              variant="default"
-                              size="default"
+                              variant='default'
+                              size='default'
                             />
                           )}
                           {selectedTypeOption?.label || 'Select type'}
                         </span>
-                        <ChevronsUpDown className="size-4 opacity-50" />
+                        <ChevronsUpDown className='size-4 opacity-50' />
                       </Button>
                     </ComboPicker>
                   </Field>
@@ -803,12 +800,12 @@ export function CustomFieldDialog({
                   <>
                     <FormField
                       control={form.control}
-                      name="name"
+                      name='name'
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Field Name</FormLabel>
                           <FormControl>
-                            <Input placeholder="e.g., Work Phone" {...field} />
+                            <Input placeholder='e.g., Work Phone' {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -817,13 +814,13 @@ export function CustomFieldDialog({
 
                     <FormField
                       control={form.control}
-                      name="description"
+                      name='description'
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Description (Optional)</FormLabel>
                           <FormControl>
                             <Textarea
-                              placeholder="Description or help text for this field"
+                              placeholder='Description or help text for this field'
                               {...field}
                             />
                           </FormControl>
@@ -838,17 +835,17 @@ export function CustomFieldDialog({
                 {!TYPES_WITHOUT_REQUIRED.includes(selectedType) && (
                   <FormField
                     control={form.control}
-                    name="required"
+                    name='required'
                     render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-xl border px-3 py-1.5">
+                      <FormItem className='flex flex-row items-center space-x-3 space-y-0 rounded-xl border px-3 py-1.5'>
                         <FormControl>
                           <Switch
                             checked={field.value}
                             onCheckedChange={field.onChange}
-                            size="sm"
+                            size='sm'
                           />
                         </FormControl>
-                        <div className="space-y-1 leading-none">
+                        <div className='space-y-1 leading-none'>
                           <FormLabel>Required Field</FormLabel>
                           <FormDescription>Make this field mandatory</FormDescription>
                         </div>
@@ -861,23 +858,23 @@ export function CustomFieldDialog({
                 {canFieldBeUnique(selectedType, relationshipOptions.relationshipType) && (
                   <FormField
                     control={form.control}
-                    name="isUnique"
+                    name='isUnique'
                     render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-xl border px-3 py-1.5">
+                      <FormItem className='flex flex-row items-center space-x-3 space-y-0 rounded-xl border px-3 py-1.5'>
                         <FormControl>
                           <Switch
                             checked={field.value}
                             onCheckedChange={field.onChange}
-                            size="sm"
+                            size='sm'
                           />
                         </FormControl>
-                        <div className="space-y-1 leading-none">
+                        <div className='space-y-1 leading-none'>
                           <FormLabel>Unique Value</FormLabel>
                           <FormDescription>
                             Only one record can have this value. Can be used to match records during
                             import.
                             {isEditing && !editingField?.isUnique && field.value && (
-                              <span className="block mt-1 text-orange-500">
+                              <span className='block mt-1 text-orange-500'>
                                 Existing values will be checked for duplicates and may error.
                               </span>
                             )}
@@ -900,21 +897,21 @@ export function CustomFieldDialog({
 
               <DialogFooter>
                 <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
+                  type='button'
+                  size='sm'
+                  variant='ghost'
                   onClick={guardedClose}
                   disabled={isPending}>
-                  Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+                  Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
                 </Button>
                 <Button
-                  size="sm"
-                  type="submit"
-                  variant="outline"
+                  size='sm'
+                  type='submit'
+                  variant='outline'
                   loading={isPending}
                   loadingText={isEditing ? 'Saving...' : 'Creating...'}>
                   {isEditing ? 'Save Changes' : 'Create Field'}{' '}
-                  <KbdSubmit variant="outline" size="sm" />
+                  <KbdSubmit variant='outline' size='sm' />
                 </Button>
               </DialogFooter>
             </form>

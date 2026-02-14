@@ -1,15 +1,15 @@
 // apps/web/src/components/workflow/hooks/use-edge-interactions.ts
 
-import { useCallback } from 'react'
-import { useStoreApi, applyEdgeChanges, type EdgeChange } from '@xyflow/react'
+import type { Edge, Node } from '@xyflow/react'
+import { applyEdgeChanges, type EdgeChange, useStoreApi } from '@xyflow/react'
 import { produce } from 'immer'
+import { useCallback } from 'react'
 import { useNodesReadOnly } from '~/components/workflow/hooks'
-import { useWorkflowSave } from './use-workflow-save'
-import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'
-import { getNodesConnectedSourceOrTargetHandleIdsMap } from '../utils'
-import type { Node, Edge } from '@xyflow/react'
 // Variable syncing now handled automatically by VarStoreSyncProvider
 import type { FlowNode } from '../store/types'
+import { getNodesConnectedSourceOrTargetHandleIdsMap } from '../utils'
+import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'
+import { useWorkflowSave } from './use-workflow-save'
 
 interface InsertNodeParams {
   nodeType: string

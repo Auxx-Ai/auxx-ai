@@ -1,9 +1,13 @@
 // packages/lib/src/field-values/converters/number.ts
 
-import type { TypedFieldValueInput, TypedFieldValue, NumberFieldValue } from '@auxx/types/field-value'
-import type { FieldValueConverter, FieldOptions } from './index'
+import type {
+  NumberFieldValue,
+  TypedFieldValue,
+  TypedFieldValueInput,
+} from '@auxx/types/field-value'
 import { formatCurrency } from '@auxx/utils/currency'
-import { DEFAULT_NUMBER_OPTIONS, DEFAULT_CURRENCY_OPTIONS } from '../../custom-fields/defaults'
+import { DEFAULT_CURRENCY_OPTIONS, DEFAULT_NUMBER_OPTIONS } from '../../custom-fields/defaults'
+import type { FieldOptions, FieldValueConverter } from './index'
 
 /**
  * Converter for NUMBER field type.
@@ -131,7 +135,7 @@ function formatBytesInternal(bytes: number, decimals: number = 0): string {
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
-  const value = bytes / Math.pow(k, i)
+  const value = bytes / k ** i
   return `${value.toFixed(decimals)} ${sizes[i]}`
 }
 

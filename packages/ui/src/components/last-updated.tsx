@@ -2,9 +2,9 @@
 
 'use client'
 
-import { useEffect, useState } from 'react'
-import { formatDistanceToNow, format } from 'date-fns'
 import { cn } from '@auxx/ui/lib/utils'
+import { format, formatDistanceToNow } from 'date-fns'
+import { useEffect, useState } from 'react'
 
 interface LastUpdatedProps {
   timestamp: Date | string | number
@@ -87,11 +87,12 @@ export const LastUpdated: React.FC<LastUpdatedProps> = ({
     case 'absolute':
       displayText = format(date, "MMM d, yyyy 'at' h:mm a")
       break
-    case 'both':
+    case 'both': {
       const relative = formatDistanceToNow(date, { addSuffix: true, includeSeconds })
       const absolute = format(date, "MMM d, yyyy 'at' h:mm a")
       displayText = `${relative} (${absolute})`
       break
+    }
   }
 
   // Add prefix and suffix

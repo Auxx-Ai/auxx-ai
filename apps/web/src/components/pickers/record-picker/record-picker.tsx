@@ -2,13 +2,13 @@
 
 'use client'
 
-import { useState, useEffect, type ReactNode } from 'react'
-import { Link2 } from 'lucide-react'
+import type { RecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
+import { Link2 } from 'lucide-react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { RecordPickerContent, type RecordPickerContentProps } from './record-picker-content'
-import type { RecordId } from '@auxx/types/resource'
 
 /**
  * Props for RecordPicker component
@@ -118,8 +118,8 @@ export function RecordPicker({
     children
   ) : (
     <Button
-      variant="ghost"
-      size="sm"
+      variant='ghost'
+      size='sm'
       className={cn('gap-1', triggerClassName)}
       disabled={pickerProps.disabled}>
       <Link2 />

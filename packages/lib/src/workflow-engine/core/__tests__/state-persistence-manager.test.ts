@@ -1,9 +1,9 @@
 // packages/lib/src/workflow-engine/core/__tests__/state-persistence-manager.test.ts
 
-import { describe, it, expect, beforeEach } from 'vitest'
-import { StatePersistenceManager } from '../state-persistence-manager'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { ExecutionContextManager } from '../execution-context'
-import { WorkflowExecutionStatus, type NodeExecutionResult, type PauseReason } from '../types'
+import { StatePersistenceManager } from '../state-persistence-manager'
+import { type NodeExecutionResult, type PauseReason, WorkflowExecutionStatus } from '../types'
 
 describe('StatePersistenceManager', () => {
   let manager: StatePersistenceManager
@@ -101,9 +101,14 @@ describe('StatePersistenceManager', () => {
         },
       }
 
-      const state = manager.saveState('exec-456', contextManager, {}, {
-        executionTracking: trackingData,
-      })
+      const state = manager.saveState(
+        'exec-456',
+        contextManager,
+        {},
+        {
+          executionTracking: trackingData,
+        }
+      )
 
       expect(state.executionTracking).toEqual(trackingData)
     })
@@ -114,11 +119,16 @@ describe('StatePersistenceManager', () => {
         nodeId: 'node-1',
       }
 
-      const state = manager.saveState('exec-456', contextManager, {}, {
-        status: WorkflowExecutionStatus.PAUSED,
-        pauseReason,
-        isTerminalPause: true,
-      })
+      const state = manager.saveState(
+        'exec-456',
+        contextManager,
+        {},
+        {
+          status: WorkflowExecutionStatus.PAUSED,
+          pauseReason,
+          isTerminalPause: true,
+        }
+      )
 
       expect(state.status).toBe(WorkflowExecutionStatus.PAUSED)
       expect(state.pausedAt).toBeInstanceOf(Date)
@@ -131,11 +141,16 @@ describe('StatePersistenceManager', () => {
         nodeId: 'node-1',
       }
 
-      const state = manager.saveState('exec-456', contextManager, {}, {
-        status: WorkflowExecutionStatus.RUNNING,
-        pauseReason,
-        isTerminalPause: false,
-      })
+      const state = manager.saveState(
+        'exec-456',
+        contextManager,
+        {},
+        {
+          status: WorkflowExecutionStatus.RUNNING,
+          pauseReason,
+          isTerminalPause: false,
+        }
+      )
 
       expect(state.status).toBe(WorkflowExecutionStatus.RUNNING)
     })
@@ -156,10 +171,15 @@ describe('StatePersistenceManager', () => {
         nodeId: 'node-1',
       }
 
-      manager.saveState('exec-456', contextManager, {}, {
-        pauseReason,
-        isTerminalPause: true,
-      })
+      manager.saveState(
+        'exec-456',
+        contextManager,
+        {},
+        {
+          pauseReason,
+          isTerminalPause: true,
+        }
+      )
 
       // Clear from executionStates manually to test fallback
       // (in real scenario both would have it, but testing the fallback logic)
@@ -180,10 +200,15 @@ describe('StatePersistenceManager', () => {
         nodeId: 'node-1',
       }
 
-      manager.saveState('exec-456', contextManager, {}, {
-        pauseReason,
-        isTerminalPause: true,
-      })
+      manager.saveState(
+        'exec-456',
+        contextManager,
+        {},
+        {
+          pauseReason,
+          isTerminalPause: true,
+        }
+      )
 
       const pausedState = manager.getPausedState('exec-456')
       expect(pausedState).toBeDefined()
@@ -196,10 +221,15 @@ describe('StatePersistenceManager', () => {
         nodeId: 'node-1',
       }
 
-      manager.saveState('exec-456', contextManager, {}, {
-        pauseReason,
-        isTerminalPause: false,
-      })
+      manager.saveState(
+        'exec-456',
+        contextManager,
+        {},
+        {
+          pauseReason,
+          isTerminalPause: false,
+        }
+      )
 
       const pausedState = manager.getPausedState('exec-456')
       expect(pausedState).toBeUndefined()
@@ -218,10 +248,15 @@ describe('StatePersistenceManager', () => {
         nodeId: 'node-1',
       }
 
-      manager.saveState('exec-456', contextManager, {}, {
-        pauseReason,
-        isTerminalPause: true,
-      })
+      manager.saveState(
+        'exec-456',
+        contextManager,
+        {},
+        {
+          pauseReason,
+          isTerminalPause: true,
+        }
+      )
 
       expect(manager.isTerminalPause('exec-456')).toBe(true)
     })
@@ -232,10 +267,15 @@ describe('StatePersistenceManager', () => {
         nodeId: 'node-1',
       }
 
-      manager.saveState('exec-456', contextManager, {}, {
-        pauseReason,
-        isTerminalPause: false,
-      })
+      manager.saveState(
+        'exec-456',
+        contextManager,
+        {},
+        {
+          pauseReason,
+          isTerminalPause: false,
+        }
+      )
 
       expect(manager.isTerminalPause('exec-456')).toBe(false)
     })
@@ -252,10 +292,15 @@ describe('StatePersistenceManager', () => {
         nodeId: 'node-1',
       }
 
-      manager.saveState('exec-456', contextManager, {}, {
-        pauseReason,
-        isTerminalPause: true,
-      })
+      manager.saveState(
+        'exec-456',
+        contextManager,
+        {},
+        {
+          pauseReason,
+          isTerminalPause: true,
+        }
+      )
 
       expect(manager.getState('exec-456')).toBeDefined()
       expect(manager.getPausedState('exec-456')).toBeDefined()
@@ -368,16 +413,26 @@ describe('StatePersistenceManager', () => {
       }
 
       // Save terminal pause
-      manager.saveState('exec-terminal', contextManager, {}, {
-        pauseReason: terminalPauseReason,
-        isTerminalPause: true,
-      })
+      manager.saveState(
+        'exec-terminal',
+        contextManager,
+        {},
+        {
+          pauseReason: terminalPauseReason,
+          isTerminalPause: true,
+        }
+      )
 
       // Save branch pause
-      manager.saveState('exec-branch', contextManager, {}, {
-        pauseReason: branchPauseReason,
-        isTerminalPause: false,
-      })
+      manager.saveState(
+        'exec-branch',
+        contextManager,
+        {},
+        {
+          pauseReason: branchPauseReason,
+          isTerminalPause: false,
+        }
+      )
 
       // Terminal pause should be in both maps
       expect(manager.getState('exec-terminal')).toBeDefined()

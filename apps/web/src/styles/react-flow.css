@@ -1,5 +1,5 @@
 @layer base {
-  @import '@xyflow/react/dist/style.css';
+  @import "@xyflow/react/dist/style.css";
 }
 
 /* Monaco Editor Overrides */

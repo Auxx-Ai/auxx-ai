@@ -1,14 +1,14 @@
 // apps/web/src/components/dynamic-table/components/inline-cell-editor.tsx
 'use client'
 
-import { useMemo, useRef, useEffect, createContext, useContext } from 'react'
-import type { CellSelectionConfig } from '../types'
+import type { RecordId } from '@auxx/lib/resources/client'
+import { cn } from '@auxx/ui/lib/utils'
+import { createContext, useContext, useEffect, useMemo, useRef } from 'react'
+import { getInputComponentForFieldType } from '~/components/fields/inputs/get-input-component'
 import { PropertyProvider, usePropertyContext } from '~/components/fields/property-provider'
 import { useFieldPopoverHandlers } from '~/components/fields/use-field-popover-handlers'
-import { getInputComponentForFieldType } from '~/components/fields/inputs/get-input-component'
+import type { CellSelectionConfig } from '../types'
 import { CellSelectionOverlay } from './cell-selection-overlay'
-import { cn } from '@auxx/ui/lib/utils'
-import type { RecordId } from '@auxx/lib/resources/client'
 
 /** Context to signal inline editing mode to child input components */
 const InlineEditorContext = createContext(false)
@@ -119,7 +119,7 @@ function InlineCellEditorInner({ onClose }: { onClose: () => void }) {
           isTextLikeType && 'pt-[4px] pl-1'
         )}>
         <CellSelectionOverlay isSelected={false} isEditing={true} />
-        <div className="w-full">{InputComponent}</div>
+        <div className='w-full'>{InputComponent}</div>
       </div>
     </InlineEditorContext.Provider>
   )

@@ -2,13 +2,21 @@
 
 'use client'
 
-import React, { memo, useState } from 'react'
-import { Variable, Clipboard, ClipboardCheck, Trash, Maximize2, Minimize2, Sparkles } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
-import { usePromptEditorContext } from './prompt-editor-context'
+import {
+  Clipboard,
+  ClipboardCheck,
+  Maximize2,
+  Minimize2,
+  Sparkles,
+  Trash,
+  Variable,
+} from 'lucide-react'
+import React, { memo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { GenerateContentDialog } from '~/components/workflow/dialogs/generate-content-dialog'
 import { useWorkflowStore } from '~/components/workflow/store'
+import { usePromptEditorContext } from './prompt-editor-context'
 
 /**
  * Action button component for header operations
@@ -44,7 +52,7 @@ const ToggleExpandBtn: React.FC<{
   onExpandChange: (expanded: boolean) => void
 }> = ({ isExpand, onExpandChange }) => (
   <ActionButton onClick={() => onExpandChange(!isExpand)}>
-    {isExpand ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+    {isExpand ? <Minimize2 className='size-4' /> : <Maximize2 className='size-4' />}
   </ActionButton>
 )
 
@@ -96,57 +104,57 @@ const PromptEditorHeader: React.FC = () => {
         headerClassName
       )}>
       {/* Title section */}
-      <div className="flex gap-2">
+      <div className='flex gap-2'>
         <div
           className={cn(
             'text-xs font-semibold uppercase leading-4 text-primary-500',
             titleClassName
           )}>
           {title}
-          {required && <span className="text-destructive">*</span>}
+          {required && <span className='text-destructive'>*</span>}
         </div>
         {titleTooltip && (
           <Tooltip content={titleTooltip}>
-            <div className="size-4 rounded-full bg-muted flex items-center justify-center">
-              <span className="text-xs">?</span>
+            <div className='size-4 rounded-full bg-muted flex items-center justify-center'>
+              <span className='text-xs'>?</span>
             </div>
           </Tooltip>
         )}
       </div>
 
       {/* Operations section */}
-      <div className="flex items-center">
+      <div className='flex items-center'>
         {/* Character count */}
-        <div className="text-xs font-medium leading-[18px] text-primary-500">{characterCount}</div>
+        <div className='text-xs font-medium leading-[18px] text-primary-500'>{characterCount}</div>
 
         {/* Divider */}
-        <div className="mx-2 h-3 w-px bg-primary-200"></div>
+        <div className='mx-2 h-3 w-px bg-primary-200'></div>
 
         {/* Operation buttons */}
-        <div className="flex items-center space-x-[2px]">
+        <div className='flex items-center space-x-[2px]'>
           {/* Insert variable button */}
           {editable && (
-            <Tooltip content="Insert variable">
+            <Tooltip content='Insert variable'>
               <ActionButton onClick={handleInsertVariable}>
-                <Variable className="size-4" />
+                <Variable className='size-4' />
               </ActionButton>
             </Tooltip>
           )}
 
           {/* Generate prompt button */}
           {editable && showAIGenerate && workflowId && nodeId && (
-            <Tooltip content="Generate Prompt">
+            <Tooltip content='Generate Prompt'>
               <ActionButton onClick={() => setIsGenerateDialogOpen(true)}>
-                <Sparkles className="size-4" />
+                <Sparkles className='size-4' />
               </ActionButton>
             </Tooltip>
           )}
 
           {/* Remove button */}
           {showRemove && (
-            <Tooltip content="Remove">
+            <Tooltip content='Remove'>
               <ActionButton onClick={onRemove}>
-                <Trash className="size-4" />
+                <Trash className='size-4' />
               </ActionButton>
             </Tooltip>
           )}
@@ -154,7 +162,7 @@ const PromptEditorHeader: React.FC = () => {
           {/* Copy button */}
           <Tooltip content={isCopied ? 'Copied!' : 'Copy'}>
             <ActionButton onClick={handleCopy}>
-              {isCopied ? <ClipboardCheck className="size-4" /> : <Clipboard className="size-4" />}
+              {isCopied ? <ClipboardCheck className='size-4' /> : <Clipboard className='size-4' />}
             </ActionButton>
           </Tooltip>
 
@@ -171,7 +179,7 @@ const PromptEditorHeader: React.FC = () => {
           onOpenChange={setIsGenerateDialogOpen}
           nodeId={nodeId}
           workflowId={workflowId}
-          generationType="prompt"
+          generationType='prompt'
           currentContentValue={value}
           onApply={handleApplyGenerated}
         />

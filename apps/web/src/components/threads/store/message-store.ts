@@ -1,10 +1,10 @@
 // apps/web/src/components/threads/store/message-store.ts
 
 import '~/lib/immer-config'
-import { create } from 'zustand'
-import { immer } from 'zustand/middleware/immer'
-import { subscribeWithSelector } from 'zustand/middleware'
 import type { ParticipantId } from '@auxx/types'
+import { create } from 'zustand'
+import { subscribeWithSelector } from 'zustand/middleware'
+import { immer } from 'zustand/middleware/immer'
 
 /** Batching configuration */
 const BATCH_DELAY = 50
@@ -14,14 +14,7 @@ const MAX_BATCH_SIZE = 100
 export type SendStatus = 'PENDING' | 'SENT' | 'FAILED'
 
 /** Message type enum - determines how the message is rendered */
-export type MessageType =
-  | 'EMAIL'
-  | 'FACEBOOK'
-  | 'INSTAGRAM'
-  | 'SMS'
-  | 'WHATSAPP'
-  | 'CALL'
-  | 'CHAT'
+export type MessageType = 'EMAIL' | 'FACEBOOK' | 'INSTAGRAM' | 'SMS' | 'WHATSAPP' | 'CALL' | 'CHAT'
 
 /** Attachment metadata for display */
 export interface AttachmentMeta {

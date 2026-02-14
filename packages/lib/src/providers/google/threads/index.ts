@@ -1,4 +1,4 @@
 // packages/lib/src/providers/google/threads/index.ts
-export { getThread, type GetThreadOptions } from './get-thread'
-export { updateThreadStatus, type UpdateThreadStatusOptions } from './update-status'
-export { moveThread, type MoveThreadOptions } from './move-thread'
+export { type GetThreadOptions, getThread } from './get-thread'
+export { type MoveThreadOptions, moveThread } from './move-thread'
+export { type UpdateThreadStatusOptions, updateThreadStatus } from './update-status'

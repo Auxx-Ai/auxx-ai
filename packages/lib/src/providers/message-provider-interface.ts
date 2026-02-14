@@ -1,7 +1,7 @@
 // packages/lib/src/providers/message-provider-interface.ts
 
-import { type IntegrationProviderType } from '@auxx/database/types'
-import { type ProviderCapabilities } from './provider-capabilities'
+import type { IntegrationProviderType } from '@auxx/database/types'
+import type { ProviderCapabilities } from './provider-capabilities'
 
 /**
  * Extended interface for message providers with capability support

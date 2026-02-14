@@ -1,7 +1,7 @@
 // packages/services/src/field-values/delete-values.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { DeleteFieldValuesInput } from './types'
@@ -49,10 +49,7 @@ export async function deleteFieldValueById(id: string, organizationId: string) {
     database
       .delete(schema.FieldValue)
       .where(
-        and(
-          eq(schema.FieldValue.id, id),
-          eq(schema.FieldValue.organizationId, organizationId)
-        )
+        and(eq(schema.FieldValue.id, id), eq(schema.FieldValue.organizationId, organizationId))
       ),
     'delete-field-value-by-id'
   )

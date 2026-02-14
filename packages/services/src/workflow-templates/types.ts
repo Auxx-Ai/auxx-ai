@@ -89,14 +89,12 @@ export interface WorkflowTemplateDetail {
   status: string
   triggerType: string | null
   triggerConfig: Record<string, any> | null
-  envVars:
-    | Array<{
-        id: string
-        name: string
-        value: any
-        type: 'string' | 'number' | 'boolean' | 'array' | 'secret'
-      }>
-    | null
+  envVars: Array<{
+    id: string
+    name: string
+    value: any
+    type: 'string' | 'number' | 'boolean' | 'array' | 'secret'
+  }> | null
   variables: any[] | null
   popularity: number
   createdAt: Date

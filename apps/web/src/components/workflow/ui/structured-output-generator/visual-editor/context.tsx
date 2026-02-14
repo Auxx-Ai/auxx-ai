@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/visual-editor/context.tsx
-import React, { createContext, useContext, useCallback, useRef, useEffect } from 'react'
+import type React from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef } from 'react'
 import { createVisualEditorStore } from './store'
 
 type VisualEditorStore = ReturnType<typeof createVisualEditorStore>

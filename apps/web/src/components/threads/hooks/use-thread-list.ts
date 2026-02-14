@@ -1,16 +1,16 @@
 // apps/web/src/components/threads/hooks/use-thread-list.ts
 
-import { useMemo, useEffect, useCallback } from 'react'
+import type { ConditionGroup } from '@auxx/lib/conditions'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useShallow } from 'zustand/shallow'
-import { useThreadStore, type ThreadMeta, type ThreadSort } from '../store'
+import { api } from '~/trpc/react'
+import { type ThreadMeta, type ThreadSort, useThreadStore } from '../store'
 import {
   createContextKey,
   createThreadSelector,
   type ThreadFilter,
 } from '../store/thread-selectors'
-import type { ConditionGroup } from '@auxx/lib/conditions'
-import { api } from '~/trpc/react'
-import { parseRecordId, type RecordId } from '@auxx/types/resource'
 
 /** Sort descriptor for thread lists */
 interface ThreadSortDescriptor {
@@ -134,9 +134,7 @@ export function useThreadList({ filter, sort }: UseThreadListInput): UseThreadLi
   // Note: Client-side filtering is now done by each MailThreadItem for efficiency
   const threads = useMemo(() => {
     const threadMap = getThread
-    return threadIds
-      .map((id) => threadMap.get(id))
-      .filter((t): t is ThreadMeta => t !== undefined)
+    return threadIds.map((id) => threadMap.get(id)).filter((t): t is ThreadMeta => t !== undefined)
   }, [threadIds, getThread])
 
   // Refresh handler - invalidate context and refetch

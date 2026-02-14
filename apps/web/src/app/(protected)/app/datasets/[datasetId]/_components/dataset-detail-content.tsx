@@ -2,10 +2,8 @@
 
 'use client'
 
-import { useState, useCallback } from 'react'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
+import type { DocumentEntity as Document } from '@auxx/database/models'
 import { Badge } from '@auxx/ui/components/badge'
-import { FileText, Search, Settings } from 'lucide-react'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -13,16 +11,18 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { useDatasetDetail } from './dataset-detail-provider'
-import { DocumentManagement } from '~/components/datasets/documents/document-management'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
+import { FileText, Search, Settings } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import { DocumentDetailDrawer } from '~/components/datasets/documents/document-detail-drawer'
+import { DocumentManagement } from '~/components/datasets/documents/document-management'
 import { DatasetSearch } from '~/components/datasets/search/dataset-search'
 import { DatasetSettings } from '~/components/datasets/settings/dataset-settings'
-import { DatasetHeader } from './dataset-header'
-import { DatasetActions } from './dataset-actions'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
-import type { DocumentEntity as Document } from '@auxx/database/models'
+import { DatasetActions } from './dataset-actions'
+import { useDatasetDetail } from './dataset-detail-provider'
+import { DatasetHeader } from './dataset-header'
 
 /**
  * DatasetDetailContent - main content for the dataset detail page.
@@ -72,8 +72,8 @@ export function DatasetDetailContent() {
     <MainPage>
       <MainPageHeader action={<DatasetActions />}>
         <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title="Datasets" href="/app/datasets" />
-          <MainPageBreadcrumbItem title="Dataset Details" last />
+          <MainPageBreadcrumbItem title='Datasets' href='/app/datasets' />
+          <MainPageBreadcrumbItem title='Dataset Details' last />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent
@@ -85,46 +85,46 @@ export function DatasetDetailContent() {
         <Tabs
           value={currentTab}
           onValueChange={setCurrentTab}
-          className="flex-1 h-full flex flex-col">
-          <TabsList className="border-b w-full justify-start rounded-b-none bg-primary-150">
-            <TabsTrigger value="documents" variant="outline" size="sm">
+          className='flex-1 h-full flex flex-col'>
+          <TabsList className='border-b w-full justify-start rounded-b-none bg-primary-150'>
+            <TabsTrigger value='documents' variant='outline' size='sm'>
               <FileText />
               Documents
               {(processingCount > 0 || errorCount > 0) && (
-                <div className="flex gap-1 shrink-0 ps-1">
+                <div className='flex gap-1 shrink-0 ps-1'>
                   {processingCount > 0 && (
-                    <Badge variant="secondary" size="xs">
+                    <Badge variant='secondary' size='xs'>
                       {processingCount}
                     </Badge>
                   )}
                   {errorCount > 0 && (
-                    <Badge variant="destructive" size="xs">
+                    <Badge variant='destructive' size='xs'>
                       {errorCount}
                     </Badge>
                   )}
                 </div>
               )}
             </TabsTrigger>
-            <TabsTrigger value="search" variant="outline" size="sm">
+            <TabsTrigger value='search' variant='outline' size='sm'>
               <Search />
               Search
             </TabsTrigger>
-            <TabsTrigger value="settings" variant="outline" size="sm">
+            <TabsTrigger value='settings' variant='outline' size='sm'>
               <Settings />
               Settings
             </TabsTrigger>
           </TabsList>
 
           <DatasetHeader />
-          <TabsContent value="documents">
+          <TabsContent value='documents'>
             <DocumentManagement datasetId={dataset.id} onDocumentSelect={handleDocumentSelect} />
           </TabsContent>
 
-          <TabsContent value="search" className="min-h-0 h-auto">
+          <TabsContent value='search' className='min-h-0 h-auto'>
             <DatasetSearch datasetIds={[dataset.id]} />
           </TabsContent>
 
-          <TabsContent value="settings" className="overflow-y-auto">
+          <TabsContent value='settings' className='overflow-y-auto'>
             <DatasetSettings dataset={dataset} />
           </TabsContent>
         </Tabs>

@@ -1,9 +1,9 @@
 // packages/lib/src/workflow-engine/nodes/trigger-nodes/message-received.ts
 
-import { BaseNodeProcessor } from '../base-node'
-import type { WorkflowNode, NodeExecutionResult, ValidationResult } from '../../core/types'
-import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import type { ExecutionContextManager } from '../../core/execution-context'
+import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
+import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { BaseNodeProcessor } from '../base-node'
 
 /**
  * Trigger node that activates when a message is received
@@ -153,9 +153,10 @@ export class MessageReceivedProcessor extends BaseNodeProcessor {
       case 'subjectMatches':
         return this.matchesPattern(message.subject, filterValue)
 
-      case 'bodyContains':
+      case 'bodyContains': {
         const bodyText = message.textPlain || message.textHtml || ''
         return this.containsText(bodyText, filterValue)
+      }
 
       case 'isInbound':
         return message.isInbound === filterValue
@@ -169,7 +170,11 @@ export class MessageReceivedProcessor extends BaseNodeProcessor {
       case 'integrationType':
         // Note: integrationType field removed from Message schema
         // This filter is deprecated - use integrationId filter instead
-        contextManager.log('WARN', undefined, 'integrationType filter is deprecated, use integrationId instead')
+        contextManager.log(
+          'WARN',
+          undefined,
+          'integrationType filter is deprecated, use integrationId instead'
+        )
         return true // Pass through for backward compatibility
 
       default:

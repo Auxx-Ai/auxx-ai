@@ -1,8 +1,8 @@
 // packages/lib/src/resources/hooks/contact-hooks.ts
 
-import { isValidEmail, normalizeEmail as normalizeEmailUtil } from '@auxx/utils/email'
 import { checkUniqueValue } from '@auxx/services/custom-fields'
 import { ModelTypes } from '@auxx/types/custom-field'
+import { isValidEmail, normalizeEmail as normalizeEmailUtil } from '@auxx/utils/email'
 import type { SystemHook, SystemHookRegistry } from './types'
 
 /**
@@ -104,7 +104,9 @@ const preventMergedStatus: SystemHook = async ({ field, values, operation }) => 
   if (status && typeof status === 'string' && status.toUpperCase() === 'MERGED') {
     // Allow MERGED status on create (for merge operation), but prevent on update
     if (operation === 'update') {
-      throw new Error('Cannot manually set contact status to MERGED. Use the merge operation instead.')
+      throw new Error(
+        'Cannot manually set contact status to MERGED. Use the merge operation instead.'
+      )
     }
   }
 

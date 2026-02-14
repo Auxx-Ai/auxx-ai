@@ -1,9 +1,9 @@
 // packages/lib/src/jobs/flows/document-processing-flow.ts
 
-import { addFlow, type FlowJobDefinition } from '../queues/flow-producer'
-import { Queues } from '../queues/types'
 import { createScopedLogger } from '@auxx/logger'
 import type { EmbeddingGenerationJobData } from '../../datasets/types'
+import { addFlow, type FlowJobDefinition } from '../queues/flow-producer'
+import { Queues } from '../queues/types'
 
 const logger = createScopedLogger('document-flow')
 

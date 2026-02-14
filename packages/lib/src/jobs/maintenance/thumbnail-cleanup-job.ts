@@ -1,10 +1,10 @@
 // packages/lib/src/jobs/maintenance/thumbnail-cleanup-job.ts
 
-import type { Job } from 'bullmq'
-import { createScopedLogger } from '../../logger'
-import { ThumbnailService, type CleanupResult } from '../../files/core/thumbnail-service'
 import { database as db, schema } from '@auxx/database'
-import { eq, and, or, isNull, isNotNull, lt, sql } from 'drizzle-orm'
+import type { Job } from 'bullmq'
+import { and, eq, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
+import { type CleanupResult, ThumbnailService } from '../../files/core/thumbnail-service'
+import { createScopedLogger } from '../../logger'
 
 const logger = createScopedLogger('thumbnail-cleanup-job')
 

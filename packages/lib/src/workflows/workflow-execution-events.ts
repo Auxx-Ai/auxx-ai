@@ -1,6 +1,7 @@
 // packages/lib/src/workflows/workflow-execution-events.ts
-import { createScopedLogger } from '@auxx/logger'
+
 import { safeJsonStringify } from '@auxx/lib/workflow-engine'
+import { createScopedLogger } from '@auxx/logger'
 
 const logger = createScopedLogger('workflow-execution-events')
 

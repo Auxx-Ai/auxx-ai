@@ -1,13 +1,12 @@
 // apps/web/src/server/api/routers/credentials.ts
 
+import { CredentialTypeRegistry } from '@auxx/credentials'
+import { CredentialService, CredentialTestingService } from '@auxx/lib/workflow-engine'
+import { OAuth2WorkflowService } from '@auxx/lib/workflows'
+import { hasOAuth2Config } from '@auxx/workflow-nodes/types'
+import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { TRPCError } from '@trpc/server'
-import { CredentialService } from '@auxx/lib/workflow-engine'
-import { CredentialTestingService } from '@auxx/lib/workflow-engine'
-import { OAuth2WorkflowService } from '@auxx/lib/workflows'
-import { CredentialTypeRegistry } from '@auxx/credentials'
-import { hasOAuth2Config } from '@auxx/workflow-nodes/types'
 
 // Singleton registry instance
 const credentialRegistry = new CredentialTypeRegistry()

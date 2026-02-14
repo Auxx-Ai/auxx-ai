@@ -1,8 +1,8 @@
 // packages/lib/src/import/planning/get-plan.ts
 
-import { eq } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { eq } from 'drizzle-orm'
 import type { ImportPlanStatus, PlanEstimates } from '../types/plan'
 
 /** Plan with estimates */

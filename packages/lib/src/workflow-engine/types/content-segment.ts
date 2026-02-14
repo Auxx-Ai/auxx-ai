@@ -61,7 +61,9 @@ export function isWorkflowFileDataArray(value: unknown): value is WorkflowFileDa
  * Type guard to check if a value is a file variable wrapper
  * File variables created by createFileVariable() have type: 'file' and example: WorkflowFileData
  */
-export function isFileVariableWrapper(value: unknown): value is { type: 'file'; example: WorkflowFileData } {
+export function isFileVariableWrapper(
+  value: unknown
+): value is { type: 'file'; example: WorkflowFileData } {
   if (!value || typeof value !== 'object') return false
   const obj = value as Record<string, unknown>
   return obj.type === 'file' && isWorkflowFileData(obj.example)

@@ -2,36 +2,36 @@
 
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
 import { Button } from '@auxx/ui/components/button'
-import { DynamicTable, type DragDropConfig } from '~/components/dynamic-table'
-import {
-  DndContext,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
-  pointerWithin,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import { EmptyState } from '~/components/global/empty-state'
-import { FolderPlus, Upload, Trash2 } from 'lucide-react'
-import { useFilesystemContext } from './provider/filesystem-provider'
-import { FileDetailDrawer } from './file-detail-drawer'
-import { createFileColumns } from './file-columns'
-import { FileFilterBar } from './file-filter-bar'
-import { FileUploadDialog } from './file-upload-dialog'
-import { CreateFolderDialog } from './create-folder-dialog'
-import { RenameItemDialog } from './rename-item-dialog'
-import { FilesBreadcrumb } from './files-breadcrumb'
-import { FileDropZone } from './file-drop-zone'
-import type { FileItem } from './files-store'
-import { useFileSystemStore } from './files-store'
-import { useConfirm } from '~/hooks/use-confirm'
 import { toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-
+import {
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  pointerWithin,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import { FolderPlus, Trash2, Upload } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { type DragDropConfig, DynamicTable } from '~/components/dynamic-table'
+import { EmptyState } from '~/components/global/empty-state'
 import MailThreadItemDragOverlay from '~/components/mail/mail-thread-item-drag-overlay'
+import { useConfirm } from '~/hooks/use-confirm'
+import { CreateFolderDialog } from './create-folder-dialog'
+import { createFileColumns } from './file-columns'
+import { FileDetailDrawer } from './file-detail-drawer'
+import { FileDropZone } from './file-drop-zone'
+import { FileFilterBar } from './file-filter-bar'
+import { FileUploadDialog } from './file-upload-dialog'
+import { FilesBreadcrumb } from './files-breadcrumb'
+import type { FileItem } from './files-store'
+import { useFileSystemStore } from './files-store'
+import { useFilesystemContext } from './provider/filesystem-provider'
+import { RenameItemDialog } from './rename-item-dialog'
+
 // Helper function removed - now using Maps-based getItemDescendants from store for O(log n) performance
 
 /**
@@ -342,7 +342,15 @@ export function FilesManagement({
         onRename: handleRename,
         isMoving,
       }),
-    [handleItemClick, handleQuickView, navigateToFolder, handleDelete, handleDownload, handleRename, isMoving]
+    [
+      handleItemClick,
+      handleQuickView,
+      navigateToFolder,
+      handleDelete,
+      handleDownload,
+      handleRename,
+      isMoving,
+    ]
   )
 
   // Enhanced bulk actions that exclude uploading files (conditional)
@@ -556,23 +564,23 @@ export function FilesManagement({
         <div className={cn('min-h-0 flex flex-col flex-1', className)}>
           {/* Header with breadcrumbs and actions - conditional */}
           {shouldShowHeader && (
-            <div className="flex items-center justify-between bg-primary-200 h-9 px-2 shrink-0">
+            <div className='flex items-center justify-between bg-primary-200 h-9 px-2 shrink-0'>
               <FilesBreadcrumb
                 draggingItems={draggingItems}
                 allowedBreadcrumbIds={allowedBreadcrumbIds}
-                highlightClassName="border-dashed border-1 border-primary-400"
+                highlightClassName='border-dashed border-1 border-primary-400'
               />
-              <div className="flex items-center space-x-2">
+              <div className='flex items-center space-x-2'>
                 {shouldShowUploadControls && (
                   <>
                     <Button
-                      variant="outline"
-                      size="xs"
+                      variant='outline'
+                      size='xs'
                       onClick={() => setCreateFolderDialogOpen(true)}>
                       <FolderPlus />
                       New Folder
                     </Button>
-                    <Button size="xs" onClick={() => setUploadDialogOpen(true)}>
+                    <Button size='xs' onClick={() => setUploadDialogOpen(true)}>
                       <Upload />
                       Upload Files
                     </Button>
@@ -583,11 +591,11 @@ export function FilesManagement({
           )}
 
           {/* Dynamic Table */}
-          <div className="flex-1 h-full flex flex-col">
+          <div className='flex-1 h-full flex flex-col'>
             <DynamicTable<FileItem>
-              tableId="filesystem-items"
-              className="h-full flex flex-col"
-              entityLabel="File"
+              tableId='filesystem-items'
+              className='h-full flex flex-col'
+              entityLabel='File'
               columns={columns}
               data={dataForTable}
               onRowClick={handleRowClick}
@@ -598,7 +606,7 @@ export function FilesManagement({
               onExport={handleExport}
               enableSearch
               onRefresh={refetchFiles}
-              searchPlaceholder="Search files and folders..."
+              searchPlaceholder='Search files and folders...'
               searchKeys={['name', 'path', 'mimeType', 'ext']}
               onAddNew={() => setUploadDialogOpen(true)}
               dragDrop={dragDropConfig}
@@ -613,11 +621,11 @@ export function FilesManagement({
               emptyState={
                 <EmptyState
                   icon={FolderPlus}
-                  className="mt-20"
+                  className='mt-20'
                   title={'No files yet'}
                   description={'Upload your first files to get started.'}
                   button={
-                    <Button onClick={() => setUploadDialogOpen(true)} variant="outline">
+                    <Button onClick={() => setUploadDialogOpen(true)} variant='outline'>
                       <Upload />
                       Upload Files
                     </Button>
@@ -685,13 +693,16 @@ export function FilesManagement({
           )}
 
           {/* Drawer - only render internally when not using external callback */}
-          {!onFileSelect && shouldShowFileDetailDrawer && selectedFile && !selectedFile.isUploading && (
-            <FileDetailDrawer
-              file={selectedFile}
-              setSelectedFile={setSelectedFile}
-              onOpenChange={setDetailDrawerOpen}
-            />
-          )}
+          {!onFileSelect &&
+            shouldShowFileDetailDrawer &&
+            selectedFile &&
+            !selectedFile.isUploading && (
+              <FileDetailDrawer
+                file={selectedFile}
+                setSelectedFile={setSelectedFile}
+                onOpenChange={setDetailDrawerOpen}
+              />
+            )}
 
           <ConfirmDialog />
         </div>

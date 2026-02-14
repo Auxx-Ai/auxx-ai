@@ -2,21 +2,20 @@
 
 'use client'
 
-import React, { useCallback, useEffect, useMemo } from 'react'
-import { Button } from '@auxx/ui/components/button'
-
-import { Loader2, AlertCircle } from 'lucide-react'
-import type { ResourceId } from '@auxx/lib/workflow-engine/client'
-import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { toRecordId, getInstanceId } from '@auxx/lib/resources/client'
 import type { RecordId } from '@auxx/lib/resources/client'
+import { getInstanceId, toRecordId } from '@auxx/lib/resources/client'
+import type { ResourceId } from '@auxx/lib/workflow-engine/client'
+import { Button } from '@auxx/ui/components/button'
+import { toastError } from '@auxx/ui/components/toast'
+import { AlertCircle, Loader2 } from 'lucide-react'
+import React, { useCallback, useEffect, useMemo } from 'react'
+import { useRecord, useResource } from '~/components/resources'
+import { MultiRelationInput } from '~/components/shared/multi-relation-input'
+import { BaseType } from '~/components/workflow/types'
 import { CodeEditor, CodeLanguage } from '~/components/workflow/ui/code-editor'
 import Field from '~/components/workflow/ui/field'
+import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import Section from '~/components/workflow/ui/section'
-import { toastError } from '@auxx/ui/components/toast'
-import { VarEditorFieldRow, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
-import { BaseType } from '~/components/workflow/types'
-import { useResource, useRecord } from '~/components/resources'
 
 interface ResourceTestInputProps {
   resourceType: ResourceId
@@ -104,9 +103,9 @@ export function ResourceTestInput({
   // Show loading state while resources load
   if (isLoadingResources) {
     return (
-      <Section title="Resource Trigger" initialOpen>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
+      <Section title='Resource Trigger' initialOpen>
+        <div className='flex items-center gap-2 text-sm text-muted-foreground'>
+          <Loader2 className='h-4 w-4 animate-spin' />
           Loading resource configuration...
         </div>
       </Section>
@@ -116,9 +115,9 @@ export function ResourceTestInput({
   // Validate resource type exists
   if (!resource) {
     return (
-      <Section title="Resource Trigger" initialOpen>
-        <div className="flex items-center gap-2 text-sm text-destructive">
-          <AlertCircle className="h-4 w-4" />
+      <Section title='Resource Trigger' initialOpen>
+        <div className='flex items-center gap-2 text-sm text-destructive'>
+          <AlertCircle className='h-4 w-4' />
           Invalid resource type: {resourceType}
         </div>
       </Section>
@@ -128,20 +127,20 @@ export function ResourceTestInput({
   return (
     <>
       <Section title={`${resource.label} ${operation}`} initialOpen>
-        <div className="space-y-4">
+        <div className='space-y-4'>
           {/* Resource Picker Mode */}
           <VarEditorField>
             <VarEditorFieldRow
-              className="p-0"
-              title="Resource"
+              className='p-0'
+              title='Resource'
               description={`Select the ${resource.label.toLowerCase()} by type or ID to ${operation === 'created' ? 'create' : operation === 'updated' ? 'update' : 'delete'}`}
               type={BaseType.RELATION}
               isRequired
               validationError={errors.resourceData}
               validationType={errors.resourceData ? 'error' : undefined}>
-              <div className="flex items-center gap-2 flex-1">
+              <div className='flex items-center gap-2 flex-1'>
                 <MultiRelationInput
-                  className="flex-1"
+                  className='flex-1'
                   entityDefinitionId={resourceType}
                   value={selectedRecordId ? [selectedRecordId] : []}
                   onChange={(recordIds: RecordId[]) =>
@@ -152,7 +151,7 @@ export function ResourceTestInput({
                   multi={false}
                 />
                 {selectedRecordId && (
-                  <Button variant="ghost" size="sm" onClick={() => handleResourceSelect(null)}>
+                  <Button variant='ghost' size='sm' onClick={() => handleResourceSelect(null)}>
                     Clear
                   </Button>
                 )}
@@ -161,8 +160,8 @@ export function ResourceTestInput({
           </VarEditorField>
           {/* Loading indicator */}
           {isLoadingResource && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground px-4">
-              <Loader2 className="h-3 w-3 animate-spin" />
+            <div className='flex items-center gap-2 text-sm text-muted-foreground px-4'>
+              <Loader2 className='h-3 w-3 animate-spin' />
               Loading resource data...
             </div>
           )}
@@ -170,8 +169,8 @@ export function ResourceTestInput({
           {operation === 'updated' && (
             <>
               <Field
-                title="Changed Fields"
-                description="Array of field names that were changed. List the fields that were modified in this update">
+                title='Changed Fields'
+                description='Array of field names that were changed. List the fields that were modified in this update'>
                 <CodeEditor
                   value={
                     typeof inputs.changedFields === 'string'
@@ -191,13 +190,13 @@ export function ResourceTestInput({
                   minHeight={100}
                 />
                 {errors.changedFields && (
-                  <p className="text-sm text-destructive mt-1">{errors.changedFields}</p>
+                  <p className='text-sm text-destructive mt-1'>{errors.changedFields}</p>
                 )}
               </Field>
 
               <Field
-                title="Previous Values"
-                description="Object containing previous values of changed fields. The values these fields had before the update">
+                title='Previous Values'
+                description='Object containing previous values of changed fields. The values these fields had before the update'>
                 <CodeEditor
                   value={
                     typeof inputs.previousValues === 'string'
@@ -217,15 +216,15 @@ export function ResourceTestInput({
                   minHeight={100}
                 />
                 {errors.previousValues && (
-                  <p className="text-sm text-destructive mt-1">{errors.previousValues}</p>
+                  <p className='text-sm text-destructive mt-1'>{errors.previousValues}</p>
                 )}
               </Field>
             </>
           )}
           {operation === 'deleted' && (
             <Field
-              title="Deleted By"
-              description="Information about the user who deleted this resource. User object with id, email, and name">
+              title='Deleted By'
+              description='Information about the user who deleted this resource. User object with id, email, and name'>
               <CodeEditor
                 value={
                   typeof inputs.deletedBy === 'string'
@@ -245,7 +244,7 @@ export function ResourceTestInput({
                 minHeight={100}
               />
               {errors.deletedBy && (
-                <p className="text-sm text-destructive mt-1">{errors.deletedBy}</p>
+                <p className='text-sm text-destructive mt-1'>{errors.deletedBy}</p>
               )}
             </Field>
           )}

@@ -1,6 +1,6 @@
 // packages/lib/src/ai/clients/utils/circuit-breaker.ts
 
-import { createScopedLogger, Logger } from '@auxx/logger'
+import { createScopedLogger, type Logger } from '@auxx/logger'
 
 interface CircuitBreakerConfig {
   failureThreshold: number

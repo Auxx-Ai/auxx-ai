@@ -1,16 +1,16 @@
 // apps/web/src/components/threads/realtime/index.ts
 
-export { useThreadRealtime } from './use-thread-realtime'
 export type {
-  ThreadRealtimeEvents,
-  ThreadRealtimeEventName,
-  SessionCreatedEvent,
-  SessionClosedEvent,
+  ChatMessagesReadEvent,
+  MessageProcessingStatusEvent,
   NewChatMessageEvent,
   NewSystemMessageEvent,
-  VisitorUpdatedEvent,
-  ChatMessagesReadEvent,
-  UserTypingEvent,
-  MessageProcessingStatusEvent,
   RealtimeChatMessage,
+  SessionClosedEvent,
+  SessionCreatedEvent,
+  ThreadRealtimeEventName,
+  ThreadRealtimeEvents,
+  UserTypingEvent,
+  VisitorUpdatedEvent,
 } from './types'
+export { useThreadRealtime } from './use-thread-realtime'

@@ -84,7 +84,7 @@ export class SubscriptionModel extends BaseModel<
     topic: string
   }): Promise<TypedResult<SubscriptionListItem | null, Error>> {
     try {
-      let q = this.db
+      const q = this.db
         .select({
           id: Subscription.id,
           provider: Subscription.provider,

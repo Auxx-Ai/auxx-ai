@@ -20,12 +20,12 @@ export function StrategyRow({ strategy, count, description }: StrategyRowProps) 
   const config = getStrategyConfig(strategy)
 
   return (
-    <div className="group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200">
-      <div className="flex items-center gap-3">
+    <div className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200'>
+      <div className='flex items-center gap-3'>
         <EntityIcon iconId={config.iconId} color={config.color} />
-        <div className="flex flex-col">
-          <span className="text-sm font-medium">{config.label}</span>
-          <span className="text-xs text-muted-foreground">{description}</span>
+        <div className='flex flex-col'>
+          <span className='text-sm font-medium'>{config.label}</span>
+          <span className='text-xs text-muted-foreground'>{description}</span>
         </div>
       </div>
       <Badge variant={config.badgeVariant}>{count.toLocaleString()} rows</Badge>

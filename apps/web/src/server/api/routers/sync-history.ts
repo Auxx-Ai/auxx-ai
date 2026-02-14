@@ -1,6 +1,6 @@
+import { SyncJobModel } from '@auxx/database/models'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { SyncJobModel } from '@auxx/database/models'
 
 export const syncHistoryRouter = createTRPCRouter({
   getAll: protectedProcedure

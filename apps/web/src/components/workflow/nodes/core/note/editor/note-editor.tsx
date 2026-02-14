@@ -1,9 +1,10 @@
 // apps/web/src/components/workflow/nodes/core/note/editor/note-editor.tsx
 
-import React, { useEffect, useState } from 'react'
-import { useEditor, EditorContent } from '@tiptap/react'
-import { getNoteEditorExtensions } from './extensions'
 import { cn } from '@auxx/ui/lib/utils'
+import { EditorContent, useEditor } from '@tiptap/react'
+import type React from 'react'
+import { useEffect, useState } from 'react'
+import { getNoteEditorExtensions } from './extensions'
 
 interface NoteEditorProps {
   content: string

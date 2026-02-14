@@ -1,9 +1,9 @@
 // packages/services/src/entity-definitions/list-entity-definitions.ts
 
 import { database } from '@auxx/database'
-import { ok, err } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
 import type { EntityType } from '@auxx/database/types'
+import { err, ok } from 'neverthrow'
+import { fromDatabase } from '../shared/utils'
 
 /**
  * List all entity definitions for an organization

@@ -2,17 +2,17 @@
 
 'use client'
 
-import { useCallback, useState } from 'react'
-import { Trash2 } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
+import { Trash2 } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import { useConditionContext } from '../condition-context'
-import ConditionOperator from './condition-operator'
-import VariableFieldSelector from './variable-field-selector'
-import ResourceFieldSelector from './resource-field-selector'
 import ValueInput from '../inputs/value-input'
-import { operatorRequiresValue } from '../types'
 import type { ConditionItemProps, Operator } from '../types'
+import { operatorRequiresValue } from '../types'
+import ConditionOperator from './condition-operator'
+import ResourceFieldSelector from './resource-field-selector'
+import VariableFieldSelector from './variable-field-selector'
 
 /**
  * Generic condition item component that works with both if-else and find systems
@@ -117,15 +117,15 @@ const ConditionItem = ({
           'grow rounded-xl bg-primary-200/30 border',
           isHovered && 'bg-destructive/10 border-destructive/20'
         )}>
-        <div className="flex items-center p-1">
-          <div className="w-0 grow">
+        <div className='flex items-center p-1'>
+          <div className='w-0 grow'>
             {config.mode === 'variable' && nodeId ? (
               <VariableFieldSelector
                 value={condition.fieldId}
                 onChange={handleFieldChange}
                 disabled={readOnly}
-                placeholder="Select field"
-                className="h-6 w-full border-0 px-0 text-xs"
+                placeholder='Select field'
+                className='h-6 w-full border-0 px-0 text-xs'
                 nodeId={nodeId}
               />
             ) : (
@@ -133,14 +133,14 @@ const ConditionItem = ({
                 value={condition.fieldId}
                 onChange={handleFieldChange}
                 disabled={readOnly}
-                placeholder="Select field"
-                className="h-6 w-full border-0 px-0 text-xs"
+                placeholder='Select field'
+                className='h-6 w-full border-0 px-0 text-xs'
                 availableFields={getAvailableFields()}
               />
             )}
           </div>
 
-          <div className="mx-1 h-3 w-[1px] bg-divider"></div>
+          <div className='mx-1 h-3 w-[1px] bg-divider'></div>
 
           <ConditionOperator
             fieldId={condition.fieldId}
@@ -164,7 +164,7 @@ const ConditionItem = ({
               onChange={handleValueChange}
               disabled={readOnly}
               nodeId={nodeId}
-              className="text-xs"
+              className='text-xs'
             />
           </div>
         )}
@@ -172,13 +172,13 @@ const ConditionItem = ({
 
       {showRemoveButton && !readOnly && (
         <Button
-          className="ml-1"
+          className='ml-1'
           onClick={handleRemove}
-          variant="destructive-hover"
-          size="xs"
+          variant='destructive-hover'
+          size='xs'
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}>
-          <Trash2 className="size-6 shrink-0" />
+          <Trash2 className='size-6 shrink-0' />
         </Button>
       )}
     </div>

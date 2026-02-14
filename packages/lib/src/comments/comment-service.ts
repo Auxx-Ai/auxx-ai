@@ -1,24 +1,24 @@
 // lib/comments/enhanced-comment-service.ts
-import { database, schema, type Database, type Transaction } from '@auxx/database'
-import { eq, and, or, desc, asc, sql, inArray, isNull, gt } from 'drizzle-orm'
-import { createScopedLogger } from '@auxx/logger'
-import { NotificationService } from '../notifications/notification-service'
-import { PermissionService } from '../permissions/permission-service'
-import { SystemUserService } from '../users/system-user-service'
-import { MediaAssetService } from '../files/core/media-asset-service'
-import { AttachmentService, type GroupedAttachmentInfo } from '../files/core/attachment-service'
+import { type Database, database, schema, type Transaction } from '@auxx/database'
 import type {
   CommentEntity as Comment,
   CommentReactionEntity as CommentReaction,
 } from '@auxx/database/models'
+import { createScopedLogger } from '@auxx/logger'
+import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm'
 import { publisher } from '../events'
 import type {
   CommentCreatedEvent,
-  CommentUpdatedEvent,
   CommentDeletedEvent,
   CommentRepliedEvent,
+  CommentUpdatedEvent,
 } from '../events/types'
+import { AttachmentService, type GroupedAttachmentInfo } from '../files/core/attachment-service'
+import { MediaAssetService } from '../files/core/media-asset-service'
+import { NotificationService } from '../notifications/notification-service'
+import { PermissionService } from '../permissions/permission-service'
 import { parseRecordId, type RecordId } from '../resources/resource-id'
+import { SystemUserService } from '../users/system-user-service'
 
 // System entity types (hardcoded)
 export const SYSTEM_ENTITY_TYPES = ['Ticket', 'Thread', 'Contact'] as const
@@ -156,14 +156,7 @@ export class CommentService {
       if (data.fileAttachments && data.fileAttachments.length > 0) {
         await this.verifyFileAttachments(data.fileAttachments)
       }
-      const {
-        content,
-        createdById,
-        organizationId,
-        parentId,
-        fileAttachments,
-        mentions,
-      } = data
+      const { content, createdById, organizationId, parentId, fileAttachments, mentions } = data
 
       // Use transaction to ensure data consistency
       const result = await this.db.transaction(async (tx) => {
@@ -192,7 +185,8 @@ export class CommentService {
 
         // Update Thread.latestCommentId if this is a thread comment
         if (entityType === 'thread') {
-          await tx.update(schema.Thread)
+          await tx
+            .update(schema.Thread)
             .set({ latestCommentId: comment!.id })
             .where(eq(schema.Thread.id, entityId))
         }
@@ -432,7 +426,8 @@ export class CommentService {
 
       // Set Thread.latestCommentId to null if deleting all thread comments
       if (entityType === 'thread') {
-        await this.db.update(schema.Thread)
+        await this.db
+          .update(schema.Thread)
           .set({ latestCommentId: null })
           .where(eq(schema.Thread.id, entityId))
       }
@@ -654,7 +649,10 @@ export class CommentService {
       } else {
         // Custom entity - entityType IS the entityDefinitionId
         await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntityInstance(comment.entityId, comment.entityDefinitionId),
+          this.permissionService.canAccessEntityInstance(
+            comment.entityId,
+            comment.entityDefinitionId
+          ),
           `You don't have access to this comment`
         )
       }
@@ -748,7 +746,10 @@ export class CommentService {
       } else {
         // Custom entity - entityType IS the entityDefinitionId
         await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntityInstance(comment.entityId, comment.entityDefinitionId),
+          this.permissionService.canAccessEntityInstance(
+            comment.entityId,
+            comment.entityDefinitionId
+          ),
           `You don't have access to this comment`
         )
       }
@@ -817,7 +818,10 @@ export class CommentService {
       } else {
         // Custom entity - entityType IS the entityDefinitionId
         await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntityInstance(comment.entityId, comment.entityDefinitionId),
+          this.permissionService.canAccessEntityInstance(
+            comment.entityId,
+            comment.entityDefinitionId
+          ),
           `You don't have access to this comment`
         )
       }
@@ -1016,7 +1020,10 @@ export class CommentService {
       } else {
         // Custom entity - entityType IS the entityDefinitionId
         await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntityInstance(comment.entityId, comment.entityDefinitionId),
+          this.permissionService.canAccessEntityInstance(
+            comment.entityId,
+            comment.entityDefinitionId
+          ),
           `You don't have access to this comment`
         )
       }
@@ -1117,10 +1124,11 @@ export class CommentService {
           isNull(schema.Comment.deletedAt)
         ),
         columns: { id: true },
-        orderBy: [desc(schema.Comment.createdAt), desc(schema.Comment.id)]
+        orderBy: [desc(schema.Comment.createdAt), desc(schema.Comment.id)],
       })
 
-      await this.db.update(schema.Thread)
+      await this.db
+        .update(schema.Thread)
         .set({ latestCommentId: latest?.id ?? null })
         .where(eq(schema.Thread.id, threadId))
     } catch (error) {

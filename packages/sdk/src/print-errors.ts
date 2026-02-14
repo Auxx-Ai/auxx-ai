@@ -1,14 +1,15 @@
 import chalk from 'chalk'
 import { API as APP } from './env.js'
 import type {
-  CliVersionError,
   AppSlugError,
-  Errored,
-  UploadError,
+  CliVersionError,
   CreateProjectError,
   // FetcherError,
   DetermineOrganizationError,
+  Errored,
+  UploadError,
 } from './errors.js'
+
 // import type { ApiError } from './api/api.js'
 
 type AuxxError = {
@@ -147,15 +148,13 @@ export function printDetermineOrganizationError(e: Errored<DetermineOrganization
   const error = e.error
   switch (error.code) {
     case 'NO_ORGANIZATION_FOUND':
-      process.stderr
-        .write(`You are not the admin any workspace with the slug "${error.organization_slug}". Either request permission from "${error.organization_slug}" or create your own.
+      process.stderr.write(`You are not the admin any workspace with the slug "${error.organization_slug}". Either request permission from "${error.organization_slug}" or create your own.
 
 ${APP}/welcome/workspace-details
                     `)
       break
     case 'NO_ORGANIZATIONS_FOUND':
-      process.stderr
-        .write(`You are not the admin of any workspaces. Either request permission from an existing workspace or create your own.
+      process.stderr.write(`You are not the admin of any workspaces. Either request permission from an existing workspace or create your own.
 
 ${APP}/welcome/workspace-details
                     `)

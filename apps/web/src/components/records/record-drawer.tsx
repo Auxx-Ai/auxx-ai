@@ -1,24 +1,22 @@
 // apps/web/src/components/records/record-drawer.tsx
 'use client'
 
-import * as React from 'react'
-import { useRouter } from 'next/navigation'
-import { Expand, MessagesSquare, Trash } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
-
+import { formatToDisplayValue, parseRecordId, type RecordId } from '@auxx/lib/field-values/client'
 import { Button } from '@auxx/ui/components/button'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { Tooltip } from '~/components/global/tooltip'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { useResource, useRecord } from '~/components/resources'
-import { parseRecordId, type RecordId } from '@auxx/lib/field-values/client'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { formatDistanceToNow } from 'date-fns'
+import { Expand, MessagesSquare, Trash } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import * as React from 'react'
+import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
+import { Tooltip } from '~/components/global/tooltip'
+import { useRecord, useResource } from '~/components/resources'
+import { useFieldValue } from '~/components/resources/hooks/use-field-values'
+import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
-import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
-import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
-import { useFieldValue } from '~/components/resources/hooks/use-field-values'
-import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 
 /** Props for RecordDrawer */
 interface RecordDrawerProps {
@@ -168,40 +166,40 @@ export const RecordDrawer = React.memo(function RecordDrawer({
         <EntityIcon
           iconId={resource?.icon || 'circle'}
           color={resource?.color || 'gray'}
-          className="size-6"
+          className='size-6'
         />
       }
       headerTitle={resource?.label || 'Record'}
       headerActions={
         <>
-          <Tooltip content="Create note">
-            <Button variant="ghost" size="icon-xs" onClick={handleCreateNoteClick}>
+          <Tooltip content='Create note'>
+            <Button variant='ghost' size='icon-xs' onClick={handleCreateNoteClick}>
               <MessagesSquare />
             </Button>
           </Tooltip>
           <ManualTriggerButton
             recordId={recordId}
-            buttonVariant="ghost"
-            buttonSize="icon-xs"
-            buttonClassName="rounded-full"
-            tooltipContent="Run workflow"
+            buttonVariant='ghost'
+            buttonSize='icon-xs'
+            buttonClassName='rounded-full'
+            tooltipContent='Run workflow'
           />
           <Tooltip content={`Delete ${resource?.label?.toLowerCase() || 'record'}`}>
             <Button
-              variant="outline"
-              size="icon-xs"
+              variant='outline'
+              size='icon-xs'
               onClick={() => {
                 if (onDeleteInstance && entityInstanceId) {
                   void onDeleteInstance(entityInstanceId)
                 }
               }}>
-              <Trash className="text-bad-500" />
+              <Trash className='text-bad-500' />
             </Button>
           </Tooltip>
-          <Tooltip content="Open full page">
+          <Tooltip content='Open full page'>
             <Button
-              variant="ghost"
-              size="icon-xs"
+              variant='ghost'
+              size='icon-xs'
               onClick={() => {
                 if (resource?.apiSlug && entityInstanceId) {
                   router.push(`/app/custom/${resource.apiSlug}/${entityInstanceId}`)
@@ -214,25 +212,25 @@ export const RecordDrawer = React.memo(function RecordDrawer({
         </>
       }
       cardContent={
-        <div className="flex gap-3 py-2 px-3 flex-row items-center justify-start border-b">
+        <div className='flex gap-3 py-2 px-3 flex-row items-center justify-start border-b'>
           <EntityIcon
             iconId={resource?.icon || 'circle'}
             color={resource?.color || 'gray'}
-            className="size-10"
+            className='size-10'
           />
-          <div className="flex flex-col align-start w-full">
-            <div className="text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate">
+          <div className='flex flex-col align-start w-full'>
+            <div className='text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate'>
               {isRecordLoading ? (
-                <div className="mb-1">
-                  <Skeleton className="h-6 w-80" />
+                <div className='mb-1'>
+                  <Skeleton className='h-6 w-80' />
                 </div>
               ) : (
                 displayName || 'Untitled'
               )}
             </div>
-            <div className="text-xs text-neutral-500 truncate">
+            <div className='text-xs text-neutral-500 truncate'>
               {isRecordLoading ? (
-                <Skeleton className="h-4 w-40" />
+                <Skeleton className='h-4 w-40' />
               ) : (
                 secondaryDisplay || createdAtText
               )}

@@ -10,12 +10,12 @@ export type RecordId = string & { readonly __brand: 'RecordId' }
 
 export { recordIdSchema } from './schema'
 export {
-  toRecordId,
-  parseRecordId,
-  isRecordId,
-  toRecordIds,
-  getInstanceId,
   getDefinitionId,
-  isSystemModelType,
+  getInstanceId,
   getModelType,
+  isRecordId,
+  isSystemModelType,
+  parseRecordId,
+  toRecordId,
+  toRecordIds,
 } from './utils'

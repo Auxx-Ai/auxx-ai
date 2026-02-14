@@ -2,8 +2,8 @@
 
 import { useCallback } from 'react'
 import { NodeRunningStatus } from '~/components/workflow/types'
-import { useRunStore } from '../../store/run-store'
 import type { ExecutionEvent } from '../../store/run-store'
+import { useRunStore } from '../../store/run-store'
 
 export const useRunNodeStarted = () => {
   const updateNodeExecution = useRunStore((state) => state.updateNodeExecution)

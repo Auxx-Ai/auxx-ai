@@ -1,9 +1,9 @@
 // packages/sdk/src/util/error-reporting.ts
 
-import chalk from 'chalk'
 import { codeFrameColumns } from '@babel/code-frame'
-import { readFile } from 'fs/promises'
+import chalk from 'chalk'
 import type { Message } from 'esbuild'
+import { readFile } from 'fs/promises'
 
 /**
  * Renders a TypeScript diagnostic to STDERR with a syntax-highlighted code

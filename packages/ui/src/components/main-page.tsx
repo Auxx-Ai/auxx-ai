@@ -1,8 +1,5 @@
 'use client'
 
-import { SidebarTrigger } from '@auxx/ui/components/sidebar'
-import React, { useState, useCallback } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -11,7 +8,10 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@auxx/ui/components/breadcrumb'
+import { SidebarTrigger } from '@auxx/ui/components/sidebar'
+import { cn } from '@auxx/ui/lib/utils'
 import Link from 'next/link'
+import React, { useCallback, useState } from 'react'
 import { PanelFrame } from './panel-frame'
 
 /**
@@ -63,7 +63,7 @@ function MainPage({ className, loading = false, children, ...props }: MainPagePr
   return (
     <MainPageProvider loading={loading}>
       <div
-        data-main="main"
+        data-main='main'
         className={cn(
           'h-screen flex flex-col w-full p-3 pt-0 bg-neutral-100 dark:bg-background',
           className
@@ -100,18 +100,18 @@ function MainPageHeader({
 
   return (
     <div
-      data-main="header"
+      data-main='header'
       className={cn(
         'flex items-center justify-between shrink-0 py-2 overflow-x-auto no-scrollbar h-[44px]',
         className
       )}
       {...props}>
-      <div className="flex items-center shrink-0">
-        <SidebarTrigger className="sticky left-0 hover:bg-primary-200 h-6" />
-        {children && <div className="flex items-center gap-1.5">{children}</div>}
-        {title && <span className="text-base">{title}</span>}
+      <div className='flex items-center shrink-0'>
+        <SidebarTrigger className='sticky left-0 hover:bg-primary-200 h-6' />
+        {children && <div className='flex items-center gap-1.5'>{children}</div>}
+        {title && <span className='text-base'>{title}</span>}
       </div>
-      {action && <div className="ml-4 space-x-2">{action}</div>}
+      {action && <div className='ml-4 space-x-2'>{action}</div>}
     </div>
   )
 }
@@ -129,7 +129,7 @@ const MainPageBreadcrumb: React.FC<React.ComponentProps<typeof Breadcrumb>> = ({
   // Wrapper for shadcn Breadcrumbs for main page usage
   return (
     <Breadcrumb {...props} className={cn('shrink-0', className)}>
-      <BreadcrumbList className="flex-nowrap gap-0.5 sm:gap-0.5">{children}</BreadcrumbList>
+      <BreadcrumbList className='flex-nowrap gap-0.5 sm:gap-0.5'>{children}</BreadcrumbList>
     </Breadcrumb>
   )
 }
@@ -201,7 +201,7 @@ const MainPageBreadcrumbItem: React.FC<MainPageBreadcrumbItemProps> = ({
             {title}
           </BreadcrumbLink>
         ) : (
-          <BreadcrumbPage className="cursor-default text-nowrap shrink-0">
+          <BreadcrumbPage className='cursor-default text-nowrap shrink-0'>
             {icon as any}
             {title}
           </BreadcrumbPage>
@@ -277,18 +277,20 @@ function MainPageContent({
   const panels: DockedPanelConfig[] =
     dockedPanels ??
     (dockedPanel
-      ? [{
-          key: 'default',
-          content: dockedPanel,
-          width: dockedPanelWidth,
-          onWidthChange: onDockedPanelWidthChange,
-          minWidth: dockedPanelMinWidth,
-          maxWidth: dockedPanelMaxWidth,
-        }]
+      ? [
+          {
+            key: 'default',
+            content: dockedPanel,
+            width: dockedPanelWidth,
+            onWidthChange: onDockedPanelWidthChange,
+            minWidth: dockedPanelMinWidth,
+            maxWidth: dockedPanelMaxWidth,
+          },
+        ]
       : [])
 
   const mainContent = (
-    <PanelFrame data-main="content" flex shrink={false} className={className} {...props}>
+    <PanelFrame data-main='content' flex shrink={false} className={className} {...props}>
       {children}
     </PanelFrame>
   )
@@ -300,7 +302,7 @@ function MainPageContent({
 
   // With panels - render in flex row
   return (
-    <div className="flex flex-row flex-1 min-h-0">
+    <div className='flex flex-row flex-1 min-h-0'>
       {mainContent}
       {panels.map((panel) => (
         <React.Fragment key={panel.key}>
@@ -310,9 +312,7 @@ function MainPageContent({
             minWidth={panel.minWidth}
             maxWidth={panel.maxWidth}
           />
-          <PanelFrame width={panel.width}>
-            {panel.content}
-          </PanelFrame>
+          <PanelFrame width={panel.width}>{panel.content}</PanelFrame>
         </React.Fragment>
       ))}
     </div>
@@ -399,7 +399,7 @@ function MainPageSubheader({
 
   return (
     <div
-      data-main="subheader"
+      data-main='subheader'
       className={cn(
         'relative flex items-center h-9 bg-primary-200 text-muted-foreground px-2 shrink-0  gap-2 border-b border-foreground/10 overflow-x-auto no-scrollbar after:inset-x-0 after:absolute after:bottom-0 after:w-full after:h-px after:bg-neutral-50 dark:after:bg-neutral-950',
         className

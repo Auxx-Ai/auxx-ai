@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/types/output-variables.ts
 
-import type { UnifiedVariable } from './variable-types'
 import type { WorkflowBlockField } from '~/lib/workflow/types'
+import type { UnifiedVariable } from './variable-types'
 
 /**
  * Represents an output variable that a node exposes to downstream nodes

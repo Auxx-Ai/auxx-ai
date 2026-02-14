@@ -2,11 +2,8 @@
 
 'use client'
 
-import React from 'react'
-import { Upload, Files } from 'lucide-react'
-import { FileItem } from '~/components/file-upload/ui/file-item'
-import { FileSelectPickerButton } from '~/components/file-select/file-select-picker-button'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import type { EntityType } from '@auxx/lib/files/types'
+import { Button } from '@auxx/ui/components/button'
 import {
   Command,
   CommandEmpty,
@@ -14,12 +11,15 @@ import {
   CommandItem,
   CommandList,
 } from '@auxx/ui/components/command'
-import { Button } from '@auxx/ui/components/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { cn } from '@auxx/ui/lib/utils'
+import { Files, Upload } from 'lucide-react'
+import type React from 'react'
+import { FileSelectPickerButton } from '~/components/file-select/file-select-picker-button'
 import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
 import type { UseFileSelectReturn } from '~/components/file-select/types'
+import { FileItem } from '~/components/file-upload/ui/file-item'
 import type { FileItem as FileItemType } from '~/components/files/files-store'
-import type { EntityType } from '@auxx/lib/files/types'
-import { cn } from '@auxx/ui/lib/utils'
 
 /**
  * Props for FileSelectPicker component
@@ -154,11 +154,11 @@ function FileSelectPickerContent({
         sideOffset={sideOffset}
         disabled={disabled}>
         {/* Action buttons at top */}
-        <div className="flex gap-2 p-3 border-b">
+        <div className='flex gap-2 p-3 border-b'>
           <Button
-            variant="outline"
-            size="sm"
-            className="flex-1"
+            variant='outline'
+            size='sm'
+            className='flex-1'
             onClick={() => {
               const input = document.createElement('input')
               input.type = 'file'
@@ -181,9 +181,9 @@ function FileSelectPickerContent({
             onOpenChange={(open) => (open ? fileSelect.openPicker() : fileSelect.closePicker())}
             onFilesSelected={(files) => fileSelect.addExistingFiles(files)}
             allowMultiple={allowMultiple}
-            variant="outline"
-            size="sm"
-            className="flex-1">
+            variant='outline'
+            size='sm'
+            className='flex-1'>
             <Files />
             Browse Existing
           </FileSelectPickerButton>
@@ -193,18 +193,18 @@ function FileSelectPickerContent({
           <CommandList>
             <CommandEmpty>No files selected.</CommandEmpty>
             {fileSelect.selectedItems.length > 0 && (
-              <CommandGroup heading="Files">
+              <CommandGroup heading='Files'>
                 {fileSelect.selectedItems.map((item) => (
                   <CommandItem
                     key={item.id}
-                    className="py-1 px-2 data-[selected=true]:bg-transparent">
+                    className='py-1 px-2 data-[selected=true]:bg-transparent'>
                     <FileItem
                       file={item}
                       onRemove={() => fileSelect.removeItem(item.id)}
                       onRetry={() => fileSelect.retryUpload(item.id)}
                       onCancel={() => fileSelect.cancelUpload()}
                       showControls={true}
-                      className="w-full"
+                      className='w-full'
                     />
                   </CommandItem>
                 ))}

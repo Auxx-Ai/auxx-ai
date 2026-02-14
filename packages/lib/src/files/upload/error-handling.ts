@@ -1,8 +1,9 @@
 // packages/lib/src/files/upload/error-handling.ts
 
-import { SessionManager } from './session-manager'
-import { ProgressPublisher } from './progress-publisher'
 import { createScopedLogger } from '@auxx/logger'
+import { ProgressPublisher } from './progress-publisher'
+import { SessionManager } from './session-manager'
+
 type JsonInit = Omit<ResponseInit, 'headers'> & { headers?: HeadersInit }
 
 function json(body: unknown, init: JsonInit = {}): Response {
@@ -56,7 +57,7 @@ export class UploadErrorHandler {
     operation: string,
     context?: Record<string, any>
   ): Promise<Response> {
-    const uploadError = this.categorizeError(error)
+    const uploadError = UploadErrorHandler.categorizeError(error)
 
     // Log the error with context
     logger.error(`Upload ${operation} failed`, {
@@ -98,7 +99,7 @@ export class UploadErrorHandler {
         details: uploadError.details,
       },
       {
-        status: this.getHttpStatus(uploadError.type),
+        status: UploadErrorHandler.getHttpStatus(uploadError.type),
       }
     )
   }

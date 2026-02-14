@@ -1,8 +1,9 @@
 // packages/lib/src/email/nodemailer-service.ts
+
+import { env } from '@auxx/config/server'
+import { createScopedLogger } from '@auxx/logger'
 import type nodemailer from 'nodemailer'
 import { TransportFactory } from './transports/factory'
-import { createScopedLogger } from '@auxx/logger'
-import { env } from '@auxx/config/server'
 import type { EmailOptions, EmailResult } from './types'
 
 const logger = createScopedLogger('nodemailer-service')
@@ -54,7 +55,7 @@ export class NodemailerService {
     logger.info('NodemailerService.sendEmail called', {
       to: options.to,
       subject: options.subject,
-      hasFrom: !!options.from
+      hasFrom: !!options.from,
     })
 
     try {
@@ -65,8 +66,16 @@ export class NodemailerService {
       const mailOptions = {
         from: options.from || this.getDefaultFrom(),
         to: Array.isArray(options.to) ? options.to.join(', ') : options.to,
-        cc: options.cc ? (Array.isArray(options.cc) ? options.cc.join(', ') : options.cc) : undefined,
-        bcc: options.bcc ? (Array.isArray(options.bcc) ? options.bcc.join(', ') : options.bcc) : undefined,
+        cc: options.cc
+          ? Array.isArray(options.cc)
+            ? options.cc.join(', ')
+            : options.cc
+          : undefined,
+        bcc: options.bcc
+          ? Array.isArray(options.bcc)
+            ? options.bcc.join(', ')
+            : options.bcc
+          : undefined,
         subject: options.subject,
         text: options.text,
         html: options.html,
@@ -84,7 +93,7 @@ export class NodemailerService {
         hasText: !!mailOptions.text,
         hasHtml: !!mailOptions.html,
         from: mailOptions.from,
-        fieldCount: Object.keys(mailOptions).filter(k => mailOptions[k] !== undefined).length
+        fieldCount: Object.keys(mailOptions).filter((k) => mailOptions[k] !== undefined).length,
       })
 
       const info = await this.transporter.sendMail(mailOptions)

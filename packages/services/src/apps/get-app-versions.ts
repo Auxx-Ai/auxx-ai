@@ -1,7 +1,7 @@
 // apps/api/src/services/organizations/apps/get-app-versions.ts
 
 import { database } from '@auxx/database'
-import { ok, err } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 // import type { AppError } from './errors'
 // import type { AppVersionError } from '../app-versions/errors'
 import { fromDatabase } from '../shared/utils'

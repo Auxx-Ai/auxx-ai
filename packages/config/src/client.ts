@@ -2,20 +2,18 @@
 
 import { clientEnv } from './client-env'
 
-export { features } from './features'
-export { constants, RESERVED_API_SLUGS, type ReservedApiSlug } from './constants'
 export { clientEnv as env } from './client-env'
-
-export { IANA_TIME_ZONES, detectTimezone, isValidTimezone, type IANATimeZone } from './timezones'
-
+export { constants, RESERVED_API_SLUGS, type ReservedApiSlug } from './constants'
 export {
   CURRENCIES,
+  type Currency,
+  type CurrencyCode,
   getCurrency,
   getCurrencySymbol,
   isValidCurrency,
-  type Currency,
-  type CurrencyCode,
 } from './currencies'
+export { features } from './features'
+export { detectTimezone, IANA_TIME_ZONES, type IANATimeZone, isValidTimezone } from './timezones'
 
 export * from './url'
 

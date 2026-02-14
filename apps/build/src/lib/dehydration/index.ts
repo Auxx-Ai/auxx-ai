@@ -1,15 +1,15 @@
 // apps/build/src/lib/dehydration/index.ts
 
-export { BuildDehydrationService } from './service'
 export { BuildDehydrationCacheService } from './cache'
+export { BuildDehydrationService } from './service'
 export type {
   BuildDehydratedState,
+  DehydratedApp,
+  DehydratedBuildEnvironment,
   DehydratedBuildUser,
   DehydratedDeveloperAccount,
-  DehydratedUserMember,
-  DehydratedDeveloperAccountMember,
-  DehydratedApp,
   DehydratedDeveloperAccountInvitation,
-  DehydratedBuildEnvironment,
+  DehydratedDeveloperAccountMember,
   DehydratedOrganization,
+  DehydratedUserMember,
 } from './types'

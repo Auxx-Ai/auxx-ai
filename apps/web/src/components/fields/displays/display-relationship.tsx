@@ -1,13 +1,13 @@
 // apps/web/src/components/fields/displays/display-relationship.tsx
 
-import { useMemo } from 'react'
-import { useFieldContext } from './display-field'
-import { useRelationship } from '~/components/resources'
 import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
-import DisplayWrapper from './display-wrapper'
-import { ItemsListView, type ItemsListItem } from '~/components/ui/items-list-view'
-import { RecordBadge } from '~/components/resources/ui/record-badge'
 import type { RecordId } from '@auxx/lib/resources/client'
+import { useMemo } from 'react'
+import { useRelationship } from '~/components/resources'
+import { RecordBadge } from '~/components/resources/ui/record-badge'
+import { type ItemsListItem, ItemsListView } from '~/components/ui/items-list-view'
+import { useFieldContext } from './display-field'
+import DisplayWrapper from './display-wrapper'
 
 /** Relationship item for ItemsListView */
 interface RelationshipItem extends ItemsListItem {
@@ -37,13 +37,16 @@ export function DisplayRelationship() {
   }, [recordIds])
 
   // Build display names for copy value
-  const copyText = items.map((item) => item?.displayName ?? '').filter(Boolean).join(', ')
+  const copyText = items
+    .map((item) => item?.displayName ?? '')
+    .filter(Boolean)
+    .join(', ')
 
   return (
     <DisplayWrapper copyValue={copyText || null}>
       <ItemsListView
         items={relationshipItems}
-        emptyContent={<span className="text-muted-foreground">-</span>}
+        emptyContent={<span className='text-muted-foreground'>-</span>}
         renderItem={(item) => <RecordBadge recordId={item.recordId} />}
       />
     </DisplayWrapper>

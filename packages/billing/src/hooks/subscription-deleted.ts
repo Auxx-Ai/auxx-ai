@@ -3,11 +3,11 @@
  * Webhook handler for subscription deletion.
  */
 
-import type Stripe from 'stripe'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
+import type Stripe from 'stripe'
 
 /** Scoped structured logger for subscription-deleted webhook events. */
 const logger = createScopedLogger('webhook:subscription-deleted')

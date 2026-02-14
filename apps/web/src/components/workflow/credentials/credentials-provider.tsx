@@ -1,9 +1,10 @@
 // apps/web/src/app/(protected)/app/workflows/_components/providers/credentials-provider.tsx
 'use client'
 
-import React, { createContext, useContext, useState, useCallback } from 'react'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import type React from 'react'
+import { createContext, useCallback, useContext, useState } from 'react'
 import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 
 interface CredentialListItem {
   id: string

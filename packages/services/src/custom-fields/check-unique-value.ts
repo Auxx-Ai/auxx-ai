@@ -1,8 +1,8 @@
 // packages/services/src/custom-fields/check-unique-value.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and, ne, sql, or } from 'drizzle-orm'
-import { ok, err, type Result } from 'neverthrow'
+import { and, eq, ne, or, sql } from 'drizzle-orm'
+import { err, ok, type Result } from 'neverthrow'
 
 /**
  * Input for checking unique value
@@ -81,7 +81,9 @@ export async function checkUniqueValue(
   const valueMatchCondition = or(
     eq(schema.FieldValue.valueText, valueStr),
     // For numbers, try parsing the string
-    !isNaN(parseFloat(valueStr)) ? eq(schema.FieldValue.valueNumber, parseFloat(valueStr)) : sql`false`
+    !isNaN(parseFloat(valueStr))
+      ? eq(schema.FieldValue.valueNumber, parseFloat(valueStr))
+      : sql`false`
   )
 
   if (modelType === 'entity' && entityDefinitionId) {
@@ -89,10 +91,7 @@ export async function checkUniqueValue(
     const result = await database
       .select({ entityId: schema.FieldValue.entityId })
       .from(schema.FieldValue)
-      .innerJoin(
-        schema.EntityInstance,
-        eq(schema.FieldValue.entityId, schema.EntityInstance.id)
-      )
+      .innerJoin(schema.EntityInstance, eq(schema.FieldValue.entityId, schema.EntityInstance.id))
       .where(
         and(
           eq(schema.FieldValue.fieldId, fieldId),

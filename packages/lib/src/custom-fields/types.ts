@@ -1,17 +1,17 @@
-import { z } from 'zod'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
-import type { FieldType } from '@auxx/database/types'
 import type { CustomFieldEntity as CustomField } from '@auxx/database/models'
+import type { FieldType } from '@auxx/database/types'
 import {
-  ModelTypes,
-  type ModelType,
-  ModelTypeMeta,
-  selectOptionSchema,
-  type SelectOption,
   currencyOptionsSchema,
   fileOptionsSchema,
+  type ModelType,
+  ModelTypeMeta,
+  ModelTypes,
   relationshipConfigSchema,
+  type SelectOption,
+  selectOptionSchema,
 } from '@auxx/types/custom-field'
+import { z } from 'zod'
 
 // Re-export types needed by other lib modules
 export { ModelTypes, type ModelType }

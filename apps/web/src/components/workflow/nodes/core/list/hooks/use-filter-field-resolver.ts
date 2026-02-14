@@ -1,19 +1,19 @@
 // apps/web/src/components/workflow/nodes/core/list/hooks/use-filter-field-resolver.ts
 
-import { useMemo } from 'react'
-import { useAvailableVariables } from '~/components/workflow/hooks'
-import type { FieldDefinition } from '~/components/conditions'
 import {
   BaseType,
-  getOperatorsForType,
   getFieldOperators,
+  getOperatorsForType,
   type Operator,
 } from '@auxx/lib/workflow-engine/client'
-import { isNodeVariable } from '~/components/workflow/utils/variable-utils'
-import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
-import { useResourceStore } from '~/components/resources/store/resource-store'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
+import { useMemo } from 'react'
+import type { FieldDefinition } from '~/components/conditions'
+import { useResourceStore } from '~/components/resources/store/resource-store'
+import { useAvailableVariables } from '~/components/workflow/hooks'
+import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
+import { isNodeVariable } from '~/components/workflow/utils/variable-utils'
 
 /**
  * Options for the field resolver hook
@@ -85,9 +85,9 @@ export function useFilterFieldResolver({ nodeId, inputListValue }: UseFilterFiel
               ...(field.type === BaseType.RELATION &&
                 field.relationship && {
                   fieldReference: toResourceFieldId(itemVar.resourceId!, field.key),
-                  targetTable: getRelatedEntityDefinitionId(
-                    field.relationship as RelationshipConfig
-                  ) ?? undefined,
+                  targetTable:
+                    getRelatedEntityDefinitionId(field.relationship as RelationshipConfig) ??
+                    undefined,
                 }),
             })
           )

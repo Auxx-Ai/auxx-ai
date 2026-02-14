@@ -1,7 +1,7 @@
 // infra/migrate.ts - Drizzle migration Lambda wired for SST v3
 
+import { DATABASE_URL, rds } from './db'
 import { vpc } from './router-vpc'
-import { rds, DATABASE_URL } from './db'
 
 export const databaseDeployFunction = new sst.aws.Function('DatabaseDeployFunction', {
   vpc,

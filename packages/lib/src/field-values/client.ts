@@ -8,38 +8,18 @@
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import type { FieldValueRow } from './types'
 
-// NEW: Centralized Formatter API (preferred)
-export {
-  formatToTypedInput,
-  formatToRawValue,
-  formatToDisplayValue,
-  isMultiValueFieldType,
-  isArrayReturnFieldType,
-  extractValues,
-  isValueEmpty,
-  areValuesEqual,
-  type ConverterOptions,
-  type FieldOptions,
-  type NumberFieldOptions,
-  type DateFieldOptions,
-  type BooleanFieldOptions,
-  type TextFieldOptions,
-  type SelectFieldOptions,
-  type PhoneFieldOptions,
-} from './formatter'
-
-// Converters (for direct access if needed)
-export { converters } from './converters'
-
+export type { RecordId } from '@auxx/types/resource'
 // CALC expression evaluator (client-safe) - re-exported from @auxx/utils
 export {
-  evaluateCalcExpression,
-  validateCalcExpression,
-  getAvailableFunctions,
   CALC_FUNCTIONS,
   type CalcFunction,
+  evaluateCalcExpression,
+  getAvailableFunctions,
   type ParsedExpression,
+  validateCalcExpression,
 } from '@auxx/utils/calc-expression'
+// Converters (for direct access if needed)
+export { converters } from './converters'
 
 // Re-export relationship type guards from converter (centralized location)
 export {
@@ -48,28 +28,41 @@ export {
   isRelationshipRawValue,
   type RelationshipRawValue,
 } from './converters/relationship'
-
-// Row types (for inferTypedValueFromRow)
-export type { FieldValueRow } from './types'
-
-// Relationship utilities
+// NEW: Centralized Formatter API (preferred)
 export {
-  extractRelationshipRecordIds,
-  isMultiRelationship,
-  isSingleRelationship,
-  type RelationshipType,
-} from './relationship-field'
-
+  areValuesEqual,
+  type BooleanFieldOptions,
+  type ConverterOptions,
+  type DateFieldOptions,
+  extractValues,
+  type FieldOptions,
+  formatToDisplayValue,
+  formatToRawValue,
+  formatToTypedInput,
+  isArrayReturnFieldType,
+  isMultiValueFieldType,
+  isValueEmpty,
+  type NumberFieldOptions,
+  type PhoneFieldOptions,
+  type SelectFieldOptions,
+  type TextFieldOptions,
+} from './formatter'
+// Relationship utilities
 // Re-export RecordId utilities from resources
 export {
-  toRecordId,
-  parseRecordId,
-  isRecordId,
-  toRecordIds,
-  getInstanceId,
+  extractRelationshipRecordIds,
   getDefinitionId,
+  getInstanceId,
+  isMultiRelationship,
+  isRecordId,
+  isSingleRelationship,
+  parseRecordId,
+  type RelationshipType,
+  toRecordId,
+  toRecordIds,
 } from './relationship-field'
-export type { RecordId } from '@auxx/types/resource'
+// Row types (for inferTypedValueFromRow)
+export type { FieldValueRow } from './types'
 
 /**
  * Infer TypedFieldValue from a raw FieldValue row by checking which column is populated.

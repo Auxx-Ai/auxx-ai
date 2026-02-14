@@ -1,10 +1,10 @@
 // apps/web/src/components/dynamic-table/stores/selection-store.ts
 'use client'
 
+import type { RowSelectionState } from '@tanstack/react-table'
+import { produce } from 'immer'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import { produce } from 'immer'
-import type { RowSelectionState } from '@tanstack/react-table'
 import type { CellSelectionState } from '../types'
 
 // ============================================================================
@@ -167,7 +167,7 @@ export const useSelectionStore = create<SelectionStore>()(
 
           let newSelection = { ...rowSelection }
           let newLastIndex = lastSelectedIndex
-          let newLastClickedRowId = rowId
+          const newLastClickedRowId = rowId
 
           // Shift+Click: Range selection
           if (event.shiftKey && lastClickedRowId && allRowIds.length > 0) {

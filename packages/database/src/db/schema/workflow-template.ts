@@ -1,8 +1,8 @@
 // packages/database/src/db/schema/workflow-template.ts
 // Workflow templates available to all organizations
 
-import { pgTable, index, text, timestamp, integer, jsonb, sql } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { index, integer, jsonb, pgTable, sql, text, timestamp } from './_shared'
 
 /**
  * Workflow templates available to all organizations
@@ -24,10 +24,7 @@ export const WorkflowTemplate = pgTable(
     description: text().notNull(),
 
     /** Categories for filtering (e.g., ["customer-service", "shopify"]) */
-    categories: jsonb()
-      .$type<string[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
+    categories: jsonb().$type<string[]>().notNull().default(sql`'[]'::jsonb`),
 
     /** Preview image URL for the template */
     imgUrl: text(),
@@ -48,14 +45,15 @@ export const WorkflowTemplate = pgTable(
     triggerConfig: jsonb().$type<Record<string, any>>(),
 
     /** Environment variables template */
-    envVars: jsonb().$type<
-      Array<{
-        id: string
-        name: string
-        value: any
-        type: 'string' | 'number' | 'boolean' | 'array' | 'secret'
-      }>
-    >(),
+    envVars:
+      jsonb().$type<
+        Array<{
+          id: string
+          name: string
+          value: any
+          type: 'string' | 'number' | 'boolean' | 'array' | 'secret'
+        }>
+      >(),
 
     /** Variables template */
     variables: jsonb().$type<any[]>(),
@@ -67,7 +65,10 @@ export const WorkflowTemplate = pgTable(
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
 
     /** Last updated timestamp */
-    updatedAt: timestamp({ precision: 3 }).defaultNow().notNull().$onUpdate(() => new Date()),
+    updatedAt: timestamp({ precision: 3 })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     // Index for filtering by status

@@ -1,9 +1,9 @@
 // apps/web/src/stores/workflow-run-status-store.ts
 
-import { create } from 'zustand'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils/generateId'
+import { create } from 'zustand'
 import { createSSEConnection, type SSEConnection } from '~/lib/sse-connection'
-import { type RecordId, parseRecordId } from '@auxx/types/resource'
 
 type RunStatus = 'running' | 'paused' | 'completed' | 'failed'
 
@@ -211,7 +211,12 @@ export const useWorkflowRunStatusStore = create<WorkflowRunStatusStore>((set, ge
 
     // Handle completion
     if (updates.status === 'completed' || updates.status === 'failed') {
-      console.log('[WorkflowRunStatus] Run completed', { runId, status: updates.status, hasBatchId: !!run.batchId, hasOnComplete: !!run.onComplete })
+      console.log('[WorkflowRunStatus] Run completed', {
+        runId,
+        status: updates.status,
+        hasBatchId: !!run.batchId,
+        hasOnComplete: !!run.onComplete,
+      })
       get()._unsubscribeFromRun(runId)
 
       // Call onComplete for single runs
@@ -225,11 +230,12 @@ export const useWorkflowRunStatusStore = create<WorkflowRunStatusStore>((set, ge
         const batchProgress = get().getBatchProgress(run.batchId)
         console.log('[WorkflowRunStatus] Batch progress', { batchId: run.batchId, batchProgress })
         if (batchProgress && batchProgress.running === 0 && batchProgress.paused === 0) {
-          const batchRuns = Array.from(get().runs.values()).filter(
-            (r) => r.batchId === run.batchId
-          )
+          const batchRuns = Array.from(get().runs.values()).filter((r) => r.batchId === run.batchId)
           const runWithCallback = batchRuns.find((r) => r.onComplete)
-          console.log('[WorkflowRunStatus] Calling onComplete for batch', { batchId: run.batchId, hasCallback: !!runWithCallback })
+          console.log('[WorkflowRunStatus] Calling onComplete for batch', {
+            batchId: run.batchId,
+            hasCallback: !!runWithCallback,
+          })
           runWithCallback?.onComplete?.()
         }
       }

@@ -1,9 +1,6 @@
 // apps/web/src/app/(protected)/app/settings/general/_components/change-password.tsx
 'use client'
 
-import { useState } from 'react'
-import { RectangleEllipsis } from 'lucide-react'
-
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
@@ -15,14 +12,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Input } from '@auxx/ui/components/input'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
-import { client } from '~/auth/auth-client'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
+import { RectangleEllipsis } from 'lucide-react'
+import { useState } from 'react'
+import { client } from '~/auth/auth-client'
 import { PasswordStrengthIndicator } from '~/components/credentials/password-fields'
 import { useUser } from '~/hooks/use-user'
+import { api } from '~/trpc/react'
 
 /**
  * Component for changing or adding a password to user account
@@ -96,12 +95,12 @@ export function ChangePassword() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button variant='outline' size='sm'>
           <RectangleEllipsis />
           {hasPassword ? 'Change Password' : 'Add Password'}
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px] w-11/12">
+      <DialogContent className='sm:max-w-[425px] w-11/12'>
         <ChangePasswordDialogContent
           hasPassword={hasPassword}
           currentPassword={currentPassword}
@@ -162,66 +161,66 @@ function ChangePasswordDialogContent({
             : 'Add a password to your account for additional sign-in options'}
         </DialogDescription>
       </DialogHeader>
-      <div className="grid gap-4">
+      <div className='grid gap-4'>
         {hasPassword && (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="current-password">Current Password</Label>
+          <div className='flex flex-col gap-2'>
+            <Label htmlFor='current-password'>Current Password</Label>
             <Input
-              type="password"
-              id="current-password"
+              type='password'
+              id='current-password'
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
-              autoComplete="current-password"
-              placeholder="Password"
+              autoComplete='current-password'
+              placeholder='Password'
             />
           </div>
         )}
-        <div className="flex flex-col gap-2">
+        <div className='flex flex-col gap-2'>
           <Input
-            type="password"
-            id="new-password"
+            type='password'
+            id='new-password'
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            autoComplete="new-password"
-            placeholder="New Password"
+            autoComplete='new-password'
+            placeholder='New Password'
           />
         </div>
-        <div className="flex flex-col gap-2">
+        <div className='flex flex-col gap-2'>
           <Input
-            type="password"
-            id="confirm-password"
+            type='password'
+            id='confirm-password'
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            autoComplete="new-password"
-            placeholder="Confirm Password"
+            autoComplete='new-password'
+            placeholder='Confirm Password'
           />
         </div>
         <PasswordStrengthIndicator password={newPassword} confirmPassword={confirmPassword} />
 
         {hasPassword && (
-          <div className="flex gap-2 items-center">
+          <div className='flex gap-2 items-center'>
             <Checkbox
               onCheckedChange={(checked) =>
                 checked ? setSignOutDevices(true) : setSignOutDevices(false)
               }
             />
-            <p className="text-sm">Sign out from other devices</p>
+            <p className='text-sm'>Sign out from other devices</p>
           </div>
         )}
       </div>
       <DialogFooter>
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+        <Button variant='ghost' size='sm' onClick={onClose}>
+          Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
         </Button>
         <Button
-          variant="outline"
-          size="sm"
+          variant='outline'
+          size='sm'
           loading={loading}
-          loadingText="Saving..."
+          loadingText='Saving...'
           onClick={handlePasswordSubmit}
           data-dialog-submit>
           {hasPassword ? 'Change Password' : 'Add Password'}
-          <KbdSubmit variant="outline" size="sm" />
+          <KbdSubmit variant='outline' size='sm' />
         </Button>
       </DialogFooter>
     </>

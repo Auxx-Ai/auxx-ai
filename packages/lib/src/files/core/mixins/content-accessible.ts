@@ -1,9 +1,8 @@
 // packages/lib/src/files/core/mixins/content-accessible.ts
 
 import { eq } from 'drizzle-orm'
-import type { Constructor } from '../base-service'
-import type { BaseService } from '../base-service'
 import type { DownloadRef } from '../../adapters/base-adapter'
+import type { BaseService, Constructor } from '../base-service'
 
 /**
  * Interface for entities that have content access capabilities
@@ -105,11 +104,7 @@ export function withContentAccess<T extends Constructor<BaseService<any, any, an
         return null
       }
 
-      const rows = await (this.db as any)
-        .select()
-        .from(table)
-        .where(where)
-        .limit(1)
+      const rows = await (this.db as any).select().from(table).where(where).limit(1)
 
       return rows[0] ?? null
     }

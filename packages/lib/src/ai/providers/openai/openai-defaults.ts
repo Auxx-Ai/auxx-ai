@@ -1,11 +1,11 @@
 // packages/lib/src/ai/providers/openai/openai-defaults.ts
 
 import {
+  FetchFrom,
   type ModelCapabilities,
+  ModelType,
   // type ParameterRule,
   type ProviderCapabilities,
-  ModelType,
-  FetchFrom,
 } from '../types'
 
 export const OPENAI_CAPABILITIES: ProviderCapabilities = {

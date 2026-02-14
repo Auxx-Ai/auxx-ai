@@ -1,16 +1,15 @@
 // apps/web/src/components/groups/utils/index.ts
 
 export {
-  canViewGroup,
+  formatMemberType,
+  type GroupMetadata,
+  getGroupMetadata,
+  getInitials,
+  getMemberDisplayInfo,
+} from './group-utils'
+export {
+  canAdminGroup,
   canEditGroup,
   canManageMembers,
-  canAdminGroup,
+  canViewGroup,
 } from './permission-utils'
-
-export {
-  getGroupMetadata,
-  formatMemberType,
-  getMemberDisplayInfo,
-  getInitials,
-  type GroupMetadata,
-} from './group-utils'

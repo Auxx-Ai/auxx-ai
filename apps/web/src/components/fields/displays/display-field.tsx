@@ -1,26 +1,26 @@
 // apps/web/src/components/fields/displays/display-field.tsx
 
-import { DisplayDate } from './display-date'
-import { DisplayText } from './display-text'
-import { DisplayNumber } from './display-number'
-import { DisplayCurrency } from './display-currency'
-import { DisplayPhone } from './display-phone'
-import { DisplayEmail } from './display-email'
-import { DisplayUrl } from './display-url'
-import { DisplayCheckbox } from './display-checkbox'
-import { DisplayTags } from './display-tags'
-import { DisplayAddress, DisplayAddressStruct } from './display-address'
-import { DisplaySingleSelect } from './display-single-select'
-import { DisplayMultiSelect } from './display-multi-select'
-import { DisplayRichText } from './display-rich-text'
-import { DisplayFile } from './display-file'
-import { DisplayName } from './display-name'
-import { DisplayRelationship } from './display-relationship'
-import { DisplayActor } from './display-actor'
-import { DisplayJson } from './display-json'
-import { usePropertyContext } from '../property-provider'
-import { useDisplayOnlyContext } from '../display-only-provider'
 import { FieldType } from '@auxx/database/enums'
+import { useDisplayOnlyContext } from '../display-only-provider'
+import { usePropertyContext } from '../property-provider'
+import { DisplayActor } from './display-actor'
+import { DisplayAddress, DisplayAddressStruct } from './display-address'
+import { DisplayCheckbox } from './display-checkbox'
+import { DisplayCurrency } from './display-currency'
+import { DisplayDate } from './display-date'
+import { DisplayEmail } from './display-email'
+import { DisplayFile } from './display-file'
+import { DisplayJson } from './display-json'
+import { DisplayMultiSelect } from './display-multi-select'
+import { DisplayName } from './display-name'
+import { DisplayNumber } from './display-number'
+import { DisplayPhone } from './display-phone'
+import { DisplayRelationship } from './display-relationship'
+import { DisplayRichText } from './display-rich-text'
+import { DisplaySingleSelect } from './display-single-select'
+import { DisplayTags } from './display-tags'
+import { DisplayText } from './display-text'
+import { DisplayUrl } from './display-url'
 
 /**
  * Helper hook that tries PropertyContext first (editable fields),
@@ -38,7 +38,10 @@ export function useFieldContext() {
  * Get the effective field type for rendering.
  * For CALC fields, returns the resultFieldType; otherwise returns the field's type.
  */
-function getEffectiveFieldType(field: { fieldType: string; options?: { calc?: { resultFieldType?: string } } }): string {
+function getEffectiveFieldType(field: {
+  fieldType: string
+  options?: { calc?: { resultFieldType?: string } }
+}): string {
   if (field.fieldType === FieldType.CALC) {
     return field.options?.calc?.resultFieldType ?? FieldType.TEXT
   }

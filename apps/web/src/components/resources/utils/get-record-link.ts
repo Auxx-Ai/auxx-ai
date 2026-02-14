@@ -2,9 +2,9 @@
 
 'use client'
 
-import { useMemo } from 'react'
 import type { RecordId, Resource } from '@auxx/lib/resources/client'
-import { parseRecordId, getDefinitionId, isSystemResource } from '@auxx/lib/resources/client'
+import { getDefinitionId, isSystemResource, parseRecordId } from '@auxx/lib/resources/client'
+import { useMemo } from 'react'
 import { useResourceStore } from '../store/resource-store'
 
 /**
@@ -147,8 +147,7 @@ export function getRecordLink(
 
   // Make absolute if requested
   if (options.absolute) {
-    const baseUrl =
-      options.baseUrl || (typeof window !== 'undefined' ? window.location.origin : '')
+    const baseUrl = options.baseUrl || (typeof window !== 'undefined' ? window.location.origin : '')
     href = `${baseUrl}${href}`
   }
 

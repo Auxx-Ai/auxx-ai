@@ -1,8 +1,8 @@
 // packages/lib/src/workflow-engine/nodes/utils/ai-node-utils.ts
 
-import type { ExecutionContextManager } from '../../core/execution-context'
-import type { Tool, Message } from '../../../ai/clients/base/types'
+import type { Message, Tool } from '../../../ai/clients/base/types'
 import type { AICallbacks } from '../../../ai/orchestrator/types'
+import type { ExecutionContextManager } from '../../core/execution-context'
 
 /**
  * Prompt template interface used by AI nodes
@@ -38,7 +38,7 @@ export interface OrgUserContext {
  * @throws Error if organizationId or userId is missing
  */
 export async function extractOrgUserContext(
-  contextManager: ExecutionContextManager,
+  contextManager: ExecutionContextManager
 ): Promise<OrgUserContext> {
   const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
   const userId = (await contextManager.getVariable('sys.userId')) as string
@@ -186,7 +186,7 @@ export function interpolateVariablesFromContext(
 export async function buildMessagesFromTemplates(
   templates: PromptTemplate[],
   contextManager: ExecutionContextManager,
-  interpolateFn: (text: string, contextManager: ExecutionContextManager) => Promise<string>,
+  interpolateFn: (text: string, contextManager: ExecutionContextManager) => Promise<string>
 ): Promise<Message[]> {
   const messages: Message[] = []
 
@@ -247,8 +247,7 @@ export function convertToolsToOrchestratorFormat(workflowTools: any[]): Tool[] {
     function: {
       name: tool.name,
       description: tool.description || `Execute ${tool.name} tool`,
-      parameters:
-        tool.parameters ||
+      parameters: tool.parameters ||
         tool.schema || {
           type: 'object',
           properties: {},
@@ -364,9 +363,11 @@ export function validateModelConfig(config: any): { valid: boolean; errors: stri
  * @param templates - Array of prompt templates
  * @returns Validation result with errors
  */
-export function validatePromptTemplates(
-  templates: any
-): { valid: boolean; errors: string[]; warnings: string[] } {
+export function validatePromptTemplates(templates: any): {
+  valid: boolean
+  errors: string[]
+  warnings: string[]
+} {
   const errors: string[] = []
   const warnings: string[] = []
 

@@ -1,9 +1,9 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/code.ts
 
-import { BaseNodeProcessor } from '../base-node'
-import type { WorkflowNode, NodeExecutionResult, ValidationResult } from '../../core/types'
-import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import type { ExecutionContextManager } from '../../core/execution-context'
+import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
+import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { BaseNodeProcessor } from '../base-node'
 
 interface CodeNodeData {
   // Base node properties (actual structure from workflow engine)
@@ -62,7 +62,7 @@ export class CodeProcessor extends BaseNodeProcessor {
       // Store outputs as variables
       if (config.outputs && result) {
         for (const output of config.outputs) {
-          if (Object.prototype.hasOwnProperty.call(result, output.name)) {
+          if (Object.hasOwn(result, output.name)) {
             contextManager.setNodeVariable(node.nodeId, output.name, result[output.name])
           }
         }

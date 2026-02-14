@@ -1,19 +1,14 @@
 // apps/web/src/lib/extensions/forms/deserialize-schema.ts
 
 import { z } from 'zod'
+import { handleDeserializationError, handleUnknownFieldType } from './error-handler'
 import type { SerializedFormValue } from './types'
-import {
-  handleDeserializationError,
-  handleUnknownFieldType,
-} from './error-handler'
 
 /**
  * Deserialize a serialized form schema into a Zod schema.
  * Recreates validation rules from metadata.
  */
-export function deserializeSchema(
-  fields: Record<string, SerializedFormValue>
-): z.ZodObject<any> {
+export function deserializeSchema(fields: Record<string, SerializedFormValue>): z.ZodObject<any> {
   const shape: Record<string, z.ZodTypeAny> = {}
 
   try {
@@ -30,10 +25,7 @@ export function deserializeSchema(
 /**
  * Deserialize a single field.
  */
-function deserializeField(
-  name: string,
-  field: SerializedFormValue
-): z.ZodTypeAny {
+function deserializeField(name: string, field: SerializedFormValue): z.ZodTypeAny {
   switch (field.type) {
     case 'string':
       return deserializeStringField(field)
@@ -111,27 +103,19 @@ function deserializeNumberField(
   const { metadata } = field
   const errors = metadata.errorMessages || {}
 
-  let schema: any = z
-    .number({ message: errors.required || 'Required' })
-    .or(
-      z.string().transform((val) => {
-        const num = parseFloat(val)
-        return isNaN(num) ? undefined : num
-      })
-    )
+  let schema: any = z.number({ message: errors.required || 'Required' }).or(
+    z.string().transform((val) => {
+      const num = parseFloat(val)
+      return isNaN(num) ? undefined : num
+    })
+  )
 
   if (metadata.min !== undefined) {
-    schema = schema.min(
-      metadata.min,
-      errors.min || `Must be at least ${metadata.min}`
-    )
+    schema = schema.min(metadata.min, errors.min || `Must be at least ${metadata.min}`)
   }
 
   if (metadata.max !== undefined) {
-    schema = schema.max(
-      metadata.max,
-      errors.max || `Must be ${metadata.max} or less`
-    )
+    schema = schema.max(metadata.max, errors.max || `Must be ${metadata.max} or less`)
   }
 
   if (metadata.integer) {
@@ -183,10 +167,7 @@ function deserializeSelectField(
     throw new Error('Select field must have at least one option')
   }
 
-  const values = metadata.options.map((opt) => opt.value) as [
-    string,
-    ...string[],
-  ]
+  const values = metadata.options.map((opt) => opt.value) as [string, ...string[]]
   let schema: any = z.enum(values, {
     message: errors.required || 'Please select an option',
   })

@@ -1,6 +1,6 @@
 // packages/sdk/__tests__/workflow-serialization.test.ts
 
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { Workflow } from '../src/root/workflow'
 
 describe('Workflow Field Serialization', () => {
@@ -83,17 +83,20 @@ describe('Workflow Field Serialization', () => {
 
   describe('Nested Structures', () => {
     it('should serialize struct with nested fields', () => {
-      const personField = Workflow.struct({
-        name: Workflow.string({ label: 'Name', required: true }),
-        age: Workflow.number({ label: 'Age', min: 0, max: 120 }),
-        email: Workflow.string({
-          label: 'Email',
-          pattern: '^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}$',
-        }),
-      }, {
-        label: 'Person',
-        description: 'Person information',
-      })
+      const personField = Workflow.struct(
+        {
+          name: Workflow.string({ label: 'Name', required: true }),
+          age: Workflow.number({ label: 'Age', min: 0, max: 120 }),
+          email: Workflow.string({
+            label: 'Email',
+            pattern: '^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}$',
+          }),
+        },
+        {
+          label: 'Person',
+          description: 'Person information',
+        }
+      )
 
       const json = personField.toJSON()
 
@@ -181,21 +184,24 @@ describe('Workflow Field Serialization', () => {
     })
 
     it('should serialize complex output structures', () => {
-      const resultOutput = Workflow.struct({
-        id: Workflow.string({ label: 'ID', description: 'Result ID' }),
-        status: Workflow.string({ label: 'Status', description: 'Result status' }),
-        data: Workflow.object({ label: 'Data', description: 'Result data' }),
-        items: Workflow.array({
-          label: 'Items',
-          items: Workflow.struct({
-            name: Workflow.string({ label: 'Name' }),
-            value: Workflow.number({ label: 'Value' }),
+      const resultOutput = Workflow.struct(
+        {
+          id: Workflow.string({ label: 'ID', description: 'Result ID' }),
+          status: Workflow.string({ label: 'Status', description: 'Result status' }),
+          data: Workflow.object({ label: 'Data', description: 'Result data' }),
+          items: Workflow.array({
+            label: 'Items',
+            items: Workflow.struct({
+              name: Workflow.string({ label: 'Name' }),
+              value: Workflow.number({ label: 'Value' }),
+            }),
           }),
-        }),
-      }, {
-        label: 'API Response',
-        description: 'Response from API call',
-      })
+        },
+        {
+          label: 'API Response',
+          description: 'Response from API call',
+        }
+      )
 
       const json = resultOutput.toJSON()
 

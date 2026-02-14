@@ -1,14 +1,14 @@
 // packages/lib/src/field-values/converters/actor.ts
 
-import type {
-  TypedFieldValueInput,
-  TypedFieldValue,
-  ActorFieldValue,
-  ActorFieldValueInput,
-} from '@auxx/types/field-value'
 import type { ActorId } from '@auxx/types/actor'
 import { isActorId, parseActorId, toActorId } from '@auxx/types/actor'
-import type { FieldValueConverter, FieldOptions } from './index'
+import type {
+  ActorFieldValue,
+  ActorFieldValueInput,
+  TypedFieldValue,
+  TypedFieldValueInput,
+} from '@auxx/types/field-value'
+import type { FieldOptions, FieldValueConverter } from './index'
 
 /**
  * Converter for ACTOR field type.
@@ -38,7 +38,9 @@ export const actorConverter: FieldValueConverter = {
         const actorValue = typed as ActorFieldValueInput
         if (!actorValue.id) return null
         // Parse id if it's in ActorId format
-        const rawId = isActorId(actorValue.id) ? parseActorId(actorValue.id as ActorId).id : actorValue.id
+        const rawId = isActorId(actorValue.id)
+          ? parseActorId(actorValue.id as ActorId).id
+          : actorValue.id
         return { type: 'actor', actorType: actorValue.actorType, id: rawId }
       }
     }

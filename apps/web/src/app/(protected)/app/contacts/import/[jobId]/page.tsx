@@ -14,10 +14,10 @@ export default async function ContactsImportStepPage({ params }: PageProps) {
 
   return (
     <ImportPage
-      entityDefinitionId="contact"
-      resourceLabel="Contacts"
-      basePath="/app/contacts"
-      importBasePath="/app/contacts/import"
+      entityDefinitionId='contact'
+      resourceLabel='Contacts'
+      basePath='/app/contacts'
+      importBasePath='/app/contacts/import'
       jobId={jobId}
     />
   )

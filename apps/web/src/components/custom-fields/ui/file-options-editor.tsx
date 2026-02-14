@@ -1,16 +1,16 @@
 // apps/web/src/components/custom-fields/ui/file-options-editor.tsx
 'use client'
 
-import { useState } from 'react'
-import { Switch } from '@auxx/ui/components/switch'
+import type { FieldOptions } from '@auxx/lib/field-values/client'
+import { FILE_TYPE_CATEGORIES, type FileTypeCategory } from '@auxx/lib/files/client'
+import { CheckboxGroup, CheckboxGroupItem } from '@auxx/ui/components/checkbox-group'
+import { Field, FieldGroup, FieldLabel } from '@auxx/ui/components/field'
 import { Label } from '@auxx/ui/components/label'
 import { Slider } from '@auxx/ui/components/slider'
-import { CheckboxGroup, CheckboxGroupItem } from '@auxx/ui/components/checkbox-group'
-import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
-import { Image, FileText, Video, Music, FileQuestion } from 'lucide-react'
-import { FILE_TYPE_CATEGORIES, type FileTypeCategory } from '@auxx/lib/files/client'
-import { TagInput, type Tag } from '~/components/tag-input/tag-input'
-import type { FieldOptions } from '@auxx/lib/field-values/client'
+import { Switch } from '@auxx/ui/components/switch'
+import { FileQuestion, FileText, Image, Music, Video } from 'lucide-react'
+import { useState } from 'react'
+import { type Tag, TagInput } from '~/components/tag-input/tag-input'
 
 /** File options structure for the editor */
 export interface FileOptions {
@@ -188,12 +188,12 @@ export function FileOptionsEditor({ options, onChange, disabled }: FileOptionsEd
   }
 
   return (
-    <div className="rounded-xl border py-3 px-3 bg-primary-50 space-y-4">
+    <div className='rounded-xl border py-3 px-3 bg-primary-50 space-y-4'>
       {/* Allow Multiple Toggle */}
-      <div className="flex items-center space-x-2">
+      <div className='flex items-center space-x-2'>
         <Switch
-          id="allow-multiple"
-          size="sm"
+          id='allow-multiple'
+          size='sm'
           checked={options.allowMultiple ?? false}
           onCheckedChange={(checked) =>
             onChange({
@@ -204,16 +204,16 @@ export function FileOptionsEditor({ options, onChange, disabled }: FileOptionsEd
           }
           disabled={disabled}
         />
-        <Label htmlFor="allow-multiple">Allow multiple files</Label>
+        <Label htmlFor='allow-multiple'>Allow multiple files</Label>
       </div>
 
       {/* Max Files Slider - only shown when allowMultiple is true */}
       {showMaxFiles && (
-        <FieldGroup className="gap-2">
+        <FieldGroup className='gap-2'>
           <Field>
-            <div className="flex items-center justify-between">
+            <div className='flex items-center justify-between'>
               <FieldLabel>Maximum files</FieldLabel>
-              <span className="text-sm text-muted-foreground">{options.maxFiles || 10}</span>
+              <span className='text-sm text-muted-foreground'>{options.maxFiles || 10}</span>
             </div>
             <Slider
               value={[options.maxFiles || 10]}
@@ -222,14 +222,14 @@ export function FileOptionsEditor({ options, onChange, disabled }: FileOptionsEd
               max={10}
               step={1}
               disabled={disabled}
-              className="py-2"
+              className='py-2'
             />
           </Field>
         </FieldGroup>
       )}
 
       {/* File Types Selection */}
-      <FieldGroup className="gap-2">
+      <FieldGroup className='gap-2'>
         <FieldLabel>Allowed file types</FieldLabel>
         <CheckboxGroup
           value={selectedTypes}
@@ -254,7 +254,7 @@ export function FileOptionsEditor({ options, onChange, disabled }: FileOptionsEd
 
       {/* Custom Extensions Input - only shown when 'custom' is selected */}
       {showCustomInput && (
-        <FieldGroup className="gap-2">
+        <FieldGroup className='gap-2'>
           <Field>
             <FieldLabel>Custom extensions</FieldLabel>
             <TagInput
@@ -262,9 +262,9 @@ export function FileOptionsEditor({ options, onChange, disabled }: FileOptionsEd
               setTags={setExtensionTags}
               activeTagIndex={activeTagIndex}
               setActiveTagIndex={setActiveTagIndex}
-              placeholder="Type extension and press Enter"
+              placeholder='Type extension and press Enter'
               disabled={disabled}
-              size="sm"
+              size='sm'
               styleClasses={{
                 inlineTagsContainer: 'min-h-9 bg-background',
               }}

@@ -2,67 +2,60 @@
 
 import { schema } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
-import { and, eq, asc } from 'drizzle-orm'
-import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import {
-  type TypedFieldValue,
-  type TypedFieldValueInput,
-  isMultiValueFieldType,
-} from '@auxx/types'
-import {
-  getExistingFieldValue,
-  insertFieldValue,
   batchInsertFieldValues,
-  updateFieldValue,
   deleteFieldValues,
   type FieldWithDefinition,
+  getExistingFieldValue,
+  insertFieldValue,
+  updateFieldValue,
 } from '@auxx/services'
-import { formatToTypedInput } from './formatter'
+import { isMultiValueFieldType, type TypedFieldValue, type TypedFieldValueInput } from '@auxx/types'
+import { isSelfReferentialRelationship, type RelationshipConfig } from '@auxx/types/custom-field'
+import type { RecordId } from '@auxx/types/resource'
+import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
+import { and, asc, eq } from 'drizzle-orm'
 import {
-  getExistingRelatedIds,
-  batchGetExistingRelatedIds,
-  syncInverseRelationships,
-  syncInverseRelationshipsBulk,
-  type BulkRelationshipUpdate,
-} from './relationship-sync'
-import {
-  isBuiltInField,
   getBuiltInFieldHandler,
   getBuiltInFieldType,
+  isBuiltInField,
 } from '../custom-fields/built-in-fields'
 import { checkUniqueValueTyped } from '../custom-fields/check-unique-value-typed'
-import { parseRecordId, getModelType, isRecordId } from '../resources/resource-id'
-import type { RecordId } from '@auxx/types/resource'
 import { publisher } from '../events'
 import type { ContactFieldUpdatedEvent } from '../events/types'
-import type {
-  SetValueInput,
-  SetValueWithTypeInput,
-  AddValueInput,
-  DeleteValueInput,
-  SetValueWithBuiltInInput,
-  SetValuesForEntityInput,
-  SetBulkValuesInput,
-  SetValueResult,
-  SetValuesResult,
-  FieldValueRow,
-} from './types'
+import { getModelType, isRecordId, parseRecordId } from '../resources/resource-id'
 import {
   type FieldValueContext,
-  type InverseFieldInfo,
   getField,
   getInverseInfoFromField,
+  type InverseFieldInfo,
+  maybeUpdateDisplayValue,
+  preBatchValidateRelationships,
   rowToTypedValue,
   validateAndConvertValue,
-  preBatchValidateRelationships,
-  maybeUpdateDisplayValue,
 } from './field-value-helpers'
 import { getValue } from './field-value-queries'
+import { formatToTypedInput } from './formatter'
 import {
-  validateSelfReferentialChange,
-  type ValidationContext,
-} from './relationship-validators'
-import { isSelfReferentialRelationship, type RelationshipConfig } from '@auxx/types/custom-field'
+  type BulkRelationshipUpdate,
+  batchGetExistingRelatedIds,
+  getExistingRelatedIds,
+  syncInverseRelationships,
+  syncInverseRelationshipsBulk,
+} from './relationship-sync'
+import { type ValidationContext, validateSelfReferentialChange } from './relationship-validators'
+import type {
+  AddValueInput,
+  DeleteValueInput,
+  FieldValueRow,
+  SetBulkValuesInput,
+  SetValueInput,
+  SetValueResult,
+  SetValuesForEntityInput,
+  SetValuesResult,
+  SetValueWithBuiltInInput,
+  SetValueWithTypeInput,
+} from './types'
 
 // =============================================================================
 // SELF-REFERENTIAL VALIDATION
@@ -275,9 +268,7 @@ export async function setValueWithType(
   // Insert all values
   const inserted = await ctx.db.insert(schema.FieldValue).values(insertRows).returning()
 
-  const result = inserted.map((row) =>
-    rowToTypedValue(row as unknown as FieldValueRow, fieldType)
-  )
+  const result = inserted.map((row) => rowToTypedValue(row as unknown as FieldValueRow, fieldType))
 
   // Update display value if this is a display field
   await maybeUpdateDisplayValue(ctx, recordId, field, value)
@@ -285,8 +276,9 @@ export async function setValueWithType(
   // Sync inverse relationships
   if (inverseInfo) {
     const newRelatedIds = values
-      .filter((v): v is { type: 'relationship'; recordId: RecordId } =>
-        v.type === 'relationship' && !!(v as { recordId?: RecordId }).recordId
+      .filter(
+        (v): v is { type: 'relationship'; recordId: RecordId } =>
+          v.type === 'relationship' && !!(v as { recordId?: RecordId }).recordId
       )
       .map((v) => parseRecordId(v.recordId).entityInstanceId)
 
@@ -1048,7 +1040,9 @@ function buildInsertRow(
       return { ...base, optionId: value.optionId }
     case 'relationship': {
       // Parse recordId back to two DB columns
-      const { entityDefinitionId: relDefId, entityInstanceId: relInstId } = parseRecordId(value.recordId)
+      const { entityDefinitionId: relDefId, entityInstanceId: relInstId } = parseRecordId(
+        value.recordId
+      )
       return {
         ...base,
         relatedEntityId: relInstId,

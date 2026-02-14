@@ -1,27 +1,27 @@
 // apps/web/src/server/api/routers/tableView.ts
 
-import { z } from 'zod'
-import { TRPCError } from '@trpc/server'
-import { createTRPCRouter, protectedProcedure, adminProcedure } from '~/server/api/trpc'
 import {
-  viewConfigSchema,
+  type FieldViewConfig,
   fieldViewConfigSchema,
+  type ViewConfig,
+  viewConfigSchema,
   viewContextTypeSchema,
   viewContextTypes,
-  type ViewConfig,
-  type FieldViewConfig,
 } from '@auxx/lib/conditions'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
 import {
-  listViews,
-  listAllViews,
-  getView,
   createView,
-  updateView,
-  duplicateView,
   deleteView,
+  duplicateView,
+  getView,
+  listAllViews,
+  listViews,
   setDefaultView,
+  updateView,
 } from '@auxx/services/table-view'
+import { TRPCError } from '@trpc/server'
+import { z } from 'zod'
+import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 /**
  * Map service error codes to TRPCError

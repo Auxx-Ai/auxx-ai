@@ -2,7 +2,6 @@
 
 'use client'
 
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -10,14 +9,15 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
-  DatasetsStatsCards,
+  CreateDatasetButton,
+  DatasetsEmptyState,
   DatasetsFilterBar,
   DatasetsGridView,
-  DatasetsEmptyState,
   DatasetsProvider,
+  DatasetsStatsCards,
   useDatasets,
-  CreateDatasetButton,
 } from '~/components/datasets'
 
 /**
@@ -35,8 +35,8 @@ function DatasetsPageContent() {
           </>
         }>
         <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title="Datasets" href="/app/datasets" />
-          <MainPageBreadcrumbItem title="Overview" last />
+          <MainPageBreadcrumbItem title='Datasets' href='/app/datasets' />
+          <MainPageBreadcrumbItem title='Overview' last />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>
@@ -47,14 +47,14 @@ function DatasetsPageContent() {
         <DatasetsFilterBar />
 
         {/* Datasets Content */}
-        <div className="flex-1 flex flex-col h-full overflow-y-auto bg-muted @container">
+        <div className='flex-1 flex flex-col h-full overflow-y-auto bg-muted @container'>
           {isLoading ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 p-3">
+            <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 p-3'>
               {[...Array(8)].map((_, i) => (
-                <div key={i} className="border rounded-lg p-4">
-                  <Skeleton className="h-4 w-3/4 mb-2" />
-                  <Skeleton className="h-3 w-1/2 mb-4" />
-                  <Skeleton className="h-20 w-full" />
+                <div key={i} className='border rounded-lg p-4'>
+                  <Skeleton className='h-4 w-3/4 mb-2' />
+                  <Skeleton className='h-3 w-1/2 mb-4' />
+                  <Skeleton className='h-20 w-full' />
                 </div>
               ))}
             </div>
@@ -64,7 +64,7 @@ function DatasetsPageContent() {
             <DatasetsGridView />
           ) : (
             // TODO: Implement table view
-            <div className="text-center text-muted-foreground">Table view coming soon...</div>
+            <div className='text-center text-muted-foreground'>Table view coming soon...</div>
           )}
         </div>
       </MainPageContent>

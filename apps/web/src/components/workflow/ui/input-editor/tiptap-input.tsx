@@ -2,13 +2,13 @@
 
 'use client'
 
-import React, { useRef, useCallback, useEffect } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
 import { EditorContent } from '@tiptap/react'
+import React, { useCallback, useEffect, useRef } from 'react'
 import { InlinePickerPopover } from '~/components/editor/inline-picker'
 import { VariableExplorerEnhanced } from '../variables/variable-explorer-enhanced'
 import { useWorkflowVariableEditor } from './hooks/use-workflow-variable-editor'
-import { type InputEditorProps } from './types'
+import type { InputEditorProps } from './types'
 
 /**
  * TiptapInput component for workflow variable editing.
@@ -30,24 +30,18 @@ const TiptapInput: React.FC<InputEditorProps> = React.memo(
   }) => {
     const containerRef = useRef<HTMLDivElement>(null)
 
-    const {
-      editor,
-      suggestionState,
-      insertVariable,
-      closePicker,
-      flushPendingChanges,
-      isFocused,
-    } = useWorkflowVariableEditor({
-      initialContent: value,
-      onContentChange: onChange,
-      onBlur,
-      onFocus,
-      nodeId,
-      placeholder,
-      tabIndex,
-      expectedTypes,
-      editable: !disabled && !readOnly,
-    })
+    const { editor, suggestionState, insertVariable, closePicker, flushPendingChanges, isFocused } =
+      useWorkflowVariableEditor({
+        initialContent: value,
+        onContentChange: onChange,
+        onBlur,
+        onFocus,
+        nodeId,
+        placeholder,
+        tabIndex,
+        expectedTypes,
+        editable: !disabled && !readOnly,
+      })
 
     // Handle component unmount - flush any pending changes
     useEffect(() => {
@@ -61,7 +55,11 @@ const TiptapInput: React.FC<InputEditorProps> = React.memo(
      * (Same pattern as task-dialog.tsx)
      */
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-      if (e.key === 'Escape' && e.target instanceof HTMLElement && e.target.closest('[cmdk-root]')) {
+      if (
+        e.key === 'Escape' &&
+        e.target instanceof HTMLElement &&
+        e.target.closest('[cmdk-root]')
+      ) {
         e.preventDefault()
         e.stopPropagation()
       }
@@ -82,7 +80,7 @@ const TiptapInput: React.FC<InputEditorProps> = React.memo(
         onKeyDown={handleKeyDown}>
         <EditorContent
           editor={editor}
-          className="input-editor-field focus:outline-none focus:ring-0 h-full [&>*:first-child]:focus:outline-none"
+          className='input-editor-field focus:outline-none focus:ring-0 h-full [&>*:first-child]:focus:outline-none'
         />
 
         {/* Variable picker popover */}
@@ -95,14 +93,14 @@ const TiptapInput: React.FC<InputEditorProps> = React.memo(
             nodeId={nodeId}
             onVariableSelect={(variable) => insertVariable(variable.id)}
             allowedTypes={expectedTypes}
-            className="max-h-[400px]"
-            placeholder="Type in editor to filter..."
+            className='max-h-[400px]'
+            placeholder='Type in editor to filter...'
             onClose={closePicker}
           />
         </InlinePickerPopover>
 
         {/* Read-only overlay to prevent interaction */}
-        {showReadOnlyOverlay && <div className="absolute inset-0 z-10" />}
+        {showReadOnlyOverlay && <div className='absolute inset-0 z-10' />}
       </div>
     )
   }

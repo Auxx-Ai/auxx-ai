@@ -2,7 +2,7 @@
 
 import Papa from 'papaparse'
 import { MAX_FILE_SIZE_BYTES } from '../constants'
-import type { ParsedCSVData, ColumnHeader } from '../types'
+import type { ColumnHeader, ParsedCSVData } from '../types'
 
 /** Parse CSV error types */
 export interface ParseCSVError {

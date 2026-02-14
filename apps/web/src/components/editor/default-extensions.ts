@@ -1,8 +1,10 @@
+import { cx } from 'class-variance-authority'
 import {
   AIHighlight,
   CharacterCount,
   Color,
   CustomKeymap,
+  FontSize,
   GlobalDragHandle,
   HighlightExtension,
   HorizontalRule,
@@ -21,11 +23,9 @@ import {
   TiptapLink,
   TiptapUnderline,
   UpdatedImage,
-  FontSize,
 } from './extensions'
 import { UploadImagesPlugin } from './plugins'
 
-import { cx } from 'class-variance-authority'
 // import { common, createLowlight } from 'lowlight'
 
 //TODO I am using cx here to get tailwind autocomplete working, idk if someone else can write a regex to just capture the class key in objects

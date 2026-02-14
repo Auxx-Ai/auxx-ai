@@ -1,7 +1,7 @@
 // packages/services/src/entity-instances/create-entity-instance.ts
 
 import { type Database, database, schema } from '@auxx/database'
-import { ok, err } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 
 /** Parameters for creating an entity instance */

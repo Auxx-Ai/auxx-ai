@@ -1,6 +1,6 @@
 // packages/sdk/src/root/workflow/auxx-rule-node.ts
 
-import { WorkflowFieldNode, type BaseWorkflowFieldOptions } from './base-node.js'
+import { type BaseWorkflowFieldOptions, WorkflowFieldNode } from './base-node.js'
 import type { TransformationContext } from './values/types.js'
 
 /**

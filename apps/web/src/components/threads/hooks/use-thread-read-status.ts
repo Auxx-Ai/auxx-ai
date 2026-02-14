@@ -1,11 +1,11 @@
 // apps/web/src/components/threads/hooks/use-thread-read-status.ts
 
-import { useCallback } from 'react'
-import { useThreadStore } from '../store'
-import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
+import { useCallback } from 'react'
+import { type ThreadCountContext, useCountUpdates } from '~/components/mail/hooks'
 import { useUser } from '~/hooks/use-user'
-import { useCountUpdates, type ThreadCountContext } from '~/components/mail/hooks'
+import { api } from '~/trpc/react'
+import { useThreadStore } from '../store'
 
 interface UseThreadReadStatusResult {
   isUnread: boolean
@@ -34,10 +34,7 @@ export function useThreadReadStatus(threadId: string | null): UseThreadReadStatu
 
   // Get full thread data for count context
   const thread = useThreadStore(
-    useCallback(
-      (state) => (threadId ? state.threads.get(threadId) : undefined),
-      [threadId]
-    )
+    useCallback((state) => (threadId ? state.threads.get(threadId) : undefined), [threadId])
   )
 
   const updateThread = useThreadStore((s) => s.updateThread)

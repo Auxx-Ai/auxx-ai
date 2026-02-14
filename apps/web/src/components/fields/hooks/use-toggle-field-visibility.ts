@@ -1,13 +1,13 @@
 // apps/web/src/components/fields/hooks/use-toggle-field-visibility.ts
 'use client'
 
-import { useCallback } from 'react'
-import type { ViewContextType, FieldViewConfig } from '@auxx/lib/conditions'
+import type { FieldViewConfig, ViewContextType } from '@auxx/lib/conditions'
 import { createDefaultFieldViewConfig } from '@auxx/lib/conditions'
-import { api } from '~/trpc/react'
+import { toastError } from '@auxx/ui/components/toast'
+import { useCallback } from 'react'
 import { useDynamicTableStore } from '~/components/dynamic-table/stores/dynamic-table-store'
 import { useOrgFieldView } from '~/components/dynamic-table/stores/store-selectors'
-import { toastError } from '@auxx/ui/components/toast'
+import { api } from '~/trpc/react'
 
 interface UseToggleFieldVisibilityOptions {
   /** Entity definition ID (e.g., 'contact', 'ticket') */
@@ -34,7 +34,13 @@ export function useToggleFieldVisibility({
 
   // Mutation for updating existing view
   const updateView = api.tableView.update.useMutation({
-    onMutate: async ({ resourceFieldId, visible }: { resourceFieldId: string; visible: boolean }) => {
+    onMutate: async ({
+      resourceFieldId,
+      visible,
+    }: {
+      resourceFieldId: string
+      visible: boolean
+    }) => {
       // Save previous state for rollback
       const config = view?.config as FieldViewConfig | undefined
       const previousVisible = config?.fieldVisibility?.[resourceFieldId] ?? true

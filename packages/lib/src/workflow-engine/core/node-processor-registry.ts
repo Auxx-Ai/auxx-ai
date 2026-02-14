@@ -1,43 +1,42 @@
 // packages/lib/src/workflow-engine/core/node-processor-registry.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { WorkflowNodeType, NodeProcessor } from './types'
-
-// Import all processors at the top
-import { MessageReceivedProcessor } from '../nodes/trigger-nodes/message-received'
-import { WebhookProcessor } from '../nodes/trigger-nodes/webhook-processor'
-import { ManualTriggerProcessor } from '../nodes/trigger-nodes/manual'
-import { ScheduledTriggerProcessor } from '../nodes/trigger-nodes/scheduled'
-import { IfElseProcessor } from '../nodes/condition-nodes/if-else'
+import { AIProcessorV2 } from '../nodes/action-nodes/ai-v2'
 // import { RuleMatchProcessor } from '../nodes/condition-nodes/rule-match'
 import { AnswerProcessor } from '../nodes/action-nodes/answer'
-import { AIProcessorV2 } from '../nodes/action-nodes/ai-v2'
 import { CodeProcessor } from '../nodes/action-nodes/code'
-import { ExecuteProcessor } from '../nodes/action-nodes/execute'
-import { VariableSetProcessor } from '../nodes/action-nodes/variable-set'
-import { HttpProcessor } from '../nodes/action-nodes/http'
-import { FindProcessor } from '../nodes/action-nodes/find'
 import { CrudNodeProcessor } from '../nodes/action-nodes/crud'
+import { ExecuteProcessor } from '../nodes/action-nodes/execute'
+import { FindProcessor } from '../nodes/action-nodes/find'
+import { HttpProcessor } from '../nodes/action-nodes/http'
 import { HumanConfirmationProcessor } from '../nodes/action-nodes/human-confirmation'
-import { EndProcessor } from '../nodes/flow-nodes/end'
-// JoinNode removed - merging now handled in workflow-engine.ts
-import { TextClassifierProcessor } from '../nodes/transform-nodes/text-classifier'
-import { InformationExtractorProcessor } from '../nodes/transform-nodes/information-extractor'
-import { VarAssignProcessor } from '../nodes/transform-nodes/var-assign-processor'
-import { DateTimeProcessor } from '../nodes/transform-nodes/date-time-processor'
-import { ListProcessor } from '../nodes/transform-nodes/list-processor'
-import { WaitNodeProcessor } from '../nodes/wait'
-import { LoopProcessor } from '../nodes/flow-nodes/loop'
-import { ResourceTriggerBase } from '../nodes/triggers/resource-trigger-base'
+import { VariableSetProcessor } from '../nodes/action-nodes/variable-set'
 import {
   AppWorkflowBlockProcessor,
   type WorkflowBlockMetadata,
 } from '../nodes/app-workflow-block-processor'
-import { DocumentExtractorProcessor } from '../nodes/dataset/document-extractor'
+import { IfElseProcessor } from '../nodes/condition-nodes/if-else'
 import { ChunkerProcessor } from '../nodes/dataset/chunker'
 import { DatasetProcessor } from '../nodes/dataset/dataset'
+import { DocumentExtractorProcessor } from '../nodes/dataset/document-extractor'
 import { KnowledgeRetrievalProcessor } from '../nodes/dataset/knowledge-retrieval'
+import { EndProcessor } from '../nodes/flow-nodes/end'
+import { LoopProcessor } from '../nodes/flow-nodes/loop'
 import { FormInputNodeProcessor } from '../nodes/form-input'
+import { DateTimeProcessor } from '../nodes/transform-nodes/date-time-processor'
+import { InformationExtractorProcessor } from '../nodes/transform-nodes/information-extractor'
+import { ListProcessor } from '../nodes/transform-nodes/list-processor'
+// JoinNode removed - merging now handled in workflow-engine.ts
+import { TextClassifierProcessor } from '../nodes/transform-nodes/text-classifier'
+import { VarAssignProcessor } from '../nodes/transform-nodes/var-assign-processor'
+import { ManualTriggerProcessor } from '../nodes/trigger-nodes/manual'
+// Import all processors at the top
+import { MessageReceivedProcessor } from '../nodes/trigger-nodes/message-received'
+import { ScheduledTriggerProcessor } from '../nodes/trigger-nodes/scheduled'
+import { WebhookProcessor } from '../nodes/trigger-nodes/webhook-processor'
+import { ResourceTriggerBase } from '../nodes/triggers/resource-trigger-base'
+import { WaitNodeProcessor } from '../nodes/wait'
+import type { NodeProcessor, WorkflowNodeType } from './types'
 
 const logger = createScopedLogger('node-processor-registry')
 
@@ -207,7 +206,9 @@ export class NodeProcessorRegistry {
 
       this.registerProcessors(defaultProcessors)
 
-      logger.info(`Initialized with ${defaultProcessors.length} default processors (including unified resource trigger)`)
+      logger.info(
+        `Initialized with ${defaultProcessors.length} default processors (including unified resource trigger)`
+      )
     } catch (error) {
       logger.error('Failed to initialize default processors', {
         error: error instanceof Error ? error.message : String(error),

@@ -1,9 +1,9 @@
 // apps/web/src/components/ui/provider-icon.tsx
 
+import type { ProviderData } from '@auxx/lib/ai/providers/types' //~/components/app/(protected)/app/settings/aiModels/_components'
+import { cn } from '@auxx/ui/lib/utils'
 import type { FC } from 'react'
 import { PROVIDER_ICONS } from '~/constants/icons'
-import { cn } from '@auxx/ui/lib/utils'
-import type { ProviderData } from '@auxx/lib/ai/providers/types' //~/components/app/(protected)/app/settings/aiModels/_components'
 
 interface ProviderIconProps {
   provider: ProviderData
@@ -93,19 +93,19 @@ const ProviderIcon: FC<ProviderIconProps> = ({
         )}
         style={{ borderColor: provider.color + '20' }}>
         {IconComponent ? (
-          <IconComponent className="h-8 w-8" style={{ color: provider.color }} />
+          <IconComponent className='h-8 w-8' style={{ color: provider.color }} />
         ) : (
           <div
-            className="h-8 w-8 rounded flex items-center justify-center font-bold text-white"
+            className='h-8 w-8 rounded flex items-center justify-center font-bold text-white'
             style={{ backgroundColor: provider.color }}>
             {provider.displayName.charAt(0)}
           </div>
         )}
         <div>
-          <h3 className="font-medium" style={{ color: provider.color }}>
+          <h3 className='font-medium' style={{ color: provider.color }}>
             {provider.displayName}
           </h3>
-          {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
+          {description && <p className='text-xs text-muted-foreground mt-1'>{description}</p>}
         </div>
       </div>
     )

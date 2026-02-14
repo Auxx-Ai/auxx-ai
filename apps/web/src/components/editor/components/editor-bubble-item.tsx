@@ -1,8 +1,9 @@
 // apps/web/src/components/editor/components/editor-bubble-item.tsx
-import React from 'react'
-import { Slot } from 'radix-ui'
-import { useCurrentEditor } from '@tiptap/react'
+
 import type { Editor } from '@tiptap/react'
+import { useCurrentEditor } from '@tiptap/react'
+import { Slot } from 'radix-ui'
+import type React from 'react'
 import type { ComponentPropsWithoutRef, ReactNode } from 'react'
 
 interface EditorBubbleItemProps {

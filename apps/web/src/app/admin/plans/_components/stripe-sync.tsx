@@ -4,12 +4,12 @@
  */
 'use client'
 
-import { api } from '~/trpc/react'
 import { Button } from '@auxx/ui/components/button'
-import { RefreshCw } from 'lucide-react'
 import { toastError } from '@auxx/ui/components/toast'
+import { RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 /**
  * Stripe sync component props
@@ -65,23 +65,23 @@ export function StripeSync({ planId, plan }: StripeSyncProps) {
   // Don't show button for custom pricing or free plans
   if (plan.isCustomPricing) {
     return (
-      <span className="text-xs text-muted-foreground">Custom pricing plans cannot be synced</span>
+      <span className='text-xs text-muted-foreground'>Custom pricing plans cannot be synced</span>
     )
   }
 
   if (plan.isFree && plan.monthlyPrice === 0 && plan.annualPrice === 0) {
-    return <span className="text-xs text-muted-foreground">Free plans cannot be synced</span>
+    return <span className='text-xs text-muted-foreground'>Free plans cannot be synced</span>
   }
 
   return (
     <>
       <ConfirmDialog />
       <Button
-        variant="outline"
-        size="sm"
+        variant='outline'
+        size='sm'
         onClick={handleSync}
         loading={syncToStripe.isPending}
-        loadingText="Syncing...">
+        loadingText='Syncing...'>
         <RefreshCw />
         {plan.stripeProductId ? 'Re-sync to Stripe' : 'Sync to Stripe'}
       </Button>

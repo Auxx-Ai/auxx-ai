@@ -2,10 +2,10 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import type {
-  ExtractorMetadata,
-  ExtractionResult,
   ExtractionOptions,
+  ExtractionResult,
   ExtractorCapabilities,
+  ExtractorMetadata,
 } from '../types/extractor.types'
 
 const logger = createScopedLogger('base-extractor')

@@ -4,7 +4,7 @@
  * Type definitions for Lambda server function executor
  */
 
-import type { ValidatedLambdaEvent, ValidatedExecutionContext } from './validator.ts'
+import type { ValidatedExecutionContext, ValidatedLambdaEvent } from './validator.ts'
 
 /**
  * Lambda event from API (derived from Zod schema)

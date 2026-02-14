@@ -5,41 +5,39 @@
  * Coordinates different cleanup strategies and provides a unified interface
  */
 
-import { createScopedLogger } from '@auxx/logger'
-import { calculateStorageUsage } from './quota-cleanup'
 import { database, schema } from '@auxx/database'
-import { and, count, eq, isNull, isNotNull, lt } from 'drizzle-orm'
+import { createScopedLogger } from '@auxx/logger'
+import { and, count, eq, isNotNull, isNull, lt } from 'drizzle-orm'
+import { calculateStorageUsage } from './quota-cleanup'
 
 const logger = createScopedLogger('file-cleanup')
 
-// Re-export all cleanup functions
 export {
-  orphanedFileCleanupJob,
-  deletedFileCleanupJob,
-} from './orphaned-cleanup'
-
-export {
-  calculateStorageUsage,
-  storageQuotaCheckJob,
-  quotaEnforcementCleanupJob,
-} from './quota-cleanup'
-
-export {
+  cleanupFailedUpload,
   deleteEntityFiles,
+  deleteExpiredFiles,
   deleteFilesByIds,
   deleteOrganizationFiles,
   deleteOrphanedFiles,
-  deleteExpiredFiles,
-  cleanupFailedUpload,
 } from './cleanup-service'
+// Re-export all cleanup functions
+export {
+  deletedFileCleanupJob,
+  orphanedFileCleanupJob,
+} from './orphaned-cleanup'
+export {
+  calculateStorageUsage,
+  quotaEnforcementCleanupJob,
+  storageQuotaCheckJob,
+} from './quota-cleanup'
 
 // Re-export types
 export type {
+  CleanupStats,
+  DeleteFilesOptions,
   OrphanedFileCleanupJobData,
   OrphanedFileCleanupResult,
-  DeleteFilesOptions,
   StorageQuota,
-  CleanupStats,
 } from './types'
 
 /**

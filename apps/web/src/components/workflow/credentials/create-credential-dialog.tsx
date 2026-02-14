@@ -1,9 +1,8 @@
 // apps/web/src/app/(protected)/app/workflows/_components/credentials/create-credential-dialog.tsx
 'use client'
 
-import React, { useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -11,17 +10,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Button } from '@auxx/ui/components/button'
 import {
   Form,
+  FormControl,
   FormField,
   FormItem,
   FormLabel,
-  FormControl,
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import { Badge } from '@auxx/ui/components/badge'
 import { Separator } from '@auxx/ui/components/separator'
 import {
   Stepper,
@@ -31,13 +28,16 @@ import {
   StepperTitle,
   StepperTrigger,
 } from '@auxx/ui/components/stepper'
-import { useCredentials } from './credentials-provider'
-import { CredentialTypeSelector } from './credential-type-selector'
-import { CredentialFormBuilder } from './credential-form-builder'
-import { getCredentialType, type CredentialTypeMetadata } from './credential-registry'
-import { validateCredentialData } from './validation-utils'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { hasOAuth2Config } from '@auxx/workflow-nodes/types'
+import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react'
+import React, { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { CredentialFormBuilder } from './credential-form-builder'
+import { type CredentialTypeMetadata, getCredentialType } from './credential-registry'
+import { CredentialTypeSelector } from './credential-type-selector'
+import { useCredentials } from './credentials-provider'
+import { validateCredentialData } from './validation-utils'
 
 interface CreateCredentialDialogProps {
   open: boolean
@@ -287,8 +287,8 @@ export function CreateCredentialDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="lg" position="tc" className="overflow-y-auto max-h-[90vh] p-0">
-        <DialogHeader className="pb-0 mb-0 px-4 pt-4 sticky top-0 bg-background z-10">
+      <DialogContent size='lg' position='tc' className='overflow-y-auto max-h-[90vh] p-0'>
+        <DialogHeader className='pb-0 mb-0 px-4 pt-4 sticky top-0 bg-background z-10'>
           <div>
             <DialogTitle>{getStepTitle()}</DialogTitle>
             <DialogDescription>{getStepDescription()}</DialogDescription>
@@ -297,14 +297,14 @@ export function CreateCredentialDialog({
           {/* Stepper */}
           <Stepper value={getStepNumber()}>
             {steps.map(({ step, title }) => (
-              <StepperItem key={step} step={step} className="not-last:flex-1 max-md:items-start">
-                <StepperTrigger className="rounded max-md:flex-col pointer-events-none">
+              <StepperItem key={step} step={step} className='not-last:flex-1 max-md:items-start'>
+                <StepperTrigger className='rounded max-md:flex-col pointer-events-none'>
                   <StepperIndicator />
-                  <div className="text-center md:text-left">
-                    <StepperTitle className="text-sm">{title}</StepperTitle>
+                  <div className='text-center md:text-left'>
+                    <StepperTitle className='text-sm'>{title}</StepperTitle>
                   </div>
                 </StepperTrigger>
-                {step < steps.length && <StepperSeparator className="max-md:mt-3.5 md:mx-4" />}
+                {step < steps.length && <StepperSeparator className='max-md:mt-3.5 md:mx-4' />}
               </StepperItem>
             ))}
           </Stepper>
@@ -312,16 +312,16 @@ export function CreateCredentialDialog({
           {selectedCredentialType && (!!initialType || currentStep !== 'select-type') && (
             <>
               <Separator />
-              <div className="pt-3 flex items-center gap-3">
-                <selectedCredentialType.icon className="h-5 w-5" />
-                <span className="font-medium">{selectedCredentialType.displayName}</span>
-                <Badge variant="secondary">{selectedCredentialType.category}</Badge>
+              <div className='pt-3 flex items-center gap-3'>
+                <selectedCredentialType.icon className='h-5 w-5' />
+                <span className='font-medium'>{selectedCredentialType.displayName}</span>
+                <Badge variant='secondary'>{selectedCredentialType.category}</Badge>
               </div>
             </>
           )}
         </DialogHeader>
 
-        <div className="flex-1 pt-1 px-4 pb-4 h-full">
+        <div className='flex-1 pt-1 px-4 pb-4 h-full'>
           {currentStep === 'select-type' && (
             <CredentialTypeSelector
               onSelect={handleTypeSelect}
@@ -331,11 +331,11 @@ export function CreateCredentialDialog({
 
           {currentStep === 'configure' && selectedCredentialType && (
             <Form {...form}>
-              <div className="space-y-3">
+              <div className='space-y-3'>
                 {/* Credential Name */}
                 <FormField
                   control={form.control}
-                  name="name"
+                  name='name'
                   rules={{ required: 'Credential name is required' }}
                   render={({ field }) => (
                     <FormItem>
@@ -345,7 +345,7 @@ export function CreateCredentialDialog({
                       <FormControl>
                         <Input
                           {...field}
-                          placeholder="Enter a name for this credential"
+                          placeholder='Enter a name for this credential'
                           value={field.value || ''}
                         />
                       </FormControl>
@@ -375,34 +375,34 @@ export function CreateCredentialDialog({
           )}
 
           {currentStep === 'test-save' && selectedCredentialType && (
-            <div className="space-y-6">
-              <div className="text-center py-8">
-                <selectedCredentialType.icon className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-lg font-medium mb-2">Ready to Create Credential</h3>
-                <p className="text-muted-foreground">
+            <div className='space-y-6'>
+              <div className='text-center py-8'>
+                <selectedCredentialType.icon className='h-12 w-12 mx-auto mb-4 text-muted-foreground' />
+                <h3 className='text-lg font-medium mb-2'>Ready to Create Credential</h3>
+                <p className='text-muted-foreground'>
                   Your {selectedCredentialType.displayName} credential "{form.getValues('name')}" is
                   configured and ready to be saved.
                 </p>
               </div>
 
-              <div className="flex gap-3">
+              <div className='flex gap-3'>
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant='outline'
+                  size='sm'
                   onClick={handleTestConnection}
                   loading={isTesting}
-                  loadingText="Testing..."
-                  className="flex-1">
+                  loadingText='Testing...'
+                  className='flex-1'>
                   Test Connection
                 </Button>
 
                 <Button
                   onClick={handleSave}
-                  size="sm"
+                  size='sm'
                   disabled={isCreating}
-                  className="flex-1"
+                  className='flex-1'
                   loading={isCreating}
-                  loadingText="Creating...">
+                  loadingText='Creating...'>
                   Save Credential
                 </Button>
               </div>
@@ -411,9 +411,9 @@ export function CreateCredentialDialog({
         </div>
 
         {/* Footer Navigation */}
-        <div className="flex justify-between border-t pt-4 px-4 pb-4">
+        <div className='flex justify-between border-t pt-4 px-4 pb-4'>
           {!isBackDisabled() ? (
-            <Button variant="ghost" size="sm" onClick={handleBack} disabled={isCreating}>
+            <Button variant='ghost' size='sm' onClick={handleBack} disabled={isCreating}>
               <ArrowLeft />
               Back
             </Button>
@@ -424,7 +424,7 @@ export function CreateCredentialDialog({
           {currentStep === 'configure' && (
             <Button
               onClick={handleNext}
-              size="sm"
+              size='sm'
               disabled={
                 !form.formState.isValid ||
                 !form.getValues('name') ||

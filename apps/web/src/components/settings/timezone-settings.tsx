@@ -1,14 +1,14 @@
 // apps/web/src/components/settings/timezone-settings.tsx
 'use client'
 
-import { useState } from 'react'
+import { detectTimezone } from '@auxx/config/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
-import { TimeZonePicker } from '~/components/pickers/timezone-picker'
-import { detectTimezone } from '@auxx/config/client'
-import { Globe } from 'lucide-react'
 import { getCurrentTimeInTimezone } from '@auxx/utils/date'
+import { Globe } from 'lucide-react'
+import { useState } from 'react'
+import { TimeZonePicker } from '~/components/pickers/timezone-picker'
+import { api } from '~/trpc/react'
 
 interface TimezoneSettingsProps {
   currentTimezone?: string | null
@@ -47,32 +47,32 @@ export function TimezoneSettings({ currentTimezone }: TimezoneSettingsProps) {
   const hasChanges = selectedTimezone !== currentTimezone
 
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       <div>
-        <label className="text-sm font-medium block">Preferred Timezone</label>
-        <p className="text-sm text-muted-foreground ">
+        <label className='text-sm font-medium block'>Preferred Timezone</label>
+        <p className='text-sm text-muted-foreground '>
           Select your timezone for displaying dates and times throughout the application.
         </p>
       </div>
 
-      <div className="flex items-center gap-2">
-        <div className="flex-1">
+      <div className='flex items-center gap-2'>
+        <div className='flex-1'>
           <TimeZonePicker
             open={open}
             onOpenChange={setOpen}
             selected={selectedTimezone}
             onChange={setSelectedTimezone}>
-            <div className="flex text-sm px-1 items-center justify-between rounded-lg border hover:border-gray-300 dark:bg-primary-100 dark:border-foreground/10 hover:bg-primary-100 focus-within:border-blue-500 focus-within:bg-background focus-within:ring-1 focus-within:ring-blue-500 shadow-xs h-8 border-primary-200 focus:border-primary-300 bg-primary-50 focus:ring-primary-400 focus-visible:ring-blue-500">
-              <div className="flex items-center gap-1.5">
-                <Globe className="size-4" />
+            <div className='flex text-sm px-1 items-center justify-between rounded-lg border hover:border-gray-300 dark:bg-primary-100 dark:border-foreground/10 hover:bg-primary-100 focus-within:border-blue-500 focus-within:bg-background focus-within:ring-1 focus-within:ring-blue-500 shadow-xs h-8 border-primary-200 focus:border-primary-300 bg-primary-50 focus:ring-primary-400 focus-visible:ring-blue-500'>
+              <div className='flex items-center gap-1.5'>
+                <Globe className='size-4' />
                 {selectedTimezone || 'Select timezone...'}
               </div>
               <Button
-                type="button"
-                size="xs"
-                variant="outline"
+                type='button'
+                size='xs'
+                variant='outline'
                 onClick={handleDetectTimezone}
-                type="button">
+                type='button'>
                 Auto-detect
               </Button>
             </div>
@@ -80,19 +80,19 @@ export function TimezoneSettings({ currentTimezone }: TimezoneSettingsProps) {
         </div>
 
         {hasChanges && (
-          <div className="flex items-center gap-2">
+          <div className='flex items-center gap-2'>
             <Button
-              size="sm"
+              size='sm'
               onClick={handleSave}
-              type="button"
+              type='button'
               loading={updateTimezone.isPending}
-              loadingText="Saving...">
+              loadingText='Saving...'>
               Save Timezone
             </Button>
             <Button
-              size="sm"
-              type="button"
-              variant="ghost"
+              size='sm'
+              type='button'
+              variant='ghost'
               onClick={() => setSelectedTimezone(currentTimezone || 'UTC')}>
               Cancel
             </Button>
@@ -100,9 +100,9 @@ export function TimezoneSettings({ currentTimezone }: TimezoneSettingsProps) {
         )}
       </div>
 
-      <div className="text-sm text-muted-foreground">
+      <div className='text-sm text-muted-foreground'>
         <p>Current time in {selectedTimezone}:</p>
-        <p className="font-medium mt-1">{getCurrentTimeInTimezone(selectedTimezone, 'PPpp')}</p>
+        <p className='font-medium mt-1'>{getCurrentTimeInTimezone(selectedTimezone, 'PPpp')}</p>
       </div>
     </div>
   )

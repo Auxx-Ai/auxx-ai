@@ -1,8 +1,8 @@
 export {
-  UploadImagesPlugin,
-  type UploadFn,
-  type ImageUploadOptions,
   createImageUpload,
   handleImageDrop,
   handleImagePaste,
+  type ImageUploadOptions,
+  type UploadFn,
+  UploadImagesPlugin,
 } from './upload-images-plugin'

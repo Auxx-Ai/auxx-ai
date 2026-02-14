@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/panels/run/components/loop-iteration-card.tsx
 
-import React, { useState } from 'react'
-import { ChevronDown } from 'lucide-react'
 import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
-import { NodeExecutionCard } from './node-execution-card'
+import { ChevronDown } from 'lucide-react'
+import React, { useState } from 'react'
 import type { LoopIterationData } from '../../../store/run-store'
+import { NodeExecutionCard } from './node-execution-card'
 
 interface LoopIterationCardProps {
   iteration: LoopIterationData
@@ -44,21 +44,21 @@ export function LoopIterationCard({ iteration, loopNodeId }: LoopIterationCardPr
       {/* Simple iteration header - no card styling */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center  gap-2 w-full text-left py-1.5 px-2 rounded hover:bg-muted/50 transition-colors">
+        className='flex items-center  gap-2 w-full text-left py-1.5 px-2 rounded hover:bg-muted/50 transition-colors'>
         <ChevronDown
           className={cn('h-3.5 w-3.5 transition-transform', !expanded && '-rotate-90')}
         />
-        <span className="text-sm font-medium">
+        <span className='text-sm font-medium'>
           Iteration {iteration.iterationIndex + 1} of {iteration.totalIterations}
         </span>
-        <Badge variant={getIterationStatusVariant(iteration.status)} className="text-xs">
+        <Badge variant={getIterationStatusVariant(iteration.status)} className='text-xs'>
           {iteration.status}
         </Badge>
       </button>
 
       {/* Nodes executed during this iteration - shown directly */}
       {expanded && (
-        <div className="space-y-0.5 px-1.5 pb-1.5">
+        <div className='space-y-0.5 px-1.5 pb-1.5'>
           {iteration.executedNodes.length > 0 ? (
             iteration.executedNodes.map((nodeExecution) => (
               <NodeExecutionCard
@@ -68,7 +68,7 @@ export function LoopIterationCard({ iteration, loopNodeId }: LoopIterationCardPr
               />
             ))
           ) : (
-            <p className="text-sm text-muted-foreground py-4 text-center">
+            <p className='text-sm text-muted-foreground py-4 text-center'>
               No nodes executed in this iteration
             </p>
           )}

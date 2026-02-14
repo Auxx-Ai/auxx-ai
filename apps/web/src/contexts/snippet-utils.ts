@@ -1,4 +1,4 @@
-import { type Snippet, type SnippetFolder } from './snippet-types'
+import type { Snippet, SnippetFolder } from './snippet-types'
 
 /**
  * Generate a temporary ID for optimistic updates

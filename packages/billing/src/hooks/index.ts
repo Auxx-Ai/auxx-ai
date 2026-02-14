@@ -4,7 +4,7 @@
  */
 
 export { handleCheckoutSessionCompleted } from './checkout-session'
-export { handleSubscriptionUpdated, handleSubscriptionCreated } from './subscription-updated'
-export { handleSubscriptionDeleted } from './subscription-deleted'
 export { handleInvoicePaid } from './invoice-paid'
 export { handleInvoicePaymentFailed } from './invoice-payment-failed'
+export { handleSubscriptionDeleted } from './subscription-deleted'
+export { handleSubscriptionCreated, handleSubscriptionUpdated } from './subscription-updated'

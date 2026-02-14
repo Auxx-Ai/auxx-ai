@@ -1,15 +1,16 @@
 // apps/web/src/components/workflow/panels/run/run-history.tsx
-import React, { memo, useCallback, useState, useEffect } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
-import { CheckCircle2, XCircle, Loader2, StopCircle, Activity } from 'lucide-react'
-import { PopoverContent } from '@auxx/ui/components/popover'
-import InfiniteScroll from '@auxx/ui/components/infinite-scroll'
-import { useRunStore } from '~/components/workflow/store/run-store'
-import { useWorkflowStore } from '~/components/workflow/store'
-import { formatRelativeDate } from '~/utils/date'
-import { api } from '~/trpc/react'
+
 import { WorkflowRunStatus as WorkflowRunStatusEnum } from '@auxx/database/enums'
-import { type WorkflowRunStatus } from '@auxx/database/types'
+import type { WorkflowRunStatus } from '@auxx/database/types'
+import InfiniteScroll from '@auxx/ui/components/infinite-scroll'
+import { PopoverContent } from '@auxx/ui/components/popover'
+import { cn } from '@auxx/ui/lib/utils'
+import { Activity, CheckCircle2, Loader2, StopCircle, XCircle } from 'lucide-react'
+import React, { memo, useCallback, useEffect, useState } from 'react'
+import { useWorkflowStore } from '~/components/workflow/store'
+import { useRunStore } from '~/components/workflow/store/run-store'
+import { api } from '~/trpc/react'
+import { formatRelativeDate } from '~/utils/date'
 
 interface RunHistoryProps {
   className?: string
@@ -22,15 +23,15 @@ interface RunHistoryProps {
 const StatusIcon = memo(({ status }: { status: WorkflowRunStatus }) => {
   switch (status) {
     case WorkflowRunStatusEnum.SUCCEEDED:
-      return <CheckCircle2 className="size-4 text-green-500" />
+      return <CheckCircle2 className='size-4 text-green-500' />
     case WorkflowRunStatusEnum.FAILED:
-      return <XCircle className="size-4 text-red-500" />
+      return <XCircle className='size-4 text-red-500' />
     case WorkflowRunStatusEnum.RUNNING:
-      return <Loader2 className="size-4 text-blue-500 animate-spin" />
+      return <Loader2 className='size-4 text-blue-500 animate-spin' />
     case WorkflowRunStatusEnum.STOPPED:
-      return <StopCircle className="size-4 text-orange-500" />
+      return <StopCircle className='size-4 text-orange-500' />
     default:
-      return <Activity className="size-4 text-muted-foreground" />
+      return <Activity className='size-4 text-muted-foreground' />
   }
 })
 StatusIcon.displayName = 'StatusIcon'
@@ -82,10 +83,8 @@ export const RunHistory = memo<RunHistoryProps>(({ className, onRunSelect }) => 
   }, [allRuns.length, addMultipleToHistory])
 
   // Query for fetching complete run data with node executions (when clicking a run)
-  const { data: completeRun, isLoading: isLoadingCompleteRun } = api.workflow.getWorkflowRun.useQuery(
-    { runId: selectedRunId! },
-    { enabled: !!selectedRunId }
-  )
+  const { data: completeRun, isLoading: isLoadingCompleteRun } =
+    api.workflow.getWorkflowRun.useQuery({ runId: selectedRunId! }, { enabled: !!selectedRunId })
 
   // Update loading state
   useEffect(() => {
@@ -114,10 +113,10 @@ export const RunHistory = memo<RunHistoryProps>(({ className, onRunSelect }) => 
         'w-80 p-0 max-h-[400px] overflow-y-auto backdrop-blur-sm bg-white/40 dark:bg-white/5',
         className
       )}
-      align="end">
-      <div className="border-b border-black/8 px-3 py-1 sticky top-0 backdrop-blur-sm dark:bg-black/40 bg-white/40 z-10">
-        <h3 className="font-medium text-sm">Run History</h3>
-        <p className="text-xs text-muted-foreground">
+      align='end'>
+      <div className='border-b border-black/8 px-3 py-1 sticky top-0 backdrop-blur-sm dark:bg-black/40 bg-white/40 z-10'>
+        <h3 className='font-medium text-sm'>Run History</h3>
+        <p className='text-xs text-muted-foreground'>
           {isLoadingRuns
             ? 'Loading...'
             : runHistory.length === 0
@@ -127,12 +126,12 @@ export const RunHistory = memo<RunHistoryProps>(({ className, onRunSelect }) => 
       </div>
 
       {isLoadingRuns ? (
-        <div className="p-8 text-center">
-          <Loader2 className="h-6 w-6 mx-auto mb-2 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Loading runs...</p>
+        <div className='p-8 text-center'>
+          <Loader2 className='h-6 w-6 mx-auto mb-2 animate-spin text-muted-foreground' />
+          <p className='text-sm text-muted-foreground'>Loading runs...</p>
         </div>
       ) : runHistory.length > 0 ? (
-        <div className="px-2 py-2">
+        <div className='px-2 py-2'>
           <InfiniteScroll
             isLoading={isFetching}
             hasMore={hasNextPage ?? false}
@@ -148,28 +147,32 @@ export const RunHistory = memo<RunHistoryProps>(({ className, onRunSelect }) => 
                     isActive && 'ring-1 ring-blue-500 bg-secondary/50'
                   )}
                   onClick={() => handleRunClick(run.id)}>
-                  <div className="px-3 py-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">
+                  <div className='px-3 py-1'>
+                    <div className='flex items-start justify-between gap-2'>
+                      <div className='flex-1 min-w-0'>
+                        <div className='font-medium text-sm truncate'>
                           {run.triggeredFrom === 'DEBUGGING' ? 'Test' : 'Production'} Run #
                           {run.sequenceNumber}
                         </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
+                        <div className='text-xs text-muted-foreground mt-0.5'>
                           {formatRelativeDate(run.createdAt)}
                           {(run.totalSteps || run.elapsedTime) && (
-                            <span className="ml-1">
+                            <span className='ml-1'>
                               •
-                              {run.totalSteps && <span className="ml-1">{run.totalSteps} steps</span>}
-                              {run.totalSteps && run.elapsedTime && <span className="mx-1">•</span>}
-                              {run.elapsedTime && <span>{(run.elapsedTime / 1000).toFixed(1)}s</span>}
+                              {run.totalSteps && (
+                                <span className='ml-1'>{run.totalSteps} steps</span>
+                              )}
+                              {run.totalSteps && run.elapsedTime && <span className='mx-1'>•</span>}
+                              {run.elapsedTime && (
+                                <span>{(run.elapsedTime / 1000).toFixed(1)}s</span>
+                              )}
                             </span>
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <div className='flex items-center gap-1.5 flex-shrink-0'>
                         {loadingRunId === run.id ? (
-                          <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                          <Loader2 className='size-4 animate-spin text-muted-foreground' />
                         ) : (
                           <StatusIcon status={run.status} />
                         )}
@@ -181,14 +184,14 @@ export const RunHistory = memo<RunHistoryProps>(({ className, onRunSelect }) => 
             })}
           </InfiniteScroll>
           {isFetching && hasNextPage && (
-            <div className="py-2 text-center">
-              <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
+            <div className='py-2 text-center'>
+              <Loader2 className='mx-auto h-5 w-5 animate-spin text-muted-foreground' />
             </div>
           )}
         </div>
       ) : (
-        <div className="p-8 text-center text-sm text-muted-foreground">
-          <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
+        <div className='p-8 text-center text-sm text-muted-foreground'>
+          <Activity className='h-8 w-8 mx-auto mb-2 opacity-50' />
           No runs recorded yet
         </div>
       )}

@@ -1,26 +1,6 @@
 // apps/web/src/app/(protected)/app/settings/webhooks/_components/webhook-list.tsx
 'use client'
-import { useState } from 'react'
-import { useWebhook } from './use-webhook'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@auxx/ui/components/table'
-import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
-import { Check, CopyIcon, Edit, MoreHorizontal, Trash2, Webhook as WebhookIcon } from 'lucide-react'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
-import { DialogWebhook } from './dialog-webhook'
-import { useCopy } from '@auxx/ui/hooks/use-copy'
+import type { WebhookEntity as Webhook } from '@auxx/database/models'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,8 +11,28 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@auxx/ui/components/alert-dialog'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@auxx/ui/components/table'
+import { useCopy } from '@auxx/ui/hooks/use-copy'
+import { Check, CopyIcon, Edit, MoreHorizontal, Trash2, Webhook as WebhookIcon } from 'lucide-react'
+import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
-import type { WebhookEntity as Webhook } from '@auxx/database/models'
+import { DialogWebhook } from './dialog-webhook'
+import { useWebhook } from './use-webhook'
 export function WebhookList({ empty }: { empty: React.ReactNode }) {
   const { data: webhooks, isLoading, destroy, isDestroying } = useWebhook()
   const [editingWebhook, setEditingWebhook] = useState<Webhook | null>(null)
@@ -44,10 +44,10 @@ export function WebhookList({ empty }: { empty: React.ReactNode }) {
       {isLoading ? (
         <EmptyState
           icon={WebhookIcon}
-          iconClassName="animate-spin"
-          title="Loading Webhooks..."
-          description="&nbsp;"
-          button={<div className="h-9"></div>}
+          iconClassName='animate-spin'
+          title='Loading Webhooks...'
+          description='&nbsp;'
+          button={<div className='h-9'></div>}
         />
       ) : webhooks?.length === 0 ? (
         empty
@@ -60,40 +60,40 @@ export function WebhookList({ empty }: { empty: React.ReactNode }) {
               <TableHead>Secret</TableHead>
               <TableHead>Event Types</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="w-[100px]">Actions</TableHead>
+              <TableHead className='w-[100px]'>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {webhooks?.map((webhook) => (
               <TableRow key={webhook.id}>
-                <TableCell className="font-medium">{webhook.name}</TableCell>
-                <TableCell className="font-mono text-sm truncate max-w-[300px]">
+                <TableCell className='font-medium'>{webhook.name}</TableCell>
+                <TableCell className='font-mono text-sm truncate max-w-[300px]'>
                   {webhook.url}
                 </TableCell>
                 <TableCell>
-                  <div className="flex items-center space-x-2">
-                    <span className="font-mono">•••••••</span>
-                    <Button variant="ghost" size="sm" onClick={() => copySecret(webhook.secret)}>
+                  <div className='flex items-center space-x-2'>
+                    <span className='font-mono'>•••••••</span>
+                    <Button variant='ghost' size='sm' onClick={() => copySecret(webhook.secret)}>
                       {copied ? <Check /> : <CopyIcon />}
                     </Button>
                   </div>
                 </TableCell>
                 <TableCell>
-                  <div className="flex flex-wrap gap-1">
+                  <div className='flex flex-wrap gap-1'>
                     {webhook.eventTypes.length > 0 ? (
                       <>
                         {(expandedEventTypes.has(webhook.id)
                           ? webhook.eventTypes
                           : webhook.eventTypes.slice(0, 1)
                         ).map((type) => (
-                          <Badge key={type} variant="outline">
+                          <Badge key={type} variant='outline'>
                             {type}
                           </Badge>
                         ))}
                         {webhook.eventTypes.length > 1 && (
                           <Badge
-                            variant="secondary"
-                            className="cursor-pointer"
+                            variant='secondary'
+                            className='cursor-pointer'
                             onClick={() => {
                               setExpandedEventTypes((prev) => {
                                 const next = new Set(prev)
@@ -112,7 +112,7 @@ export function WebhookList({ empty }: { empty: React.ReactNode }) {
                         )}
                       </>
                     ) : (
-                      <span className="text-muted-foreground">None</span>
+                      <span className='text-muted-foreground'>None</span>
                     )}
                   </div>
                 </TableCell>
@@ -124,17 +124,17 @@ export function WebhookList({ empty }: { empty: React.ReactNode }) {
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon-sm">
+                      <Button variant='ghost' size='icon-sm'>
                         <MoreHorizontal />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
+                    <DropdownMenuContent align='end'>
                       <DropdownMenuItem onClick={() => setEditingWebhook(webhook)}>
                         <Edit />
                         Edit
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        variant="destructive"
+                        variant='destructive'
                         onClick={() => setWebhookToDelete(webhook)}>
                         <Trash2 />
                         Delete
@@ -172,7 +172,7 @@ export function WebhookList({ empty }: { empty: React.ReactNode }) {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground"
+              className='bg-destructive text-destructive-foreground'
               onClick={() => {
                 if (webhookToDelete) {
                   destroy.mutate({ id: webhookToDelete.id })

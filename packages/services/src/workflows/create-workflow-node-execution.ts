@@ -1,9 +1,9 @@
 // packages/services/src/workflows/create-workflow-node-execution.ts
 
 import { database, schema } from '@auxx/database'
+import type { WorkflowNodeExecutionEntity } from '@auxx/database/models'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { WorkflowNodeExecutionEntity } from '@auxx/database/models'
 
 /**
  * Create a workflow node execution record
@@ -22,7 +22,15 @@ export async function createWorkflowNodeExecution(params: {
   title: string
   index: number
   triggeredFrom: 'SINGLE_STEP' | 'WORKFLOW_RUN'
-  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'exception' | 'skipped' | 'stopped' | 'waiting'
+  status:
+    | 'pending'
+    | 'running'
+    | 'succeeded'
+    | 'failed'
+    | 'exception'
+    | 'skipped'
+    | 'stopped'
+    | 'waiting'
   inputs?: Record<string, any>
   outputs?: Record<string, any>
   processData?: Record<string, any>

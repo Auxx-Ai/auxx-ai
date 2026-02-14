@@ -1,8 +1,8 @@
 // packages/lib/src/admin/admin-service.ts
 
-import { schema, type Database } from '@auxx/database'
-import { eq, sql, ilike, or, desc, and } from 'drizzle-orm'
+import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { and, desc, eq, ilike, or, sql } from 'drizzle-orm'
 import { OrganizationService } from '../organizations/organization-service'
 
 const logger = createScopedLogger('admin-service')

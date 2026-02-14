@@ -3,9 +3,9 @@
 
 import { createId } from '@paralleldrive/cuid2'
 import { sql } from 'drizzle-orm'
+import { ContentEngine } from '../generators/content-engine'
 import type { SeedingContext, SeedingScenario } from '../types'
 import { BusinessDistributions } from '../utils/business-distributions'
-import { ContentEngine } from '../generators/content-engine'
 
 /** TicketDomain encapsulates ticket and related entity refinements. */
 export class TicketDomain {
@@ -63,8 +63,8 @@ export class TicketDomain {
 
     // Collect all user IDs from context
     const userIds = new Set<string>()
-    context.auth.testUsers.forEach(user => userIds.add(user.id))
-    context.auth.randomUsers.forEach(user => userIds.add(user.id))
+    context.auth.testUsers.forEach((user) => userIds.add(user.id))
+    context.auth.randomUsers.forEach((user) => userIds.add(user.id))
     this.users = Array.from(userIds)
 
     if (this.users.length === 0) {
@@ -136,8 +136,7 @@ export class TicketDomain {
       const contact = contacts[i % contacts.length]!
 
       // 40% of tickets are linked to orders (when orders exist)
-      const orderId =
-        orders.length > 0 && i % 10 < 4 ? orders[i % orders.length]!.id : null
+      const orderId = orders.length > 0 && i % 10 < 4 ? orders[i % orders.length]!.id : null
 
       // 80% of tickets have a creator
       const createdById = i % 10 < 8 ? this.users[i % this.users.length]! : null
@@ -235,9 +234,7 @@ export class TicketDomain {
           ticketId: ticket.id,
           recipientEmail: null,
           ccEmails: [],
-          createdById: isFromCustomer
-            ? null
-            : this.users[ticketIndex % this.users.length]!,
+          createdById: isFromCustomer ? null : this.users[ticketIndex % this.users.length]!,
           mailgunMessageId: null,
           inReplyTo: null,
           references: null,
@@ -272,11 +269,7 @@ export class TicketDomain {
    * @param schema - Database schema
    * @param organizationId - Organization ID to filter tickets
    */
-  private async seedTicketAssignments(
-    db: any,
-    schema: any,
-    organizationId: string
-  ): Promise<void> {
+  private async seedTicketAssignments(db: any, schema: any, organizationId: string): Promise<void> {
     console.log('👤 Generating ticket assignments...')
 
     const tickets = await db
@@ -352,11 +345,7 @@ export class TicketDomain {
    * @param schema - Database schema
    * @param organizationId - Organization ID to filter tickets
    */
-  private async seedTicketRelations(
-    db: any,
-    schema: any,
-    organizationId: string
-  ): Promise<void> {
+  private async seedTicketRelations(db: any, schema: any, organizationId: string): Promise<void> {
     console.log('🔗 Generating ticket relations...')
 
     const tickets = await db
@@ -406,10 +395,7 @@ export class TicketDomain {
 
       for (let i = 0; i < relations.length; i += BATCH_SIZE) {
         const batch = relations.slice(i, i + BATCH_SIZE)
-        await db
-          .insert(schema.TicketRelation)
-          .values(batch)
-          .onConflictDoNothing() // Unique constraint handles duplicates
+        await db.insert(schema.TicketRelation).values(batch).onConflictDoNothing() // Unique constraint handles duplicates
       }
 
       console.log(`✅ Upserted ${relations.length} ticket relations`)
@@ -503,11 +489,7 @@ export class TicketDomain {
   }
 
   /** generateTicketDueDate creates priority-based due dates. */
-  private generateTicketDueDate(
-    status: string,
-    priority: string,
-    createdAt: Date
-  ): Date | null {
+  private generateTicketDueDate(status: string, priority: string, createdAt: Date): Date | null {
     // Open/In Progress tickets have due dates
     if (!['OPEN', 'IN_PROGRESS'].includes(status)) {
       return null
@@ -563,11 +545,7 @@ export class TicketDomain {
         'Payment processing issue',
         'Incorrect charge on account',
       ],
-      TECHNICAL: [
-        'Technical issue with platform',
-        'Login problems',
-        'Website functionality issue',
-      ],
+      TECHNICAL: ['Technical issue with platform', 'Login problems', 'Website functionality issue'],
     }
 
     const typeTemplates = titles[type] || titles.GENERAL
@@ -589,7 +567,7 @@ export class TicketDomain {
       ],
       RETURN: [
         "I would like to return this product as it doesn't meet my expectations. Please provide return instructions.",
-        "This item is not what I ordered. I need to initiate a return.",
+        'This item is not what I ordered. I need to initiate a return.',
         'I need to return this product. What is your return policy?',
       ],
       REFUND: [

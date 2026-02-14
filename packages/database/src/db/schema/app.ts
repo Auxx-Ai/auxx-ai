@@ -1,17 +1,17 @@
 // packages/database/src/db/schema/app.ts
 // Drizzle table for app
 
+import { createId } from '@paralleldrive/cuid2'
 import {
+  type AnyPgColumn,
+  boolean,
+  index,
+  jsonb,
   pgTable,
   text,
   timestamp,
-  jsonb,
-  boolean,
   uniqueIndex,
-  index,
-  type AnyPgColumn,
 } from './_shared'
-import { createId } from '@paralleldrive/cuid2'
 import { DeveloperAccount } from './developer-account'
 import { oauthApplication } from './oauth-application'
 
@@ -25,7 +25,10 @@ export const App = pgTable(
       .notNull(),
     developerAccountId: text()
       .notNull()
-      .references((): AnyPgColumn => DeveloperAccount.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
+      .references((): AnyPgColumn => DeveloperAccount.id, {
+        onUpdate: 'cascade',
+        onDelete: 'cascade',
+      }),
 
     // Basic info
     slug: text().unique().notNull(),
@@ -65,9 +68,7 @@ export const App = pgTable(
     hasBundle: boolean().default(false),
 
     // Publication state (binary: is it live in marketplace?)
-    publicationStatus: text()
-      .notNull()
-      .default('unpublished'), // 'unpublished' | 'published'
+    publicationStatus: text().notNull().default('unpublished'), // 'unpublished' | 'published'
 
     // Review workflow state (where in review process?)
     reviewStatus: text(), // null | 'pending-review' | 'in-review' | 'approved' | 'rejected' | 'withdrawn'

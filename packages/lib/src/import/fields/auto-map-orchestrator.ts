@@ -3,12 +3,12 @@
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { SystemModelService } from '../../ai/providers/system-model-service'
-import { QuotaService } from '../../ai/quota/quota-service'
 import { ModelType } from '../../ai/providers/types'
-import { autoMapColumns, type ColumnHeader } from './auto-map-columns'
-import { aiAutoMapColumns } from './ai-auto-map-columns'
-import type { ImportableField } from './get-importable-fields'
+import { QuotaService } from '../../ai/quota/quota-service'
 import type { AIColumnMappingInput, AIColumnMappingResponse } from '../types/ai-mapping'
+import { aiAutoMapColumns } from './ai-auto-map-columns'
+import { autoMapColumns, type ColumnHeader } from './auto-map-columns'
+import type { ImportableField } from './get-importable-fields'
 
 const logger = createScopedLogger('auto-map-orchestrator')
 

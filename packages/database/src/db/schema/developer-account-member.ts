@@ -1,17 +1,10 @@
 // packages/database/src/db/schema/developer-account-member.ts
 // Drizzle table for developer account member
 
-import {
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  index,
-  type AnyPgColumn,
-} from './_shared'
 import { createId } from '@paralleldrive/cuid2'
-import { User } from './user'
+import { type AnyPgColumn, index, pgTable, text, timestamp, uniqueIndex } from './_shared'
 import { DeveloperAccount } from './developer-account'
+import { User } from './user'
 
 /** Drizzle table for DeveloperAccountMember */
 export const DeveloperAccountMember = pgTable(
@@ -23,7 +16,10 @@ export const DeveloperAccountMember = pgTable(
       .notNull(),
     developerAccountId: text()
       .notNull()
-      .references((): AnyPgColumn => DeveloperAccount.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
+      .references((): AnyPgColumn => DeveloperAccount.id, {
+        onUpdate: 'cascade',
+        onDelete: 'cascade',
+      }),
     userId: text()
       .notNull()
       .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'cascade' }),

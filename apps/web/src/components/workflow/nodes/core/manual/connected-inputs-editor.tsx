@@ -1,18 +1,18 @@
 // apps/web/src/components/workflow/nodes/core/manual/connected-inputs-editor.tsx
 
-import { useState, useMemo, useCallback, useRef } from 'react'
-import { useStoreApi, useStore } from '@xyflow/react'
+import { generateKeyBetween } from '@auxx/utils'
 import {
-  DndContext,
   closestCenter,
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
-  DragOverlay,
 } from '@dnd-kit/core'
+import { restrictToParentElement, restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import {
   arrayMove,
   SortableContext,
@@ -20,17 +20,17 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { restrictToParentElement, restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { CSS } from '@dnd-kit/utilities'
-import { generateKeyBetween } from '@auxx/utils'
+import { useStore, useStoreApi } from '@xyflow/react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useAvailableVariables, useNodesInteractions } from '~/components/workflow/hooks'
 import { useNodeDataUpdate } from '~/components/workflow/hooks/use-node-data-update'
 import { useReadOnly } from '~/components/workflow/hooks/use-read-only'
 import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registry'
-import { useConfirm } from '~/hooks/use-confirm'
-import { ConnectedInputItem } from './connected-input-item'
-import type { FormInputNodeData } from '../../inputs/form-input/types'
 import type { VariableGroup } from '~/components/workflow/types/variable-types'
+import { useConfirm } from '~/hooks/use-confirm'
+import type { FormInputNodeData } from '../../inputs/form-input/types'
+import { ConnectedInputItem } from './connected-input-item'
 
 /**
  * Internal data structure for a connected input node
@@ -206,7 +206,8 @@ export function ConnectedInputsEditor({ manualNodeId }: ConnectedInputsEditorPro
           // Check if any items have no position OR if positions are not unique (e.g., all "a0")
           const positions = newOrder.map((item) => item.position).filter(Boolean)
           const uniquePositions = new Set(positions)
-          const needsReindex = positions.length !== newOrder.length || uniquePositions.size !== positions.length
+          const needsReindex =
+            positions.length !== newOrder.length || uniquePositions.size !== positions.length
 
           if (needsReindex) {
             // Assign positions to ALL items based on the new order
@@ -284,7 +285,7 @@ export function ConnectedInputsEditor({ manualNodeId }: ConnectedInputsEditorPro
   // Empty state
   if (sortedInputs.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p className='text-sm text-muted-foreground'>
         No inputs connected. Add form input nodes to collect user data.
       </p>
     )
@@ -300,7 +301,7 @@ export function ConnectedInputsEditor({ manualNodeId }: ConnectedInputsEditorPro
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
         modifiers={[restrictToVerticalAxis]}>
-        <div className="space-y-1">
+        <div className='space-y-1'>
           <SortableContext
             items={sortedInputs.map((i) => i.id)}
             strategy={verticalListSortingStrategy}

@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/human/types.ts
 
-import { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
-import { UnifiedVariable, TargetBranch } from '~/components/workflow/types'
+import type { TargetBranch, UnifiedVariable } from '~/components/workflow/types'
+import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
 
 /**
  * Configuration data for the Human Confirmation node

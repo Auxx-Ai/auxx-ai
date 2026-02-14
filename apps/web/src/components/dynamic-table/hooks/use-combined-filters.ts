@@ -2,8 +2,8 @@
 
 'use client'
 
-import { useMemo } from 'react'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { useMemo } from 'react'
 import type { ViewConfig } from '../types'
 
 /** Stable empty array for reference equality */

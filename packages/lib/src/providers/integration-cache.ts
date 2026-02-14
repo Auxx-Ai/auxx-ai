@@ -1,9 +1,9 @@
 // packages/lib/src/providers/integration-cache.ts
 
-import { getRedisClient } from '@auxx/redis'
-import { eq } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { getRedisClient } from '@auxx/redis'
+import { eq } from 'drizzle-orm'
 import type { IntegrationProviderType } from './types'
 
 /** Cache TTL - provider is immutable, only invalidate on add/remove */

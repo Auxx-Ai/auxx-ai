@@ -1,33 +1,32 @@
 // apps/web/src/components/workflow/canvas/workflow-operators.tsx
 
-import React, { useEffect, useMemo, useState, memo, useCallback } from 'react'
 import { Button } from '@auxx/ui/components/button'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
+import { debounce } from '@auxx/utils'
 import {
-  Undo,
-  Redo,
-  ZoomIn,
-  ZoomOut,
+  Hand,
+  Loader2,
   Maximize,
   MousePointer2,
-  Hand,
-  Shuffle,
   Play,
-  Loader2,
+  Redo,
+  Shuffle,
+  Undo,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'
-import { useCanvasStore } from '~/components/workflow/store/canvas-store'
-import { useHistoryManager } from '~/components/workflow/store/workflow-store-provider'
-import { useInteractionStore } from '~/components/workflow/store/interaction-store'
-import { cn } from '@auxx/ui/lib/utils'
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
-import { useWorkflowOrganize } from '~/components/workflow/hooks'
+import { useReadOnly, useWorkflowOrganize } from '~/components/workflow/hooks'
+import { useCanvasStore } from '~/components/workflow/store/canvas-store'
 import { storeEventBus } from '~/components/workflow/store/event-bus'
-import { useReadOnly } from '~/components/workflow/hooks'
-import { HistoryCommandPopover } from '~/components/workflow/ui/history-command-popover'
+import { useInteractionStore } from '~/components/workflow/store/interaction-store'
 import { useRunStore } from '~/components/workflow/store/run-store'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
+import { useHistoryManager } from '~/components/workflow/store/workflow-store-provider'
+import { HistoryCommandPopover } from '~/components/workflow/ui/history-command-popover'
 import { useWorkflowRun } from '~/hooks/use-workflow-run'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { debounce } from '@auxx/utils'
 
 interface WorkflowOperatorsProps {
   className?: string
@@ -143,22 +142,22 @@ export const WorkflowOperators = memo(function WorkflowOperators({
   return (
     <div className={cn('workflow-operators flex flex-row gap-2', className)}>
       {/* Run controls */}
-      <div className="flex items-center gap-0.5 p-0.5 bg-white/40 dark:bg-white/10 backdrop-blur-sm rounded-lg ring-black/5 ring-1">
+      <div className='flex items-center gap-0.5 p-0.5 bg-white/40 dark:bg-white/10 backdrop-blur-sm rounded-lg ring-black/5 ring-1'>
         <Button
           variant={isRunning ? 'secondary' : 'ghost'}
-          size="icon-sm"
-          className="hover:dark:bg-white/15"
+          size='icon-sm'
+          className='hover:dark:bg-white/15'
           onClick={handleRunWorkflow}
           disabled={!canRunWorkflow || isRunning}>
-          {isRunning ? <Loader2 className="animate-spin" /> : <Play />}
+          {isRunning ? <Loader2 className='animate-spin' /> : <Play />}
         </Button>
 
         {/* Progress indicator */}
         {isRunning && activeRun && (
-          <div className="px-2 flex items-center gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{progress}%</span>
+          <div className='px-2 flex items-center gap-1.5'>
+            <span className='text-xs font-medium text-muted-foreground'>{progress}%</span>
             {activeRun.totalSteps > 0 && (
-              <span className="text-xs text-muted-foreground">
+              <span className='text-xs text-muted-foreground'>
                 ({nodeExecutions.size}/{activeRun.totalSteps})
               </span>
             )}
@@ -166,36 +165,36 @@ export const WorkflowOperators = memo(function WorkflowOperators({
         )}
       </div>
 
-      <div className="flex items-center gap-0.5 p-0.5 bg-white/40 dark:bg-white/10 backdrop-blur-sm rounded-lg ring-black/5 ring-1">
+      <div className='flex items-center gap-0.5 p-0.5 bg-white/40 dark:bg-white/10 backdrop-blur-sm rounded-lg ring-black/5 ring-1'>
         {/* Interaction modes */}
-        <Tooltip content="Pointer Mode" shortcut="V">
+        <Tooltip content='Pointer Mode' shortcut='V'>
           <Button
             variant={interactionMode === 'pointer' ? 'secondary' : 'ghost'}
-            size="icon-sm"
-            className="hover:dark:bg-white/15"
+            size='icon-sm'
+            className='hover:dark:bg-white/15'
             onClick={() => setInteractionMode('pointer')}>
             <MousePointer2 />
           </Button>
         </Tooltip>
-        <Tooltip content="Pan Mode" shortcut={['H', '␣']}>
+        <Tooltip content='Pan Mode' shortcut={['H', '␣']}>
           <Button
             variant={interactionMode === 'pan' ? 'secondary' : 'ghost'}
-            size="icon-sm"
-            className="hover:dark:bg-white/15"
+            size='icon-sm'
+            className='hover:dark:bg-white/15'
             onClick={() => setInteractionMode('pan')}>
             <Hand />
           </Button>
         </Tooltip>
       </div>
-      <div className="flex items-center gap-0.5 p-0.5 bg-white/40 dark:bg-white/10 backdrop-blur-sm rounded-lg ring-black/5 ring-1">
+      <div className='flex items-center gap-0.5 p-0.5 bg-white/40 dark:bg-white/10 backdrop-blur-sm rounded-lg ring-black/5 ring-1'>
         {/* History */}
         <Tooltip
           content={isReadOnly ? 'Undo disabled in read-only mode' : 'Undo'}
           shortcut={['⌃Z', '⌘Z']}>
           <Button
-            variant="ghost"
-            className="hover:dark:bg-white/15"
-            size="icon-sm"
+            variant='ghost'
+            className='hover:dark:bg-white/15'
+            size='icon-sm'
             onClick={handleUndo}
             disabled={!canUndo || isReadOnly}>
             <Undo />
@@ -205,9 +204,9 @@ export const WorkflowOperators = memo(function WorkflowOperators({
           content={isReadOnly ? 'Redo disabled in read-only mode' : 'Redo'}
           shortcut={['⌃⇧Z', '⌘⇧Z']}>
           <Button
-            variant="ghost"
-            size="icon-sm"
-            className="hover:dark:bg-white/15"
+            variant='ghost'
+            size='icon-sm'
+            className='hover:dark:bg-white/15'
             onClick={handleRedo}
             disabled={!canRedo || isReadOnly}>
             <Redo />
@@ -216,31 +215,31 @@ export const WorkflowOperators = memo(function WorkflowOperators({
         <HistoryCommandPopover open={historyPopoverOpen} onOpenChange={setHistoryPopoverOpen} />
       </div>
 
-      <div className="flex items-center gap-0.5 p-0.5 bg-white/40 dark:bg-white/10 backdrop-blur-sm rounded-lg ring-black/5 ring-1">
-        <Tooltip content="Zoom In" shortcut={['⌘=', '⌃=']}>
+      <div className='flex items-center gap-0.5 p-0.5 bg-white/40 dark:bg-white/10 backdrop-blur-sm rounded-lg ring-black/5 ring-1'>
+        <Tooltip content='Zoom In' shortcut={['⌘=', '⌃=']}>
           <Button
-            variant="ghost"
-            size="icon-sm"
+            variant='ghost'
+            size='icon-sm'
             onClick={zoomIn}
-            className="hover:dark:bg-white/15">
+            className='hover:dark:bg-white/15'>
             <ZoomIn />
           </Button>
         </Tooltip>
-        <Tooltip content="Zoom Out" shortcut={['⌘-', '⌃-']}>
+        <Tooltip content='Zoom Out' shortcut={['⌘-', '⌃-']}>
           <Button
-            variant="ghost"
-            size="icon-sm"
+            variant='ghost'
+            size='icon-sm'
             onClick={zoomOut}
-            className="hover:dark:bg-white/15">
+            className='hover:dark:bg-white/15'>
             <ZoomOut />
           </Button>
         </Tooltip>
-        <Tooltip content="Fit View" shortcut={['F', '⌘0', '⌃0']}>
+        <Tooltip content='Fit View' shortcut={['F', '⌘0', '⌃0']}>
           <Button
-            variant="ghost"
-            size="icon-sm"
+            variant='ghost'
+            size='icon-sm'
             onClick={fitView}
-            className="hover:dark:bg-white/15">
+            className='hover:dark:bg-white/15'>
             <Maximize />
           </Button>
         </Tooltip>
@@ -248,9 +247,9 @@ export const WorkflowOperators = memo(function WorkflowOperators({
           content={isReadOnly ? 'Layout disabled in read-only mode' : 'Organize Layout'}
           shortcut={'⇧A'}>
           <Button
-            variant="ghost"
-            className="hover:dark:bg-white/15"
-            size="icon-sm"
+            variant='ghost'
+            className='hover:dark:bg-white/15'
+            size='icon-sm'
             onClick={handleLayout}
             disabled={isReadOnly}>
             <Shuffle />

@@ -1,13 +1,14 @@
 // ~/app/(protected)/app/contacts/_components/groups/existing-groups-tab.tsx
-import { useState, useEffect } from 'react'
-import { api } from '~/trpc/react'
-import { useContactMutations } from '../use-contact-mutations'
+
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { DialogFooter } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Users, Plus } from 'lucide-react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { Plus, Users } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { api } from '~/trpc/react'
+import { useContactMutations } from '../use-contact-mutations'
 import GroupItem from './group-item'
 
 interface ExistingGroupsTabProps {
@@ -122,7 +123,7 @@ export default function ExistingGroupsTab({
   return (
     <>
       {groups && groups.length > 0 ? (
-        <div className="max-h-60 divide-y overflow-y-auto rounded-2xl border">
+        <div className='max-h-60 divide-y overflow-y-auto rounded-2xl border'>
           {groups.map((group) => {
             // Get current membership count for this group
             const memberCount =
@@ -157,20 +158,20 @@ export default function ExistingGroupsTab({
       {groups && groups.length > 0 && (
         <DialogFooter>
           <Button
-            variant="ghost"
-            size="sm"
+            variant='ghost'
+            size='sm'
             onClick={() => onOpenChange(false)}
             disabled={mutations.addToGroup.isPending || mutations.removeFromGroup.isPending}>
-            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
           <Button
             data-dialog-submit
             onClick={handleSaveGroups}
-            size="sm"
-            variant="outline"
+            size='sm'
+            variant='outline'
             loading={mutations.addToGroup.isPending || mutations.removeFromGroup.isPending}
-            loadingText="Saving...">
-            Save Changes <KbdSubmit variant="outline" size="sm" />
+            loadingText='Saving...'>
+            Save Changes <KbdSubmit variant='outline' size='sm' />
           </Button>
         </DialogFooter>
       )}
@@ -181,13 +182,13 @@ export default function ExistingGroupsTab({
 // Empty state component
 function EmptyGroupsState({ onCreateClick }: { onCreateClick: () => void }) {
   return (
-    <div className="py-8 text-center">
-      <Users className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-      <h3 className="text-lg font-medium">No groups found</h3>
-      <p className="mb-4 text-muted-foreground">
+    <div className='py-8 text-center'>
+      <Users className='mx-auto mb-4 h-12 w-12 text-muted-foreground' />
+      <h3 className='text-lg font-medium'>No groups found</h3>
+      <p className='mb-4 text-muted-foreground'>
         Create your first customer group to organize your customers.
       </p>
-      <Button variant="outline" onClick={onCreateClick}>
+      <Button variant='outline' onClick={onCreateClick}>
         <Plus /> Create Group
       </Button>
     </div>

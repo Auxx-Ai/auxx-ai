@@ -1,17 +1,17 @@
 // packages/lib/src/mail-views/mail-view-service.ts
-import { database as db, schema, type Database } from '@auxx/database'
+import { type Database, database as db, schema } from '@auxx/database'
 import {
-  MailViewModel,
-  type MailViewEntity,
   type CreateMailViewInput,
+  type MailViewEntity,
+  MailViewModel,
   type UpdateMailViewInput,
 } from '@auxx/database/models'
-import { eq, and, desc, asc, count, inArray } from 'drizzle-orm'
-import { createScopedLogger } from '../logger'
 import { getRedisClient } from '@auxx/redis'
-import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
+import { and, asc, count, desc, eq, inArray } from 'drizzle-orm'
 import type { ConditionGroup } from '../conditions/types'
 import { batchGetThreadTagIds } from '../field-values/relationship-queries'
+import { createScopedLogger } from '../logger'
+import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
 
 const logger = createScopedLogger('mail-view-service')
 

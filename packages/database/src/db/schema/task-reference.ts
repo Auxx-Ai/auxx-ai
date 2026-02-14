@@ -1,12 +1,12 @@
 // packages/database/src/db/schema/task-reference.ts
 // Drizzle table for TaskReference
 
-import { pgTable, index, uniqueIndex, text, timestamp, type AnyPgColumn, sql } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
-import { Task } from './task'
-import { EntityInstance } from './entity-instance'
+import { type AnyPgColumn, index, pgTable, sql, text, timestamp, uniqueIndex } from './_shared'
 import { EntityDefinition } from './entity-definition'
+import { EntityInstance } from './entity-instance'
 import { Organization } from './organization'
+import { Task } from './task'
 import { User } from './user'
 
 /**
@@ -58,9 +58,7 @@ export const TaskReference = pgTable(
       }),
 
     /** When this reference was created */
-    createdAt: timestamp({ precision: 3 })
-      .default(sql`CURRENT_TIMESTAMP`)
-      .notNull(),
+    createdAt: timestamp({ precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 
     /** User who created this reference */
     createdById: text()

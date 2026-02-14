@@ -1,18 +1,18 @@
 // packages/lib/src/import/resolution/process-column-values.ts
 
 import type { Database } from '@auxx/database'
-import type {
-  ResolutionType,
-  ResolutionConfig,
-  ValueResolution,
-  ResolvedValue,
-} from '../types/resolution'
-import type { ResolutionStatus } from './get-unique-values-with-status'
-import { hashValue } from '../hashing/hash-value'
 import { countOccurrences } from '../hashing/count-occurrences'
-import { resolveValue } from './resolve-value'
-import { getCachedResolutions } from './cache/get-cached-resolutions'
+import { hashValue } from '../hashing/hash-value'
+import type {
+  ResolutionConfig,
+  ResolutionType,
+  ResolvedValue,
+  ValueResolution,
+} from '../types/resolution'
 import { batchCacheResolutions } from './cache/batch-cache-resolutions'
+import { getCachedResolutions } from './cache/get-cached-resolutions'
+import type { ResolutionStatus } from './get-unique-values-with-status'
+import { resolveValue } from './resolve-value'
 
 /**
  * Derive resolution status from resolved value type.

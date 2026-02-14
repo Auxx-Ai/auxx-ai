@@ -1,107 +1,98 @@
 // packages/lib/src/ai/index.ts
 
-// ===== MAIN ORCHESTRATOR =====
-export { LLMOrchestrator } from './orchestrator'
-export type {
-  LLMInvocationRequest,
-  LLMInvocationResponse,
-  AICallbacks,
-  ToolExecutor,
-  ToolExecutionResult,
-  UsageTrackingRequest,
-  BatchLLMRequest,
-  BatchLLMResponse,
-  OrchestratorConfig,
-} from './orchestrator'
-
-// ===== SPECIALIZED CLIENTS (Base Classes) =====
-export {
-  BaseSpecializedClient,
-  LLMClient,
-  TextEmbeddingClient,
-  Speech2TextClient,
-  ModerationClient,
-  TTSClient,
-} from './clients/base'
-
-// ===== CLIENT UTILITIES =====
-export { RetryManager, CircuitBreaker, CircuitState, TokenCalculator } from './clients/utils'
-
 // ===== SPECIALIZED CLIENT TYPES =====
 export type {
   ClientConfig,
+  DEFAULT_CLIENT_CONFIG,
+  EmbeddingParams,
+  EmbeddingResponse,
   LLMInvokeParams,
   LLMResponse,
   LLMStreamChunk,
   LLMStreamResult,
-  EmbeddingParams,
-  EmbeddingResponse,
-  TranscribeParams,
-  TranscribeResponse,
+  Message,
+  ModelCapabilities as SpecializedModelCapabilities,
+  ModelParameters,
   ModerationParams,
   ModerationResponse,
+  MultiModalContent,
+  OperationContext,
+  Tool,
+  ToolCall,
+  TranscribeParams,
+  TranscribeResponse,
   TTSParams,
   TTSResponse,
   UsageMetrics,
-  ModelCapabilities as SpecializedModelCapabilities,
-  MultiModalContent,
-  Message,
-  Tool,
-  ToolCall,
-  ModelParameters,
-  OperationContext,
-  DEFAULT_CLIENT_CONFIG,
 } from './clients/base'
+// ===== SPECIALIZED CLIENTS (Base Classes) =====
+export {
+  BaseSpecializedClient,
+  LLMClient,
+  ModerationClient,
+  Speech2TextClient,
+  TextEmbeddingClient,
+  TTSClient,
+} from './clients/base'
+export type { InvalidParameterError, StreamingError } from './clients/base/types'
 
+// ===== CLIENT UTILITIES =====
+export { CircuitBreaker, CircuitState, RetryManager, TokenCalculator } from './clients/utils'
+// ===== ERROR TYPES =====
+export { QuotaExceededError } from './errors/quota-errors'
+export type {
+  AICallbacks,
+  BatchLLMRequest,
+  BatchLLMResponse,
+  LLMInvocationRequest,
+  LLMInvocationResponse,
+  OrchestratorConfig,
+  OrchestratorError,
+  ToolExecutionError,
+  ToolExecutionResult,
+  ToolExecutor,
+  UsageTrackingRequest,
+} from './orchestrator'
+// ===== MAIN ORCHESTRATOR =====
+export { LLMOrchestrator } from './orchestrator'
+export { AnthropicClient } from './providers/anthropic/anthropic-client'
 // ===== PROVIDER SYSTEM (Existing) =====
 export { ProviderClient } from './providers/base/provider-client'
-export { ProviderRegistry } from './providers/provider-registry'
-export { ProviderManager } from './providers/provider-manager'
-export { ProviderConfigurationService } from './providers/provider-configuration-service'
-export { SystemModelService, type SystemModelDefaultEntity } from './providers/system-model-service'
-
-// ===== PROVIDER TYPES (Existing) =====
-export type {
-  ModelType,
-  ProviderType,
-  ModelCapabilities,
-  ProviderCapabilities,
-  ProviderData,
-  ModelData,
-  ProviderConfiguration,
-  CredentialFormField,
-  ProviderCredentials,
-} from './providers/types'
-
+export { DeepSeekClient } from './providers/deepseek/deepseek-client'
+export { GoogleClient } from './providers/google/google-client'
+export { GroqClient } from './providers/groq/groq-client'
+// ===== EXISTING PROVIDER CLIENTS =====
+export { OpenAIClient } from './providers/openai/openai-client'
 // ===== OPENAI SPECIALIZED CLIENTS =====
 export {
   OpenAILLMClient,
-  OpenAITextEmbeddingClient,
-  OpenAISpeech2TextClient,
   OpenAIModerationClient,
+  OpenAISpeech2TextClient,
+  OpenAITextEmbeddingClient,
   OpenAITTSClient,
 } from './providers/openai/specialized-clients'
-
-// ===== EXISTING PROVIDER CLIENTS =====
-export { OpenAIClient } from './providers/openai/openai-client'
-export { AnthropicClient } from './providers/anthropic/anthropic-client'
-export { GoogleClient } from './providers/google/google-client'
-export { GroqClient } from './providers/groq/groq-client'
-export { DeepSeekClient } from './providers/deepseek/deepseek-client'
-
-// ===== USAGE TRACKING =====
-export {
-  UsageTrackingService,
-  type UsageDayEntry,
-  type UsageStatsByPeriodResponse,
-  type UsageSource,
-} from './usage/usage-tracking-service'
-
+export { ProviderConfigurationService } from './providers/provider-configuration-service'
+export { ProviderManager } from './providers/provider-manager'
+export { ProviderRegistry } from './providers/provider-registry'
+export { type SystemModelDefaultEntity, SystemModelService } from './providers/system-model-service'
+// ===== PROVIDER TYPES (Existing) =====
+export type {
+  CredentialFormField,
+  ModelCapabilities,
+  ModelData,
+  ModelType,
+  ProviderCapabilities,
+  ProviderConfiguration,
+  ProviderCredentials,
+  ProviderData,
+  ProviderType,
+} from './providers/types'
 // ===== QUOTA MANAGEMENT =====
 export { QuotaService } from './quota'
-
-// ===== ERROR TYPES =====
-export { QuotaExceededError } from './errors/quota-errors'
-export type { OrchestratorError, ToolExecutionError } from './orchestrator'
-
-export type { StreamingError, InvalidParameterError } from './clients/base/types'
+// ===== USAGE TRACKING =====
+export {
+  type UsageDayEntry,
+  type UsageSource,
+  type UsageStatsByPeriodResponse,
+  UsageTrackingService,
+} from './usage/usage-tracking-service'

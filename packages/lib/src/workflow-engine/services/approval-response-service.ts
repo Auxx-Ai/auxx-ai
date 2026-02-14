@@ -1,10 +1,11 @@
 // packages/lib/src/workflow-engine/services/approval-response-service.ts
-import { database as db, schema, type Database } from '@auxx/database'
-import { eq, count, and, sql } from 'drizzle-orm'
-import { getQueue, Queues } from '../../jobs/queues'
-import { publisher } from '../../events/publisher'
-import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
+import { type Database, database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { and, count, eq, sql } from 'drizzle-orm'
+import { publisher } from '../../events/publisher'
+import { getQueue, Queues } from '../../jobs/queues'
+import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
+
 const logger = createScopedLogger('approval-response-service')
 interface ApprovalResponseResult {
   success: boolean
@@ -165,17 +166,13 @@ export class ApprovalResponseService {
     }
     // Resume workflow with cancelled outcome
     const executionService = new WorkflowExecutionService(this.db as any)
-    await executionService.resumeWorkflow(
-      approvalRequest.workflowRunId,
-      approvalRequest.nodeId,
-      {
-        outcome: 'denied',
-        approvalRequestId,
-        cancelledBy,
-        cancelledAt: new Date().toISOString(),
-        cancelReason: reason,
-      }
-    )
+    await executionService.resumeWorkflow(approvalRequest.workflowRunId, approvalRequest.nodeId, {
+      outcome: 'denied',
+      approvalRequestId,
+      cancelledBy,
+      cancelledAt: new Date().toISOString(),
+      cancelReason: reason,
+    })
     // Update status to timeout with cancellation metadata
     await this.db
       .update(schema.ApprovalRequest)

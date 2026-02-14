@@ -1,8 +1,8 @@
 // apps/worker/src/workers/worker-definitions/scheduled-trigger-worker.ts
 
 import { executeScheduledTrigger } from '@auxx/lib/jobs'
-import { createWorker } from '../utils/createWorker'
 import { Queues } from '@auxx/lib/queues/types'
+import { createWorker } from '../utils/createWorker'
 
 const jobMappings = {
   executeScheduledTrigger,

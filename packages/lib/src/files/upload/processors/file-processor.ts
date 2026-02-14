@@ -1,14 +1,10 @@
 // packages/lib/src/files/upload/processors/file-processor.ts
 
-import { BaseProcessor } from './base-processor'
-import type {
-  ProcessorMetadata,
-  CreateSessionRequest,
-  ProcessorResult,
-} from './types'
+import type { AssetKind, CreateFileRequest } from '../../core/types'
+import type { ProcessorConfigResult, UploadInitConfig } from '../init-types'
 import type { PresignedUploadSession } from '../session-types'
-import type { UploadInitConfig, ProcessorConfigResult } from '../init-types'
-import type { CreateFileRequest, AssetKind } from '../../core/types'
+import { BaseProcessor } from './base-processor'
+import type { CreateSessionRequest, ProcessorMetadata, ProcessorResult } from './types'
 
 /**
  * Generic file processor for user files (no attachment needed)
@@ -25,7 +21,10 @@ export class FileProcessor extends BaseProcessor {
     }
   }
 
-  protected async executeProcess(session: PresignedUploadSession, storageLocationId: string): Promise<ProcessorResult> {
+  protected async executeProcess(
+    session: PresignedUploadSession,
+    storageLocationId: string
+  ): Promise<ProcessorResult> {
     // User files are always FolderFiles (no attachment needed)
     const fileId = await this.createFile(session, storageLocationId)
 
@@ -38,7 +37,10 @@ export class FileProcessor extends BaseProcessor {
   /**
    * Create a FolderFile record using FileService
    */
-  protected async createFile(session: PresignedUploadSession, storageLocationId: string): Promise<string> {
+  protected async createFile(
+    session: PresignedUploadSession,
+    storageLocationId: string
+  ): Promise<string> {
     try {
       const fileData: CreateFileRequest = {
         name: session.fileName,

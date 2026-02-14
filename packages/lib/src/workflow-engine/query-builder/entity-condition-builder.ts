@@ -1,17 +1,17 @@
 // packages/lib/src/workflow-engine/query-builder/entity-condition-builder.ts
 
-import { sql, type SQL } from 'drizzle-orm'
+import type { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { schema } from '@auxx/database'
+import { getValueType } from '@auxx/types'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import type { ResourceFieldId } from '@auxx/types/field'
+import { getFieldDefinitionId, getFieldId, parseResourceFieldId } from '@auxx/types/field'
+import { type SQL, sql } from 'drizzle-orm'
+import type { Operator } from '../../conditions/operator-definitions'
 import type { ResourceField } from '../../resources/registry/field-types'
 import { type FieldOptionItem, getFieldOptions } from '../../resources/registry/option-helpers'
 import { BaseType } from '../core/types'
 import { BaseConditionBuilder, type GenericCondition } from './base-condition-builder'
-import { getValueType } from '@auxx/types'
-import type { Operator } from '../../conditions/operator-definitions'
-import type { ResourceFieldId } from '@auxx/types/field'
-import { parseResourceFieldId, getFieldId, getFieldDefinitionId } from '@auxx/types/field'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 
 const logger = createScopedLogger('entity-condition-builder')
 
@@ -50,7 +50,9 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
   ): SQL<unknown> | undefined {
     const fieldRef = condition.fieldId
 
-    logger.debug(`Processing condition: fieldId=${Array.isArray(fieldRef) ? JSON.stringify(fieldRef) : fieldRef}, operator=${condition.operator}, value=${condition.value}`)
+    logger.debug(
+      `Processing condition: fieldId=${Array.isArray(fieldRef) ? JSON.stringify(fieldRef) : fieldRef}, operator=${condition.operator}, value=${condition.value}`
+    )
 
     // Case 1: Path array (preferred) - relationship traversal
     if (Array.isArray(fieldRef)) {
@@ -81,7 +83,9 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
       }
 
       // Direct field reference (could be ResourceFieldId or plain key)
-      const fieldKey = fieldRef.includes(':') ? parseResourceFieldId(fieldRef as ResourceFieldId).fieldId : fieldRef
+      const fieldKey = fieldRef.includes(':')
+        ? parseResourceFieldId(fieldRef as ResourceFieldId).fieldId
+        : fieldRef
       logger.debug(`Processing direct field: ${fieldKey}`)
       return this.buildDirectFieldCondition(fieldKey, condition, context)
     }
@@ -135,7 +139,10 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     return this.baseTypeToQueryType(field.type)
   }
 
-  protected getFieldOptions(fieldId: string, context: EntityQueryContext): FieldOptionItem[] | undefined {
+  protected getFieldOptions(
+    fieldId: string,
+    context: EntityQueryContext
+  ): FieldOptionItem[] | undefined {
     const field = context.fields.find((f) => f.key === fieldId)
     return getFieldOptions(field)
   }
@@ -156,11 +163,13 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     const field = context.fields.find((f) => f.key === fieldKey)
     if (!field) {
       logger.warn(`Field '${fieldKey}' not found in entity fields`)
-      logger.debug(`Available fields: ${context.fields.map(f => f.key).join(', ')}`)
+      logger.debug(`Available fields: ${context.fields.map((f) => f.key).join(', ')}`)
       return undefined
     }
 
-    logger.debug(`Found field: key=${field.key}, type=${field.type}, isSystem=${field.isSystem}, dbColumn=${field.dbColumn}, dbFieldType=${field.dbFieldType}`)
+    logger.debug(
+      `Found field: key=${field.key}, type=${field.type}, isSystem=${field.isSystem}, dbColumn=${field.dbColumn}, dbFieldType=${field.dbFieldType}`
+    )
 
     // Extract ID from object format and transform option labels
     let rawValue = this.extractReferenceId(condition.value)
@@ -186,7 +195,9 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     const fieldType = this.baseTypeToQueryType(field.type)
     const dbFieldType = field.dbFieldType || 'TEXT'
 
-    logger.debug(`Building custom field condition SQL: fieldIdForSql=${fieldIdForSql}, operator=${condition.operator}, value=${rawValue}, fieldType=${fieldType}, dbFieldType=${dbFieldType}`)
+    logger.debug(
+      `Building custom field condition SQL: fieldIdForSql=${fieldIdForSql}, operator=${condition.operator}, value=${rawValue}, fieldType=${fieldType}, dbFieldType=${dbFieldType}`
+    )
 
     return this.buildTypedConditionSql(
       condition.operator,
@@ -216,7 +227,9 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
       return undefined
     }
 
-    logger.debug(`Building SQL for system field: column=${dbColumn}, operator=${operator}, value=${rawValue}`)
+    logger.debug(
+      `Building SQL for system field: column=${dbColumn}, operator=${operator}, value=${rawValue}`
+    )
 
     // Handle date operators
     if (fieldType === BaseType.DATE || fieldType === BaseType.DATETIME) {
@@ -265,12 +278,12 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
         case 'in': {
           const values = Array.isArray(rawValue) ? rawValue : [rawValue]
           if (!values.length) return undefined
-          return sql`${column} IN ${values.map(v => String(v))}`
+          return sql`${column} IN ${values.map((v) => String(v))}`
         }
         case 'not in': {
           const values = Array.isArray(rawValue) ? rawValue : [rawValue]
           if (!values.length) return undefined
-          return sql`${column} NOT IN ${values.map(v => String(v))}`
+          return sql`${column} NOT IN ${values.map((v) => String(v))}`
         }
         case 'exists':
           return sql`${column} IS NOT NULL`
@@ -340,17 +353,19 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     logger.debug(`Relationship field: ${relationshipRef}, target field: ${targetRef}`)
 
     // Parse field keys from references (handle both ResourceFieldId and plain string)
-    const relationshipFieldKey = typeof relationshipRef === 'string' && relationshipRef.includes(':')
-      ? parseResourceFieldId(relationshipRef as ResourceFieldId).fieldId
-      : relationshipRef
+    const relationshipFieldKey =
+      typeof relationshipRef === 'string' && relationshipRef.includes(':')
+        ? parseResourceFieldId(relationshipRef as ResourceFieldId).fieldId
+        : relationshipRef
 
-    const targetFieldKey = typeof targetRef === 'string' && targetRef.includes(':')
-      ? parseResourceFieldId(targetRef as ResourceFieldId).fieldId
-      : targetRef
+    const targetFieldKey =
+      typeof targetRef === 'string' && targetRef.includes(':')
+        ? parseResourceFieldId(targetRef as ResourceFieldId).fieldId
+        : targetRef
 
     // Find the relationship field on the source entity
-    const relationshipField = context.fields.find((f) =>
-      f.key === relationshipFieldKey || (f.id && f.id === relationshipFieldKey)
+    const relationshipField = context.fields.find(
+      (f) => f.key === relationshipFieldKey || (f.id && f.id === relationshipFieldKey)
     )
 
     if (!relationshipField) {
@@ -359,7 +374,9 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     }
 
     if (relationshipField.type !== BaseType.RELATION) {
-      logger.warn(`Field '${relationshipFieldKey}' is not a relationship (type: ${relationshipField.type})`)
+      logger.warn(
+        `Field '${relationshipFieldKey}' is not a relationship (type: ${relationshipField.type})`
+      )
       return undefined
     }
 
@@ -376,11 +393,13 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
 
     // Validate path if using ResourceFieldId format
     if (typeof targetRef === 'string' && targetRef.includes(':')) {
-      const { entityDefinitionId: targetEntity } = parseResourceFieldId(targetRef as ResourceFieldId)
+      const { entityDefinitionId: targetEntity } = parseResourceFieldId(
+        targetRef as ResourceFieldId
+      )
       if (relatedEntityDefId !== targetEntity) {
         logger.warn(
           `Path validation failed: relationship '${relationshipRef}' ` +
-          `points to '${relatedEntityDefId}' but next step expects '${targetEntity}'`
+            `points to '${relatedEntityDefId}' but next step expects '${targetEntity}'`
         )
         return undefined
       }
@@ -395,8 +414,8 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
 
     logger.debug(`Found ${relatedFields.length} fields for related entity '${relatedEntityDefId}'`)
 
-    const relatedField = relatedFields.find((f) =>
-      f.key === targetFieldKey || (f.id && f.id === targetFieldKey)
+    const relatedField = relatedFields.find(
+      (f) => f.key === targetFieldKey || (f.id && f.id === targetFieldKey)
     )
 
     if (!relatedField) {
@@ -404,7 +423,9 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
       return undefined
     }
 
-    logger.debug(`Building nested query for relationship: ${relationshipField.key} -> ${relatedField.key}`)
+    logger.debug(
+      `Building nested query for relationship: ${relationshipField.key} -> ${relatedField.key}`
+    )
 
     // Build nested EXISTS query
     return this.buildNestedRelationshipQuery(
@@ -510,9 +531,7 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
           const values = Array.isArray(rawValue) ? rawValue : [rawValue]
           if (!values.length) return undefined
           const conditions = values.map((v) => sql`${valueCol} = ${String(v)}`)
-          return conditions.length === 1
-            ? conditions[0]
-            : sql`(${sql.join(conditions, sql` OR `)})`
+          return conditions.length === 1 ? conditions[0] : sql`(${sql.join(conditions, sql` OR `)})`
         }
         case 'not in': {
           const values = Array.isArray(rawValue) ? rawValue : [rawValue]
@@ -547,9 +566,7 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
           const values = Array.isArray(rawValue) ? rawValue : [rawValue]
           if (!values.length) return undefined
           const conditions = values.map((v) => sql`${valueCol} = ${String(v)}`)
-          return conditions.length === 1
-            ? conditions[0]
-            : sql`(${sql.join(conditions, sql` OR `)})`
+          return conditions.length === 1 ? conditions[0] : sql`(${sql.join(conditions, sql` OR `)})`
         }
         case 'not in': {
           const values = Array.isArray(rawValue) ? rawValue : [rawValue]
@@ -624,17 +641,13 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
         const values = Array.isArray(rawValue) ? rawValue : [rawValue]
         if (!values.length) return undefined
         const conditions = values.map((v) => sql`${valueCol} = ${String(v)}`)
-        return conditions.length === 1
-          ? conditions[0]
-          : sql`(${sql.join(conditions, sql` OR `)})`
+        return conditions.length === 1 ? conditions[0] : sql`(${sql.join(conditions, sql` OR `)})`
       }
       case 'not in': {
         const values = Array.isArray(rawValue) ? rawValue : [rawValue]
         if (!values.length) return undefined
         const conditions = values.map((v) => sql`${valueCol} != ${String(v)}`)
-        return conditions.length === 1
-          ? conditions[0]
-          : sql`(${sql.join(conditions, sql` AND `)})`
+        return conditions.length === 1 ? conditions[0] : sql`(${sql.join(conditions, sql` AND `)})`
       }
       case 'exists':
         return sql`true`
@@ -813,9 +826,7 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
           const values = Array.isArray(rawValue) ? rawValue : [rawValue]
           if (!values.length) return undefined
           const conditions = values.map((v) => sql`${valueCol} = ${String(v)}`)
-          return conditions.length === 1
-            ? conditions[0]
-            : sql`(${sql.join(conditions, sql` OR `)})`
+          return conditions.length === 1 ? conditions[0] : sql`(${sql.join(conditions, sql` OR `)})`
         }
 
         case 'not in': {

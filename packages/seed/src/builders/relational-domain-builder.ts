@@ -2,10 +2,10 @@
 // Relational domain builder that creates drizzle-seed refinements with proper foreign key relationships
 
 import { createId } from '@paralleldrive/cuid2'
-import type { SeedingContext, SeedingScenario } from '../types'
-import type { IdPoolManager } from '../utils/id-pool-manager'
-import { BusinessDistributions } from '../utils/business-distributions'
 import { ContentEngine } from '../generators/content-engine'
+import type { SeedingContext, SeedingScenario } from '../types'
+import { BusinessDistributions } from '../utils/business-distributions'
+import type { IdPoolManager } from '../utils/id-pool-manager'
 
 /** RelationalDomainBuilder creates domain refinements with proper foreign key relationships. */
 export class RelationalDomainBuilder {
@@ -73,10 +73,10 @@ export class RelationalDomainBuilder {
             type: helpers.valuesFromArray({ values: this.generateOrganizationTypes() }),
             handle: helpers.valuesFromArray({ values: this.generateHandles() }),
             createdById: helpers.valuesFromArray({
-              values: this.idPoolManager.generateCreatedByIds(this.scenario.scales.organizations)
+              values: this.idPoolManager.generateCreatedByIds(this.scenario.scales.organizations),
             }),
             systemUserId: helpers.valuesFromArray({
-              values: this.idPoolManager.generateCreatedByIds(this.scenario.scales.organizations)
+              values: this.idPoolManager.generateCreatedByIds(this.scenario.scales.organizations),
             }),
           },
         },
@@ -84,11 +84,15 @@ export class RelationalDomainBuilder {
           count: this.calculateSettingsCount(),
           columns: {
             organizationId: helpers.valuesFromArray({
-              values: this.idPoolManager.generateDistributedOrganizationIds(this.calculateSettingsCount())
+              values: this.idPoolManager.generateDistributedOrganizationIds(
+                this.calculateSettingsCount()
+              ),
             }),
             key: helpers.valuesFromArray({ values: this.generateSettingKeys() }),
             value: helpers.valuesFromArray({ values: this.generateSettingValues() }),
-            allowUserOverride: helpers.valuesFromArray({ values: this.generateUserOverrideFlags() }),
+            allowUserOverride: helpers.valuesFromArray({
+              values: this.generateUserOverrideFlags(),
+            }),
             scope: helpers.valuesFromArray({ values: this.generateSettingScopes() }),
           },
         },
@@ -109,9 +113,13 @@ export class RelationalDomainBuilder {
         EmailIntegration: {
           count: this.scenario.scales.organizations * 2, // 2 email integrations per org
           columns: {
-            id: helpers.valuesFromArray({ values: integrationIds.slice(0, this.scenario.scales.organizations * 2) }),
+            id: helpers.valuesFromArray({
+              values: integrationIds.slice(0, this.scenario.scales.organizations * 2),
+            }),
             organizationId: helpers.valuesFromArray({
-              values: this.idPoolManager.generateDistributedOrganizationIds(this.scenario.scales.organizations * 2)
+              values: this.idPoolManager.generateDistributedOrganizationIds(
+                this.scenario.scales.organizations * 2
+              ),
             }),
             type: helpers.valuesFromArray({ values: this.generateIntegrationTypes() }),
             status: helpers.valuesFromArray({ values: this.generateIntegrationStatuses() }),
@@ -123,7 +131,9 @@ export class RelationalDomainBuilder {
           columns: {
             id: helpers.valuesFromArray({ values: templateIds }),
             organizationId: helpers.valuesFromArray({
-              values: this.idPoolManager.generateDistributedOrganizationIds(this.calculateTemplateCount())
+              values: this.idPoolManager.generateDistributedOrganizationIds(
+                this.calculateTemplateCount()
+              ),
             }),
             name: helpers.valuesFromArray({ values: this.generateTemplateNames() }),
             content: helpers.valuesFromArray({ values: this.generateTemplateContent() }),
@@ -137,18 +147,20 @@ export class RelationalDomainBuilder {
   // ---- Phase 4: Business Entities ----
 
   /** buildCommerceRefinements creates commerce entity refinements */
-  buildCommerceRefinements(context?: SeedingContext): (helpers: unknown) => Record<string, unknown> {
+  buildCommerceRefinements(
+    context?: SeedingContext
+  ): (helpers: unknown) => Record<string, unknown> {
     return (helpers: any) => {
       console.log('🛒 Building Commerce refinements')
 
       const customerAssignments = this.generateCommerceAssignments(
         this.scenario.scales.customers,
-        context,
+        context
       )
       const customerIds = this.generateCustomerIds()
       const productAssignments = this.generateCommerceAssignments(
         this.scenario.scales.products,
-        context,
+        context
       )
       const productIds = this.generateProductIds()
       const customerTimestamps = this.generateTimestampPairs(this.scenario.scales.customers)
@@ -183,13 +195,19 @@ export class RelationalDomainBuilder {
           columns: {
             id: helpers.valuesFromArray({ values: productIds }),
             title: helpers.valuesFromArray({ values: this.generateProductTitles() }),
-            descriptionHtml: helpers.valuesFromArray({ values: this.generateProductDescriptions() }),
+            descriptionHtml: helpers.valuesFromArray({
+              values: this.generateProductDescriptions(),
+            }),
             vendor: helpers.valuesFromArray({ values: this.generateVendors() }),
             productType: helpers.valuesFromArray({ values: this.generateProductTypes() }),
             handle: helpers.valuesFromArray({ values: this.generateProductHandles() }),
             status: helpers.valuesFromArray({ values: this.generateProductStatuses() }),
-            hasOnlyDefaultVariant: helpers.valuesFromArray({ values: this.generateDefaultVariantFlags() }),
-            tracksInventory: helpers.valuesFromArray({ values: this.generateInventoryTrackingFlags() }),
+            hasOnlyDefaultVariant: helpers.valuesFromArray({
+              values: this.generateDefaultVariantFlags(),
+            }),
+            tracksInventory: helpers.valuesFromArray({
+              values: this.generateInventoryTrackingFlags(),
+            }),
             totalInventory: helpers.valuesFromArray({ values: this.generateTotalInventory() }),
             tags: helpers.valuesFromArray({ values: this.generateProductTags() }),
             createdAt: helpers.valuesFromArray({ values: productTimestamps.createdAt }),
@@ -210,12 +228,20 @@ export class RelationalDomainBuilder {
   }
 
   /** buildCommunicationRefinements creates communication entity refinements */
-  buildCommunicationRefinements(context?: SeedingContext): (helpers: unknown) => Record<string, unknown> {
+  buildCommunicationRefinements(
+    context?: SeedingContext
+  ): (helpers: unknown) => Record<string, unknown> {
     return (helpers: any) => {
       console.log('💬 Building Communication refinements')
 
-      const threadAssignments = this.generateThreadAssignments(this.scenario.scales.threads, context)
-      const participantSets = this.generateThreadParticipantSets(this.scenario.scales.threads, context)
+      const threadAssignments = this.generateThreadAssignments(
+        this.scenario.scales.threads,
+        context
+      )
+      const participantSets = this.generateThreadParticipantSets(
+        this.scenario.scales.threads,
+        context
+      )
       const threadIds = this.generateThreadIds()
       const createdAt = this.generateThreadCreatedAt()
       const firstMessageAt = this.generateThreadFirstMessageAt(createdAt)
@@ -231,14 +257,20 @@ export class RelationalDomainBuilder {
             id: helpers.valuesFromArray({ values: threadIds }),
             subject: helpers.valuesFromArray({ values: this.generateThreadSubjects() }),
             participantIds: helpers.valuesFromArray({ values: participantSets }),
-            organizationId: helpers.valuesFromArray({ values: threadAssignments.map(item => item.organizationId) }),
-            integrationId: helpers.valuesFromArray({ values: threadAssignments.map(item => item.integrationId) }),
+            organizationId: helpers.valuesFromArray({
+              values: threadAssignments.map((item) => item.organizationId),
+            }),
+            integrationId: helpers.valuesFromArray({
+              values: threadAssignments.map((item) => item.integrationId),
+            }),
             assigneeId: helpers.valuesFromArray({ values: assignees }),
             messageType: helpers.valuesFromArray({ values: this.generateMessageTypes() }),
             integrationType: helpers.valuesFromArray({ values: this.generateIntegrationTypes() }),
             status: helpers.valuesFromArray({ values: this.generateThreadStatuses() }),
             messageCount: helpers.valuesFromArray({ values: this.generateMessageCounts() }),
-            participantCount: helpers.valuesFromArray({ values: participantSets.map(set => set.length) }),
+            participantCount: helpers.valuesFromArray({
+              values: participantSets.map((set) => set.length),
+            }),
             type: helpers.valuesFromArray({ values: this.generateThreadTypes() }),
             createdAt: helpers.valuesFromArray({ values: createdAt }),
             firstMessageAt: helpers.valuesFromArray({ values: firstMessageAt }),
@@ -267,10 +299,12 @@ export class RelationalDomainBuilder {
           count: this.calculateAiUsageCount(),
           columns: {
             organizationId: helpers.valuesFromArray({
-              values: this.idPoolManager.generateDistributedOrganizationIds(this.calculateAiUsageCount())
+              values: this.idPoolManager.generateDistributedOrganizationIds(
+                this.calculateAiUsageCount()
+              ),
             }),
             userId: helpers.valuesFromArray({
-              values: this.idPoolManager.generateDistributedUserIds(this.calculateAiUsageCount())
+              values: this.idPoolManager.generateDistributedUserIds(this.calculateAiUsageCount()),
             }),
             provider: helpers.valuesFromArray({ values: this.generateProviders() }),
             model: helpers.valuesFromArray({ values: this.generateAiModels() }),
@@ -294,7 +328,9 @@ export class RelationalDomainBuilder {
           count: this.calculateAutoResponseRuleCount(),
           columns: {
             organizationId: helpers.valuesFromArray({
-              values: this.idPoolManager.generateDistributedOrganizationIds(this.calculateAutoResponseRuleCount())
+              values: this.idPoolManager.generateDistributedOrganizationIds(
+                this.calculateAutoResponseRuleCount()
+              ),
             }),
             name: helpers.valuesFromArray({ values: this.generateRuleNames() }),
             description: helpers.valuesFromArray({ values: this.generateRuleDescriptions() }),
@@ -303,7 +339,7 @@ export class RelationalDomainBuilder {
             conditions: helpers.valuesFromArray({ values: this.generateConditions() }),
             responseType: helpers.valuesFromArray({ values: this.generateResponseTypes() }),
             templateId: helpers.valuesFromArray({
-              values: this.generateRuleTemplateIds()
+              values: this.generateRuleTemplateIds(),
             }),
           },
         },
@@ -315,10 +351,36 @@ export class RelationalDomainBuilder {
 
   private generateFirstNames(): string[] {
     const names = [
-      'John', 'Jane', 'Michael', 'Sarah', 'David', 'Emily', 'Robert', 'Jessica',
-      'William', 'Ashley', 'Christopher', 'Amanda', 'Matthew', 'Stephanie', 'Joshua',
-      'Jennifer', 'Andrew', 'Elizabeth', 'Daniel', 'Lauren', 'Joseph', 'Rachel',
-      'Ryan', 'Megan', 'Brandon', 'Nicole', 'Jason', 'Samantha', 'Justin', 'Katherine'
+      'John',
+      'Jane',
+      'Michael',
+      'Sarah',
+      'David',
+      'Emily',
+      'Robert',
+      'Jessica',
+      'William',
+      'Ashley',
+      'Christopher',
+      'Amanda',
+      'Matthew',
+      'Stephanie',
+      'Joshua',
+      'Jennifer',
+      'Andrew',
+      'Elizabeth',
+      'Daniel',
+      'Lauren',
+      'Joseph',
+      'Rachel',
+      'Ryan',
+      'Megan',
+      'Brandon',
+      'Nicole',
+      'Jason',
+      'Samantha',
+      'Justin',
+      'Katherine',
     ]
     const result: string[] = []
     for (let i = 0; i < this.scenario.scales.users; i++) {
@@ -329,10 +391,33 @@ export class RelationalDomainBuilder {
 
   private generateLastNames(): string[] {
     const names = [
-      'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller',
-      'Davis', 'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Gonzalez',
-      'Wilson', 'Anderson', 'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin',
-      'Lee', 'Perez', 'Thompson', 'White', 'Harris', 'Sanchez', 'Clark'
+      'Smith',
+      'Johnson',
+      'Williams',
+      'Brown',
+      'Jones',
+      'Garcia',
+      'Miller',
+      'Davis',
+      'Rodriguez',
+      'Martinez',
+      'Hernandez',
+      'Lopez',
+      'Gonzalez',
+      'Wilson',
+      'Anderson',
+      'Thomas',
+      'Taylor',
+      'Moore',
+      'Jackson',
+      'Martin',
+      'Lee',
+      'Perez',
+      'Thompson',
+      'White',
+      'Harris',
+      'Sanchez',
+      'Clark',
     ]
     const result: string[] = []
     for (let i = 0; i < this.scenario.scales.users; i++) {
@@ -365,12 +450,27 @@ export class RelationalDomainBuilder {
 
   private generateOrganizationNames(): string[] {
     const businessTypes = [
-      'Solutions', 'Technologies', 'Innovations', 'Systems', 'Digital',
-      'Commerce', 'Enterprises', 'Group', 'Partners', 'Consulting'
+      'Solutions',
+      'Technologies',
+      'Innovations',
+      'Systems',
+      'Digital',
+      'Commerce',
+      'Enterprises',
+      'Group',
+      'Partners',
+      'Consulting',
     ]
     const bases = [
-      'Auxx', 'TechFlow', 'DataSync', 'CloudPro', 'MarketEdge',
-      'SalesHub', 'BusinessCore', 'ServiceLink', 'CustomerFirst'
+      'Auxx',
+      'TechFlow',
+      'DataSync',
+      'CloudPro',
+      'MarketEdge',
+      'SalesHub',
+      'BusinessCore',
+      'ServiceLink',
+      'CustomerFirst',
     ]
     const names: string[] = []
     for (let i = 0; i < this.scenario.scales.organizations; i++) {
@@ -384,8 +484,15 @@ export class RelationalDomainBuilder {
   private generateWebsites(): string[] {
     const websites: string[] = []
     const bases = [
-      'Auxx', 'TechFlow', 'DataSync', 'CloudPro', 'MarketEdge',
-      'SalesHub', 'BusinessCore', 'ServiceLink', 'CustomerFirst'
+      'Auxx',
+      'TechFlow',
+      'DataSync',
+      'CloudPro',
+      'MarketEdge',
+      'SalesHub',
+      'BusinessCore',
+      'ServiceLink',
+      'CustomerFirst',
     ]
     for (let i = 0; i < this.scenario.scales.organizations; i++) {
       const base = bases[i % bases.length]!.toLowerCase()
@@ -410,8 +517,15 @@ export class RelationalDomainBuilder {
 
   private generateEmailDomains(): string[] {
     const bases = [
-      'auxx', 'techflow', 'datasync', 'cloudpro', 'marketedge',
-      'saleshub', 'businesscore', 'servicelink', 'customerfirst'
+      'auxx',
+      'techflow',
+      'datasync',
+      'cloudpro',
+      'marketedge',
+      'saleshub',
+      'businesscore',
+      'servicelink',
+      'customerfirst',
     ]
     const domains: string[] = []
     for (let i = 0; i < this.scenario.scales.organizations; i++) {
@@ -431,8 +545,15 @@ export class RelationalDomainBuilder {
 
   private generateHandles(): string[] {
     const bases = [
-      'auxx', 'techflow', 'datasync', 'cloudpro', 'marketedge',
-      'saleshub', 'businesscore', 'servicelink', 'customerfirst'
+      'auxx',
+      'techflow',
+      'datasync',
+      'cloudpro',
+      'marketedge',
+      'saleshub',
+      'businesscore',
+      'servicelink',
+      'customerfirst',
     ]
     const handles: string[] = []
     for (let i = 0; i < this.scenario.scales.organizations; i++) {
@@ -448,11 +569,21 @@ export class RelationalDomainBuilder {
 
   private generateSettingKeys(): string[] {
     const settingKeys = [
-      'email_notifications', 'auto_reply_enabled', 'response_time_sla',
-      'escalation_rules', 'working_hours', 'timezone', 'language',
-      'signature_template', 'ai_analysis_enabled', 'spam_filtering',
-      'thread_assignment', 'priority_routing', 'customer_tags',
-      'integration_webhooks', 'data_retention_days'
+      'email_notifications',
+      'auto_reply_enabled',
+      'response_time_sla',
+      'escalation_rules',
+      'working_hours',
+      'timezone',
+      'language',
+      'signature_template',
+      'ai_analysis_enabled',
+      'spam_filtering',
+      'thread_assignment',
+      'priority_routing',
+      'customer_tags',
+      'integration_webhooks',
+      'data_retention_days',
     ]
     const keys: string[] = []
     const count = this.calculateSettingsCount()
@@ -524,7 +655,7 @@ export class RelationalDomainBuilder {
         server: 'imap.gmail.com',
         port: 993,
         ssl: true,
-        username: 'user@example.com'
+        username: 'user@example.com',
       })
     }
     return settings
@@ -536,9 +667,14 @@ export class RelationalDomainBuilder {
 
   private generateTemplateNames(): string[] {
     const names = [
-      'Welcome Message', 'Order Confirmation', 'Shipping Notification',
-      'Return Acknowledgment', 'Technical Support', 'Billing Inquiry',
-      'After Hours Response', 'Escalation Notice'
+      'Welcome Message',
+      'Order Confirmation',
+      'Shipping Notification',
+      'Return Acknowledgment',
+      'Technical Support',
+      'Billing Inquiry',
+      'After Hours Response',
+      'Escalation Notice',
     ]
     const result: string[] = []
     const count = this.calculateTemplateCount()
@@ -550,14 +686,14 @@ export class RelationalDomainBuilder {
 
   private generateTemplateContent(): string[] {
     const content = [
-      'Welcome to our service! We\'re excited to have you.',
+      "Welcome to our service! We're excited to have you.",
       'Your order has been confirmed and is being processed.',
       'Your order has shipped and is on its way to you.',
-      'We\'ve received your return request and will process it soon.',
-      'Thank you for contacting technical support. We\'ll help you resolve this issue.',
+      "We've received your return request and will process it soon.",
+      "Thank you for contacting technical support. We'll help you resolve this issue.",
       'Regarding your billing inquiry, please find the information below.',
       'Thank you for contacting us. Our office hours are 9 AM to 5 PM EST.',
-      'Your request has been escalated to our management team.'
+      'Your request has been escalated to our management team.',
     ]
     const result: string[] = []
     const count = this.calculateTemplateCount()
@@ -647,12 +783,12 @@ export class RelationalDomainBuilder {
 
   private generateProductTitles(): string[] {
     const products = this.content.generateProductDescriptions(this.scenario.scales.products)
-    return products.map(p => p.name)
+    return products.map((p) => p.name)
   }
 
   private generateProductDescriptions(): string[] {
     const products = this.content.generateProductDescriptions(this.scenario.scales.products)
-    return products.map(p => `<p>${p.description}</p>`)
+    return products.map((p) => `<p>${p.description}</p>`)
   }
 
   private generateVendors(): string[] {
@@ -763,7 +899,7 @@ export class RelationalDomainBuilder {
   /** generateCommerceAssignments pairs organization and integration IDs for commerce entities. */
   private generateCommerceAssignments(
     count: number,
-    context?: SeedingContext,
+    context?: SeedingContext
   ): Array<{ organizationId: string; integrationId: string }> {
     const contextualIntegrations = context?.services.shopifyIntegrations ?? []
     if (contextualIntegrations.length > 0) {
@@ -803,13 +939,15 @@ export class RelationalDomainBuilder {
 
   /** generatePublishedAtDates derives optional published timestamps from created dates. */
   private generatePublishedAtDates(created: Date[]): Array<Date | null> {
-    return created.map((date, index) => (index % 5 === 0 ? null : new Date(date.getTime() + 60 * 60000)))
+    return created.map((date, index) =>
+      index % 5 === 0 ? null : new Date(date.getTime() + 60 * 60000)
+    )
   }
 
   // Communication generators
   private generateThreadSubjects(): string[] {
     const emails = this.content.generateRealisticEmails(this.scenario.scales.threads)
-    return emails.map(email => email.subject)
+    return emails.map((email) => email.subject)
   }
 
   private generateMessageTypes(): string[] {
@@ -852,7 +990,7 @@ export class RelationalDomainBuilder {
 
   private generateThreadAssignments(
     count: number,
-    context?: SeedingContext,
+    context?: SeedingContext
   ): Array<{ organizationId: string; integrationId: string; inboxId: string | null }> {
     const serviceOrgs = context?.services.organizations ?? []
     const serviceIntegrations = context?.services.integrations ?? []
@@ -886,10 +1024,7 @@ export class RelationalDomainBuilder {
     return Array.from({ length: this.scenario.scales.threads }, () => createId())
   }
 
-  private generateThreadParticipantSets(
-    count: number,
-    context?: SeedingContext,
-  ): string[][] {
+  private generateThreadParticipantSets(count: number, context?: SeedingContext): string[][] {
     const participants: string[][] = []
     const serviceOrgs = context?.services.organizations ?? []
     const userPool = this.collectUserIds(context)
@@ -919,13 +1054,14 @@ export class RelationalDomainBuilder {
 
   private generateThreadCreatedAt(): Date[] {
     const base = Date.now() - this.scenario.scales.threads * 120000
-    return Array.from({ length: this.scenario.scales.threads }, (_, index) =>
-      new Date(base + index * 120000)
+    return Array.from(
+      { length: this.scenario.scales.threads },
+      (_, index) => new Date(base + index * 120000)
     )
   }
 
   private generateThreadFirstMessageAt(createdAt: Date[]): Date[] {
-    return createdAt.map(date => new Date(date))
+    return createdAt.map((date) => new Date(date))
   }
 
   private generateThreadLastMessageAt(firstMessageAt: Date[]): Date[] {
@@ -951,8 +1087,8 @@ export class RelationalDomainBuilder {
   private collectUserIds(context?: SeedingContext): string[] {
     if (context) {
       const ids = new Set<string>()
-      context.auth.testUsers.forEach(user => ids.add(user.id))
-      context.auth.randomUsers.forEach(user => ids.add(user.id))
+      context.auth.testUsers.forEach((user) => ids.add(user.id))
+      context.auth.randomUsers.forEach((user) => ids.add(user.id))
       if (ids.size > 0) {
         return Array.from(ids)
       }
@@ -1039,8 +1175,11 @@ export class RelationalDomainBuilder {
 
   private generateRuleNames(): string[] {
     const ruleTypes = [
-      'Welcome New Customers', 'Order Confirmation Auto-Reply', 'Shipping Update Notification',
-      'Return Request Acknowledgment', 'Technical Support Escalation'
+      'Welcome New Customers',
+      'Order Confirmation Auto-Reply',
+      'Shipping Update Notification',
+      'Return Request Acknowledgment',
+      'Technical Support Escalation',
     ]
     const names: string[] = []
     const count = this.calculateAutoResponseRuleCount()
@@ -1056,7 +1195,7 @@ export class RelationalDomainBuilder {
       'Send order confirmation and tracking information',
       'Notify customers when their order ships',
       'Acknowledge return requests and provide next steps',
-      'Escalate technical issues to specialized support team'
+      'Escalate technical issues to specialized support team',
     ]
     const result: string[] = []
     const count = this.calculateAutoResponseRuleCount()

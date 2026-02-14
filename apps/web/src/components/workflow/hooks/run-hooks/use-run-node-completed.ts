@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/hooks/run-hooks/use-run-node-completed.ts
 
 import { useCallback } from 'react'
-import { useRunStore } from '../../store/run-store'
 import type { ExecutionEvent } from '../../store/run-store'
+import { useRunStore } from '../../store/run-store'
 
 export const useRunNodeCompleted = () => {
   const updateNodeExecution = useRunStore((state) => state.updateNodeExecution)

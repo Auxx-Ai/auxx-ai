@@ -1,9 +1,9 @@
 // apps/web/src/components/detail-view/components/detail-view-actions.tsx
 'use client'
 
-import { useState } from 'react'
-import { Archive, Ban, Merge, Trash2, Users, Zap } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
+import { Archive, Ban, Merge, Trash2, Users, Zap } from 'lucide-react'
+import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import type { DetailViewActionsProps } from '../types'
 
@@ -49,7 +49,8 @@ export function DetailViewActions({
   const handleDelete = async () => {
     const confirmed = await confirm({
       title: 'Delete record?',
-      description: 'This action cannot be undone. The record and all its data will be permanently deleted.',
+      description:
+        'This action cannot be undone. The record and all its data will be permanently deleted.',
       confirmText: 'Delete',
       cancelText: 'Cancel',
       destructive: true,
@@ -77,39 +78,39 @@ export function DetailViewActions({
 
   return (
     <>
-      <div className="flex gap-2">
+      <div className='flex gap-2'>
         {actions.enableGroups && (
-          <Button variant="outline" size="sm" onClick={() => setIsGroupDialogOpen(true)}>
+          <Button variant='outline' size='sm' onClick={() => setIsGroupDialogOpen(true)}>
             <Users /> Groups
           </Button>
         )}
 
         {actions.enableMerge && (
-          <Button variant="outline" size="sm" onClick={() => console.log('Merge:', recordId)}>
+          <Button variant='outline' size='sm' onClick={() => console.log('Merge:', recordId)}>
             <Merge /> Merge
           </Button>
         )}
 
         {actions.enableWorkflowTrigger && (
-          <Button variant="outline" size="sm" onClick={() => console.log('Workflow:', recordId)}>
+          <Button variant='outline' size='sm' onClick={() => console.log('Workflow:', recordId)}>
             <Zap /> Run Workflow
           </Button>
         )}
 
         {actions.enableArchive && !isArchived && (
-          <Button variant="outline" size="sm" onClick={handleArchive}>
+          <Button variant='outline' size='sm' onClick={handleArchive}>
             <Archive /> Archive
           </Button>
         )}
 
         {actions.enableSpam && !isSpam && (
-          <Button variant="destructive" size="sm" onClick={handleSpam}>
+          <Button variant='destructive' size='sm' onClick={handleSpam}>
             <Ban /> Spam
           </Button>
         )}
 
         {actions.enableDelete && (
-          <Button variant="destructive" size="sm" onClick={handleDelete}>
+          <Button variant='destructive' size='sm' onClick={handleDelete}>
             <Trash2 /> Delete
           </Button>
         )}

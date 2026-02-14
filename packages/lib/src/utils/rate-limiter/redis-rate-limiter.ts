@@ -1,9 +1,9 @@
 // packages/lib/src/utils/rate-limiter/redis-rate-limiter.ts
 
-import { createScopedLogger } from '../../logger'
 import { getRedisClient, getRedisProvider, type RedisClient } from '@auxx/redis'
-import type { RateLimiter, RateLimiterConfig } from './types'
+import { createScopedLogger } from '../../logger'
 import { TokenBucket } from './token-bucket'
+import type { RateLimiter, RateLimiterConfig } from './types'
 
 /** Default timeout for Redis operations in milliseconds */
 const REDIS_OPERATION_TIMEOUT_MS = 5000
@@ -65,10 +65,16 @@ export class RedisRateLimiter implements RateLimiter {
    * @param timeoutMs - Timeout in milliseconds
    * @returns Promise that rejects if timeout is exceeded
    */
-  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number = REDIS_OPERATION_TIMEOUT_MS): Promise<T> {
+  private async withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number = REDIS_OPERATION_TIMEOUT_MS
+  ): Promise<T> {
     let timeoutId: NodeJS.Timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => reject(new Error(`Redis operation timed out after ${timeoutMs}ms`)), timeoutMs)
+      timeoutId = setTimeout(
+        () => reject(new Error(`Redis operation timed out after ${timeoutMs}ms`)),
+        timeoutMs
+      )
     })
 
     try {
@@ -130,10 +136,7 @@ export class RedisRateLimiter implements RateLimiter {
 
     // Get current bucket state with timeout
     const [storedTokens, lastRefill] = await this.withTimeout(
-      Promise.all([
-        this.redis.get(`${fullKey}:tokens`),
-        this.redis.get(`${fullKey}:lastRefill`),
-      ])
+      Promise.all([this.redis.get(`${fullKey}:tokens`), this.redis.get(`${fullKey}:lastRefill`)])
     )
 
     let currentTokens = storedTokens ? parseFloat(storedTokens as string) : capacity

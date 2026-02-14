@@ -1,6 +1,11 @@
 import chokidar from 'chokidar'
-import { getDiagnostics, readConfig, typeScriptErrorSchema, type TypeScriptError } from '../../util/typescript.js'
 import path from 'path'
+import {
+  getDiagnostics,
+  readConfig,
+  type TypeScriptError,
+  typeScriptErrorSchema,
+} from '../../util/typescript.js'
 
 /**
  * Validate TypeScript files and watch for changes

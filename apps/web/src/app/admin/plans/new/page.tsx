@@ -4,11 +4,8 @@
  */
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { PlanForm } from '../_components/plan-form'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Button } from '@auxx/ui/components/button'
-import { ArrowLeft } from 'lucide-react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -16,6 +13,9 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { ArrowLeft } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { PlanForm } from '../_components/plan-form'
 
 /**
  * Create new plan page
@@ -27,13 +27,13 @@ export default function NewPlanPage() {
     <MainPage>
       <MainPageHeader>
         <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title="Admin" href="/admin" />
-          <MainPageBreadcrumbItem title="Plans" href="/admin/plans" />
-          <MainPageBreadcrumbItem title="New Plan" href="/admin/plans/new" last />
+          <MainPageBreadcrumbItem title='Admin' href='/admin' />
+          <MainPageBreadcrumbItem title='Plans' href='/admin/plans' />
+          <MainPageBreadcrumbItem title='New Plan' href='/admin/plans/new' last />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>
-        <Card className="border-none rounded-none shadow-none">
+        <Card className='border-none rounded-none shadow-none'>
           <CardHeader>
             <CardTitle>Create New Plan</CardTitle>
             <CardDescription>Add a new billing plan to the system</CardDescription>

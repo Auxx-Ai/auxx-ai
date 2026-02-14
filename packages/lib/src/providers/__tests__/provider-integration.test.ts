@@ -11,15 +11,15 @@
  * 5. Integration with action execution system
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { ProviderRegistryService } from '../provider-registry-service'
-import { GoogleProvider } from '../google/google-provider'
-import { FacebookProvider } from '../facebook/facebook-provider'
-import { InstagramProvider } from '../instagram/instagram-provider'
-import { OutlookProvider } from '../outlook/outlook-provider'
-import { OpenPhoneProvider } from '../openphone/openphone-provider'
-import { getProviderCapabilities, PROVIDER_CAPABILITIES } from '../provider-capabilities'
 import { IntegrationProviderType } from '@auxx/database/enums'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { FacebookProvider } from '../facebook/facebook-provider'
+import { GoogleProvider } from '../google/google-provider'
+import { InstagramProvider } from '../instagram/instagram-provider'
+import { OpenPhoneProvider } from '../openphone/openphone-provider'
+import { OutlookProvider } from '../outlook/outlook-provider'
+import { getProviderCapabilities, PROVIDER_CAPABILITIES } from '../provider-capabilities'
+import { ProviderRegistryService } from '../provider-registry-service'
 
 // Mock the database
 vi.mock('@auxx/database', () => ({

@@ -1,13 +1,13 @@
 // apps/web/src/components/fields/displays/display-date.tsx
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
+import { converters, type DateFieldOptions } from '@auxx/lib/field-values/client'
 import { X } from 'lucide-react'
 import { usePropertyContext } from '../property-provider'
 import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
 import { FieldOptionButton } from './field-option-button'
-import { FieldType } from '@auxx/database/enums'
-import { converters, type DateFieldOptions } from '@auxx/lib/field-values/client'
 
 /**
  * DisplayDate component
@@ -41,11 +41,12 @@ export function DisplayDate() {
   const handleClear = () => commitValue?.(null)
 
   /** Clear button - only shown if field is not readonly and commitValue is available */
-  const clearButton = !field.readOnly && commitValue ? (
-    <FieldOptionButton key="clear" label="Clear" onClick={handleClear}>
-      <X className="size-2.5" />
-    </FieldOptionButton>
-  ) : null
+  const clearButton =
+    !field.readOnly && commitValue ? (
+      <FieldOptionButton key='clear' label='Clear' onClick={handleClear}>
+        <X className='size-2.5' />
+      </FieldOptionButton>
+    ) : null
 
   return (
     <DisplayWrapper copyValue={formatted} buttons={clearButton ? [clearButton] : undefined}>

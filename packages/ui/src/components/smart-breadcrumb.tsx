@@ -2,14 +2,12 @@
 
 'use client'
 
-import * as React from 'react'
-import { ChevronRight, ChevronsRight, MoreHorizontal } from 'lucide-react'
-import { cva, type VariantProps } from 'class-variance-authority'
-import { type LucideIcon } from 'lucide-react'
-
-import { cn } from '@auxx/ui/lib/utils'
-import { measureTextWidth, measureTextWidths, truncateText } from '@auxx/ui/lib/measure-text'
 import { useContainerWidth } from '@auxx/ui/hooks/use-container-width'
+import { measureTextWidth, measureTextWidths, truncateText } from '@auxx/ui/lib/measure-text'
+import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { ChevronRight, ChevronsRight, type LucideIcon, MoreHorizontal } from 'lucide-react'
+import * as React from 'react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -289,8 +287,8 @@ function SmartBreadcrumbSegment({
 
   const content = (
     <>
-      {Icon && <Icon className="size-3.5 shrink-0" />}
-      <span className="truncate">{displayLabel}</span>
+      {Icon && <Icon className='size-3.5 shrink-0' />}
+      <span className='truncate'>{displayLabel}</span>
     </>
   )
 
@@ -306,7 +304,7 @@ function SmartBreadcrumbSegment({
   // Current page - always a span
   if (isCurrent) {
     return (
-      <span role="link" aria-disabled="true" aria-current="page" className={baseClassName}>
+      <span role='link' aria-disabled='true' aria-current='page' className={baseClassName}>
         {content}
       </span>
     )
@@ -332,7 +330,7 @@ function SmartBreadcrumbSegment({
   // Clickable with onClick - button
   return (
     <button
-      type="button"
+      type='button'
       className={baseClassName}
       onClick={segment.onClick}
       disabled={segment.disabled}>
@@ -354,16 +352,16 @@ function SmartBreadcrumbEllipsis({
   onSegmentClick?: (segment: BreadcrumbSegment) => void
 }) {
   const buttonContent = (
-    <span className="flex size-6 items-center justify-center rounded-md hover:bg-accent/50 transition-colors">
-      <MoreHorizontal className="size-4" />
-      <span className="sr-only">Show {collapsedSegments.length} more items</span>
+    <span className='flex size-6 items-center justify-center rounded-md hover:bg-accent/50 transition-colors'>
+      <MoreHorizontal className='size-4' />
+      <span className='sr-only'>Show {collapsedSegments.length} more items</span>
     </span>
   )
 
   // Display mode - just show ellipsis icon
   if (mode === 'display') {
     return (
-      <span role="presentation" aria-hidden="true">
+      <span role='presentation' aria-hidden='true'>
         {buttonContent}
       </span>
     )
@@ -372,7 +370,7 @@ function SmartBreadcrumbEllipsis({
   // Clickable mode without dropdown - just ellipsis
   if (mode === 'clickable') {
     return (
-      <span role="presentation" aria-hidden="true">
+      <span role='presentation' aria-hidden='true'>
         {buttonContent}
       </span>
     )
@@ -383,13 +381,13 @@ function SmartBreadcrumbEllipsis({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          type="button"
-          className="focus:outline-none"
-          aria-label="Show hidden breadcrumb items">
+          type='button'
+          className='focus:outline-none'
+          aria-label='Show hidden breadcrumb items'>
           {buttonContent}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <DropdownMenuContent align='start'>
         {collapsedSegments.map((segment) => {
           const Icon = segment.icon
           return (
@@ -400,7 +398,7 @@ function SmartBreadcrumbEllipsis({
                 if (segment.onClick) segment.onClick()
                 if (onSegmentClick) onSegmentClick(segment)
               }}>
-              {Icon && <Icon className="size-4" />}
+              {Icon && <Icon className='size-4' />}
               {segment.label}
             </DropdownMenuItem>
           )
@@ -422,7 +420,7 @@ function SmartBreadcrumbSeparator({
 }) {
   if (custom) {
     return (
-      <li role="presentation" aria-hidden="true" className="[&>svg]:size-3.5">
+      <li role='presentation' aria-hidden='true' className='[&>svg]:size-3.5'>
         {custom}
       </li>
     )
@@ -431,7 +429,7 @@ function SmartBreadcrumbSeparator({
   const Icon = useDouble ? ChevronsRight : ChevronRight
 
   return (
-    <li role="presentation" aria-hidden="true" className="[&>svg]:size-3.5 shrink-0">
+    <li role='presentation' aria-hidden='true' className='[&>svg]:size-3.5 shrink-0'>
       <Icon />
     </li>
   )
@@ -484,7 +482,7 @@ export function SmartBreadcrumb({
   }
 
   return (
-    <nav aria-label="breadcrumb" className={cn('min-w-0 flex-1', className)} {...props}>
+    <nav aria-label='breadcrumb' className={cn('min-w-0 flex-1', className)} {...props}>
       <ol ref={containerRef} className={cn(smartBreadcrumbVariants({ size }))}>
         {visibleSegments.map((item, index) => {
           const isFirst = index === 0
@@ -494,7 +492,7 @@ export function SmartBreadcrumb({
           return (
             <React.Fragment key={item.segment.id}>
               {/* Segment */}
-              <li className="inline-flex items-center min-w-0">
+              <li className='inline-flex items-center min-w-0'>
                 <SmartBreadcrumbSegment
                   segment={item.segment}
                   displayLabel={item.displayLabel}
@@ -508,7 +506,7 @@ export function SmartBreadcrumb({
 
               {/* Ellipsis for collapsed segments */}
               {showEllipsis && (
-                <li className="inline-flex items-center">
+                <li className='inline-flex items-center'>
                   <SmartBreadcrumbEllipsis
                     collapsedSegments={collapsedSegments}
                     mode={mode}

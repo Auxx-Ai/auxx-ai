@@ -1,17 +1,17 @@
 // apps/web/src/app/admin/organizations/[id]/_components/trial-management-section.tsx
 'use client'
 
-import { useState } from 'react'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
 import { Textarea } from '@auxx/ui/components/textarea'
-import { useConfirm } from '~/hooks/use-confirm'
 import { toastError } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
 import { addDays, format } from 'date-fns'
-import { Calendar, Clock, CheckCircle } from 'lucide-react'
+import { Calendar, CheckCircle, Clock } from 'lucide-react'
+import { useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 interface TrialManagementSectionProps {
   organizationId: string
@@ -132,39 +132,39 @@ export function TrialManagementSection({
           <CardTitle>Trial Management</CardTitle>
           <CardDescription>Manage trial period and conversion status</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className='space-y-6'>
           {/* Current Trial Status */}
-          <div className="p-4 rounded-lg border bg-muted/50">
-            <div className="grid grid-cols-3 gap-4">
+          <div className='p-4 rounded-lg border bg-muted/50'>
+            <div className='grid grid-cols-3 gap-4'>
               <div>
-                <div className="text-sm font-medium text-muted-foreground mb-1">Trial Status</div>
-                <div className="flex items-center gap-2">
+                <div className='text-sm font-medium text-muted-foreground mb-1'>Trial Status</div>
+                <div className='flex items-center gap-2'>
                   {isOnTrial ? (
                     <>
-                      <Clock className="size-4 text-blue-500" />
-                      <span className="font-medium text-blue-500">Active</span>
+                      <Clock className='size-4 text-blue-500' />
+                      <span className='font-medium text-blue-500'>Active</span>
                     </>
                   ) : hasTrialEnded ? (
                     <>
-                      <CheckCircle className="size-4 text-green-500" />
-                      <span className="font-medium text-green-500">Ended</span>
+                      <CheckCircle className='size-4 text-green-500' />
+                      <span className='font-medium text-green-500'>Ended</span>
                     </>
                   ) : (
-                    <span className="font-medium text-muted-foreground">N/A</span>
+                    <span className='font-medium text-muted-foreground'>N/A</span>
                   )}
                 </div>
               </div>
               <div>
-                <div className="text-sm font-medium text-muted-foreground mb-1">Trial End Date</div>
-                <div className="font-medium">
+                <div className='text-sm font-medium text-muted-foreground mb-1'>Trial End Date</div>
+                <div className='font-medium'>
                   {subscription?.trialEnd ? format(subscription.trialEnd, 'PPP') : '-'}
                 </div>
               </div>
               <div>
-                <div className="text-sm font-medium text-muted-foreground mb-1">
+                <div className='text-sm font-medium text-muted-foreground mb-1'>
                   Conversion Status
                 </div>
-                <div className="font-medium">{subscription?.trialConversionStatus || '-'}</div>
+                <div className='font-medium'>{subscription?.trialConversionStatus || '-'}</div>
               </div>
             </div>
           </div>
@@ -173,26 +173,26 @@ export function TrialManagementSection({
           {isOnTrial && (
             <>
               {/* End Trial Immediately */}
-              <div className="space-y-3">
+              <div className='space-y-3'>
                 <div>
-                  <h4 className="text-sm font-medium mb-1">End Trial Immediately</h4>
-                  <p className="text-sm text-muted-foreground">
+                  <h4 className='text-sm font-medium mb-1'>End Trial Immediately</h4>
+                  <p className='text-sm text-muted-foreground'>
                     Force trial to end now, requiring organization to upgrade
                   </p>
                 </div>
-                <div className="space-y-3">
+                <div className='space-y-3'>
                   <div>
-                    <Label htmlFor="end-reason">Reason (Optional)</Label>
+                    <Label htmlFor='end-reason'>Reason (Optional)</Label>
                     <Textarea
-                      id="end-reason"
-                      placeholder="Why are you ending this trial early?"
+                      id='end-reason'
+                      placeholder='Why are you ending this trial early?'
                       value={reason}
                       onChange={(e) => setReason(e.target.value)}
                       rows={2}
                     />
                   </div>
                   <Button
-                    variant="destructive"
+                    variant='destructive'
                     onClick={handleEndTrial}
                     loading={endTrial.isPending}>
                     End Trial Now
@@ -200,37 +200,37 @@ export function TrialManagementSection({
                 </div>
               </div>
 
-              <div className="border-t" />
+              <div className='border-t' />
 
               {/* Extend Trial */}
-              <div className="space-y-3">
+              <div className='space-y-3'>
                 <div>
-                  <h4 className="text-sm font-medium mb-1">Extend Trial Period</h4>
-                  <p className="text-sm text-muted-foreground">
+                  <h4 className='text-sm font-medium mb-1'>Extend Trial Period</h4>
+                  <p className='text-sm text-muted-foreground'>
                     Give customer more time to evaluate the product
                   </p>
                 </div>
-                <div className="space-y-3">
+                <div className='space-y-3'>
                   <div>
-                    <Label htmlFor="extend-days">Extend by (days)</Label>
+                    <Label htmlFor='extend-days'>Extend by (days)</Label>
                     <Input
-                      id="extend-days"
-                      type="number"
-                      min="1"
-                      max="365"
+                      id='extend-days'
+                      type='number'
+                      min='1'
+                      max='365'
                       value={extendDays}
                       onChange={(e) => setExtendDays(e.target.value)}
-                      placeholder="7"
+                      placeholder='7'
                     />
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className='text-xs text-muted-foreground mt-1'>
                       New end date: {format(addDays(new Date(), parseInt(extendDays) || 7), 'PPP')}
                     </p>
                   </div>
                   <div>
-                    <Label htmlFor="extend-reason">Reason (Optional)</Label>
+                    <Label htmlFor='extend-reason'>Reason (Optional)</Label>
                     <Textarea
-                      id="extend-reason"
-                      placeholder="Why are you extending this trial?"
+                      id='extend-reason'
+                      placeholder='Why are you extending this trial?'
                       value={reason}
                       onChange={(e) => setReason(e.target.value)}
                       rows={2}
@@ -243,18 +243,18 @@ export function TrialManagementSection({
                 </div>
               </div>
 
-              <div className="border-t" />
+              <div className='border-t' />
 
               {/* Convert to Paid */}
-              <div className="space-y-3">
+              <div className='space-y-3'>
                 <div>
-                  <h4 className="text-sm font-medium mb-1">Convert Trial to Paid</h4>
-                  <p className="text-sm text-muted-foreground">
+                  <h4 className='text-sm font-medium mb-1'>Convert Trial to Paid</h4>
+                  <p className='text-sm text-muted-foreground'>
                     Manually convert trial to paid without payment (admin override)
                   </p>
                 </div>
                 <Button
-                  variant="outline"
+                  variant='outline'
                   onClick={handleConvertToPaid}
                   loading={convertTrial.isPending}>
                   <CheckCircle />
@@ -265,7 +265,7 @@ export function TrialManagementSection({
           )}
 
           {!isOnTrial && (
-            <div className="text-center py-8 text-muted-foreground">
+            <div className='text-center py-8 text-muted-foreground'>
               Organization is not currently on trial
             </div>
           )}

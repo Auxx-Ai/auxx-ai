@@ -3,10 +3,10 @@
 import { type Database, schema } from '@auxx/database'
 import { SendStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
-import type { ReconciliationInput } from './types/message-sending.types'
-import type { MessageData } from '../email/email-storage'
-import { ThreadManagerService } from './thread-manager.service'
 import { eq, inArray } from 'drizzle-orm'
+import type { MessageData } from '../email/email-storage'
+import type { ThreadManagerService } from './thread-manager.service'
+import type { ReconciliationInput } from './types/message-sending.types'
 
 const logger = createScopedLogger('message-reconciler')
 

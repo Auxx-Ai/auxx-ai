@@ -1,12 +1,12 @@
 // apps/web/src/components/workflow/nodes/core/list/node.tsx
 
 import { type FC, memo } from 'react'
-import { type ListNode as ListNodeType, OPERATION_METADATA } from './types'
-import { listNodeDefinition } from './schema'
-import { BaseNode } from '../../shared/base/base-node'
-import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'
-import { getIcon } from '~/components/workflow/utils/icon-helper'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
+import { getIcon } from '~/components/workflow/utils/icon-helper'
+import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'
+import { BaseNode } from '../../shared/base/base-node'
+import { listNodeDefinition } from './schema'
+import { type ListNode as ListNodeType, OPERATION_METADATA } from './types'
 
 /**
  * List operations node component
@@ -19,17 +19,19 @@ export const ListNode: FC<ListNodeType> = memo((props) => {
   // Get operation summary based on configuration
   const getOperationSummary = () => {
     switch (operation) {
-      case 'filter':
+      case 'filter': {
         const filterConditions = data.filterConfig?.conditions.length || 0
         return `${filterConditions} condition${filterConditions !== 1 ? 's' : ''}`
+      }
       case 'sort':
         return data.sortConfig?.field ? `by ${data.sortConfig.field}` : 'no sort'
-      case 'slice':
+      case 'slice': {
         const sliceMode = data.sliceConfig?.mode
         if (sliceMode === 'first' || sliceMode === 'last') {
           return `${sliceMode} ${data.sliceConfig?.count || 0} items`
         }
         return sliceMode || ''
+      }
       case 'unique':
         return data.uniqueConfig?.by === 'field'
           ? `by ${data.uniqueConfig?.field || 'field'}`
@@ -51,28 +53,28 @@ export const ListNode: FC<ListNodeType> = memo((props) => {
 
   return (
     <BaseNode {...props} data={data} id={id} selected={selected}>
-      <NodeTargetHandle id={id} data={{ ...data, selected }} handleId="target" />
-      <div className="relative">
+      <NodeTargetHandle id={id} data={{ ...data, selected }} handleId='target' />
+      <div className='relative'>
         {/* Operation display */}
-        <div className="px-3 py-2 space-y-2">
+        <div className='px-3 py-2 space-y-2'>
           {/* Operation type */}
-          <div className="flex items-center gap-2">
+          <div className='flex items-center gap-2'>
             {getIcon((operationMeta && operationMeta.icon) ?? 'List', 'h-4 w-4 text-indigo-500')}
-            <span className="text-sm font-medium">{operationMeta?.label ?? 'Unknown'}</span>
+            <span className='text-sm font-medium'>{operationMeta?.label ?? 'Unknown'}</span>
           </div>
 
           {/* Operation summary */}
           {operationSummary && (
-            <div className="text-xs text-muted-foreground bg-primary-100 rounded-md px-2 py-1">
+            <div className='text-xs text-muted-foreground bg-primary-100 rounded-md px-2 py-1'>
               {operationSummary}
             </div>
           )}
 
           {/* Input indicator */}
           {data.inputList && (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <div className='flex items-center gap-1 text-xs text-muted-foreground'>
               <span>List:</span>
-              <span className="font-mono bg-primary-100 px-1 rounded">
+              <span className='font-mono bg-primary-100 px-1 rounded'>
                 <VariableTag variableId={data.inputList} nodeId={id} />
               </span>
             </div>
@@ -82,8 +84,8 @@ export const ListNode: FC<ListNodeType> = memo((props) => {
         <NodeSourceHandle
           id={id}
           data={{ ...data, selected }}
-          handleId="source"
-          handleClassName="!top-1/2 !-right-[0px]"
+          handleId='source'
+          handleClassName='!top-1/2 !-right-[0px]'
         />
       </div>
     </BaseNode>

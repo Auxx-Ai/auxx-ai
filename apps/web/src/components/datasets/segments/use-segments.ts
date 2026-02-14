@@ -1,8 +1,10 @@
 // apps/web/src/components/datasets/segments/use-segments.ts
-import { useState, useMemo, useCallback, useEffect } from 'react'
-import { api } from '~/trpc/react'
-import { toastError } from '@auxx/ui/components/toast'
+
 import type { DocumentSegment } from '@auxx/database/types'
+import { toastError } from '@auxx/ui/components/toast'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { api } from '~/trpc/react'
+
 interface UseSegmentsOptions {
   initialSearchQuery?: string
   chunkSize?: number

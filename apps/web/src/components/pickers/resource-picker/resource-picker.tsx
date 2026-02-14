@@ -2,10 +2,10 @@
 
 'use client'
 
-import { useState, useCallback } from 'react'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Button } from '@auxx/ui/components/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { ChevronDown } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import { ResourcePickerContent } from './resource-picker-content'
 import type { ResourcePickerProps } from './types'
 
@@ -50,9 +50,9 @@ export function ResourcePicker({
 
   // Default trigger
   const defaultTrigger = (
-    <Button variant="outline" size="sm">
+    <Button variant='outline' size='sm'>
       Select field
-      <ChevronDown className="size-4 opacity-50" />
+      <ChevronDown className='size-4 opacity-50' />
     </Button>
   )
 
@@ -60,7 +60,7 @@ export function ResourcePicker({
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>{trigger ?? defaultTrigger}</PopoverTrigger>
       <PopoverContent
-        className="p-0"
+        className='p-0'
         align={align}
         style={{ width: typeof width === 'number' ? `${width}px` : width }}>
         <ResourcePickerContent

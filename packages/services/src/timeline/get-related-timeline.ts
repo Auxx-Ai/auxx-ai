@@ -1,11 +1,11 @@
 // packages/services/src/timeline/get-related-timeline.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and, desc } from 'drizzle-orm'
+import type { TimelineEventEntity } from '@auxx/database/models'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
+import { and, desc, eq } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { TimelineEventEntity } from '@auxx/database/models'
-import { parseRecordId, toRecordId, type RecordId } from '@auxx/types/resource'
 
 /**
  * Input for getting related timeline events
@@ -35,10 +35,8 @@ export async function getRelatedTimelineEvents(input: GetRelatedTimelineEventsIn
   const { organizationId, relatedRecordId, limit = 50 } = input
 
   // Parse relatedRecordId to get components
-  const {
-    entityDefinitionId: relatedEntityType,
-    entityInstanceId: relatedEntityId
-  } = parseRecordId(relatedRecordId)
+  const { entityDefinitionId: relatedEntityType, entityInstanceId: relatedEntityId } =
+    parseRecordId(relatedRecordId)
 
   const dbResult = await fromDatabase(
     database

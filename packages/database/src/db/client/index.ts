@@ -1,14 +1,14 @@
 // packages/database/src/db/client/index.ts
 // Drizzle database client singleton with optional read replicas
 
-import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
-import { withReplicas, type PgWithReplicas } from 'drizzle-orm/pg-core'
-import type { Logger as DrizzleLogger } from 'drizzle-orm/logger'
-import pg, { type Pool as IPool, type PoolConfig } from 'pg'
-import * as schema from '../schema'
-import * as relations from '../relations'
 import { env } from '@auxx/config'
 import { createScopedLogger } from '@auxx/logger'
+import type { Logger as DrizzleLogger } from 'drizzle-orm/logger'
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
+import { type PgWithReplicas, withReplicas } from 'drizzle-orm/pg-core'
+import pg, { type Pool as IPool, type PoolConfig } from 'pg'
+import * as relations from '../relations'
+import * as schema from '../schema'
 
 const { Pool } = pg
 

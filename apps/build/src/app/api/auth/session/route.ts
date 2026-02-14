@@ -1,6 +1,6 @@
 // apps/build/src/app/api/auth/session/route.ts
 
-import { NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 import { getSession } from '~/lib/auth'
 
 /**

@@ -1,5 +1,5 @@
-import { cn } from '../lib/utils'
 import { Text } from '@react-email/components'
+import { cn } from '../lib/utils'
 
 interface QuestionHeaderProps {
   headline: string
@@ -22,7 +22,7 @@ export function QuestionHeader({
         {headline}
       </Text>
       {subheader && (
-        <Text className="text-question-color m-0 block p-0 text-sm leading-6 font-normal">
+        <Text className='text-question-color m-0 block p-0 text-sm leading-6 font-normal'>
           {subheader}
         </Text>
       )}

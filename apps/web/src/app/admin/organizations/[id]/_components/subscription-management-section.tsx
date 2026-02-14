@@ -1,11 +1,10 @@
 // apps/web/src/app/admin/organizations/[id]/_components/subscription-management-section.tsx
 'use client'
 
-import { useState } from 'react'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Label } from '@auxx/ui/components/label'
-import { Textarea } from '@auxx/ui/components/textarea'
 import {
   Select,
   SelectContent,
@@ -13,12 +12,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Badge } from '@auxx/ui/components/badge'
-import { useConfirm } from '~/hooks/use-confirm'
+import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
 import { format } from 'date-fns'
-import { Ban, RefreshCw, AlertCircle, DollarSign } from 'lucide-react'
+import { AlertCircle, Ban, DollarSign, RefreshCw } from 'lucide-react'
+import { useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 interface SubscriptionManagementSectionProps {
   organizationId: string
@@ -183,7 +183,7 @@ export function SubscriptionManagementSection({
   if (!subscription) {
     return (
       <Card>
-        <CardContent className="py-8 text-center text-muted-foreground">
+        <CardContent className='py-8 text-center text-muted-foreground'>
           No subscription found
         </CardContent>
       </Card>
@@ -203,63 +203,63 @@ export function SubscriptionManagementSection({
             Cancel, reactivate, or manually override subscription status
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className='space-y-6'>
           {/* Current Status */}
-          <div className="p-4 rounded-lg border bg-muted/50">
-            <div className="grid grid-cols-3 gap-4">
+          <div className='p-4 rounded-lg border bg-muted/50'>
+            <div className='grid grid-cols-3 gap-4'>
               <div>
-                <div className="text-sm font-medium text-muted-foreground mb-1">
+                <div className='text-sm font-medium text-muted-foreground mb-1'>
                   Subscription Status
                 </div>
                 <Badge
                   variant={isActive ? 'default' : isCanceled ? 'destructive' : 'outline'}
-                  className="uppercase">
+                  className='uppercase'>
                   {subscription.status}
                 </Badge>
               </div>
               <div>
-                <div className="text-sm font-medium text-muted-foreground mb-1">Current Plan</div>
-                <div className="font-medium">{subscription.plan}</div>
+                <div className='text-sm font-medium text-muted-foreground mb-1'>Current Plan</div>
+                <div className='font-medium'>{subscription.plan}</div>
               </div>
               <div>
-                <div className="text-sm font-medium text-muted-foreground mb-1">
+                <div className='text-sm font-medium text-muted-foreground mb-1'>
                   Period End Date
                 </div>
-                <div className="font-medium">
+                <div className='font-medium'>
                   {subscription.periodEnd ? format(subscription.periodEnd, 'PPP') : '-'}
                 </div>
               </div>
             </div>
             {subscription.cancelAtPeriodEnd && (
-              <div className="mt-4 pt-4 border-t flex items-center gap-2 text-amber-600">
-                <AlertCircle className="size-4" />
-                <span className="text-sm font-medium">Subscription will cancel at period end</span>
+              <div className='mt-4 pt-4 border-t flex items-center gap-2 text-amber-600'>
+                <AlertCircle className='size-4' />
+                <span className='text-sm font-medium'>Subscription will cancel at period end</span>
               </div>
             )}
           </div>
 
           {/* Cancel or Reactivate */}
           {!isCanceled ? (
-            <div className="space-y-3">
+            <div className='space-y-3'>
               <div>
-                <h4 className="text-sm font-medium mb-1">Cancel Subscription Immediately</h4>
-                <p className="text-sm text-muted-foreground">
+                <h4 className='text-sm font-medium mb-1'>Cancel Subscription Immediately</h4>
+                <p className='text-sm text-muted-foreground'>
                   Terminate subscription right now, not at period end
                 </p>
               </div>
-              <div className="space-y-3">
+              <div className='space-y-3'>
                 <div>
-                  <Label htmlFor="cancel-reason">Reason (Optional)</Label>
+                  <Label htmlFor='cancel-reason'>Reason (Optional)</Label>
                   <Textarea
-                    id="cancel-reason"
-                    placeholder="Why are you canceling this subscription?"
+                    id='cancel-reason'
+                    placeholder='Why are you canceling this subscription?'
                     value={cancelReason}
                     onChange={(e) => setCancelReason(e.target.value)}
                     rows={2}
                   />
                 </div>
                 <Button
-                  variant="destructive"
+                  variant='destructive'
                   onClick={handleCancelImmediate}
                   loading={cancelImmediate.isPending}>
                   <Ban />
@@ -268,10 +268,10 @@ export function SubscriptionManagementSection({
               </div>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className='space-y-3'>
               <div>
-                <h4 className="text-sm font-medium mb-1">Reactivate Subscription</h4>
-                <p className="text-sm text-muted-foreground">Restore a canceled subscription</p>
+                <h4 className='text-sm font-medium mb-1'>Reactivate Subscription</h4>
+                <p className='text-sm text-muted-foreground'>Restore a canceled subscription</p>
               </div>
               <Button onClick={handleReactivate} loading={reactivate.isPending}>
                 <RefreshCw />
@@ -280,48 +280,48 @@ export function SubscriptionManagementSection({
             </div>
           )}
 
-          <div className="border-t" />
+          <div className='border-t' />
 
           {/* Force Status Change */}
-          <div className="space-y-3">
+          <div className='space-y-3'>
             <div>
-              <h4 className="text-sm font-medium mb-1">Force Status Change</h4>
-              <p className="text-sm text-muted-foreground">
+              <h4 className='text-sm font-medium mb-1'>Force Status Change</h4>
+              <p className='text-sm text-muted-foreground'>
                 Manually override subscription status (use with caution)
               </p>
             </div>
-            <div className="space-y-3">
+            <div className='space-y-3'>
               <div>
-                <Label htmlFor="new-status">New Status</Label>
+                <Label htmlFor='new-status'>New Status</Label>
                 <Select value={newStatus} onValueChange={setNewStatus}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select new status" />
+                    <SelectValue placeholder='Select new status' />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="ACTIVE">ACTIVE</SelectItem>
-                    <SelectItem value="canceled">Canceled</SelectItem>
-                    <SelectItem value="past_due">Past Due</SelectItem>
-                    <SelectItem value="incomplete">Incomplete</SelectItem>
-                    <SelectItem value="trialing">Trialing</SelectItem>
-                    <SelectItem value="TRIALING">TRIALING</SelectItem>
+                    <SelectItem value='active'>Active</SelectItem>
+                    <SelectItem value='ACTIVE'>ACTIVE</SelectItem>
+                    <SelectItem value='canceled'>Canceled</SelectItem>
+                    <SelectItem value='past_due'>Past Due</SelectItem>
+                    <SelectItem value='incomplete'>Incomplete</SelectItem>
+                    <SelectItem value='trialing'>Trialing</SelectItem>
+                    <SelectItem value='TRIALING'>TRIALING</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label htmlFor="status-reason">
-                  Reason <span className="text-destructive">*</span>
+                <Label htmlFor='status-reason'>
+                  Reason <span className='text-destructive'>*</span>
                 </Label>
                 <Textarea
-                  id="status-reason"
-                  placeholder="Why are you changing the status? (minimum 10 characters)"
+                  id='status-reason'
+                  placeholder='Why are you changing the status? (minimum 10 characters)'
                   value={statusChangeReason}
                   onChange={(e) => setStatusChangeReason(e.target.value)}
                   rows={2}
                 />
               </div>
               <Button
-                variant="outline"
+                variant='outline'
                 onClick={handleForceStatus}
                 loading={forceStatus.isPending}
                 disabled={!newStatus || !statusChangeReason || statusChangeReason.length < 10}>
@@ -331,42 +331,42 @@ export function SubscriptionManagementSection({
             </div>
           </div>
 
-          <div className="border-t" />
+          <div className='border-t' />
 
           {/* Credit Adjustment */}
-          <div className="space-y-3">
+          <div className='space-y-3'>
             <div>
-              <h4 className="text-sm font-medium mb-1">Apply Credit Adjustment</h4>
-              <p className="text-sm text-muted-foreground">
+              <h4 className='text-sm font-medium mb-1'>Apply Credit Adjustment</h4>
+              <p className='text-sm text-muted-foreground'>
                 Add or deduct credits (current balance: {subscription.creditsBalance})
               </p>
             </div>
-            <div className="space-y-3">
+            <div className='space-y-3'>
               <div>
-                <Label htmlFor="credit-amount">Credit Amount</Label>
+                <Label htmlFor='credit-amount'>Credit Amount</Label>
                 <input
-                  id="credit-amount"
-                  type="number"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-                  placeholder="Enter amount (positive to add, negative to deduct)"
+                  id='credit-amount'
+                  type='number'
+                  className='flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm'
+                  placeholder='Enter amount (positive to add, negative to deduct)'
                   value={creditAmount}
                   onChange={(e) => setCreditAmount(e.target.value)}
                 />
               </div>
               <div>
-                <Label htmlFor="credit-reason">
-                  Reason <span className="text-destructive">*</span>
+                <Label htmlFor='credit-reason'>
+                  Reason <span className='text-destructive'>*</span>
                 </Label>
                 <Textarea
-                  id="credit-reason"
-                  placeholder="Why are you adjusting credits? (minimum 10 characters)"
+                  id='credit-reason'
+                  placeholder='Why are you adjusting credits? (minimum 10 characters)'
                   value={creditReason}
                   onChange={(e) => setCreditReason(e.target.value)}
                   rows={2}
                 />
               </div>
               <Button
-                variant="outline"
+                variant='outline'
                 onClick={handleApplyCredit}
                 loading={applyCredit.isPending}
                 disabled={!creditAmount || !creditReason || creditReason.length < 10}>

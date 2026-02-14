@@ -1,9 +1,9 @@
 // packages/lib/src/tasks/types.ts
 
 import type { TaskEntity, TaskReferenceEntity } from '@auxx/database'
-import type { Deadline } from '@auxx/types/task'
-import type { RecordId } from '@auxx/types/resource'
 import type { ActorId } from '@auxx/types/actor'
+import type { RecordId } from '@auxx/types/resource'
+import type { Deadline } from '@auxx/types/task'
 
 /**
  * Priority levels for tasks
@@ -72,7 +72,6 @@ export interface UpdateTaskInput {
   assigneeActorIds?: ActorId[]
   referencedEntities?: EntityReference[]
 }
-
 
 /**
  * Filter options for listing tasks

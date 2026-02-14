@@ -1,7 +1,5 @@
 'use client'
 
-import React from 'react'
-import { StatusSlug } from '~/components/mail/types'
 import {
   Select,
   SelectContent,
@@ -9,8 +7,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { getStatusOptionsForDropdown, type StatusOption } from '../_utils/mailbox-utils'
+import React from 'react'
+import type { StatusSlug } from '~/components/mail/types'
 import { formatStatusSlugForDisplay } from '../_utils/mail-utils'
+import { getStatusOptionsForDropdown, type StatusOption } from '../_utils/mailbox-utils'
 
 /**
  * Props for the MailboxStatusDropdown component
@@ -54,16 +54,16 @@ export function MailboxStatusDropdown({
 
   return (
     <Select value={selectedStatus} onValueChange={handleValueChange} disabled={disabled}>
-      <SelectTrigger className={`w-auto min-w-[120px] ${className}`} size="sm">
+      <SelectTrigger className={`w-auto min-w-[120px] ${className}`} size='sm'>
         <SelectValue>{formatStatusSlugForDisplay(selectedStatus)}</SelectValue>
       </SelectTrigger>
       <SelectContent>
         {statusOptions.map((option) => (
-          <SelectItem key={option.value} value={option.value} className="cursor-pointer">
-            <div className="flex flex-col">
-              <span className="font-medium">{option.label}</span>
+          <SelectItem key={option.value} value={option.value} className='cursor-pointer'>
+            <div className='flex flex-col'>
+              <span className='font-medium'>{option.label}</span>
               {option.description && (
-                <span className="text-xs text-muted-foreground">{option.description}</span>
+                <span className='text-xs text-muted-foreground'>{option.description}</span>
               )}
             </div>
           </SelectItem>

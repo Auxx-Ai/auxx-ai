@@ -1,8 +1,8 @@
 // packages/lib/src/import/execution/execute-row.ts
 
-import { eq } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { eq } from 'drizzle-orm'
 import type { RowExecutionResult } from '../types/execution'
 import type { StrategyType } from '../types/plan'
 

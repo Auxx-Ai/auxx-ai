@@ -1,12 +1,12 @@
 // packages/lib/src/files/upload/__tests__/unified-upload-integration.test.ts
 
-import { describe, it, expect, beforeEach, vi, MockedFunction } from 'vitest'
-import { ProcessorRegistry } from '../processors/processor-registry'
-import { FileProcessor } from '../processors/file-processor'
-import { TicketProcessor } from '../processors/entity-processors'
-import { SessionManager } from '../session-manager'
+import { beforeEach, describe, expect, it, type MockedFunction, vi } from 'vitest'
 import { StorageManager } from '../../storage/storage-manager'
 import type { UploadInitConfig, UploadPreparedConfig } from '../init-types'
+import { TicketProcessor } from '../processors/entity-processors'
+import { FileProcessor } from '../processors/file-processor'
+import { ProcessorRegistry } from '../processors/processor-registry'
+import { SessionManager } from '../session-manager'
 
 const { ticketSelectRowsRef, createSelectBuilder, selectMock } = vi.hoisted(() => {
   // Maintains the mocked Ticket rows returned from the Drizzle select builder
@@ -137,7 +137,7 @@ describe('Unified Upload Integration Tests', () => {
     getRedisClientMock.mockReset()
     getRedisClientMock.mockResolvedValue(redisClient)
     resetNanoidSequence()
-    
+
     // Register processors using canonical EntityType values
     ProcessorRegistry.registerForEntity('FILE', (orgId) => new FileProcessor(orgId))
     ProcessorRegistry.registerForEntity('TICKET', (orgId) => new TicketProcessor(orgId))
@@ -160,7 +160,7 @@ describe('Unified Upload Integration Tests', () => {
       }
 
       const { config, warnings } = await processor.processConfig(init)
-      
+
       expect(config).toMatchObject({
         organizationId: 'org123',
         userId: 'user123',
@@ -182,7 +182,7 @@ describe('Unified Upload Integration Tests', () => {
 
       // Step 3: Create session from config
       const session = await SessionManager.createSessionFromConfig(config)
-      
+
       expect(session).toMatchObject({
         id: 'test-session-id-123',
         organizationId: 'org123',
@@ -199,7 +199,9 @@ describe('Unified Upload Integration Tests', () => {
         visibility: config.visibility,
       })
 
-      expect(session.storageKey).toMatch(/^org123\/file\/(?:temp|[a-zA-Z0-9_-]+)\/\d+_test-document\.pdf$/)
+      expect(session.storageKey).toMatch(
+        /^org123\/file\/(?:temp|[a-zA-Z0-9_-]+)\/\d+_test-document\.pdf$/
+      )
       expect(session.policy).toEqual(config.policy)
       expect(session.uploadPlan).toEqual(config.uploadPlan)
     })
@@ -221,20 +223,20 @@ describe('Unified Upload Integration Tests', () => {
       }
 
       const { config } = await processor.processConfig(init)
-      
+
       expect(config.policy.allowedMimeTypes).toContain('application/pdf')
       expect(config.policy.allowedMimeTypes).not.toContain('*/*')
 
       // Step 3: Create session
       const session = await SessionManager.createSessionFromConfig(config)
-      
+
       expect(session.entityType).toBe('TICKET') // ✅ Use canonical EntityType
       expect(session.entityId).toBe('ticket123')
     })
 
     it('should handle multipart upload for large files', async () => {
       const processor = ProcessorRegistry.getForEntityType('FILE', 'org123')
-      
+
       const init: UploadInitConfig = {
         organizationId: 'org123',
         userId: 'user123',
@@ -245,7 +247,7 @@ describe('Unified Upload Integration Tests', () => {
       }
 
       const { config } = await processor.processConfig(init)
-      
+
       expect(config.uploadPlan.strategy).toBe('multipart')
 
       const session = await SessionManager.createSessionFromConfig(config)
@@ -258,7 +260,7 @@ describe('Unified Upload Integration Tests', () => {
 
     beforeEach(() => {
       storageManager = new StorageManager('org123')
-      
+
       // Mock S3 adapter
       vi.doMock('../../storage/adapters/s3-adapter', () => ({
         default: vi.fn().mockImplementation(() => ({
@@ -285,7 +287,7 @@ describe('Unified Upload Integration Tests', () => {
 
     it('should enforce key prefix policy', async () => {
       const processor = ProcessorRegistry.getForEntityType('FILE', 'org123')
-      
+
       const init: UploadInitConfig = {
         organizationId: 'org123',
         userId: 'user123',
@@ -315,7 +317,7 @@ describe('Unified Upload Integration Tests', () => {
 
     it('should enforce TTL policy', async () => {
       const processor = ProcessorRegistry.getForEntityType('FILE', 'org123')
-      
+
       const init: UploadInitConfig = {
         organizationId: 'org123',
         userId: 'user123',
@@ -327,14 +329,14 @@ describe('Unified Upload Integration Tests', () => {
       }
 
       const { config } = await processor.processConfig(init)
-      
+
       // TTL should be clamped to policy maximum
       expect(config.ttlSec).toBe(3600) // 1 hour max
     })
 
     it('should enforce file size policy', async () => {
       const processor = ProcessorRegistry.getForEntityType('FILE', 'org123')
-      
+
       const init: UploadInitConfig = {
         organizationId: 'org123',
         userId: 'user123',
@@ -345,9 +347,9 @@ describe('Unified Upload Integration Tests', () => {
       }
 
       const { config } = await processor.processConfig(init)
-      
+
       expect(config.policy.contentLengthRange).toEqual([0, Number.MAX_SAFE_INTEGER])
-      
+
       // StorageManager should enforce this during presigned URL generation
       const validConfig = { ...config }
       expect(() => {
@@ -363,7 +365,7 @@ describe('Unified Upload Integration Tests', () => {
   describe('Session Lifecycle', () => {
     it('should manage session lifecycle correctly', async () => {
       const processor = ProcessorRegistry.getForEntityType('FILE', 'org123')
-      
+
       const init: UploadInitConfig = {
         organizationId: 'org123',
         userId: 'user123',
@@ -374,7 +376,7 @@ describe('Unified Upload Integration Tests', () => {
       }
 
       const { config } = await processor.processConfig(init)
-      
+
       // Create session
       const session = await SessionManager.createSessionFromConfig(config)
       expect(session.status).toBe('created')
@@ -386,20 +388,20 @@ describe('Unified Upload Integration Tests', () => {
 
       // Update session status
       await SessionManager.updateSession(session.id, { status: 'processing' })
-      
+
       const updatedSession = await SessionManager.getSession(session.id)
       expect(updatedSession!.status).toBe('processing')
 
       // Delete session
       await SessionManager.deleteSession(session.id)
-      
+
       const deletedSession = await SessionManager.getSession(session.id)
       expect(deletedSession).toBeNull()
     })
 
     it('should handle session completion', async () => {
       const processor = ProcessorRegistry.getForEntityType('FILE', 'org123')
-      
+
       const init: UploadInitConfig = {
         organizationId: 'org123',
         userId: 'user123',
@@ -434,7 +436,7 @@ describe('Unified Upload Integration Tests', () => {
 
     it('should handle validation failures', async () => {
       const processor = ProcessorRegistry.getForEntityType('TICKET', 'org123')
-      
+
       // Mock database to return null (entity not found)
       ticketSelectRowsRef.value = []
       selectMock.mockImplementationOnce(() => createSelectBuilder())
@@ -487,7 +489,7 @@ describe('Unified Upload Integration Tests', () => {
   describe('Performance and Concurrency', () => {
     it('should handle concurrent session creation', async () => {
       const processor = ProcessorRegistry.getForEntityType('FILE', 'org123')
-      
+
       const createSession = async (index: number) => {
         const init: UploadInitConfig = {
           organizationId: 'org123',
@@ -503,19 +505,17 @@ describe('Unified Upload Integration Tests', () => {
       }
 
       // Create 10 sessions concurrently
-      const sessions = await Promise.all(
-        Array.from({ length: 10 }, (_, i) => createSession(i))
-      )
+      const sessions = await Promise.all(Array.from({ length: 10 }, (_, i) => createSession(i)))
 
       expect(sessions).toHaveLength(10)
-      expect(new Set(sessions.map(s => s.id)).size).toBe(10) // All unique
+      expect(new Set(sessions.map((s) => s.id)).size).toBe(10) // All unique
     })
 
     it('should handle large file configurations efficiently', async () => {
       const processor = ProcessorRegistry.getForEntityType('FILE', 'org123')
-      
+
       const start = Date.now()
-      
+
       const init: UploadInitConfig = {
         organizationId: 'org123',
         userId: 'user123',
@@ -527,9 +527,9 @@ describe('Unified Upload Integration Tests', () => {
 
       const { config } = await processor.processConfig(init)
       const session = await SessionManager.createSessionFromConfig(config)
-      
+
       const duration = Date.now() - start
-      
+
       expect(duration).toBeLessThan(1000) // Should complete in under 1 second
       expect(config.uploadPlan.strategy).toBe('multipart')
       expect(session.isMultipart).toBe(true)
@@ -546,13 +546,16 @@ declare module '../../storage/storage-manager' {
 }
 
 // Mock implementations for testing
-StorageManager.prototype['validatePolicyCompliance'] = function(config: UploadPreparedConfig) {
+StorageManager.prototype['validatePolicyCompliance'] = (config: UploadPreparedConfig) => {
   if (!config.storageKey.startsWith(config.policy.keyPrefix)) {
     throw new Error('Key prefix policy violation')
   }
 }
 
-StorageManager.prototype['validateSizeCompliance'] = function(config: UploadPreparedConfig, actualSize: number) {
+StorageManager.prototype['validateSizeCompliance'] = (
+  config: UploadPreparedConfig,
+  actualSize: number
+) => {
   const [minSize, maxSize] = config.policy.contentLengthRange
   const effectiveMax =
     maxSize === Number.MAX_SAFE_INTEGER && typeof config.expectedSize === 'number'

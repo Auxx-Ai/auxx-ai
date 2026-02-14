@@ -1,14 +1,14 @@
 // apps/web/src/components/workflow/nodes/core/knowledge-retrieval/schema.ts
 
 import { z } from 'zod'
-import { type NodeDefinition, NodeCategory } from '~/components/workflow/types'
-import { NodeType } from '~/components/workflow/types/node-types'
+import { NodeCategory, type NodeDefinition } from '~/components/workflow/types'
 import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
-import { type KnowledgeRetrievalNodeData } from './types'
-import { getKnowledgeRetrievalOutputVariables } from './output-variables'
-import { KnowledgeRetrievalPanel } from './panel'
+import { NodeType } from '~/components/workflow/types/node-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { isNodeVariable, isVariableMode } from '~/components/workflow/utils/variable-utils'
+import { getKnowledgeRetrievalOutputVariables } from './output-variables'
+import { KnowledgeRetrievalPanel } from './panel'
+import type { KnowledgeRetrievalNodeData } from './types'
 
 /**
  * Dataset entry schema

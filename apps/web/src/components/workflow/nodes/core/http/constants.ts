@@ -1,4 +1,4 @@
-import { Method, BodyType } from './types'
+import { BodyType, Method } from './types'
 
 export const MethodOptions = [
   { label: 'GET', value: Method.get },

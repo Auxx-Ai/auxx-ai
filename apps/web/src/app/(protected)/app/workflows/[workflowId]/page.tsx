@@ -1,34 +1,34 @@
 // apps/web/src/app/(protected)/app/workflows/[workflowId]/page.tsx
 'use client'
 
-import { use, useState } from 'react'
-import { ChartColumn, History, Workflow, Settings, MousePointerClick } from 'lucide-react'
+import { Button } from '@auxx/ui/components/button'
 import {
+  type DockedPanelConfig,
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
   MainPageContent,
   MainPageHeader,
-  type DockedPanelConfig,
 } from '@auxx/ui/components/main-page'
-import { WorkflowEditor } from '~/components/workflow'
-import { api } from '~/trpc/react'
-import { CredentialsProvider } from '~/components/workflow/credentials/credentials-provider'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { Button } from '@auxx/ui/components/button'
-import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
-import { WorkflowAnalytics } from '../_components/analytics/workflow-analytics'
-import { useQueryState } from 'nuqs'
-import { WorkflowExecutions } from '../_components/executions/workflow-executions'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
-import { Tooltip } from '~/components/global/tooltip'
-import { DockPortalProvider, DockedPanelTarget } from '~/components/global/dock-portal-provider'
+import { ChartColumn, History, MousePointerClick, Settings, Workflow } from 'lucide-react'
+import { useQueryState } from 'nuqs'
+import { use, useState } from 'react'
+import { DockedPanelTarget, DockPortalProvider } from '~/components/global/dock-portal-provider'
 import { DockedPanelsContainer } from '~/components/global/docked-panels-container'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
-import { useDockStore } from '~/stores/dock-store'
+import { Tooltip } from '~/components/global/tooltip'
+import { WorkflowEditor } from '~/components/workflow'
+import { CredentialsProvider } from '~/components/workflow/credentials/credentials-provider'
+import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
+import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useMedia } from '~/hooks/use-media'
+import { useDockStore } from '~/stores/dock-store'
+import { api } from '~/trpc/react'
+import { WorkflowAnalytics } from '../_components/analytics/workflow-analytics'
+import { WorkflowExecutions } from '../_components/executions/workflow-executions'
 
 interface EditWorkflowPageProps {
   params: Promise<{ workflowId: string }>
@@ -83,9 +83,9 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
 
   // Fallback shown when no panels are open
   const panelFallback = (
-    <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
-      <MousePointerClick className="size-6 mb-2 opacity-50" />
-      <p className="text-sm">Select a node</p>
+    <div className='flex-1 flex flex-col items-center justify-center text-muted-foreground'>
+      <MousePointerClick className='size-6 mb-2 opacity-50' />
+      <p className='text-sm'>Select a node</p>
     </div>
   )
 
@@ -98,7 +98,7 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
       return [
         {
           key: 'executions',
-          content: <DockedPanelTarget slot="primary" />,
+          content: <DockedPanelTarget slot='primary' />,
           width: dockedWidth,
           onWidthChange: setDockedWidth,
           minWidth,
@@ -113,7 +113,7 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
       if (hasPropertyPanel) {
         panels.push({
           key: 'property',
-          content: <DockedPanelTarget slot="primary" panelFilter="property" />,
+          content: <DockedPanelTarget slot='primary' panelFilter='property' />,
           width: dockedWidth,
           onWidthChange: setDockedWidth,
           minWidth,
@@ -123,7 +123,7 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
       if (hasRunPanel) {
         panels.push({
           key: 'run',
-          content: <DockedPanelTarget slot="secondary" panelFilter="run" />,
+          content: <DockedPanelTarget slot='secondary' panelFilter='run' />,
           width: secondaryWidth,
           onWidthChange: setSecondaryWidth,
           minWidth,
@@ -151,32 +151,32 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
       <DockPortalProvider>
         <MainPage>
           <MainPageHeader
-            className="justify-start"
+            className='justify-start'
             action={
-              <div className="flex items-center gap-2">
+              <div className='flex items-center gap-2'>
                 <RadioTab
                   value={mode}
                   onValueChange={setMode}
-                  size="sm"
-                  radioGroupClassName="grid w-full"
-                  className="border border-primary-200 flex flex-1 w-full">
-                  <RadioTabItem value="editor" size="sm">
+                  size='sm'
+                  radioGroupClassName='grid w-full'
+                  className='border border-primary-200 flex flex-1 w-full'>
+                  <RadioTabItem value='editor' size='sm'>
                     <Workflow />
                     Editor
                   </RadioTabItem>
-                  <RadioTabItem value="analytics" size="sm">
+                  <RadioTabItem value='analytics' size='sm'>
                     <ChartColumn />
                     Analytics
                   </RadioTabItem>
-                  <RadioTabItem value="executions" size="sm">
+                  <RadioTabItem value='executions' size='sm'>
                     <History />
                     Executions
                   </RadioTabItem>
                 </RadioTab>
-                <Tooltip content="Edit Workflow Details">
+                <Tooltip content='Edit Workflow Details'>
                   <Button
-                    variant="ghost"
-                    size="icon-sm"
+                    variant='ghost'
+                    size='icon-sm'
                     onClick={() => setEditDialogOpen(true)}
                     disabled={isLoading}>
                     <Settings />
@@ -185,9 +185,9 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
               </div>
             }>
             <MainPageBreadcrumb>
-              <MainPageBreadcrumbItem title="Workflows" href="/app/workflows" />
+              <MainPageBreadcrumbItem title='Workflows' href='/app/workflows' />
               <MainPageBreadcrumbItem
-                title={isLoading ? <Skeleton className="h-4 w-32" /> : workflow.name}
+                title={isLoading ? <Skeleton className='h-4 w-32' /> : workflow.name}
                 href={`/app/workflows/${workflowId}`}
                 last
               />
@@ -198,7 +198,7 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
             className={cn(mode !== 'executions' && 'overflow-visible')}
             dockedPanels={dockedPanels}>
             {mode === 'editor' && (
-              <WorkflowEditor workflowId={workflowId} className="h-full" readOnly={false} />
+              <WorkflowEditor workflowId={workflowId} className='h-full' readOnly={false} />
             )}
             {mode === 'analytics' && <WorkflowAnalytics workflowId={workflowId} />}
 
@@ -210,7 +210,7 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
           <WorkflowFormDialog
             open={editDialogOpen}
             onOpenChange={setEditDialogOpen}
-            mode="edit"
+            mode='edit'
             workflow={{
               id: workflowId,
               name: workflow.name,

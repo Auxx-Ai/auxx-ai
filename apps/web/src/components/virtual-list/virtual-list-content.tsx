@@ -1,10 +1,10 @@
 // apps/web/src/components/virtual-list/virtual-list-content.tsx
 'use client'
 
-import { type ReactNode, useEffect, useRef, type CSSProperties } from 'react'
-import { useVirtualListContext } from './virtual-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { Loader2 } from 'lucide-react'
+import { type CSSProperties, type ReactNode, useEffect, useRef } from 'react'
+import { useVirtualListContext } from './virtual-list'
 
 /**
  * Props for the VirtualListContent component
@@ -51,16 +51,16 @@ export function VirtualListContent({
 
   if (isLoading && items.length === 0) {
     return (
-      <div className="flex items-center justify-center py-8 flex-1">
-        <Loader2 className="size-6 animate-spin mr-2" />
-        <span className="text-muted-foreground">{loadingMessage}</span>
+      <div className='flex items-center justify-center py-8 flex-1'>
+        <Loader2 className='size-6 animate-spin mr-2' />
+        <span className='text-muted-foreground'>{loadingMessage}</span>
       </div>
     )
   }
 
   if (items.length === 0) {
     return (
-      <div className="text-center py-8 text-muted-foreground flex-1 flex items-center justify-center">
+      <div className='text-center py-8 text-muted-foreground flex-1 flex items-center justify-center'>
         {emptyMessage}
       </div>
     )
@@ -70,7 +70,7 @@ export function VirtualListContent({
     <div ref={scrollContainerRef} className={cn('flex-1 ', className)}>
       {virtualizer ? (
         <div
-          data-slot="virtual-list-content"
+          data-slot='virtual-list-content'
           style={{
             height: `${virtualizer.getTotalSize()}px`,
             width: '100%',
@@ -84,11 +84,11 @@ export function VirtualListContent({
 
       {/* Load more trigger */}
       {hasMore && (
-        <div ref={loadMoreRef} className="py-4 text-center">
+        <div ref={loadMoreRef} className='py-4 text-center'>
           {isLoading && (
-            <div className="flex items-center justify-center">
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              <span className="text-sm text-muted-foreground">Loading more...</span>
+            <div className='flex items-center justify-center'>
+              <Loader2 className='h-4 w-4 animate-spin mr-2' />
+              <span className='text-sm text-muted-foreground'>Loading more...</span>
             </div>
           )}
         </div>
@@ -142,7 +142,7 @@ export function VirtualListItems<T>({ renderItem, getItemId }: VirtualListItemsP
 
         return (
           <div
-            data-slot="virtual-list-item"
+            data-slot='virtual-list-item'
             key={virtualItem.key}
             data-index={virtualItem.index}
             data-first={isFirst || undefined}

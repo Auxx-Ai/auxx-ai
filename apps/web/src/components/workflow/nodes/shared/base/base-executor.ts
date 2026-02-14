@@ -1,6 +1,10 @@
 // apps/web/src/components/workflow/nodes/shared/base/base-executor.ts
 
-import { ExecutionContext, ExecutionResult, ServiceContainer } from '~/components/workflow/types'
+import type {
+  ExecutionContext,
+  ExecutionResult,
+  ServiceContainer,
+} from '~/components/workflow/types'
 
 /**
  * Base executor class that provides common functionality for node execution

@@ -1,62 +1,57 @@
 // packages/services/src/index.ts
 
-// Field Values
-export {
-  getFieldWithDefinition,
-  getExistingFieldValue,
-  insertFieldValue,
-  batchInsertFieldValues,
-  updateFieldValue,
-  deleteFieldValues,
-  deleteFieldValueById,
-  updateEntityDisplayName,
-} from './field-values'
-
 export type {
-  FieldNotFoundError,
-  FieldValueNotFoundError,
+  DeleteFieldValuesInput,
   EntityNotFoundError as FieldValueEntityNotFoundError,
+  ExistingFieldValueRow,
+  FieldNotFoundError,
   FieldValueError,
-  GetFieldWithDefinitionInput,
+  FieldValueNotFoundError,
+  FieldValueRow,
   FieldWithDefinition,
   GetExistingValueInput,
-  ExistingFieldValueRow,
+  GetFieldWithDefinitionInput,
   InsertFieldValueInput,
-  UpdateFieldValueInput,
-  DeleteFieldValuesInput,
   UpdateDisplayNameInput,
-  FieldValueRow,
+  UpdateFieldValueInput,
 } from './field-values'
-
-// Table View
+// Field Values
 export {
-  listViews,
-  getView,
-  createView,
-  updateView,
-  duplicateView,
-  deleteView,
-  setDefaultView,
-} from './table-view'
-
-export type {
-  ListViewsInput,
-  GetViewInput,
-  GetViewOptions,
-  CreateViewInput,
-  UpdateViewInput,
-  DuplicateViewInput,
-  DeleteViewInput,
-  SetDefaultViewInput,
-  TableViewError,
-  ViewNotFoundError,
-  ViewAlreadyExistsError,
-} from './table-view'
-
+  batchInsertFieldValues,
+  deleteFieldValueById,
+  deleteFieldValues,
+  getExistingFieldValue,
+  getFieldWithDefinition,
+  insertFieldValue,
+  updateEntityDisplayName,
+  updateFieldValue,
+} from './field-values'
+export type { GetOrgFieldViewInput } from './field-view'
 // Field View
 export { getOrgFieldView } from './field-view'
-export type { GetOrgFieldViewInput } from './field-view'
-
+export type { DatabaseError, S3Error, ServiceError } from './shared'
 // Shared
-export { fromDatabase, fromS3, formatVersion } from './shared'
-export type { ServiceError, DatabaseError, S3Error } from './shared'
+export { formatVersion, fromDatabase, fromS3 } from './shared'
+export type {
+  CreateViewInput,
+  DeleteViewInput,
+  DuplicateViewInput,
+  GetViewInput,
+  GetViewOptions,
+  ListViewsInput,
+  SetDefaultViewInput,
+  TableViewError,
+  UpdateViewInput,
+  ViewAlreadyExistsError,
+  ViewNotFoundError,
+} from './table-view'
+// Table View
+export {
+  createView,
+  deleteView,
+  duplicateView,
+  getView,
+  listViews,
+  setDefaultView,
+  updateView,
+} from './table-view'

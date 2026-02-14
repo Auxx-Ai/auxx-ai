@@ -1,7 +1,6 @@
 // packages/lib/src/files/core/mixins/versioned.ts
 
-import type { Constructor } from '../base-service'
-import type { BaseService } from '../base-service'
+import type { BaseService, Constructor } from '../base-service'
 
 /**
  * Interface for entities that support versioning
@@ -27,14 +26,18 @@ export function withVersioning<T extends Constructor<BaseService<any, any, any, 
     protected getEntityName(): string {
       return super.getEntityName?.() || 'entity'
     }
-    
+
     protected async processCreateData(data: any): Promise<any> {
       return super.processCreateData?.(data) || data
     }
     /**
      * Create a new version for an entity (concurrency-safe)
      */
-    async createVersion(entityId: string, storageLocationId: string, metadata: any = {}): Promise<any> {
+    async createVersion(
+      entityId: string,
+      storageLocationId: string,
+      metadata: any = {}
+    ): Promise<any> {
       const entity = await this.get(entityId)
       if (!entity) {
         throw new Error(`${this.getEntityName()} not found`)
@@ -42,20 +45,20 @@ export function withVersioning<T extends Constructor<BaseService<any, any, any, 
 
       const versionTableName = this.getVersionTableName()
       const entityIdField = this.getEntityIdFieldName()
-      
+
       return this.db.$transaction(async (tx) => {
         // Get the next version number within transaction
         const lastVersion = await (tx[versionTableName] as any).findFirst({
           where: { [entityIdField]: entityId },
           orderBy: { versionNumber: 'desc' },
-          select: { versionNumber: true }
+          select: { versionNumber: true },
         })
-        
+
         const versionNumber = (lastVersion?.versionNumber || 0) + 1
 
         // Get storage location details
         const storageLocation = await tx.storageLocation.findUnique({
-          where: { id: storageLocationId }
+          where: { id: storageLocationId },
         })
 
         if (!storageLocation) {
@@ -70,16 +73,16 @@ export function withVersioning<T extends Constructor<BaseService<any, any, any, 
             storageLocationId,
             size: storageLocation.size,
             mimeType: storageLocation.mimeType,
-            ...metadata
-          }
+            ...metadata,
+          },
         })
 
         // Update the entity's current version reference
         await (tx[this.tableName] as any).update({
           where: { id: entityId },
-          data: { 
-            currentVersionId: version.id
-          }
+          data: {
+            currentVersionId: version.id,
+          },
         })
 
         return version
@@ -97,13 +100,13 @@ export function withVersioning<T extends Constructor<BaseService<any, any, any, 
 
       const versionTableName = this.getVersionTableName()
       const entityIdField = this.getEntityIdFieldName()
-      
+
       return (this.db[versionTableName] as any).findMany({
         where: { [entityIdField]: entityId },
         include: {
-          storageLocation: true
+          storageLocation: true,
         },
-        orderBy: { versionNumber: 'desc' }
+        orderBy: { versionNumber: 'desc' },
       })
     }
 
@@ -118,15 +121,15 @@ export function withVersioning<T extends Constructor<BaseService<any, any, any, 
 
       const versionTableName = this.getVersionTableName()
       const entityIdField = this.getEntityIdFieldName()
-      
+
       return (this.db[versionTableName] as any).findFirst({
         where: {
           [entityIdField]: entityId,
-          versionNumber
+          versionNumber,
         },
         include: {
-          storageLocation: true
-        }
+          storageLocation: true,
+        },
       })
     }
 
@@ -141,10 +144,10 @@ export function withVersioning<T extends Constructor<BaseService<any, any, any, 
 
       const entity = await (this.db[this.tableName] as any).update({
         where: { id: entityId },
-        data: { 
+        data: {
           currentVersionId: version.id,
-          updatedAt: new Date()
-        }
+          updatedAt: new Date(),
+        },
       })
 
       return entity
@@ -170,9 +173,9 @@ export function withVersioning<T extends Constructor<BaseService<any, any, any, 
       }
 
       const versionTableName = this.getVersionTableName()
-      
+
       await (this.db[versionTableName] as any).delete({
-        where: { id: version.id }
+        where: { id: version.id },
       })
     }
 
@@ -182,13 +185,13 @@ export function withVersioning<T extends Constructor<BaseService<any, any, any, 
     async getLatestVersion(entityId: string): Promise<any | null> {
       const versionTableName = this.getVersionTableName()
       const entityIdField = this.getEntityIdFieldName()
-      
+
       return (this.db[versionTableName] as any).findFirst({
         where: { [entityIdField]: entityId },
         include: {
-          storageLocation: true
+          storageLocation: true,
         },
-        orderBy: { versionNumber: 'desc' }
+        orderBy: { versionNumber: 'desc' },
       })
     }
 
@@ -207,7 +210,7 @@ export function withVersioning<T extends Constructor<BaseService<any, any, any, 
             // Copy metadata but exclude entity-specific fields
             size: sourceVersion.size,
             mimeType: sourceVersion.mimeType,
-            checksum: sourceVersion.checksum
+            checksum: sourceVersion.checksum,
           }
         )
         copiedVersions.push(copiedVersion)
@@ -226,13 +229,13 @@ export function withVersioning<T extends Constructor<BaseService<any, any, any, 
       newestVersion: Date | null
     }> {
       const versions = await this.getVersions(entityId)
-      
+
       if (versions.length === 0) {
         return {
           totalVersions: 0,
           totalSize: BigInt(0),
           oldestVersion: null,
-          newestVersion: null
+          newestVersion: null,
         }
       }
 
@@ -240,13 +243,13 @@ export function withVersioning<T extends Constructor<BaseService<any, any, any, 
         return sum + (version.size || BigInt(0))
       }, BigInt(0))
 
-      const dates = versions.map(v => v.createdAt).sort()
+      const dates = versions.map((v) => v.createdAt).sort()
 
       return {
         totalVersions: versions.length,
         totalSize,
         oldestVersion: dates[0] || null,
-        newestVersion: dates[dates.length - 1] || null
+        newestVersion: dates[dates.length - 1] || null,
       }
     }
 

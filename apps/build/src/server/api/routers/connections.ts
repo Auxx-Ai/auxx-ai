@@ -1,11 +1,11 @@
 // apps/build/src/server/api/routers/connections.ts
 // Connections tRPC router
 
+import { App, ConnectionDefinition, DeveloperAccountMember } from '@auxx/database'
+import { TRPCError } from '@trpc/server'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { ConnectionDefinition, App, DeveloperAccountMember } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import { TRPCError } from '@trpc/server'
 
 /**
  * Connections router

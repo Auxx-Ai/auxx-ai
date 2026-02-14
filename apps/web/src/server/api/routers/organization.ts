@@ -1,15 +1,16 @@
 // apps/web/src/server/api/routers/organization.ts
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+
+import { RESERVED_ORGANIZATION_HANDLES } from '@auxx/config'
 import { schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
 import { OrganizationType } from '@auxx/database/enums'
-import { TRPCError } from '@trpc/server'
-import { createScopedLogger } from '@auxx/logger'
+import { DehydrationService } from '@auxx/lib/dehydration'
 import { MemberService } from '@auxx/lib/members'
 import { OrganizationService } from '@auxx/lib/organizations'
-import { DehydrationService } from '@auxx/lib/dehydration'
-import { RESERVED_ORGANIZATION_HANDLES } from '@auxx/config'
+import { createScopedLogger } from '@auxx/logger'
+import { TRPCError } from '@trpc/server'
+import { and, eq } from 'drizzle-orm'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api-organization')
 

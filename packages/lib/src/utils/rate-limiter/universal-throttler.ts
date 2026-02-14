@@ -1,20 +1,15 @@
 // packages/lib/src/utils/rate-limiter/universal-throttler.ts
 
-import { createScopedLogger } from '../../logger'
 import { v4 as uuidv4 } from 'uuid'
-import type {
-  ThrottlerConfig,
-  ExecutionOptions,
-  QueuedRequest,
-  RateLimiterConfig,
-} from './types'
-import { RateLimitError } from './types'
-import { RedisRateLimiter } from './redis-rate-limiter'
-import { CircuitBreaker } from './circuit-breaker'
+import { createScopedLogger } from '../../logger'
 import { ExponentialBackoff } from './backoff-handler'
-import { PriorityQueue } from './priority-queue'
-import { MetricsCollector } from './metrics-collector'
+import { CircuitBreaker } from './circuit-breaker'
 import { ConcurrencySemaphore } from './concurrency-semaphore'
+import { MetricsCollector } from './metrics-collector'
+import { PriorityQueue } from './priority-queue'
+import { RedisRateLimiter } from './redis-rate-limiter'
+import type { ExecutionOptions, QueuedRequest, RateLimiterConfig, ThrottlerConfig } from './types'
+import { RateLimitError } from './types'
 
 /** Default timeout for throttled operations in milliseconds */
 const DEFAULT_OPERATION_TIMEOUT_MS = 30000
@@ -171,11 +166,7 @@ export class UniversalThrottler {
    * @param options - Execution options
    * @returns Result of the function
    */
-  async execute<T>(
-    context: string,
-    fn: () => Promise<T>,
-    options?: ExecutionOptions
-  ): Promise<T> {
+  async execute<T>(context: string, fn: () => Promise<T>, options?: ExecutionOptions): Promise<T> {
     const startTime = Date.now()
 
     this.logger.debug('Execute called', {
@@ -210,125 +201,131 @@ export class UniversalThrottler {
     this.metrics.recordCircuitBreakerState(context, breaker.getState())
 
     return breaker.execute(async () => {
-      return backoff.executeWithRetry(async () => {
-        // Build the rate limit key (used for both rate limiting and concurrency)
-        const key = this.buildRateLimitKey(context, options)
-        const cost = options?.cost ?? 1
+      return backoff.executeWithRetry(
+        async () => {
+          // Build the rate limit key (used for both rate limiting and concurrency)
+          const key = this.buildRateLimitKey(context, options)
+          const cost = options?.cost ?? 1
 
-        this.logger.debug('Attempting to acquire tokens', { context, key, cost })
+          this.logger.debug('Attempting to acquire tokens', { context, key, cost })
 
-        // Try to acquire tokens from rate limiter
-        const acquired = await limiter.acquire(key, cost)
+          // Try to acquire tokens from rate limiter
+          const acquired = await limiter.acquire(key, cost)
 
-        this.logger.debug('Token acquisition result', { context, acquired, key })
+          this.logger.debug('Token acquisition result', { context, acquired, key })
 
-        if (!acquired) {
-          // If queuing is enabled, add to queue
-          if (options?.queue) {
-            this.logger.debug('Queuing request', { context, key })
-            return this.queueRequest(context, fn, options)
+          if (!acquired) {
+            // If queuing is enabled, add to queue
+            if (options?.queue) {
+              this.logger.debug('Queuing request', { context, key })
+              return this.queueRequest(context, fn, options)
+            }
+
+            // Record rate limit hit
+            this.metrics.recordFailure(
+              context,
+              new RateLimitError(`Rate limit exceeded for ${context}`)
+            )
+
+            // Get available tokens for better error message
+            const available = await limiter.getAvailableTokens(key)
+            throw new RateLimitError(
+              `Rate limit exceeded for ${context}. Available tokens: ${available}, required: ${cost}`,
+              this.calculateRetryAfter(context)
+            )
           }
 
-          // Record rate limit hit
-          this.metrics.recordFailure(context, new RateLimitError(`Rate limit exceeded for ${context}`))
+          // Check concurrent request limit if configured
+          let concurrencyAcquired = false
+          const concurrencyKey = `${context}:${key}`
 
-          // Get available tokens for better error message
-          const available = await limiter.getAvailableTokens(key)
-          throw new RateLimitError(
-            `Rate limit exceeded for ${context}. Available tokens: ${available}, required: ${cost}`,
-            this.calculateRetryAfter(context)
-          )
-        }
+          if (maxConcurrent && maxConcurrent > 0) {
+            this.logger.debug('Checking concurrency limit', {
+              context,
+              key: concurrencyKey,
+              maxConcurrent,
+            })
 
-        // Check concurrent request limit if configured
-        let concurrencyAcquired = false
-        const concurrencyKey = `${context}:${key}`
+            concurrencyAcquired = await this.concurrencySemaphore.tryAcquire(
+              concurrencyKey,
+              maxConcurrent
+            )
 
-        if (maxConcurrent && maxConcurrent > 0) {
-          this.logger.debug('Checking concurrency limit', {
-            context,
-            key: concurrencyKey,
-            maxConcurrent,
-          })
-
-          concurrencyAcquired = await this.concurrencySemaphore.tryAcquire(
-            concurrencyKey,
-            maxConcurrent
-          )
-
-          if (!concurrencyAcquired) {
-            // If queuing is enabled, wait for a slot
-            if (options?.queue) {
-              this.logger.debug('Waiting for concurrency slot', { context, key: concurrencyKey })
-              const timeout = options?.timeout ?? DEFAULT_OPERATION_TIMEOUT_MS
-              try {
-                await this.concurrencySemaphore.acquire(concurrencyKey, maxConcurrent, timeout)
-                concurrencyAcquired = true
-              } catch (error) {
-                this.logger.warn('Concurrency wait timed out', {
-                  context,
-                  key: concurrencyKey,
-                  maxConcurrent,
-                })
+            if (!concurrencyAcquired) {
+              // If queuing is enabled, wait for a slot
+              if (options?.queue) {
+                this.logger.debug('Waiting for concurrency slot', { context, key: concurrencyKey })
+                const timeout = options?.timeout ?? DEFAULT_OPERATION_TIMEOUT_MS
+                try {
+                  await this.concurrencySemaphore.acquire(concurrencyKey, maxConcurrent, timeout)
+                  concurrencyAcquired = true
+                } catch (error) {
+                  this.logger.warn('Concurrency wait timed out', {
+                    context,
+                    key: concurrencyKey,
+                    maxConcurrent,
+                  })
+                  throw new RateLimitError(
+                    `Concurrency limit exceeded for ${context}. Max concurrent: ${maxConcurrent}`,
+                    1000 // Retry after 1 second
+                  )
+                }
+              } else {
+                const currentCount = await this.concurrencySemaphore.getCount(concurrencyKey)
                 throw new RateLimitError(
-                  `Concurrency limit exceeded for ${context}. Max concurrent: ${maxConcurrent}`,
+                  `Concurrency limit exceeded for ${context}. Current: ${currentCount}, Max: ${maxConcurrent}`,
                   1000 // Retry after 1 second
                 )
               }
-            } else {
-              const currentCount = await this.concurrencySemaphore.getCount(concurrencyKey)
-              throw new RateLimitError(
-                `Concurrency limit exceeded for ${context}. Current: ${currentCount}, Max: ${maxConcurrent}`,
-                1000 // Retry after 1 second
-              )
+            }
+
+            this.logger.debug('Concurrency slot acquired', {
+              context,
+              key: concurrencyKey,
+              maxConcurrent,
+            })
+          }
+
+          // Record available tokens
+          const availableTokens = await limiter.getAvailableTokens(key)
+          this.metrics.recordAvailableTokens(context, availableTokens)
+
+          // Execute the function with default timeout if none specified
+          const timeout = options?.timeout ?? DEFAULT_OPERATION_TIMEOUT_MS
+
+          this.logger.debug('Executing function', { context, timeout })
+
+          try {
+            const result = await this.executeWithTimeout(fn, timeout)
+
+            const duration = Date.now() - startTime
+            this.logger.debug('Execute completed successfully', { context, duration })
+
+            // Record success
+            this.metrics.recordSuccess(context, duration, cost)
+
+            return result
+          } catch (error) {
+            const duration = Date.now() - startTime
+            this.logger.debug('Execute failed', {
+              context,
+              duration,
+              error: error instanceof Error ? error.message : error,
+            })
+
+            // Record failure
+            this.metrics.recordFailure(context, error)
+            throw error
+          } finally {
+            // Always release concurrency slot if acquired
+            if (concurrencyAcquired && maxConcurrent && maxConcurrent > 0) {
+              await this.concurrencySemaphore.release(concurrencyKey)
+              this.logger.debug('Concurrency slot released', { context, key: concurrencyKey })
             }
           }
-
-          this.logger.debug('Concurrency slot acquired', {
-            context,
-            key: concurrencyKey,
-            maxConcurrent,
-          })
-        }
-
-        // Record available tokens
-        const availableTokens = await limiter.getAvailableTokens(key)
-        this.metrics.recordAvailableTokens(context, availableTokens)
-
-        // Execute the function with default timeout if none specified
-        const timeout = options?.timeout ?? DEFAULT_OPERATION_TIMEOUT_MS
-
-        this.logger.debug('Executing function', { context, timeout })
-
-        try {
-          const result = await this.executeWithTimeout(fn, timeout)
-
-          const duration = Date.now() - startTime
-          this.logger.debug('Execute completed successfully', { context, duration })
-
-          // Record success
-          this.metrics.recordSuccess(context, duration, cost)
-
-          return result
-        } catch (error) {
-          const duration = Date.now() - startTime
-          this.logger.debug('Execute failed', {
-            context,
-            duration,
-            error: error instanceof Error ? error.message : error,
-          })
-
-          // Record failure
-          this.metrics.recordFailure(context, error)
-          throw error
-        } finally {
-          // Always release concurrency slot if acquired
-          if (concurrencyAcquired && maxConcurrent && maxConcurrent > 0) {
-            await this.concurrencySemaphore.release(concurrencyKey)
-            this.logger.debug('Concurrency slot released', { context, key: concurrencyKey })
-          }
-        }
-      }, (error) => this.isRetryableError(error))
+        },
+        (error) => this.isRetryableError(error)
+      )
     })
   }
 
@@ -338,10 +335,7 @@ export class UniversalThrottler {
    * @param timeout - Timeout in milliseconds
    * @returns Result of the function
    */
-  private async executeWithTimeout<T>(
-    fn: () => Promise<T>,
-    timeout: number
-  ): Promise<T> {
+  private async executeWithTimeout<T>(fn: () => Promise<T>, timeout: number): Promise<T> {
     let timeoutId: NodeJS.Timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(
@@ -454,7 +448,7 @@ export class UniversalThrottler {
         this.metrics.recordQueueSize(context, queue.size())
 
         // Small delay between processing queued items
-        await new Promise(resolve => setTimeout(resolve, 100))
+        await new Promise((resolve) => setTimeout(resolve, 100))
       }
     } finally {
       this.processingQueues.delete(context)

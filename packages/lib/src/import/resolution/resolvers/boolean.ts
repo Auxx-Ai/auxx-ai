@@ -1,6 +1,6 @@
 // packages/lib/src/import/resolution/resolvers/boolean.ts
 
-import type { ResolvedValue, ResolutionConfig } from '../../types/resolution'
+import type { ResolutionConfig, ResolvedValue } from '../../types/resolution'
 
 const TRUTHY_VALUES = new Set(['true', 'yes', '1', 'y', 'on', 'enabled', 'active'])
 

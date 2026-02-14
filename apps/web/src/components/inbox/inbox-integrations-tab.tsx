@@ -1,8 +1,9 @@
 // apps/web/src/components/inbox/inbox-integrations-tab.tsx
 'use client'
 
-import { useState } from 'react'
-import { api } from '~/trpc/react'
+import type { InboxIntegration } from '@auxx/lib/inboxes'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   Table,
   TableBody,
@@ -11,13 +12,12 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import { Button } from '@auxx/ui/components/button'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { CheckCircle, ChevronRight, MailIcon, X } from 'lucide-react'
-import { Badge } from '@auxx/ui/components/badge'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { useConfirm } from '~/hooks/use-confirm'
-import type { InboxIntegration } from '@auxx/lib/inboxes'
 import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 /** Props for InboxIntegrationsTab */
 interface InboxIntegrationsTabProps {
@@ -90,7 +90,7 @@ export function InboxIntegrationsTab({ inboxId, integrations }: InboxIntegration
             <TableRow>
               <TableHead>Integration</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="w-20">Actions</TableHead>
+              <TableHead className='w-20'>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -98,35 +98,35 @@ export function InboxIntegrationsTab({ inboxId, integrations }: InboxIntegration
               integrations.map((integration) => (
                 <TableRow key={integration.integrationId}>
                   <TableCell>
-                    <div className="flex items-center h-full">
-                      <MailIcon className="mr-2 h-4 w-4" />
+                    <div className='flex items-center h-full'>
+                      <MailIcon className='mr-2 h-4 w-4' />
                       <span>{getIntegrationName(integration.integration)}</span>
-                      {integration.isDefault && <Badge className="ml-2">Default</Badge>}
+                      {integration.isDefault && <Badge className='ml-2'>Default</Badge>}
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center">
-                      <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
+                    <div className='flex items-center'>
+                      <CheckCircle className='mr-2 h-4 w-4 text-green-500' />
                       <span>Connected</span>
                     </div>
                   </TableCell>
                   <TableCell>
                     <Button
-                      variant="ghost"
-                      size="icon"
+                      variant='ghost'
+                      size='icon'
                       onClick={(e) => {
                         e.stopPropagation()
                         handleGoToIntegration(integration.integrationId)
                       }}>
-                      <ChevronRight className="h-4 w-4" />
-                      <span className="sr-only">Go to Integration</span>
+                      <ChevronRight className='h-4 w-4' />
+                      <span className='sr-only'>Go to Integration</span>
                     </Button>
                   </TableCell>
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={3} className="py-4 text-center text-muted-foreground">
+                <TableCell colSpan={3} className='py-4 text-center text-muted-foreground'>
                   No integrations connected. Add an integration to start receiving emails.
                 </TableCell>
               </TableRow>

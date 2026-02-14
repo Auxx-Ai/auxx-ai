@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import type React from 'react'
+import { useState } from 'react'
 import Avatar from 'react-avatar'
 import Select from 'react-select'
 
@@ -28,8 +29,8 @@ const TagInput: React.FC<TagInputProps> = ({
 
   const options = suggestions.map((suggestion) => ({
     label: (
-      <span className="flex items-center gap-2">
-        <Avatar name={suggestion} size="25" textSizeRatio={2} round={true} />
+      <span className='flex items-center gap-2'>
+        <Avatar name={suggestion} size='25' textSizeRatio={2} round={true} />
         {suggestion}
       </span>
     ),
@@ -37,13 +38,13 @@ const TagInput: React.FC<TagInputProps> = ({
   }))
 
   return (
-    <div className="flex items-center rounded-md border">
-      <span className="ml-3 text-sm text-gray-500">{label}</span>
+    <div className='flex items-center rounded-md border'>
+      <span className='ml-3 text-sm text-gray-500'>{label}</span>
       <Select
         value={value}
-        // @ts-ignore
+        // @ts-expect-error
         onChange={onChange}
-        className="w-full flex-1"
+        className='w-full flex-1'
         isMulti
         onInputChange={setInput}
         defaultValue={defaultValues}
@@ -52,8 +53,8 @@ const TagInput: React.FC<TagInputProps> = ({
           input
             ? options.concat({
                 label: (
-                  <span className="flex items-center gap-2">
-                    <Avatar name={input} size="25" textSizeRatio={2} round={true} />
+                  <span className='flex items-center gap-2'>
+                    <Avatar name={input} size='25' textSizeRatio={2} round={true} />
                     {input}
                   </span>
                 ),
@@ -81,7 +82,7 @@ const TagInput: React.FC<TagInputProps> = ({
             if (!isDisabled && !isSelected) return 'active:bg-purple-500'
           },
         }}
-        classNamePrefix="select"
+        classNamePrefix='select'
       />
     </div>
   )

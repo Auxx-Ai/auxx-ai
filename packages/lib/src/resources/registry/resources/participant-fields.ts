@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/resources/registry/resources/participant-fields.ts
 
-import { BaseType } from '../../types'
 import { toFieldId } from '@auxx/types/field'
+import { BaseType } from '../../types'
 import type { ResourceField } from '../field-types'
 
 /**

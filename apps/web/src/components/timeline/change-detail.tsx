@@ -33,15 +33,15 @@ function formatValue(value: any): string {
  */
 export function ChangeDetail({ change }: ChangeDetailProps) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="font-medium">{change.field}:</span>
+    <div className='flex items-center gap-2'>
+      <span className='font-medium'>{change.field}:</span>
       {change.oldValue !== null && change.oldValue !== undefined && (
         <>
-          <span className="text-primary-400 line-through">{formatValue(change.oldValue)}</span>
+          <span className='text-primary-400 line-through'>{formatValue(change.oldValue)}</span>
           <ArrowRight />
         </>
       )}
-      <span className="emphasis">{formatValue(change.newValue)}</span>
+      <span className='emphasis'>{formatValue(change.newValue)}</span>
     </div>
   )
 }

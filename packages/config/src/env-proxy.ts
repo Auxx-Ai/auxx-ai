@@ -14,29 +14,27 @@ const resourceCache = new Map<string, { value: string | undefined; ts: number }>
 /** Cache TTL in ms for Resource values (optional; 0 disables TTL) */
 const CACHE_TTL_MS = Number((typeof process !== 'undefined' && process.env?.ENV_PROXY_TTL_MS) || 0)
 
-
-/** 
+/**
  * Determine if we are running under SST with Resources available
  * SST=1 doesn't guarantee Resource access - only true in deployed Lambda or sst dev
  */
 const isSst = (): boolean => {
   if (typeof process === 'undefined' || process.env?.SST !== '1') return false
-  
+
   // Skip SST Resources during Next.js build phase
   if (process.env.NEXT_PHASE === 'phase-production-build') {
     return false
   }
-  
+
   // Additional check: if we're in development, SST Resources likely aren't available
   // unless we're running under `sst dev`
   if (process.env.NODE_ENV === 'development') {
     // Check if we're actually in a multiplexer context (sst dev)
     return !!process.env.SST_RESOURCE_App
   }
-  
+
   return true
 }
-
 
 /**
  * Check cache validity for a key
@@ -80,7 +78,7 @@ const getValue = (key: string): string | undefined => {
   try {
     const res = (Resource as any)[key]
     const value = res?.value as string | undefined
-    
+
     if (typeof value !== 'undefined') {
       setCached(key, value)
       return value
@@ -88,10 +86,9 @@ const getValue = (key: string): string | undefined => {
   } catch (error) {
     // Resource access failed, continue to return undefined
   }
-  
+
   return undefined
 }
-
 
 /**
  * Coerce string secrets into the same runtime type as the base value

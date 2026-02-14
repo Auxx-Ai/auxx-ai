@@ -1,12 +1,13 @@
 // apps/web/src/server/api/routers/member.ts
+
+import { schema } from '@auxx/database'
+import { MemberType, OrganizationRole } from '@auxx/database/enums'
+import { MemberService } from '@auxx/lib/members'
+import { createScopedLogger } from '@auxx/logger'
+import { TRPCError } from '@trpc/server'
+import { and, eq, ilike, or } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { schema } from '@auxx/database'
-import { eq, and, or, ilike } from 'drizzle-orm'
-import { OrganizationRole, MemberType } from '@auxx/database/enums'
-import { TRPCError } from '@trpc/server'
-import { createScopedLogger } from '@auxx/logger'
-import { MemberService } from '@auxx/lib/members'
 
 const logger = createScopedLogger('api-member')
 
@@ -40,10 +41,7 @@ export const memberRouter = createTRPCRouter({
           and(
             eq(schema.OrganizationMember.organizationId, organizationId),
             eq(schema.User.userType, 'USER'),
-            or(
-              ilike(schema.User.name, `%${query}%`),
-              ilike(schema.User.email, `%${query}%`)
-            )
+            or(ilike(schema.User.name, `%${query}%`), ilike(schema.User.email, `%${query}%`))
           )
         )
         .limit(10)

@@ -1,13 +1,6 @@
 // apps/build/src/app/(portal)/[slug]/settings/general/page.tsx
 
 'use client'
-import React from 'react'
-import { useParams, useRouter } from 'next/navigation'
-import { useForm } from 'react-hook-form'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { z } from 'zod'
-import SettingsHeader from '../_components/settings-header'
-import { Building2, Check, Copy } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import {
   Field,
@@ -25,10 +18,17 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from '@auxx/ui/components/input-group'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { Building2, Check, Copy } from 'lucide-react'
+import { useParams, useRouter } from 'next/navigation'
+import React from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { useCopyClipboard } from '@/hooks/use-copy-clipboard'
+import { toastError } from '~/components/global/toast'
 import { useDeveloperAccount } from '~/components/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
-import { toastError } from '~/components/global/toast'
+import SettingsHeader from '../_components/settings-header'
 
 /**
  * Form schema for account settings
@@ -104,37 +104,37 @@ function SettingsGeneralPage() {
 
   return (
     <>
-      <SettingsHeader title="General" icon={<Building2 className="size-4" />} />
-      <div className="flex-1 overflow-y-auto min-h-0">
-        <div className="p-6 lg:py-12 max-w-3xl mx-auto">
-          <div className="flex flex-col space-y-10">
-            <div className="space-y-0">
-              <div className="text-xl font-semibold">General</div>
-              <div className="text-base">Change general settings for your developer account</div>
+      <SettingsHeader title='General' icon={<Building2 className='size-4' />} />
+      <div className='flex-1 overflow-y-auto min-h-0'>
+        <div className='p-6 lg:py-12 max-w-3xl mx-auto'>
+          <div className='flex flex-col space-y-10'>
+            <div className='space-y-0'>
+              <div className='text-xl font-semibold'>General</div>
+              <div className='text-base'>Change general settings for your developer account</div>
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)}>
               <FieldGroup>
                 <FieldSet>
                   {/* Logo Section */}
-                  <div className="flex flex-row gap-5">
+                  <div className='flex flex-row gap-5'>
                     <div>
-                      <div className="border rounded-2xl bg-primary-50 size-16">
+                      <div className='border rounded-2xl bg-primary-50 size-16'>
                         {account.logoUrl && (
                           <img
                             src={account.logoUrl}
                             alt={account.title}
-                            className="size-full rounded-2xl object-cover"
+                            className='size-full rounded-2xl object-cover'
                           />
                         )}
                       </div>
                     </div>
-                    <div className="flex flex-col items-start gap-1">
-                      <div className="text-base font-semibold">Logo</div>
-                      <Button variant="outline" size="sm" type="button">
+                    <div className='flex flex-col items-start gap-1'>
+                      <div className='text-base font-semibold'>Logo</div>
+                      <Button variant='outline' size='sm' type='button'>
                         Upload logo
                       </Button>
-                      <div className="text-xs text-muted-foreground">
+                      <div className='text-xs text-muted-foreground'>
                         *.png files up to 10MB at least 560px by 560px
                       </div>
                     </div>
@@ -143,12 +143,12 @@ function SettingsGeneralPage() {
                   <FieldSeparator />
 
                   {/* Name and Slug Fields */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
                     <Field data-invalid={!!errors.title}>
-                      <FieldLabel htmlFor="account-name">Name</FieldLabel>
+                      <FieldLabel htmlFor='account-name'>Name</FieldLabel>
                       <Input
-                        id="account-name"
-                        placeholder="My Company"
+                        id='account-name'
+                        placeholder='My Company'
                         aria-invalid={!!errors.title}
                         {...register('title')}
                       />
@@ -159,21 +159,20 @@ function SettingsGeneralPage() {
                     </Field>
 
                     <Field>
-                      <FieldLabel htmlFor="account-slug">Slug</FieldLabel>
+                      <FieldLabel htmlFor='account-slug'>Slug</FieldLabel>
                       <InputGroup>
                         <InputGroupInput
-                          id="account-slug"
+                          id='account-slug'
                           value={account.slug}
                           readOnly
-                          className="bg-muted"
+                          className='bg-muted'
                         />
-                        <InputGroupAddon align="inline-end">
+                        <InputGroupAddon align='inline-end'>
                           <InputGroupButton
-                            aria-label="Copy slug"
-                            title="Copy slug"
-                            size="icon-xs"
-                            onClick={() => copy(account.slug)}
-                          >
+                            aria-label='Copy slug'
+                            title='Copy slug'
+                            size='icon-xs'
+                            onClick={() => copy(account.slug)}>
                             {copied ? <Check /> : <Copy />}
                           </InputGroupButton>
                         </InputGroupAddon>
@@ -187,14 +186,13 @@ function SettingsGeneralPage() {
 
                 <FieldSet>
                   {/* Save Button */}
-                  <Field orientation="horizontal" className="justify-end">
+                  <Field orientation='horizontal' className='justify-end'>
                     <Button
-                      size="sm"
-                      type="submit"
+                      size='sm'
+                      type='submit'
                       loading={updateAccount.isPending}
-                      loadingText="Saving..."
-                      disabled={!isDirty || updateAccount.isPending}
-                    >
+                      loadingText='Saving...'
+                      disabled={!isDirty || updateAccount.isPending}>
                       Save changes
                     </Button>
                   </Field>

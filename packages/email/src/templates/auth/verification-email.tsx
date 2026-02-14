@@ -1,5 +1,5 @@
 import { Container, Heading, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -23,9 +23,9 @@ export async function VerificationEmail({
           Thank you for signing up. Please verify your email address by clicking the link below:
         </Text>
 
-        <EmailButton href={verificationLink} label="Verify Email Address" />
+        <EmailButton href={verificationLink} label='Verify Email Address' />
 
-        <Text className="mb-0">
+        <Text className='mb-0'>
           If you didn't sign up for an account, you can safely ignore this email.
         </Text>
 

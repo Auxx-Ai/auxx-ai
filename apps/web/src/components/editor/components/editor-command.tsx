@@ -1,11 +1,12 @@
 // apps/web/src/components/editor/components/editor-command.tsx
-import { useAtom, useSetAtom } from 'jotai'
-import { useEffect, createContext } from 'react'
-import { Command } from 'cmdk'
-import type { ComponentPropsWithoutRef, FC } from 'react'
+
 import type { Range } from '@tiptap/core'
-import tunnel from '../utils/tunnel'
+import { Command } from 'cmdk'
+import { useAtom, useSetAtom } from 'jotai'
+import type { ComponentPropsWithoutRef, FC } from 'react'
+import { createContext, useEffect } from 'react'
 import { auxxEditorStore, queryAtom, rangeAtom } from '../utils/store'
+import type tunnel from '../utils/tunnel'
 
 export const EditorCommandTunnelContext = createContext({} as ReturnType<typeof tunnel>)
 
@@ -73,7 +74,7 @@ export const EditorCommand: React.FC<ComponentPropsWithoutRef<typeof Command>> =
             onKeyDown={(e) => {
               e.stopPropagation()
             }}
-            id="slash-command"
+            id='slash-command'
             className={className}
             {...rest}>
             <Command.Input value={query} onValueChange={setQuery} style={{ display: 'none' }} />

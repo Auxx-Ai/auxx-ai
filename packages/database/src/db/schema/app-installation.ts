@@ -1,18 +1,11 @@
 // packages/database/src/db/schema/app-installation.ts
 // Drizzle table for app installation
 
-import {
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  index,
-  type AnyPgColumn,
-} from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, index, pgTable, text, timestamp, uniqueIndex } from './_shared'
 import { App } from './app'
-import { Organization } from './organization'
 import { AppVersion } from './app-version'
+import { Organization } from './organization'
 
 /** Drizzle table for AppInstallation */
 export const AppInstallation = pgTable(
@@ -33,8 +26,10 @@ export const AppInstallation = pgTable(
     installationType: text().notNull(), // 'development' | 'production'
 
     // Currently installed version
-    currentVersionId: text()
-      .references((): AnyPgColumn => AppVersion.id, { onUpdate: 'cascade', onDelete: 'set null' }),
+    currentVersionId: text().references((): AnyPgColumn => AppVersion.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
 
     // Installation metadata
     installedAt: timestamp({ precision: 3 }).defaultNow().notNull(),

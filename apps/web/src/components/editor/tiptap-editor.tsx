@@ -1,22 +1,23 @@
 // ~/components/global/editor/tiptap-editor.tsx
-import React, { useEffect, useMemo } from 'react'
-import { useEditor, EditorContent, Editor } from '@tiptap/react'
-import { useEditorContext } from './editor-context'
 
-// --- Tiptap Extensions ---
-import StarterKit from '@tiptap/starter-kit'
-import TextStyle from '@tiptap/extension-text-style'
-import FontFamily from '@tiptap/extension-font-family'
+import { cn } from '@auxx/ui/lib/utils'
 // import FontSize from '@tiptap/extension-font-size'
 import Color from '@tiptap/extension-color'
-import Underline from '@tiptap/extension-underline'
-import TextAlign from '@tiptap/extension-text-align'
+import FontFamily from '@tiptap/extension-font-family'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
-import { SlashCommand } from './slash-command' // Adjust path if needed
-import { cn } from '@auxx/ui/lib/utils'
-import { Indent } from './extensions/indent'
+import TextAlign from '@tiptap/extension-text-align'
+import TextStyle from '@tiptap/extension-text-style'
+import Underline from '@tiptap/extension-underline'
+import { Editor, EditorContent, useEditor } from '@tiptap/react'
+// --- Tiptap Extensions ---
+import StarterKit from '@tiptap/starter-kit'
+import React, { useEffect, useMemo } from 'react'
+import { useEditorContext } from './editor-context'
 import { FontSize } from './extensions'
+import { Indent } from './extensions/indent'
+import { SlashCommand } from './slash-command' // Adjust path if needed
+
 // --- End Tiptap Extensions ---
 
 type TiptapEditorProps = {

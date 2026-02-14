@@ -1,12 +1,13 @@
 'use client'
+
 // apps/web/src/components/fields/displays/display-url.tsx
 
+import { Badge } from '@auxx/ui/components/badge'
 import { ExternalLink } from 'lucide-react'
 import { useMemo } from 'react'
-import DisplayWrapper from './display-wrapper'
 import { useFieldContext } from './display-field'
+import DisplayWrapper from './display-wrapper'
 import { FieldOptionButton } from './field-option-button'
-import { Badge } from '@auxx/ui/components/badge'
 
 /**
  * normalizeUrl function
@@ -64,20 +65,20 @@ export function DisplayUrl() {
   if (!normalizedValue || !displayValue) {
     return (
       <DisplayWrapper copyValue={null}>
-        <Badge variant="pill">-</Badge>
+        <Badge variant='pill'>-</Badge>
       </DisplayWrapper>
     )
   }
 
   const buttons = [
-    <FieldOptionButton key="open" label="Open website" href={normalizedValue}>
+    <FieldOptionButton key='open' label='Open website' href={normalizedValue}>
       <ExternalLink />
     </FieldOptionButton>,
   ]
 
   return (
     <DisplayWrapper copyValue={normalizedValue} buttons={buttons}>
-      <Badge variant="pill" className="shrink-0">
+      <Badge variant='pill' className='shrink-0'>
         {displayValue}
       </Badge>
     </DisplayWrapper>

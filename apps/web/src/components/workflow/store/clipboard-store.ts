@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/store/clipboard-store.ts
 
+import { cloneDeep } from '@auxx/utils'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import type { FlowNode, FlowEdge } from './types'
 import { storeEventBus } from './event-bus'
-import { cloneDeep } from '@auxx/utils'
+import type { FlowEdge, FlowNode } from './types'
 
 /**
  * Clipboard data structure containing copied nodes and their relationships

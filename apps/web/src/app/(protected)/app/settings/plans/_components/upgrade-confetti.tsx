@@ -1,8 +1,8 @@
 // app/(protected)/app/settings/plans/_components/upgrade-confetti.tsx
 'use client'
 
-import { useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { useEffect } from 'react'
 import { showCelebrationConfetti } from '~/components/subscriptions/show-confetti'
 
 /** Triggers celebratory confetti when the settings page is visited with ?upgrade=true. */

@@ -57,9 +57,7 @@ export async function query<T = any>(options: QueryOptions): Promise<T[]> {
  * })
  * ```
  */
-export async function queryOne<T = any>(
-  options: QueryOptions
-): Promise<T | null> {
+export async function queryOne<T = any>(options: QueryOptions): Promise<T | null> {
   const results = await query<T>(options)
   return results[0] ?? null
 }

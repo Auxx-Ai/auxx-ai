@@ -1,10 +1,10 @@
 // apps/build/src/app/client-providers.tsx
 'use client'
 
-import React from 'react'
+import { Toaster } from '@auxx/ui/components/sonner'
+import type React from 'react'
 import { ThemeProvider } from '~/providers/theme-provider'
 import { TRPCReactProvider } from '~/trpc/react'
-import { Toaster } from '@auxx/ui/components/sonner'
 
 /**
  * ClientProviders
@@ -14,7 +14,7 @@ import { Toaster } from '@auxx/ui/components/sonner'
  */
 export function ClientProviders({ children }: { children: React.ReactNode }) {
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+    <ThemeProvider attribute='class' defaultTheme='system' enableSystem disableTransitionOnChange>
       <TRPCReactProvider>{children}</TRPCReactProvider>
       <Toaster />
     </ThemeProvider>

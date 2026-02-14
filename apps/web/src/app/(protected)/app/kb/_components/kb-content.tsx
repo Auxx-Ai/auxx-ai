@@ -1,14 +1,4 @@
 'use client'
-import { useMemo, useEffect } from 'react'
-import { api } from '~/trpc/react'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { KBProvider, useKnowledgeBase } from './kb-context'
-import { KBSidebar } from './kb-sidebar'
-import ArticleEditor from './article-editor'
-import { findArticleBySlugPath } from './helpers'
-import ArticleEditorLoading from './article-editor-loading'
-import KBPreview from './kb-preview'
-import { useQueryState } from 'nuqs'
 
 import {
   MainPage,
@@ -17,6 +7,16 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { useQueryState } from 'nuqs'
+import { useEffect, useMemo } from 'react'
+import { api } from '~/trpc/react'
+import ArticleEditor from './article-editor'
+import ArticleEditorLoading from './article-editor-loading'
+import { findArticleBySlugPath } from './helpers'
+import { KBProvider, useKnowledgeBase } from './kb-context'
+import KBPreview from './kb-preview'
+import { KBSidebar } from './kb-sidebar'
 
 type KBEditorParams = { knowledgeBaseId: string; slug: string[] }
 
@@ -38,10 +38,10 @@ export default function KBEditorView({ knowledgeBaseId, slug }: KBEditorParams) 
 
   if (isLoadingArticles || isKnowledgeBaseLoading) {
     return (
-      <div className="p-8">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="mt-4 h-4 w-full" />
-        <Skeleton className="mt-2 h-4 w-full" />
+      <div className='p-8'>
+        <Skeleton className='h-8 w-64' />
+        <Skeleton className='mt-4 h-4 w-full' />
+        <Skeleton className='mt-2 h-4 w-full' />
       </div>
     )
   }
@@ -52,18 +52,18 @@ export default function KBEditorView({ knowledgeBaseId, slug }: KBEditorParams) 
         <MainPageHeader>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem
-              title="Knowledge base "
+              title='Knowledge base '
               href={`/app/kb/${knowledgeBaseId}/editor/general`}
               last
             />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className="flex flex-row w-full h-full">
+          <div className='flex flex-row w-full h-full'>
             <KBSidebar knowledgeBaseId={knowledgeBaseId} knowledgeBase={knowledgeBase} />
 
             {/* Main content */}
-            <div className="flex min-h-0 max-lg:shrink-0 lg:flex-1">
+            <div className='flex min-h-0 max-lg:shrink-0 lg:flex-1'>
               {activeTab === 'articles' ? (
                 <KBEditorContent
                   knowledgeBaseId={knowledgeBaseId}
@@ -136,10 +136,10 @@ const KBEditorContent = ({
 
   if (isLoading) {
     return (
-      <div className="p-8">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="mt-4 h-4 w-full" />
-        <Skeleton className="mt-2 h-4 w-full" />
+      <div className='p-8'>
+        <Skeleton className='h-8 w-64' />
+        <Skeleton className='mt-4 h-4 w-full' />
+        <Skeleton className='mt-2 h-4 w-full' />
       </div>
     )
   }
@@ -147,11 +147,11 @@ const KBEditorContent = ({
   // Dashboard view (no slug)
   if (!slug || slug.length === 0) {
     return (
-      <div className="p-8">
-        <h1 className="text-2xl font-bold">
+      <div className='p-8'>
+        <h1 className='text-2xl font-bold'>
           {knowledgeBase ? knowledgeBase.name : 'No knowledge base'}
         </h1>
-        <p className="mt-2 text-muted-foreground">
+        <p className='mt-2 text-muted-foreground'>
           Select an article from the sidebar to edit, or create a new article.
         </p>
       </div>
@@ -170,9 +170,9 @@ const KBEditorContent = ({
 
   // Article not found
   return (
-    <div className="p-8">
-      <h2 className="text-xl font-semibold">Article not found</h2>
-      <p className="mt-2 text-muted-foreground">
+    <div className='p-8'>
+      <h2 className='text-xl font-semibold'>Article not found</h2>
+      <p className='mt-2 text-muted-foreground'>
         The requested article could not be found. It may have been deleted or moved.
       </p>
     </div>

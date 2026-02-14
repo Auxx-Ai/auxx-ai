@@ -2,17 +2,17 @@
 
 'use client'
 
-import { useVirtualizer } from '@tanstack/react-virtual'
-import { type Table } from '@tanstack/react-table'
-import { VirtualTableRow } from './virtual-table-row'
-import { DragDropRow } from './drag-drop-row'
-import { useTableConfig } from '../context/table-config-context'
-import { useRowSelection } from '../context/row-selection-context'
-import { ROW_HEIGHT } from '../utils/constants'
-import { useInView } from 'react-intersection-observer'
-import { useEffect, useRef, useMemo, useLayoutEffect, useCallback, useState } from 'react'
-import { type DragDropConfig } from '../types'
 import { cn } from '@auxx/ui/lib/utils'
+import type { Table } from '@tanstack/react-table'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useInView } from 'react-intersection-observer'
+import { useRowSelection } from '../context/row-selection-context'
+import { useTableConfig } from '../context/table-config-context'
+import type { DragDropConfig } from '../types'
+import { ROW_HEIGHT } from '../utils/constants'
+import { DragDropRow } from './drag-drop-row'
+import { VirtualTableRow } from './virtual-table-row'
 
 interface VirtualTableBodyProps<TData> {
   table: Table<TData>
@@ -132,7 +132,7 @@ export function VirtualTableBody<TData>({
       } else {
         const container = containerRef.current
         if (container) {
-          let parent = container.closest('.overflow-auto')
+          const parent = container.closest('.overflow-auto')
           if (parent instanceof HTMLElement) {
             scrollContainer = parent
           }
@@ -261,7 +261,7 @@ export function VirtualTableBody<TData>({
           )
         })}
         <div
-          className="sticky top-0 w-0"
+          className='sticky top-0 w-0'
           style={{
             left: `${shadowLeftPosition}px`,
             zIndex: 22,

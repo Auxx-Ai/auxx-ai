@@ -169,9 +169,10 @@ export class ErrorNormalizer {
 
   static getUserMessage(error: NormalizedEmailError): string {
     switch (error.code) {
-      case EmailErrorCode.SIZE_LIMIT_EXCEEDED:
+      case EmailErrorCode.SIZE_LIMIT_EXCEEDED: {
         const limitMB = error.details?.limit ? (error.details.limit / 1024 / 1024).toFixed(0) : '25'
         return `Message too large (max ${limitMB}MB). Try removing attachments or using cloud storage links.`
+      }
 
       case EmailErrorCode.FROM_ALIAS_INVALID:
         return 'The selected "From" address is not verified for sending. Please check your email settings.'

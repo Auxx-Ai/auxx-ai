@@ -15,16 +15,16 @@
  * Variable format: {{nodeId_variableName}} where underscore separates node ID and variable path
  */
 
-import { BaseNodeProcessor } from '../base-node'
+import { z } from 'zod'
+import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
-  WorkflowNode,
   NodeExecutionResult,
-  ValidationResult,
   PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
-import { z } from 'zod'
+import { BaseNodeProcessor } from '../base-node'
 
 // Type definitions
 // TipTap content is now stored as simple strings with {{variableId}} syntax
@@ -620,8 +620,8 @@ export class HttpProcessor extends BaseNodeProcessor {
     Object.assign(headers, authHeaders)
 
     // Build request body (skip for GET and HEAD requests)
-    let data: any = undefined
-    let contentType: string | undefined = undefined
+    let data: any
+    let contentType: string | undefined
 
     if (config.method.toLowerCase() !== 'get' && config.method.toLowerCase() !== 'head') {
       const bodyResult = await this.buildRequestBody(config.body, contextManager, node)
@@ -855,7 +855,7 @@ export class HttpProcessor extends BaseNodeProcessor {
         if (attempt > 0) {
           // Convert retry_interval from seconds to milliseconds and apply exponential backoff
           const baseDelay = config.retry_config.retry_interval
-          const delay = baseDelay * Math.pow(2, attempt - 1)
+          const delay = baseDelay * 2 ** (attempt - 1)
           contextManager.log(
             'INFO',
             nodeId,

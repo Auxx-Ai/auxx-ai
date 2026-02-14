@@ -2,8 +2,8 @@
 
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import { storeEventBus } from './event-bus'
 import { useCanvasStore } from './canvas-store'
+import { storeEventBus } from './event-bus'
 
 /**
  * Interaction modes for the workflow canvas

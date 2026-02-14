@@ -1,9 +1,9 @@
 // apps/web/src/components/dynamic-table/hooks/use-table-actions.ts
 
-import { useCallback } from 'react'
 import type { RowSelectionState } from '@tanstack/react-table'
-import type { CellSelectionState } from '../types'
+import { useCallback } from 'react'
 import { useSelectionStore } from '../stores/selection-store'
+import type { CellSelectionState } from '../types'
 
 // ============================================================================
 // ROW SELECTION ACTIONS
@@ -19,9 +19,8 @@ export function useSetRowSelection(tableId: string) {
       const current = store.getRowSelection(tableId)
 
       // Resolve updater function if needed
-      const selection = typeof selectionOrUpdater === 'function'
-        ? selectionOrUpdater(current)
-        : selectionOrUpdater
+      const selection =
+        typeof selectionOrUpdater === 'function' ? selectionOrUpdater(current) : selectionOrUpdater
 
       store.setRowSelection(tableId, selection)
     },

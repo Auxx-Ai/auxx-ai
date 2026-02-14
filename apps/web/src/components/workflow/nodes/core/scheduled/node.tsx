@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/nodes/core/scheduled-trigger/node.tsx
 
 import { type FC, memo } from 'react'
-import { BaseNode } from '../../shared/base/base-node'
+import type { NodeProps } from '~/components/workflow/types/node-base'
 import { NodeSourceHandle } from '~/components/workflow/ui/node-handle'
-import { ScheduledTriggerNodeData } from './types'
+import { BaseNode } from '../../shared/base/base-node'
+import type { ScheduledTriggerNodeData } from './types'
 import { getScheduleDescription } from './utils'
-import { NodeProps } from '~/components/workflow/types/node-base'
 
 /**
  * Node type for scheduled trigger
@@ -29,7 +29,7 @@ export const ScheduledTriggerNode: FC<ScheduledTriggerNode> = memo((props) => {
 
   return (
     <BaseNode id={id} data={displayData} selected={selected}>
-      <NodeSourceHandle id={id} data={{ ...displayData, selected }} handleId="source" />
+      <NodeSourceHandle id={id} data={{ ...displayData, selected }} handleId='source' />
     </BaseNode>
   )
 })

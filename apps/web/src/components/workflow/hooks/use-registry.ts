@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/hooks/use-registry.ts
 
-import { useState, useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
 import type { NodeDefinition } from '../types/registry'
 
@@ -68,9 +68,7 @@ export function useNonTriggerDefinitions(): NodeDefinition[] {
  * @param selector - Function that queries the registry
  * @returns Result of the selector function
  */
-export function useRegistrySelector<T>(
-  selector: (registry: typeof unifiedNodeRegistry) => T
-): T {
+export function useRegistrySelector<T>(selector: (registry: typeof unifiedNodeRegistry) => T): T {
   const [version, setVersion] = useState(0)
 
   useEffect(() => {

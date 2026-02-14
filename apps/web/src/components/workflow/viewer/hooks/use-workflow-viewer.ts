@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/viewer/hooks/use-workflow-viewer.ts
 'use client'
-import { useCallback, useEffect, useState } from 'react'
+import { API_URL } from '@auxx/config/client'
 import type { Viewport } from '@xyflow/react'
+import { useCallback, useEffect, useState } from 'react'
 import type { FlowEdge, FlowNode } from '../../types'
 import { initializeWorkflow } from '../../utils/workflow-initializer'
-import { API_URL } from '@auxx/config/client'
 
 /** Sanitized environment variable from public API */
 export interface SanitizedEnvVar {

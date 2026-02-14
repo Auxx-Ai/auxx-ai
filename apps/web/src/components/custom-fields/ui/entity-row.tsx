@@ -1,10 +1,10 @@
 // apps/web/src/components/custom-fields/ui/entity-row.tsx
 'use client'
 
-import { TableCell, TableRow } from '@auxx/ui/components/table'
 import { Badge } from '@auxx/ui/components/badge'
+import { DEFAULT_COLOR, EntityIcon } from '@auxx/ui/components/icons'
+import { TableCell, TableRow } from '@auxx/ui/components/table'
 import { ChevronRight } from 'lucide-react'
-import { EntityIcon, DEFAULT_COLOR } from '@auxx/ui/components/icons'
 
 /** Props for EntityRow component */
 interface EntityRowProps {
@@ -22,21 +22,21 @@ export function EntityRow({ label, type, iconId, color, onClick }: EntityRowProp
   const isCustom = type === 'Custom'
 
   return (
-    <TableRow className="cursor-pointer hover:bg-muted/50 h-12" onClick={onClick}>
-      <TableCell className="flex items-center space-x-2 ps-4 h-12">
+    <TableRow className='cursor-pointer hover:bg-muted/50 h-12' onClick={onClick}>
+      <TableCell className='flex items-center space-x-2 ps-4 h-12'>
         {/* Display EntityIcon for both system and custom entities */}
-        <EntityIcon iconId={iconId || 'box'} color={color || DEFAULT_COLOR} className="size-6" />
+        <EntityIcon iconId={iconId || 'box'} color={color || DEFAULT_COLOR} className='size-6' />
         <span>{label}</span>
       </TableCell>
       <TableCell>
-        <Badge variant={isCustom ? 'purple' : 'pill'} shape="tag">
+        <Badge variant={isCustom ? 'purple' : 'pill'} shape='tag'>
           {type}
         </Badge>
       </TableCell>
       <TableCell>&nbsp;</TableCell>
-      <TableCell className="text-right" data-clickable="true">
-        <div className="justify-end flex items-center w-full h-full pe-3">
-          <ChevronRight className="size-4" />
+      <TableCell className='text-right' data-clickable='true'>
+        <div className='justify-end flex items-center w-full h-full pe-3'>
+          <ChevronRight className='size-4' />
         </div>
       </TableCell>
     </TableRow>

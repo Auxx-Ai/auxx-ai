@@ -48,7 +48,10 @@ function randomSalt(): string {
  * @param existingSalt - Optional salt for deterministic hashing.
  * @returns Structured hash information suitable for database ingestion.
  */
-export async function hashPassword(password: string, existingSalt?: string): Promise<HashedPassword> {
+export async function hashPassword(
+  password: string,
+  existingSalt?: string
+): Promise<HashedPassword> {
   const salt = existingSalt ?? randomSalt()
   const key = await scryptAsync(password.normalize('NFKC'), salt, SCRYPT_CONFIG)
   const keyHex = bytesToHex(key)

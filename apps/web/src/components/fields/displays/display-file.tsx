@@ -1,11 +1,12 @@
 // apps/web/src/components/fields/displays/display-file.tsx
+
+import { Badge } from '@auxx/ui/components/badge'
 import { useMemo } from 'react'
+import { FileIcon } from '~/components/files/utils/file-icon'
+import { type ItemsListItem, ItemsListView } from '~/components/ui/items-list-view'
+import { api } from '~/trpc/react'
 import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
-import { api } from '~/trpc/react'
-import { Badge } from '@auxx/ui/components/badge'
-import { FileIcon } from '~/components/files/utils/file-icon'
-import { ItemsListView, type ItemsListItem } from '~/components/ui/items-list-view'
 
 /** File item for ItemsListView */
 interface FileItem extends ItemsListItem {
@@ -51,11 +52,11 @@ export function DisplayFile() {
         renderItem={(item) => (
           <a
             href={`/api/attachments/${item.id}/download`}
-            target="_blank"
-            rel="noopener noreferrer"
+            target='_blank'
+            rel='noopener noreferrer'
             onClick={(e) => e.stopPropagation()}>
-            <Badge variant="pill" shape="tag" className="flex items-center gap-1.5">
-              <FileIcon mimeType={item.mimeType} className="size-4 text-gray-500 flex-shrink-0" />
+            <Badge variant='pill' shape='tag' className='flex items-center gap-1.5'>
+              <FileIcon mimeType={item.mimeType} className='size-4 text-gray-500 flex-shrink-0' />
               <span>{item.name}</span>
             </Badge>
           </a>

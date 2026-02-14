@@ -2,9 +2,9 @@
 
 'use client'
 
-import { memo, useEffect, useRef } from 'react'
-import { flexRender, type Cell } from '@tanstack/react-table'
 import { cn } from '@auxx/ui/lib/utils'
+import { type Cell, flexRender } from '@tanstack/react-table'
+import { memo, useEffect, useRef } from 'react'
 import { sanitizeColumnId } from '../utils/sanitize-column-id'
 
 interface VirtualTableCellProps<TData> {
@@ -44,7 +44,10 @@ function VirtualTableCellInner<TData>({ cell, columnId, className }: VirtualTabl
   // })
 
   return (
-    <div ref={ref} data-col={sanitizeColumnId(columnId)} className={cn('flex items-center h-full', className)}>
+    <div
+      ref={ref}
+      data-col={sanitizeColumnId(columnId)}
+      className={cn('flex items-center h-full', className)}>
       {flexRender(cell.column.columnDef.cell, cell.getContext())}
     </div>
   )

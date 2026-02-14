@@ -2,7 +2,8 @@
 
 'use client'
 
-import React, { createContext, useContext, useMemo } from 'react'
+import type React from 'react'
+import { createContext, useContext, useMemo } from 'react'
 
 /**
  * Context value for workflow viewer

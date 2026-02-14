@@ -1,8 +1,8 @@
 // packages/lib/src/jobs/workflow/resume-workflow-job.ts
 
-import { Job } from 'bullmq'
-import { createScopedLogger } from '@auxx/logger'
 import { database as db, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import type { Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { publisher } from '../../events/publisher'
 import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'

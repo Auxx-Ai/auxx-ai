@@ -1,7 +1,7 @@
 // packages/services/src/app-connections/get-app-connection.ts
 
-import { database } from '@auxx/database'
 import { CredentialService, type NodeData } from '@auxx/credentials'
+import { database } from '@auxx/database'
 import { err, ok, type Result } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 

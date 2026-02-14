@@ -1,14 +1,14 @@
 // apps/web/src/components/workflow/types/node-base.ts
 
-import type {
-  Node as ReactFlowNode,
-  Edge as ReactFlowEdge,
-  XYPosition,
-  Position,
-} from '@xyflow/react'
-import type { NodeType } from './node-types'
-import { z } from 'zod'
 import { NodeRunningStatus } from '@auxx/lib/workflow-engine/types'
+import type {
+  Position,
+  Edge as ReactFlowEdge,
+  Node as ReactFlowNode,
+  XYPosition,
+} from '@xyflow/react'
+import { z } from 'zod'
+import type { NodeType } from './node-types'
 
 // Re-export for convenience
 export { NodeRunningStatus }

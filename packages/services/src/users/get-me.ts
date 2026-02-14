@@ -2,9 +2,9 @@
 
 import { database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { type Result, ok, err } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
+import { err, ok, type Result } from 'neverthrow'
 import type { DatabaseError } from '../shared/errors'
+import { fromDatabase } from '../shared/utils'
 
 /**
  * Parameters accepted by getMe for fetching the authenticated user profile.
@@ -56,11 +56,7 @@ export async function getMe(params: GetMeParams): Promise<Result<GetMeSuccess, G
 
   // Fetch user record from database
   const userResult = await fromDatabase(
-    database
-      .select()
-      .from(schema.User)
-      .where(eq(schema.User.id, userId))
-      .limit(1),
+    database.select().from(schema.User).where(eq(schema.User.id, userId)).limit(1),
     'get-me-user'
   )
 
@@ -95,7 +91,9 @@ export async function getMe(params: GetMeParams): Promise<Result<GetMeSuccess, G
 
   const membershipsWithOrg = membershipsResult.value
 
-  const memberships: MeMembership[] = membershipsWithOrg.map(({ organization, ...membership }) => membership)
+  const memberships: MeMembership[] = membershipsWithOrg.map(
+    ({ organization, ...membership }) => membership
+  )
 
   const organizationsMap = new Map<string, MeOrganization>()
   for (const membership of membershipsWithOrg) {

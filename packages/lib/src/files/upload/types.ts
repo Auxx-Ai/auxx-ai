@@ -1,13 +1,15 @@
 // packages/lib/src/files/file-upload/types.ts
-import type { EntityType } from '../types'
+
 import type { File } from '@auxx/database/types'
+import type { EntityType } from '../types'
+
 // Re-export types for backward compatibility
 export type {
+  DatasetFileMetadata,
   EntityType,
   FileInfo,
-  UploadFile,
   ProcessingStage,
-  DatasetFileMetadata,
+  UploadFile,
 } from '../types'
 /**
  * File visibility options

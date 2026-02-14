@@ -6,10 +6,5 @@
     "sourceMap": false,
     "removeComments": true
   },
-  "include": [
-    "src/client/**/*",
-    "src/server/**/*",
-    "src/root/**/*",
-    "src/shared/**/*"
-  ]
+  "include": ["src/client/**/*", "src/server/**/*", "src/root/**/*", "src/shared/**/*"]
 }

@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/hooks/use-node-connections.ts
 
-import { useMemo } from 'react'
-import { useReactFlow } from '@xyflow/react'
 import { isTerminalNodeType } from '@auxx/lib/workflow-engine/client'
+import { useReactFlow } from '@xyflow/react'
+import { useMemo } from 'react'
 
 /**
  * Hook to check if a node has outgoing connections and whether it needs them

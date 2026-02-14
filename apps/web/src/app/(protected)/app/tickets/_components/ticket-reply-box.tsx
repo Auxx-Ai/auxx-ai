@@ -1,19 +1,7 @@
 // ~/components/ticket/TicketReplyBox.tsx (Adjust path as needed)
-import { AudioLines, Leaf, Plus, X } from 'lucide-react'
-import React, { useEffect, useId, useState, type MouseEvent } from 'react' // Added MouseEvent
+
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Separator } from '@auxx/ui/components/separator'
-import { type RouterOutputs } from '~/trpc/react'
-import { api } from '~/trpc/react'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
   Command,
   CommandEmpty,
@@ -22,12 +10,25 @@ import {
   CommandItem,
   CommandList,
 } from '@auxx/ui/components/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
+import { Separator } from '@auxx/ui/components/separator'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast' // Adjust path
+import { AudioLines, Leaf, Plus, X } from 'lucide-react'
+import React, { type MouseEvent, useEffect, useId, useState } from 'react' // Added MouseEvent
+import { EditorToolbar } from '~/components/editor/editor-button' // Adjust path
+import { EditorProvider, useEditorContext } from '~/components/editor/editor-context' // Adjust path
 
 // --- Editor Imports ---
 import TiptapEditor from '~/components/editor/tiptap-editor' // Adjust path
-import { EditorToolbar } from '~/components/editor/editor-button' // Adjust path
-import { EditorProvider, useEditorContext } from '~/components/editor/editor-context' // Adjust path
+import { api, type RouterOutputs } from '~/trpc/react'
+
 // --- End Editor Imports ---
 
 type Props = {
@@ -189,19 +190,19 @@ function TicketReplyBox({ ticket, onSuccess, onCancel }: Props) {
   const uniqueId = useId() // For potential accessibility attributes if needed
 
   return (
-    <div className="mx-auto w-full max-w-3xl rounded-2xl pb-4">
+    <div className='mx-auto w-full max-w-3xl rounded-2xl pb-4'>
       {/* Main wrapper with the onClick handler */}
       <div
-        className="relative flex flex-col rounded-2xl border  border-black/10 bg-muted/60 transition-colors  focus-within:bg-muted [&:has(input:is(:disabled))_*]:pointer-events-none"
+        className='relative flex flex-col rounded-2xl border  border-black/10 bg-muted/60 transition-colors  focus-within:bg-muted [&:has(input:is(:disabled))_*]:pointer-events-none'
         onClick={handleWrapperClick} // Attach the focus handler here
       >
         {/* --- Header Fields (From, To, Cc, Bcc, Subject) --- */}
-        <div className="flex flex-col border-b border-border">
+        <div className='flex flex-col border-b border-border'>
           {' '}
           {/* Group header fields */}
           {/* From field */}
-          <div className="flex items-center gap-2 px-4 py-1">
-            <div className="w-10 text-sm text-muted-foreground">From:</div>
+          <div className='flex items-center gap-2 px-4 py-1'>
+            <div className='w-10 text-sm text-muted-foreground'>From:</div>
             <Select
               value={from?.id}
               onValueChange={(value) => {
@@ -209,11 +210,11 @@ function TicketReplyBox({ ticket, onSuccess, onCancel }: Props) {
                 if (selectedContact) setFrom(selectedContact)
               }}>
               <SelectTrigger
-                className="h-8 w-auto min-w-40 border-none bg-transparent focus:ring-0 flex-1"
-                variant="transparent">
-                <SelectValue placeholder="Select sender">
+                className='h-8 w-auto min-w-40 border-none bg-transparent focus:ring-0 flex-1'
+                variant='transparent'>
+                <SelectValue placeholder='Select sender'>
                   {from && (
-                    <Badge variant="pill" className="m-[2px]">
+                    <Badge variant='pill' className='m-[2px]'>
                       {from.name || from.email}
                     </Badge>
                   )}
@@ -228,21 +229,21 @@ function TicketReplyBox({ ticket, onSuccess, onCancel }: Props) {
               </SelectContent>
             </Select>
           </div>
-          <Separator className="mx-4 w-auto" /> {/* Use separator within the group */}
+          <Separator className='mx-4 w-auto' /> {/* Use separator within the group */}
           {/* To field & Cc/Bcc/Subject Toggles */}
-          <div className="flex items-center gap-2 px-4 py-1">
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <span className="w-10 text-sm text-muted-foreground">To:</span>
+          <div className='flex items-center gap-2 px-4 py-1'>
+            <div className='flex min-w-0 flex-1 items-center gap-2'>
+              <span className='w-10 text-sm text-muted-foreground'>To:</span>
               <Select
                 value={to?.id}
                 onValueChange={(value) => {
                   const selectedContact = allContacts.find((c) => c.id === value)
                   if (selectedContact) setTo(selectedContact)
                 }}>
-                <SelectTrigger variant="transparent">
-                  <SelectValue placeholder="Select recipient">
+                <SelectTrigger variant='transparent'>
+                  <SelectValue placeholder='Select recipient'>
                     {to && (
-                      <Badge variant="outline" className="m-[2px]">
+                      <Badge variant='outline' className='m-[2px]'>
                         {to.name || to.email}
                       </Badge>
                     )}
@@ -260,32 +261,32 @@ function TicketReplyBox({ ticket, onSuccess, onCancel }: Props) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="ml-auto flex shrink-0 items-center gap-1">
+            <div className='ml-auto flex shrink-0 items-center gap-1'>
               {' '}
               {/* Prevent buttons from wrapping */}
               {!showSubject && (
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-1 text-xs text-info"
+                  variant='ghost'
+                  size='sm'
+                  className='h-6 px-1 text-xs text-info'
                   onClick={() => setShowSubject(true)}>
                   Subject
                 </Button>
               )}
               {!showCc && (
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-1 text-xs text-info"
+                  variant='ghost'
+                  size='sm'
+                  className='h-6 px-1 text-xs text-info'
                   onClick={() => setShowCc(true)}>
                   Cc
                 </Button>
               )}
               {!showBcc && (
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-1 text-xs text-info"
+                  variant='ghost'
+                  size='sm'
+                  className='h-6 px-1 text-xs text-info'
                   onClick={() => setShowBcc(true)}>
                   Bcc
                 </Button>
@@ -295,29 +296,29 @@ function TicketReplyBox({ ticket, onSuccess, onCancel }: Props) {
           {/* CC field */}
           {showCc && (
             <>
-              <Separator className="mx-4 w-auto" />
-              <div className="flex items-center gap-2 px-4 py-2">
-                <span className="w-10 text-sm text-muted-foreground">Cc:</span>
-                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+              <Separator className='mx-4 w-auto' />
+              <div className='flex items-center gap-2 px-4 py-2'>
+                <span className='w-10 text-sm text-muted-foreground'>Cc:</span>
+                <div className='flex min-w-0 flex-1 flex-wrap items-center gap-1'>
                   {/* ... CC Badges ... */}
                   {ccContacts.map((contact) => (
-                    <Badge key={contact.id} variant="outline" className="flex items-center gap-1">
+                    <Badge key={contact.id} variant='outline' className='flex items-center gap-1'>
                       {contact.name || contact.email}
                       <button onClick={() => removeCcContact(contact.id)}>
-                        <X className="size-3" />
+                        <X className='size-3' />
                       </button>
                     </Badge>
                   ))}
                   {/* ... CC Popover Trigger ... */}
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-6 px-2">
-                        <Plus className="size-3 text-muted-foreground" />
+                      <Button variant='ghost' size='sm' className='h-6 px-2'>
+                        <Plus className='size-3 text-muted-foreground' />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="p-0" align="start" side="bottom">
+                    <PopoverContent className='p-0' align='start' side='bottom'>
                       <Command>
-                        <CommandInput placeholder="Search for contact..." />
+                        <CommandInput placeholder='Search for contact...' />
                         <CommandList>
                           <CommandEmpty>No contacts found.</CommandEmpty>
                           <CommandGroup>
@@ -330,7 +331,7 @@ function TicketReplyBox({ ticket, onSuccess, onCancel }: Props) {
                                   value={contact.id}
                                   onSelect={() => addCcContact(contact)}>
                                   {contact.name || contact.email}
-                                  <span className="ml-2 text-xs text-muted-foreground">
+                                  <span className='ml-2 text-xs text-muted-foreground'>
                                     {contact.email}
                                   </span>
                                 </CommandItem>
@@ -342,9 +343,9 @@ function TicketReplyBox({ ticket, onSuccess, onCancel }: Props) {
                   </Popover>
                   {ccContacts.length > 0 /* Show remove only if there are contacts */ && (
                     <Button
-                      variant="ghost"
-                      size="sm"
-                      className="ml-auto h-6 px-1 text-xs text-muted-foreground"
+                      variant='ghost'
+                      size='sm'
+                      className='ml-auto h-6 px-1 text-xs text-muted-foreground'
                       onClick={() => setShowCc(false)}>
                       Remove
                     </Button>
@@ -356,15 +357,15 @@ function TicketReplyBox({ ticket, onSuccess, onCancel }: Props) {
           {/* BCC field */}
           {showBcc && (
             <>
-              <Separator className="mx-4 w-auto" />
-              <div className="flex items-center gap-2 px-4 py-2">
-                <span className="w-10 text-sm text-muted-foreground">Bcc:</span>
-                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 p-0.5">
+              <Separator className='mx-4 w-auto' />
+              <div className='flex items-center gap-2 px-4 py-2'>
+                <span className='w-10 text-sm text-muted-foreground'>Bcc:</span>
+                <div className='flex min-w-0 flex-1 flex-wrap items-center gap-1 p-0.5'>
                   {bccContacts.map((contact) => (
-                    <Badge key={contact.id} variant="outline" className="flex items-center gap-1">
+                    <Badge key={contact.id} variant='outline' className='flex items-center gap-1'>
                       {contact.name || contact.email}
                       <button onClick={() => removeBccContact(contact.id)}>
-                        <X className="size-3" />
+                        <X className='size-3' />
                       </button>
                     </Badge>
                   ))}
@@ -372,13 +373,13 @@ function TicketReplyBox({ ticket, onSuccess, onCancel }: Props) {
                   {/* ... BCC Popover Trigger ... */}
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-6 px-2">
-                        <Plus className="size-3 text-muted-foreground" />
+                      <Button variant='ghost' size='sm' className='h-6 px-2'>
+                        <Plus className='size-3 text-muted-foreground' />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="p-0" align="start" side="bottom">
+                    <PopoverContent className='p-0' align='start' side='bottom'>
                       <Command>
-                        <CommandInput placeholder="Search for contact..." />
+                        <CommandInput placeholder='Search for contact...' />
                         <CommandList>
                           <CommandEmpty>No contacts found.</CommandEmpty>
                           <CommandGroup>
@@ -391,7 +392,7 @@ function TicketReplyBox({ ticket, onSuccess, onCancel }: Props) {
                                   value={contact.id}
                                   onSelect={() => addBccContact(contact)}>
                                   {contact.name || contact.email}
-                                  <span className="ml-2 text-xs text-muted-foreground">
+                                  <span className='ml-2 text-xs text-muted-foreground'>
                                     {contact.email}
                                   </span>
                                 </CommandItem>
@@ -403,9 +404,9 @@ function TicketReplyBox({ ticket, onSuccess, onCancel }: Props) {
                   </Popover>
                   {bccContacts.length > 0 && (
                     <Button
-                      variant="ghost"
-                      size="sm"
-                      className="ml-auto h-6 px-1 text-xs text-muted-foreground"
+                      variant='ghost'
+                      size='sm'
+                      className='ml-auto h-6 px-1 text-xs text-muted-foreground'
                       onClick={() => setShowBcc(false)}>
                       Remove
                     </Button>
@@ -418,16 +419,16 @@ function TicketReplyBox({ ticket, onSuccess, onCancel }: Props) {
           {showSubject && (
             <>
               <Separator />
-              <div className="flex items-center gap-2 px-4 py-2">
-                <span className="text-sm text-muted-foreground/70">Subject:</span>
-                <div className="flex flex-1 flex-wrap gap-2">
-                  <input type="text" className="w-full bg-transparent outline-hidden" />
+              <div className='flex items-center gap-2 px-4 py-2'>
+                <span className='text-sm text-muted-foreground/70'>Subject:</span>
+                <div className='flex flex-1 flex-wrap gap-2'>
+                  <input type='text' className='w-full bg-transparent outline-hidden' />
                 </div>
                 {showSubject && (
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto h-6 text-xs text-muted-foreground"
+                    variant='ghost'
+                    size='sm'
+                    className='ml-auto h-6 text-xs text-muted-foreground'
                     onClick={() => setShowSubject(false)}>
                     Remove
                   </Button>
@@ -437,16 +438,16 @@ function TicketReplyBox({ ticket, onSuccess, onCancel }: Props) {
           )}
         </div>
 
-        <div className="min-h-[150px]">
+        <div className='min-h-[150px]'>
           {' '}
           {/* Add wrapper to enforce min-height visually if editorProps doesn't suffice */}
           <TiptapEditor
             content={content}
             onChange={setContent}
-            placeholder="Type your reply here..."
+            placeholder='Type your reply here...'
           />
         </div>
-        <div className="editor-toolbar-wrapper flex items-center gap-1 overflow-x-auto border-t border-border px-2 py-1 md:gap-2 md:px-4 md:py-2">
+        <div className='editor-toolbar-wrapper flex items-center gap-1 overflow-x-auto border-t border-border px-2 py-1 md:gap-2 md:px-4 md:py-2'>
           {/* Pass editor instance from context to the toolbar */}
           <EditorToolbar editor={editor} />
         </div>

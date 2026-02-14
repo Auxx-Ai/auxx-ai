@@ -1,8 +1,8 @@
 // packages/lib/src/import/raw-data/get-raw-data.ts
 
-import { eq, asc } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { asc, eq } from 'drizzle-orm'
 
 /** Raw data record from database */
 export interface RawDataCell {

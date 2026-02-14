@@ -73,8 +73,14 @@ export abstract class BaseSchemaNode<
       [key: string]: any
     }
   } {
-    const { default: defaultValue, label, description, required, isOptional, ...rest } =
-      this._options
+    const {
+      default: defaultValue,
+      label,
+      description,
+      required,
+      isOptional,
+      ...rest
+    } = this._options
 
     const metadata: Record<string, unknown> = {}
 

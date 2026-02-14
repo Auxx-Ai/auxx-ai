@@ -1,7 +1,7 @@
 // settings-service.ts
 import { database as db, schema } from '@auxx/database'
-import { and, eq, inArray } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
+import { and, eq, inArray } from 'drizzle-orm'
 import type { SettingConfig, SettingValue } from './types'
 
 // Define a type for setting values

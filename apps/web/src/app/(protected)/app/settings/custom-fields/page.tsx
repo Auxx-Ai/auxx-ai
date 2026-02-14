@@ -1,14 +1,14 @@
 // apps/web/src/app/(protected)/app/settings/custom-fields/page.tsx
 'use client'
 
-import { useState } from 'react'
-import SettingsPage from '~/components/global/settings-page'
-import { Table, TableBody, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
 import { Button } from '@auxx/ui/components/button'
+import { Table, TableBody, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
 import { Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { EntityRow } from '~/components/custom-fields/ui/entity-row'
+import { useState } from 'react'
 import { EntityDefinitionDialog } from '~/components/custom-fields/ui/entity-definition-dialog'
+import { EntityRow } from '~/components/custom-fields/ui/entity-row'
+import SettingsPage from '~/components/global/settings-page'
 import { useResources } from '~/components/resources/hooks'
 
 const BASE_URL = `/app/settings/custom-fields`
@@ -32,8 +32,8 @@ export default function CustomFieldsPage() {
 
   return (
     <SettingsPage
-      title="Custom Entities & Fields"
-      description="Manage all the custom entities and fields in your organization."
+      title='Custom Entities & Fields'
+      description='Manage all the custom entities and fields in your organization.'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Custom Fields' }]}>
       <Table>
         <TableHeader>
@@ -41,8 +41,8 @@ export default function CustomFieldsPage() {
             <TableHead>Name</TableHead>
             <TableHead>Type</TableHead>
             <TableHead>Fields</TableHead>
-            <TableHead className="w-[100px]">
-              <Button onClick={handleCreateEntity} size="sm" variant="outline">
+            <TableHead className='w-[100px]'>
+              <Button onClick={handleCreateEntity} size='sm' variant='outline'>
                 <Plus />
                 Create
               </Button>

@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/hooks/use-edge-status-updater.ts
 
-import { useEffect, useRef } from 'react'
 import { useReactFlow } from '@xyflow/react'
+import { useEffect, useRef } from 'react'
+import { NodeRunningStatus } from '~/components/workflow/types'
 import { useRunStore } from '../store/run-store'
 import { useSingleNodeRunStore } from '../store/single-node-run-store'
-import { NodeRunningStatus } from '~/components/workflow/types'
 
 /**
  * Maps workflow execution status to NodeRunningStatus enum

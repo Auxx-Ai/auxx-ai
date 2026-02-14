@@ -2,17 +2,17 @@
 
 import { z } from 'zod'
 import {
-  type NodeDefinition,
   NodeCategory,
+  type NodeDefinition,
   type ValidationResult,
 } from '~/components/workflow/types'
-import { type AnswerNodeData } from './types'
-import { AnswerPanel } from './panel'
+import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
 import { NodeType } from '~/components/workflow/types/node-types'
 import { BaseType } from '~/components/workflow/types/variable-types'
-import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
-import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
+import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
+import { AnswerPanel } from './panel'
+import type { AnswerNodeData } from './types'
 
 /**
  * Zod schema for answer node data (flattened structure)

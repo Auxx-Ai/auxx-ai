@@ -1,12 +1,12 @@
 // packages/sdk/src/runtime/run-server-function.ts
 
-import { Host } from './host.js'
 import {
-  AuxxNoUserConnectionError,
   AuxxNoOrganizationConnectionError,
+  AuxxNoUserConnectionError,
   AuxxUnexpectedTransportError,
   ServerFunctionError,
 } from '../shared/errors.js'
+import { Host } from './host.js'
 
 /**
  * Result format from platform server execution.

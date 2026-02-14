@@ -1,9 +1,10 @@
 // packages/lib/src/files/storage/location-service.ts
-import { database as db, schema, type Database } from '@auxx/database'
-import type { StorageLocationEntity, CreateStorageLocationInput } from '@auxx/database/models'
-import { and, eq, desc, count, sum, isNotNull, lt, inArray, sql } from 'drizzle-orm'
+import { type Database, database as db, schema } from '@auxx/database'
+import type { CreateStorageLocationInput, StorageLocationEntity } from '@auxx/database/models'
+import type { StorageProvider } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { StorageProvider } from '@auxx/database/types'
+import { and, count, desc, eq, inArray, isNotNull, lt, sql, sum } from 'drizzle-orm'
+
 // NOTE: StorageLocationService focuses only on database operations
 const logger = createScopedLogger('storage-location-service')
 // NOTE: Adapter management is handled by StorageManager

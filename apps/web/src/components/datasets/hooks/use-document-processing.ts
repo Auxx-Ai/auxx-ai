@@ -2,8 +2,8 @@
 
 'use client'
 
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import type { DocumentEntity as Document } from '@auxx/database/models'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 /**
  * Document processing event types (client-safe constants)

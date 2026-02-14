@@ -1,7 +1,7 @@
 // packages/lib/src/resources/hooks/types.ts
 
-import type { EntityDefinitionEntity } from '@auxx/database/schema/entity-definition'
 import type { CustomFieldEntity } from '@auxx/database/schema/custom-field'
+import type { EntityDefinitionEntity } from '@auxx/database/schema/entity-definition'
 import type { EntityInstanceEntity } from '@auxx/database/schema/entity-instance'
 
 /**

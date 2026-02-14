@@ -6,8 +6,8 @@
  * Run with: pnpm tsx scripts/migrate-chunk-settings.ts
  */
 
-import { database as db } from '../src'
 import { sql } from 'drizzle-orm'
+import { database as db } from '../src'
 
 async function migrateChunkSettings() {
   console.log('Starting chunk settings migration...')

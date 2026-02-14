@@ -32,7 +32,10 @@ export const productRouter = createTRPCRouter({
         },
         where: (product, { and, eq, gt }) =>
           cursorValue !== undefined
-            ? and(eq(product.organizationId, ctx.session.organizationId), gt(product.id, cursorValue))
+            ? and(
+                eq(product.organizationId, ctx.session.organizationId),
+                gt(product.id, cursorValue)
+              )
             : eq(product.organizationId, ctx.session.organizationId),
         limit: take,
       })

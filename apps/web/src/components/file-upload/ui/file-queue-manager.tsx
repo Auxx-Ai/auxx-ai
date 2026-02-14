@@ -2,17 +2,17 @@
 
 'use client'
 
-import React, { useCallback, useId, type ComponentType } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
+import type { EntityType } from '@auxx/lib/files/types'
 import { Button } from '@auxx/ui/components/button'
-import { Upload, Play, Square, RotateCcw, Trash2, FileUp, UploadIcon } from 'lucide-react'
+import { cn } from '@auxx/ui/lib/utils'
+import { FileUp, Play, RotateCcw, Square, Trash2, Upload, UploadIcon } from 'lucide-react'
+import React, { type ComponentType, useCallback, useId } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
 import { useFileUpload } from '../hooks/use-file-upload'
+import { useUploadStore } from '../stores'
+import type { EntityUploadConfig } from '../types'
 import type { FileItemProps } from './file-item'
 import { FileItem } from './file-item'
-import type { EntityType } from '@auxx/lib/files/types'
-import type { EntityUploadConfig } from '../types'
-import { Tooltip } from '~/components/global/tooltip'
-import { useUploadStore } from '../stores'
 /**
  * Props for FileQueueManager component
  */
@@ -84,26 +84,26 @@ function DefaultDropZone({
 
   return (
     <div
-      className="border-[0.5px] border-dashed rounded-lg p-8 text-center transition-colors border-primary-300 hover:border-primary-400 hover:bg-primary-50 cursor-pointer"
+      className='border-[0.5px] border-dashed rounded-lg p-8 text-center transition-colors border-primary-300 hover:border-primary-400 hover:bg-primary-50 cursor-pointer'
       onDrop={handleDrop}
       onDragOver={handleDragOver}>
       <input
-        type="file"
+        type='file'
         multiple
         onChange={handleFileInput}
-        className="sr-only"
+        className='sr-only'
         id={inputId} // ✅ Use unique ID
-        accept="*/*"
+        accept='*/*'
       />
 
       <label
         htmlFor={inputId} // ✅ Match unique ID
-        className="cursor-pointer flex flex-col items-center gap-2">
-        <FileUp className="size-8 text-gray-500" />
+        className='cursor-pointer flex flex-col items-center gap-2'>
+        <FileUp className='size-8 text-gray-500' />
 
-        <div className="space-y-1">
-          <p className="text-sm font-medium text-gray-700">Drop files here or click to select</p>
-          <p className="text-xs text-gray-500">
+        <div className='space-y-1'>
+          <p className='text-sm font-medium text-gray-700'>Drop files here or click to select</p>
+          <p className='text-xs text-gray-500'>
             {maxFiles ? `Maximum ${maxFiles} files` : 'Multiple files supported'}
           </p>
         </div>
@@ -117,10 +117,10 @@ function DefaultDropZone({
  */
 function DefaultEmptyState() {
   return (
-    <div className="text-center py-8">
-      <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-      <h3 className="text-sm font-medium text-gray-700 mb-1">No files added</h3>
-      <p className="text-xs text-gray-500">Add files to get started</p>
+    <div className='text-center py-8'>
+      <Upload className='h-12 w-12 text-gray-400 mx-auto mb-4' />
+      <h3 className='text-sm font-medium text-gray-700 mb-1'>No files added</h3>
+      <p className='text-xs text-gray-500'>Add files to get started</p>
     </div>
   )
 }
@@ -356,55 +356,55 @@ export function FileQueueManager({
       onDragOver={handleDragOver}>
       <input
         ref={fileInputRef}
-        type="file"
+        type='file'
         multiple
         onChange={handleFileInput}
-        className="sr-only"
+        className='sr-only'
         id={inputId} // ✅ Use unique ID
-        accept="*/*"
+        accept='*/*'
       />
       {hasFiles ? (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="truncate text-sm font-medium mb-0">Files ({files.length})</h3>
-            <div className="flex gap-2">
+        <div className='space-y-3'>
+          <div className='flex items-center justify-between gap-2'>
+            <h3 className='truncate text-sm font-medium mb-0'>Files ({files.length})</h3>
+            <div className='flex gap-2'>
               {canUpload && !isUploading && (
-                <Tooltip content="Start Upload">
-                  <Button onClick={handleStartUpload} size="sm">
+                <Tooltip content='Start Upload'>
+                  <Button onClick={handleStartUpload} size='sm'>
                     <Play />
-                    <span className="sr-only @sm:not-sr-only">Start Upload</span>
+                    <span className='sr-only @sm:not-sr-only'>Start Upload</span>
                   </Button>
                 </Tooltip>
               )}
               {!!isUploading && (
-                <Tooltip content="Cancel Upload">
-                  <Button variant="outline" onClick={handleCancelUpload} size="sm">
+                <Tooltip content='Cancel Upload'>
+                  <Button variant='outline' onClick={handleCancelUpload} size='sm'>
                     <Square />
-                    <span className="sr-only @sm:not-sr-only">Cancel</span>
+                    <span className='sr-only @sm:not-sr-only'>Cancel</span>
                   </Button>
                 </Tooltip>
               )}
 
               {/* Secondary Actions */}
               {!!(hasFailedFiles && !isUploading) && (
-                <Tooltip content="Retry Failed">
-                  <Button variant="outline" onClick={handleRetryFailed} size="sm">
+                <Tooltip content='Retry Failed'>
+                  <Button variant='outline' onClick={handleRetryFailed} size='sm'>
                     <RotateCcw />
-                    <span className="sr-only @sm:not-sr-only">Retry Failed</span>
+                    <span className='sr-only @sm:not-sr-only'>Retry Failed</span>
                   </Button>
                 </Tooltip>
               )}
-              <Tooltip content="Add Files">
-                <Button variant="outline" size="sm" onClick={handleAddFiles}>
+              <Tooltip content='Add Files'>
+                <Button variant='outline' size='sm' onClick={handleAddFiles}>
                   <UploadIcon />
-                  <span className="sr-only @sm:not-sr-only">Add Files</span>
+                  <span className='sr-only @sm:not-sr-only'>Add Files</span>
                 </Button>
               </Tooltip>
               {hasFiles && !isUploading && (
-                <Tooltip content="Remove all">
-                  <Button variant="outline" size="sm" onClick={handleClearQueue}>
+                <Tooltip content='Remove all'>
+                  <Button variant='outline' size='sm' onClick={handleClearQueue}>
                     <Trash2 />
-                    <span className="sr-only @sm:not-sr-only">Remove all</span>
+                    <span className='sr-only @sm:not-sr-only'>Remove all</span>
                   </Button>
                 </Tooltip>
               )}
@@ -427,12 +427,12 @@ export function FileQueueManager({
       ) : (
         <label
           htmlFor={inputId} // ✅ Match unique ID
-          className="cursor-pointer flex flex-col items-center gap-2 inset-0 absolute justify-center">
-          <FileUp className="size-8 text-gray-500" />
+          className='cursor-pointer flex flex-col items-center gap-2 inset-0 absolute justify-center'>
+          <FileUp className='size-8 text-gray-500' />
 
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-gray-700">Drop files here or click to select</p>
-            <p className="text-xs text-gray-500">
+          <div className='space-y-1'>
+            <p className='text-sm font-medium text-gray-700'>Drop files here or click to select</p>
+            <p className='text-xs text-gray-500'>
               {maxFiles ? `Maximum ${maxFiles} files` : 'Multiple files supported'}
             </p>
           </div>

@@ -148,7 +148,7 @@ export function createMockEmailContext() {
  */
 export function createMockWorkflowContext() {
   const variables = new Map()
-  
+
   return {
     getVariable: vi.fn((key: string) => variables.get(key)),
     setVariable: vi.fn((key: string, value: any) => variables.set(key, value)),
@@ -166,7 +166,7 @@ export function createMockWorkflowContext() {
  * Waits for a specified amount of time (useful for testing async operations)
  */
 export function wait(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /**

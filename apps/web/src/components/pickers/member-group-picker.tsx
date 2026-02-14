@@ -1,11 +1,9 @@
 // /app/settings/inbox/_components/member-group-popover.tsx
 'use client'
 
-import React, { useState } from 'react'
-import { Users } from 'lucide-react'
-import { useDebounce } from '~/hooks/use-debounced-value'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   Command,
   CommandEmpty,
@@ -15,8 +13,11 @@ import {
   CommandList,
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { Checkbox } from '@auxx/ui/components/checkbox'
 import { cn } from '@auxx/ui/lib/utils'
+import { Users } from 'lucide-react'
+import type React from 'react'
+import { useState } from 'react'
+import { useDebounce } from '~/hooks/use-debounced-value'
 import { useMembersGroups } from '~/hooks/use-members-groups'
 
 interface MemberGroupPickerProps {
@@ -169,26 +170,26 @@ export function MemberGroupPicker({
       <PopoverContent className={cn('w-[300px] p-0', className)} align={align} side={placement}>
         <Command>
           <CommandInput
-            placeholder="Search members or groups..."
+            placeholder='Search members or groups...'
             value={searchQuery}
             onValueChange={setSearchQuery}
-            className="h-9"
+            className='h-9'
           />
-          <CommandList className="max-h-[300px] overflow-auto">
+          <CommandList className='max-h-[300px] overflow-auto'>
             <CommandEmpty>No results found.</CommandEmpty>
 
             {/* Groups section */}
             {filteredGroups.length > 0 && (
-              <CommandGroup heading="Groups:">
+              <CommandGroup heading='Groups:'>
                 {filteredGroups.map((group) => (
                   <CommandItem
                     key={group.id}
                     onSelect={() => toggleGroup(group.id)}
-                    className="flex items-center justify-between p-1">
-                    <div className="flex items-center">
-                      <Users className="mr-2 size-4 text-muted-foreground" />
+                    className='flex items-center justify-between p-1'>
+                    <div className='flex items-center'>
+                      <Users className='mr-2 size-4 text-muted-foreground' />
                       <span>{group.name}</span>
-                      <Badge variant="outline" className="ml-2">
+                      <Badge variant='outline' className='ml-2'>
                         {group.memberCount}
                       </Badge>
                     </div>
@@ -204,14 +205,14 @@ export function MemberGroupPicker({
 
             {/* Members section */}
             {filteredMembers.length > 0 && (
-              <CommandGroup heading="Members:">
+              <CommandGroup heading='Members:'>
                 {filteredMembers.map((member) => (
                   <CommandItem
                     key={member.id}
                     onSelect={() => toggleMember(useUserIds ? member.userId : member.id)}
-                    className="flex items-center justify-between py-1">
-                    <div className="flex items-center">
-                      <Avatar className="mr-2 -ml-1 size-5">
+                    className='flex items-center justify-between py-1'>
+                    <div className='flex items-center'>
+                      <Avatar className='mr-2 -ml-1 size-5'>
                         <AvatarImage src={member.picture} alt={member.name} />
                         <AvatarFallback>{member.name.charAt(0).toUpperCase()}</AvatarFallback>
                       </Avatar>
@@ -230,7 +231,7 @@ export function MemberGroupPicker({
             )}
 
             {isLoading && (
-              <div className="py-6 text-center text-sm text-muted-foreground">Loading...</div>
+              <div className='py-6 text-center text-sm text-muted-foreground'>Loading...</div>
             )}
           </CommandList>
         </Command>

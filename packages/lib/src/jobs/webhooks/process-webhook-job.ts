@@ -1,9 +1,9 @@
 // import { webhooks } from '../../../schema/models/webhooks'
 
 import { WebhookModel } from '@auxx/database/models'
-import { AuxxEvent, Events } from '../../events'
-import { getQueue } from '../queues'
 import { createScopedLogger } from '@auxx/logger'
+import type { AuxxEvent, Events } from '../../events'
+import { getQueue } from '../queues'
 import { Queues } from '../queues/types'
 
 const logger = createScopedLogger('webhook-jobs')

@@ -1,11 +1,11 @@
 // packages/lib/src/workflow-engine/types/message.ts
 
 import type {
-  ParticipantEntity as Participant,
-  MessageParticipantEntity as MessageParticipant,
-  ThreadEntity as Thread,
-  OrganizationEntity as Organization,
   MessageEntity as Message,
+  MessageParticipantEntity as MessageParticipant,
+  OrganizationEntity as Organization,
+  ParticipantEntity as Participant,
+  ThreadEntity as Thread,
 } from '@auxx/database/models'
 
 /**

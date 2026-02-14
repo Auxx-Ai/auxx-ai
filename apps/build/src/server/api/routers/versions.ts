@@ -1,16 +1,16 @@
 // apps/build/src/server/api/routers/versions.ts
 // Versions tRPC router
 
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { TRPCError } from '@trpc/server'
 import { createScopedLogger } from '@auxx/logger'
-import { BuildDehydrationService } from '~/lib/dehydration'
 import {
   listProdVersions,
-  updateVersionPublicationStatus,
   updateVersionLifecycleStatus,
+  updateVersionPublicationStatus,
 } from '@auxx/services/app-versions'
+import { TRPCError } from '@trpc/server'
+import { z } from 'zod'
+import { BuildDehydrationService } from '~/lib/dehydration'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('trpc-build-versions')
 

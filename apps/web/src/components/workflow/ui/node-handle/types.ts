@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/ui/node-handle/types.ts
 
-import { Node } from '@xyflow/react'
-import { BranchType, NodeRunningStatus } from '~/components/workflow/types'
+import type { Node } from '@xyflow/react'
+import { type BranchType, NodeRunningStatus } from '~/components/workflow/types'
 
 // Re-export for backward compatibility
 export { NodeRunningStatus }

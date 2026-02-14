@@ -1,26 +1,24 @@
 // apps/web/src/components/workflow/ui/input-editor/var-editor.tsx
 
-import React, { useCallback, useEffect, useState, useRef } from 'react'
-
+import { getDefaultValueForType } from '@auxx/lib/workflow-engine/client'
+import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
-import { cva, type VariantProps } from 'class-variance-authority'
 
 import { EditorContent } from '@tiptap/react'
-import { type VarEditorProps } from './types'
-import { useWorkflowVariableEditor } from './hooks/use-workflow-variable-editor'
-import { Button } from '@auxx/ui/components/button'
+import { cva, type VariantProps } from 'class-variance-authority'
 import { ChevronsLeftRightEllipsis, X } from 'lucide-react'
-import { Tooltip, TooltipExplanation } from '~/components/global/tooltip'
-import { VariablePicker } from '~/components/workflow/ui/variables/variable-picker'
-import { VAR_MODE, BaseType, type UnifiedVariable } from '~/components/workflow/types'
-import { containsVariableReference } from '~/components/workflow/utils/variable-utils'
-import { getDefaultValueForType } from '@auxx/lib/workflow-engine/client'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { InlinePickerPopover } from '~/components/editor/inline-picker'
-import { VariableExplorerEnhanced } from '../variables/variable-explorer-enhanced'
-
-import VariableTag from '../variables/variable-tag'
+import { Tooltip, TooltipExplanation } from '~/components/global/tooltip'
+import { type BaseType, type UnifiedVariable, VAR_MODE } from '~/components/workflow/types'
+import { VariablePicker } from '~/components/workflow/ui/variables/variable-picker'
+import { containsVariableReference } from '~/components/workflow/utils/variable-utils'
 import { VarTypeIcon } from '../../utils'
+import { VariableExplorerEnhanced } from '../variables/variable-explorer-enhanced'
+import VariableTag from '../variables/variable-tag'
 import { ConstantInputAdapter as ConstantInput } from './constant-input-adapter'
+import { useWorkflowVariableEditor } from './hooks/use-workflow-variable-editor'
+import type { VarEditorProps } from './types'
 import { ValidationErrorBadge } from './validation-error-badge'
 
 /**
@@ -76,7 +74,7 @@ const VarEditorField: React.FC<VarEditorFieldProps> = ({
 }) => {
   return (
     <div
-      data-slot="field"
+      data-slot='field'
       data-orientation={orientation}
       className={cn(varEditorFieldVariants({ orientation }), className)}>
       {children}
@@ -112,17 +110,17 @@ const VarEditorFieldRow: React.FC<VarEditorFieldRowProps> = ({
 }) => {
   return (
     <div
-      data-slot="field-row"
+      data-slot='field-row'
       className={cn('relative flex border-b dark:border-b-[#404754]/20', className)}>
-      <div data-slot="field-row-label" className="flex flex-row gap-1 ps-2 items-center">
+      <div data-slot='field-row-label' className='flex flex-row gap-1 ps-2 items-center'>
         {showIcon && (icon ? icon : <VarTypeIcon type={type!} />)}
-        <div className="text-sm">
-          <span className="text-primary-600">{title}</span>
-          {isRequired && <span className="text-red-500">*</span>}
+        <div className='text-sm'>
+          <span className='text-primary-600'>{title}</span>
+          {isRequired && <span className='text-red-500'>*</span>}
         </div>
         {description && <TooltipExplanation text={description} />}
       </div>
-      <div data-slot="field-row-content" className="w-full flex-1">
+      <div data-slot='field-row-content' className='w-full flex-1'>
         {children}
       </div>
       <ValidationErrorBadge error={validationError} type={validationType} />
@@ -321,13 +319,13 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
         {!readOnly && allowConstant && (
           <Tooltip content={isConstantMode ? 'Switch to variable mode' : 'Switch to constant'}>
             <Button
-              variant="ghost"
-              size="icon-xs"
-              className="shrink-0 hover:bg-primary-200 mt-1"
+              variant='ghost'
+              size='icon-xs'
+              className='shrink-0 hover:bg-primary-200 mt-1'
               onClick={handleToggleMode}
               disabled={disabled || readOnly}>
               {isConstantMode ? (
-                <span className="text-xs text-primary-500">C</span>
+                <span className='text-xs text-primary-500'>C</span>
               ) : (
                 <ChevronsLeftRightEllipsis />
               )}
@@ -342,7 +340,7 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
             fieldOptions={fieldOptions}
             placeholder={placeholderConstant}
             disabled={disabled || readOnly}
-            className="flex-1"
+            className='flex-1'
           />
         ) : mode === VAR_MODE.PICKER ? (
           <VariablePicker
@@ -352,11 +350,11 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
             allowedTypes={finalAllowedTypes}
             popoverWidth={400}
             popoverHeight={500}>
-            <div className="w-full h-8 flex items-center">
+            <div className='w-full h-8 flex items-center'>
               {value ? (
                 <VariableTag variableId={value} nodeId={nodeId} isShort />
               ) : (
-                <span className="text-sm text-primary-400 truncate pointer-events-none">
+                <span className='text-sm text-primary-400 truncate pointer-events-none'>
                   {placeholder}
                 </span>
               )}
@@ -365,7 +363,7 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
         ) : (
           <EditorContent
             editor={editor}
-            className="input-editor-field flex-1 w-full pt-[6.5px] pb-[4px] focus:outline-none focus:ring-0 h-full [&>*:first-child]:focus:outline-none"
+            className='input-editor-field flex-1 w-full pt-[6.5px] pb-[4px] focus:outline-none focus:ring-0 h-full [&>*:first-child]:focus:outline-none'
           />
         )}
 
@@ -379,8 +377,8 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
             nodeId={nodeId}
             onVariableSelect={(variable) => insertVariable(variable.id)}
             allowedTypes={finalAllowedTypes}
-            className="max-h-[400px]"
-            placeholder="Type in editor to filter..."
+            className='max-h-[400px]'
+            placeholder='Type in editor to filter...'
             onClose={closePicker}
           />
         </InlinePickerPopover>
@@ -388,21 +386,21 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
         {!readOnly &&
           !hideClearButton &&
           (isConstantMode ? constantValue !== '' : stringContent !== '') && (
-            <div className="pt-1 px-1 h-full">
+            <div className='pt-1 px-1 h-full'>
               <Tooltip content={'Clear content'}>
                 <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="size-4 bg-primary-500/30 text-primary-100 transition-color hover:bg-bad-100 hover:text-bad-500"
+                  variant='ghost'
+                  size='icon-xs'
+                  className='size-4 bg-primary-500/30 text-primary-100 transition-color hover:bg-bad-100 hover:text-bad-500'
                   onClick={handleClearContent}>
-                  <X className="size-3!" />
+                  <X className='size-3!' />
                 </Button>
               </Tooltip>
             </div>
           )}
 
         {/* Read-only overlay to prevent interaction */}
-        {showReadOnlyOverlay && <div className="absolute inset-0 z-10" />}
+        {showReadOnlyOverlay && <div className='absolute inset-0 z-10' />}
       </div>
     )
   }

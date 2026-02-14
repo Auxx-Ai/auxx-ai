@@ -3,9 +3,9 @@
 
 import { createId } from '@paralleldrive/cuid2'
 import { sql } from 'drizzle-orm'
+import { ContentEngine } from '../generators/content-engine'
 import type { SeedingContext, SeedingScenario } from '../types'
 import { BusinessDistributions } from '../utils/business-distributions'
-import { ContentEngine } from '../generators/content-engine'
 
 /** CrmDomain encapsulates contact and participant refinements. */
 export class CrmDomain {
@@ -123,7 +123,9 @@ export class CrmDomain {
           })
 
         if (contacts.length > BATCH_SIZE) {
-          console.log(`  ✓ Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(contacts.length / BATCH_SIZE)} complete`)
+          console.log(
+            `  ✓ Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(contacts.length / BATCH_SIZE)} complete`
+          )
         }
       }
 
@@ -142,7 +144,12 @@ export class CrmDomain {
 
     // Get existing contacts to link participants to
     const contacts = await db
-      .select({ id: schema.Contact.id, email: schema.Contact.email, firstName: schema.Contact.firstName, lastName: schema.Contact.lastName })
+      .select({
+        id: schema.Contact.id,
+        email: schema.Contact.email,
+        firstName: schema.Contact.firstName,
+        lastName: schema.Contact.lastName,
+      })
       .from(schema.Contact)
       .where(sql`${schema.Contact.organizationId} = ${organizationId}`)
 
@@ -162,13 +169,17 @@ export class CrmDomain {
       })
     })
 
-    console.log(`  📊 Creating ${participants.length} customer participants linked to ${contacts.length} contacts`)
+    console.log(
+      `  📊 Creating ${participants.length} customer participants linked to ${contacts.length} contacts`
+    )
 
     if (participants.length > 0) {
       const BATCH_SIZE = 2000
 
       if (participants.length > BATCH_SIZE) {
-        console.log(`📦 Inserting ${participants.length} participants in batches of ${BATCH_SIZE}...`)
+        console.log(
+          `📦 Inserting ${participants.length} participants in batches of ${BATCH_SIZE}...`
+        )
       }
 
       for (let i = 0; i < participants.length; i += BATCH_SIZE) {
@@ -190,7 +201,9 @@ export class CrmDomain {
           })
 
         if (participants.length > BATCH_SIZE) {
-          console.log(`  ✓ Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(participants.length / BATCH_SIZE)} complete`)
+          console.log(
+            `  ✓ Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(participants.length / BATCH_SIZE)} complete`
+          )
         }
       }
 
@@ -203,10 +216,36 @@ export class CrmDomain {
   /** generateFirstName creates realistic first names. */
   private generateFirstName(index: number): string {
     const names = [
-      'John', 'Jane', 'Michael', 'Sarah', 'David', 'Emily', 'Robert', 'Jessica',
-      'William', 'Ashley', 'Christopher', 'Amanda', 'Matthew', 'Stephanie', 'Joshua',
-      'Jennifer', 'Andrew', 'Elizabeth', 'Daniel', 'Lauren', 'Joseph', 'Rachel',
-      'Ryan', 'Megan', 'Brandon', 'Nicole', 'Jason', 'Samantha', 'Justin', 'Katherine',
+      'John',
+      'Jane',
+      'Michael',
+      'Sarah',
+      'David',
+      'Emily',
+      'Robert',
+      'Jessica',
+      'William',
+      'Ashley',
+      'Christopher',
+      'Amanda',
+      'Matthew',
+      'Stephanie',
+      'Joshua',
+      'Jennifer',
+      'Andrew',
+      'Elizabeth',
+      'Daniel',
+      'Lauren',
+      'Joseph',
+      'Rachel',
+      'Ryan',
+      'Megan',
+      'Brandon',
+      'Nicole',
+      'Jason',
+      'Samantha',
+      'Justin',
+      'Katherine',
     ]
     return names[index % names.length]!
   }
@@ -214,10 +253,33 @@ export class CrmDomain {
   /** generateLastName creates realistic last names. */
   private generateLastName(index: number): string {
     const names = [
-      'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller',
-      'Davis', 'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Gonzalez',
-      'Wilson', 'Anderson', 'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin',
-      'Lee', 'Perez', 'Thompson', 'White', 'Harris', 'Sanchez', 'Clark',
+      'Smith',
+      'Johnson',
+      'Williams',
+      'Brown',
+      'Jones',
+      'Garcia',
+      'Miller',
+      'Davis',
+      'Rodriguez',
+      'Martinez',
+      'Hernandez',
+      'Lopez',
+      'Gonzalez',
+      'Wilson',
+      'Anderson',
+      'Thomas',
+      'Taylor',
+      'Moore',
+      'Jackson',
+      'Martin',
+      'Lee',
+      'Perez',
+      'Thompson',
+      'White',
+      'Harris',
+      'Sanchez',
+      'Clark',
     ]
     return names[index % names.length]!
   }

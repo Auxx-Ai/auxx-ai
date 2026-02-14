@@ -1,13 +1,13 @@
 // packages/seed/scripts/seed-relational.ts
 // Working multi-phase relational seeding script that bypasses drizzle-seed issues
 
-import { seed } from 'drizzle-seed'
 import { database, schema } from '@auxx/database'
-import { ScenarioBuilder } from '../src/scenarios/scenario-builder'
-import type { SeedingScenarioName } from '../src/types'
-import { ServiceIntegrator } from '../src/engine/service-integrator'
+import { seed } from 'drizzle-seed'
 import { AuthenticationSeeder } from '../src/engine/authentication-seeder'
 import { DrizzleSeeder } from '../src/engine/drizzle-seeder'
+import { ServiceIntegrator } from '../src/engine/service-integrator'
+import { ScenarioBuilder } from '../src/scenarios/scenario-builder'
+import type { SeedingScenarioName } from '../src/types'
 
 /**
  * executeMultiPhaseSeeding runs the complete multi-phase relational seeding process.
@@ -28,7 +28,9 @@ async function executeMultiPhaseSeeding(scenarioName: SeedingScenarioName = 'dev
       scenario
     )
     const authContext = await authSeeder.execute()
-    console.log(`✅ Phase 1 complete - Created ${authContext.testUsers.length + authContext.randomUsers.length} users`)
+    console.log(
+      `✅ Phase 1 complete - Created ${authContext.testUsers.length + authContext.randomUsers.length} users`
+    )
 
     // Initialize ID pools for relational seeding
     scenario.idPoolManager.generateUserIds()
@@ -45,7 +47,9 @@ async function executeMultiPhaseSeeding(scenarioName: SeedingScenarioName = 'dev
       scenario.relationalBuilder
     )
     const serviceContext = await serviceIntegrator.execute(authContext)
-    console.log(`✅ Phase 2 complete - Created ${serviceContext.organizations.length} organizations`)
+    console.log(
+      `✅ Phase 2 complete - Created ${serviceContext.organizations.length} organizations`
+    )
 
     // Phase 3: Commerce Domain (using individual table seeding)
     console.log('\n🛒 Phase 3: Commerce Data')
@@ -67,7 +71,6 @@ async function executeMultiPhaseSeeding(scenarioName: SeedingScenarioName = 'dev
     Object.entries(poolSizes).forEach(([pool, size]) => {
       console.log(`  ${pool}: ${size} IDs`)
     })
-
   } catch (error) {
     console.error('❌ Multi-phase seeding failed:', error)
     throw error
@@ -86,7 +89,7 @@ async function seedCommerceData(scenario: any) {
   const customerOnly = (helpers: any) => {
     const full = customerRefinements(helpers)
     return {
-      shopify_customers: full.shopify_customers
+      shopify_customers: full.shopify_customers,
     }
   }
 
@@ -102,7 +105,7 @@ async function seedCommerceData(scenario: any) {
   const productOnly = (helpers: any) => {
     const full = customerRefinements(helpers)
     return {
-      Product: full.Product
+      Product: full.Product,
     }
   }
 
@@ -124,7 +127,7 @@ async function seedCommunicationData(scenario: any) {
   const threadOnly = (helpers: any) => {
     const full = communicationRefinements(helpers)
     return {
-      Thread: full.Thread
+      Thread: full.Thread,
     }
   }
 
@@ -187,7 +190,6 @@ async function validateRelationalIntegrity() {
 
     // Add more validation queries as needed
     console.log('✅ Relational integrity validation complete')
-
   } catch (error) {
     console.log('  ⚠️  Could not validate relational integrity:', error.message)
   }
@@ -195,18 +197,19 @@ async function validateRelationalIntegrity() {
 
 // Main execution
 const args = process.argv.slice(2)
-const scenarioName = (args.find(arg => arg.startsWith('--scenario='))?.split('=')[1] || 'development') as SeedingScenarioName
+const scenarioName = (args.find((arg) => arg.startsWith('--scenario='))?.split('=')[1] ||
+  'development') as SeedingScenarioName
 const validateOnly = args.includes('--validate')
 
 if (validateOnly) {
-  validateRelationalIntegrity().catch(error => {
+  validateRelationalIntegrity().catch((error) => {
     console.error('Validation failed:', error)
     process.exit(1)
   })
 } else {
   executeMultiPhaseSeeding(scenarioName)
     .then(() => validateRelationalIntegrity())
-    .catch(error => {
+    .catch((error) => {
       console.error('Seeding failed:', error)
       process.exit(1)
     })

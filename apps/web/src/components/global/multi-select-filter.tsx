@@ -1,22 +1,22 @@
 'use client'
 
-import * as React from 'react'
-import { CheckIcon } from 'lucide-react'
-// import { cn } from '@/utils'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { Button } from '@auxx/ui/components/button'
 import { Badge } from '@auxx/ui/components/badge'
-import { Separator } from '@auxx/ui/components/separator'
+import { Button } from '@auxx/ui/components/button'
 import {
   Command,
-  CommandInput,
-  CommandList,
   CommandEmpty,
   CommandGroup,
+  CommandInput,
   CommandItem,
+  CommandList,
   CommandSeparator,
 } from '@auxx/ui/components/command'
+// import { cn } from '@/utils'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
+import { CheckIcon } from 'lucide-react'
+import * as React from 'react'
 
 interface MultiSelectFilterProps<TData, TValue> {
   title?: string
@@ -36,18 +36,18 @@ export function MultiSelectFilter<TData, TValue>({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 border-dashed">
+        <Button variant='outline' size='sm' className='h-8 border-dashed'>
           {title}
           {selectedValues?.size > 0 && (
             <>
-              <Separator orientation="vertical" className="mx-2 h-4" />
-              <Badge variant="secondary" className="rounded-sm px-1 font-normal lg:hidden">
+              <Separator orientation='vertical' className='mx-2 h-4' />
+              <Badge variant='secondary' className='rounded-sm px-1 font-normal lg:hidden'>
                 {selectedValues.size}
               </Badge>
-              <div className="hidden space-x-1 lg:flex">
+              <div className='hidden space-x-1 lg:flex'>
                 {typeof maxDisplayedValues === 'number' &&
                 selectedValues.size > maxDisplayedValues ? (
-                  <Badge variant="secondary" className="rounded-sm px-1 font-normal">
+                  <Badge variant='secondary' className='rounded-sm px-1 font-normal'>
                     {selectedValues.size} selected
                   </Badge>
                 ) : (
@@ -55,9 +55,9 @@ export function MultiSelectFilter<TData, TValue>({
                     .filter((option) => selectedValues.has(option.value))
                     .map((option) => (
                       <Badge
-                        variant="secondary"
+                        variant='secondary'
                         key={option.value}
-                        className="rounded-sm px-1 font-normal">
+                        className='rounded-sm px-1 font-normal'>
                         {option.label}
                       </Badge>
                     ))
@@ -67,7 +67,7 @@ export function MultiSelectFilter<TData, TValue>({
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-0" align="start">
+      <PopoverContent className='w-[200px] p-0' align='start'>
         <Command>
           <CommandInput placeholder={title} />
           <CommandList>
@@ -75,7 +75,7 @@ export function MultiSelectFilter<TData, TValue>({
             <CommandGroup>
               <CommandItem
                 onSelect={() => setSelectedValues(new Set(options.map((option) => option.value)))}
-                className="justify-center text-center">
+                className='justify-center text-center'>
                 Select all
               </CommandItem>
             </CommandGroup>
@@ -85,7 +85,7 @@ export function MultiSelectFilter<TData, TValue>({
                 <CommandGroup>
                   <CommandItem
                     onSelect={() => setSelectedValues(new Set())}
-                    className="justify-center text-center">
+                    className='justify-center text-center'>
                     Clear filters
                   </CommandItem>
                 </CommandGroup>
@@ -116,7 +116,7 @@ export function MultiSelectFilter<TData, TValue>({
                       )}>
                       <CheckIcon className={cn('h-4 w-4')} />
                     </div>
-                    {option.icon && <option.icon className="mr-2 h-4 w-4 text-muted-foreground" />}
+                    {option.icon && <option.icon className='mr-2 h-4 w-4 text-muted-foreground' />}
                     <span>{option.label}</span>
                   </CommandItem>
                 )

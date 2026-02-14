@@ -1,6 +1,6 @@
 // packages/email/src/templates/billing/payment-failed-email.tsx
 import { Container, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -65,7 +65,7 @@ export async function PaymentFailedEmail({
 
         <Text>Please update your payment information to continue using your subscription:</Text>
 
-        <EmailButton href={billingPortalUrl} label="Update Payment Method" />
+        <EmailButton href={billingPortalUrl} label='Update Payment Method' />
 
         <Text style={{ fontSize: '14px', color: '#64748b' }}>
           If this payment fails multiple times, your subscription may be canceled automatically.

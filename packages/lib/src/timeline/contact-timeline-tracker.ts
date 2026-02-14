@@ -1,8 +1,8 @@
 // packages/lib/src/timeline/contact-timeline-tracker.ts
 
-import { TimelineService } from './timeline-service'
-import { ContactEventType, TimelineEntityType, TimelineActorType } from './event-types'
 import type { Database } from '@auxx/database'
+import { ContactEventType, TimelineActorType, TimelineEntityType } from './event-types'
+import { TimelineService } from './timeline-service'
 
 /** Helper to track contact timeline events */
 export class ContactTimelineTracker {

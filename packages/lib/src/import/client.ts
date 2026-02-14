@@ -1,74 +1,65 @@
 // packages/lib/src/import/client.ts
 // Client-safe exports for the import module (no database or server dependencies)
 
-// Types
-export type {
-  ImportJobStatus,
-  ImportJob,
-  ImportStatistics,
-  MappableProperty,
-  UniqueValueSummary,
-} from './types/job'
-
-export type {
-  ImportMapping,
-  ImportMappingProperty,
-  ImportJobProperty,
-  ColumnMapping,
-} from './types/mapping'
-
-export type {
-  ResolutionType,
-  ResolutionConfig,
-  ResolvedValue,
-  ResolutionResult,
-  ValueResolution,
-  UniqueValue,
-} from './types/resolution'
-
-export type {
-  ImportPlanStatus,
-  StrategyStatus,
-  StrategyType,
-  ImportPlan,
-  ImportPlanStrategy,
-  PlanningProgress,
-  StrategyStatistics,
-  ImportPlanRow,
-  PlanEstimates,
-  RowAnalysis,
-} from './types/plan'
-
-export type {
-  RowExecutionResult,
-  BatchExecutionResult,
-  ExecutionResult,
-  ExecutionContext,
-  ExecutionProgress,
-} from './types/execution'
-
+export {
+  autoMapColumns,
+  type ColumnAutoMapping,
+  type ColumnHeader,
+} from './fields/auto-map-columns'
+export {
+  getIdentifierOptions,
+  type IdentifierOption,
+} from './fields/get-identifier-options'
 // Field utilities (pure functions, no server dependencies)
 export {
   getImportableFields,
   getRequiredFields,
   type ImportableField,
 } from './fields/get-importable-fields'
-
-export {
-  getIdentifierOptions,
-  type IdentifierOption,
-} from './fields/get-identifier-options'
-
-export {
-  autoMapColumns,
-  type ColumnHeader,
-  type ColumnAutoMapping,
-} from './fields/auto-map-columns'
-
-export { suggestResolutionType, getValidResolutionTypes } from './fields/suggest-resolution-type'
-
+export { getValidResolutionTypes, suggestResolutionType } from './fields/suggest-resolution-type'
 // Hashing utilities (pure functions)
-export { hashValue, countOccurrences } from './hashing'
+export { countOccurrences, hashValue } from './hashing'
+export type {
+  BatchExecutionResult,
+  ExecutionContext,
+  ExecutionProgress,
+  ExecutionResult,
+  RowExecutionResult,
+} from './types/execution'
+// Types
+export type {
+  ImportJob,
+  ImportJobStatus,
+  ImportStatistics,
+  MappableProperty,
+  UniqueValueSummary,
+} from './types/job'
+export type {
+  ColumnMapping,
+  ImportJobProperty,
+  ImportMapping,
+  ImportMappingProperty,
+} from './types/mapping'
+export type {
+  ImportPlan,
+  ImportPlanRow,
+  ImportPlanStatus,
+  ImportPlanStrategy,
+  PlanEstimates,
+  PlanningProgress,
+  RowAnalysis,
+  StrategyStatistics,
+  StrategyStatus,
+  StrategyType,
+} from './types/plan'
+export type {
+  ResolutionConfig,
+  ResolutionResult,
+  ResolutionType,
+  ResolvedValue,
+  UniqueValue,
+  ValueResolution,
+} from './types/resolution'
 
 // Utilities (pure functions)
-export { chunkArray, createThrottledProgress, createPercentageProgress } from './utils'
+export { chunkArray, createPercentageProgress, createThrottledProgress } from './utils'

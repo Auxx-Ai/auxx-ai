@@ -1,9 +1,10 @@
 // ~/app/api/email/download/[messageId]/route.ts
-import { NextRequest, NextResponse } from 'next/server'
-import { headers } from 'next/headers'
-import { auth } from '~/auth/server'
+
 import { database, schema } from '@auxx/database'
 import { eq, or } from 'drizzle-orm'
+import { headers } from 'next/headers'
+import { type NextRequest, NextResponse } from 'next/server'
+import { auth } from '~/auth/server'
 
 export async function GET(request: NextRequest, { params }: { params: { messageId: string } }) {
   try {

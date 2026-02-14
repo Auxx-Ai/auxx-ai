@@ -2,11 +2,12 @@
 
 'use client'
 
-import React, { createContext, useContext, useState, useRef, useCallback, useMemo } from 'react'
 import { useTheme } from 'next-themes'
-import { type CodeEditorProps, type CodeEditorInput, type CodeEditorOutput, CodeLanguage } from './types'
-import { DEFAULT_MIN_HEIGHT } from './constants'
+import type React from 'react'
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
 import { copy } from '~/components/workflow/utils/copy'
+import { DEFAULT_MIN_HEIGHT } from './constants'
+import type { CodeEditorInput, CodeEditorOutput, CodeEditorProps, CodeLanguage } from './types'
 
 /**
  * Custom hook for expand/collapse functionality

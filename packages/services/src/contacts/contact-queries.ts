@@ -1,10 +1,10 @@
 // packages/services/src/contacts/contact-queries.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and, or, desc, asc, ilike, count, inArray, sql, type SQL } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
+import { and, asc, count, desc, eq, ilike, inArray, or, type SQL, sql } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { ContactContext, SearchContactsInput, GetAllContactsInput } from './types'
+import type { ContactContext, GetAllContactsInput, SearchContactsInput } from './types'
 
 /**
  * Search contacts with lightweight results
@@ -74,7 +74,15 @@ export async function searchContacts(input: SearchContactsInput) {
 /**
  * Valid sortable fields for contacts
  */
-const SORTABLE_FIELDS = ['firstName', 'lastName', 'email', 'phone', 'status', 'createdAt', 'updatedAt'] as const
+const SORTABLE_FIELDS = [
+  'firstName',
+  'lastName',
+  'email',
+  'phone',
+  'status',
+  'createdAt',
+  'updatedAt',
+] as const
 type SortableField = (typeof SORTABLE_FIELDS)[number]
 
 /**

@@ -1,12 +1,12 @@
 // packages/lib/src/custom-fields/defaults.ts
 
 import type {
-  NumberFieldOptions,
-  DateFieldOptions,
   BooleanFieldOptions,
-  TextFieldOptions,
-  PhoneFieldOptions,
+  DateFieldOptions,
   FieldOptions,
+  NumberFieldOptions,
+  PhoneFieldOptions,
+  TextFieldOptions,
 } from './field-options'
 
 // ─────────────────────────────────────────────────────────────

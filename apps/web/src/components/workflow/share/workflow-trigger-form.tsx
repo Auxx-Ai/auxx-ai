@@ -2,16 +2,16 @@
 
 'use client'
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
-import { useWorkflowShareStore } from './workflow-share-provider'
-import { useWorkflowRun } from './hooks/use-workflow-run'
-import { Button } from '@auxx/ui/components/button'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
+import { Button } from '@auxx/ui/components/button'
 import { AlertCircle } from 'lucide-react'
-import { VarEditorField } from '../ui/input-editor/var-editor'
-import { FormInputField } from '../ui/form-input-field'
-import { extractFormInputNodes, type WorkflowGraph } from '../utils/form-input-utils'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BaseType } from '../types'
+import { FormInputField } from '../ui/form-input-field'
+import { VarEditorField } from '../ui/input-editor/var-editor'
+import { extractFormInputNodes, type WorkflowGraph } from '../utils/form-input-utils'
+import { useWorkflowRun } from './hooks/use-workflow-run'
+import { useWorkflowShareStore } from './workflow-share-provider'
 
 /**
  * Props for WorkflowTriggerForm component
@@ -215,11 +215,11 @@ export function WorkflowTriggerForm({ submitButtonText }: WorkflowTriggerFormPro
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 min-h-0 flex flex-col">
+    <form onSubmit={handleSubmit} className='space-y-4 min-h-0 flex flex-col'>
       {formInputConfigs.length === 0 ? (
-        <p className="text-muted-foreground">This workflow has no inputs.</p>
+        <p className='text-muted-foreground'>This workflow has no inputs.</p>
       ) : (
-        <VarEditorField className="p-0" orientation="vertical">
+        <VarEditorField className='p-0' orientation='vertical'>
           {formInputConfigs.map((config) => (
             <FormInputField
               key={config.nodeId}
@@ -239,7 +239,7 @@ export function WorkflowTriggerForm({ submitButtonText }: WorkflowTriggerFormPro
 
       {/* Validation errors summary */}
       {Object.keys(errors).length > 0 && (
-        <Alert variant="destructive">
+        <Alert variant='destructive'>
           <AlertCircle />
           <AlertDescription>Please fix the errors above before submitting.</AlertDescription>
         </Alert>
@@ -247,41 +247,41 @@ export function WorkflowTriggerForm({ submitButtonText }: WorkflowTriggerFormPro
 
       {/* Execution error */}
       {executionError && (
-        <Alert variant="destructive">
+        <Alert variant='destructive'>
           <AlertCircle />
           <AlertDescription>{executionError}</AlertDescription>
         </Alert>
       )}
 
       {/* Buttons - always show two buttons */}
-      <div className="flex gap-2">
+      <div className='flex gap-2'>
         {isRunning ? (
           // While running: [Cancel] [Running...]
           <>
-            <Button type="button" variant="outline" className="flex-1" onClick={cancelRun}>
+            <Button type='button' variant='outline' className='flex-1' onClick={cancelRun}>
               Cancel
             </Button>
-            <Button type="submit" className="flex-1" loading loadingText="Running..." disabled>
+            <Button type='submit' className='flex-1' loading loadingText='Running...' disabled>
               {submitButtonText}
             </Button>
           </>
         ) : currentRun ? (
           // After completion: [Clear] [Run Again]
           <>
-            <Button type="button" variant="outline" className="flex-1" onClick={handleClear}>
+            <Button type='button' variant='outline' className='flex-1' onClick={handleClear}>
               Clear
             </Button>
-            <Button type="button" className="flex-1" onClick={handleRunAgain}>
+            <Button type='button' className='flex-1' onClick={handleRunAgain}>
               Run Again
             </Button>
           </>
         ) : (
           // Idle state: [Clear] [Run Workflow]
           <>
-            <Button type="button" variant="outline" className="flex-1" onClick={handleClear}>
+            <Button type='button' variant='outline' className='flex-1' onClick={handleClear}>
               Clear
             </Button>
-            <Button type="submit" className="flex-1">
+            <Button type='submit' className='flex-1'>
               {submitButtonText}
             </Button>
           </>

@@ -1,6 +1,9 @@
 // apps/web/src/components/custom-fields/ui/formatting-editors/phone-formatting-editor.tsx
 'use client'
 
+import type { PhoneFieldOptions } from '@auxx/lib/field-values/client'
+import { Badge } from '@auxx/ui/components/badge'
+import { Field, FieldGroup, FieldLabel } from '@auxx/ui/components/field'
 import {
   Select,
   SelectContent,
@@ -8,9 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
-import type { PhoneFieldOptions } from '@auxx/lib/field-values/client'
-import { Badge } from '@auxx/ui/components/badge'
 
 /** Props for PhoneFormattingEditor */
 interface PhoneFormattingEditorProps {
@@ -28,7 +28,7 @@ export function PhoneFormattingEditor({ options, onChange }: PhoneFormattingEdit
   }
 
   return (
-    <FieldGroup className="gap-3">
+    <FieldGroup className='gap-3'>
       <Field>
         <FieldLabel>Phone Format</FieldLabel>
         <Select
@@ -40,26 +40,26 @@ export function PhoneFormattingEditor({ options, onChange }: PhoneFormattingEdit
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="national">
-              <div className="gap-2 flex flex-row items-center py-0.5 pe-0.5">
+            <SelectItem value='national'>
+              <div className='gap-2 flex flex-row items-center py-0.5 pe-0.5'>
                 National{' '}
-                <Badge variant="pill" size="sm">
+                <Badge variant='pill' size='sm'>
                   (415) 555-1234
                 </Badge>
               </div>
             </SelectItem>
-            <SelectItem value="international">
-              <div className="gap-2 flex flex-row items-center py-0.5 pe-0.5">
+            <SelectItem value='international'>
+              <div className='gap-2 flex flex-row items-center py-0.5 pe-0.5'>
                 International{' '}
-                <Badge variant="pill" size="sm">
+                <Badge variant='pill' size='sm'>
                   +1 415 555 1234
                 </Badge>
               </div>
             </SelectItem>
-            <SelectItem value="raw">
-              <div className="gap-2 flex flex-row items-center py-0.5 pe-0.5">
+            <SelectItem value='raw'>
+              <div className='gap-2 flex flex-row items-center py-0.5 pe-0.5'>
                 Unformatted{' '}
-                <Badge variant="pill" size="sm">
+                <Badge variant='pill' size='sm'>
                   +14155551234
                 </Badge>
               </div>

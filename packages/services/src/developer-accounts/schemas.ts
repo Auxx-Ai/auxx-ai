@@ -78,4 +78,6 @@ export const getDeveloperAccountFirstAppInputSchema = z.object({
   userId: z.string(),
 })
 
-export type GetDeveloperAccountFirstAppInput = z.infer<typeof getDeveloperAccountFirstAppInputSchema>
+export type GetDeveloperAccountFirstAppInput = z.infer<
+  typeof getDeveloperAccountFirstAppInputSchema
+>

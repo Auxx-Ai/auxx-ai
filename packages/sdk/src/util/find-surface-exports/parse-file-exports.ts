@@ -1,5 +1,12 @@
 // packages/sdk/src/util/find-surface-exports/parse-file-exports.ts
-import { SyntaxKind, type Node, type SourceFile, type Symbol as MorphSymbol, type Type, type TypeChecker } from 'ts-morph'
+import {
+  type Symbol as MorphSymbol,
+  type Node,
+  type SourceFile,
+  SyntaxKind,
+  type Type,
+  type TypeChecker,
+} from 'ts-morph'
 import { SURFACE_TYPES } from '../generate-app-entry-point.js'
 import { getSurfaceTypeName } from './surface-types.js'
 

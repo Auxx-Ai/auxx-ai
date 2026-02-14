@@ -1,6 +1,7 @@
 // empty-state.tsx
-import React from 'react'
+
 import { cn } from '@auxx/ui/lib/utils'
+import type React from 'react'
 
 interface EmptyStateProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Icon component (e.g. an SVG or any React component) */
@@ -27,7 +28,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({
   // combine base classes with any custom className
 
   return (
-    <div className="relative flex flex-1 w-full items-center justify-center">
+    <div className='relative flex flex-1 w-full items-center justify-center'>
       <div
         className={cn('flex flex-col items-center justify-center text-center p-8 pt-0', className)}
         {...props}>
@@ -35,10 +36,10 @@ const EmptyState: React.FC<EmptyStateProps> = ({
         {Icon && <Icon className={cn('mb-4 h-12 w-12 text-muted-foreground', iconClassName)} />}
 
         {/* title */}
-        <h3 className="text-medium mb-2">{title}</h3>
+        <h3 className='text-medium mb-2'>{title}</h3>
 
         {/* description, if provided */}
-        {description && <div className="text-sm text-muted-foreground mb-4">{description}</div>}
+        {description && <div className='text-sm text-muted-foreground mb-4'>{description}</div>}
 
         {/* button or whatever action you passed */}
         {button && button}

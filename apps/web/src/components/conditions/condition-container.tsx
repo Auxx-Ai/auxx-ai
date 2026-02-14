@@ -2,20 +2,18 @@
 
 'use client'
 
-import { useState, useCallback } from 'react'
-import { Plus } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import {
-  DndContext,
   closestCenter,
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
-  DragOverlay,
 } from '@dnd-kit/core'
 import {
   arrayMove,
@@ -23,11 +21,13 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { useConditionContext } from './condition-context'
-import ConditionList from './components/condition-list'
-import ConditionGroup from './components/condition-group'
-import SortableConditionGroup from './components/sortable-condition-group'
+import { Plus } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import ConditionAdd from './components/condition-add'
+import ConditionGroup from './components/condition-group'
+import ConditionList from './components/condition-list'
+import SortableConditionGroup from './components/sortable-condition-group'
+import { useConditionContext } from './condition-context'
 
 interface ConditionContainerProps {
   className?: string
@@ -102,12 +102,12 @@ const ConditionContainer = ({
     <div className={cn('space-y-4', className)}>
       {(title || description) && (
         <div>
-          {title && <h3 className="text-sm font-medium text-foreground mb-1">{title}</h3>}
-          {description && <p className="text-xs text-muted-foreground">{description}</p>}
+          {title && <h3 className='text-sm font-medium text-foreground mb-1'>{title}</h3>}
+          {description && <p className='text-xs text-muted-foreground'>{description}</p>}
         </div>
       )}
 
-      <div className="space-y-3">
+      <div className='space-y-3'>
         {useGrouping && groups.length > 0 && enableDnD && (
           <DndContext
             sensors={sensors}
@@ -116,7 +116,7 @@ const ConditionContainer = ({
             onDragEnd={handleDragEnd}
             onDragCancel={handleDragCancel}>
             <SortableContext items={groups.map((g) => g.id)} strategy={verticalListSortingStrategy}>
-              <div className="space-y-2">
+              <div className='space-y-2'>
                 {groups.map((group) => (
                   <SortableConditionGroup
                     key={group.id}
@@ -134,7 +134,7 @@ const ConditionContainer = ({
 
             <DragOverlay adjustScale={false}>
               {activeGroup && (
-                <div className="shadow-2xl opacity-90">
+                <div className='shadow-2xl opacity-90'>
                   <ConditionGroup
                     group={activeGroup}
                     showDragHandle={false}
@@ -147,7 +147,7 @@ const ConditionContainer = ({
         )}
 
         {useGrouping && groups.length > 0 && !enableDnD && (
-          <div className="space-y-2">
+          <div className='space-y-2'>
             {groups.map((group) => (
               <ConditionGroup
                 key={group.id}
@@ -163,26 +163,26 @@ const ConditionContainer = ({
         )}
 
         {!useGrouping && conditions.length > 0 && (
-          <div className="flex flex-col gap-2 p-3 pe-1">
+          <div className='flex flex-col gap-2 p-3 pe-1'>
             <ConditionList conditions={conditions} />
           </div>
         )}
 
         {!hasConditions && (
-          <div className="flex items-center justify-center  h-[49px] text-sm text-muted-foreground">
+          <div className='flex items-center justify-center  h-[49px] text-sm text-muted-foreground'>
             {emptyStateText}
           </div>
         )}
 
         {showAddButton && !readOnly && (
-          <div className="flex gap-2">
-            {!useGrouping && <ConditionAdd disabled={readOnly} buttonText="Add Condition" />}
+          <div className='flex gap-2'>
+            {!useGrouping && <ConditionAdd disabled={readOnly} buttonText='Add Condition' />}
 
             {useGrouping && addGroup && (
               <Button
-                data-field="add-group"
-                size="sm"
-                variant="outline"
+                data-field='add-group'
+                size='sm'
+                variant='outline'
                 disabled={readOnly}
                 onClick={() => addGroup()}>
                 <Plus />

@@ -41,9 +41,7 @@ function isSrcFile(filePath: string): boolean {
  * }
  * ```
  */
-export async function* walkDir(
-  dir: string,
-): AsyncGenerator<string, void, unknown> {
+export async function* walkDir(dir: string): AsyncGenerator<string, void, unknown> {
   const currentDirFiles = await fs.readdir(dir, { withFileTypes: true })
   const walkSubDirIterators: AsyncGenerator<string, void, unknown>[] = []
   for (const file of currentDirFiles) {

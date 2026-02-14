@@ -1,8 +1,8 @@
 // packages/lib/src/custom-fields/built-in-fields/ticket.ts
 
 import { FieldType } from '@auxx/database/enums'
-import type { BuiltInFieldRegistry } from './types'
 import { parse } from 'date-fns'
+import type { BuiltInFieldRegistry } from './types'
 
 /**
  * Built-in field handlers for Ticket model

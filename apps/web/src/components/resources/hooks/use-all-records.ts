@@ -1,20 +1,20 @@
 // apps/web/src/components/resources/hooks/use-all-records.ts
 
+import type { FieldType } from '@auxx/database/types'
+import { formatToRawValue } from '@auxx/lib/field-values/client'
+import { toRecordId } from '@auxx/lib/resources/client'
+import type { FieldId } from '@auxx/types/field'
 import { useCallback, useEffect, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { api } from '~/trpc/react'
-import { useRecordStore, type RecordMeta } from '../store/record-store'
 import {
-  useFieldValueStore,
   buildFieldValueKey,
-  type StoredFieldValue,
-  type FieldValueKey,
   type CustomFieldValueState,
+  type FieldValueKey,
+  type StoredFieldValue,
+  useFieldValueStore,
 } from '../store/field-value-store'
-import { toRecordId } from '@auxx/lib/resources/client'
-import { formatToRawValue } from '@auxx/lib/field-values/client'
-import type { FieldId } from '@auxx/types/field'
-import type { FieldType } from '@auxx/database/types'
+import { type RecordMeta, useRecordStore } from '../store/record-store'
 
 /**
  * Options for useAllRecords hook
@@ -93,13 +93,7 @@ interface UseAllRecordsResult<T = RecordMeta> {
 export function useAllRecords<T extends RecordMeta = RecordMeta>(
   options: UseAllRecordsOptions
 ): UseAllRecordsResult<T> {
-  const {
-    entityDefinitionId,
-    apiSlug,
-    fieldIds,
-    includeArchived,
-    enabled = true,
-  } = options
+  const { entityDefinitionId, apiSlug, fieldIds, includeArchived, enabled = true } = options
 
   const shouldFetch = enabled && !!(entityDefinitionId || apiSlug)
 

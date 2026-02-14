@@ -1,6 +1,6 @@
 // apps/web/src/app/(protected)/app/workflows/layout.tsx
 
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { WorkflowRegistryInitializer } from './_components/workflow-registry-initializer'
 
 interface WorkflowsLayoutProps {

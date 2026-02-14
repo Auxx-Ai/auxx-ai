@@ -1,8 +1,8 @@
 // packages/database/src/db/schema/task.ts
 // Drizzle table for Task
 
-import { pgTable, index, text, timestamp, integer, type AnyPgColumn, sql } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, index, integer, pgTable, sql, text, timestamp } from './_shared'
 import { Organization } from './organization'
 import { User } from './user'
 
@@ -38,9 +38,7 @@ export const Task = pgTable(
     description: text(),
 
     /** Creation timestamp (audit trail) */
-    createdAt: timestamp({ precision: 3 })
-      .default(sql`CURRENT_TIMESTAMP`)
-      .notNull(),
+    createdAt: timestamp({ precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 
     /** Optional deadline for task completion */
     deadline: timestamp({ precision: 3 }),

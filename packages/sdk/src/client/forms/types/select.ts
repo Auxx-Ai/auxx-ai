@@ -1,7 +1,7 @@
 // packages/sdk/src/client/forms/types/select.ts
 
 import { FormValue } from '../base.js'
-import type { SerializedFormValue, FormSelectMetadata, SelectOption } from '../types.js'
+import type { FormSelectMetadata, SelectOption, SerializedFormValue } from '../types.js'
 
 /**
  * Select field builder.
@@ -48,9 +48,7 @@ export class FormSelect<T extends string = string> extends FormValue<T> {
     // Validate that the default value is in the options
     const validValues = this._metadata.options.map((opt) => opt.value)
     if (!validValues.includes(value)) {
-      throw new Error(
-        `Default value "${value}" is not in options: ${validValues.join(', ')}`
-      )
+      throw new Error(`Default value "${value}" is not in options: ${validValues.join(', ')}`)
     }
 
     return new FormSelect<T>({

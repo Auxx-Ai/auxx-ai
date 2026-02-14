@@ -2,12 +2,13 @@
 
 'use client'
 
-import React, { useState, useEffect } from 'react'
 import { Button } from '@auxx/ui/components/button'
-import { Trash2 } from 'lucide-react'
-import { type Category } from '../types'
-import { Editor } from '~/components/workflow/ui/prompt-editor'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
+import { Trash2 } from 'lucide-react'
+import type React from 'react'
+import { useEffect, useState } from 'react'
+import { Editor } from '~/components/workflow/ui/prompt-editor'
+import type { Category } from '../types'
 
 /**
  * Props for CategoryItem component
@@ -56,22 +57,22 @@ export const CategoryItem: React.FC<CategoryItemProps> = ({
   }
 
   return (
-    <div className="space-y-2">
+    <div className='space-y-2'>
       <InputGroup>
         <InputGroupInput
-          variant="transparent"
-          size="sm"
+          variant='transparent'
+          size='sm'
           value={localName}
           onChange={handleNameChange}
           onBlur={handleNameBlur}
-          placeholder="Category name"
-          className="flex-1 font-medium"
+          placeholder='Category name'
+          className='flex-1 font-medium'
           disabled={isReadOnly}
         />
-        <InputGroupAddon align="inline-end">
+        <InputGroupAddon align='inline-end'>
           <Button
-            variant="destructive-hover"
-            size="icon-xs"
+            variant='destructive-hover'
+            size='icon-xs'
             onClick={onDelete}
             disabled={isReadOnly}>
             <Trash2 />
@@ -79,10 +80,10 @@ export const CategoryItem: React.FC<CategoryItemProps> = ({
         </InputGroupAddon>
       </InputGroup>
       <Editor
-        title={<h3 className="text-sm font-medium">{category.name}</h3>}
+        title={<h3 className='text-sm font-medium'>{category.name}</h3>}
         value={category.description || ''}
         onChange={handleDescriptionChange}
-        placeholder="Describe this category..."
+        placeholder='Describe this category...'
         nodeId={nodeId}
         readOnly={isReadOnly}
         minHeight={60}

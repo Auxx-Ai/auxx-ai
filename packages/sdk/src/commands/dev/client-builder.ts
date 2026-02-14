@@ -1,12 +1,12 @@
 // packages/sdk/src/commands/dev/client-builder.ts
 
+import * as esbuild from 'esbuild'
 import fs from 'fs/promises'
 import path from 'path'
-import * as esbuild from 'esbuild'
 import tmp from 'tmp-promise'
-import { complete, errored, errorsAndWarningsSchema, isErrored, type Result } from '../../errors.js'
 import { createClientBuildConfig } from '../../build/client/create-client-build-config.js'
 import { generateClientEntry } from '../../build/client/generate-client-entry.js'
+import { complete, errored, errorsAndWarningsSchema, isErrored, type Result } from '../../errors.js'
 
 /**
  * Describes the temporary file that holds the generated client entry source.
@@ -117,7 +117,7 @@ export class ClientBuilder {
           workflowBlockModulesRef,
         }),
         banner: {
-          js: `/* App: ${appName} | Built: ${new Date().toISOString()} */`
+          js: `/* App: ${appName} | Built: ${new Date().toISOString()} */`,
         },
         write: mode === 'write-to-disk',
         outfile,

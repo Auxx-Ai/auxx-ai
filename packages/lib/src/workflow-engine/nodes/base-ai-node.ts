@@ -1,32 +1,32 @@
 // packages/lib/src/workflow-engine/nodes/base-ai-node.ts
 
-import { BaseNodeProcessor } from './base-node'
-import type {
-  WorkflowNode,
-  NodeExecutionResult,
-  PreprocessedNodeData,
-  Workflow,
-} from '../core/types'
-import { NodeRunningStatus } from '../core/types'
-import type { ExecutionContextManager } from '../core/execution-context'
+import { database as db } from '@auxx/database'
+import type { Message, Tool } from '../../ai/clients/base/types'
 import { LLMOrchestrator } from '../../ai/orchestrator/llm-orchestrator'
 import { UsageTrackingService } from '../../ai/usage/usage-tracking-service'
 import { createScopedLogger } from '../../logger'
-import { database as db } from '@auxx/database'
-import type { Message, Tool } from '../../ai/clients/base/types'
+import type { ExecutionContextManager } from '../core/execution-context'
+import type {
+  NodeExecutionResult,
+  PreprocessedNodeData,
+  Workflow,
+  WorkflowNode,
+} from '../core/types'
+import { NodeRunningStatus } from '../core/types'
+import { BaseNodeProcessor } from './base-node'
 import {
-  extractOrgUserContext,
-  extractModelConfig,
+  buildInvocationOptions,
+  type InvokeOrchestratorResponse,
+  invokeOrchestrator,
+  type StructuredOutputConfig,
+} from './utils/ai-invocation-utils'
+import {
   buildCompletionParams,
   createAICallbacks,
+  extractModelConfig,
+  extractOrgUserContext,
   type PromptTemplate,
 } from './utils/ai-node-utils'
-import {
-  invokeOrchestrator,
-  buildInvocationOptions,
-  type StructuredOutputConfig,
-  type InvokeOrchestratorResponse,
-} from './utils/ai-invocation-utils'
 
 const logger = createScopedLogger('base-ai-node')
 
@@ -104,7 +104,7 @@ export abstract class BaseAiNodeProcessor extends BaseNodeProcessor {
     const { organizationId, userId } = await extractOrgUserContext(contextManager)
 
     // Get current workflow for tools and context
-    const currentWorkflow = await contextManager.getVariable('sys.workflow') as Workflow
+    const currentWorkflow = (await contextManager.getVariable('sys.workflow')) as Workflow
 
     contextManager.log('INFO', node.name, 'Starting AI node execution', {
       nodeType: this.type,
@@ -131,9 +131,10 @@ export abstract class BaseAiNodeProcessor extends BaseNodeProcessor {
       const tools = await this.getTools(node, data, currentWorkflow, contextManager)
 
       // Step 6: Get tool executor if tools are provided
-      const toolExecutor = tools && tools.length > 0
-        ? await this.getToolExecutor(node, data, currentWorkflow, contextManager)
-        : undefined
+      const toolExecutor =
+        tools && tools.length > 0
+          ? await this.getToolExecutor(node, data, currentWorkflow, contextManager)
+          : undefined
 
       // Step 7: Create callbacks for logging
       const callbacks = createAICallbacks(contextManager, node.nodeId)

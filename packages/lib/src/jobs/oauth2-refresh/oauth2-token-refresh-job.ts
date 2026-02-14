@@ -1,7 +1,7 @@
 // packages/lib/src/jobs/oauth2-refresh/oauth2-token-refresh-job.ts
 
-import type { Job } from 'bullmq'
 import { createScopedLogger } from '@auxx/logger'
+import type { Job } from 'bullmq'
 import { OAuth2WorkflowService } from '../../workflows/oauth2-workflow.service'
 
 const logger = createScopedLogger('oauth2-token-refresh-job')

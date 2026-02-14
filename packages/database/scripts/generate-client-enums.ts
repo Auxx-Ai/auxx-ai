@@ -20,7 +20,8 @@ type EnumDef = { varName: string; enumName: string; values: string[] }
 function parseEnums(source: string): EnumDef[] {
   const defs: EnumDef[] = []
   // export const <var> = pgEnum("<EnumName>", [ 'A', 'B', ... ])
-  const re = /export\s+const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*pgEnum\(\s*["']([A-Za-z0-9_]+)["']\s*,\s*\[((?:.|\n|\r)*?)\]\s*\)/g
+  const re =
+    /export\s+const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*pgEnum\(\s*["']([A-Za-z0-9_]+)["']\s*,\s*\[((?:.|\n|\r)*?)\]\s*\)/g
   let m: RegExpExecArray | null
   while ((m = re.exec(source)) !== null) {
     const varName = m[1]
@@ -36,13 +37,14 @@ function parseEnums(source: string): EnumDef[] {
 }
 
 function makeEnumsTs(defs: EnumDef[]): string {
-  const header = `// packages/database/src/enums.ts\n` +
+  const header =
+    `// packages/database/src/enums.ts\n` +
     `// Client-safe enum values generated from Drizzle enums\n\n`
   const lines: string[] = [header]
 
   // Generate Values arrays (existing functionality)
   for (const d of defs) {
-    const arrLiteral = `[${d.values.map(v => `'${v}'`).join(', ')}] as const`
+    const arrLiteral = `[${d.values.map((v) => `'${v}'`).join(', ')}] as const`
     lines.push(`export const ${d.enumName}Values = ${arrLiteral}\n`)
   }
 
@@ -56,7 +58,7 @@ function makeEnumsTs(defs: EnumDef[]): string {
 
   // Generate static enum objects
   for (const d of defs) {
-    const enumEntries = d.values.map(value => `  ${value}: '${value}'`).join(',\n')
+    const enumEntries = d.values.map((value) => `  ${value}: '${value}'`).join(',\n')
     lines.push(`export const ${d.enumName} = {\n${enumEntries}\n} as const\n`)
   }
 
@@ -64,7 +66,8 @@ function makeEnumsTs(defs: EnumDef[]): string {
 }
 
 function makeTypesTs(defs: EnumDef[]): string {
-  const header = `// packages/database/src/types.ts\n` +
+  const header =
+    `// packages/database/src/types.ts\n` +
     `// Client-safe enum types generated from Drizzle enums\n\n` +
     `import * as Enums from './enums'\n\n`
   const lines: string[] = [header]
@@ -87,4 +90,3 @@ function run() {
 }
 
 run()
-

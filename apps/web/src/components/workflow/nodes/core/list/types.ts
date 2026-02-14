@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/list/types.ts
 
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types'
 import type { Condition } from '~/components/conditions'
+import type { BaseNodeData, SpecificNode } from '~/components/workflow/types'
 
 /**
  * Available list operations

@@ -1,43 +1,40 @@
 // packages/lib/src/resources/crud/index.ts
 
+// Types
+export type {
+  BulkResult,
+  CreateRecordOptions,
+  CrudContext,
+  CrudResult,
+  CrudResultFailure,
+  CrudResultSuccess,
+  FindByFieldOptions,
+  TransformedData,
+  UpdateRecordOptions,
+} from './types'
+export type { CrudOptions } from './unified-handler'
 // Main handler
 export { UnifiedCrudHandler } from './unified-handler'
-export type { CrudOptions } from './unified-handler'
-
-// Query utilities
-export {
-  extractRequiredRelatedEntities,
-  queryEntityInstanceIds,
-  querySystemResourceIds,
-  getTableSchema,
-  isSystemResource,
-  resolveEntityId,
-  listAll,
-} from './unified-handler-queries'
+// Mutation utilities (for advanced use cases)
+export type { CreateEntityResult, MutationContext } from './unified-handler-mutations'
 export type {
-  ListFilteredInput,
-  ListFilteredResult,
+  ListAllFieldInfo,
   ListAllInput,
   ListAllItem,
   ListAllResult,
-  ListAllFieldInfo,
+  ListFilteredInput,
+  ListFilteredResult,
 } from './unified-handler-queries'
-
-// Mutation utilities (for advanced use cases)
-export type { MutationContext, CreateEntityResult } from './unified-handler-mutations'
-
-// Types
+// Query utilities
 export {
-  type CrudResult,
-  type CrudResultSuccess,
-  type CrudResultFailure,
-  type CrudContext,
-  type TransformedData,
-  type BulkResult,
-  type CreateRecordOptions,
-  type UpdateRecordOptions,
-  type FindByFieldOptions,
-} from './types'
+  extractRequiredRelatedEntities,
+  getTableSchema,
+  isSystemResource,
+  listAll,
+  queryEntityInstanceIds,
+  querySystemResourceIds,
+  resolveEntityId,
+} from './unified-handler-queries'
 
 // Handlers
 // export { getHandler, contactHandler, ticketHandler, entityHandler } from './handlers'
@@ -45,11 +42,11 @@ export {
 
 // Utilities
 export {
-  trackChanges,
-  hasChanges,
   type FieldChange,
-  setCustomFields,
   fromDbResult,
+  hasChanges,
   isNotFound,
   parseTags,
+  setCustomFields,
+  trackChanges,
 } from './utils'

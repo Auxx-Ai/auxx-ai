@@ -4,21 +4,21 @@
  */
 'use client'
 
+import type { FeatureLimit } from '@auxx/billing'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { Input } from '@auxx/ui/components/input'
+import { Label } from '@auxx/ui/components/label'
+import { Switch } from '@auxx/ui/components/switch'
+import { Textarea } from '@auxx/ui/components/textarea'
+import { toastError } from '@auxx/ui/components/toast'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { api } from '~/trpc/react'
-import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
-import { Label } from '@auxx/ui/components/label'
-import { Switch } from '@auxx/ui/components/switch'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import { Badge } from '@auxx/ui/components/badge'
-import { toastError } from '@auxx/ui/components/toast'
-import { FeaturesListEditor } from './features-list-editor'
 import { FeatureLimitsEditor } from './feature-limits-editor'
+import { FeaturesListEditor } from './features-list-editor'
 import { StripeSync } from './stripe-sync'
-import type { FeatureLimit } from '@auxx/billing'
 
 /**
  * Plan form data
@@ -147,45 +147,45 @@ export function PlanForm({ plan }: PlanFormProps) {
   const watchIsFree = watch('isFree')
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={handleSubmit(onSubmit)} className='space-y-6'>
       {/* Basic Information */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Basic Information</CardTitle>
+          <CardTitle className='text-lg'>Basic Information</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Plan Name</Label>
+        <CardContent className='space-y-4'>
+          <div className='space-y-2'>
+            <Label htmlFor='name'>Plan Name</Label>
             <Input
-              id="name"
+              id='name'
               {...register('name', { required: 'Plan name is required' })}
-              placeholder="e.g. Starter, Growth, Enterprise"
+              placeholder='e.g. Starter, Growth, Enterprise'
             />
-            {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+            {errors.name && <p className='text-sm text-destructive'>{errors.name.message}</p>}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+          <div className='space-y-2'>
+            <Label htmlFor='description'>Description</Label>
             <Textarea
-              id="description"
+              id='description'
               {...register('description', { required: 'Description is required' })}
-              placeholder="Brief description of this plan"
+              placeholder='Brief description of this plan'
               rows={3}
             />
             {errors.description && (
-              <p className="text-sm text-destructive">{errors.description.message}</p>
+              <p className='text-sm text-destructive'>{errors.description.message}</p>
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="hierarchyLevel">Hierarchy Level</Label>
+          <div className='space-y-2'>
+            <Label htmlFor='hierarchyLevel'>Hierarchy Level</Label>
             <Input
-              id="hierarchyLevel"
-              type="number"
+              id='hierarchyLevel'
+              type='number'
               {...register('hierarchyLevel', { valueAsNumber: true })}
-              placeholder="0"
+              placeholder='0'
             />
-            <p className="text-xs text-muted-foreground">
+            <p className='text-xs text-muted-foreground'>
               Lower numbers appear first (0 = Free, 1 = Starter, 2 = Growth, 3 = Enterprise)
             </p>
           </div>
@@ -195,54 +195,54 @@ export function PlanForm({ plan }: PlanFormProps) {
       {/* Pricing */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Pricing</CardTitle>
+          <CardTitle className='text-lg'>Pricing</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-2">
+        <CardContent className='space-y-4'>
+          <div className='flex items-center gap-2'>
             <Switch
-              id="isFree"
+              id='isFree'
               checked={watchIsFree}
               onCheckedChange={(checked) => setValue('isFree', checked, { shouldDirty: true })}
             />
-            <Label htmlFor="isFree" className="cursor-pointer">
+            <Label htmlFor='isFree' className='cursor-pointer'>
               Free Plan
             </Label>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className='flex items-center gap-2'>
             <Switch
-              id="isCustomPricing"
+              id='isCustomPricing'
               checked={watchIsCustomPricing}
               onCheckedChange={(checked) =>
                 setValue('isCustomPricing', checked, { shouldDirty: true })
               }
             />
-            <Label htmlFor="isCustomPricing" className="cursor-pointer">
+            <Label htmlFor='isCustomPricing' className='cursor-pointer'>
               Custom Pricing
             </Label>
           </div>
 
           {!watchIsCustomPricing && !watchIsFree && (
             <>
-              <div className="space-y-2">
-                <Label htmlFor="monthlyPrice">Monthly Price (USD)</Label>
+              <div className='space-y-2'>
+                <Label htmlFor='monthlyPrice'>Monthly Price (USD)</Label>
                 <Input
-                  id="monthlyPrice"
-                  type="number"
-                  step="0.01"
+                  id='monthlyPrice'
+                  type='number'
+                  step='0.01'
                   {...register('monthlyPrice', { valueAsNumber: true })}
-                  placeholder="0.00"
+                  placeholder='0.00'
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="annualPrice">Annual Price (USD)</Label>
+              <div className='space-y-2'>
+                <Label htmlFor='annualPrice'>Annual Price (USD)</Label>
                 <Input
-                  id="annualPrice"
-                  type="number"
-                  step="0.01"
+                  id='annualPrice'
+                  type='number'
+                  step='0.01'
                   {...register('annualPrice', { valueAsNumber: true })}
-                  placeholder="0.00"
+                  placeholder='0.00'
                 />
               </div>
             </>
@@ -253,28 +253,28 @@ export function PlanForm({ plan }: PlanFormProps) {
       {/* Trial Settings */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Trial Settings</CardTitle>
+          <CardTitle className='text-lg'>Trial Settings</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-2">
+        <CardContent className='space-y-4'>
+          <div className='flex items-center gap-2'>
             <Switch
-              id="hasTrial"
+              id='hasTrial'
               checked={watchHasTrial}
               onCheckedChange={(checked) => setValue('hasTrial', checked, { shouldDirty: true })}
             />
-            <Label htmlFor="hasTrial" className="cursor-pointer">
+            <Label htmlFor='hasTrial' className='cursor-pointer'>
               Offer Trial Period
             </Label>
           </div>
 
           {watchHasTrial && (
-            <div className="space-y-2">
-              <Label htmlFor="trialDays">Trial Days</Label>
+            <div className='space-y-2'>
+              <Label htmlFor='trialDays'>Trial Days</Label>
               <Input
-                id="trialDays"
-                type="number"
+                id='trialDays'
+                type='number'
                 {...register('trialDays', { valueAsNumber: true })}
-                placeholder="14"
+                placeholder='14'
               />
             </div>
           )}
@@ -284,7 +284,7 @@ export function PlanForm({ plan }: PlanFormProps) {
       {/* Features */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Features</CardTitle>
+          <CardTitle className='text-lg'>Features</CardTitle>
           <CardDescription>List of features included in this plan</CardDescription>
         </CardHeader>
         <CardContent>
@@ -298,7 +298,7 @@ export function PlanForm({ plan }: PlanFormProps) {
       {/* Feature Limits */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Feature Limits</CardTitle>
+          <CardTitle className='text-lg'>Feature Limits</CardTitle>
           <CardDescription>Usage limits for this plan (-1 = unlimited)</CardDescription>
         </CardHeader>
         <CardContent>
@@ -312,27 +312,27 @@ export function PlanForm({ plan }: PlanFormProps) {
       {/* Seats */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Seat Configuration</CardTitle>
+          <CardTitle className='text-lg'>Seat Configuration</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="minSeats">Minimum Seats</Label>
+        <CardContent className='space-y-4'>
+          <div className='grid grid-cols-2 gap-4'>
+            <div className='space-y-2'>
+              <Label htmlFor='minSeats'>Minimum Seats</Label>
               <Input
-                id="minSeats"
-                type="number"
+                id='minSeats'
+                type='number'
                 {...register('minSeats', { valueAsNumber: true })}
-                placeholder="1"
+                placeholder='1'
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="maxSeats">Maximum Seats</Label>
+            <div className='space-y-2'>
+              <Label htmlFor='maxSeats'>Maximum Seats</Label>
               <Input
-                id="maxSeats"
-                type="number"
+                id='maxSeats'
+                type='number'
                 {...register('maxSeats', { valueAsNumber: true })}
-                placeholder="10"
+                placeholder='10'
               />
             </div>
           </div>
@@ -342,31 +342,31 @@ export function PlanForm({ plan }: PlanFormProps) {
       {/* Display Options */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Display Options</CardTitle>
+          <CardTitle className='text-lg'>Display Options</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-2">
+        <CardContent className='space-y-4'>
+          <div className='flex items-center gap-2'>
             <Switch
-              id="selfServed"
+              id='selfServed'
               {...register('selfServed')}
               checked={watch('selfServed')}
               onCheckedChange={(checked) => setValue('selfServed', checked, { shouldDirty: true })}
             />
-            <Label htmlFor="selfServed" className="cursor-pointer">
+            <Label htmlFor='selfServed' className='cursor-pointer'>
               Self-Service (Users can subscribe directly)
             </Label>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className='flex items-center gap-2'>
             <Switch
-              id="isMostPopular"
+              id='isMostPopular'
               {...register('isMostPopular')}
               checked={watch('isMostPopular')}
               onCheckedChange={(checked) =>
                 setValue('isMostPopular', checked, { shouldDirty: true })
               }
             />
-            <Label htmlFor="isMostPopular" className="cursor-pointer">
+            <Label htmlFor='isMostPopular' className='cursor-pointer'>
               Mark as Most Popular
             </Label>
           </div>
@@ -377,39 +377,39 @@ export function PlanForm({ plan }: PlanFormProps) {
       {isEditMode && (
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Stripe Integration</CardTitle>
+            <div className='flex items-center justify-between'>
+              <CardTitle className='text-lg'>Stripe Integration</CardTitle>
               <StripeSync planId={plan.id} plan={plan} />
             </div>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className='space-y-2'>
             {plan.stripeProductId ? (
               <>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Product ID:</span>
-                  <Badge variant="outline" className="font-mono text-xs">
+                <div className='flex items-center justify-between'>
+                  <span className='text-sm text-muted-foreground'>Product ID:</span>
+                  <Badge variant='outline' className='font-mono text-xs'>
                     {plan.stripeProductId}
                   </Badge>
                 </div>
                 {plan.stripePriceIdMonthly && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Monthly Price ID:</span>
-                    <Badge variant="outline" className="font-mono text-xs">
+                  <div className='flex items-center justify-between'>
+                    <span className='text-sm text-muted-foreground'>Monthly Price ID:</span>
+                    <Badge variant='outline' className='font-mono text-xs'>
                       {plan.stripePriceIdMonthly}
                     </Badge>
                   </div>
                 )}
                 {plan.stripePriceIdAnnual && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Annual Price ID:</span>
-                    <Badge variant="outline" className="font-mono text-xs">
+                  <div className='flex items-center justify-between'>
+                    <span className='text-sm text-muted-foreground'>Annual Price ID:</span>
+                    <Badge variant='outline' className='font-mono text-xs'>
                       {plan.stripePriceIdAnnual}
                     </Badge>
                   </div>
                 )}
               </>
             ) : (
-              <div className="text-sm text-muted-foreground">
+              <div className='text-sm text-muted-foreground'>
                 Not synced to Stripe. Click "Sync to Stripe" to create Stripe resources.
               </div>
             )}
@@ -418,16 +418,16 @@ export function PlanForm({ plan }: PlanFormProps) {
       )}
 
       {/* Actions */}
-      <div className="flex items-center justify-end gap-2">
+      <div className='flex items-center justify-end gap-2'>
         <Button
-          type="button"
-          variant="outline"
+          type='button'
+          variant='outline'
           onClick={() => router.push('/admin/plans')}
           disabled={createPlan.isPending || updatePlan.isPending}>
           Cancel
         </Button>
         <Button
-          type="submit"
+          type='submit'
           loading={createPlan.isPending || updatePlan.isPending}
           disabled={!isDirty}>
           {isEditMode ? 'Update Plan' : 'Create Plan'}

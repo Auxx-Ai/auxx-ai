@@ -1,11 +1,11 @@
 // packages/lib/src/jobs/datasets/index.ts
 
 export {
-  processDocumentJob,
+  batchOperationJob,
+  finalizeDocumentJob,
   generateEmbeddingJob,
   generateEmbeddingsFlowJob,
-  finalizeDocumentJob,
-  batchOperationJob,
+  processDocumentJob,
 } from './document-processing-jobs'
 
-export { cleanupDatasetJob, reindexDatasetJob, cleanupOrphanedDataJob } from './maintenance-jobs'
+export { cleanupDatasetJob, cleanupOrphanedDataJob, reindexDatasetJob } from './maintenance-jobs'

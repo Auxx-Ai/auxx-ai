@@ -1,48 +1,41 @@
 // packages/lib/src/providers/google/index.ts
-export { GoogleProvider } from './google-provider'
-export { GoogleOAuthService } from './google-oauth'
-
-// Message operations
-export { createEmailMessage } from './messages/create-message'
-export { sendGmailMessage } from './messages/send-message'
-export { syncGmailMessages } from './messages/sync-messages'
-export { getMessagesBatch } from './messages/batch-fetch'
-export { parseGmailMessage, convertMessagesToMessageData } from './messages/parse-message'
 
 // Draft operations
 export { createGmailDraft } from './drafts/create-draft'
-export { updateGmailDraft } from './drafts/update-draft'
 export { sendGmailDraft } from './drafts/send-draft'
-
+export { updateGmailDraft } from './drafts/update-draft'
+export { GoogleOAuthService } from './google-oauth'
+export { GoogleProvider } from './google-provider'
 // Label operations
 export {
-  getLabels,
-  createLabel,
-  updateLabel,
-  deleteLabel,
   addLabel,
+  createLabel,
+  deleteLabel,
+  getLabels,
   removeLabel,
+  updateLabel,
 } from './labels'
-
-// Thread operations
-export { getThread, updateThreadStatus, moveThread } from './threads'
-
+export { getMessagesBatch } from './messages/batch-fetch'
+// Message operations
+export { createEmailMessage } from './messages/create-message'
+export { convertMessagesToMessageData, parseGmailMessage } from './messages/parse-message'
+export { sendGmailMessage } from './messages/send-message'
+export { syncGmailMessages } from './messages/sync-messages'
 // Basic operations
-export { archive, markAsSpam, trash, restore } from './operations'
-
-// Webhook operations
-export { setupWebhook, removeWebhook } from './webhooks'
-
-// Shared utilities
-export { executeWithThrottle, modifyWithThrottling, getThrottleContext } from './shared/utils'
+export { archive, markAsSpam, restore, trash } from './operations'
 export { handleGmailError, isRecoverableError } from './shared/error-handler'
-
+// Shared utilities
+export { executeWithThrottle, getThrottleContext, modifyWithThrottling } from './shared/utils'
+// Thread operations
+export { getThread, moveThread, updateThreadStatus } from './threads'
 // Types
 export type {
+  GmailMessageWithPayload,
+  GmailOperationContext,
   GoogleIntegration,
   GoogleIntegrationMetadata,
-  GmailOperationContext,
-  ParsedGmailMessage,
-  GmailMessageWithPayload,
   GoogleThrottleContext,
+  ParsedGmailMessage,
 } from './types'
+// Webhook operations
+export { removeWebhook, setupWebhook } from './webhooks'

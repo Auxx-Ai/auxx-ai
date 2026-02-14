@@ -2,13 +2,13 @@
 
 'use client'
 
-import React, { useEffect } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { toastSuccess } from '@auxx/ui/components/toast'
 import { useSearchParams } from 'next/navigation'
+import React, { useEffect } from 'react'
 import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
 import { AppConnectionStatus } from './app-connection-status'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import { toastSuccess } from '@auxx/ui/components/toast'
 
 /**
  * Props for AppConnections component
@@ -55,10 +55,10 @@ function AppConnections({ app }: Props) {
 
   if (!installation) {
     return (
-      <div className="flex-1 flex-col space-y-6 px-6 py-6">
-        <div className="border bg-primary-50 w-full p-6 rounded-2xl text-center">
-          <div className="text-base font-medium mb-2">App not installed</div>
-          <div className="text-sm text-muted-foreground">This app needs to be installed first</div>
+      <div className='flex-1 flex-col space-y-6 px-6 py-6'>
+        <div className='border bg-primary-50 w-full p-6 rounded-2xl text-center'>
+          <div className='text-base font-medium mb-2'>App not installed</div>
+          <div className='text-sm text-muted-foreground'>This app needs to be installed first</div>
         </div>
       </div>
     )
@@ -66,10 +66,10 @@ function AppConnections({ app }: Props) {
 
   if (!connectionDefinition) {
     return (
-      <div className="flex-1 flex-col space-y-6 px-6 py-6">
-        <div className="border bg-primary-50 w-full p-6 rounded-2xl text-center">
-          <div className="text-base font-medium mb-2">No connection required</div>
-          <div className="text-sm text-muted-foreground">
+      <div className='flex-1 flex-col space-y-6 px-6 py-6'>
+        <div className='border bg-primary-50 w-full p-6 rounded-2xl text-center'>
+          <div className='text-base font-medium mb-2'>No connection required</div>
+          <div className='text-sm text-muted-foreground'>
             {app.app.title} does not require any external connections
           </div>
         </div>
@@ -87,7 +87,7 @@ function AppConnections({ app }: Props) {
   const connectionType = connectionDefinition.global ? 'organization' : 'user'
 
   return (
-    <div className="flex-1 flex-col space-y-6 px-6 py-6">
+    <div className='flex-1 flex-col space-y-6 px-6 py-6'>
       <Card>
         <CardHeader>
           <CardTitle>App Connection</CardTitle>
@@ -100,10 +100,10 @@ function AppConnections({ app }: Props) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
+          <div className='space-y-4'>
             <div>
-              <div className="text-sm font-medium mb-2">Connection Type</div>
-              <div className="text-sm text-muted-foreground capitalize">
+              <div className='text-sm font-medium mb-2'>Connection Type</div>
+              <div className='text-sm text-muted-foreground capitalize'>
                 {connectionDefinition.connectionType === 'oauth2-code'
                   ? 'OAuth 2.0'
                   : connectionDefinition.connectionType}
@@ -111,7 +111,7 @@ function AppConnections({ app }: Props) {
             </div>
 
             <div>
-              <div className="text-sm font-medium mb-2">Status</div>
+              <div className='text-sm font-medium mb-2'>Status</div>
               <AppConnectionStatus
                 appId={app.app.id}
                 appSlug={app.app.slug}
@@ -129,8 +129,8 @@ function AppConnections({ app }: Props) {
               <>
                 {activeConnection.connectedBy && (
                   <div>
-                    <div className="text-sm font-medium mb-2">Connected By</div>
-                    <div className="text-sm text-muted-foreground">
+                    <div className='text-sm font-medium mb-2'>Connected By</div>
+                    <div className='text-sm text-muted-foreground'>
                       {activeConnection.connectedBy}
                     </div>
                   </div>
@@ -138,8 +138,8 @@ function AppConnections({ app }: Props) {
 
                 {activeConnection.connectedAt && (
                   <div>
-                    <div className="text-sm font-medium mb-2">Connected At</div>
-                    <div className="text-sm text-muted-foreground">
+                    <div className='text-sm font-medium mb-2'>Connected At</div>
+                    <div className='text-sm text-muted-foreground'>
                       {new Date(activeConnection.connectedAt).toLocaleString()}
                     </div>
                   </div>

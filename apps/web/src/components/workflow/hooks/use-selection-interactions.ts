@@ -1,8 +1,8 @@
+import type { Node, OnSelectionChangeFunc } from '@xyflow/react'
+import { useStoreApi } from '@xyflow/react'
+import { produce } from 'immer'
 import type { MouseEvent } from 'react'
 import { useCallback } from 'react'
-import { produce } from 'immer'
-import type { OnSelectionChangeFunc, Node } from '@xyflow/react'
-import { useStoreApi } from '@xyflow/react'
 // import { useWorkflowStore } from '../store'
 import { storeEventBus } from '../store/event-bus'
 

@@ -1,9 +1,9 @@
+import { generateSecureToken, hashApiKey } from '@auxx/credentials/api-key'
+import { ApiKeyModel, WorkflowAppModel } from '@auxx/database/models'
+import { createScopedLogger } from '@auxx/logger'
+import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { createScopedLogger } from '@auxx/logger'
-import { ApiKeyModel, WorkflowAppModel } from '@auxx/database/models'
-import { generateSecureToken, hashApiKey } from '@auxx/credentials/api-key'
-import { TRPCError } from '@trpc/server'
 
 const logger = createScopedLogger('Api Key Action')
 
@@ -75,7 +75,10 @@ export const apiKeyRouter = createTRPCRouter({
       const existsRes = await model.findByNameForUser(userId, input.name)
       const exists = existsRes.ok ? existsRes.value : null
       if (exists) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'API key with this name already exists' })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'API key with this name already exists',
+        })
       }
 
       logger.info('Creating API key', { userId, type: input.type })

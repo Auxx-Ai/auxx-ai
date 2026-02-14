@@ -2,18 +2,18 @@
 
 'use client'
 
-import { ArrowRight, RotateCcw, Ban, Check, AlertTriangle } from 'lucide-react'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { api } from '~/trpc/react'
-import { Tooltip } from '~/components/global/tooltip'
-import type {
-  UniqueValueSummary,
-  ColumnFieldConfig,
-  OverrideValue,
-  EffectiveStatus,
-} from '../types'
 import { cn } from '@auxx/ui/lib/utils'
+import { AlertTriangle, ArrowRight, Ban, Check, RotateCcw } from 'lucide-react'
+import { Tooltip } from '~/components/global/tooltip'
+import { api } from '~/trpc/react'
+import type {
+  ColumnFieldConfig,
+  EffectiveStatus,
+  OverrideValue,
+  UniqueValueSummary,
+} from '../types'
 import { EditingInput } from './editing-input'
 
 interface ValueRowProps {
@@ -128,16 +128,16 @@ export function ValueRow({ value, jobId, columnIndex, fieldConfig }: ValueRowPro
       )}>
       {/* Raw value column */}
       <div className={cn('min-w-0 flex-[0.4]', isSkipped && 'opacity-50')}>
-        <div className="flex items-center gap-2">
+        <div className='flex items-center gap-2'>
           <span
             className={cn(
               'font-mono text-sm truncate text-primary-600',
               isSkipped && 'line-through opacity-50'
             )}
             title={value.rawValue}>
-            {value.rawValue || <span className="text-muted-foreground italic">empty</span>}
+            {value.rawValue || <span className='text-muted-foreground italic'>empty</span>}
           </span>
-          <Badge variant="outline" className="text-xs shrink-0">
+          <Badge variant='outline' className='text-xs shrink-0'>
             {value.count.toLocaleString()} row{value.count !== 1 ? 's' : ''}
           </Badge>
         </div>
@@ -150,11 +150,11 @@ export function ValueRow({ value, jobId, columnIndex, fieldConfig }: ValueRowPro
 
       {/* Resolved value column */}
       <div
-        className="min-w-0 flex-[0.4] flex items-center h-full"
+        className='min-w-0 flex-[0.4] flex items-center h-full'
         onClick={(e) => e.stopPropagation()}>
-        <div className="flex-1">
+        <div className='flex-1'>
           {isSkipped ? (
-            <Badge variant="outline" className="opacity-50">
+            <Badge variant='outline' className='opacity-50'>
               Skipped
             </Badge>
           ) : (
@@ -172,11 +172,11 @@ export function ValueRow({ value, jobId, columnIndex, fieldConfig }: ValueRowPro
 
         {/* Action buttons */}
         {/* <div className="flex items-center opacity-0 group-hover:opacity-100 pe-1 transition-opacity overflow-hidden [[data-first]_&]:rounded-tr-2xl [[data-last]_&]:rounded-br-2xl"> */}
-        <div className="rounded-md px-0.5 items-center bg-input/50 border h-6.5 border-primary-200 flex me-2 gap-0.5">
+        <div className='rounded-md px-0.5 items-center bg-input/50 border h-6.5 border-primary-200 flex me-2 gap-0.5'>
           {/* Fixed indicator - show when error/warning was resolved */}
           {isFixed && (
-            <Tooltip content="Fixed">
-              <div className="h-5.5 w-5.5 px-1 flex items-center justify-center rounded-[6px] text-green-600 dark:text-green-500 bg-green-400/40 dark:bg-green-900">
+            <Tooltip content='Fixed'>
+              <div className='h-5.5 w-5.5 px-1 flex items-center justify-center rounded-[6px] text-green-600 dark:text-green-500 bg-green-400/40 dark:bg-green-900'>
                 <Check />
               </div>
             </Tooltip>
@@ -185,7 +185,7 @@ export function ValueRow({ value, jobId, columnIndex, fieldConfig }: ValueRowPro
           {/* Error indicator - show when there's an error and not fixed */}
           {value.errorMessage && !isFixed && (
             <Tooltip content={value.errorMessage}>
-              <div className="h-5.5 w-5.5 px-1 flex items-center justify-center rounded-[6px] text-red-600 dark:text-red-500 bg-red-400/40 dark:bg-red-900">
+              <div className='h-5.5 w-5.5 px-1 flex items-center justify-center rounded-[6px] text-red-600 dark:text-red-500 bg-red-400/40 dark:bg-red-900'>
                 <AlertTriangle />
               </div>
             </Tooltip>
@@ -193,22 +193,22 @@ export function ValueRow({ value, jobId, columnIndex, fieldConfig }: ValueRowPro
 
           {/* Revert button - only show if there are changes (isOverridden) */}
           {value.isOverridden && (
-            <Tooltip content="Revert to original">
+            <Tooltip content='Revert to original'>
               <Button
-                variant="transparent"
-                className="h-5.5 w-5.5 px-1 bg-primary-200 rounded-md border"
+                variant='transparent'
+                className='h-5.5 w-5.5 px-1 bg-primary-200 rounded-md border'
                 onClick={handleRevert}>
-                <RotateCcw className="text-muted-foreground" />
+                <RotateCcw className='text-muted-foreground' />
               </Button>
             </Tooltip>
           )}
 
           {/* Skip button - only show if not already skipped */}
           {!isSkipped && (
-            <Tooltip content="Skip value">
+            <Tooltip content='Skip value'>
               <Button
-                variant="transparent"
-                className="h-5.5 w-5.5 rounded-[6px] px-1 text-amber-600 dark:text-amber-500! bg-amber-400/40 hover:bg-amber-400/60 dark:bg-amber-900!"
+                variant='transparent'
+                className='h-5.5 w-5.5 rounded-[6px] px-1 text-amber-600 dark:text-amber-500! bg-amber-400/40 hover:bg-amber-400/60 dark:bg-amber-900!'
                 onClick={handleSkip}>
                 <Ban />
               </Button>

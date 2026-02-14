@@ -1,6 +1,6 @@
 // packages/email/src/templates/lifecycle/data-deletion-email.tsx
 import { Container, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -76,7 +76,7 @@ export async function DataDeletionEmail({
               customer information, and conversation history.
             </Text>
             <div style={{ marginTop: '12px' }}>
-              <EmailButton href={exportUrl} label="Export Data Now" />
+              <EmailButton href={exportUrl} label='Export Data Now' />
             </div>
           </div>
 
@@ -89,7 +89,7 @@ export async function DataDeletionEmail({
               interruption.
             </Text>
             <div style={{ marginTop: '12px' }}>
-              <EmailButton href={reactivateUrl} label="Reactivate Account" />
+              <EmailButton href={reactivateUrl} label='Reactivate Account' />
             </div>
           </div>
         </div>
@@ -102,7 +102,7 @@ export async function DataDeletionEmail({
 
         <Text style={{ fontSize: '14px', color: '#64748b' }}>
           For more information about our data retention policy, please visit our{' '}
-          <a href="https://auxx.ai/privacy" style={{ color: '#3b82f6', textDecoration: 'none' }}>
+          <a href='https://auxx.ai/privacy' style={{ color: '#3b82f6', textDecoration: 'none' }}>
             Privacy Policy
           </a>
           .

@@ -1,9 +1,9 @@
 // apps/web/src/components/dynamic-table/utils/create-dynamic-column.tsx
 
-import type { ExtendedColumnDef } from '../types'
-import { CustomFieldCell } from '../components/custom-field-cell'
-import { decodeColumnId } from './column-id'
 import { toRecordId } from '~/components/resources'
+import { CustomFieldCell } from '../components/custom-field-cell'
+import type { ExtendedColumnDef } from '../types'
+import { decodeColumnId } from './column-id'
 
 /**
  * Creates a minimal column definition for a field column ID.

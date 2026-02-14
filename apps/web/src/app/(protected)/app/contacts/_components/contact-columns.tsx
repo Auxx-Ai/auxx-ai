@@ -2,24 +2,24 @@
 
 'use client'
 
+import type { CustomerStatus } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import {
-  User,
-  Mail,
-  Smartphone,
-  Database,
-  Tag,
   Calendar,
-  Users,
+  Database,
+  Mail,
   PanelRight,
   ShieldAlert,
+  Smartphone,
+  Tag,
   Trash2,
+  User,
+  Users,
 } from 'lucide-react'
+import { getCustomerStatusVariant } from '~/components/contacts/contact-status'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { FormattedCell, PrimaryCell } from '~/components/dynamic-table'
-import { getCustomerStatusVariant } from '~/components/contacts/contact-status'
-import { type CustomerStatus } from '@auxx/database/types'
 
 /**
  * Contact type to match the data structure from the API
@@ -88,14 +88,14 @@ export function createContactColumns(actions: ContactColumnActions): ExtendedCol
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              variant="destructive"
+              variant='destructive'
               onClick={() => actions.onMarkAsSpam(row.original.id)}>
               <ShieldAlert />
               Mark as Spam
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              variant="destructive"
+              variant='destructive'
               onClick={() => actions.onDelete(row.original.id)}>
               <Trash2 />
               Delete Contact
@@ -117,7 +117,7 @@ export function createContactColumns(actions: ContactColumnActions): ExtendedCol
       accessorKey: 'email',
       header: 'Email',
       cell: ({ getValue }) => (
-        <FormattedCell value={getValue()} fieldType="EMAIL" columnId="email" />
+        <FormattedCell value={getValue()} fieldType='EMAIL' columnId='email' />
       ),
       enableSorting: true,
       enableResizing: true,
@@ -137,7 +137,7 @@ export function createContactColumns(actions: ContactColumnActions): ExtendedCol
           value === '{}' ||
           (typeof value === 'object' && value !== null && Object.keys(value).length === 0)
         return (
-          <FormattedCell value={isEmpty ? null : value} fieldType="PHONE_INTL" columnId="phone" />
+          <FormattedCell value={isEmpty ? null : value} fieldType='PHONE_INTL' columnId='phone' />
         )
       },
       enableSorting: true,
@@ -153,11 +153,11 @@ export function createContactColumns(actions: ContactColumnActions): ExtendedCol
       cell: ({ row }) => (
         <FormattedCell
           value={null}
-          fieldType="ITEMS"
-          columnId="sources"
+          fieldType='ITEMS'
+          columnId='sources'
           items={row.original.customerSources}
           renderItem={(source: { id: string; source: string }) => (
-            <Badge variant="gray" size="sm">
+            <Badge variant='gray' size='sm'>
               {source.source}
             </Badge>
           )}
@@ -175,14 +175,14 @@ export function createContactColumns(actions: ContactColumnActions): ExtendedCol
       cell: ({ row }) => (
         <FormattedCell
           value={null}
-          fieldType="ITEMS"
-          columnId="groups"
+          fieldType='ITEMS'
+          columnId='groups'
           items={row.original.customerGroups.map((g) => ({
             id: g.customerGroupId,
             name: g.customerGroup.name,
           }))}
           renderItem={(group: { id: string; name: string }) => (
-            <Badge variant="pill" shape="tag">
+            <Badge variant='pill' shape='tag'>
               {group.name}
             </Badge>
           )}
@@ -203,8 +203,8 @@ export function createContactColumns(actions: ContactColumnActions): ExtendedCol
         return (
           <FormattedCell
             value={null}
-            fieldType="ITEMS"
-            columnId="status"
+            fieldType='ITEMS'
+            columnId='status'
             items={[{ id: status }]}
             renderItem={(item: { id: string }) => <Badge variant={variant}>{item.id}</Badge>}
           />
@@ -220,7 +220,7 @@ export function createContactColumns(actions: ContactColumnActions): ExtendedCol
       accessorKey: 'createdAt',
       header: 'Created',
       cell: ({ getValue }) => (
-        <FormattedCell value={getValue()} fieldType="DATE" columnId="createdAt" />
+        <FormattedCell value={getValue()} fieldType='DATE' columnId='createdAt' />
       ),
       enableSorting: true,
       enableResizing: true,

@@ -1,15 +1,15 @@
 // packages/lib/src/ai/providers/provider-registry.ts
 
-import { createScopedLogger } from '../../logger'
 import { PROVIDER_THEMES } from '../../constants/provider-icons'
-import { ModelType, type ModelCapabilities, type ProviderCapabilities } from './types'
-import { ProviderClient } from './base/provider-client'
+import { createScopedLogger } from '../../logger'
+import { ANTHROPIC_CAPABILITIES, ANTHROPIC_MODELS } from './anthropic/anthropic-defaults'
+import type { ProviderClient } from './base/provider-client'
 import { ProviderError } from './base/types'
-import { OPENAI_MODELS, OPENAI_CAPABILITIES } from './openai/openai-defaults'
-import { ANTHROPIC_MODELS, ANTHROPIC_CAPABILITIES } from './anthropic/anthropic-defaults'
-import { GOOGLE_MODELS, GOOGLE_CAPABILITIES } from './google/google-defaults'
-import { GROQ_MODELS, GROQ_CAPABILITIES } from './groq/groq-defaults'
-import { DEEPSEEK_MODELS, DEEPSEEK_CAPABILITIES } from './deepseek/deepseek-defaults'
+import { DEEPSEEK_CAPABILITIES, DEEPSEEK_MODELS } from './deepseek/deepseek-defaults'
+import { GOOGLE_CAPABILITIES, GOOGLE_MODELS } from './google/google-defaults'
+import { GROQ_CAPABILITIES, GROQ_MODELS } from './groq/groq-defaults'
+import { OPENAI_CAPABILITIES, OPENAI_MODELS } from './openai/openai-defaults'
+import { type ModelCapabilities, ModelType, type ProviderCapabilities } from './types'
 
 const logger = createScopedLogger('ProviderRegistry')
 
@@ -106,19 +106,21 @@ export class ProviderRegistry {
    * Initialize the registry by auto-registering all available providers
    */
   private static async initialize(): Promise<void> {
-    if (this.initialized) return
+    if (ProviderRegistry.initialized) return
 
     try {
       // Register all providers with static data
       await Promise.all(
-        this.providerDefinitions.map((definition) => this.registerProvider(definition))
+        ProviderRegistry.providerDefinitions.map((definition) =>
+          ProviderRegistry.registerProvider(definition)
+        )
       )
 
       logger.info('ProviderRegistry initialized', {
-        registeredProviders: Object.keys(this.providers),
+        registeredProviders: Object.keys(ProviderRegistry.providers),
       })
 
-      this.initialized = true
+      ProviderRegistry.initialized = true
     } catch (error) {
       logger.error('Failed to initialize ProviderRegistry', { error })
       throw new ProviderError('Registry initialization failed', 'registry', 'INIT_FAILED')
@@ -130,13 +132,13 @@ export class ProviderRegistry {
    */
   private static async registerProvider(definition: ProviderDefinition): Promise<void> {
     const registration: ProviderRegistration = {
-      capabilities: this.staticProviders[definition.id],
-      models: this.getModelsForProvider(definition.id),
-      clientClass: await this.loadClientClass(definition),
+      capabilities: ProviderRegistry.staticProviders[definition.id],
+      models: ProviderRegistry.getModelsForProvider(definition.id),
+      clientClass: await ProviderRegistry.loadClientClass(definition),
       isRegistered: true,
       lastValidated: new Date(),
     }
-    this.providers[definition.id] = registration
+    ProviderRegistry.providers[definition.id] = registration
   }
 
   /**
@@ -145,7 +147,7 @@ export class ProviderRegistry {
   private static async loadClientClass(
     definition: ProviderDefinition
   ): Promise<typeof ProviderClient | undefined> {
-    if (!this.isServerEnvironment()) {
+    if (!ProviderRegistry.isServerEnvironment()) {
       logger.debug('Skipping provider load outside Node server', { providerId: definition.id })
       return undefined
     }
@@ -185,7 +187,7 @@ export class ProviderRegistry {
    * Get models for a specific provider from static imports
    */
   private static getModelsForProvider(providerId: string): Record<string, ModelCapabilities> {
-    return Object.entries(this.models)
+    return Object.entries(ProviderRegistry.models)
       .filter(([_, model]) => model.provider === providerId)
       .reduce((acc, [key, model]) => ({ ...acc, [key]: model }), {})
   }
@@ -194,13 +196,13 @@ export class ProviderRegistry {
    * Extract capabilities from a provider client instance (fallback, server-side only)
    */
   private static extractCapabilitiesFromClient(providerId: string): ProviderCapabilities | null {
-    const registration = this.providers[providerId]
+    const registration = ProviderRegistry.providers[providerId]
     if (!registration?.clientClass) {
       return null
     }
 
     // Skip on client side
-    if (typeof window !== 'undefined' || !this.isServerEnvironment()) {
+    if (typeof window !== 'undefined' || !ProviderRegistry.isServerEnvironment()) {
       return null
     }
 
@@ -220,19 +222,21 @@ export class ProviderRegistry {
   // ===== MODEL REGISTRY METHODS =====
 
   static getModelCapabilities(model: string): ModelCapabilities | null {
-    return this.models[model] || null
+    return ProviderRegistry.models[model] || null
   }
 
   static getAllModelsForProvider(provider: string): string[] {
-    return Object.keys(this.models).filter((model) => this.models[model].provider === provider)
+    return Object.keys(ProviderRegistry.models).filter(
+      (model) => ProviderRegistry.models[model].provider === provider
+    )
   }
 
   static getAllModels(): Record<string, ModelCapabilities> {
-    return { ...this.models }
+    return { ...ProviderRegistry.models }
   }
 
   static getModelsByFeature(feature: string): string[] {
-    return Object.entries(this.models)
+    return Object.entries(ProviderRegistry.models)
       .filter(([_, capabilities]) => capabilities.features.includes(feature))
       .map(([model]) => model)
   }
@@ -241,20 +245,20 @@ export class ProviderRegistry {
     supportType: keyof ModelCapabilities['supports'],
     value = true
   ): string[] {
-    return Object.entries(this.models)
+    return Object.entries(ProviderRegistry.models)
       .filter(([_, capabilities]) => capabilities.supports[supportType] === value)
       .map(([model]) => model)
   }
 
   static isValidModel(model: string): boolean {
-    return model in this.models
+    return model in ProviderRegistry.models
   }
 
   static getModelOptionsForProvider(
     provider: string
   ): Array<{ label: string; value: string; icon?: string; color?: string }> {
-    return this.getAllModelsForProvider(provider).map((model) => {
-      const capabilities = this.models[model]
+    return ProviderRegistry.getAllModelsForProvider(provider).map((model) => {
+      const capabilities = ProviderRegistry.models[model]
       return {
         label: capabilities.displayName,
         value: model,
@@ -267,9 +271,9 @@ export class ProviderRegistry {
   // ===== PROVIDER REGISTRY METHODS =====
 
   static async getProviderCapabilities(provider: string): Promise<ProviderCapabilities | null> {
-    await this.initialize()
+    await ProviderRegistry.initialize()
 
-    const registration = this.providers[provider]
+    const registration = ProviderRegistry.providers[provider]
     if (!registration) return null
 
     // Return static capabilities if available
@@ -278,15 +282,15 @@ export class ProviderRegistry {
     }
 
     // Fallback to dynamic extraction (like old ProviderFactory)
-    return this.extractCapabilitiesFromClient(provider)
+    return ProviderRegistry.extractCapabilitiesFromClient(provider)
   }
 
   static getAllProviders(): Record<string, ProviderCapabilities> {
-    return { ...this.staticProviders }
+    return { ...ProviderRegistry.staticProviders }
   }
 
   static isValidProvider(provider: string): boolean {
-    return provider in this.staticProviders
+    return provider in ProviderRegistry.staticProviders
   }
 
   // ===== PROVIDER FACTORY METHODS =====
@@ -297,17 +301,17 @@ export class ProviderRegistry {
     userId: string,
     cache?: any
   ): Promise<ProviderClient> {
-    await this.initialize()
+    await ProviderRegistry.initialize()
 
-    const registration = this.providers[providerId]
+    const registration = ProviderRegistry.providers[providerId]
 
     if (!registration) {
       logger.error('Provider not registered', {
         providerId,
-        availableProviders: await this.getAvailableProviders(),
+        availableProviders: await ProviderRegistry.getAvailableProviders(),
       })
       throw new ProviderError(
-        `Provider '${providerId}' is not registered. Available providers: ${(await this.getAvailableProviders()).join(', ')}`,
+        `Provider '${providerId}' is not registered. Available providers: ${(await ProviderRegistry.getAvailableProviders()).join(', ')}`,
         providerId,
         'PROVIDER_NOT_REGISTERED'
       )
@@ -350,31 +354,34 @@ export class ProviderRegistry {
   static create = this.createClient
 
   static async getAvailableProviders(): Promise<string[]> {
-    await this.initialize()
-    return Object.keys(this.providers).sort()
+    await ProviderRegistry.initialize()
+    return Object.keys(ProviderRegistry.providers).sort()
   }
 
   static isProviderRegistered(providerId: string): boolean {
     // For synchronous checks, return static provider existence if not initialized
-    if (!this.initialized) {
-      return providerId in this.staticProviders
+    if (!ProviderRegistry.initialized) {
+      return providerId in ProviderRegistry.staticProviders
     }
 
     // On client side, check static providers, on server side check full registration
-    if (typeof window !== 'undefined' || !this.isServerEnvironment()) {
-      return providerId in this.staticProviders
+    if (typeof window !== 'undefined' || !ProviderRegistry.isServerEnvironment()) {
+      return providerId in ProviderRegistry.staticProviders
     }
-    return this.providers[providerId]?.isRegistered && !!this.providers[providerId]?.clientClass
+    return (
+      ProviderRegistry.providers[providerId]?.isRegistered &&
+      !!ProviderRegistry.providers[providerId]?.clientClass
+    )
   }
 
   static async getAllProviderCapabilities(): Promise<Record<string, ProviderCapabilities>> {
-    await this.initialize()
+    await ProviderRegistry.initialize()
 
     const capabilities: Record<string, ProviderCapabilities> = {}
-    const availableProviders = await this.getAvailableProviders()
+    const availableProviders = await ProviderRegistry.getAvailableProviders()
 
     for (const providerId of availableProviders) {
-      const caps = await this.getProviderCapabilities(providerId)
+      const caps = await ProviderRegistry.getProviderCapabilities(providerId)
       if (caps) {
         capabilities[providerId] = caps
       }
@@ -384,16 +391,16 @@ export class ProviderRegistry {
   }
 
   static async validateRegisteredProviders(): Promise<{ valid: string[]; invalid: string[] }> {
-    await this.initialize()
+    await ProviderRegistry.initialize()
 
     const valid: string[] = []
     const invalid: string[] = []
-    const availableProviders = await this.getAvailableProviders()
+    const availableProviders = await ProviderRegistry.getAvailableProviders()
 
     for (const providerId of availableProviders) {
       try {
-        const capabilities = await this.getProviderCapabilities(providerId)
-        if (capabilities && this.isValidProvider(providerId)) {
+        const capabilities = await ProviderRegistry.getProviderCapabilities(providerId)
+        if (capabilities && ProviderRegistry.isValidProvider(providerId)) {
           valid.push(providerId)
         } else {
           invalid.push(providerId)
@@ -413,18 +420,18 @@ export class ProviderRegistry {
   }
 
   static reset(): void {
-    Object.keys(this.providers).forEach((key) => delete this.providers[key])
-    this.initialized = false
+    Object.keys(ProviderRegistry.providers).forEach((key) => delete ProviderRegistry.providers[key])
+    ProviderRegistry.initialized = false
     logger.debug('ProviderRegistry reset')
   }
 
   static async getStats() {
     return {
-      initialized: this.initialized,
-      registeredProviders: (await this.getAvailableProviders()).length,
-      providers: this.getAvailableProviders(),
-      totalModels: Object.keys(this.models).length,
-      staticProviders: Object.keys(this.staticProviders).length,
+      initialized: ProviderRegistry.initialized,
+      registeredProviders: (await ProviderRegistry.getAvailableProviders()).length,
+      providers: ProviderRegistry.getAvailableProviders(),
+      totalModels: Object.keys(ProviderRegistry.models).length,
+      staticProviders: Object.keys(ProviderRegistry.staticProviders).length,
     }
   }
 
@@ -442,34 +449,34 @@ export class ProviderRegistry {
   // ===== ADDITIONAL UTILITY METHODS =====
 
   static async register(providerId: string, clientClass: typeof ProviderClient): Promise<void> {
-    await this.initialize()
+    await ProviderRegistry.initialize()
 
-    if (this.providers[providerId]) {
+    if (ProviderRegistry.providers[providerId]) {
       logger.warn('Provider already registered, overriding', { providerId })
     }
 
     const registration: ProviderRegistration = {
-      capabilities: this.staticProviders[providerId] || ({} as ProviderCapabilities),
-      models: this.getModelsForProvider(providerId),
+      capabilities: ProviderRegistry.staticProviders[providerId] || ({} as ProviderCapabilities),
+      models: ProviderRegistry.getModelsForProvider(providerId),
       clientClass,
       isRegistered: true,
       lastValidated: new Date(),
     }
 
-    this.providers[providerId] = registration
+    ProviderRegistry.providers[providerId] = registration
 
     logger.debug('Provider registered', {
       providerId,
-      totalProviders: Object.keys(this.providers).length,
+      totalProviders: Object.keys(ProviderRegistry.providers).length,
     })
   }
 
   static async unregister(providerId: string): Promise<boolean> {
-    await this.initialize()
+    await ProviderRegistry.initialize()
 
-    const existed = providerId in this.providers
+    const existed = providerId in ProviderRegistry.providers
     if (existed) {
-      delete this.providers[providerId]
+      delete ProviderRegistry.providers[providerId]
       logger.debug('Provider unregistered', { providerId })
     }
     return existed

@@ -1,17 +1,17 @@
 // apps/web/src/components/workflow/credentials/credential-selector.tsx
 'use client'
 
-import { useState, useMemo } from 'react'
-import { Search, Plus, Key, CheckCircle, AlertTriangle } from 'lucide-react'
-import { Input } from '@auxx/ui/components/input'
-import { Button } from '@auxx/ui/components/button'
-import { Badge } from '@auxx/ui/components/badge'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent } from '@auxx/ui/components/card'
+import { Input } from '@auxx/ui/components/input'
 import { Separator } from '@auxx/ui/components/separator'
-import { useCredentials } from './credentials-provider'
-import { getCredentialType } from './credential-registry'
 import { cn } from '@auxx/ui/lib/utils'
+import { AlertTriangle, CheckCircle, Key, Plus, Search } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { getCredentialType } from './credential-registry'
+import { useCredentials } from './credentials-provider'
 
 interface CredentialSelectorProps {
   /** Array of credential type IDs to filter by */
@@ -89,9 +89,9 @@ export function CredentialSelector({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-8">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <div className="size-4 border-2 border-current border-r-transparent rounded-full animate-spin" />
+      <div className='flex items-center justify-center py-8'>
+        <div className='flex items-center gap-2 text-muted-foreground'>
+          <div className='size-4 border-2 border-current border-r-transparent rounded-full animate-spin' />
           <span>Loading credentials...</span>
         </div>
       </div>
@@ -100,15 +100,15 @@ export function CredentialSelector({
 
   if (error) {
     return (
-      <Alert variant="destructive">
-        <AlertTriangle className="h-4 w-4" />
+      <Alert variant='destructive'>
+        <AlertTriangle className='h-4 w-4' />
         <AlertDescription>Failed to load credentials: {error}</AlertDescription>
       </Alert>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       {/* Search */}
       {/* <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -123,7 +123,7 @@ export function CredentialSelector({
       {/* Create new credential option */}
       {!hideCreateOption && (
         <>
-          <Button variant="default" size="sm" onClick={onCreateNew} className="justify-start">
+          <Button variant='default' size='sm' onClick={onCreateNew} className='justify-start'>
             <Plus />
             Create New Credential
           </Button>
@@ -149,24 +149,24 @@ export function CredentialSelector({
 
       {/* Credentials grouped by type */}
       {Object.keys(credentialsByType).length > 0 && (
-        <div className="space-y-4">
+        <div className='space-y-4'>
           {Object.entries(credentialsByType).map(([type, typeCredentials]) => {
             const credentialType = getCredentialType(type)
             const Icon = credentialType?.icon || Key
 
             return (
-              <div key={type} className="space-y-2">
+              <div key={type} className='space-y-2'>
                 {/* Type header */}
-                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <Icon className="size-4" />
+                <div className='flex items-center gap-2 text-sm font-medium text-muted-foreground'>
+                  <Icon className='size-4' />
                   <span>{credentialType?.displayName || type}</span>
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge variant='secondary' className='text-xs'>
                     {typeCredentials.length}
                   </Badge>
                 </div>
 
                 {/* Credentials of this type */}
-                <div className="space-y-2">
+                <div className='space-y-2'>
                   {typeCredentials.map((credential) => (
                     <CredentialItem
                       key={credential.id}
@@ -206,22 +206,22 @@ function CredentialItem({
         isSelected ? 'ring-1 ring-info bg-primary/5' : 'hover:bg-muted/50'
       }`}
       onClick={onSelect}>
-      <CardContent className="p-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
+      <CardContent className='p-3'>
+        <div className='flex items-center justify-between'>
+          <div className='flex items-center gap-3 min-w-0 flex-1'>
             <div
               className={`p-2 rounded-lg ${isSelected ? 'bg-info [&>svg]:text-white' : 'bg-muted'}`}>
-              <Icon className="size-4" />
+              <Icon className='size-4' />
             </div>
 
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
+            <div className='min-w-0 flex-1'>
+              <div className='flex items-center gap-2'>
                 <p className={cn('font-medium truncate', { 'text-info': isSelected })}>
                   {credential.name}
                 </p>
-                {isSelected && <CheckCircle className="size-4 text-info" />}
+                {isSelected && <CheckCircle className='size-4 text-info' />}
               </div>
-              <p className="text-sm text-muted-foreground">
+              <p className='text-sm text-muted-foreground'>
                 Created by {credential.createdBy?.name || 'Unknown'} •{' '}
                 {new Date(credential.createdAt).toLocaleDateString()}
               </p>

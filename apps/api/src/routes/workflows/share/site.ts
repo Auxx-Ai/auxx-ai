@@ -4,8 +4,8 @@
  * Site info route for shared workflows
  */
 
-import { Hono } from 'hono'
 import { getSharedWorkflowByToken } from '@auxx/services/workflow-share'
+import { Hono } from 'hono'
 
 const siteRoute = new Hono()
 

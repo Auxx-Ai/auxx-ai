@@ -1,8 +1,8 @@
 // packages/lib/src/tasks/config/filter-fields.ts
 
 import type { FieldType } from '@auxx/database/types'
-import { BaseType } from '../../workflow-engine/core/types'
 import type { SelectOption } from '@auxx/types/custom-field'
+import { BaseType } from '../../workflow-engine/core/types'
 
 /**
  * Filter field IDs for task filtering.

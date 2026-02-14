@@ -2,7 +2,6 @@
 
 'use client'
 
-import React from 'react'
 import {
   Select,
   SelectContent,
@@ -10,8 +9,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import type React from 'react'
+import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
-import { VAR_MODE, BaseType } from '~/components/workflow/types'
 import type { ListNodeData, SliceMode } from '../types'
 
 interface SlicePanelProps {
@@ -31,9 +31,7 @@ export const SlicePanel: React.FC<SlicePanelProps> = ({ config, onChange, isRead
     onChange({
       sliceConfig: {
         mode,
-        ...(mode === 'first' || mode === 'last'
-          ? { count: 1, isCountConstant: true }
-          : {}),
+        ...(mode === 'first' || mode === 'last' ? { count: 1, isCountConstant: true } : {}),
         ...(mode === 'range'
           ? { start: 0, isStartConstant: true, end: 10, isEndConstant: true }
           : {}),
@@ -45,9 +43,9 @@ export const SlicePanel: React.FC<SlicePanelProps> = ({ config, onChange, isRead
     onChange({
       sliceConfig: {
         ...sliceConfig,
-        count: isConstant ? (parseInt(value, 10) || value) : value,
-        isCountConstant: isConstant
-      }
+        count: isConstant ? parseInt(value, 10) || value : value,
+        isCountConstant: isConstant,
+      },
     })
   }
 
@@ -55,9 +53,9 @@ export const SlicePanel: React.FC<SlicePanelProps> = ({ config, onChange, isRead
     onChange({
       sliceConfig: {
         ...sliceConfig,
-        start: isConstant ? (parseInt(value, 10) || value) : value,
-        isStartConstant: isConstant
-      }
+        start: isConstant ? parseInt(value, 10) || value : value,
+        isStartConstant: isConstant,
+      },
     })
   }
 
@@ -65,25 +63,25 @@ export const SlicePanel: React.FC<SlicePanelProps> = ({ config, onChange, isRead
     onChange({
       sliceConfig: {
         ...sliceConfig,
-        end: isConstant ? (parseInt(value, 10) || value) : value,
-        isEndConstant: isConstant
-      }
+        end: isConstant ? parseInt(value, 10) || value : value,
+        isEndConstant: isConstant,
+      },
     })
   }
 
   return (
-    <VarEditorField className="p-0">
-      <div className="flex flex-row gap-1 p-1">
+    <VarEditorField className='p-0'>
+      <div className='flex flex-row gap-1 p-1'>
         {/* Mode Selector */}
         <div>
           <Select value={sliceConfig.mode} onValueChange={handleModeChange} disabled={isReadOnly}>
-            <SelectTrigger size="sm" variant="outline">
+            <SelectTrigger size='sm' variant='outline'>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="first">First</SelectItem>
-              <SelectItem value="last">Last</SelectItem>
-              <SelectItem value="range">Range</SelectItem>
+              <SelectItem value='first'>First</SelectItem>
+              <SelectItem value='last'>Last</SelectItem>
+              <SelectItem value='range'>Range</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -91,7 +89,7 @@ export const SlicePanel: React.FC<SlicePanelProps> = ({ config, onChange, isRead
         {/* Count input for first/last modes */}
         {(sliceConfig.mode === 'first' || sliceConfig.mode === 'last') && (
           <VarEditor
-            placeholder="Count"
+            placeholder='Count'
             varType={BaseType.NUMBER}
             value={String(sliceConfig.count ?? 1)}
             onChange={handleCountChange}
@@ -102,8 +100,8 @@ export const SlicePanel: React.FC<SlicePanelProps> = ({ config, onChange, isRead
               onChange({
                 sliceConfig: {
                   ...sliceConfig,
-                  isCountConstant: isConstant
-                }
+                  isCountConstant: isConstant,
+                },
               })
             }
           />
@@ -113,7 +111,7 @@ export const SlicePanel: React.FC<SlicePanelProps> = ({ config, onChange, isRead
         {sliceConfig.mode === 'range' && (
           <>
             <VarEditor
-              placeholder="Start"
+              placeholder='Start'
               varType={BaseType.NUMBER}
               value={String(sliceConfig.start ?? 0)}
               onChange={handleStartChange}
@@ -124,13 +122,13 @@ export const SlicePanel: React.FC<SlicePanelProps> = ({ config, onChange, isRead
                 onChange({
                   sliceConfig: {
                     ...sliceConfig,
-                    isStartConstant: isConstant
-                  }
+                    isStartConstant: isConstant,
+                  },
                 })
               }
             />
             <VarEditor
-              placeholder="End"
+              placeholder='End'
               varType={BaseType.NUMBER}
               value={String(sliceConfig.end ?? 10)}
               onChange={handleEndChange}
@@ -141,8 +139,8 @@ export const SlicePanel: React.FC<SlicePanelProps> = ({ config, onChange, isRead
                 onChange({
                   sliceConfig: {
                     ...sliceConfig,
-                    isEndConstant: isConstant
-                  }
+                    isEndConstant: isConstant,
+                  },
                 })
               }
             />

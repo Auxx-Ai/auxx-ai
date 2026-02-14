@@ -1,14 +1,14 @@
 // apps/web/src/components/dynamic-table/components/bulk-action-bar.tsx
 'use client'
 
-import { useMemo } from 'react'
-import { useShallow } from 'zustand/react/shallow'
 import { Button } from '@auxx/ui/components/button'
 import { X } from 'lucide-react'
-import { useTableInstance } from '../context/table-instance-context'
-import { useTableConfig } from '../context/table-config-context'
-import { useRowSelection as useRowSelectionHook } from '../hooks/use-table-selectors'
 import type { ReactNode } from 'react'
+import { useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
+import { useTableConfig } from '../context/table-config-context'
+import { useTableInstance } from '../context/table-instance-context'
+import { useRowSelection as useRowSelectionHook } from '../hooks/use-table-selectors'
 
 interface BulkActionBarProps {
   children?: ReactNode
@@ -41,12 +41,12 @@ export function BulkActionBar({ children }: BulkActionBarProps) {
   }
 
   return (
-    <div className="w-full overflow-hidden">
-      <div className="flex flex-nowrap @container/controls items-row items-center gap-1.5 py-2 bg-background overflow-x-auto no-scrollbar w-full scroll-px-3 snap-x">
+    <div className='w-full overflow-hidden'>
+      <div className='flex flex-nowrap @container/controls items-row items-center gap-1.5 py-2 bg-background overflow-x-auto no-scrollbar w-full scroll-px-3 snap-x'>
         {/* <div className="flex items-center gap-2 flex-nowrap px-3 shrink-0 w-full flex-1 "> */}
-        <div className=" shrink-0 w-1.5"></div>
+        <div className=' shrink-0 w-1.5'></div>
 
-        <Button variant="info" size="sm" onClick={() => table.toggleAllRowsSelected(false)}>
+        <Button variant='info' size='sm' onClick={() => table.toggleAllRowsSelected(false)}>
           <X />
           {selectedCount} selected
         </Button>
@@ -64,7 +64,7 @@ export function BulkActionBar({ children }: BulkActionBarProps) {
               key={action.label}
               onClick={() => action.action(selectedRows.map((r) => r.original))}
               disabled={isDisabled}
-              size="xs"
+              size='xs'
               variant={action.variant || 'default'}>
               {Icon && <Icon />}
               {action.label}
@@ -75,10 +75,10 @@ export function BulkActionBar({ children }: BulkActionBarProps) {
         {/* Render custom children */}
         {children}
 
-        <Button variant="outline" size="sm" onClick={() => table.resetRowSelection()} className="">
+        <Button variant='outline' size='sm' onClick={() => table.resetRowSelection()} className=''>
           Cancel
         </Button>
-        <div className="shrink-0 w-1.5"></div>
+        <div className='shrink-0 w-1.5'></div>
         {/* </div> */}
       </div>
     </div>

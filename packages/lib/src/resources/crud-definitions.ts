@@ -1,9 +1,9 @@
 // packages/lib/src/workflow-engine/resources/crud-definitions.ts
 
+import type { ResourceConfig } from './definitions'
+import { RESOURCE_CONFIGS } from './definitions'
 import { RESOURCE_FIELD_REGISTRY, type TableId } from './registry/field-registry'
 import type { ResourceField } from './registry/field-types'
-import { RESOURCE_CONFIGS } from './definitions'
-import type { ResourceConfig } from './definitions'
 
 /** Get all creatable fields for a resource */
 function getCreatableFields(resourceType: TableId): ResourceField[] {

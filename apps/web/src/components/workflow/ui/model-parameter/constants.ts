@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/ui/model-parameter/constants.ts
 
-import { ModelParameterRule } from './types'
+import type { ModelParameterRule } from './types'
 
 export const PROVIDER_WITH_PRESET_TONE = ['openai', 'anthropic']
 

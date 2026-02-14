@@ -12,7 +12,7 @@ export default async function DraftsPage() {
 
   return (
     <Mailbox
-      key="drafts"
+      key='drafts'
       contextType={contextType}
       // statusSlug is implicitly 'all' for drafts view
     />

@@ -2,8 +2,9 @@
 
 'use client'
 
-import React, { useState } from 'react'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   Command,
   CommandEmpty,
@@ -12,13 +13,13 @@ import {
   CommandItem,
   CommandList,
 } from '@auxx/ui/components/command'
-import { Checkbox } from '@auxx/ui/components/checkbox'
-import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
-import { api } from '~/trpc/react'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { Check } from 'lucide-react'
-import { getIntegrationIconClass, getIntegrationColor } from '../mail/mail-status-config'
+import type React from 'react'
+import { useState } from 'react'
+import { api } from '~/trpc/react'
+import { getIntegrationColor, getIntegrationIconClass } from '../mail/mail-status-config'
 
 interface Integration {
   id: string
@@ -123,13 +124,13 @@ export function IntegrationPicker({
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         {children || (
-          <Button variant="outline">Select Integration{allowMultiple ? 's' : ''}</Button>
+          <Button variant='outline'>Select Integration{allowMultiple ? 's' : ''}</Button>
         )}
       </PopoverTrigger>
       <PopoverContent className={cn('w-[300px] p-0', className)} {...props}>
         <Command>
           <CommandInput
-            placeholder="Search integrations..."
+            placeholder='Search integrations...'
             value={searchValue}
             onValueChange={setSearchValue}
           />
@@ -141,8 +142,8 @@ export function IntegrationPicker({
                 <CommandItem
                   value={INTEGRATION_SELECT_ALL_VALUE}
                   onSelect={() => handleIntegrationSelect(INTEGRATION_SELECT_ALL_VALUE)}
-                  className="flex items-center justify-between">
-                  <span className="font-medium">{selectAllLabel}</span>
+                  className='flex items-center justify-between'>
+                  <span className='font-medium'>{selectAllLabel}</span>
                   <Checkbox
                     checked={isSelectAllChecked}
                     onCheckedChange={() => handleIntegrationSelect(INTEGRATION_SELECT_ALL_VALUE)}
@@ -150,7 +151,7 @@ export function IntegrationPicker({
                 </CommandItem>
               </CommandGroup>
             )}
-            <CommandGroup heading="All Integrations">
+            <CommandGroup heading='All Integrations'>
               {filteredIntegrations.map((integration) => {
                 const Icon = getIntegrationIconClass(integration.provider)
                 const color = getIntegrationColor(integration.provider)
@@ -161,17 +162,17 @@ export function IntegrationPicker({
                     key={integration.id}
                     value={integration.id}
                     onSelect={() => handleIntegrationSelect(integration.id)}
-                    className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
+                    className='flex items-center justify-between'>
+                    <div className='flex items-center space-x-2'>
                       <div
-                        className="flex h-6 w-6 items-center justify-center rounded"
+                        className='flex h-6 w-6 items-center justify-center rounded'
                         style={{ backgroundColor: `${color}20` }}>
-                        <Icon className="h-4 w-4" style={{ color }} />
+                        <Icon className='h-4 w-4' style={{ color }} />
                       </div>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium">{displayName}</span>
+                      <div className='flex flex-col'>
+                        <span className='text-sm font-medium'>{displayName}</span>
                         {integration.email && (
-                          <span className="text-xs text-muted-foreground">{integration.email}</span>
+                          <span className='text-xs text-muted-foreground'>{integration.email}</span>
                         )}
                       </div>
                     </div>
@@ -182,7 +183,7 @@ export function IntegrationPicker({
                       />
                     ) : (
                       localSelected.includes(integration.id) && (
-                        <Check className="ml-auto h-4 w-4" />
+                        <Check className='ml-auto h-4 w-4' />
                       )
                     )}
                   </CommandItem>
@@ -192,9 +193,9 @@ export function IntegrationPicker({
           </CommandList>
         </Command>
         {allowMultiple && localSelected.length > 0 && (
-          <div className="flex flex-wrap gap-1 border-t p-2">
+          <div className='flex flex-wrap gap-1 border-t p-2'>
             {isSelectAllChecked ? (
-              <Badge variant="secondary" className="flex items-center">
+              <Badge variant='secondary' className='flex items-center'>
                 All Integrations Selected
               </Badge>
             ) : (
@@ -210,11 +211,11 @@ export function IntegrationPicker({
                   selectedIntegration.name || `${selectedIntegration.provider} Integration`
 
                 return (
-                  <Badge key={selectedId} variant="secondary" className="flex items-center">
+                  <Badge key={selectedId} variant='secondary' className='flex items-center'>
                     <div
-                      className="mr-2 flex h-3 w-3 items-center justify-center rounded"
+                      className='mr-2 flex h-3 w-3 items-center justify-center rounded'
                       style={{ backgroundColor: `${color}20` }}>
-                      <Icon className="h-2 w-2" style={{ color }} />
+                      <Icon className='h-2 w-2' style={{ color }} />
                     </div>
                     {displayName}
                   </Badge>

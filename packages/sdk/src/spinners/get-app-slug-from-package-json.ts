@@ -2,7 +2,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { z } from 'zod'
 // import type { Result } from '../types/result.js'
-import { complete, errored, type AppSlugError } from '../errors.js'
+import { type AppSlugError, complete, errored } from '../errors.js'
 
 const packageJsonSchema = z.object({
   name: z.string({

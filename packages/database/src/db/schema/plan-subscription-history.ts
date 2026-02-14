@@ -1,15 +1,8 @@
 // packages/database/src/db/schema/plan-subscription-history.ts
 // Drizzle table: PlanSubscriptionHistory - Audit trail for subscription changes
 
-import {
-  pgTable,
-  text,
-  boolean,
-  timestamp,
-  integer,
-  billingCycle,
-} from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { billingCycle, boolean, integer, pgTable, text, timestamp } from './_shared'
 
 /** Drizzle table for PlanSubscriptionHistory */
 export const PlanSubscriptionHistory = pgTable('PlanSubscriptionHistory', {

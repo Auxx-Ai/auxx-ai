@@ -1,14 +1,6 @@
 // apps/build/src/app/(portal)/[slug]/apps/[:app_slug]/layout.tsx
 'use client'
 
-import { useParams, usePathname } from 'next/navigation'
-import { redirect } from 'next/navigation'
-import { SidebarInset, SidebarProvider } from '@auxx/ui/components/sidebar'
-import { BuildAppSidebar } from '~/components/build-app-sidebar'
-import {
-  useAuthenticatedUser,
-  useDeveloperAccount,
-} from '~/components/providers/dehydrated-state-provider'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -16,6 +8,13 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { SidebarInset, SidebarProvider } from '@auxx/ui/components/sidebar'
+import { redirect, useParams, usePathname } from 'next/navigation'
+import { BuildAppSidebar } from '~/components/build-app-sidebar'
+import {
+  useAuthenticatedUser,
+  useDeveloperAccount,
+} from '~/components/providers/dehydrated-state-provider'
 /**
  * Layout for individual app pages in developer portal
  * Uses server-fetched dehydrated state from parent layout
@@ -36,7 +35,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="h-screen flex flex-1 flex-col w-full h-full">
+    <div className='h-screen flex flex-1 flex-col w-full h-full'>
       <SidebarProvider>
         <BuildAppSidebar user={user} accountSlug={slug} />
         <SidebarInset>
@@ -52,7 +51,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </MainPageHeader>
 
             <MainPageContent>
-              <div className="flex-1 h-full flex flex-col">{children}</div>
+              <div className='flex-1 h-full flex flex-col'>{children}</div>
             </MainPageContent>
           </MainPage>
         </SidebarInset>

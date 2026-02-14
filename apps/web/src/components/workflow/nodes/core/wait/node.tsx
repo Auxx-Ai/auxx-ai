@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/nodes/core/wait/node.tsx
 
-import { type FC, memo } from 'react'
-import { type WaitNode as WaitNodeType, type WaitNodeData, WaitType, DurationUnit } from './types'
 import { WAIT_CONSTANTS } from '@auxx/lib/workflow-engine/constants'
-import { NodeTargetHandle, NodeSourceHandle } from '~/components/workflow/ui/node-handle'
-import { BaseNode } from '../../shared/base/base-node'
+import { type FC, memo } from 'react'
+import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
+import { BaseNode } from '../../shared/base/base-node'
+import { DurationUnit, type WaitNodeData, type WaitNode as WaitNodeType, WaitType } from './types'
 
 // WaitNodeData is now defined in types.ts
 
@@ -71,21 +71,21 @@ export const WaitNode: FC<WaitNodeType> = memo((props) => {
   const waitMethod = getWaitMethod(data)
 
   return (
-    <BaseNode {...props} width={244} height="auto">
-      <NodeTargetHandle id={id} data={{ ...data, selected }} handleId="target" />
+    <BaseNode {...props} width={244} height='auto'>
+      <NodeTargetHandle id={id} data={{ ...data, selected }} handleId='target' />
 
-      <div className="relative px-3 py-2">
+      <div className='relative px-3 py-2'>
         {/* Wait Type Display */}
-        <div className="mb-2">
-          <div className="text-xs text-primary-300">
+        <div className='mb-2'>
+          <div className='text-xs text-primary-300'>
             {data.waitType === WaitType.DURATION ? 'Wait for' : 'Wait until'}
           </div>
-          <div className="text-sm font-medium">
+          <div className='text-sm font-medium'>
             {data.waitType === WaitType.DURATION ? (
               data.isDurationConstant ? (
                 formatDuration(data.durationAmount as number, data.durationUnit)
               ) : data.durationAmount ? (
-                <div className="relative flex flex-row items-center gap-1">
+                <div className='relative flex flex-row items-center gap-1'>
                   <VariableTag variableId={data.durationAmount as string} nodeId={id} />
                   <span>{data.durationUnit}</span>
                 </div>
@@ -103,7 +103,7 @@ export const WaitNode: FC<WaitNodeType> = memo((props) => {
         </div>
 
         {/* Wait Method Indicator */}
-        <div className="flex items-center gap-1 text-xs">
+        <div className='flex items-center gap-1 text-xs'>
           <div
             className={`h-2 w-2 rounded-full ${
               waitMethod === 'short'
@@ -113,7 +113,7 @@ export const WaitNode: FC<WaitNodeType> = memo((props) => {
                   : 'bg-gray-400'
             }`}
           />
-          <span className="text-muted-foreground">
+          <span className='text-muted-foreground'>
             {waitMethod === 'short' ? 'Immediate' : waitMethod === 'long' ? 'Queued' : 'Variable'}
           </span>
         </div>
@@ -121,8 +121,8 @@ export const WaitNode: FC<WaitNodeType> = memo((props) => {
         <NodeSourceHandle
           id={id}
           data={{ ...data, selected }}
-          handleId="source"
-          handleClassName="!top-1/2 !-right-[0px]"
+          handleId='source'
+          handleClassName='!top-1/2 !-right-[0px]'
         />
       </div>
     </BaseNode>

@@ -31,7 +31,7 @@ export const Section = ({
       initialOpen={defaultOpen}
       collapsible={collapsible}
       onOpenChange={handleOpenChange}>
-      <div className="space-y-4">{children}</div>
+      <div className='space-y-4'>{children}</div>
     </UISection>
   )
 }

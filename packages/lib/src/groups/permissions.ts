@@ -1,13 +1,13 @@
 // packages/lib/src/groups/permissions.ts
 
-import { and, eq } from 'drizzle-orm'
 import { schema } from '@auxx/database'
 import { ResourcePermission } from '@auxx/database/enums'
+import type { GroupContext } from '@auxx/types/groups'
+import { toRecordId } from '@auxx/types/resource'
+import { and, eq } from 'drizzle-orm'
+import { ForbiddenError } from '../errors'
 import { checkAccess, hasPermission as resourceHasPermission } from '../resource-access'
 import { ResourceRegistryService } from '../resources/registry'
-import { toRecordId } from '@auxx/types/resource'
-import type { GroupContext } from '@auxx/types/groups'
-import { ForbiddenError } from '../errors'
 
 /**
  * Get the entity_group entityDefinitionId using efficient cached resolution

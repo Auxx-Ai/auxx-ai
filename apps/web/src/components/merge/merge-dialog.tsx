@@ -1,25 +1,25 @@
 // apps/web/src/components/merge/merge-dialog.tsx
 'use client'
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { getDefinitionId, type RecordId } from '@auxx/lib/resources/client'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Button } from '@auxx/ui/components/button'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { Kbd } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
-import { getDefinitionId, type RecordId } from '@auxx/lib/resources/client'
-import { useResource, useRecords } from '~/components/resources'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRecords, useResource } from '~/components/resources'
 import { api } from '~/trpc/react'
+import { MergePreviewPanel } from './merge-preview-panel'
 import { MergeSourcePanel } from './merge-source-panel'
 import { MergeTargetPanel } from './merge-target-panel'
-import { MergePreviewPanel } from './merge-preview-panel'
-import { EntityIcon } from '@auxx/ui/components/icons'
 
 interface MergeDialogProps {
   /** Whether the dialog is open */
@@ -145,7 +145,7 @@ export function MergeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="3xl" position="tc">
+      <DialogContent size='3xl' position='tc'>
         <DialogHeader>
           <DialogTitle>Merge {resourceLabel}s</DialogTitle>
           <DialogDescription>
@@ -155,9 +155,9 @@ export function MergeDialog({
         </DialogHeader>
 
         {/* Main content: 3-column layout */}
-        <div className="flex items-stretch gap-0 min-h-[200px]">
+        <div className='flex items-stretch gap-0 min-h-[200px]'>
           {/* Double-width box containing sources + target */}
-          <div className="flex-[2] flex">
+          <div className='flex-[2] flex'>
             {/* Source panel */}
             <MergeSourcePanel
               entityDefinitionId={entityDefinitionId}
@@ -170,8 +170,8 @@ export function MergeDialog({
             />
 
             {/* Divider strip (empty) */}
-            <div className="w-[50px] bg-muted/30 shrink-0 flex items-center justify-center">
-              <EntityIcon variant="muted" iconId="arrow-right" size="lg" />
+            <div className='w-[50px] bg-muted/30 shrink-0 flex items-center justify-center'>
+              <EntityIcon variant='muted' iconId='arrow-right' size='lg' />
             </div>
 
             {/* Target panel */}
@@ -183,8 +183,8 @@ export function MergeDialog({
           </div>
 
           {/* Equals sign strip */}
-          <div className="w-[50px] shrink-0 flex items-center justify-center">
-            <EntityIcon variant="muted" iconId="equal" size="lg" />
+          <div className='w-[50px] shrink-0 flex items-center justify-center'>
+            <EntityIcon variant='muted' iconId='equal' size='lg' />
           </div>
 
           {/* Merged preview panel */}
@@ -198,18 +198,18 @@ export function MergeDialog({
 
         <DialogFooter>
           <Button
-            variant="ghost"
-            size="sm"
+            variant='ghost'
+            size='sm'
             onClick={() => onOpenChange(false)}
             disabled={mergeMutation.isPending}>
-            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
           <Button
-            variant="default"
-            size="sm"
+            variant='default'
+            size='sm'
             onClick={handleMerge}
             loading={mergeMutation.isPending}
-            loadingText="Merging..."
+            loadingText='Merging...'
             disabled={!canMerge}>
             Merge {sourceRecordIds.length + 1} Items
           </Button>

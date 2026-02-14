@@ -2,8 +2,8 @@
 
 'use client'
 
-import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 
 interface CollapseWrapProps {
   /** The collapsed height - also the threshold for showing the button */
@@ -65,7 +65,7 @@ const CollapseWrap: React.FC<CollapseWrapProps> = ({
   }, [])
 
   return (
-    <div className="relative">
+    <div className='relative'>
       {/* Outer container with maxHeight constraint */}
       <div
         className={cn(
@@ -88,9 +88,9 @@ const CollapseWrap: React.FC<CollapseWrapProps> = ({
       {/* Full-width bottom click area - only shown when content > minHeight */}
       {showButton && (
         <div
-          className="group absolute bottom-0 left-0 z-10 flex h-5 w-full translate-y-1/2 cursor-pointer items-center justify-center hover:bg-accent/10"
+          className='group absolute bottom-0 left-0 z-10 flex h-5 w-full translate-y-1/2 cursor-pointer items-center justify-center hover:bg-accent/10'
           onClick={handleToggle}>
-          <div className="flex items-center gap-1 rounded-xl border bg-primary-100 px-1.5 py-0.5 text-[10px] text-normal text-muted-foreground transition-colors group-hover:text-foreground">
+          <div className='flex items-center gap-1 rounded-xl border bg-primary-100 px-1.5 py-0.5 text-[10px] text-normal text-muted-foreground transition-colors group-hover:text-foreground'>
             <span>{isCollapsed ? 'Expand' : 'Collapse'}</span>
           </div>
         </div>

@@ -2,19 +2,20 @@
 
 'use client'
 
-import React, { memo } from 'react'
-import type { TextClassifierNodeData } from './types'
-import { BasePanel } from '../../shared/base/base-panel'
 import { Label } from '@auxx/ui/components/label'
 import { Switch } from '@auxx/ui/components/switch'
-import { TextClassifierProvider, useTextClassifierContext } from './text-classifier-context'
-import ModelParameterModal from '~/components/workflow/ui/model-parameter'
+import type React from 'react'
+import { memo } from 'react'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import Section from '~/components/workflow/ui/section'
-import { Editor } from '~/components/workflow/ui/prompt-editor'
-import { CategoriesList } from './components/categories-list'
+import ModelParameterModal from '~/components/workflow/ui/model-parameter'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import { Editor } from '~/components/workflow/ui/prompt-editor'
+import Section from '~/components/workflow/ui/section'
+import { BasePanel } from '../../shared/base/base-panel'
+import { CategoriesList } from './components/categories-list'
 import { textClassifierDefinition } from './schema'
+import { TextClassifierProvider, useTextClassifierContext } from './text-classifier-context'
+import type { TextClassifierNodeData } from './types'
 
 /**
  * Props for TextClassifierPanel
@@ -45,8 +46,8 @@ const TextClassifierPanelContent: React.FC<TextClassifierPanelProps> = ({ data, 
     <>
       {/* Model & Parameters Section */}
       <Section
-        title="Model & Parameters"
-        description="Configure the AI model and its parameters."
+        title='Model & Parameters'
+        description='Configure the AI model and its parameters.'
         isRequired>
         <ModelParameterModal
           isAdvancedMode={true}
@@ -75,15 +76,15 @@ const TextClassifierPanelContent: React.FC<TextClassifierPanelProps> = ({ data, 
 
       {/* Text to Classify Section */}
       <Section
-        title="Text to Classify"
-        description="Enter the text you want to classify."
+        title='Text to Classify'
+        description='Enter the text you want to classify.'
         isRequired>
         <Editor
-          title={<Label className="text-sm font-medium">Input</Label>}
+          title={<Label className='text-sm font-medium'>Input</Label>}
           value={data.text || ''}
           onChange={handleTextChange}
           nodeId={nodeId}
-          placeholder="Enter text to classify..."
+          placeholder='Enter text to classify...'
           readOnly={isReadOnly}
           minHeight={100}
         />
@@ -94,21 +95,21 @@ const TextClassifierPanelContent: React.FC<TextClassifierPanelProps> = ({ data, 
 
       {/* Advanced Settings Section */}
       <Section
-        title="Advanced Settings"
-        description="Additional configuration options."
+        title='Advanced Settings'
+        description='Additional configuration options.'
         initialOpen={false}>
-        <div className="space-y-4">
+        <div className='space-y-4'>
           {/* Vision toggle */}
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="vision-toggle">Enable Vision</Label>
-              <p className="text-xs text-muted-foreground">
+          <div className='flex items-center justify-between'>
+            <div className='space-y-0.5'>
+              <Label htmlFor='vision-toggle'>Enable Vision</Label>
+              <p className='text-xs text-muted-foreground'>
                 Allow the model to process images if supported
               </p>
             </div>
             <Switch
-              size="sm"
-              id="vision-toggle"
+              size='sm'
+              id='vision-toggle'
               checked={data.vision.enabled}
               onCheckedChange={updateVision}
               disabled={isReadOnly}
@@ -116,12 +117,12 @@ const TextClassifierPanelContent: React.FC<TextClassifierPanelProps> = ({ data, 
           </div>
 
           {/* Custom Instructions */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="instruction-toggle">Custom Instructions</Label>
+          <div className='space-y-2'>
+            <div className='flex items-center justify-between'>
+              <Label htmlFor='instruction-toggle'>Custom Instructions</Label>
               <Switch
-                id="instruction-toggle"
-                size="sm"
+                id='instruction-toggle'
+                size='sm'
                 checked={data.instruction.enabled}
                 onCheckedChange={(enabled) => updateInstruction(enabled)}
                 disabled={isReadOnly}
@@ -129,10 +130,10 @@ const TextClassifierPanelContent: React.FC<TextClassifierPanelProps> = ({ data, 
             </div>
             {data.instruction.enabled && (
               <Editor
-                title={<Label className="text-sm font-medium">Input</Label>}
+                title={<Label className='text-sm font-medium'>Input</Label>}
                 value={data.instruction.editorContent || ''}
                 onChange={handleInstructionChange}
-                placeholder="Add custom instructions for classification..."
+                placeholder='Add custom instructions for classification...'
                 nodeId={nodeId}
                 readOnly={isReadOnly}
                 minHeight={80}

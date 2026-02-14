@@ -119,9 +119,9 @@ export function verifyStoreSync(viewId: string): boolean {
  */
 export function useStoreDebugger() {
   if (typeof window !== 'undefined') {
-    // @ts-ignore - exposing for debugging
+    // @ts-expect-error - exposing for debugging
     window.debugTableStores = debugTableStores
-    // @ts-ignore
+    // @ts-expect-error
     window.verifyStoreSync = verifyStoreSync
   }
 

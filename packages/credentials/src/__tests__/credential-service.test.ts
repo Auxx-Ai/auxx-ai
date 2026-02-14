@@ -1,6 +1,6 @@
 // packages/lib/src/workflow-engine/services/__tests__/credential-service.test.ts
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { CredentialService } from '../credential-service'
 
 // Mock database for testing

@@ -3,10 +3,10 @@
 
 import { useCallback, useMemo } from 'react'
 import {
-  useThreadSelectionStore,
   useActiveThreadId,
-  useSelectedThreadIds,
   useIsMultiSelectMode,
+  useSelectedThreadIds,
+  useThreadSelectionStore,
 } from '../store/thread-selection-store'
 
 interface UseThreadSelectionOptions {

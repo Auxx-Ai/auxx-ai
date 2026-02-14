@@ -1,15 +1,6 @@
 // apps/build/src/components/build-nav-user.tsx
 'use client'
 
-import {
-  ChevronsUpDown,
-  LogOut,
-  Moon,
-  Sun,
-  SunMoon,
-  User as UserIcon,
-  Building2,
-} from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import {
   DropdownMenu,
@@ -20,13 +11,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@auxx/ui/components/sidebar'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { useTheme } from 'next-themes'
-import { useRouter } from 'next/navigation'
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@auxx/ui/components/sidebar'
 import { getInitialsFromName } from '@auxx/utils'
-import { useDeveloperAccounts, useDeveloperAccount } from './providers/dehydrated-state-provider'
+import {
+  Building2,
+  ChevronsUpDown,
+  LogOut,
+  Moon,
+  Sun,
+  SunMoon,
+  User as UserIcon,
+} from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useTheme } from 'next-themes'
 import type { DehydratedBuildUser } from '~/lib/dehydration'
+import { useDeveloperAccount, useDeveloperAccounts } from './providers/dehydrated-state-provider'
 
 type Props = {
   user: DehydratedBuildUser
@@ -59,34 +59,34 @@ export function BuildNavUser({ user, accountSlug }: Props) {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
-              size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
-              <Avatar className="h-8 w-8 rounded-lg">
+              size='lg'
+              className='data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground'>
+              <Avatar className='h-8 w-8 rounded-lg'>
                 <AvatarImage src={user.image || ''} alt={user.name || ''} />
-                <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+                <AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
               </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">
+              <div className='grid flex-1 text-left text-sm leading-tight'>
+                <span className='truncate font-semibold'>
                   {currentAccount?.title || 'Developer Portal'}
                 </span>
-                <span className="truncate text-xs">{user.email}</span>
+                <span className='truncate text-xs'>{user.email}</span>
               </div>
-              <ChevronsUpDown className="ml-auto size-4" />
+              <ChevronsUpDown className='ml-auto size-4' />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-            align="start"
+            className='w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg'
+            align='start'
             sideOffset={-52}>
-            <DropdownMenuLabel className="p-0 font-normal">
-              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <Avatar className="h-8 w-8 rounded-lg">
+            <DropdownMenuLabel className='p-0 font-normal'>
+              <div className='flex items-center gap-2 px-1 py-1.5 text-left text-sm'>
+                <Avatar className='h-8 w-8 rounded-lg'>
                   <AvatarImage src={user.image || ''} alt={user.name || ''} />
-                  <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+                  <AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
                 </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">{user.name}</span>
-                  <span className="truncate text-xs">{user.email}</span>
+                <div className='grid flex-1 text-left text-sm leading-tight'>
+                  <span className='truncate font-semibold'>{user.name}</span>
+                  <span className='truncate text-xs'>{user.email}</span>
                 </div>
               </div>
             </DropdownMenuLabel>
@@ -94,7 +94,7 @@ export function BuildNavUser({ user, accountSlug }: Props) {
 
             {/* Developer Accounts Group */}
             <DropdownMenuGroup>
-              <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1.5">
+              <DropdownMenuLabel className='text-xs text-muted-foreground px-2 py-1.5'>
                 Accounts
               </DropdownMenuLabel>
               {accounts.map((acc) => (
@@ -120,13 +120,13 @@ export function BuildNavUser({ user, accountSlug }: Props) {
                 <RadioTab
                   value={theme}
                   onValueChange={setTheme}
-                  size="sm"
-                  radioGroupClassName="grid w-16"
-                  className="border h-6 border-primary-200 flex ml-auto">
-                  <RadioTabItem value="light" size="sm">
+                  size='sm'
+                  radioGroupClassName='grid w-16'
+                  className='border h-6 border-primary-200 flex ml-auto'>
+                  <RadioTabItem value='light' size='sm'>
                     <Sun />
                   </RadioTabItem>
-                  <RadioTabItem value="dark" size="sm">
+                  <RadioTabItem value='dark' size='sm'>
                     <Moon />
                   </RadioTabItem>
                 </RadioTab>

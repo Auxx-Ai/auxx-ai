@@ -1,17 +1,16 @@
 // packages/lib/src/datasets/events/index.ts
 
 export {
-  DocumentEventType,
-  type DocumentEvent,
-  type ExtractionCompletedData,
+  type DocumentExecutionReporter,
+  NullDocumentExecutionReporter,
+  RedisDocumentExecutionReporter,
+} from './document-execution-reporter'
+export {
   type ChunkingCompletedData,
+  type DocumentEvent,
+  DocumentEventType,
   type EmbeddingProgressData,
+  type ExtractionCompletedData,
   type ProcessingCompletedData,
   type ProcessingFailedData,
 } from './types'
-
-export {
-  type DocumentExecutionReporter,
-  RedisDocumentExecutionReporter,
-  NullDocumentExecutionReporter,
-} from './document-execution-reporter'

@@ -1,9 +1,9 @@
 // apps/web/src/components/threads/store/thread-selectors.ts
 
 import {
-  threadMatchesFilter,
-  type ThreadClientFilter,
   type ActorIdObject,
+  type ThreadClientFilter,
+  threadMatchesFilter,
 } from '@auxx/lib/mail-query/client'
 import type { ThreadMeta, ThreadSort } from './thread-store'
 
@@ -82,10 +82,7 @@ export function filterThreadsFromMap(
  * const threads = useThreadStore(useShallow(selectOpenThreads))
  * ```
  */
-export function createThreadSelector(
-  filter: ThreadClientFilter,
-  sort: ThreadSort = DEFAULT_SORT
-) {
+export function createThreadSelector(filter: ThreadClientFilter, sort: ThreadSort = DEFAULT_SORT) {
   return (state: { threads: Map<string, ThreadMeta> }): ThreadMeta[] => {
     const filtered = filterThreadsFromMap(state.threads, filter)
     return sortThreads(filtered, sort)

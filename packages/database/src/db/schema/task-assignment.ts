@@ -1,11 +1,11 @@
 // packages/database/src/db/schema/task-assignment.ts
 // Drizzle table for TaskAssignment
 
-import { pgTable, index, uniqueIndex, text, timestamp, type AnyPgColumn, sql } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, index, pgTable, sql, text, timestamp, uniqueIndex } from './_shared'
+import { Organization } from './organization'
 import { Task } from './task'
 import { User } from './user'
-import { Organization } from './organization'
 
 /**
  * TaskAssignment table for tracking user assignments to tasks
@@ -47,9 +47,7 @@ export const TaskAssignment = pgTable(
       }),
 
     /** When assignment was created */
-    assignedAt: timestamp({ precision: 3 })
-      .default(sql`CURRENT_TIMESTAMP`)
-      .notNull(),
+    assignedAt: timestamp({ precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 
     /** User who made the assignment */
     assignedById: text()

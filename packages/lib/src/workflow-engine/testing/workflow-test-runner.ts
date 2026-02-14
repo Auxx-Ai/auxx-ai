@@ -1,14 +1,14 @@
 // packages/lib/src/workflow-engine/testing/workflow-test-runner.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { WorkflowEngine } from '../core/workflow-engine'
 import type {
-  Workflow,
-  WorkflowTriggerEvent,
-  WorkflowExecutionResult,
-  WorkflowExecutionOptions,
   ProcessedMessage,
+  Workflow,
+  WorkflowExecutionOptions,
+  WorkflowExecutionResult,
+  WorkflowTriggerEvent,
 } from '../core/types'
+import { WorkflowEngine } from '../core/workflow-engine'
 
 const logger = createScopedLogger('workflow-test-runner')
 

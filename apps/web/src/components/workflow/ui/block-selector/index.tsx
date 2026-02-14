@@ -1,7 +1,6 @@
 // apps/web/src/components/workflow/nodes/ui/block-selector/index.tsx
 
-import React, { memo, useMemo, useState, useRef } from 'react'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Badge } from '@auxx/ui/components/badge'
 import {
   Command,
   CommandEmpty,
@@ -10,13 +9,14 @@ import {
   CommandItem,
   CommandList,
 } from '@auxx/ui/components/command'
-import { Badge } from '@auxx/ui/components/badge'
-import { type BlockSelectorProps } from '../node-handle/types'
-import { Plus } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { unifiedNodeRegistry } from '../../nodes/unified-registry'
+import { Plus } from 'lucide-react'
+import React, { memo, useMemo, useRef, useState } from 'react'
 import { NodeCategory } from '~/components/workflow/types'
 import { useRegistryVersion } from '../../hooks'
+import { unifiedNodeRegistry } from '../../nodes/unified-registry'
+import type { BlockSelectorProps } from '../node-handle/types'
 
 export const BlockSelector = memo(
   ({
@@ -100,7 +100,7 @@ export const BlockSelector = memo(
           e.preventDefault()
           onOpenChange(!open)
         }}>
-        <Plus className="size-4" />
+        <Plus className='size-4' />
       </button>
     )
 
@@ -108,7 +108,7 @@ export const BlockSelector = memo(
     const selectorContent = (
       <div className={cn(inline ? 'w-full' : '', inline && 'bg-background')}>
         {/* Tab Headers */}
-        <div className="flex border-b bg-background/50 rounded-t-md">
+        <div className='flex border-b bg-background/50 rounded-t-md'>
           <button
             data-state={activeTab === 'nodes' ? 'active' : undefined}
             className={cn(
@@ -122,7 +122,7 @@ export const BlockSelector = memo(
             onClick={() => setActiveTab('nodes')}>
             Nodes
             <Badge
-              size="xs"
+              size='xs'
               className={cn(
                 'ml-2 text-xs text-gray-500 border-black/10 min-w-5 justify-center',
                 'group-data-[state=active]:text-background group-data-[state=active]:bg-info-100'
@@ -143,7 +143,7 @@ export const BlockSelector = memo(
             onClick={() => setActiveTab('apps')}>
             Apps
             <Badge
-              size="xs"
+              size='xs'
               className={cn(
                 'ml-2 text-xs text-gray-500 border-black/10 min-w-5 justify-center',
                 'group-data-[state=active]:text-background group-data-[state=active]:bg-info-100'
@@ -155,7 +155,7 @@ export const BlockSelector = memo(
 
         {/* Content */}
         <Command
-          className="bg-transparent"
+          className='bg-transparent'
           onKeyDown={(e) => {
             // Prevent event bubbling that might interfere with closing
             if (e.key === 'Enter' || e.key === ' ') {
@@ -163,11 +163,11 @@ export const BlockSelector = memo(
             }
           }}>
           <CommandInput ref={inputRef} placeholder={`Search ${activeTab}...`} />
-          <CommandList className="max-h-[700px]">
+          <CommandList className='max-h-[700px]'>
             {activeTab === 'apps' && appNodes.length === 0 ? (
-              <div className="p-6 text-center">
-                <div className="text-sm text-gray-500 mb-2">No apps available</div>
-                <div className="text-xs text-gray-400">
+              <div className='p-6 text-center'>
+                <div className='text-sm text-gray-500 mb-2'>No apps available</div>
+                <div className='text-xs text-gray-400'>
                   Apps will appear here when integrations are installed
                 </div>
               </div>
@@ -188,15 +188,15 @@ export const BlockSelector = memo(
                       )}>
                       {activeTab === 'apps' ? (
                         // Enhanced app display
-                        <div className="flex items-center space-x-3 w-full">
+                        <div className='flex items-center space-x-3 w-full'>
                           <div
-                            className="size-8 rounded-md flex items-center justify-center shrink-0"
+                            className='size-8 rounded-md flex items-center justify-center shrink-0'
                             style={{ backgroundColor: node!.color }}>
                             {unifiedNodeRegistry.getNodeIcon(node.id, 'w-5 h-5 text-white')}
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm">{node!.displayName}</div>
-                            <div className="text-xs text-gray-500 truncate">
+                          <div className='flex-1 min-w-0'>
+                            <div className='font-medium text-sm'>{node!.displayName}</div>
+                            <div className='text-xs text-gray-500 truncate'>
                               {node!.description}
                             </div>
                           </div>
@@ -211,7 +211,7 @@ export const BlockSelector = memo(
                             style={{ backgroundColor: node!.color }}>
                             {unifiedNodeRegistry.getNodeIcon(node.id, 'size-4 text-white')}
                           </span>
-                          <span className="">{node!.displayName}</span>
+                          <span className=''>{node!.displayName}</span>
                         </>
                       )}
                     </CommandItem>
@@ -233,7 +233,7 @@ export const BlockSelector = memo(
       <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger asChild={asChild}>{customTrigger || defaultTrigger}</PopoverTrigger>
         <PopoverContent
-          className=" p-0 bg-transparent backdrop-blur-sm"
+          className=' p-0 bg-transparent backdrop-blur-sm'
           align={placement === 'left' ? 'end' : 'start'}
           side={placement}
           onOpenAutoFocus={(e) => {

@@ -1,15 +1,15 @@
 // apps/web/src/server/api/routers/admin-workflow-templates.ts
 
-import { z } from 'zod'
-import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
 import {
-  getAllTemplates,
-  getTemplateById,
   createTemplate,
-  updateTemplate,
   deleteTemplate,
   duplicateTemplate,
+  getAllTemplates,
+  getTemplateById,
+  updateTemplate,
 } from '@auxx/services/workflow-templates'
+import { z } from 'zod'
+import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
 
 /**
  * tRPC router for admin workflow template management

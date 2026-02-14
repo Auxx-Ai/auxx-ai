@@ -1,54 +1,54 @@
 'use client'
 import { AnimatePresence, motion } from 'motion/react'
-import React, { useEffect, useState } from 'react'
-
-import { Beacon } from '~/components/logos/beacon'
-import { Cisco } from '~/components/logos/cisco'
-import { Stripe } from '~/components/logos/stripe'
-import { Polars } from '~/components/logos/polars'
-import { Spotify } from '~/components/logos/spotify'
-import { PayPal } from '~/components/logos/paypal'
-import { LeapWallet } from '~/components/logos/leap-wallet'
+import type React from 'react'
+import { useEffect, useState } from 'react'
 import {
-  OpenAIFull,
   AnthropicFull,
+  DeepseekFull,
+  FacebookFull,
   GeminiFull,
   Gmail,
-  OutlookFull,
-  FacebookFull,
-  InstagramFull,
-  DeepseekFull,
-  QuoFull,
   GroqFull,
+  InstagramFull,
+  OpenAIFull,
+  OutlookFull,
+  QuoFull,
 } from '@/components/logos'
+import { Beacon } from '~/components/logos/beacon'
+import { Cisco } from '~/components/logos/cisco'
+import { LeapWallet } from '~/components/logos/leap-wallet'
+import { PayPal } from '~/components/logos/paypal'
+import { Polars } from '~/components/logos/polars'
+import { Spotify } from '~/components/logos/spotify'
+import { Stripe } from '~/components/logos/stripe'
 
 const aiLogos: React.ReactNode[] = [
-  <OpenAIFull height={24} width="auto" />,
-  <AnthropicFull height={22} width="auto" />,
-  <GeminiFull height={32} width="auto" />,
-  <DeepseekFull height={26} width="auto" />,
-  <GroqFull height={26} width="auto" />,
+  <OpenAIFull height={24} width='auto' />,
+  <AnthropicFull height={22} width='auto' />,
+  <GeminiFull height={32} width='auto' />,
+  <DeepseekFull height={26} width='auto' />,
+  <GroqFull height={26} width='auto' />,
 ]
 
 const messagesLogos: React.ReactNode[] = [
-  <Gmail height={24} width="auto" />,
-  <OutlookFull height={24} width="auto" />,
-  <InstagramFull height={20} width="auto" />,
-  <FacebookFull height={20} width="auto" />,
-  <QuoFull height={20} width="auto" />,
+  <Gmail height={24} width='auto' />,
+  <OutlookFull height={24} width='auto' />,
+  <InstagramFull height={20} width='auto' />,
+  <FacebookFull height={20} width='auto' />,
+  <QuoFull height={20} width='auto' />,
 ]
 
 const paymentsLogos: React.ReactNode[] = [
-  <Stripe height={24} width="auto" />,
-  <PayPal height={24} width="auto" />,
-  <LeapWallet height={24} width="auto" />,
-  <Beacon height={20} width="auto" />,
-  <Polars height={24} width="auto" />,
+  <Stripe height={24} width='auto' />,
+  <PayPal height={24} width='auto' />,
+  <LeapWallet height={24} width='auto' />,
+  <Beacon height={20} width='auto' />,
+  <Polars height={24} width='auto' />,
 ]
 
 const streamingLogos: React.ReactNode[] = [
-  <Cisco height={32} width="auto" />,
-  <Beacon height={20} width="auto" />,
+  <Cisco height={32} width='auto' />,
+  <Beacon height={20} width='auto' />,
 ]
 
 const logos: Record<'ai' | 'messages' | 'streaming' | 'payments', React.ReactNode[]> = {
@@ -77,32 +77,32 @@ export default function LogoCloudTwo() {
   }, [])
 
   return (
-    <section className="border-foreground/10 relative  border-b">
-      <div className="mx-auto max-w-6xl border-x px-3">
-        <div className="border-x py-8 md:py-16">
-          <div className="mx-auto mb-12 max-w-xl text-balance text-center md:mb-16">
-            <p data-current={currentGroup} className="text-muted-foreground mt-4 md:text-lg">
+    <section className='border-foreground/10 relative  border-b'>
+      <div className='mx-auto max-w-6xl border-x px-3'>
+        <div className='border-x py-8 md:py-16'>
+          <div className='mx-auto mb-12 max-w-xl text-balance text-center md:mb-16'>
+            <p data-current={currentGroup} className='text-muted-foreground mt-4 md:text-lg'>
               Auxx.Ai integrates with{' '}
-              <span className="in-data-[current=messages]:text-foreground transition-colors duration-200">
+              <span className='in-data-[current=messages]:text-foreground transition-colors duration-200'>
                 Email and Messaging apps,
               </span>{' '}
-              <span className="in-data-[current=ai]:text-foreground transition-colors duration-200">
+              <span className='in-data-[current=ai]:text-foreground transition-colors duration-200'>
                 AI Providers,
               </span>{' '}
-              <span className="in-data-[current=payments]:text-foreground transition-colors duration-200">
+              <span className='in-data-[current=payments]:text-foreground transition-colors duration-200'>
                 Payments Providers,
               </span>{' '}
-              <span className="in-data-[current=streaming]:text-foreground transition-colors duration-200">
+              <span className='in-data-[current=streaming]:text-foreground transition-colors duration-200'>
                 Streaming Providers
               </span>
             </p>
           </div>
-          <div className="perspective-dramatic mx-auto grid max-w-5xl grid-cols-3 items-center gap-8 md:h-10 md:grid-cols-5">
-            <AnimatePresence initial={false} mode="popLayout">
+          <div className='perspective-dramatic mx-auto grid max-w-5xl grid-cols-3 items-center gap-8 md:h-10 md:grid-cols-5'>
+            <AnimatePresence initial={false} mode='popLayout'>
               {logos[currentGroup].map((logo, i) => (
                 <motion.div
                   key={`${currentGroup}-${i}`}
-                  className="**:fill-foreground! flex items-center justify-center"
+                  className='**:fill-foreground! flex items-center justify-center'
                   initial={{ opacity: 0, y: 24, filter: 'blur(6px)' }}
                   animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
                   exit={{ opacity: 0, y: -24, filter: 'blur(6px)', scale: 0.5 }}

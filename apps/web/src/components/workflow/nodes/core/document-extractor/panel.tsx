@@ -2,8 +2,6 @@
 
 'use client'
 
-import React, { memo, useCallback } from 'react'
-import { produce } from 'immer'
 import {
   Select,
   SelectContent,
@@ -11,20 +9,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { type DocumentExtractorNodeData, DocumentSourceType } from './types'
-import { BasePanel } from '../../shared/base/base-panel'
+import { produce } from 'immer'
+import { FileText, Link } from 'lucide-react'
+import type React from 'react'
+import { memo, useCallback } from 'react'
 import { useNodeCrud } from '~/components/workflow/hooks'
-import Section from '~/components/workflow/ui/section'
+import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import Field from '~/components/workflow/ui/field'
-import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import {
   VarEditor,
   VarEditorField,
   VarEditorFieldRow,
 } from '~/components/workflow/ui/input-editor/var-editor'
-import { VAR_MODE, BaseType } from '~/components/workflow/types'
+import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import Section from '~/components/workflow/ui/section'
+import { BasePanel } from '../../shared/base/base-panel'
 import { getDocumentExtractorOutputVariables } from './output-variables'
-import { FileText, Link } from 'lucide-react'
+import { type DocumentExtractorNodeData, DocumentSourceType } from './types'
 
 interface DocumentExtractorPanelProps {
   nodeId: string
@@ -131,30 +132,30 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
 
   return (
     <BasePanel nodeId={nodeId} data={nodeData}>
-      <Section title="Source">
+      <Section title='Source'>
         <Field
-          title="Document Source"
-          description="Select the source of the document to extract content from">
-          <VarEditorField className="">
+          title='Document Source'
+          description='Select the source of the document to extract content from'>
+          <VarEditorField className=''>
             {/* Source Type Selector Row */}
-            <div className="flex flex-row gap-1 h-7">
-              <div className="pt-0.5">
+            <div className='flex flex-row gap-1 h-7'>
+              <div className='pt-0.5'>
                 <Select
                   value={nodeData.sourceType}
                   onValueChange={(value) => handleSourceTypeChange(value as DocumentSourceType)}>
-                  <SelectTrigger variant="outline" size="xs" className="w-25">
+                  <SelectTrigger variant='outline' size='xs' className='w-25'>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={DocumentSourceType.FILE}>
-                      <div className="flex items-center gap-2">
-                        <FileText className="size-4" />
+                      <div className='flex items-center gap-2'>
+                        <FileText className='size-4' />
                         File
                       </div>
                     </SelectItem>
                     <SelectItem value={DocumentSourceType.URL}>
-                      <div className="flex items-center gap-2">
-                        <Link className="size-4" />
+                      <div className='flex items-center gap-2'>
+                        <Link className='size-4' />
                         URL
                       </div>
                     </SelectItem>
@@ -169,7 +170,7 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
                   varType={BaseType.FILE}
                   allowedTypes={[BaseType.FILE]}
                   mode={VAR_MODE.PICKER}
-                  placeholder="Select file"
+                  placeholder='Select file'
                   allowConstant
                   isConstantMode={nodeData.fieldModes?.['fileId'] ?? true}
                   fieldOptions={{ allowMultiple: false }}
@@ -182,8 +183,8 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
                   varType={BaseType.URL}
                   allowedTypes={[BaseType.URL, BaseType.STRING]}
                   mode={VAR_MODE.RICH}
-                  placeholder="https://example.com/document.pdf"
-                  placeholderConstant="https://example.com/document.pdf"
+                  placeholder='https://example.com/document.pdf'
+                  placeholderConstant='https://example.com/document.pdf'
                   allowConstant
                   isConstantMode={nodeData.fieldModes?.['url'] ?? true}
                 />
@@ -195,11 +196,11 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
         </Field>
       </Section>
 
-      <Section title="Extraction Options" initialOpen={false}>
-        <VarEditorField className="p-0">
+      <Section title='Extraction Options' initialOpen={false}>
+        <VarEditorField className='p-0'>
           <VarEditorFieldRow
-            title="Preserve Formatting"
-            description="Attempt to preserve document formatting in extracted text"
+            title='Preserve Formatting'
+            description='Attempt to preserve document formatting in extracted text'
             type={BaseType.BOOLEAN}>
             <VarEditor
               nodeId={nodeId}
@@ -217,8 +218,8 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
-            title="Extract Images"
-            description="Extract image descriptions using OCR/AI (slower)"
+            title='Extract Images'
+            description='Extract image descriptions using OCR/AI (slower)'
             type={BaseType.BOOLEAN}>
             <VarEditor
               nodeId={nodeId}
@@ -236,7 +237,7 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
-            title="Language Hint"
+            title='Language Hint'
             description="Language code for OCR (e.g., 'en', 'es', 'fr'). Leave empty for auto-detect."
             type={BaseType.STRING}>
             <VarEditor
@@ -246,8 +247,8 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
               varType={BaseType.STRING}
               allowedTypes={[BaseType.STRING]}
               mode={VAR_MODE.PICKER}
-              placeholder="Auto-detect"
-              placeholderConstant="Auto-detect"
+              placeholder='Auto-detect'
+              placeholderConstant='Auto-detect'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['language'] ?? true}
             />

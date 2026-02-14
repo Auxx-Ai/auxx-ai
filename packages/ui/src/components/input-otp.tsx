@@ -1,10 +1,9 @@
 'use client'
 
-import * as React from 'react'
+import { cn } from '@auxx/ui/lib/utils'
 import { OTPInput, OTPInputContext } from 'input-otp'
 import { Minus } from 'lucide-react'
-
-import { cn } from '@auxx/ui/lib/utils'
+import * as React from 'react'
 
 function InputOTP({
   className,
@@ -42,8 +41,8 @@ function InputOTPSlot({
       {...props}>
       {char}
       {hasFakeCaret && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="h-4 w-px animate-caret-blink bg-foreground duration-1000" />
+        <div className='pointer-events-none absolute inset-0 flex items-center justify-center'>
+          <div className='h-4 w-px animate-caret-blink bg-foreground duration-1000' />
         </div>
       )}
     </div>
@@ -51,7 +50,7 @@ function InputOTPSlot({
 }
 function InputOTPSeparator({ ...props }: React.ComponentProps<'div'>) {
   return (
-    <div role="separator" {...props}>
+    <div role='separator' {...props}>
       <Minus />
     </div>
   )

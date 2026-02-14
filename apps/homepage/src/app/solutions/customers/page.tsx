@@ -1,9 +1,9 @@
 // apps/homepage/src/app/solutions/customers/page.tsx
 import type { Metadata } from 'next'
-import Header from '../../_components/main/header'
-import FooterSection from '../../_components/main/footer-section'
-import TestimonialsSection from '../../_components/sections/testimonials-section'
 import { config } from '~/lib/config'
+import FooterSection from '../../_components/main/footer-section'
+import Header from '../../_components/main/header'
+import TestimonialsSection from '../../_components/sections/testimonials-section'
 
 export const metadata: Metadata = {
   title: `Customer Stories | ${config.shortName}`,
@@ -12,9 +12,9 @@ export const metadata: Metadata = {
 
 export default function EnterprisePage() {
   return (
-    <div id="root" className="relative h-screen overflow-y-auto bg-background">
+    <div id='root' className='relative h-screen overflow-y-auto bg-background'>
       <Header />
-      <main className="">
+      <main className=''>
         <TestimonialsSection />
       </main>
       <FooterSection />

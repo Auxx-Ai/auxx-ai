@@ -1,19 +1,19 @@
 // packages/lib/src/datasets/search/vector-search.ts
 
 import { database as db, schema } from '@auxx/database'
-import { eq, inArray } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
-import { VectorService } from '../services/vector.service'
-import { PostgreSQLVectorDB } from '../vector/postgresql'
+import { eq, inArray } from 'drizzle-orm'
 import { EmbeddingService } from '../services/embedding-service'
+import { VectorService } from '../services/vector.service'
 import type {
+  DatasetConfig,
+  SearchPerformanceMetrics,
   SearchQuery,
   SearchResult,
   VectorSearchOptions,
-  SearchPerformanceMetrics,
-  DatasetConfig,
 } from '../types/search.types'
 import { VectorSearchError } from '../types/search.types'
+import { PostgreSQLVectorDB } from '../vector/postgresql'
 
 const logger = createScopedLogger('vector-search')
 
@@ -59,7 +59,7 @@ export class VectorSearchService {
 
       // Perform vector search using pre-fetched dataset configs (no redundant query)
       const vectorSearchStartTime = Date.now()
-      const vectorResults = await this.searchMultipleDatasets(
+      const vectorResults = await VectorSearchService.searchMultipleDatasets(
         query.query,
         datasetConfigs,
         organizationId,
@@ -75,7 +75,7 @@ export class VectorSearchService {
 
       // Apply filters if provided
       const filteredResults = query.filters
-        ? this.applyFilters(vectorResults, query.filters)
+        ? VectorSearchService.applyFilters(vectorResults, query.filters)
         : vectorResults
 
       // Sort by relevance score
@@ -383,7 +383,10 @@ export class VectorSearchService {
 
       // Filter out the original segment and convert to SearchResult format
       const filteredResults = results.filter((result) => result.id !== segmentId)
-      return await this.convertToSearchResults(filteredResults.slice(0, limit), 'vector')
+      return await VectorSearchService.convertToSearchResults(
+        filteredResults.slice(0, limit),
+        'vector'
+      )
     } catch (error) {
       logger.error('Failed to get similar content', {
         error: error instanceof Error ? error.message : error,

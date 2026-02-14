@@ -1,22 +1,20 @@
-export { UnreadService } from './unread-service'
-export { ThreadQueryService } from './thread-query.service'
-export { ThreadMutationService } from './thread-mutation.service'
-
-export type { MutationResult, ThreadUpdates } from './thread-mutation.service'
-
-export type {
-  ThreadSortDescriptor,
-  ThreadSortField,
-  ListThreadIdsInput,
-  PaginatedIdsResult,
-  ThreadMeta,
-  ThreadDetail,
-  ThreadStatus,
-  IntegrationProvider,
-  ThreadFilter,
-  FullCountsResponse,
-  UserUnreadCounts,
-} from './types'
-
 // Re-export ActorId from canonical location for convenience
 export type { ActorId } from '@auxx/types/actor'
+export type { MutationResult, ThreadUpdates } from './thread-mutation.service'
+export { ThreadMutationService } from './thread-mutation.service'
+export { ThreadQueryService } from './thread-query.service'
+
+export type {
+  FullCountsResponse,
+  IntegrationProvider,
+  ListThreadIdsInput,
+  PaginatedIdsResult,
+  ThreadDetail,
+  ThreadFilter,
+  ThreadMeta,
+  ThreadSortDescriptor,
+  ThreadSortField,
+  ThreadStatus,
+  UserUnreadCounts,
+} from './types'
+export { UnreadService } from './unread-service'

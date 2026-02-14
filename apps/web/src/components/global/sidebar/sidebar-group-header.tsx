@@ -1,9 +1,8 @@
 // components/global/sidebar/sidebar-group-header.tsx
 'use client'
 
-import { SidebarGroupLabel } from '@auxx/ui/components/sidebar'
 import { Button } from '@auxx/ui/components/button'
-import { Check, ChevronRight, MoreVertical, Pencil } from 'lucide-react'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,8 +10,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { Checkbox } from '@auxx/ui/components/checkbox'
+import { SidebarGroupLabel } from '@auxx/ui/components/sidebar'
 import { cn } from '@auxx/ui/lib/utils'
+import { Check, ChevronRight, MoreVertical, Pencil } from 'lucide-react'
 import React from 'react'
 
 interface SidebarGroupHeaderProps {
@@ -58,20 +58,18 @@ export function SidebarGroupHeader({
         isEditMode && !isGroupVisible && 'opacity-50'
       )}>
       {isEditMode && onToggleGroupVisibility ? (
-        <div
-          className="flex flex-1 items-center gap-2 px-2"
-          onClick={(e) => e.stopPropagation()}>
+        <div className='flex flex-1 items-center gap-2 px-2' onClick={(e) => e.stopPropagation()}>
           <Checkbox
             checked={isGroupVisible}
-            className="border-blue-500 data-[state=checked]:border-info data-[state=checked]:bg-info"
+            className='border-blue-500 data-[state=checked]:border-info data-[state=checked]:bg-info'
             onCheckedChange={onToggleGroupVisibility}
           />
-          <span className="text-xs font-medium text-sidebar-foreground/70 uppercase tracking-wide">
+          <span className='text-xs font-medium text-sidebar-foreground/70 uppercase tracking-wide'>
             {title}
           </span>
         </div>
       ) : (
-        <SidebarGroupLabel className="cursor-pointer select-none">
+        <SidebarGroupLabel className='cursor-pointer select-none'>
           {title}
           <ChevronRight
             className={cn('transition-transform duration-200', isOpen && 'rotate-90')}
@@ -82,8 +80,8 @@ export function SidebarGroupHeader({
         <DropdownMenu open={popoverOpen} onOpenChange={setPopoverOpen}>
           <DropdownMenuTrigger asChild>
             <Button
-              variant="ghost"
-              size="icon"
+              variant='ghost'
+              size='icon'
               className={cn(
                 'size-6 me-1 rounded-md opacity-0 transition-opacity hover:bg-sidebar-accent focus-visible:ring-primary/10 group-hover:opacity-100 hover:bg-primary-200/50',
                 {
@@ -96,11 +94,11 @@ export function SidebarGroupHeader({
                 e.preventDefault()
                 setPopoverOpen(!popoverOpen)
               }}>
-              <MoreVertical className="size-3.5" />
-              <span className="sr-only">Options</span>
+              <MoreVertical className='size-3.5' />
+              <span className='sr-only'>Options</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-40" align="start">
+          <DropdownMenuContent className='w-40' align='start'>
             <DropdownMenuGroup>
               {additionalOptions}
               {!hideEditOption && (

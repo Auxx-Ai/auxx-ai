@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react'
 import { v4 as generateId } from 'uuid'
-import type { ConditionGroup, Condition } from '~/components/conditions'
+import type { Condition, ConditionGroup } from '~/components/conditions'
 import type { FindNodeData } from '../types'
 
 /**
@@ -52,7 +52,10 @@ export const useFindGroups = (
     }
 
     const updatedGroups = [...updatedExistingGroups, newGroup]
-    console.log('Adding group, updated groups:', updatedGroups.map(g => ({ id: g.id, name: g.metadata?.name })))
+    console.log(
+      'Adding group, updated groups:',
+      updatedGroups.map((g) => ({ id: g.id, name: g.metadata?.name }))
+    )
     setNodeData({ ...nodeData, conditionGroups: updatedGroups })
   }, [nodeData, setNodeData])
 

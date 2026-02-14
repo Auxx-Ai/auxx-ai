@@ -1,10 +1,10 @@
 // packages/sdk/src/util/compile-and-extract-settings.ts
 
 import { pathToFileURL } from 'url'
+import { USE_SETTINGS } from '../env.js'
 import { isErrored } from '../errors.js'
 import { compileSettingsSchema } from './compile-settings-schema.js'
-import { type SettingsSchema } from './extract-settings-schema.js'
-import { USE_SETTINGS } from '../env.js'
+import type { SettingsSchema } from './extract-settings-schema.js'
 
 /**
  * Compiles and extracts the settings schema from app.settings.ts

@@ -35,7 +35,9 @@ export class OrganizationMemberModel extends BaseModel<
   }
 
   /** Find membership for current org by user id with safe select */
-  async findMemberByUser(userId: string): Promise<TypedResult<OrganizationMemberInfo | null, Error>> {
+  async findMemberByUser(
+    userId: string
+  ): Promise<TypedResult<OrganizationMemberInfo | null, Error>> {
     try {
       this.requireOrgIfScoped()
       const whereParts: SQL<unknown>[] = []

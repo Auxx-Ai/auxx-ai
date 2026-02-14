@@ -1,5 +1,5 @@
-import { StatusSlug } from '~/components/mail/types'
 import { InternalFilterContextType } from '@auxx/lib/types'
+import type { StatusSlug } from '~/components/mail/types'
 
 /**
  * Configuration for mailbox display options

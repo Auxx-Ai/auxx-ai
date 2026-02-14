@@ -1,9 +1,9 @@
 // apps/web/src/lib/extensions/components/workflow/inputs/boolean-input.tsx
 
-import React, { useState, useEffect } from 'react'
-import { Switch } from '@auxx/ui/components/switch'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Field, FieldContent, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
+import { Switch } from '@auxx/ui/components/switch'
+import React, { useEffect, useState } from 'react'
 
 /**
  * BooleanInput component.
@@ -45,7 +45,7 @@ export const BooleanInput = ({
 
   if (variant === 'switch') {
     return (
-      <Field data-invalid={false} className="" orientation={orientation}>
+      <Field data-invalid={false} className='' orientation={orientation}>
         <FieldContent>
           {label && <FieldLabel htmlFor={name}>{label}</FieldLabel>}
           {description && <FieldDescription>{description}</FieldDescription>}
@@ -64,7 +64,7 @@ export const BooleanInput = ({
 
   // Checkbox variant
   return (
-    <Field data-invalid={false} className="" orientation={orientation}>
+    <Field data-invalid={false} className='' orientation={orientation}>
       <FieldContent>{label && <FieldLabel htmlFor={name}>{label}</FieldLabel>}</FieldContent>
       <div>
         <Checkbox

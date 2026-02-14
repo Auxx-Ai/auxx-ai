@@ -1,7 +1,7 @@
 // apps/build/src/lib/dehydration/cache.ts
 
-import { getRedisClient } from '@auxx/redis'
 import { createScopedLogger } from '@auxx/logger'
+import { getRedisClient } from '@auxx/redis'
 import type { BuildDehydratedState } from './types'
 
 const logger = createScopedLogger('dehydration-cache')

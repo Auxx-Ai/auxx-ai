@@ -1,7 +1,7 @@
 // apps/web/src/lib/extensions/use-dialog.ts
 'use client'
 
-import { useSyncExternalStore, useCallback } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 import { useInternalAppsContext } from '~/providers/extensions/internal-apps-context'
 
 /**
@@ -62,6 +62,6 @@ export function useDialog() {
     /** Whether a dialog is currently open */
     isOpen: dialog !== null,
     /** Function to close the currently open dialog */
-    closeDialog
+    closeDialog,
   }
 }

@@ -1,5 +1,5 @@
-import DisplayWrapper from './display-wrapper'
 import { useFieldContext } from './display-field'
+import DisplayWrapper from './display-wrapper'
 
 /**
  * DisplayText component
@@ -26,9 +26,5 @@ export function DisplayText() {
     )
   }
   const stringValue = value == null ? '' : String(value)
-  return (
-    <DisplayWrapper copyValue={stringValue || null}>
-      {stringValue || '-'}
-    </DisplayWrapper>
-  )
+  return <DisplayWrapper copyValue={stringValue || null}>{stringValue || '-'}</DisplayWrapper>
 }

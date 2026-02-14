@@ -1,19 +1,20 @@
 // packages/lib/src/seed/new-user.ts
-import { database as db, schema, type Database, type Transaction } from '@auxx/database'
-import { type UserEntity } from '@auxx/database/models'
+
+import { env } from '@auxx/config/server'
+import { type Database, database as db, schema, type Transaction } from '@auxx/database'
+import {
+  InvitationStatus,
+  OrganizationRole as OrganizationRoleEnum,
+  OrganizationType,
+} from '@auxx/database/enums'
+import type { UserEntity } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
-import { OrganizationSeeder } from './organization-seeder'
-import { UserSeeder } from './user-seeder'
+import { and, eq, gt } from 'drizzle-orm'
+import { SuperAdminService } from '../admin/super-admin-service'
 import { MemberService } from '../members/member-service'
 import { SystemUserService } from '../users/system-user-service'
-import { SuperAdminService } from '../admin/super-admin-service'
-import { eq, and, gt } from 'drizzle-orm'
-import {
-  OrganizationType,
-  OrganizationRole as OrganizationRoleEnum,
-  InvitationStatus,
-} from '@auxx/database/enums'
-import { env } from '@auxx/config/server'
+import { OrganizationSeeder } from './organization-seeder'
+import { UserSeeder } from './user-seeder'
 
 const logger = createScopedLogger('seed-new-user')
 

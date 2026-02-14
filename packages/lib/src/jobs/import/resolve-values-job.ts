@@ -1,12 +1,16 @@
 // packages/lib/src/jobs/import/resolve-values-job.ts
 
-import { eq, and } from 'drizzle-orm'
-import { database as db } from '@auxx/database'
-import { schema } from '@auxx/database'
-import { getPublishingClient } from '@auxx/redis'
+import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { getPublishingClient } from '@auxx/redis'
 import type { Job } from 'bullmq'
-import { processColumnValues, getColumnValues, createEventPublisher, isPendingRelationLookup } from '../../import'
+import { and, eq } from 'drizzle-orm'
+import {
+  createEventPublisher,
+  getColumnValues,
+  isPendingRelationLookup,
+  processColumnValues,
+} from '../../import'
 import type { ResolutionConfig, ResolutionType } from '../../import/types'
 
 const logger = createScopedLogger('resolve-values-job')
@@ -35,7 +39,10 @@ export async function resolveValuesJob(job: Job<ResolveValuesJobProps>): Promise
   try {
     // Fetch job with mapping properties
     const importJob = await db.query.ImportJob.findFirst({
-      where: and(eq(schema.ImportJob.id, jobId), eq(schema.ImportJob.organizationId, organizationId)),
+      where: and(
+        eq(schema.ImportJob.id, jobId),
+        eq(schema.ImportJob.organizationId, organizationId)
+      ),
       with: {
         importMapping: {
           with: {

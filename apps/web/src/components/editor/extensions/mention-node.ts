@@ -2,7 +2,7 @@
 // This file implements the TipTap mention node for Auxx.ai editor.
 // It provides @mention functionality as a custom inline node.
 
-import { Node, mergeAttributes } from '@tiptap/core'
+import { mergeAttributes, Node } from '@tiptap/core'
 
 /**
  * Mention node for TipTap editor

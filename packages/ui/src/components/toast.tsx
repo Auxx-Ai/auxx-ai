@@ -4,7 +4,7 @@
 
 import { Check, ChevronDown, ChevronRight, X } from 'lucide-react'
 import { useCallback, useState } from 'react'
-import { toast as sonnerToast, type ExternalToast } from 'sonner'
+import { type ExternalToast, toast as sonnerToast } from 'sonner'
 import { Button } from './button'
 
 /**
@@ -143,28 +143,28 @@ function Toast(props: ToastProps) {
     <div
       data-toast-container
       style={{ pointerEvents: 'auto' }}
-      className="flex rounded-2xl bg-white dark:bg-primary-400 shadow-lg shadow-black/10 ring-1 ring-black/5 w-full md:max-w-[350px] min-w-[300px] items-start ps-2 p-1.5 gap-2">
-      <div className="mt-[2px]">{icon}</div>
-      <div className="flex flex-1 items-start flex-col gap-2">
-        <div className="w-full flex items-center justify-start gap-2 mt-[2px]">
-          <p className="text-[14px]  mb-0 font-medium text-primary-600 dark:text-primary-800">
+      className='flex rounded-2xl bg-white dark:bg-primary-400 shadow-lg shadow-black/10 ring-1 ring-black/5 w-full md:max-w-[350px] min-w-[300px] items-start ps-2 p-1.5 gap-2'>
+      <div className='mt-[2px]'>{icon}</div>
+      <div className='flex flex-1 items-start flex-col gap-2'>
+        <div className='w-full flex items-center justify-start gap-2 mt-[2px]'>
+          <p className='text-[14px]  mb-0 font-medium text-primary-600 dark:text-primary-800'>
             {title}
           </p>
           {description && (
             <button
               onClick={showMore}
-              className="size-4.5 bg-black/5 rounded-md flex items-center justify-center shrink-0">
+              className='size-4.5 bg-black/5 rounded-md flex items-center justify-center shrink-0'>
               {isShow ? (
-                <ChevronDown className="size-4 text-muted-foreground" />
+                <ChevronDown className='size-4 text-muted-foreground' />
               ) : (
-                <ChevronRight className="size-4 text-muted-foreground" />
+                <ChevronRight className='size-4 text-muted-foreground' />
               )}
             </button>
           )}
         </div>
-        {isShow && <div className=" text-sm text-primary-600">{description}</div>}
+        {isShow && <div className=' text-sm text-primary-600'>{description}</div>}
         {actions && (
-          <div className="flex gap-2 w-full flex-wrap">{renderActions(actions, dismiss)}</div>
+          <div className='flex gap-2 w-full flex-wrap'>{renderActions(actions, dismiss)}</div>
         )}
       </div>
       <div>
@@ -173,8 +173,8 @@ function Toast(props: ToastProps) {
             button?.onClick()
             dismiss()
           }}
-          className="shrink-0 flex items-center justify-center size-6 rounded-full hover:bg-black/5 dark:hover:bg-black/10">
-          <X className="size-4" />
+          className='shrink-0 flex items-center justify-center size-6 rounded-full hover:bg-black/5 dark:hover:bg-black/10'>
+          <X className='size-4' />
         </button>
       </div>
     </div>
@@ -191,7 +191,7 @@ export function toastSuccess(options: {
 }) {
   return toast({
     title: options.title ?? 'Success',
-    icon: <Check className="size-5 text-good-500" />,
+    icon: <Check className='size-5 text-good-500' />,
     description: options.description,
     actions: options.actions,
     position: 'top-right',
@@ -211,7 +211,7 @@ export function toastError(options: {
 }) {
   return toast({
     title: options.title || 'Error',
-    icon: <X className="size-5 text-red-500" />,
+    icon: <X className='size-5 text-red-500' />,
     description: options.description,
     actions: options.actions,
     position: 'top-right',

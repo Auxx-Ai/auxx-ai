@@ -1,12 +1,12 @@
 // apps/web/src/server/api/routers/fieldValue.ts
 
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { FieldValueService } from '@auxx/lib/field-values'
+import type { FieldReference } from '@auxx/types/field'
+import { fieldIdSchema, resourceFieldIdSchema } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { recordIdSchema } from '@auxx/types/resource'
-import { fieldIdSchema, resourceFieldIdSchema } from '@auxx/types/field'
-import type { FieldReference } from '@auxx/types/field'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 /** Schema for FieldReference - either ResourceFieldId or FieldPath */
 const fieldReferenceSchema = z.union([

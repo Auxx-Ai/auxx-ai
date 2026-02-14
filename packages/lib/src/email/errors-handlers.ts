@@ -1,5 +1,5 @@
-import { TRPCError } from '@trpc/server'
 import { createScopedLogger } from '@auxx/logger'
+import { TRPCError } from '@trpc/server'
 
 const logger = createScopedLogger('auth-errors')
 

@@ -19,7 +19,12 @@ export type UpdateUserInput = Partial<CreateUserInput>
  * UserModel encapsulates common CRUD for the User table.
  * Users are global (no organizationId scope here), so scopeFilter is undefined.
  */
-export class UserModel extends BaseModel<typeof User, CreateUserInput, UserEntity, UpdateUserInput> {
+export class UserModel extends BaseModel<
+  typeof User,
+  CreateUserInput,
+  UserEntity,
+  UpdateUserInput
+> {
   /** Drizzle table */
   get table() {
     return User

@@ -1,16 +1,16 @@
 // lib/organization/organization-seeder.ts
-import { schema, type Database } from '@auxx/database'
-import { eq } from 'drizzle-orm'
-import { InboxService } from '../inboxes'
-import { SettingsInitializer } from '../settings/settings-initializer'
-import { createScopedLogger } from '@auxx/logger'
-import { UnifiedCrudHandler } from '../resources/crud'
-import { KBService } from '../kb'
-import { EmailTemplateType } from '@auxx/database/enums'
+
 import { SubscriptionService } from '@auxx/billing'
-import { env } from '@auxx/config/server'
-import { WEBAPP_URL } from '@auxx/config/server'
+import { env, WEBAPP_URL } from '@auxx/config/server'
+import { type Database, schema } from '@auxx/database'
+import { EmailTemplateType } from '@auxx/database/enums'
+import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
 import { DEFAULT_QUOTA_LIMITS, ProviderQuotaType } from '../ai/providers/types'
+import { InboxService } from '../inboxes'
+import { KBService } from '../kb'
+import { UnifiedCrudHandler } from '../resources/crud'
+import { SettingsInitializer } from '../settings/settings-initializer'
 import { EntitySeeder } from './entity-seeder'
 import { SYSTEM_ENTITIES } from './entity-seeder/constants'
 
@@ -377,7 +377,9 @@ export class OrganizationSeeder {
       logger.info('System entities missing, seeding for existing organization', { organizationId })
       const entitySeeder = new EntitySeeder(this.db, organizationId)
       await entitySeeder.seedSystemEntities()
-      logger.info('Successfully seeded system entities for existing organization', { organizationId })
+      logger.info('Successfully seeded system entities for existing organization', {
+        organizationId,
+      })
     }
   }
 

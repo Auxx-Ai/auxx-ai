@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/hooks/run-hooks/use-run-loop-started.ts
 
 import { useCallback } from 'react'
-import { useRunStore } from '../../store/run-store'
 import type { ExecutionEvent } from '../../store/run-store'
+import { useRunStore } from '../../store/run-store'
 
 /**
  * Hook to handle loop-started events

@@ -1,6 +1,7 @@
 // apps/web/src/components/fields/inputs/address-input-field.tsx
+
+import { useEffect, useRef, useState } from 'react'
 import { usePropertyContext } from '../property-provider'
-import { useRef, useEffect, useState } from 'react'
 
 /**
  * AddressInputField
@@ -49,7 +50,7 @@ export function AddressInputField() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      e.stopPropagation()  // Prevent parent from reopening
+      e.stopPropagation() // Prevent parent from reopening
       commitValueAndClose(inputValue)
     }
   }

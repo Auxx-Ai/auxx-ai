@@ -1,13 +1,13 @@
 // apps/web/src/components/fields/inputs/name-field-input.tsx
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
-import { usePropertyContext } from '../property-provider'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
+import { usePropertyContext } from '../property-provider'
 
 /**
  * Value structure for NAME fields
@@ -77,34 +77,34 @@ export function NameInputField() {
   }, [onBeforeClose, initialName.firstName, initialName.lastName, commitValue])
 
   return (
-    <div className="p-3 pt-2 space-y-3">
-      <div className="space-y-2">
-        <Label htmlFor="firstName" className="text-sm font-medium">
+    <div className='p-3 pt-2 space-y-3'>
+      <div className='space-y-2'>
+        <Label htmlFor='firstName' className='text-sm font-medium'>
           First Name
         </Label>
         <Input
-          id="firstName"
-          size="sm"
+          id='firstName'
+          size='sm'
           value={fields.firstName}
           onChange={(e) => setFields((f) => ({ ...f, firstName: e.target.value }))}
           disabled={isSaving}
-          placeholder="Enter first name"
-          className="w-full"
+          placeholder='Enter first name'
+          className='w-full'
           autoFocus
         />
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="lastName" className="text-sm font-medium">
+      <div className='space-y-2'>
+        <Label htmlFor='lastName' className='text-sm font-medium'>
           Last Name
         </Label>
         <Input
-          id="lastName"
-          size="sm"
+          id='lastName'
+          size='sm'
           value={fields.lastName}
           onChange={(e) => setFields((f) => ({ ...f, lastName: e.target.value }))}
           disabled={isSaving}
-          placeholder="Enter last name"
-          className="w-full"
+          placeholder='Enter last name'
+          className='w-full'
         />
       </div>
     </div>
@@ -244,36 +244,36 @@ export function NameFieldInput({
           iconPosition={triggerProps?.iconPosition}
           hideIcon={triggerProps?.hideIcon}
           className={cn(className, triggerProps?.className)}>
-          <span className="truncate">{displayName}</span>
+          <span className='truncate'>{displayName}</span>
         </PickerTrigger>
       </PopoverTrigger>
-      <PopoverContent className="w-[280px] p-3" align="start" onKeyDown={handleKeyDown}>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="name-first" className="text-xs text-muted-foreground">
+      <PopoverContent className='w-[280px] p-3' align='start' onKeyDown={handleKeyDown}>
+        <div className='space-y-3'>
+          <div className='space-y-1.5'>
+            <Label htmlFor='name-first' className='text-xs text-muted-foreground'>
               First Name
             </Label>
             <Input
-              id="name-first"
-              size="sm"
+              id='name-first'
+              size='sm'
               value={localFirstName}
               onChange={handleFirstNameChange}
               disabled={disabled}
-              placeholder="First name"
+              placeholder='First name'
               autoFocus
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="name-last" className="text-xs text-muted-foreground">
+          <div className='space-y-1.5'>
+            <Label htmlFor='name-last' className='text-xs text-muted-foreground'>
               Last Name
             </Label>
             <Input
-              id="name-last"
-              size="sm"
+              id='name-last'
+              size='sm'
               value={localLastName}
               onChange={handleLastNameChange}
               disabled={disabled}
-              placeholder="Last name"
+              placeholder='Last name'
             />
           </div>
         </div>

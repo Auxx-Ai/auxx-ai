@@ -1,6 +1,6 @@
 // packages/lib/src/datasets/processors/__tests__/text-chunker.test.ts
 
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { TextChunker } from '../text-chunker'
 
 describe('TextChunker', () => {
@@ -61,7 +61,8 @@ describe('TextChunker', () => {
     })
 
     it('should prefer paragraph breaks over word breaks', async () => {
-      const content = 'First paragraph with some content here.\n\nSecond paragraph with more content that continues.'
+      const content =
+        'First paragraph with some content here.\n\nSecond paragraph with more content that continues.'
       const chunks = await TextChunker.chunkText(content, {
         chunkSize: 60,
         chunkOverlap: 0,
@@ -134,7 +135,8 @@ describe('TextChunker', () => {
       // "REVIEW THE FOLLOWING"
       // "REVIEW THE FOLLOWING IMPLEMENTATION"
       // "REVIEW THE FOLLOWING IMPLEMENTATION PLANS"
-      const content = 'REVIEW THE FOLLOWING IMPLEMENTATION PLANS AND PROVIDE DETAILED FEEDBACK ON EACH ONE'
+      const content =
+        'REVIEW THE FOLLOWING IMPLEMENTATION PLANS AND PROVIDE DETAILED FEEDBACK ON EACH ONE'
       const chunks = await TextChunker.chunkText(content, {
         chunkSize: 40,
         chunkOverlap: 10,

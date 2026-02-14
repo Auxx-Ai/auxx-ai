@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/utils/unique-title-generator.ts
 
 import { incrementTitle } from '@auxx/utils'
-import { type FlowNode } from '../store/types'
+import type { FlowNode } from '../store/types'
 
 /**
  * Generates a unique title for a node by appending a number if needed

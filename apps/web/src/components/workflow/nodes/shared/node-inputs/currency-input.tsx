@@ -1,11 +1,12 @@
 // apps/web/src/components/workflow/nodes/shared/node-inputs/currency-input.tsx
 
-import React, { useCallback, useRef } from 'react'
 import {
-  CurrencyInput as CurrencyInputUi,
   CurrencyInputField,
+  CurrencyInput as CurrencyInputUi,
 } from '@auxx/ui/components/input-currency'
 import { InputGroup } from '@auxx/ui/components/input-group'
+import type React from 'react'
+import { useCallback, useRef } from 'react'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 /**
@@ -93,12 +94,12 @@ export const CurrencyInput = createNodeInput<CurrencyInputProps>(
         currencyCode={currencyCode}
         decimalPlaces={decimalPlaces === 0 ? 'no-decimal' : 'two-places'}
         disabled={isLoading}>
-        <InputGroup className="bg-transparent h-[28px] shadow-none ring-0 border-0 has-[[data-slot=input-group-control]:focus-visible]:ring-[0px]">
+        <InputGroup className='bg-transparent h-[28px] shadow-none ring-0 border-0 has-[[data-slot=input-group-control]:focus-visible]:ring-[0px]'>
           <CurrencyInputField
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
-            className="text-start ps-0 placeholder:text-primary-400"
+            className='text-start ps-0 placeholder:text-primary-400'
           />
         </InputGroup>
       </CurrencyInputUi>

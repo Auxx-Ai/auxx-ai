@@ -1,12 +1,13 @@
 // apps/web/src/app/(protected)/layout.tsx
-import { auth } from '~/auth/server'
-import { headers } from 'next/headers'
+
 import { DehydrationService } from '@auxx/lib/dehydration'
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Script from 'next/script'
+import type { ReactNode } from 'react'
+import { auth } from '~/auth/server'
 import { DehydratedStateProvider } from '~/providers/dehydrated-state-provider'
-import { OrganizationIdProvider, FeatureFlagProvider } from '~/providers/feature-flag-provider'
-import { type ReactNode } from 'react'
+import { FeatureFlagProvider, OrganizationIdProvider } from '~/providers/feature-flag-provider'
 
 interface ProtectedLayoutProps {
   children: ReactNode
@@ -38,8 +39,8 @@ export default async function ProtectedLayout({ children }: ProtectedLayoutProps
     <>
       {/* Inject dehydrated state into window BEFORE React hydration */}
       <Script
-        id="dehydrated-state"
-        strategy="beforeInteractive"
+        id='dehydrated-state'
+        strategy='beforeInteractive'
         dangerouslySetInnerHTML={{
           __html: `window.AUXX_DEHYDRATED_STATE = ${JSON.stringify(dehydratedState).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')};`,
         }}

@@ -1,8 +1,8 @@
 // apps/web/src/app/(protected)/app/workflows/credentials/page.tsx
 'use client'
 
-import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 
 /**
  * Redirect page for /app/workflows/credentials
@@ -48,8 +48,8 @@ export default function CredentialsRedirectPage() {
   }, [router])
 
   return (
-    <div className="flex items-center justify-center h-64">
-      <div className="text-muted-foreground">Redirecting to credentials...</div>
+    <div className='flex items-center justify-center h-64'>
+      <div className='text-muted-foreground'>Redirecting to credentials...</div>
     </div>
   )
 }

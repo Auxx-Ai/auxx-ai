@@ -1,10 +1,10 @@
 // packages/services/src/table-view/update-view.ts
 
 import { database, schema } from '@auxx/database'
+import type { TableViewEntity } from '@auxx/database/models'
 import { eq } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { TableViewEntity } from '@auxx/database/models'
 import { getView } from './get-view'
 
 /**
@@ -30,13 +30,21 @@ export async function updateView(input: UpdateViewInput) {
     id,
     userId,
     organizationId,
-    options: { ownerOnly: true, notFoundMessage: "View not found or you don't have permission to update it" },
+    options: {
+      ownerOnly: true,
+      notFoundMessage: "View not found or you don't have permission to update it",
+    },
   })
 
   if (viewResult.isErr()) return viewResult
 
   // Build partial update - only include defined fields
-  const updates: Partial<{ name: string; config: Record<string, unknown>; isShared: boolean; updatedAt: Date }> = { updatedAt: new Date() }
+  const updates: Partial<{
+    name: string
+    config: Record<string, unknown>
+    isShared: boolean
+    updatedAt: Date
+  }> = { updatedAt: new Date() }
   if (name !== undefined) updates.name = name
   if (config !== undefined) updates.config = config
   if (isShared !== undefined) updates.isShared = isShared

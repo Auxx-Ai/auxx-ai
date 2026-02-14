@@ -1,7 +1,7 @@
 // apps/api/src/services/developer-accounts/verify-app-access.ts
 
 import { database } from '@auxx/database'
-import { ok, err } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared'
 // import type { DeveloperAccountError } from './errors'
 

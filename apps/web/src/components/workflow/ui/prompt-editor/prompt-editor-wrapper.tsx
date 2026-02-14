@@ -2,13 +2,14 @@
 
 'use client'
 
-import React, { useRef } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
-import { usePromptEditorContext } from './prompt-editor-context'
-import PromptEditorHeader from './prompt-editor-header'
-import PromptEditorContent from './prompt-editor-content'
 import { Dialog, DialogContent, DialogTitle } from '@auxx/ui/components/dialog'
 import { VisuallyHidden } from '@auxx/ui/components/visually-hidden'
+import { cn } from '@auxx/ui/lib/utils'
+import type React from 'react'
+import { useRef } from 'react'
+import PromptEditorContent from './prompt-editor-content'
+import { usePromptEditorContext } from './prompt-editor-context'
+import PromptEditorHeader from './prompt-editor-header'
 
 /**
  * PromptEditor Wrapper Component
@@ -38,18 +39,18 @@ const PromptEditorWrapper: React.FC = () => {
 
       {/* Expanded dialog view */}
       <Dialog open={isExpanded} onOpenChange={setExpanded}>
-        <DialogContent size="3xl" innerClassName="h-[80vh] flex flex-col p-0" showClose={false}>
+        <DialogContent size='3xl' innerClassName='h-[80vh] flex flex-col p-0' showClose={false}>
           <VisuallyHidden>
             <DialogTitle>{title || 'Prompt Editor'}</DialogTitle>
           </VisuallyHidden>
 
           {/* Re-render header in dialog for context */}
-          <div className="shrink-0 border-b">
+          <div className='shrink-0 border-b'>
             <PromptEditorHeader />
           </div>
 
           {/* Content fills remaining space */}
-          <div className="flex-1 min-h-0 overflow-hidden">
+          <div className='flex-1 min-h-0 overflow-hidden'>
             <PromptEditorContent />
           </div>
         </DialogContent>

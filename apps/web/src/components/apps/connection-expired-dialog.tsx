@@ -2,14 +2,25 @@
 
 'use client'
 
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
 import { Button } from '@auxx/ui/components/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@auxx/ui/components/dialog'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@auxx/ui/components/input-group'
+import { toastError } from '@auxx/ui/components/toast'
 import { Clock, Eye, EyeOff } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
-import { InputGroup, InputGroupInput, InputGroupAddon, InputGroupButton } from '@auxx/ui/components/input-group'
 import { api } from '~/trpc/react'
-import { toastError } from '@auxx/ui/components/toast'
 
 interface ConnectionExpiredDialogProps {
   open: boolean
@@ -41,7 +52,7 @@ export function ConnectionExpiredDialog({
   scope,
   connectionType,
   connectionLabel,
-  onReconnected
+  onReconnected,
 }: ConnectionExpiredDialogProps) {
   const [secret, setSecret] = useState('')
   const [showSecret, setShowSecret] = useState(false)
@@ -62,16 +73,16 @@ export function ConnectionExpiredDialog({
     onError: (error) => {
       toastError({
         title: 'Reconnection Failed',
-        description: error.message
+        description: error.message,
       })
-    }
+    },
   })
 
   const handleSaveSecret = () => {
     if (!secret.trim()) {
       toastError({
         title: 'Validation Error',
-        description: 'Please enter an API key.'
+        description: 'Please enter an API key.',
       })
       return
     }
@@ -81,7 +92,7 @@ export function ConnectionExpiredDialog({
       installationId,
       appName: connectionLabel,
       connectionType: scope,
-      secret: secret.trim()
+      secret: secret.trim(),
     })
   }
 
@@ -93,43 +104,42 @@ export function ConnectionExpiredDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="sm" position="tc">
+      <DialogContent size='sm' position='tc'>
         <DialogHeader>
-          <div className="flex items-center gap-2 mb-2">
-            <Clock className="h-5 w-5 text-yellow-500" />
+          <div className='flex items-center gap-2 mb-2'>
+            <Clock className='h-5 w-5 text-yellow-500' />
             <DialogTitle>Connection Expired</DialogTitle>
           </div>
           <DialogDescription>
-            Your {scope} connection to {appName} has expired. Please reconnect to continue using this feature.
+            Your {scope} connection to {appName} has expired. Please reconnect to continue using
+            this feature.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="py-4 space-y-4">
+        <div className='py-4 space-y-4'>
           {isOAuth && (
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
+            <div className='space-y-2'>
+              <p className='text-sm text-muted-foreground'>
                 Click the button below to reconnect your {scope} account via OAuth.
               </p>
               <Link href={oauthAuthorizeUrl}>
-                <Button className="w-full">
-                  Reconnect {connectionLabel}
-                </Button>
+                <Button className='w-full'>Reconnect {connectionLabel}</Button>
               </Link>
             </div>
           )}
 
           {isSecret && (
-            <div className="space-y-2">
-              <label htmlFor="secret" className="text-sm font-medium">
+            <div className='space-y-2'>
+              <label htmlFor='secret' className='text-sm font-medium'>
                 API Key
               </label>
               <InputGroup>
                 <InputGroupInput
-                  id="secret"
+                  id='secret'
                   type={showSecret ? 'text' : 'password'}
-                  placeholder="Enter your API key"
+                  placeholder='Enter your API key'
                   value={secret}
-                  autoComplete="off"
+                  autoComplete='off'
                   onChange={(e) => setSecret(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !saveSecret.isPending) {
@@ -137,24 +147,24 @@ export function ConnectionExpiredDialog({
                     }
                   }}
                 />
-                <InputGroupAddon align="inline-end">
+                <InputGroupAddon align='inline-end'>
                   <InputGroupButton
                     aria-label={showSecret ? 'Hide API key' : 'Show API key'}
                     title={showSecret ? 'Hide API key' : 'Show API key'}
-                    size="icon-xs"
+                    size='icon-xs'
                     onClick={() => setShowSecret(!showSecret)}>
                     {showSecret ? <EyeOff /> : <Eye />}
                   </InputGroupButton>
                 </InputGroupAddon>
               </InputGroup>
-              <p className="text-xs text-muted-foreground">
+              <p className='text-xs text-muted-foreground'>
                 Your API key will be encrypted and stored securely.
               </p>
 
-              <div className="flex gap-2 pt-2">
+              <div className='flex gap-2 pt-2'>
                 <Button
-                  variant="ghost"
-                  className="flex-1"
+                  variant='ghost'
+                  className='flex-1'
                   onClick={() => {
                     onOpenChange(false)
                     setSecret('')
@@ -163,11 +173,11 @@ export function ConnectionExpiredDialog({
                   Cancel
                 </Button>
                 <Button
-                  variant="outline"
-                  className="flex-1"
+                  variant='outline'
+                  className='flex-1'
                   onClick={handleSaveSecret}
                   loading={saveSecret.isPending}
-                  loadingText="Saving...">
+                  loadingText='Saving...'>
                   Reconnect
                 </Button>
               </div>
@@ -175,12 +185,12 @@ export function ConnectionExpiredDialog({
           )}
         </div>
 
-        <div className="border-t pt-4">
-          <p className="text-xs text-muted-foreground">
+        <div className='border-t pt-4'>
+          <p className='text-xs text-muted-foreground'>
             You can also manage connections in{' '}
             <Link
               href={`/app/settings/apps/installed/${appSlug}/connections`}
-              className="text-primary hover:underline"
+              className='text-primary hover:underline'
               onClick={() => onOpenChange(false)}>
               App Settings
             </Link>

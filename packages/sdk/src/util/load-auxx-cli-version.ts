@@ -1,10 +1,10 @@
 // packages/sdk/src/util/load-auxx-cli-version.ts
 
+import { findUpSync } from 'find-up-simple'
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
-import { findUpSync } from 'find-up-simple'
 import { z } from 'zod'
-import { complete, errored, type CliVersionResult } from '../errors.js'
+import { type CliVersionResult, complete, errored } from '../errors.js'
 
 /**
  * File name used when traversing upward from the current module to locate the
@@ -103,4 +103,3 @@ export function loadAuxxCliVersion(): CliVersionResult {
 
   return complete(version)
 }
-

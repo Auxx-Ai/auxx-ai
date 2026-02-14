@@ -1,10 +1,10 @@
 // apps/web/src/components/pickers/date-time-picker/views/calendar-view.tsx
 'use client'
 
-import React from 'react'
 import { Calendar } from '@auxx/ui/components/calendar'
-import type { CalendarViewProps } from '../types'
 import { cn } from '@auxx/ui/lib/utils'
+import React from 'react'
+import type { CalendarViewProps } from '../types'
 
 /**
  * Calendar view using react-day-picker via our Calendar component
@@ -27,13 +27,13 @@ const CalendarView: React.FC<CalendarViewProps> = ({
 
   return (
     <Calendar
-      mode="single"
+      mode='single'
       month={currentMonth}
       selected={selectedDate}
       onSelect={(date) => date && onDateSelect(date)}
       disabled={isDateDisabled}
       showOutsideDays={true}
-      className="p-2 min-h-[251px]"
+      className='p-2 min-h-[251px]'
       hideNavigation
       classNames={{
         month_caption: 'hidden',

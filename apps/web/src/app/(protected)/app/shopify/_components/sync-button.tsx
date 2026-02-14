@@ -1,13 +1,13 @@
 'use client'
 
-import { isActionError } from '~/utils/error'
+import { WEBAPP_URL } from '@auxx/config/client'
 // import { toastError, toastSuccess } from '../toast'
 import { Button } from '@auxx/ui/components/button'
-import { api } from '~/trpc/react'
-import { useState } from 'react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { titleize } from '@auxx/utils/strings'
-import { WEBAPP_URL } from '@auxx/config/client'
+import { useState } from 'react'
+import { api } from '~/trpc/react'
+import { isActionError } from '~/utils/error'
 
 type SyncType = 'orders' | 'products' | 'customers'
 
@@ -31,8 +31,8 @@ export function SyncShopifyButton({ type, label }: { type: SyncType; label?: str
 
   return (
     <Button
-      variant="outline"
-      size="sm"
+      variant='outline'
+      size='sm'
       onClick={(e) => {
         handleSync(type)
       }}

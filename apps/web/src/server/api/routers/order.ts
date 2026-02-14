@@ -47,7 +47,9 @@ export const orderRouter = createTRPCRouter({
           input.cursor
             ? and(
                 eq(order.organizationId, ctx.session.organizationId),
-                input.sortOrder === 'desc' ? lt(order.id, input.cursor!) : gt(order.id, input.cursor!)
+                input.sortOrder === 'desc'
+                  ? lt(order.id, input.cursor!)
+                  : gt(order.id, input.cursor!)
               )
             : eq(order.organizationId, ctx.session.organizationId),
         limit: take,

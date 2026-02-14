@@ -1,25 +1,25 @@
 // packages/lib/src/datasets/services/search.service.ts
 
 import { database as db, schema } from '@auxx/database'
-import { and, eq, inArray, ilike, desc, gte, sql, count, avg } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
+import { and, avg, count, desc, eq, gte, ilike, inArray, sql } from 'drizzle-orm'
+import { SystemUserService } from '../../users/system-user-service'
+import { FullTextSearchService } from '../search/full-text-search'
+import { HybridSearchService } from '../search/hybrid-search'
+import { VectorSearchService } from '../search/vector-search'
 import type {
+  DatasetConfig,
+  SearchAnalytics,
+  SearchHistoryEntry,
+  SearchPerformanceMetrics,
   SearchQuery,
   SearchResponse,
   SearchResult,
-  SearchSuggestionOptions,
   SearchSuggestion,
-  SearchHistoryEntry,
-  SearchAnalytics,
-  SearchPerformanceMetrics,
+  SearchSuggestionOptions,
   SearchType,
-  DatasetConfig,
 } from '../types/search.types'
-import { SearchError, InvalidQueryError } from '../types/search.types'
-import { VectorSearchService } from '../search/vector-search'
-import { FullTextSearchService } from '../search/full-text-search'
-import { HybridSearchService } from '../search/hybrid-search'
-import { SystemUserService } from '../../users/system-user-service'
+import { InvalidQueryError, SearchError } from '../types/search.types'
 
 const logger = createScopedLogger('search-service')
 
@@ -36,13 +36,13 @@ export class SearchService {
     userId?: string
   ): Promise<SearchResponse> {
     const startTime = Date.now()
-    
+
     // Get system user if no userId provided
-    const finalUserId = userId || await SystemUserService.getSystemUserForActions(organizationId)
+    const finalUserId = userId || (await SystemUserService.getSystemUserForActions(organizationId))
 
     try {
       // Validate query
-      this.validateQuery(query)
+      SearchService.validateQuery(query)
 
       logger.info('Starting search', {
         organizationId,
@@ -53,7 +53,7 @@ export class SearchService {
       })
 
       // Get accessible datasets with embedding config (avoids redundant queries in search services)
-      const accessibleDatasetConfigs = await this.getAccessibleDatasets(
+      const accessibleDatasetConfigs = await SearchService.getAccessibleDatasets(
         organizationId,
         finalUserId,
         query.datasetIds,
@@ -85,7 +85,7 @@ export class SearchService {
 
       // Execute search based on type
       switch (query.searchType) {
-        case 'vector':
+        case 'vector': {
           const vectorResults = await VectorSearchService.search(
             query,
             accessibleDatasetConfigs,
@@ -95,8 +95,9 @@ export class SearchService {
           results = vectorResults.results
           performanceMetrics = vectorResults.metrics
           break
+        }
 
-        case 'text':
+        case 'text': {
           const textResults = await FullTextSearchService.search(
             query,
             accessibleDatasetIds,
@@ -106,9 +107,10 @@ export class SearchService {
           results = textResults.results
           performanceMetrics = textResults.metrics
           break
+        }
 
         case 'hybrid':
-        default:
+        default: {
           const hybridResults = await HybridSearchService.search(
             query,
             accessibleDatasetConfigs,
@@ -118,6 +120,7 @@ export class SearchService {
           results = hybridResults.results
           performanceMetrics = hybridResults.metrics
           break
+        }
       }
 
       // Apply pagination
@@ -130,7 +133,7 @@ export class SearchService {
 
       // Record search query for analytics (fire-and-forget, non-blocking)
       // Safe to use [0].id since we already checked accessibleDatasetConfigs.length > 0 above
-      void this.recordSearchQuery(
+      void SearchService.recordSearchQuery(
         organizationId,
         finalUserId,
         query,
@@ -174,9 +177,13 @@ export class SearchService {
 
       // Record failed search for analytics
       try {
-        const fallbackDatasetConfigs = await this.getAccessibleDatasets(organizationId, finalUserId, query.datasetIds)
+        const fallbackDatasetConfigs = await SearchService.getAccessibleDatasets(
+          organizationId,
+          finalUserId,
+          query.datasetIds
+        )
         if (fallbackDatasetConfigs.length > 0) {
-          await this.recordSearchQuery(
+          await SearchService.recordSearchQuery(
             organizationId,
             finalUserId,
             query,
@@ -212,7 +219,7 @@ export class SearchService {
 
       // Get query completions from search history
       if (options.includeHistory !== false) {
-        const historySuggestions = await this.getHistorySuggestions(
+        const historySuggestions = await SearchService.getHistorySuggestions(
           organizationId,
           userId,
           options.query,
@@ -224,7 +231,7 @@ export class SearchService {
 
       // Get popular queries
       if (options.includePopular !== false) {
-        const popularSuggestions = await this.getPopularSuggestions(
+        const popularSuggestions = await SearchService.getPopularSuggestions(
           organizationId,
           options.query,
           options.datasetIds,
@@ -348,7 +355,7 @@ export class SearchService {
     datasetIds?: string[]
   ): Promise<SearchAnalytics> {
     try {
-      const daysAgo = this.getTimeRangeDays(timeRange)
+      const daysAgo = SearchService.getTimeRangeDays(timeRange)
       const fromDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000)
 
       // Build base where conditions

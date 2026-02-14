@@ -1,13 +1,15 @@
 // src/app/(protected)/app/kb/_components/article-tree-section.tsx
-import React from 'react'
+
 import { cn } from '@auxx/ui/lib/utils'
 // Assuming Article type is available from helpers or sidebar component
 // import { Article } from './helpers' // Import Article type
 // import ArticleSidebarItem from './article-sidebar-item'
 import { AnimatePresence, motion } from 'motion/react'
-import { useKnowledgeBase } from './kb-context'
-import { Article } from './kb-sidebar'
+import type React from 'react'
 import ArticleSidebarItem from './article-sidebar-item'
+import { useKnowledgeBase } from './kb-context'
+import type { Article } from './kb-sidebar'
+
 // No need for useArticleMove here anymore
 
 /**
@@ -59,7 +61,7 @@ const ArticleTreeSection: React.FC<ArticleTreeSectionProps> = ({
         const isOpen = articleOpenStates[article.id] || false // Only categories can be open
         // console.log('isOpen', isOpen, hasChildren)
         return (
-          <div key={article.id} className="w-full" style={{ paddingLeft: `${paddingLeftRem}rem` }}>
+          <div key={article.id} className='w-full' style={{ paddingLeft: `${paddingLeftRem}rem` }}>
             {/* Render the individual sidebar item */}
             {/* Pass down necessary props: article data, open state, toggle handler, drop target info, drag state */}
             <ArticleSidebarItem
@@ -82,7 +84,7 @@ const ArticleTreeSection: React.FC<ArticleTreeSectionProps> = ({
                     className={cn('relative overflow-hidden')} // Overflow hidden during animation
                   >
                     {/* Optional: Vertical connector line */}
-                    <div className="absolute bottom-0 left-[calc(0.5rem+8px)] top-0 z-0 w-px bg-border"></div>
+                    <div className='absolute bottom-0 left-[calc(0.5rem+8px)] top-0 z-0 w-px bg-border'></div>
 
                     {/* Recursively render the next level */}
                     <ArticleTreeSection

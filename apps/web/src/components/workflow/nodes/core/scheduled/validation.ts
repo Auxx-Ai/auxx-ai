@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/scheduled-trigger/validation.ts
 
-import { ScheduledTriggerUIConfig, ScheduledTriggerValidationResult } from './types'
+import type { ScheduledTriggerUIConfig, ScheduledTriggerValidationResult } from './types'
 
 /**
  * Comprehensive validation for scheduled trigger configuration

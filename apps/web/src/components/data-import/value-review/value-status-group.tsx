@@ -2,10 +2,10 @@
 
 'use client'
 
-import { ChevronRight } from 'lucide-react'
+import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
 import type { LucideIcon } from 'lucide-react'
-import { Badge } from '@auxx/ui/components/badge'
+import { ChevronRight } from 'lucide-react'
 
 interface ValueStatusGroupProps {
   status: string
@@ -36,7 +36,7 @@ export function ValueStatusGroup({
         'flex items-center justify-between px-4 h-9 cursor-pointer transition-colors border-b border-border/50 sticky top-0 z-10',
         isExpanded && 'border-primary-300 bg-primary-100/80 backdrop-blur-sm'
       )}>
-      <div className="flex items-center gap-3">
+      <div className='flex items-center gap-3'>
         <ChevronRight
           className={cn(
             'size-4 text-muted-foreground transition-transform duration-200',
@@ -44,8 +44,8 @@ export function ValueStatusGroup({
           )}
         />
         <Icon className={cn('size-4', color)} />
-        <span className="text-sm text-muted-foreground">{label}</span>
-        <Badge variant="pill" size="sm">
+        <span className='text-sm text-muted-foreground'>{label}</span>
+        <Badge variant='pill' size='sm'>
           {count} value{count !== 1 ? 's' : ''}
         </Badge>
       </div>

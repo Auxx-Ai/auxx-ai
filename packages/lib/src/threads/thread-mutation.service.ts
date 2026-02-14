@@ -1,11 +1,11 @@
 // packages/lib/src/threads/thread-mutation.service.ts
 
 import { type Database, schema } from '@auxx/database'
-import { eq, and, inArray, isNotNull } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
+import { type ActorId, parseActorId } from '@auxx/types/actor'
+import { getInstanceId, parseRecordId, type RecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils'
-import { parseActorId, type ActorId } from '@auxx/types/actor'
-import { parseRecordId, getInstanceId, type RecordId } from '@auxx/types/resource'
+import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 
 const logger = createScopedLogger('thread-mutation-service')
 

@@ -5,33 +5,29 @@
  * Centralized state management with Zustand
  */
 
-// Main store
-export { useUploadStore, cleanupUploadStore, cleanupUploader } from './upload-store'
-
-// Types
-export type {
-  UploadStore,
-  UploadState,
-  UploadActions,
-  FileState,
-  SessionState,
-  SSEConnectionState,
-  UploadError,
-  UploadConfig,
-  CreateSessionOptions,
-} from './types'
-
-// Selectors
-export * from './selectors'
-
 // Re-export existing utils instead of duplicating them
 export {
   calculateOverallProgress,
   calculateQueueStats as getQueueStats,
   validateFile,
 } from '../utils'
-
+// Selectors
+export * from './selectors'
+export type { FileSlice } from './slices/file-slice'
 // Slice types (for extending if needed)
 export type { SessionSlice } from './slices/session-slice'
-export type { FileSlice } from './slices/file-slice'
 export type { UISlice } from './slices/ui-slice'
+// Types
+export type {
+  CreateSessionOptions,
+  FileState,
+  SessionState,
+  SSEConnectionState,
+  UploadActions,
+  UploadConfig,
+  UploadError,
+  UploadState,
+  UploadStore,
+} from './types'
+// Main store
+export { cleanupUploader, cleanupUploadStore, useUploadStore } from './upload-store'

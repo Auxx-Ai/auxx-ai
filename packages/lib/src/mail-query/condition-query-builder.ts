@@ -1,33 +1,33 @@
 // packages/lib/src/mail-query/condition-query-builder.ts
 
+import { database as db, schema } from '@auxx/database'
+import { Thread } from '@auxx/database/models'
 import {
-  eq,
   and,
-  or,
-  inArray,
-  ilike,
-  isNull,
-  isNotNull,
+  eq,
   exists,
   gt,
   gte,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
   lt,
   lte,
   not,
-  sql,
+  or,
   type SQL,
+  sql,
 } from 'drizzle-orm'
-import { Thread } from '@auxx/database/models'
-import { database as db, schema } from '@auxx/database'
-import type { Condition, ConditionGroup } from '../conditions/types'
 import type { Operator } from '../conditions/operator-definitions'
-import { createScopedLogger } from '../logger'
+import type { Condition, ConditionGroup } from '../conditions/types'
 import {
+  threadDoesNotHaveTags,
   threadHasAnyTags,
   threadHasNoTags,
   threadHasTags,
-  threadDoesNotHaveTags,
 } from '../field-values/relationship-queries'
+import { createScopedLogger } from '../logger'
 
 const logger = createScopedLogger('condition-query-builder')
 
@@ -44,7 +44,7 @@ export function buildConditionGroupsQuery(
     return eq(Thread.organizationId, organizationId)
   }
 
-  const groupConditions = groups.map(group => buildGroupQuery(group, organizationId))
+  const groupConditions = groups.map((group) => buildGroupQuery(group, organizationId))
   const validConditions = groupConditions.filter(Boolean) as SQL<unknown>[]
 
   if (validConditions.length === 0) {
@@ -59,7 +59,9 @@ export function buildConditionGroupsQuery(
  * Build query for a single ConditionGroup.
  */
 function buildGroupQuery(group: ConditionGroup, organizationId: string): SQL<unknown> | null {
-  const conditions = group.conditions.map(c => buildConditionQuery(c, organizationId)).filter(Boolean) as SQL<unknown>[]
+  const conditions = group.conditions
+    .map((c) => buildConditionQuery(c, organizationId))
+    .filter(Boolean) as SQL<unknown>[]
 
   if (conditions.length === 0) return null
   if (conditions.length === 1) return conditions[0]
@@ -126,7 +128,11 @@ function buildConditionQuery(condition: Condition, organizationId: string): SQL<
  * Build tag condition query using FieldValue relationship.
  * Tags are stored in FieldValue table with systemAttribute='thread_tags'.
  */
-function buildTagQuery(operator: Operator, value: any, organizationId: string): SQL<unknown> | null {
+function buildTagQuery(
+  operator: Operator,
+  value: any,
+  organizationId: string
+): SQL<unknown> | null {
   switch (operator) {
     case 'empty':
       return threadHasNoTags(db, Thread.id, organizationId)
@@ -157,7 +163,9 @@ function buildAssigneeQuery(operator: Operator, value: any): SQL<unknown> | null
   const extractIds = (v: any): string[] => {
     if (!v) return []
     if (Array.isArray(v)) {
-      return v.map(item => typeof item === 'object' && item !== null ? item.id : item).filter(Boolean)
+      return v
+        .map((item) => (typeof item === 'object' && item !== null ? item.id : item))
+        .filter(Boolean)
     }
     return [typeof v === 'object' && v !== null ? v.id : v].filter(Boolean)
   }
@@ -167,18 +175,22 @@ function buildAssigneeQuery(operator: Operator, value: any): SQL<unknown> | null
       return isNull(Thread.assigneeId)
     case 'not empty':
       return isNotNull(Thread.assigneeId)
-    case 'is':
+    case 'is': {
       const singleId = extractIds(value)[0]
       return singleId ? eq(Thread.assigneeId, singleId) : null
-    case 'is not':
+    }
+    case 'is not': {
       const excludeId = extractIds(value)[0]
       return excludeId ? not(eq(Thread.assigneeId, excludeId)) : null
-    case 'in':
+    }
+    case 'in': {
       const ids = extractIds(value)
       return ids.length ? inArray(Thread.assigneeId, ids) : null
-    case 'not in':
+    }
+    case 'not in': {
       const excludeIds = extractIds(value)
       return excludeIds.length ? not(inArray(Thread.assigneeId, excludeIds)) : null
+    }
     default:
       return null
   }
@@ -244,9 +256,7 @@ function buildStatusQuery(operator: Operator, value: any): SQL<unknown> | null {
 
   // Handle 'not in' operator with array of status values (e.g., ['TRASH', 'SPAM'])
   if (operator === 'not in' && Array.isArray(value)) {
-    const conditions = value
-      .map((v) => getStatusCondition(v))
-      .filter(Boolean) as SQL<unknown>[]
+    const conditions = value.map((v) => getStatusCondition(v)).filter(Boolean) as SQL<unknown>[]
     if (conditions.length === 0) return null
     // NOT (status = TRASH OR status = SPAM) => status NOT IN (TRASH, SPAM)
     return not(or(...conditions)!)
@@ -254,9 +264,7 @@ function buildStatusQuery(operator: Operator, value: any): SQL<unknown> | null {
 
   // Handle 'in' operator with array of status values
   if (operator === 'in' && Array.isArray(value)) {
-    const conditions = value
-      .map((v) => getStatusCondition(v))
-      .filter(Boolean) as SQL<unknown>[]
+    const conditions = value.map((v) => getStatusCondition(v)).filter(Boolean) as SQL<unknown>[]
     if (conditions.length === 0) return null
     return or(...conditions)
   }
@@ -289,12 +297,14 @@ function buildDateQuery(operator: Operator, value: any, field?: string): SQL<unk
   }
 
   switch (operator) {
-    case 'before':
+    case 'before': {
       const beforeDate = parseDate(value)
       return beforeDate ? lt(dateColumn, beforeDate) : null
-    case 'after':
+    }
+    case 'after': {
       const afterDate = parseDate(value)
       return afterDate ? gt(dateColumn, afterDate) : null
+    }
     case 'is': {
       const isDate = parseDate(value)
       if (!isDate) return null
@@ -345,61 +355,87 @@ function buildSenderQuery(operator: Operator, value: any): SQL<unknown> | null {
 
   switch (operator) {
     case 'empty':
-      return not(exists(
-        db.select({ id: sql`1` }).from(Message)
-          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-          .where(and(eq(Message.threadId, Thread.id), eq(MessageParticipant.role, 'FROM')))
-      ))
+      return not(
+        exists(
+          db
+            .select({ id: sql`1` })
+            .from(Message)
+            .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
+            .where(and(eq(Message.threadId, Thread.id), eq(MessageParticipant.role, 'FROM')))
+        )
+      )
     case 'not empty':
       return exists(
-        db.select({ id: sql`1` }).from(Message)
+        db
+          .select({ id: sql`1` })
+          .from(Message)
           .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
           .where(and(eq(Message.threadId, Thread.id), eq(MessageParticipant.role, 'FROM')))
       )
     case 'is':
       return exists(
-        db.select({ id: sql`1` }).from(Message)
+        db
+          .select({ id: sql`1` })
+          .from(Message)
           .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
           .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
-          .where(and(
-            eq(Message.threadId, Thread.id),
-            eq(MessageParticipant.role, 'FROM'),
-            ilike(Participant.identifier, value)
-          ))
+          .where(
+            and(
+              eq(Message.threadId, Thread.id),
+              eq(MessageParticipant.role, 'FROM'),
+              ilike(Participant.identifier, value)
+            )
+          )
       )
     case 'is not':
-      return not(exists(
-        db.select({ id: sql`1` }).from(Message)
-          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-          .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
-          .where(and(
-            eq(Message.threadId, Thread.id),
-            eq(MessageParticipant.role, 'FROM'),
-            ilike(Participant.identifier, value)
-          ))
-      ))
+      return not(
+        exists(
+          db
+            .select({ id: sql`1` })
+            .from(Message)
+            .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
+            .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
+            .where(
+              and(
+                eq(Message.threadId, Thread.id),
+                eq(MessageParticipant.role, 'FROM'),
+                ilike(Participant.identifier, value)
+              )
+            )
+        )
+      )
     case 'contains':
       return exists(
-        db.select({ id: sql`1` }).from(Message)
+        db
+          .select({ id: sql`1` })
+          .from(Message)
           .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
           .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
-          .where(and(
-            eq(Message.threadId, Thread.id),
-            eq(MessageParticipant.role, 'FROM'),
-            ilike(Participant.identifier, `%${value}%`)
-          ))
+          .where(
+            and(
+              eq(Message.threadId, Thread.id),
+              eq(MessageParticipant.role, 'FROM'),
+              ilike(Participant.identifier, `%${value}%`)
+            )
+          )
       )
     case 'not contains':
-      return not(exists(
-        db.select({ id: sql`1` }).from(Message)
-          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-          .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
-          .where(and(
-            eq(Message.threadId, Thread.id),
-            eq(MessageParticipant.role, 'FROM'),
-            ilike(Participant.identifier, `%${value}%`)
-          ))
-      ))
+      return not(
+        exists(
+          db
+            .select({ id: sql`1` })
+            .from(Message)
+            .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
+            .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
+            .where(
+              and(
+                eq(Message.threadId, Thread.id),
+                eq(MessageParticipant.role, 'FROM'),
+                ilike(Participant.identifier, `%${value}%`)
+              )
+            )
+        )
+      )
     default:
       return null
   }
@@ -445,67 +481,97 @@ function buildToQuery(operator: Operator, value: any): SQL<unknown> | null {
 
   switch (operator) {
     case 'empty':
-      return not(exists(
-        db.select({ id: sql`1` }).from(Message)
-          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-          .where(and(
-            eq(Message.threadId, Thread.id),
-            inArray(MessageParticipant.role, ['TO', 'CC', 'BCC'])
-          ))
-      ))
+      return not(
+        exists(
+          db
+            .select({ id: sql`1` })
+            .from(Message)
+            .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
+            .where(
+              and(
+                eq(Message.threadId, Thread.id),
+                inArray(MessageParticipant.role, ['TO', 'CC', 'BCC'])
+              )
+            )
+        )
+      )
     case 'not empty':
       return exists(
-        db.select({ id: sql`1` }).from(Message)
+        db
+          .select({ id: sql`1` })
+          .from(Message)
           .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-          .where(and(
-            eq(Message.threadId, Thread.id),
-            inArray(MessageParticipant.role, ['TO', 'CC', 'BCC'])
-          ))
+          .where(
+            and(
+              eq(Message.threadId, Thread.id),
+              inArray(MessageParticipant.role, ['TO', 'CC', 'BCC'])
+            )
+          )
       )
     case 'is':
       return exists(
-        db.select({ id: sql`1` }).from(Message)
+        db
+          .select({ id: sql`1` })
+          .from(Message)
           .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
           .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
-          .where(and(
-            eq(Message.threadId, Thread.id),
-            inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
-            ilike(Participant.identifier, value)
-          ))
+          .where(
+            and(
+              eq(Message.threadId, Thread.id),
+              inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
+              ilike(Participant.identifier, value)
+            )
+          )
       )
     case 'is not':
-      return not(exists(
-        db.select({ id: sql`1` }).from(Message)
-          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-          .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
-          .where(and(
-            eq(Message.threadId, Thread.id),
-            inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
-            ilike(Participant.identifier, value)
-          ))
-      ))
+      return not(
+        exists(
+          db
+            .select({ id: sql`1` })
+            .from(Message)
+            .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
+            .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
+            .where(
+              and(
+                eq(Message.threadId, Thread.id),
+                inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
+                ilike(Participant.identifier, value)
+              )
+            )
+        )
+      )
     case 'contains':
       return exists(
-        db.select({ id: sql`1` }).from(Message)
+        db
+          .select({ id: sql`1` })
+          .from(Message)
           .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
           .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
-          .where(and(
-            eq(Message.threadId, Thread.id),
-            inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
-            ilike(Participant.identifier, `%${value}%`)
-          ))
+          .where(
+            and(
+              eq(Message.threadId, Thread.id),
+              inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
+              ilike(Participant.identifier, `%${value}%`)
+            )
+          )
       )
     case 'not contains':
-      return not(exists(
-        db.select({ id: sql`1` }).from(Message)
-          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-          .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
-          .where(and(
-            eq(Message.threadId, Thread.id),
-            inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
-            ilike(Participant.identifier, `%${value}%`)
-          ))
-      ))
+      return not(
+        exists(
+          db
+            .select({ id: sql`1` })
+            .from(Message)
+            .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
+            .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
+            .where(
+              and(
+                eq(Message.threadId, Thread.id),
+                inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
+                ilike(Participant.identifier, `%${value}%`)
+              )
+            )
+        )
+      )
     default:
       return null
   }
@@ -521,20 +587,20 @@ function buildBodyQuery(operator: Operator, value: any): SQL<unknown> | null {
   switch (operator) {
     case 'contains':
       return exists(
-        db.select({ id: sql`1` }).from(Message)
-          .where(and(
-            eq(Message.threadId, Thread.id),
-            ilike(Message.bodyText, `%${value}%`)
-          ))
+        db
+          .select({ id: sql`1` })
+          .from(Message)
+          .where(and(eq(Message.threadId, Thread.id), ilike(Message.bodyText, `%${value}%`)))
       )
     case 'not contains':
-      return not(exists(
-        db.select({ id: sql`1` }).from(Message)
-          .where(and(
-            eq(Message.threadId, Thread.id),
-            ilike(Message.bodyText, `%${value}%`)
-          ))
-      ))
+      return not(
+        exists(
+          db
+            .select({ id: sql`1` })
+            .from(Message)
+            .where(and(eq(Message.threadId, Thread.id), ilike(Message.bodyText, `%${value}%`)))
+        )
+      )
     default:
       return null
   }
@@ -566,16 +632,22 @@ function buildHasAttachmentsQuery(operator: Operator, value: any): SQL<unknown> 
 
   if (hasAttachments) {
     return exists(
-      db.select({ id: sql`1` }).from(Message)
+      db
+        .select({ id: sql`1` })
+        .from(Message)
         .innerJoin(MessageAttachment, eq(MessageAttachment.messageId, Message.id))
         .where(eq(Message.threadId, Thread.id))
     )
   } else {
-    return not(exists(
-      db.select({ id: sql`1` }).from(Message)
-        .innerJoin(MessageAttachment, eq(MessageAttachment.messageId, Message.id))
-        .where(eq(Message.threadId, Thread.id))
-    ))
+    return not(
+      exists(
+        db
+          .select({ id: sql`1` })
+          .from(Message)
+          .innerJoin(MessageAttachment, eq(MessageAttachment.messageId, Message.id))
+          .where(eq(Message.threadId, Thread.id))
+      )
+    )
   }
 }
 
@@ -593,11 +665,10 @@ function buildFreeTextQuery(operator: Operator, value: any): SQL<unknown> | null
   return or(
     ilike(Thread.subject, searchTerm),
     exists(
-      db.select({ id: sql`1` }).from(Message)
-        .where(and(
-          eq(Message.threadId, Thread.id),
-          ilike(Message.bodyText, searchTerm)
-        ))
+      db
+        .select({ id: sql`1` })
+        .from(Message)
+        .where(and(eq(Message.threadId, Thread.id), ilike(Message.bodyText, searchTerm)))
     )
   )
 }
@@ -611,15 +682,9 @@ function buildHasDraftQuery(operator: Operator, value: any): SQL<unknown> | null
   const hasDraft = value === true || value === 'true'
 
   if (hasDraft) {
-    return exists(
-      db.select({ id: sql`1` }).from(Draft)
-        .where(eq(Draft.threadId, Thread.id))
-    )
+    return exists(db.select({ id: sql`1` }).from(Draft).where(eq(Draft.threadId, Thread.id)))
   } else {
-    return not(exists(
-      db.select({ id: sql`1` }).from(Draft)
-        .where(eq(Draft.threadId, Thread.id))
-    ))
+    return not(exists(db.select({ id: sql`1` }).from(Draft).where(eq(Draft.threadId, Thread.id))))
   }
 }
 
@@ -634,19 +699,19 @@ function buildSentQuery(operator: Operator, value: any): SQL<unknown> | null {
   // Sent messages have direction = 'OUTBOUND'
   if (isSent) {
     return exists(
-      db.select({ id: sql`1` }).from(Message)
-        .where(and(
-          eq(Message.threadId, Thread.id),
-          eq(Message.direction, 'OUTBOUND')
-        ))
+      db
+        .select({ id: sql`1` })
+        .from(Message)
+        .where(and(eq(Message.threadId, Thread.id), eq(Message.direction, 'OUTBOUND')))
     )
   } else {
-    return not(exists(
-      db.select({ id: sql`1` }).from(Message)
-        .where(and(
-          eq(Message.threadId, Thread.id),
-          eq(Message.direction, 'OUTBOUND')
-        ))
-    ))
+    return not(
+      exists(
+        db
+          .select({ id: sql`1` })
+          .from(Message)
+          .where(and(eq(Message.threadId, Thread.id), eq(Message.direction, 'OUTBOUND')))
+      )
+    )
   }
 }

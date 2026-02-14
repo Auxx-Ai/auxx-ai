@@ -1,18 +1,18 @@
 // packages/lib/src/datasets/services/vector.service.ts
 
 import { database as db, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import { VectorDatabaseFactory } from '../vector/factory'
-import { PostgreSQLVectorDB } from '../vector/postgresql'
+import { createScopedLogger } from '@auxx/logger'
+import { and, eq } from 'drizzle-orm'
+import { SystemUserService } from '../../users/system-user-service'
 import type {
+  CollectionStats,
   VectorDatabaseConfig,
   VectorDocument,
   VectorSearchResult,
-  CollectionStats,
 } from '../types/vector.types'
-import { createScopedLogger } from '@auxx/logger'
+import { VectorDatabaseFactory } from '../vector/factory'
+import { PostgreSQLVectorDB } from '../vector/postgresql'
 import { EmbeddingService } from './embedding-service'
-import { SystemUserService } from '../../users/system-user-service'
 
 const logger = createScopedLogger('vector-service')
 
@@ -108,10 +108,10 @@ export class VectorService {
    */
   private static getEmbeddingService(organizationId: string, userId?: string): EmbeddingService {
     const key = `${organizationId}:${userId || 'system'}`
-    if (!this.embeddingInstances.has(key)) {
-      this.embeddingInstances.set(key, new EmbeddingService(db, organizationId, userId))
+    if (!VectorService.embeddingInstances.has(key)) {
+      VectorService.embeddingInstances.set(key, new EmbeddingService(db, organizationId, userId))
     }
-    return this.embeddingInstances.get(key)!
+    return VectorService.embeddingInstances.get(key)!
   }
 
   /**
@@ -210,7 +210,7 @@ export class VectorService {
   ): Promise<VectorSearchResult[]> {
     try {
       // Use cached dataset configuration
-      const dataset = await this.getDatasetConfigCached(datasetId, organizationId)
+      const dataset = await VectorService.getDatasetConfigCached(datasetId, organizationId)
 
       if (!dataset || !dataset.vectorDbType) {
         throw new Error('Dataset vector configuration not found or access denied')
@@ -237,7 +237,7 @@ export class VectorService {
 
       if (searchType === 'vector' || searchType === 'hybrid') {
         // Generate query embedding with matching dimensions
-        const embeddingService = this.getEmbeddingService(organizationId, userId)
+        const embeddingService = VectorService.getEmbeddingService(organizationId, userId)
         const queryEmbedding = await embeddingService.generateSingle(query, {
           modelId: dataset.embeddingModel ?? undefined,
           dimensions: dataset.vectorDimension || undefined,
@@ -263,14 +263,14 @@ export class VectorService {
           includeMetadata,
         })
 
-        results = this.combineSearchResults(results, textResults, {
+        results = VectorService.combineSearchResults(results, textResults, {
           vectorWeight: 0.7,
           maxResults: topK,
         })
       }
 
       // Record search query for analytics (fire-and-forget, non-blocking)
-      void this.recordSearchQuery(
+      void VectorService.recordSearchQuery(
         datasetId,
         organizationId,
         query,
@@ -350,7 +350,7 @@ export class VectorService {
       })
 
       // Generate embeddings for all segments in batch with specified dimensions
-      const embeddingService = this.getEmbeddingService(organizationId, userId)
+      const embeddingService = VectorService.getEmbeddingService(organizationId, userId)
       const embeddings = await embeddingService.generateBatch(
         segments.map((s) => s.content),
         {
@@ -427,7 +427,7 @@ export class VectorService {
       }
 
       // Generate new embedding with matching dimensions
-      const embeddingService = this.getEmbeddingService(organizationId, userId)
+      const embeddingService = VectorService.getEmbeddingService(organizationId, userId)
       const embedding = await embeddingService.generateSingle(content, {
         modelId: dataset.embeddingModel ?? undefined,
         dimensions: dimension,

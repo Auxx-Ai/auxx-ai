@@ -1,11 +1,11 @@
 // src/components/editor/extensions/variable-node.ts
 // Variable node for rendering workflow variables as styled tags in Tiptap editor
 
-import { Node, mergeAttributes, nodeInputRule } from '@tiptap/core'
-import { ReactNodeViewRenderer } from '@tiptap/react'
-import VariableNodeView from './variable-node-view'
+import { mergeAttributes, Node, nodeInputRule } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { ReactNodeViewRenderer } from '@tiptap/react'
+import VariableNodeView from './variable-node-view'
 
 /**
  * Variable node for TipTap editor

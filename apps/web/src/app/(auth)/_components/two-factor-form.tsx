@@ -1,11 +1,12 @@
 'use client'
-import { Loader2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import React, { useState, useEffect, useRef } from 'react'
-import { client } from '~/auth/auth-client'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@auxx/ui/components/input-otp'
+import { Loader2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import type React from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { client } from '~/auth/auth-client'
 
 type Props = Record<string, unknown>
 
@@ -88,17 +89,17 @@ function TwoFactorForm(_props: Props) {
   }
 
   return (
-    <div className="flex w-full flex-col gap-6">
-      <Card className="shadow-md shadow-black/20 border-transparent">
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl">Two Factor Authentication</CardTitle>
-          <div className="text-sm text-muted-foreground">
-            {error ? <p className="text-destructive text-sm">{error}</p> : 'Enter your code below'}
+    <div className='flex w-full flex-col gap-6'>
+      <Card className='shadow-md shadow-black/20 border-transparent'>
+        <CardHeader className='text-center'>
+          <CardTitle className='text-xl'>Two Factor Authentication</CardTitle>
+          <div className='text-sm text-muted-foreground'>
+            {error ? <p className='text-destructive text-sm'>{error}</p> : 'Enter your code below'}
           </div>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="flex items-center justify-center">
+        <CardContent className='flex flex-col gap-4'>
+          <form onSubmit={handleSubmit} className='space-y-4'>
+            <div className='flex items-center justify-center'>
               <InputOTP
                 maxLength={6}
                 value={otp}
@@ -116,11 +117,11 @@ function TwoFactorForm(_props: Props) {
             </div>
 
             <Button
-              type="submit"
-              className="w-full mt-4"
+              type='submit'
+              className='w-full mt-4'
               disabled={isLoading || otp.length < 6}
               loading={isLoading}
-              loadingText="Verifying...">
+              loadingText='Verifying...'>
               Verify Code
             </Button>
           </form>

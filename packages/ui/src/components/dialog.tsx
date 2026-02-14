@@ -1,11 +1,10 @@
 'use client'
 
-import * as React from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
-import { X } from 'lucide-react'
-
 import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
+import { X } from 'lucide-react'
+import { Dialog as DialogPrimitive } from 'radix-ui'
+import * as React from 'react'
 
 // const Dialog = DialogPrimitive.Root
 const Dialog: typeof DialogPrimitive.Root = (props) => (
@@ -147,7 +146,7 @@ function DialogContent({
     <DialogPortal>
       <DialogOverlay />
       <div
-        className="z-50 pb-20 overflow-y-auto absolute inset-0"
+        className='z-50 pb-20 overflow-y-auto absolute inset-0'
         onWheel={(e) => e.stopPropagation()}>
         <DialogPrimitive.Content
           className={cn(dialogVariants({ variant, size, position, className }))}
@@ -161,9 +160,9 @@ function DialogContent({
               )}>
               {children}
               {showClose && (
-                <DialogPrimitive.Close className="absolute size-7 rounded-full z-20 flex items-center justify-center shrink-0 right-1 top-1 opacity-70 ring-offset-background transition-opacity hover:bg-primary-100 dark:hover:bg-primary-200 hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring/20 focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-                  <X className="size-4 shrink-0" />
-                  <span className="sr-only">Close</span>
+                <DialogPrimitive.Close className='absolute size-7 rounded-full z-20 flex items-center justify-center shrink-0 right-1 top-1 opacity-70 ring-offset-background transition-opacity hover:bg-primary-100 dark:hover:bg-primary-200 hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring/20 focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground'>
+                  <X className='size-4 shrink-0' />
+                  <span className='sr-only'>Close</span>
                 </DialogPrimitive.Close>
               )}
             </div>
@@ -171,7 +170,7 @@ function DialogContent({
             <div
               ref={portalContainerRef}
               data-dialog-portal-container
-              className="fixed inset-0 pointer-events-none z-[100] overflow-visible"
+              className='fixed inset-0 pointer-events-none z-[100] overflow-visible'
             />
           </DialogContext.Provider>
         </DialogPrimitive.Content>

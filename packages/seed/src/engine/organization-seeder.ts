@@ -1,12 +1,12 @@
 // packages/seed/src/engine/organization-seeder.ts
 // High-level orchestrator for organization-specific seeding with webhook management
 
-import { DrizzleSeeder } from './drizzle-seeder'
-import { OrganizationWebhookCoordinator } from '../utils/organization-webhook-coordinator'
-import type { SeedingConfig, SeedingResult } from '../types'
-import { createScopedLogger } from '@auxx/logger'
 import { database as db, schema } from '@auxx/database'
-import { eq, and, isNotNull, inArray } from 'drizzle-orm'
+import { createScopedLogger } from '@auxx/logger'
+import { and, eq, inArray, isNotNull } from 'drizzle-orm'
+import type { SeedingConfig, SeedingResult } from '../types'
+import { OrganizationWebhookCoordinator } from '../utils/organization-webhook-coordinator'
+import { DrizzleSeeder } from './drizzle-seeder'
 
 const logger = createScopedLogger('organization-seeder')
 
@@ -55,13 +55,13 @@ export class OrganizationSeeder {
 
         // Step 2: Reset organization data
         logger.info('Step 2: Resetting organization data')
-        await this.resetOrganizationData(organizationId)
+        await OrganizationSeeder.resetOrganizationData(organizationId)
         logger.info('Organization data reset complete')
       }
 
       // Step 3: Seed organization data
       logger.info(`Step ${mode === 'reset' ? '3' : '1'}: Seeding organization data`)
-      await this.seedOrganizationDirectly(organizationId, org.createdById, scenario)
+      await OrganizationSeeder.seedOrganizationDirectly(organizationId, org.createdById, scenario)
       logger.info('Organization seeding complete')
 
       // Step 4: Reconnect webhooks (only if we disconnected them)
@@ -118,7 +118,7 @@ export class OrganizationSeeder {
     organizationId: string,
     scenario: 'demo' | 'development' | 'testing' = 'demo'
   ): Promise<SeedingResult> {
-    return this.seedOrganization(organizationId, 'reset', scenario)
+    return OrganizationSeeder.seedOrganization(organizationId, 'reset', scenario)
   }
 
   /**
@@ -128,7 +128,7 @@ export class OrganizationSeeder {
     organizationId: string,
     scenario: 'demo' | 'development' | 'testing' = 'demo'
   ): Promise<SeedingResult> {
-    return this.seedOrganization(organizationId, 'additive', scenario)
+    return OrganizationSeeder.seedOrganization(organizationId, 'additive', scenario)
   }
 
   /**
@@ -146,15 +146,17 @@ export class OrganizationSeeder {
 
       // 2. Communication domain (Messages, Threads)
       console.log('  ↳ Deleting message participants...')
-      await db.delete(schema.MessageParticipant).where(
-        eq(
-          schema.MessageParticipant.messageId,
-          db
-            .select({ id: schema.Message.id })
-            .from(schema.Message)
-            .where(eq(schema.Message.organizationId, organizationId))
+      await db
+        .delete(schema.MessageParticipant)
+        .where(
+          eq(
+            schema.MessageParticipant.messageId,
+            db
+              .select({ id: schema.Message.id })
+              .from(schema.Message)
+              .where(eq(schema.Message.organizationId, organizationId))
+          )
         )
-      )
 
       console.log('  ↳ Deleting thread tag associations (via FieldValue)...')
       // Delete FieldValue records for thread_tags (RELATIONSHIP field)
@@ -185,37 +187,43 @@ export class OrganizationSeeder {
 
       // 3. Ticket domain
       console.log('  ↳ Deleting ticket relations...')
-      await db.delete(schema.TicketRelation).where(
-        eq(
-          schema.TicketRelation.ticketId,
-          db
-            .select({ id: schema.Ticket.id })
-            .from(schema.Ticket)
-            .where(eq(schema.Ticket.organizationId, organizationId))
+      await db
+        .delete(schema.TicketRelation)
+        .where(
+          eq(
+            schema.TicketRelation.ticketId,
+            db
+              .select({ id: schema.Ticket.id })
+              .from(schema.Ticket)
+              .where(eq(schema.Ticket.organizationId, organizationId))
+          )
         )
-      )
 
       console.log('  ↳ Deleting ticket assignments...')
-      await db.delete(schema.TicketAssignment).where(
-        eq(
-          schema.TicketAssignment.ticketId,
-          db
-            .select({ id: schema.Ticket.id })
-            .from(schema.Ticket)
-            .where(eq(schema.Ticket.organizationId, organizationId))
+      await db
+        .delete(schema.TicketAssignment)
+        .where(
+          eq(
+            schema.TicketAssignment.ticketId,
+            db
+              .select({ id: schema.Ticket.id })
+              .from(schema.Ticket)
+              .where(eq(schema.Ticket.organizationId, organizationId))
+          )
         )
-      )
 
       console.log('  ↳ Deleting ticket replies...')
-      await db.delete(schema.TicketReply).where(
-        eq(
-          schema.TicketReply.ticketId,
-          db
-            .select({ id: schema.Ticket.id })
-            .from(schema.Ticket)
-            .where(eq(schema.Ticket.organizationId, organizationId))
+      await db
+        .delete(schema.TicketReply)
+        .where(
+          eq(
+            schema.TicketReply.ticketId,
+            db
+              .select({ id: schema.Ticket.id })
+              .from(schema.Ticket)
+              .where(eq(schema.Ticket.organizationId, organizationId))
+          )
         )
-      )
 
       console.log('  ↳ Deleting tickets...')
       await db.delete(schema.Ticket).where(eq(schema.Ticket.organizationId, organizationId))
@@ -316,7 +324,10 @@ export class OrganizationSeeder {
       // Fetch inboxes
       logger.info('seedOrganizationDirectly: Fetching inboxes')
       const inboxes = await db
-        .select({ inboxId: schema.InboxIntegration.inboxId, organizationId: schema.Organization.id })
+        .select({
+          inboxId: schema.InboxIntegration.inboxId,
+          organizationId: schema.Organization.id,
+        })
         .from(schema.InboxIntegration)
         .innerJoin(
           schema.Integration,
@@ -441,7 +452,11 @@ export class OrganizationSeeder {
       if (integrations.length > 0 && scenario.scales.threads > 0) {
         logger.info('seedOrganizationDirectly: Seeding communication domain')
         console.log('💾 Inserting communication data...')
-        const communication = new CommunicationDomain(scenarioWithRefinements, context, domainOptions)
+        const communication = new CommunicationDomain(
+          scenarioWithRefinements,
+          context,
+          domainOptions
+        )
         await communication.insertDirectly(db)
         logger.info('seedOrganizationDirectly: Communication domain complete')
       }

@@ -1,50 +1,49 @@
 // apps/web/src/components/resources/index.ts
 
-// Provider
-export { ResourceProvider, clearResourceCaches } from './providers/resource-provider'
-
 // Hooks
 export {
-  useResources,
-  useResource,
-  useResourceProperty,
-  useRelationship,
-  useResourceFields,
-  useField,
-  useFields,
-  // Record store hooks
-  useRecordList,
-  useRecord,
-  useRecords,
-  useIsRecordLoading,
-  useIsRecordPending,
-  useRecordInvalidation,
-  useRecordHydration,
-  // Entity field values
-  useEntityValues,
   // Types
   type FieldInfo,
+  // Entity field values
+  useEntityValues,
+  useField,
+  useFields,
+  useIsRecordLoading,
+  useIsRecordPending,
+  useRecord,
+  useRecordHydration,
+  useRecordInvalidation,
+  // Record store hooks
+  useRecordList,
+  useRecords,
+  useRelationship,
+  useResource,
+  useResourceFields,
+  useResourceProperty,
+  useResources,
 } from './hooks'
+// Provider
+export { clearResourceCaches, ResourceProvider } from './providers/resource-provider'
 
 // Store utilities (for advanced use cases)
 export {
-  toRecordId,
-  parseRecordId,
-  // Resource store
-  useResourceStore,
-  getResourceStoreState,
-  // Relationship store
-  getRelationshipStoreState,
-  // Record store utilities
-  useRecordStore,
-  getRecordStoreState,
   createListKey,
-  isListStale,
   EMPTY_FILTERS,
   EMPTY_SORTING,
-  type RecordMeta,
+  getRecordStoreState,
+  // Relationship store
+  getRelationshipStoreState,
+  getResourceStoreState,
+  isListStale,
+  parseRecordId,
   type RecordId,
+  type RecordMeta,
+  toRecordId,
+  // Record store utilities
+  useRecordStore,
+  // Resource store
+  useResourceStore,
 } from './store'
 
 // Utilities
-export { getRecordLink, useRecordLink, type GetRecordLinkOptions } from './utils'
+export { type GetRecordLinkOptions, getRecordLink, useRecordLink } from './utils'

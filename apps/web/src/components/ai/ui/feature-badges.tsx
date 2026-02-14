@@ -1,10 +1,10 @@
 // apps/web/src/app/(protected)/app/settings/aiModels/_components/feature-badges.tsx
 
 'use client'
-import React from 'react'
 import { Badge } from '@auxx/ui/components/badge'
-import { FEATURE_BADGES, formatContextLength } from './utils'
 import { cn } from '@auxx/ui/lib/utils'
+import type React from 'react'
+import { FEATURE_BADGES, formatContextLength } from './utils'
 
 interface FeatureBadgesProps {
   features: string[]
@@ -33,7 +33,7 @@ export const FeatureBadges: React.FC<FeatureBadgesProps> = ({
         const label = config?.label || feature.charAt(0).toUpperCase() + feature.slice(1)
 
         return (
-          <Badge key={feature} variant="outline" size="xs" className="opacity-50">
+          <Badge key={feature} variant='outline' size='xs' className='opacity-50'>
             {label}
           </Badge>
         )
@@ -41,14 +41,14 @@ export const FeatureBadges: React.FC<FeatureBadgesProps> = ({
 
       {/* Remaining count indicator */}
       {remainingCount > 0 && (
-        <Badge variant="outline" size="xs">
+        <Badge variant='outline' size='xs'>
           +{remainingCount}
         </Badge>
       )}
 
       {/* Context length badge */}
       {contextLength && contextLength > 0 && (
-        <Badge variant="outline" size="xs" className="font-mono bg-muted/20">
+        <Badge variant='outline' size='xs' className='font-mono bg-muted/20'>
           {formatContextLength(contextLength)}
         </Badge>
       )}
@@ -71,7 +71,7 @@ export const ContextLengthBadge: React.FC<ContextLengthBadgeProps> = ({
   if (contextLength <= 0) return null
 
   return (
-    <Badge variant="outline" className={cn('text-xs px-2 py-0.5 font-mono bg-muted/50', className)}>
+    <Badge variant='outline' className={cn('text-xs px-2 py-0.5 font-mono bg-muted/50', className)}>
       {formatContextLength(contextLength)}
     </Badge>
   )

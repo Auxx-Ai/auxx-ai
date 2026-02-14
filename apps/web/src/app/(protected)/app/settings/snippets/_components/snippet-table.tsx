@@ -1,22 +1,9 @@
 // components/snippets/SnippetTable.tsx
-import React, { useEffect, useState } from 'react'
-import {
-  Edit2Icon,
-  SearchIcon,
-  StarIcon,
-  Trash2Icon,
-  UsersIcon,
-  MoreHorizontalIcon,
-  FolderIcon,
-  CopyIcon,
-  UserIcon,
-  PanelLeft,
-  XIcon,
-  Tag,
-} from 'lucide-react'
-import { api } from '~/trpc/react'
+
+import type { SnippetSharingType } from '@auxx/database/enums'
+import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +11,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { Input } from '@auxx/ui/components/input'
+import { Separator } from '@auxx/ui/components/separator'
 import {
   Table,
   TableBody,
@@ -32,17 +21,30 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import { Badge } from '@auxx/ui/components/badge'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { formatDistanceToNow } from 'date-fns'
 import { keepPreviousData } from '@tanstack/react-query'
-import { Separator } from '@auxx/ui/components/separator'
-import { useSnippetContext, type Snippet as ContextSnippet } from '~/hooks/use-snippet-context'
-import { useConfirm } from '~/hooks/use-confirm'
+import { formatDistanceToNow } from 'date-fns'
+import {
+  CopyIcon,
+  Edit2Icon,
+  FolderIcon,
+  MoreHorizontalIcon,
+  PanelLeft,
+  SearchIcon,
+  StarIcon,
+  Tag,
+  Trash2Icon,
+  UserIcon,
+  UsersIcon,
+  XIcon,
+} from 'lucide-react'
+import React, { useEffect, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
-import { SnippetSharingType } from '@auxx/database/enums'
+import { useConfirm } from '~/hooks/use-confirm'
+import { type Snippet as ContextSnippet, useSnippetContext } from '~/hooks/use-snippet-context'
+import { api } from '~/trpc/react'
+
 // Extended snippet interface for table display with API relations
 interface TableSnippet {
   id: string
@@ -74,25 +76,25 @@ const getSharingTypeInfo = (type: SnippetSharingType, shareCount: number) => {
     case 'PRIVATE':
       return {
         label: 'Private',
-        icon: <UserIcon size={14} className="mr-1" />,
+        icon: <UserIcon size={14} className='mr-1' />,
         color: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
       }
     case 'ORGANIZATION':
       return {
         label: 'Organization',
-        icon: <UsersIcon size={14} className="mr-1" />,
+        icon: <UsersIcon size={14} className='mr-1' />,
         color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
       }
     case 'GROUPS':
       return {
         label: `${shareCount} Group${shareCount !== 1 ? 's' : ''}`,
-        icon: <UsersIcon size={14} className="mr-1" />,
+        icon: <UsersIcon size={14} className='mr-1' />,
         color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
       }
     case 'MEMBERS':
       return {
         label: `${shareCount} Member${shareCount !== 1 ? 's' : ''}`,
-        icon: <UsersIcon size={14} className="mr-1" />,
+        icon: <UsersIcon size={14} className='mr-1' />,
         color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
       }
     default:
@@ -176,36 +178,36 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
     }
   }
   return (
-    <div className="flex flex-1 flex-col overflow-hidden h-full w-full">
-      <div className="flex items-center justify-between border-b p-2">
-        <div className="flex flex-row  items-center gap-1">
+    <div className='flex flex-1 flex-col overflow-hidden h-full w-full'>
+      <div className='flex items-center justify-between border-b p-2'>
+        <div className='flex flex-row  items-center gap-1'>
           <Button
-            data-sidebar="trigger"
-            variant="ghost"
-            size="icon"
-            className="size-7"
+            data-sidebar='trigger'
+            variant='ghost'
+            size='icon'
+            className='size-7'
             onClick={toggleFolderPanel}>
             <PanelLeft />
-            <span className="sr-only">Toggle Sidebar</span>
+            <span className='sr-only'>Toggle Sidebar</span>
           </Button>
-          <span className="text-sm">{currentFolderName || 'All Snippets'}</span>
+          <span className='text-sm'>{currentFolderName || 'All Snippets'}</span>
         </div>
-        <div className="relative w-64">
+        <div className='relative w-64'>
           <SearchIcon
             size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400"
+            className='absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400'
           />
           <Input
-            placeholder="Search snippets..."
+            placeholder='Search snippets...'
             value={localSearchTerm}
             onChange={(e) => setLocalSearchTerm(e.target.value)}
-            className="h-8 pl-9 pr-8"
+            className='h-8 pl-9 pr-8'
           />
           {localSearchTerm && (
             <Button
-              variant="ghost"
-              size="icon"
-              className="absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 transform"
+              variant='ghost'
+              size='icon'
+              className='absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 transform'
               onClick={() => {
                 setLocalSearchTerm('')
                 setSearchTerm('')
@@ -216,14 +218,14 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto h-full flex flex-col">
+      <div className='flex-1 overflow-auto h-full flex flex-col'>
         {isLoading ? (
           <EmptyState
             icon={Tag}
-            iconClassName="animate-spin"
-            title="Loading snippets..."
+            iconClassName='animate-spin'
+            title='Loading snippets...'
             description={<>Hang on tight while we load your snippets...</>}
-            button={<div className="h-12"></div>}
+            button={<div className='h-12'></div>}
           />
         ) : data?.snippets.length === 0 ? (
           <EmptyState
@@ -244,7 +246,7 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
             }
             button={
               searchTerm ? (
-                <Button variant="outline" onClick={() => setSearchTerm('')}>
+                <Button variant='outline' onClick={() => setSearchTerm('')}>
                   Clear search
                 </Button>
               ) : null
@@ -254,13 +256,13 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-12"></TableHead>
+                <TableHead className='w-12'></TableHead>
                 <TableHead>Title</TableHead>
                 <TableHead>Folder</TableHead>
                 <TableHead>Sharing</TableHead>
                 <TableHead>Created By</TableHead>
                 <TableHead>Updated</TableHead>
-                <TableHead className="w-12"></TableHead>
+                <TableHead className='w-12'></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -268,12 +270,12 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
                 const sharingInfo = getSharingTypeInfo(snippet.sharingType, snippet._count.shares)
                 return (
                   <TableRow key={snippet.id}>
-                    <TableCell className="p-2">
+                    <TableCell className='p-2'>
                       <Button
-                        variant="ghost"
-                        size="icon"
+                        variant='ghost'
+                        size='icon'
                         onClick={() => handleToggleFavorite(snippet)}
-                        className="h-8 w-8">
+                        className='h-8 w-8'>
                         <StarIcon
                           size={16}
                           className={cn(
@@ -285,11 +287,11 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
                         />
                       </Button>
                     </TableCell>
-                    <TableCell className="font-medium">
-                      <div className="flex flex-col">
+                    <TableCell className='font-medium'>
+                      <div className='flex flex-col'>
                         <span>{snippet.title}</span>
                         {snippet.description && (
-                          <span className="max-w-md truncate text-xs text-gray-500">
+                          <span className='max-w-md truncate text-xs text-gray-500'>
                             {snippet.description}
                           </span>
                         )}
@@ -297,25 +299,25 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
                     </TableCell>
                     <TableCell>
                       {snippet.folder ? (
-                        <div className="flex items-center">
-                          <FolderIcon size={14} className="mr-1 text-gray-500" />
+                        <div className='flex items-center'>
+                          <FolderIcon size={14} className='mr-1 text-gray-500' />
                           <span>{snippet.folder.name}</span>
                         </div>
                       ) : (
-                        <span className="text-gray-500">—</span>
+                        <span className='text-gray-500'>—</span>
                       )}
                     </TableCell>
                     <TableCell>
                       <Badge
-                        variant="secondary"
+                        variant='secondary'
                         className={cn('flex items-center', sharingInfo.color)}>
                         {sharingInfo.icon}
                         {sharingInfo.label}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center">
-                        <Avatar className="mr-2 h-6 w-6">
+                      <div className='flex items-center'>
+                        <Avatar className='mr-2 h-6 w-6'>
                           <AvatarImage src={snippet.createdBy.image || undefined} />
                           <AvatarFallback>
                             {snippet.createdBy.name?.charAt(0) ||
@@ -323,22 +325,22 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
                               '?'}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="text-sm">
+                        <span className='text-sm'>
                           {snippet.createdBy.name || snippet.createdBy.email || 'Unknown user'}
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm text-gray-500">
+                    <TableCell className='text-sm text-gray-500'>
                       {formatRelativeTime(snippet.updatedAt)}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon-sm">
+                          <Button variant='ghost' size='icon-sm'>
                             <MoreHorizontalIcon />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                        <DropdownMenuContent align='end'>
                           <DropdownMenuItem onClick={() => onEdit(snippet)}>
                             <Edit2Icon />
                             Edit
@@ -350,7 +352,7 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() => handleDeleteSnippet(snippet)}
-                            variant="destructive">
+                            variant='destructive'>
                             <Trash2Icon />
                             Delete
                           </DropdownMenuItem>

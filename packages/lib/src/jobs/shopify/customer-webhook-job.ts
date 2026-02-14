@@ -1,13 +1,13 @@
 import { database as db } from '@auxx/database'
+import { SYNC_STATUS } from '@auxx/database/enums'
 import { WebhookEventModel } from '@auxx/database/models'
+import { fetchCustomer, upsertCustomer } from '@auxx/lib/shopify'
 import type { Job } from 'bullmq'
 import {
   getWebhookDataAndStart,
   shopifyWebhookLogger as logger,
   type WebhookJobDataProps,
 } from './utils'
-import { fetchCustomer, upsertCustomer } from '@auxx/lib/shopify'
-import { SYNC_STATUS } from '@auxx/database/enums'
 export const customerWebhookJob = async (job: Job<WebhookJobDataProps>) => {
   const webhook = await getWebhookDataAndStart(job)
   if (!webhook) {

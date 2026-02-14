@@ -5,14 +5,14 @@
  * Executes app webhook handlers in a Deno sandbox with Web Platform Request/Response APIs.
  */
 
-import type { ExecutionResult, RuntimeContext } from '../types.ts'
-import type { WebhookExecutionEvent } from '../validator.ts'
 import {
-  injectServerRuntimeHelpers,
+  type ConsoleLog,
   cleanupServerRuntimeHelpers,
   getCapturedLogs,
-  type ConsoleLog,
+  injectServerRuntimeHelpers,
 } from '../runtime-helpers/index.ts'
+import type { ExecutionResult, RuntimeContext } from '../types.ts'
+import type { WebhookExecutionEvent } from '../validator.ts'
 
 /**
  * Execute webhook handler
@@ -29,7 +29,7 @@ export async function executeWebhookHandler(
     handlerId,
     request,
     context,
-    timeout  // Default provided by Zod schema
+    timeout, // Default provided by Zod schema
   } = options
 
   console.log('[Executor] Starting webhook execution:', { handlerId })

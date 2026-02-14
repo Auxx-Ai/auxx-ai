@@ -1,11 +1,10 @@
 'use client'
 
-import * as React from 'react'
-import { Select as SelectPrimitive } from 'radix-ui'
-import { Check, ChevronDown, ChevronUp } from 'lucide-react'
-import { cva, type VariantProps } from 'class-variance-authority'
-
 import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { Check, ChevronDown, ChevronUp } from 'lucide-react'
+import { Select as SelectPrimitive } from 'radix-ui'
+import type * as React from 'react'
 
 const Select = SelectPrimitive.Root
 
@@ -44,7 +43,7 @@ function SelectTrigger({ className, children, variant, size, ...props }: SelectT
       {...props}>
       {children}
       <SelectPrimitive.Icon asChild>
-        <ChevronDown className="size-4 opacity-50" />
+        <ChevronDown className='size-4 opacity-50' />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   )
@@ -64,7 +63,7 @@ function SelectScrollUpButton({
         className
       )}
       {...props}>
-      <ChevronUp className="size-4" />
+      <ChevronUp className='size-4' />
     </SelectPrimitive.ScrollUpButton>
   )
 }
@@ -83,7 +82,7 @@ function SelectScrollDownButton({
         className
       )}
       {...props}>
-      <ChevronDown className="size-4" />
+      <ChevronDown className='size-4' />
     </SelectPrimitive.ScrollDownButton>
   )
 }
@@ -181,9 +180,9 @@ function SelectItem({
         className
       )}
       {...props}>
-      <span className="absolute right-2 flex size-3.5 items-center justify-center">
+      <span className='absolute right-2 flex size-3.5 items-center justify-center'>
         <SelectPrimitive.ItemIndicator>
-          <Check className="size-4" />
+          <Check className='size-4' />
         </SelectPrimitive.ItemIndicator>
       </span>
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>

@@ -1,19 +1,19 @@
 // apps/web/src/components/fields/inputs/select-input-field.tsx
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
-import { usePropertyContext } from '../property-provider'
-import { useFieldNavigationOptional } from '../field-navigation-context'
-import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { cn } from '@auxx/ui/lib/utils'
-import { TagsView } from '~/components/ui/tags-view'
-import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import { FieldType } from '@auxx/database/enums'
+import { parseRecordId } from '@auxx/lib/resources/client'
 import type { SelectOption } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
-import { parseRecordId } from '@auxx/lib/resources/client'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { cn } from '@auxx/ui/lib/utils'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
+import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
+import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
+import { TagsView } from '~/components/ui/tags-view'
+import { useFieldNavigationOptional } from '../field-navigation-context'
+import { usePropertyContext } from '../property-provider'
 
 /**
  * Configuration for select-type fields based on field type
@@ -334,10 +334,10 @@ export function SelectFieldInput({
           onClear={handleClearAll}
           asCombobox
           className={cn(className, triggerProps?.className)}>
-          <TagsView value={value} options={options} className="flex-1" />
+          <TagsView value={value} options={options} className='flex-1' />
         </PickerTrigger>
       </PopoverTrigger>
-      <PopoverContent className="min-w-[var(--radix-popover-trigger-width)] p-0" align="start">
+      <PopoverContent className='min-w-[var(--radix-popover-trigger-width)] p-0' align='start'>
         <MultiSelectPicker
           options={options}
           value={value}

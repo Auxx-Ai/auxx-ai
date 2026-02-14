@@ -5,7 +5,7 @@
  * Ensures consistent queuing behavior across processors and runs post-commit.
  */
 import { ThumbnailService } from './thumbnail-service'
-import type { ThumbnailSource, ThumbnailOptions, PresetKey } from './thumbnail-types'
+import type { PresetKey, ThumbnailOptions, ThumbnailSource } from './thumbnail-types'
 
 export interface EnsureThumbnailPresetsParams {
   /** Organization scope */
@@ -47,4 +47,3 @@ export async function ensureThumbnailPresets(
 
   return results
 }
-

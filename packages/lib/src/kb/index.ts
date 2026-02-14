@@ -1,13 +1,13 @@
 // export * from './kb-service'
 export {
-  type KBFields,
-  type KBCreateInput,
-  type KBUpdateInput,
   type ArticleBaseFields,
-  type ArticleCreateInput,
-  type ArticleUpdateInput,
   type ArticleBatchUpdateItem,
-  type ArticleListOptions,
+  type ArticleCreateInput,
   type ArticleIncludeOptions,
+  type ArticleListOptions,
+  type ArticleUpdateInput,
+  type KBCreateInput,
+  type KBFields,
   KBService,
+  type KBUpdateInput,
 } from './kb-service'

@@ -1,9 +1,9 @@
 // apps/web/src/components/workflow/nodes/core/find/types.ts
 import { z } from 'zod'
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
-import type { ExecutionResult } from '~/components/workflow/types'
-import { NodeType } from '~/components/workflow/types/node-types'
 import type { Condition, ConditionGroup } from '~/components/conditions'
+import type { ExecutionResult } from '~/components/workflow/types'
+import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
+import { NodeType } from '~/components/workflow/types/node-types'
 
 /**
  * Node data for find nodes (flattened structure)

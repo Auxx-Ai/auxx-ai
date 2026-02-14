@@ -1,29 +1,29 @@
 // apps/web/src/components/workflow/store/index.ts
 
-// Export all types and utilities
-export * from './types'
+export * from './canvas-store'
+export * from './edge-store'
 export * from './event-bus'
 export * from './history-manager'
-
 // Export all stores (this already exports the hooks)
 export * from './node-store'
-export * from './edge-store'
+export * from './panel-store'
+export * from './selection-store'
+// Export all types and utilities
+export * from './types'
 // export * from './variable-store' // DEPRECATED
 // export * from './unified-variable-store' // DEPRECATED - use use-var-store
 export * from './use-var-store'
 export * from './workflow-store'
-export * from './canvas-store'
-export * from './selection-store'
-export * from './panel-store'
+
 // resource-field-store removed - use stores from ~/components/resources
 
+import { useCanvasStore } from './canvas-store'
+import { usePanelStore } from './panel-store'
+import { useSelectionStore } from './selection-store'
 // Import stores for internal use
 // import { useEdgeStore } from './edge-store'
 import { useVarStore } from './use-var-store'
 import { useWorkflowStore } from './workflow-store'
-import { useCanvasStore } from './canvas-store'
-import { useSelectionStore } from './selection-store'
-import { usePanelStore } from './panel-store'
 // System and environment variables are now initialized in var store
 
 /**

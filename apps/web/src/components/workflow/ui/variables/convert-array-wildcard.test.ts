@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/ui/variables/__tests__/convert-array-wildcard.test.ts
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 /**
  * Test for array wildcard to loop item conversion logic
@@ -70,9 +70,7 @@ describe('Array Wildcard to Loop Item Conversion Logic', () => {
       const variableId = 'find-abc.contacts[*].address.city' // ✅ Plural
       const sourceVarId = 'find-abc.contacts' // ✅ Plural
 
-      const propertyPath = variableId
-        .substring(sourceVarId.length + 3)
-        .replace(/^\./, '')
+      const propertyPath = variableId.substring(sourceVarId.length + 3).replace(/^\./, '')
 
       expect(propertyPath).toBe('address.city')
     })
@@ -81,9 +79,7 @@ describe('Array Wildcard to Loop Item Conversion Logic', () => {
       const variableId = 'find-abc.contacts[*]' // ✅ Plural
       const sourceVarId = 'find-abc.contacts' // ✅ Plural
 
-      const propertyPath = variableId
-        .substring(sourceVarId.length + 3)
-        .replace(/^\./, '')
+      const propertyPath = variableId.substring(sourceVarId.length + 3).replace(/^\./, '')
 
       expect(propertyPath).toBe('')
     })
@@ -94,9 +90,7 @@ describe('Array Wildcard to Loop Item Conversion Logic', () => {
       const loopNodeId = 'loop-xyz-123'
       const propertyPath = 'firstName'
 
-      const loopItemId = propertyPath
-        ? `${loopNodeId}.item.${propertyPath}`
-        : `${loopNodeId}.item`
+      const loopItemId = propertyPath ? `${loopNodeId}.item.${propertyPath}` : `${loopNodeId}.item`
 
       expect(loopItemId).toBe('loop-xyz-123.item.firstName')
     })
@@ -105,9 +99,7 @@ describe('Array Wildcard to Loop Item Conversion Logic', () => {
       const loopNodeId = 'loop-xyz-123'
       const propertyPath = ''
 
-      const loopItemId = propertyPath
-        ? `${loopNodeId}.item.${propertyPath}`
-        : `${loopNodeId}.item`
+      const loopItemId = propertyPath ? `${loopNodeId}.item.${propertyPath}` : `${loopNodeId}.item`
 
       expect(loopItemId).toBe('loop-xyz-123.item')
     })
@@ -116,9 +108,7 @@ describe('Array Wildcard to Loop Item Conversion Logic', () => {
       const loopNodeId = 'loop-xyz-123'
       const propertyPath = 'address.city'
 
-      const loopItemId = propertyPath
-        ? `${loopNodeId}.item.${propertyPath}`
-        : `${loopNodeId}.item`
+      const loopItemId = propertyPath ? `${loopNodeId}.item.${propertyPath}` : `${loopNodeId}.item`
 
       expect(loopItemId).toBe('loop-xyz-123.item.address.city')
     })
@@ -189,9 +179,7 @@ describe('Array Wildcard to Loop Item Conversion Logic', () => {
       const variableId = 'find-abc.contacts[*].orders[*].total' // ✅ Plural
       const sourceVarId = 'find-abc.contacts' // ✅ Plural
 
-      const propertyPath = variableId
-        .substring(sourceVarId.length + 3)
-        .replace(/^\./, '')
+      const propertyPath = variableId.substring(sourceVarId.length + 3).replace(/^\./, '')
 
       // Should extract everything after first [*]
       expect(propertyPath).toBe('orders[*].total')

@@ -1,6 +1,6 @@
 // packages/lib/src/ai/providers/google/google-defaults.ts
 
-import { type ModelCapabilities, type ProviderCapabilities, ModelType, FetchFrom } from '../types'
+import { FetchFrom, type ModelCapabilities, ModelType, type ProviderCapabilities } from '../types'
 
 export const GOOGLE_CAPABILITIES: ProviderCapabilities = {
   id: 'google',

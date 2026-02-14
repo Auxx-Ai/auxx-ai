@@ -7,9 +7,7 @@ import { generateCacheKey } from './generate-cache-key.js'
 /**
  * An async function that returns data
  */
-export type AsyncFunction<Input extends Array<any>, Output> = (
-  ...args: Input
-) => Promise<Output>
+export type AsyncFunction<Input extends Array<any>, Output> = (...args: Input) => Promise<Output>
 
 /**
  * A type-safe configuration object for multiple async loaders
@@ -19,9 +17,7 @@ export type AsyncFunction<Input extends Array<any>, Output> = (
  * - A tuple with function and arguments: `key: [asyncFunction, ...args]`
  */
 export interface AsyncCacheConfig {
-  [K: string]:
-    | AsyncFunction<Array<any>, any>
-    | [AsyncFunction<Array<any>, any>, ...Array<any>]
+  [K: string]: AsyncFunction<Array<any>, any> | [AsyncFunction<Array<any>, any>, ...Array<any>]
 }
 
 /**
@@ -56,10 +52,7 @@ export function useAsyncCache<Config extends AsyncCacheConfig>(
   values: {
     [K in keyof Config]: Config[K] extends AsyncFunction<any, infer Output>
       ? Output
-      : Config[K] extends [
-            AsyncFunction<infer Input, infer Output>,
-            ...infer Args,
-          ]
+      : Config[K] extends [AsyncFunction<infer Input, infer Output>, ...infer Args]
         ? Args extends Input
           ? Output
           : never
@@ -86,9 +79,7 @@ export function useAsyncCache<Config extends AsyncCacheConfig>(
       // Format: key: [asyncFunction, ...args]
       ;[fn, ...args] = value
     } else {
-      throw new Error(
-        `Invalid config for key "${name}": expected function or [function, ...args]`
-      )
+      throw new Error(`Invalid config for key "${name}": expected function or [function, ...args]`)
     }
 
     const cacheKey = generateCacheKey(name, args)

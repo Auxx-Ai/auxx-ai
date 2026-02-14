@@ -1,24 +1,21 @@
 // packages/lib/src/field-values/display-field-service.ts
 
-import { database, schema, type Database } from '@auxx/database'
-import { eq, and, sql } from 'drizzle-orm'
+import { type Database, database, schema } from '@auxx/database'
+import { batchUpdateDisplayValues, clearDisplayValues } from '@auxx/services/entity-instances'
+import type { TypedFieldValue } from '@auxx/types'
+import { getFieldId, toResourceFieldId } from '@auxx/types/field'
+import { and, eq, sql } from 'drizzle-orm'
+import type { ResourceField } from '../resources/registry/field-types'
+import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
+import type { CustomResource } from '../resources/registry/types'
+import { getInstanceId, toRecordIds } from '../resources/resource-id'
 import {
-  batchUpdateDisplayValues,
-  clearDisplayValues,
-} from '@auxx/services/entity-instances'
-import { formatToDisplayValue } from './formatter'
-import {
+  DISPLAY_FIELD_CONFIG,
   type DisplayFieldType,
   type RecalculateDisplayFieldResult,
-  DISPLAY_FIELD_CONFIG,
 } from './display-field-types'
-import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import { FieldValueService } from './field-value-service'
-import { toRecordIds, getInstanceId } from '../resources/resource-id'
-import type { ResourceField } from '../resources/registry/field-types'
-import type { CustomResource } from '../resources/registry/types'
-import type { TypedFieldValue } from '@auxx/types'
-import { toResourceFieldId, getFieldId } from '@auxx/types/field'
+import { formatToDisplayValue } from './formatter'
 
 const BATCH_SIZE = 100
 
@@ -65,9 +62,7 @@ export class DisplayFieldService {
 
     // 2. Get the display field ID and full field definition
     const displayFieldId = this.getDisplayFieldId(resource, displayFieldType)
-    const field = displayFieldId
-      ? resource.fields.find((f) => f.id === displayFieldId)
-      : null
+    const field = displayFieldId ? resource.fields.find((f) => f.id === displayFieldId) : null
 
     // 3. If no field configured, clear all values
     if (!displayFieldId || !field) {

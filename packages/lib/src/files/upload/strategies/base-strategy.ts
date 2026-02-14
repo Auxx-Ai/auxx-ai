@@ -1,16 +1,16 @@
 // packages/lib/src/files/upload/strategies/base-strategy.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import type { StorageManager } from '../../storage/storage-manager'
-import type { 
-  UploadRequest, 
-  UploadResult, 
-  UploadStrategyHandler, 
+import type {
   ProgressContext,
+  UploadErrorCode,
+  UploadRequest,
+  UploadResult,
   UploadStage,
-  UploadErrorCode
+  UploadStrategyHandler,
 } from '../enhanced-types'
 import { UploadError } from '../enhanced-types'
-import { createScopedLogger } from '@auxx/logger'
 
 const logger = createScopedLogger('upload-strategy')
 
@@ -71,7 +71,10 @@ export abstract class BaseUploadStrategy implements UploadStrategyHandler {
   /**
    * Get file size from different content types
    */
-  protected getFileSize(content: File | Buffer | NodeJS.ReadableStream, providedSize?: number): number {
+  protected getFileSize(
+    content: File | Buffer | NodeJS.ReadableStream,
+    providedSize?: number
+  ): number {
     // Feature-detect File type (browser environment)
     if (typeof (global as any).File !== 'undefined' && content instanceof (global as any).File) {
       return (content as any).size
@@ -90,16 +93,18 @@ export abstract class BaseUploadStrategy implements UploadStrategyHandler {
   /**
    * Convert content to Buffer if needed
    */
-  protected async getContentAsBuffer(content: File | Buffer | NodeJS.ReadableStream): Promise<Buffer> {
+  protected async getContentAsBuffer(
+    content: File | Buffer | NodeJS.ReadableStream
+  ): Promise<Buffer> {
     if (content instanceof Buffer) {
       return content
     }
-    
+
     if (typeof File !== 'undefined' && content instanceof File) {
       const arrayBuffer = await content.arrayBuffer()
       return Buffer.from(arrayBuffer)
     }
-    
+
     // Handle ReadableStream (Node.js streams)
     const stream = content as NodeJS.ReadableStream
     const chunks: Buffer[] = []
@@ -121,7 +126,7 @@ export abstract class BaseUploadStrategy implements UploadStrategyHandler {
   ): UploadResult {
     const size = request.size || this.getFileSize(request.content, request.size)
     const throughput = uploadDuration > 0 ? (size / uploadDuration) * 1000 : 0 // bytes/second
-    
+
     return {
       fileId: '', // Will be set by calling service after DB record creation
       storageLocationId: storageLocation.id,
@@ -185,19 +190,19 @@ export abstract class BaseUploadStrategy implements UploadStrategyHandler {
     if (!request.content) {
       throw new UploadError('Content is required', 'VALIDATION_FAILED', 'initializing')
     }
-    
+
     if (!request.filename) {
       throw new UploadError('Filename is required', 'VALIDATION_FAILED', 'initializing')
     }
-    
+
     if (!request.provider) {
       throw new UploadError('Provider is required', 'VALIDATION_FAILED', 'initializing')
     }
-    
+
     if (!request.organizationId) {
       throw new UploadError('Organization ID is required', 'VALIDATION_FAILED', 'initializing')
     }
-    
+
     if (!request.userId) {
       throw new UploadError('User ID is required', 'VALIDATION_FAILED', 'initializing')
     }

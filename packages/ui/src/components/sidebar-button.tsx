@@ -1,11 +1,11 @@
 // apps/web/src/components/ui/sidebar-button.tsx
 'use client'
 
-import * as React from 'react'
 import { Button, type ButtonProps } from '@auxx/ui/components/button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { useSidebar } from '@auxx/ui/components/sidebar'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
+import type * as React from 'react'
 
 export interface SidebarButtonProps extends ButtonProps {
   /**
@@ -51,8 +51,8 @@ const SidebarButton: React.FC<SidebarButtonProps> = ({
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
       <TooltipContent
-        side="right"
-        align="center"
+        side='right'
+        align='center'
         hidden={state !== 'collapsed' || isMobile}
         {...tooltip}
       />

@@ -1,26 +1,29 @@
 // apps/web/src/server/api/routers/resourceAccess.ts
 
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import type { ResourceAccessContext } from '@auxx/lib/resource-access'
 import {
+  checkAccess,
+  checkTypeAccess,
+  getInstanceAccess,
+  getTypeAccess,
+  getUserAccessibleInstances,
   grantInstanceAccess,
   grantTypeAccess,
   revokeInstanceAccess,
   revokeTypeAccess,
   setInstanceAccess,
   setTypeAccess,
-  checkAccess,
-  checkTypeAccess,
-  getInstanceAccess,
-  getTypeAccess,
-  getUserAccessibleInstances,
 } from '@auxx/lib/resource-access'
-import type { ResourceAccessContext } from '@auxx/lib/resource-access'
 import type { RecordId } from '@auxx/types/resource'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 /** Convert tRPC context to ResourceAccessContext */
-function toContext(ctx: { db: any; session: { organizationId: string; userId: string } }): ResourceAccessContext {
+function toContext(ctx: {
+  db: any
+  session: { organizationId: string; userId: string }
+}): ResourceAccessContext {
   return {
     db: ctx.db,
     organizationId: ctx.session.organizationId,
@@ -41,7 +44,11 @@ export const resourceAccessRouter = createTRPCRouter({
           ResourceGranteeType.role,
         ]),
         granteeId: z.string(),
-        permission: z.enum([ResourcePermission.view, ResourcePermission.edit, ResourcePermission.admin]),
+        permission: z.enum([
+          ResourcePermission.view,
+          ResourcePermission.edit,
+          ResourcePermission.admin,
+        ]),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -66,7 +73,11 @@ export const resourceAccessRouter = createTRPCRouter({
           ResourceGranteeType.role,
         ]),
         granteeId: z.string(),
-        permission: z.enum([ResourcePermission.view, ResourcePermission.edit, ResourcePermission.admin]),
+        permission: z.enum([
+          ResourcePermission.view,
+          ResourcePermission.edit,
+          ResourcePermission.admin,
+        ]),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -130,13 +141,22 @@ export const resourceAccessRouter = createTRPCRouter({
         grants: z.array(
           z.object({
             granteeId: z.string(),
-            permission: z.enum([ResourcePermission.view, ResourcePermission.edit, ResourcePermission.admin]),
+            permission: z.enum([
+              ResourcePermission.view,
+              ResourcePermission.edit,
+              ResourcePermission.admin,
+            ]),
           })
         ),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await setInstanceAccess(toContext(ctx), input.recordId as RecordId, input.granteeType, input.grants)
+      await setInstanceAccess(
+        toContext(ctx),
+        input.recordId as RecordId,
+        input.granteeType,
+        input.grants
+      )
       return { success: true }
     }),
 
@@ -154,7 +174,11 @@ export const resourceAccessRouter = createTRPCRouter({
         grants: z.array(
           z.object({
             granteeId: z.string(),
-            permission: z.enum([ResourcePermission.view, ResourcePermission.edit, ResourcePermission.admin]),
+            permission: z.enum([
+              ResourcePermission.view,
+              ResourcePermission.edit,
+              ResourcePermission.admin,
+            ]),
           })
         ),
       })
@@ -222,6 +246,10 @@ export const resourceAccessRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      return getUserAccessibleInstances(toContext(ctx), ctx.session.userId, input.entityDefinitionId)
+      return getUserAccessibleInstances(
+        toContext(ctx),
+        ctx.session.userId,
+        input.entityDefinitionId
+      )
     }),
 })

@@ -1,11 +1,11 @@
 // packages/lib/src/import/planning/get-plan-preview-rows.ts
 
-import { eq, and, desc } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import type { StrategyType } from '../types/plan'
+import { and, desc, eq } from 'drizzle-orm'
 import { getRawDataAsMap } from '../raw-data'
 import { getAllJobResolutions } from '../resolution'
+import type { StrategyType } from '../types/plan'
 
 /** Preview row data for frontend display */
 export interface PlanPreviewRow {
@@ -56,7 +56,10 @@ export async function getPlanPreviewRows(
   // 2. Get strategies (filtered if strategy specified)
   const strategies = await db.query.ImportPlanStrategy.findMany({
     where: strategy
-      ? and(eq(schema.ImportPlanStrategy.importPlanId, plan.id), eq(schema.ImportPlanStrategy.strategy, strategy))
+      ? and(
+          eq(schema.ImportPlanStrategy.importPlanId, plan.id),
+          eq(schema.ImportPlanStrategy.strategy, strategy)
+        )
       : eq(schema.ImportPlanStrategy.importPlanId, plan.id),
   })
 

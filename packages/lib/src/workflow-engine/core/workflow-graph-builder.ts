@@ -1,14 +1,14 @@
 // packages/lib/src/workflow-engine/core/workflow-graph-builder.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { NodeProcessorRegistry } from './node-processor-registry'
+import type { NodeProcessorRegistry } from './node-processor-registry'
 import type {
-  Workflow,
-  WorkflowNode,
-  WorkflowNodeType,
-  WorkflowEdge,
   ForkPointInfo,
   JoinPointInfo,
+  Workflow,
+  WorkflowEdge,
+  WorkflowNode,
+  WorkflowNodeType,
 } from './types'
 import { WorkflowTriggerType } from './types'
 
@@ -119,7 +119,7 @@ export class WorkflowGraphBuilder {
    * Initialize the graph builder with a node registry
    */
   static initialize(nodeRegistry: NodeProcessorRegistry) {
-    this.nodeRegistry = nodeRegistry
+    WorkflowGraphBuilder.nodeRegistry = nodeRegistry
   }
 
   /**
@@ -131,19 +131,19 @@ export class WorkflowGraphBuilder {
     const rawGraph = workflow.graph || { nodes: [], edges: [] }
 
     // Step 1: Filter executable nodes (remove UI-only nodes)
-    const executableNodes = this.filterExecutableNodes(rawGraph.nodes || [])
+    const executableNodes = WorkflowGraphBuilder.filterExecutableNodes(rawGraph.nodes || [])
 
     // Step 2: Process disabled nodes and create bypass edges
-    const { nodes: activeNodes, edges: processedEdges } = this.processDisabledNodes(
+    const { nodes: activeNodes, edges: processedEdges } = WorkflowGraphBuilder.processDisabledNodes(
       executableNodes,
       rawGraph.edges || []
     )
 
     // Step 3: Transform nodes to engine format
-    const transformedNodes = this.transformNodes(activeNodes, workflow.id)
+    const transformedNodes = WorkflowGraphBuilder.transformNodes(activeNodes, workflow.id)
 
     // Store transformed workflow for reference
-    this.lastTransformedWorkflow = {
+    WorkflowGraphBuilder.lastTransformedWorkflow = {
       ...workflow,
       nodes: transformedNodes,
       graph: { edges: processedEdges },
@@ -172,19 +172,25 @@ export class WorkflowGraphBuilder {
     const terminalNodes: string[] = []
 
     for (const node of transformedNodes) {
-      const graphNode = this.buildGraphNode(node, this.lastTransformedWorkflow!)
+      const graphNode = WorkflowGraphBuilder.buildGraphNode(
+        node,
+        WorkflowGraphBuilder.lastTransformedWorkflow!
+      )
       nodes.set(node.nodeId, graphNode)
       nodeTypeMap.set(node.nodeId, node.type)
 
       // Identify special nodes
-      if (this.ENTRY_NODE_TYPES.has(node.type)) {
+      if (WorkflowGraphBuilder.ENTRY_NODE_TYPES.has(node.type)) {
         entryNodes.push(node.nodeId)
       }
       if (node.type === 'end') {
         terminalNodes.push(node.nodeId)
       }
       if (node.type === 'loop') {
-        loopNodes.set(node.nodeId, this.buildLoopInfo(node, transformedNodes, edges))
+        loopNodes.set(
+          node.nodeId,
+          WorkflowGraphBuilder.buildLoopInfo(node, transformedNodes, edges)
+        )
       }
     }
 
@@ -216,12 +222,16 @@ export class WorkflowGraphBuilder {
       }
 
       // Build complete routing info
-      const routeInfo = this.buildNodeRouteInfo(node, edgesBySourceHandle, nodeTypeMap)
+      const routeInfo = WorkflowGraphBuilder.buildNodeRouteInfo(
+        node,
+        edgesBySourceHandle,
+        nodeTypeMap
+      )
       nodeRoutes.set(nodeId, routeInfo)
     }
 
     // Detect cycles
-    const cycleDetection = this.detectCycles(nodes, edges)
+    const cycleDetection = WorkflowGraphBuilder.detectCycles(nodes, edges)
 
     // Detect forks and joins
     const forkDetection = WorkflowGraphHelper.detectForkPoints(nodes, edges)
@@ -256,12 +266,15 @@ export class WorkflowGraphBuilder {
       const nodeType = node.data?.type || node.type
 
       // Skip UI-only nodes
-      if (this.UI_ONLY_TYPES.has(nodeType)) {
+      if (WorkflowGraphBuilder.UI_ONLY_TYPES.has(nodeType)) {
         return false
       }
 
       // Skip if no processor exists
-      if (this.nodeRegistry && !this.nodeRegistry.hasProcessor(nodeType)) {
+      if (
+        WorkflowGraphBuilder.nodeRegistry &&
+        !WorkflowGraphBuilder.nodeRegistry.hasProcessor(nodeType)
+      ) {
         logger.warn(`No processor found for node type: ${nodeType}`, { nodeId: node.id })
         return false
       }
@@ -309,7 +322,7 @@ export class WorkflowGraphBuilder {
 
       // If target is disabled, create bypass
       if (disabledNodeIds.has(edge.target)) {
-        const bypassEdges = this.createBypassForDisabledTarget(
+        const bypassEdges = WorkflowGraphBuilder.createBypassForDisabledTarget(
           edge,
           edges,
           disabledNodeIds,
@@ -383,10 +396,10 @@ export class WorkflowGraphBuilder {
       id: node.id,
       workflowId,
       nodeId: node.id,
-      type: this.extractNodeType(node),
-      name: this.extractNodeName(node),
+      type: WorkflowGraphBuilder.extractNodeType(node),
+      name: WorkflowGraphBuilder.extractNodeName(node),
       description: node.data?.description,
-      data: this.cleanNodeData(node.data),
+      data: WorkflowGraphBuilder.cleanNodeData(node.data),
       connections: {}, // Empty - using edges only
       metadata: { position: node.position, ...node.data?.metadata },
     }))
@@ -412,7 +425,7 @@ export class WorkflowGraphBuilder {
    * Get transformed workflow
    */
   static getTransformedWorkflow(): Workflow | null {
-    return this.lastTransformedWorkflow
+    return WorkflowGraphBuilder.lastTransformedWorkflow
   }
 
   /**
@@ -435,8 +448,8 @@ export class WorkflowGraphBuilder {
    * Build optimized node from workflow node
    */
   private static buildGraphNode(node: WorkflowNode, workflow: Workflow): GraphNode {
-    const { inputHandles, outputHandles } = this.getNodeHandles(node)
-    const loopContext = this.getLoopContext(node, workflow)
+    const { inputHandles, outputHandles } = WorkflowGraphBuilder.getNodeHandles(node)
+    const loopContext = WorkflowGraphBuilder.getLoopContext(node, workflow)
 
     // Get children for container nodes
     const children = workflow.nodes
@@ -467,7 +480,7 @@ export class WorkflowGraphBuilder {
     const outputHandles = new Map<string, OutputHandleInfo>()
 
     // Most nodes have a "target" input
-    if (!this.ENTRY_NODE_TYPES.has(node.type)) {
+    if (!WorkflowGraphBuilder.ENTRY_NODE_TYPES.has(node.type)) {
       inputHandles.add('target')
     }
 
@@ -477,29 +490,32 @@ export class WorkflowGraphBuilder {
         // Dynamic handles based on cases
         const cases = node.data.cases || []
         for (const caseItem of cases) {
-          outputHandles.set(caseItem.case_id, this.createEmptyOutputInfo(caseItem.case_id))
+          outputHandles.set(
+            caseItem.case_id,
+            WorkflowGraphBuilder.createEmptyOutputInfo(caseItem.case_id)
+          )
         }
         // Always has false (else) handle
-        outputHandles.set('false', this.createEmptyOutputInfo('false'))
+        outputHandles.set('false', WorkflowGraphBuilder.createEmptyOutputInfo('false'))
         break
       }
 
       case 'human-confirmation':
-        outputHandles.set('approved', this.createEmptyOutputInfo('approved'))
-        outputHandles.set('denied', this.createEmptyOutputInfo('denied'))
-        outputHandles.set('timeout', this.createEmptyOutputInfo('timeout'))
+        outputHandles.set('approved', WorkflowGraphBuilder.createEmptyOutputInfo('approved'))
+        outputHandles.set('denied', WorkflowGraphBuilder.createEmptyOutputInfo('denied'))
+        outputHandles.set('timeout', WorkflowGraphBuilder.createEmptyOutputInfo('timeout'))
         break
 
       case 'wait':
-        outputHandles.set('source', this.createEmptyOutputInfo('source'))
+        outputHandles.set('source', WorkflowGraphBuilder.createEmptyOutputInfo('source'))
         // Note: timeout handle could be added if wait nodes support timeout branching
         break
 
       case 'http':
-        outputHandles.set('source', this.createEmptyOutputInfo('source'))
+        outputHandles.set('source', WorkflowGraphBuilder.createEmptyOutputInfo('source'))
         // Add fail handle if error strategy is 'fail'
         if (node.data.error_strategy === 'fail') {
-          outputHandles.set('fail', this.createEmptyOutputInfo('fail'))
+          outputHandles.set('fail', WorkflowGraphBuilder.createEmptyOutputInfo('fail'))
         }
         break
 
@@ -507,10 +523,10 @@ export class WorkflowGraphBuilder {
         // Dynamic handles based on categories
         const categories = node.data.categories || []
         for (const category of categories) {
-          outputHandles.set(category.id, this.createEmptyOutputInfo(category.id))
+          outputHandles.set(category.id, WorkflowGraphBuilder.createEmptyOutputInfo(category.id))
         }
         // Always has unmatched handle
-        outputHandles.set('unmatched', this.createEmptyOutputInfo('unmatched'))
+        outputHandles.set('unmatched', WorkflowGraphBuilder.createEmptyOutputInfo('unmatched'))
         break
       }
 
@@ -520,13 +536,13 @@ export class WorkflowGraphBuilder {
 
       case 'loop':
         inputHandles.add('loop-back')
-        outputHandles.set('loop-start', this.createEmptyOutputInfo('loop-start'))
-        outputHandles.set('source', this.createEmptyOutputInfo('source'))
+        outputHandles.set('loop-start', WorkflowGraphBuilder.createEmptyOutputInfo('loop-start'))
+        outputHandles.set('source', WorkflowGraphBuilder.createEmptyOutputInfo('source'))
         break
 
       default:
         // Standard nodes have "source" output
-        outputHandles.set('source', this.createEmptyOutputInfo('source'))
+        outputHandles.set('source', WorkflowGraphBuilder.createEmptyOutputInfo('source'))
     }
 
     return { inputHandles, outputHandles }
@@ -601,7 +617,7 @@ export class WorkflowGraphBuilder {
 
     // Recursively check parent's parent
     if (parent) {
-      return this.getLoopContext(parent, workflow)
+      return WorkflowGraphBuilder.getLoopContext(parent, workflow)
     }
 
     return { isInLoop: false }
@@ -627,7 +643,7 @@ export class WorkflowGraphBuilder {
     )
 
     // Validate loop structure
-    this.validateLoopStructure(loopNode, childNodeIds, edges)
+    WorkflowGraphBuilder.validateLoopStructure(loopNode, childNodeIds, edges)
 
     return {
       loopNodeId: loopNode.nodeId,
@@ -810,9 +826,7 @@ export class WorkflowGraphBuilder {
             from: sourceNode
               ? `${sourceNode.type}:${edge.source.slice(-8)}`
               : edge.source.slice(-8),
-            to: targetNode
-              ? `${targetNode.type}:${edge.target.slice(-8)}`
-              : edge.target.slice(-8),
+            to: targetNode ? `${targetNode.type}:${edge.target.slice(-8)}` : edge.target.slice(-8),
             handle: `${edge.sourceHandle}→${edge.targetHandle}`,
           }
         }
@@ -954,7 +968,7 @@ export class WorkflowGraphHelper {
     // Find joins for forks and identify orphans
     forkPoints.forEach((forks, nodeId) => {
       forks.forEach((fork) => {
-        fork.joinNodeId = this.findJoinForFork(fork, nodes, edges)
+        fork.joinNodeId = WorkflowGraphHelper.findJoinForFork(fork, nodes, edges)
         if (!fork.joinNodeId) {
           orphanForks.add(`${nodeId}:${fork.outputHandle}`)
           logger.warn('Fork without join detected (fan-out pattern)', {

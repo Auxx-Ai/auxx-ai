@@ -18,9 +18,9 @@
 import fs from 'fs/promises'
 import path from 'path'
 import { Project } from 'ts-morph'
-import { complete, errored, fromPromise, isComplete } from '../../errors.js'
 import { APP_SETTINGS_FILENAME } from '../../constants/settings-files.js'
 import { USE_SETTINGS } from '../../env.js'
+import { complete, errored, fromPromise, isComplete } from '../../errors.js'
 import { getAppEntryPoint } from '../../util/get-app-entry-point.js'
 
 /**

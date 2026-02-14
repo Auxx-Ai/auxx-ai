@@ -1,5 +1,5 @@
 import { Container, Heading, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -29,9 +29,9 @@ export async function InviteEmail({
         </Text>
         <Text>Click the button below to accept the invitation:</Text>
 
-        <EmailButton href={acceptLink} label="Accept Invitation" />
+        <EmailButton href={acceptLink} label='Accept Invitation' />
 
-        <Text className="mb-0">
+        <Text className='mb-0'>
           If you were not expecting this invitation, you can safely ignore this email.
         </Text>
 

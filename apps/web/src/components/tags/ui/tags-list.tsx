@@ -1,22 +1,22 @@
 // apps/web/src/components/tags/ui/tags-list.tsx
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { SearchIcon, Plus, Edit, Trash, ChevronRight, ChevronDown } from 'lucide-react'
-import { Input } from '@auxx/ui/components/input'
+import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
-import { useQueryState } from 'nuqs'
-import { api } from '~/trpc/react'
-import { TagDialog } from './tag-dialog'
+import { Input } from '@auxx/ui/components/input'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { useUser } from '~/hooks/use-user'
+import { ChevronDown, ChevronRight, Edit, Plus, SearchIcon, Trash } from 'lucide-react'
+import { useQueryState } from 'nuqs'
+import { useCallback, useEffect, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useUser } from '~/hooks/use-user'
+import { api } from '~/trpc/react'
 import { useTagHierarchy } from '../hooks/use-tag-hierarchy'
-import { filterHierarchy } from '../utils/hierarchy'
-import { toRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { TagNode } from '../types'
+import { filterHierarchy } from '../utils/hierarchy'
+import { TagDialog } from './tag-dialog'
 
 /**
  * Tag tree view component for settings page.
@@ -142,7 +142,7 @@ export function TagTreeView() {
     const isExpanded = expandedTags[tag.id]
 
     return (
-      <div className="select-none">
+      <div className='select-none'>
         <div
           className={cn(
             'flex items-center rounded-2xl ps-0.5 pe-1 py-0.5 ring-1 ring-transparent hover:ring-primary-200',
@@ -151,8 +151,8 @@ export function TagTreeView() {
           )}>
           {/* Expand/collapse button */}
           <Button
-            variant="ghost"
-            size="icon-sm"
+            variant='ghost'
+            size='icon-sm'
             className={cn(
               'rounded-full hover:bg-muted/80',
               hasChildren ? 'text-foreground ' : 'text-transparent'
@@ -164,53 +164,55 @@ export function TagTreeView() {
 
           {/* Tag content */}
           <div
-            className="ml-1 flex flex-1 cursor-pointer items-center"
+            className='ml-1 flex flex-1 cursor-pointer items-center'
             onClick={() => hasChildren && toggleExpanded(tag.id)}>
             <div
-              className="size-7 mr-2 flex items-center justify-center rounded-full shrink-0"
+              className='size-7 mr-2 flex items-center justify-center rounded-full shrink-0'
               style={{ backgroundColor: tag.tag_color || '#94a3b8' }}>
-              {tag.tag_emoji && <span className="shrink-0">{tag.tag_emoji}</span>}
+              {tag.tag_emoji && <span className='shrink-0'>{tag.tag_emoji}</span>}
             </div>
 
-            <span className="font-medium shrink-0">{tag.title}</span>
+            <span className='font-medium shrink-0'>{tag.title}</span>
 
             {tag.tag_description && (
-              <span className="ml-2 truncate text-sm text-muted-foreground">{tag.tag_description}</span>
+              <span className='ml-2 truncate text-sm text-muted-foreground'>
+                {tag.tag_description}
+              </span>
             )}
           </div>
 
           {/* Action buttons */}
-          <div className="flex space-x-1">
+          <div className='flex space-x-1'>
             <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
+              type='button'
+              variant='ghost'
+              size='icon-xs'
               onClick={(e) => {
                 e.stopPropagation()
                 handleEditTag(tag)
               }}>
               <Edit size={14} />
-              <span className="sr-only">Edit</span>
+              <span className='sr-only'>Edit</span>
             </Button>
 
             <Button
-              type="button"
-              variant="destructive-hover"
-              size="icon-xs"
-              className="border-transparent bg-transparent"
+              type='button'
+              variant='destructive-hover'
+              size='icon-xs'
+              className='border-transparent bg-transparent'
               onClick={(e) => {
                 e.stopPropagation()
                 handleDeleteTag(tag)
               }}>
               <Trash size={14} />
-              <span className="sr-only">Delete</span>
+              <span className='sr-only'>Delete</span>
             </Button>
           </div>
         </div>
 
         {/* Children */}
         {hasChildren && isExpanded && (
-          <div className="ml-4 mt-0 border-l border-l-border pl-2">
+          <div className='ml-4 mt-0 border-l border-l-border pl-2'>
             {tag.children.map((child) => (
               <TagTreeItem key={child.id} tag={child} depth={depth + 1} />
             ))}
@@ -222,19 +224,19 @@ export function TagTreeView() {
 
   /** Skeleton for a single tag row */
   const TagItemSkeleton = ({ hasChildren = false }: { hasChildren?: boolean }) => (
-    <div className="select-none">
-      <div className="flex items-center rounded-2xl ps-0.5 pe-1 py-0.5">
-        <Skeleton className="h-7 w-7 rounded-full shrink-0" />
-        <Skeleton className="ml-2 h-3 w-3 rounded-full shrink-0" />
-        <Skeleton className="ml-2 h-4 w-24 shrink-0" />
-        <Skeleton className="ml-2 h-4 w-40" />
-        <div className="ml-auto flex space-x-1">
-          <Skeleton className="h-6 w-6 rounded" />
-          <Skeleton className="h-6 w-6 rounded" />
+    <div className='select-none'>
+      <div className='flex items-center rounded-2xl ps-0.5 pe-1 py-0.5'>
+        <Skeleton className='h-7 w-7 rounded-full shrink-0' />
+        <Skeleton className='ml-2 h-3 w-3 rounded-full shrink-0' />
+        <Skeleton className='ml-2 h-4 w-24 shrink-0' />
+        <Skeleton className='ml-2 h-4 w-40' />
+        <div className='ml-auto flex space-x-1'>
+          <Skeleton className='h-6 w-6 rounded' />
+          <Skeleton className='h-6 w-6 rounded' />
         </div>
       </div>
       {hasChildren && (
-        <div className="ml-4 mt-0 border-l border-l-border pl-2">
+        <div className='ml-4 mt-0 border-l border-l-border pl-2'>
           <TagItemSkeleton />
           <TagItemSkeleton />
         </div>
@@ -245,14 +247,14 @@ export function TagTreeView() {
   // Loading state
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center space-x-2">
-          <div className="relative flex-1">
-            <Skeleton className="h-8 w-full" />
+      <div className='space-y-4'>
+        <div className='flex items-center space-x-2'>
+          <div className='relative flex-1'>
+            <Skeleton className='h-8 w-full' />
           </div>
-          <Skeleton className="h-8 w-[106px]" />
+          <Skeleton className='h-8 w-[106px]' />
         </div>
-        <div className="rounded-[20px] border p-1">
+        <div className='rounded-[20px] border p-1'>
           <TagItemSkeleton hasChildren />
           <TagItemSkeleton />
           <TagItemSkeleton hasChildren />
@@ -263,32 +265,32 @@ export function TagTreeView() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       {/* Search and action bar */}
-      <div className="flex items-center space-x-2">
-        <div className="relative flex-1">
-          <SearchIcon className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+      <div className='flex items-center space-x-2'>
+        <div className='relative flex-1'>
+          <SearchIcon className='absolute left-2.5 top-2 h-4 w-4 text-muted-foreground' />
           <Input
-            type="search"
-            placeholder="Search tags..."
-            className="pl-8"
+            type='search'
+            placeholder='Search tags...'
+            className='pl-8'
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
 
-        <Button variant="outline" onClick={handleCreateTag}>
+        <Button variant='outline' onClick={handleCreateTag}>
           <Plus />
           Add Tag
         </Button>
       </div>
 
       {/* Tag tree */}
-      <div className="rounded-[20px] border p-1">
+      <div className='rounded-[20px] border p-1'>
         {filteredTags?.length ? (
           filteredTags.map((tag) => <TagTreeItem key={tag.id} tag={tag} />)
         ) : (
-          <div className="py-8 text-center text-muted-foreground">
+          <div className='py-8 text-center text-muted-foreground'>
             {searchQuery ? (
               <p>No tags match your search. Try a different query or clear the search.</p>
             ) : (

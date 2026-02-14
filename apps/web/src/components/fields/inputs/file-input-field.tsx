@@ -1,15 +1,15 @@
 // apps/web/src/components/fields/inputs/file-input-field.tsx
 'use client'
-import { usePropertyContext } from '../property-provider'
-import { useState, useMemo, useCallback } from 'react'
-import { FileSelectPicker } from '~/components/pickers/file-select-picker'
-import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
 import { Button } from '@auxx/ui/components/button'
-import { Paperclip } from 'lucide-react'
-import { CommentFile } from '~/components/global/comments/comment-file'
-import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
+import { Paperclip } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
 import type { FileItem } from '~/components/files/files-store'
+import { CommentFile } from '~/components/global/comments/comment-file'
+import { FileSelectPicker } from '~/components/pickers/file-select-picker'
+import { api } from '~/trpc/react'
+import { usePropertyContext } from '../property-provider'
 
 /**
  * FileInputField component for file custom fields
@@ -217,9 +217,9 @@ export function FileInputField() {
   }
 
   return (
-    <div className="space-y-2 py-0.5 px-0.5">
+    <div className='space-y-2 py-0.5 px-0.5'>
       {attachments?.map((attachment) => (
-        <div key={attachment.id} className="group">
+        <div key={attachment.id} className='group'>
           <CommentFile
             file={attachment.asset}
             showRemoveButton={true}
@@ -233,16 +233,14 @@ export function FileInputField() {
         allowMultiple={allowMultiple}
         open={pickerOpen}
         onOpenChange={setPickerOpen}
-        align="end"
-        className="w-80">
-        <div className="w-full flex justify-between items-center">
-          <span className="text-xs text-muted-foreground/80 ps-3 cursor-pointer">
-            Add files...
-          </span>
+        align='end'
+        className='w-80'>
+        <div className='w-full flex justify-between items-center'>
+          <span className='text-xs text-muted-foreground/80 ps-3 cursor-pointer'>Add files...</span>
           <Button
-            variant="ghost"
-            size="icon"
-            className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/80 outline-hidden transition-[color,box-shadow] hover:bg-gray-300 hover:text-foreground dark:hover:bg-gray-700">
+            variant='ghost'
+            size='icon'
+            className='flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/80 outline-hidden transition-[color,box-shadow] hover:bg-gray-300 hover:text-foreground dark:hover:bg-gray-700'>
             <Paperclip size={15} />
           </Button>
         </div>

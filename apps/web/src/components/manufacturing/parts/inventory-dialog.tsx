@@ -1,8 +1,9 @@
 // apps/web/src/components/manufacturing/parts/inventory-dialog.tsx
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import type { InventoryEntity as Inventory } from '@auxx/database/models'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -12,15 +13,14 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
-import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
-import { BaseType } from '~/components/workflow/types'
-import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
-import type { InventoryEntity as Inventory } from '@auxx/database/models'
+import { AlertTriangle } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { BaseType } from '~/components/workflow/types'
+import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
+import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { api } from '~/trpc/react'
 
 /** Props for InventoryDialog component */
 interface InventoryDialogProps {
@@ -151,7 +151,7 @@ export function InventoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]" position="tc">
+      <DialogContent className='sm:max-w-[500px]' position='tc'>
         <DialogHeader>
           <DialogTitle>{isEditMode ? 'Edit Inventory' : 'Add Inventory'}</DialogTitle>
           <DialogDescription>
@@ -160,37 +160,37 @@ export function InventoryDialog({
               : 'Set up inventory tracking for this part'}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <VarEditorField className="p-0">
+        <div className='space-y-4'>
+          <VarEditorField className='p-0'>
             {/* Current Quantity */}
             <VarEditorFieldRow
-              title="Current Quantity"
-              description="The current number of units in stock"
+              title='Current Quantity'
+              description='The current number of units in stock'
               type={BaseType.NUMBER}
               showIcon
               isRequired
               validationError={errors.quantity}
-              validationType="error">
+              validationType='error'>
               <ConstantInputAdapter
                 value={values.quantity}
                 onChange={(_, val) => handleChange('quantity', val ?? 0)}
                 varType={BaseType.NUMBER}
-                placeholder="0"
+                placeholder='0'
                 disabled={isPending}
               />
             </VarEditorFieldRow>
 
             {/* Storage Location */}
             <VarEditorFieldRow
-              title="Storage Location"
-              description="Where this part is physically stored"
+              title='Storage Location'
+              description='Where this part is physically stored'
               type={BaseType.STRING}
               showIcon>
               <ConstantInputAdapter
                 value={values.location}
                 onChange={(_, val) => handleChange('location', val ?? '')}
                 varType={BaseType.STRING}
-                placeholder="e.g., Warehouse A, Shelf B3"
+                placeholder='e.g., Warehouse A, Shelf B3'
                 disabled={isPending}
               />
             </VarEditorFieldRow>
@@ -198,42 +198,42 @@ export function InventoryDialog({
 
           <Separator />
 
-          <div className="flex flex-col gap-1">
-            <h3 className="text-sm font-medium">Reordering Settings</h3>
-            <p className="text-xs text-muted-foreground">Configure when and how much to reorder</p>
+          <div className='flex flex-col gap-1'>
+            <h3 className='text-sm font-medium'>Reordering Settings</h3>
+            <p className='text-xs text-muted-foreground'>Configure when and how much to reorder</p>
           </div>
 
-          <VarEditorField className="p-0">
+          <VarEditorField className='p-0'>
             {/* Reorder Point */}
             <VarEditorFieldRow
-              title="Reorder Point"
-              description="Minimum stock level"
+              title='Reorder Point'
+              description='Minimum stock level'
               type={BaseType.NUMBER}
               showIcon
               validationError={errors.reorderPoint}
-              validationType="error">
+              validationType='error'>
               <ConstantInputAdapter
                 value={values.reorderPoint}
                 onChange={(_, val) => handleChange('reorderPoint', val)}
                 varType={BaseType.NUMBER}
-                placeholder="Optional"
+                placeholder='Optional'
                 disabled={isPending}
               />
             </VarEditorFieldRow>
 
             {/* Reorder Quantity */}
             <VarEditorFieldRow
-              title="Reorder Quantity"
-              description="Units to order"
+              title='Reorder Quantity'
+              description='Units to order'
               type={BaseType.NUMBER}
               showIcon
               validationError={errors.reorderQty}
-              validationType="error">
+              validationType='error'>
               <ConstantInputAdapter
                 value={values.reorderQty}
                 onChange={(_, val) => handleChange('reorderQty', val)}
                 varType={BaseType.NUMBER}
-                placeholder="Optional"
+                placeholder='Optional'
                 disabled={isPending}
               />
             </VarEditorFieldRow>
@@ -241,7 +241,7 @@ export function InventoryDialog({
 
           {/* Low stock warning */}
           {showLowStockWarning && (
-            <Alert variant="warning">
+            <Alert variant='warning'>
               <AlertTriangle />
               <AlertTitle>Low Stock Alert</AlertTitle>
               <AlertDescription>
@@ -254,21 +254,22 @@ export function InventoryDialog({
 
         <DialogFooter>
           <Button
-            type="button"
-            variant="ghost"
-            size="sm"
+            type='button'
+            variant='ghost'
+            size='sm'
             onClick={() => onOpenChange(false)}
             disabled={isPending}>
-            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
           <Button
             onClick={handleSubmit}
-            size="sm"
-            variant="outline"
+            size='sm'
+            variant='outline'
             loading={isPending}
             loadingText={isEditMode ? 'Updating...' : 'Creating...'}
             data-dialog-submit>
-            {isEditMode ? 'Update Inventory' : 'Create Inventory'} <KbdSubmit variant="outline" size="sm" />
+            {isEditMode ? 'Update Inventory' : 'Create Inventory'}{' '}
+            <KbdSubmit variant='outline' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

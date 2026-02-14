@@ -1,23 +1,23 @@
 // packages/ui/src/components/date-range-picker.tsx
 'use client'
 
-import { useState } from 'react'
+import { Button } from '@auxx/ui/components/button'
+import { Calendar } from '@auxx/ui/components/calendar'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { cn } from '@auxx/ui/lib/utils'
 import {
+  endOfDay,
   format,
-  subWeeks,
-  subMonths,
+  isSameDay,
+  startOfDay,
   startOfMonth,
   startOfQuarter,
   startOfYear,
-  isSameDay,
-  startOfDay,
-  endOfDay,
+  subMonths,
+  subWeeks,
 } from 'date-fns'
 import { CalendarIcon } from 'lucide-react'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { Button } from '@auxx/ui/components/button'
-import { Calendar } from '@auxx/ui/components/calendar'
-import { cn } from '@auxx/ui/lib/utils'
+import { useState } from 'react'
 
 /**
  * DateRange type definition
@@ -205,23 +205,23 @@ export function DateRangePicker({
       <PopoverTrigger asChild>
         <Button
           variant={triggerVariant}
-          size="sm"
+          size='sm'
           className={cn('justify-start text-left font-normal', triggerClassName)}>
-          <CalendarIcon className="mr-2 h-4 w-4" />
+          <CalendarIcon className='mr-2 h-4 w-4' />
           {displayLabel}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <div className="flex items-start flex-row">
-          <div className="border-r border-border min-w-[140px] h-full">
-            <div className="p-2 space-y-1 flex flex-col overflow-y-auto">
+      <PopoverContent className='w-auto p-0' align='start'>
+        <div className='flex items-start flex-row'>
+          <div className='border-r border-border min-w-[140px] h-full'>
+            <div className='p-2 space-y-1 flex flex-col overflow-y-auto'>
               {timeFrameOptions.map((option) => {
                 const isSelected = activeTimeFrame === option.value
                 return (
                   <Button
                     key={option.value}
                     variant={isSelected ? 'secondary' : 'ghost'}
-                    size="sm"
+                    size='sm'
                     className={cn(
                       'justify-start',
                       isSelected && 'bg-secondary text-secondary-foreground'
@@ -234,8 +234,8 @@ export function DateRangePicker({
             </div>
           </div>
           <Calendar
-            mode="range"
-            className="relative"
+            mode='range'
+            className='relative'
             selected={value}
             showOutsideDays={false}
             onSelect={handleCalendarSelect}

@@ -5,9 +5,9 @@
 import { Extension, mergeAttributes } from '@tiptap/core'
 import { ReactRenderer } from '@tiptap/react'
 import Suggestion from '@tiptap/suggestion'
-import tippy, { type Instance as TippyInstance } from 'tippy.js'
-import { MentionPopover, type MentionPopoverRef, type MentionItem } from '../mention-popover'
 import { useCallback } from 'react'
+import tippy, { type Instance as TippyInstance } from 'tippy.js'
+import { type MentionItem, MentionPopover, type MentionPopoverRef } from '../mention-popover'
 import { MentionNode } from './mention-node'
 
 /**

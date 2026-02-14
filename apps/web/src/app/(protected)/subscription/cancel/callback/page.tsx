@@ -1,10 +1,10 @@
 // app/(protected)/subscription/cancel/callback/page.tsx
 'use client'
 
-import { useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { api } from '~/trpc/react'
 import { Loader2 } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useEffect } from 'react'
+import { api } from '~/trpc/react'
 
 /**
  * Cancel callback page after Stripe portal cancellation.
@@ -26,9 +26,9 @@ export default function SubscriptionCancelCallbackPage() {
   }, [callbackURL, router, utils])
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="flex items-center">
-        <Loader2 className="mr-2 h-6 w-6 animate-spin" />
+    <div className='flex min-h-screen items-center justify-center'>
+      <div className='flex items-center'>
+        <Loader2 className='mr-2 h-6 w-6 animate-spin' />
         <p>Processing cancellation...</p>
       </div>
     </div>

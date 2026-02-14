@@ -1,6 +1,6 @@
 // packages/lib/src/import/resolution/resolvers/text.ts
 
-import type { ResolvedValue, ResolutionConfig } from '../../types/resolution'
+import type { ResolutionConfig, ResolvedValue } from '../../types/resolution'
 
 /**
  * Resolve text value - returns as-is after trimming.

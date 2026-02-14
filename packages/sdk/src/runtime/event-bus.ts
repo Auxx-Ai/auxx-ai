@@ -17,11 +17,7 @@ class EventBus {
   /**
    * Register an event listener for a Tag instance
    */
-  setTagEventListener(
-    eventName: string,
-    instanceId: number,
-    handler: Function
-  ): void {
+  setTagEventListener(eventName: string, instanceId: number, handler: Function): void {
     const key = this.getKey(eventName, instanceId)
     this.listeners.set(key, handler)
   }
@@ -37,11 +33,7 @@ class EventBus {
   /**
    * Call an event listener for a Tag instance
    */
-  async callTagEventListener(
-    eventName: string,
-    instanceId: number,
-    args: any[]
-  ): Promise<any> {
+  async callTagEventListener(eventName: string, instanceId: number, args: any[]): Promise<any> {
     const key = this.getKey(eventName, instanceId)
     const handler = this.listeners.get(key)
 

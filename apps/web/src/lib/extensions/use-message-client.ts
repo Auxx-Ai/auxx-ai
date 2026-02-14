@@ -1,7 +1,7 @@
 // apps/web/src/lib/extensions/use-message-client.ts
 'use client'
 
-import { useSyncExternalStore, useCallback } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 import { useInternalAppsContext } from '~/providers/extensions/internal-apps-context'
 import type { MessageClient } from './message-client'
 

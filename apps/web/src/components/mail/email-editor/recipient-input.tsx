@@ -1,13 +1,15 @@
 'use client'
-import React, { useState, useRef } from 'react'
+import { IdentifierType } from '@auxx/database/enums'
 import { Badge } from '@auxx/ui/components/badge'
 import { toastError } from '@auxx/ui/components/toast'
-import { X, Loader2 } from 'lucide-react' // Cleaned up icons
+import { keepPreviousData } from '@tanstack/react-query'
+import { Loader2, X } from 'lucide-react' // Cleaned up icons
+import type React from 'react'
+import { useRef, useState } from 'react'
+import { useDebouncedValue } from '~/hooks/use-debounced-value'
 // --- Editor Imports ---
 import { api, type RouterOutputs } from '~/trpc/react'
-import { keepPreviousData } from '@tanstack/react-query'
-import { useDebouncedValue } from '~/hooks/use-debounced-value'
-import { IdentifierType } from '@auxx/database/enums'
+
 interface RecipientState {
   id: string
   identifier: string
@@ -130,11 +132,11 @@ export const RecipientInput: React.FC<RecipientInputProps> = ({
     }
   }
   return (
-    <div className="relative flex min-w-0 flex-1 flex-wrap items-center gap-1">
+    <div className='relative flex min-w-0 flex-1 flex-wrap items-center gap-1'>
       {recipients.map((person, index) => (
         <Badge
           key={person.id}
-          variant="user"
+          variant='user'
           tabIndex={0}
           onFocus={() => setHighlightedIndex(index)}
           onBlur={() => setHighlightedIndex(null)}
@@ -145,28 +147,28 @@ export const RecipientInput: React.FC<RecipientInputProps> = ({
               : ''
           }`}
           aria-selected={highlightedIndex === index}
-          role="option"
+          role='option'
           aria-label={`Recipient: ${person.name ?? person.identifier}`}>
           {person.name ?? person.identifier}
           <button
-            type="button"
+            type='button'
             disabled={disabled}
             onClick={() => {
               onRemove(person.id)
               setHighlightedIndex(null)
               inputRef.current?.focus()
             }}
-            className="ml-1 cursor-pointer focus:outline-hidden"
+            className='ml-1 cursor-pointer focus:outline-hidden'
             aria-label={`Remove ${person.name ?? person.identifier}`}>
-            <X className="size-3" />
+            <X className='size-3' />
           </button>
         </Badge>
       ))}
 
-      <div className="relative grow">
+      <div className='relative grow'>
         <input
           ref={inputRef}
-          type="email"
+          type='email'
           value={inputValue}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
@@ -175,15 +177,15 @@ export const RecipientInput: React.FC<RecipientInputProps> = ({
             setTimeout(() => setIsFocused(false), 150)
           }}
           placeholder={recipients.length === 0 ? placeholder : ''}
-          className="w-full min-w-[120px] bg-transparent p-1 text-sm outline-hidden placeholder:text-muted-foreground/60"
+          className='w-full min-w-[120px] bg-transparent p-1 text-sm outline-hidden placeholder:text-muted-foreground/60'
           disabled={disabled}
-          aria-label="Add recipient"
-          autoComplete="off"
+          aria-label='Add recipient'
+          autoComplete='off'
         />
 
         {isFocused && inputValue && contacts.length > 0 && (
-          <div className="absolute left-0 top-full z-50 mt-1 w-full max-w-[300px] rounded-md border border-border bg-background shadow-md">
-            <ul className="max-h-[200px] overflow-y-auto py-1" role="listbox">
+          <div className='absolute left-0 top-full z-50 mt-1 w-full max-w-[300px] rounded-md border border-border bg-background shadow-md'>
+            <ul className='max-h-[200px] overflow-y-auto py-1' role='listbox'>
               {contacts.map((contact) => {
                 const displayName =
                   contact.firstName && contact.lastName
@@ -196,16 +198,16 @@ export const RecipientInput: React.FC<RecipientInputProps> = ({
                 return (
                   <li
                     key={contact.id}
-                    className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs hover:bg-accent"
+                    className='flex cursor-pointer items-center gap-2 px-3 py-2 text-xs hover:bg-accent'
                     onClick={() => handleSelectContact(contact)}
-                    role="option"
+                    role='option'
                     tabIndex={-1}>
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium">
+                    <div className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium'>
                       {avatarLetter}
                     </div>
-                    <div className="flex flex-col">
-                      <span className="font-medium">{displayName}</span>
-                      <span className="truncate text-xs text-muted-foreground" title={email}>
+                    <div className='flex flex-col'>
+                      <span className='font-medium'>{displayName}</span>
+                      <span className='truncate text-xs text-muted-foreground' title={email}>
                         {email}
                       </span>
                     </div>
@@ -217,8 +219,8 @@ export const RecipientInput: React.FC<RecipientInputProps> = ({
         )}
 
         {isLoading && inputValue && (
-          <div className="absolute right-2 top-1/2 -translate-y-1/2">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          <div className='absolute right-2 top-1/2 -translate-y-1/2'>
+            <Loader2 className='h-4 w-4 animate-spin text-muted-foreground' />
           </div>
         )}
       </div>

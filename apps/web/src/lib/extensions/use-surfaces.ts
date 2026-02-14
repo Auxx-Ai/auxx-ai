@@ -1,9 +1,9 @@
 // apps/web/src/lib/extensions/use-surfaces.ts
 'use client'
 
-import { useSyncExternalStore, useMemo, useCallback } from 'react'
-import { useInternalAppsContext } from '~/providers/extensions/internal-apps-context'
+import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import { useExtensionsContext } from '~/providers/extensions/extensions-context'
+import { useInternalAppsContext } from '~/providers/extensions/internal-apps-context'
 import type { Surface } from './app-store'
 
 /**

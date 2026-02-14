@@ -1,6 +1,6 @@
 // packages/lib/src/import/resolution/resolvers/number.ts
 
-import type { ResolvedValue, ResolutionConfig } from '../../types/resolution'
+import type { ResolutionConfig, ResolvedValue } from '../../types/resolution'
 
 /**
  * Resolve value as integer.

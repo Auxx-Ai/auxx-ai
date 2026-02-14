@@ -25,9 +25,15 @@ export class ThreadReadStatusModel extends BaseModel<
     return ThreadReadStatus
   }
 
-  async getFor(userId: string, threadId: string): Promise<TypedResult<ThreadReadStatusEntity | null, Error>> {
+  async getFor(
+    userId: string,
+    threadId: string
+  ): Promise<TypedResult<ThreadReadStatusEntity | null, Error>> {
     try {
-      const res = await this.findMany({ where: and(eq(ThreadReadStatus.userId, userId), eq(ThreadReadStatus.threadId, threadId)), limit: 1 })
+      const res = await this.findMany({
+        where: and(eq(ThreadReadStatus.userId, userId), eq(ThreadReadStatus.threadId, threadId)),
+        limit: 1,
+      })
       if (!res.ok) return res
       return Result.ok(res.value[0] ?? null)
     } catch (error: any) {
@@ -35,4 +41,3 @@ export class ThreadReadStatusModel extends BaseModel<
     }
   }
 }
-

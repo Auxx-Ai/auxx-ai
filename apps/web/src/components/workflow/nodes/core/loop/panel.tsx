@@ -2,33 +2,30 @@
 
 'use client'
 
-import React, { useCallback, memo } from 'react'
-import { type LoopNodeData } from './types'
-import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
-import { Label } from '@auxx/ui/components/label'
-import { Switch } from '@auxx/ui/components/switch'
-import Section from '~/components/workflow/ui/section'
-import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
-import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables/output-variables-display'
-import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import { LOOP_CONSTANTS } from './constants'
-import { InfoIcon } from 'lucide-react'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
-import { loopDefinition } from './schema'
-import { BaseType } from '../if-else'
-import { VAR_MODE } from '~/components/workflow/types'
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupText,
-} from '@auxx/ui/components/input-group'
+import { InputGroup, InputGroupAddon, InputGroupText } from '@auxx/ui/components/input-group'
 import {
   NumberInput,
-  NumberInputField,
-  NumberInputScrubber,
-  NumberInputIncrement,
   NumberInputDecrement,
+  NumberInputField,
+  NumberInputIncrement,
+  NumberInputScrubber,
 } from '@auxx/ui/components/input-number'
+import { Label } from '@auxx/ui/components/label'
+import { Switch } from '@auxx/ui/components/switch'
+import { InfoIcon } from 'lucide-react'
+import type React from 'react'
+import { memo, useCallback } from 'react'
+import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
+import { VAR_MODE } from '~/components/workflow/types'
+import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables/output-variables-display'
+import Section from '~/components/workflow/ui/section'
+import { BaseType } from '../if-else'
+import { LOOP_CONSTANTS } from './constants'
+import { loopDefinition } from './schema'
+import type { LoopNodeData } from './types'
 
 interface LoopPanelProps {
   nodeId: string
@@ -76,8 +73,8 @@ const LoopPanelComponent: React.FC<LoopPanelProps> = ({ nodeId, data }) => {
     <BasePanel nodeId={nodeId} data={data}>
       {/* Items Source Configuration */}
       <Section
-        title="Items to Loop Over"
-        description="Select an array or list variable to iterate through"
+        title='Items to Loop Over'
+        description='Select an array or list variable to iterate through'
         isRequired>
         <VarEditorField>
           <VarEditor
@@ -86,18 +83,18 @@ const LoopPanelComponent: React.FC<LoopPanelProps> = ({ nodeId, data }) => {
             varType={BaseType.ARRAY}
             nodeId={nodeId}
             mode={VAR_MODE.PICKER}
-            placeholder="Pick an array variable..."
+            placeholder='Pick an array variable...'
             disabled={isReadOnly}
           />
         </VarEditorField>
-        <p className="text-xs text-muted-foreground mt-1">
+        <p className='text-xs text-muted-foreground mt-1'>
           The loop will iterate over each item in this array
         </p>
       </Section>
 
       {/* Maximum Iterations */}
-      <Section title="Maximum Iterations" description="Safety limit to prevent infinite loops">
-        <div className="space-y-2">
+      <Section title='Maximum Iterations' description='Safety limit to prevent infinite loops'>
+        <div className='space-y-2'>
           <NumberInput
             value={nodeData.maxIterations || LOOP_CONSTANTS.DEFAULT_MAX_ITERATIONS}
             onValueChange={handleMaxIterationsChange}
@@ -105,19 +102,19 @@ const LoopPanelComponent: React.FC<LoopPanelProps> = ({ nodeId, data }) => {
             max={LOOP_CONSTANTS.ABSOLUTE_MAX_ITERATIONS}
             step={1}
             disabled={isReadOnly}>
-            <div className="flex flex-col items-start">
-              <NumberInputScrubber htmlFor="max-iterations" className="mb-1">
+            <div className='flex flex-col items-start'>
+              <NumberInputScrubber htmlFor='max-iterations' className='mb-1'>
                 Maximum Iterations
               </NumberInputScrubber>
               <InputGroup>
-                <InputGroupAddon align="inline-start">
+                <InputGroupAddon align='inline-start'>
                   <NumberInputDecrement />
                 </InputGroupAddon>
                 <NumberInputField
-                  id="max-iterations"
+                  id='max-iterations'
                   placeholder={LOOP_CONSTANTS.DEFAULT_MAX_ITERATIONS.toString()}
                 />
-                <InputGroupAddon align="inline-end">
+                <InputGroupAddon align='inline-end'>
                   <NumberInputIncrement />
                   <InputGroupText>iterations</InputGroupText>
                 </InputGroupAddon>
@@ -125,7 +122,7 @@ const LoopPanelComponent: React.FC<LoopPanelProps> = ({ nodeId, data }) => {
             </div>
           </NumberInput>
           <Alert>
-            <InfoIcon className="h-4 w-4" />
+            <InfoIcon className='h-4 w-4' />
             <AlertDescription>
               The loop will stop after{' '}
               {nodeData.maxIterations || LOOP_CONSTANTS.DEFAULT_MAX_ITERATIONS} iterations, even if

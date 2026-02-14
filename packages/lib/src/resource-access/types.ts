@@ -1,7 +1,7 @@
 // packages/lib/src/resource-access/types.ts
 
-import type { RecordId } from '@auxx/types/resource'
 import type { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import type { RecordId } from '@auxx/types/resource'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONTEXT & INPUTS

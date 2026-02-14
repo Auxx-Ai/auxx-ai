@@ -1,9 +1,9 @@
 // packages/credentials/src/service/credential-service.ts
 
-import crypto from 'crypto'
 import { database as db, schema } from '@auxx/database'
-import { eq, and, desc, sql } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
+import crypto from 'crypto'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { CredentialValidator } from './credential-validator'
 // Define NodeData type locally for now
 export type NodeData = {
@@ -111,7 +111,7 @@ export class CredentialService {
         }
       }
 
-      const encrypted = this.encrypt(data)
+      const encrypted = CredentialService.encrypt(data)
 
       const [credential] = await db
         .insert(schema.WorkflowCredentials)
@@ -167,7 +167,7 @@ export class CredentialService {
         throw new Error('Credential not found or access denied')
       }
 
-      const decryptedData = this.decrypt(credential.encryptedData)
+      const decryptedData = CredentialService.decrypt(credential.encryptedData)
 
       logger.debug('Loaded credential successfully', {
         credentialId,
@@ -268,10 +268,10 @@ export class CredentialService {
         }
 
         // Decrypt existing data to preserve sensitive fields
-        const existingData = this.decrypt(existingCredential.encryptedData)
+        const existingData = CredentialService.decrypt(existingCredential.encryptedData)
 
         // Merge update data with existing data, preserving existing sensitive values when new values are empty
-        const mergedData = this.mergeCredentialData(
+        const mergedData = CredentialService.mergeCredentialData(
           existingData,
           updates.data,
           existingCredential.type
@@ -289,7 +289,7 @@ export class CredentialService {
           }
         }
 
-        updateData.encryptedData = this.encrypt(mergedData)
+        updateData.encryptedData = CredentialService.encrypt(mergedData)
       }
 
       const result = await db
@@ -333,7 +333,7 @@ export class CredentialService {
   ): Promise<void> {
     try {
       // Check if credential is in use first
-      const inUse = await this.isCredentialInUse(credentialId, organizationId)
+      const inUse = await CredentialService.isCredentialInUse(credentialId, organizationId)
       if (inUse) {
         throw new Error('Cannot delete credential: it is currently being used in workflows')
       }
@@ -381,7 +381,7 @@ export class CredentialService {
       // Find the property definition for this field
       const property = properties.find((p) => p.name === key)
 
-      if (property && this.isSensitiveFieldName(key)) {
+      if (property && CredentialService.isSensitiveFieldName(key)) {
         // For sensitive fields, only update if the new value is not empty
         if (value !== undefined && value !== null && value !== '') {
           mergedData[key] = value
@@ -512,10 +512,10 @@ export class CredentialService {
       }
 
       // Decrypt the credential data
-      const decryptedData = this.decrypt(credential.encryptedData)
+      const decryptedData = CredentialService.decrypt(credential.encryptedData)
 
       // Filter out sensitive fields based on field classification
-      const nonSensitiveData = this.filterNonSensitiveFields(decryptedData)
+      const nonSensitiveData = CredentialService.filterNonSensitiveFields(decryptedData)
 
       const info = {
         id: credential.id,
@@ -549,7 +549,7 @@ export class CredentialService {
 
     for (const [key, value] of Object.entries(data)) {
       // Skip sensitive fields based on key name patterns
-      if (this.isSensitiveFieldName(key)) {
+      if (CredentialService.isSensitiveFieldName(key)) {
         continue
       }
 

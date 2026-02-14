@@ -1,23 +1,24 @@
 // apps/web/src/components/ai/ui/system-model-settings-dialog.tsx
 'use client'
 
-import React, { useState } from 'react'
-import { Settings2 } from 'lucide-react'
+import { ModelType } from '@auxx/lib/ai/providers/types'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogFooter,
 } from '@auxx/ui/components/dialog'
-import { ModelType } from '@auxx/lib/ai/providers/types'
+import { toastError } from '@auxx/ui/components/toast'
+import { Settings2 } from 'lucide-react'
+import type React from 'react'
+import { useState } from 'react'
 import { AiModelPicker, type ModelPickerItem } from '~/components/pickers/ai-model-picker'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
-import { toastError } from '@auxx/ui/components/toast'
 
 /**
  * Model type configuration with labels and descriptions
@@ -138,13 +139,13 @@ export function SystemModelSettingsDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger || (
-          <Button variant="outline" size="sm" className={triggerClassName}>
+          <Button variant='outline' size='sm' className={triggerClassName}>
             <Settings2 />
-            <span className="hidden @sm:inline">System Model Settings</span>
+            <span className='hidden @sm:inline'>System Model Settings</span>
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent size="md" position="tc">
+      <DialogContent size='md' position='tc'>
         <DialogHeader>
           <DialogTitle>System Model Settings</DialogTitle>
           <DialogDescription>
@@ -153,7 +154,7 @@ export function SystemModelSettingsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <VarEditorField className="p-0">
+        <VarEditorField className='p-0'>
           {MODEL_TYPE_CONFIG.map(({ type, label, description }) => (
             <VarEditorFieldRow key={type} title={label} description={description}>
               <AiModelPicker
@@ -163,8 +164,8 @@ export function SystemModelSettingsDialog({
                 modelTypes={[type]}
                 showUnconfigured={false}
                 placeholder={`Select ${label.toLowerCase()}...`}
-                triggerVariant="transparent"
-                triggerClassName="w-full justify-between flex-1"
+                triggerVariant='transparent'
+                triggerClassName='w-full justify-between flex-1'
                 isUpdating={pendingModelType === type || isLoadingModels}
               />
             </VarEditorFieldRow>
@@ -172,7 +173,7 @@ export function SystemModelSettingsDialog({
         </VarEditorField>
 
         <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={() => setOpen(false)} disabled={isPending}>
+          <Button variant='ghost' size='sm' onClick={() => setOpen(false)} disabled={isPending}>
             Close
           </Button>
         </DialogFooter>

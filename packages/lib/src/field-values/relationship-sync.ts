@@ -1,9 +1,9 @@
 // packages/lib/src/field-values/relationship-sync.ts
 
 import { type Database, schema } from '@auxx/database'
-import { and, eq, inArray, desc, sql } from 'drizzle-orm'
-import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import type { RelationshipType } from '@auxx/types/custom-field'
+import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 
 // ============================================================================
 // TYPES
@@ -348,7 +348,14 @@ async function batchAddToInverse(
   ctx: RelationshipSyncContext,
   params: BatchAddParams
 ): Promise<void> {
-  const { inverseFieldId, inverseRelationshipType, sourceEntityDefinitionId, targetEntityDefinitionId, additions, sourceFieldId } = params
+  const {
+    inverseFieldId,
+    inverseRelationshipType,
+    sourceEntityDefinitionId,
+    targetEntityDefinitionId,
+    additions,
+    sourceFieldId,
+  } = params
 
   if (additions.size === 0) return
 
@@ -383,7 +390,7 @@ async function batchAddToInverse(
     // Before clearing the inverse values, we need to remove targets from old owners
     const existingInverse = await ctx.db
       .select({
-        entityId: schema.FieldValue.entityId,        // targetId (e.g., ProductX)
+        entityId: schema.FieldValue.entityId, // targetId (e.g., ProductX)
         relatedEntityId: schema.FieldValue.relatedEntityId, // oldOwnerId (e.g., Vendor1)
       })
       .from(schema.FieldValue)

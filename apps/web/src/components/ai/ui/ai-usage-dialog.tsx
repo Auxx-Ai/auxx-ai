@@ -2,7 +2,6 @@
 
 'use client'
 
-import { useState, useMemo } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -19,6 +18,7 @@ import {
 } from '@auxx/ui/components/select'
 import { StatCard } from '@auxx/ui/components/stat-card'
 import { Activity, Zap } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import { AiUsageChart } from './ai-usage-chart'
 
@@ -119,31 +119,31 @@ export function AiUsageDialog({ trigger, open, onOpenChange }: AiUsageDialogProp
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-      <DialogContent className="max-w-4xl">
+      <DialogContent className='max-w-4xl'>
         <DialogHeader>
           <DialogTitle>AI Usage</DialogTitle>
         </DialogHeader>
 
         {/* Row 1: Filters */}
-        <div className="flex flex-wrap gap-2 pb-4">
+        <div className='flex flex-wrap gap-2 pb-4'>
           <Select value={timePeriod} onValueChange={(v) => setTimePeriod(v as TimePeriod)}>
-            <SelectTrigger className="w-[180px]" size="sm">
-              <SelectValue placeholder="Select period" />
+            <SelectTrigger className='w-[180px]' size='sm'>
+              <SelectValue placeholder='Select period' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="billing">Current billing period</SelectItem>
-              <SelectItem value="7">Last 7 days</SelectItem>
-              <SelectItem value="30">Last 30 days</SelectItem>
-              <SelectItem value="90">Last 90 days</SelectItem>
+              <SelectItem value='billing'>Current billing period</SelectItem>
+              <SelectItem value='7'>Last 7 days</SelectItem>
+              <SelectItem value='30'>Last 30 days</SelectItem>
+              <SelectItem value='90'>Last 90 days</SelectItem>
             </SelectContent>
           </Select>
 
           <Select value={providerFilter} onValueChange={setProviderFilter}>
-            <SelectTrigger className="w-[140px]" size="sm">
-              <SelectValue placeholder="Provider" />
+            <SelectTrigger className='w-[140px]' size='sm'>
+              <SelectValue placeholder='Provider' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Providers</SelectItem>
+              <SelectItem value='all'>All Providers</SelectItem>
               {filterOptions.providers.map((p) => (
                 <SelectItem key={p} value={p}>
                   {p}
@@ -153,11 +153,11 @@ export function AiUsageDialog({ trigger, open, onOpenChange }: AiUsageDialogProp
           </Select>
 
           <Select value={modelFilter} onValueChange={setModelFilter}>
-            <SelectTrigger className="w-[160px]" size="sm">
-              <SelectValue placeholder="Model" />
+            <SelectTrigger className='w-[160px]' size='sm'>
+              <SelectValue placeholder='Model' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Models</SelectItem>
+              <SelectItem value='all'>All Models</SelectItem>
               {filterOptions.models.map((m) => (
                 <SelectItem key={m} value={m}>
                   {m}
@@ -167,11 +167,11 @@ export function AiUsageDialog({ trigger, open, onOpenChange }: AiUsageDialogProp
           </Select>
 
           <Select value={sourceFilter} onValueChange={setSourceFilter}>
-            <SelectTrigger className="w-[140px]" size="sm">
-              <SelectValue placeholder="Source" />
+            <SelectTrigger className='w-[140px]' size='sm'>
+              <SelectValue placeholder='Source' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Sources</SelectItem>
+              <SelectItem value='all'>All Sources</SelectItem>
               {filterOptions.sources.map((s) => (
                 <SelectItem key={s} value={s}>
                   {s}
@@ -182,26 +182,26 @@ export function AiUsageDialog({ trigger, open, onOpenChange }: AiUsageDialogProp
         </div>
 
         {/* Row 2: Stats Cards */}
-        <div className="flex gap-2 mb-10 md:w-1/2">
+        <div className='flex gap-2 mb-10 md:w-1/2'>
           <StatCard
-            title="Total Runs"
-            icon={<Zap className="size-4" />}
+            title='Total Runs'
+            icon={<Zap className='size-4' />}
             body={isLoading ? '--' : summary.totalRuns.toLocaleString()}
-            description="AI invocations"
-            color="text-comparison-500"
+            description='AI invocations'
+            color='text-comparison-500'
             first
             loading={isLoading}
-            className="flex-1 rounded-xl border bg-primary-50"
+            className='flex-1 rounded-xl border bg-primary-50'
           />
           <StatCard
-            title="Tokens Consumed"
-            icon={<Activity className="size-4" />}
+            title='Tokens Consumed'
+            icon={<Activity className='size-4' />}
             body={isLoading ? '--' : summary.totalTokens.toLocaleString()}
-            description="Total tokens used"
-            color="text-accent-500"
+            description='Total tokens used'
+            color='text-accent-500'
             first
             loading={isLoading}
-            className="flex-1 rounded-xl border bg-primary-50"
+            className='flex-1 rounded-xl border bg-primary-50'
           />
         </div>
 
@@ -209,7 +209,7 @@ export function AiUsageDialog({ trigger, open, onOpenChange }: AiUsageDialogProp
         <AiUsageChart
           data={filteredData?.statisticsByDay ?? {}}
           loading={isLoading}
-          stackBy="provider"
+          stackBy='provider'
         />
       </DialogContent>
     </Dialog>

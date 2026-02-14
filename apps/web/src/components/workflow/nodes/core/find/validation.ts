@@ -1,13 +1,14 @@
 // apps/web/src/components/workflow/nodes/core/find/validation.ts
-import {
-  type FindNodeData,
-  type ValidationResult,
-  findNodeDataSchema,
-  createFindNodeDefaultData,
-} from './types'
-import { FIND_RESOURCE_CONFIGS, getOperatorsForType } from '@auxx/lib/workflow-engine/client'
+
 import { isCustomResourceId } from '@auxx/lib/resources/client'
+import { FIND_RESOURCE_CONFIGS, getOperatorsForType } from '@auxx/lib/workflow-engine/client'
 import { validateCondition } from '~/components/conditions'
+import {
+  createFindNodeDefaultData,
+  type FindNodeData,
+  findNodeDataSchema,
+  type ValidationResult,
+} from './types'
 
 /**
  * Validation function following the same pattern as other nodes

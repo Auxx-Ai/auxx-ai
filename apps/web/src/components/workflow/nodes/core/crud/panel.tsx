@@ -2,8 +2,9 @@
 
 'use client'
 
-import React, { memo, useMemo, useCallback } from 'react'
-import { produce } from 'immer'
+import type { ResourceField } from '@auxx/lib/resources/client'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import {
   Select,
   SelectContent,
@@ -11,25 +12,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { type CrudNodeData, CrudErrorStrategy } from './types'
-import { DefaultValuesEditor } from './components/default-values-editor'
-import { BasePanel } from '../../shared/base/base-panel'
+import { produce } from 'immer'
+import type React from 'react'
+import { memo, useCallback, useMemo } from 'react'
+import { useResource, useResourceFields } from '~/components/resources'
 import { useNodeCrud } from '~/components/workflow/hooks'
-import Section from '~/components/workflow/ui/section'
+import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import Field from '~/components/workflow/ui/field'
-import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import {
   VarEditor,
   VarEditorField,
   VarEditorFieldRow,
 } from '~/components/workflow/ui/input-editor/var-editor'
-import { VAR_MODE, BaseType } from '~/components/workflow/types'
-import type { ResourceField } from '@auxx/lib/resources/client'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import Section from '~/components/workflow/ui/section'
 import { useWorkflowResources } from '../../../providers'
-import { useResource, useResourceFields } from '~/components/resources'
-import { EntityIcon } from '@auxx/ui/components/icons'
+import { BasePanel } from '../../shared/base/base-panel'
+import { DefaultValuesEditor } from './components/default-values-editor'
 import { getCrudNodeOutputVariables } from './output-variables'
+import { CrudErrorStrategy, type CrudNodeData } from './types'
 import { useCrudValidation } from './use-crud-validation'
 import { ValidationMessage } from './validation-message'
 
@@ -269,29 +270,29 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
 
   return (
     <BasePanel nodeId={nodeId} data={nodeData}>
-      <Section title="General">
-        <div className="space-y-4">
+      <Section title='General'>
+        <div className='space-y-4'>
           <Field
-            title="Resource"
-            description="Select the type of resource and operation to perform">
-            <VarEditorField className="p-0">
-              <div className="flex flex-row p-1">
-                <div className="">
+            title='Resource'
+            description='Select the type of resource and operation to perform'>
+            <VarEditorField className='p-0'>
+              <div className='flex flex-row p-1'>
+                <div className=''>
                   <Select
                     value={nodeData.mode}
                     onValueChange={handleModeChange}
                     disabled={isActionBasedResource(nodeData.resourceType)}>
-                    <SelectTrigger variant="outline" size="xs">
+                    <SelectTrigger variant='outline' size='xs'>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {isActionBasedResource(nodeData.resourceType) ? (
-                        <SelectItem value="update">Update</SelectItem>
+                        <SelectItem value='update'>Update</SelectItem>
                       ) : (
                         <>
-                          <SelectItem value="create">Create</SelectItem>
-                          <SelectItem value="update">Update</SelectItem>
-                          <SelectItem value="delete">Delete</SelectItem>
+                          <SelectItem value='create'>Create</SelectItem>
+                          <SelectItem value='update'>Update</SelectItem>
+                          <SelectItem value='delete'>Delete</SelectItem>
                         </>
                       )}
                     </SelectContent>
@@ -303,20 +304,20 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
                     />
                   )}
                 </div>
-                <div className="flex-1">
+                <div className='flex-1'>
                   <Select value={nodeData.resourceType} onValueChange={handleResourceTypeChange}>
-                    <SelectTrigger variant="transparent" size="xs">
+                    <SelectTrigger variant='transparent' size='xs'>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {resourceOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value} className="ps-1">
-                          <div className="flex items-center">
+                        <SelectItem key={option.value} value={option.value} className='ps-1'>
+                          <div className='flex items-center'>
                             <EntityIcon
                               iconId={option.icon}
-                              variant="full"
-                              size="sm"
-                              className="mr-1"
+                              variant='full'
+                              size='sm'
+                              className='mr-1'
                             />
                             {option.label}
                           </div>
@@ -334,9 +335,9 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
               </div>
               {(nodeData.mode === 'update' || nodeData.mode === 'delete') && (
                 <VarEditorFieldRow
-                  className="border-t pe-2"
-                  title="Resource"
-                  description="Select the resource by type or ID to update or delete "
+                  className='border-t pe-2'
+                  title='Resource'
+                  description='Select the resource by type or ID to update or delete '
                   type={BaseType.STRING}
                   isRequired
                   validationError={showValidation ? getFieldErrorMessage('resourceId') : undefined}
@@ -360,7 +361,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
               )}
             </VarEditorField>
             {isActionBasedResource(nodeData.resourceType) && (
-              <p className="mt-2 text-xs text-muted-foreground">
+              <p className='mt-2 text-xs text-muted-foreground'>
                 Thread operations are action-based. Select which actions to perform below. Leave
                 fields empty to skip that action.
               </p>
@@ -389,20 +390,20 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
               ? 'Leave fields empty to skip that action'
               : undefined
           }>
-          <VarEditorField className="p-0">
+          <VarEditorField className='p-0'>
             {(allFields as ResourceField[]).map(renderField)}
           </VarEditorField>
         </Section>
       )}
 
-      <Section title="Error Handling">
-        <div className="space-y-4">
-          <Field title="Error Strategy" description="How to handle errors during CRUD operations">
+      <Section title='Error Handling'>
+        <div className='space-y-4'>
+          <Field title='Error Strategy' description='How to handle errors during CRUD operations'>
             <Select
               value={nodeData.error_strategy || CrudErrorStrategy.fail}
               onValueChange={handleErrorStrategyChange}>
-              <SelectTrigger variant="default" size="sm">
-                <SelectValue placeholder="Select error strategy" />
+              <SelectTrigger variant='default' size='sm'>
+                <SelectValue placeholder='Select error strategy' />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={CrudErrorStrategy.fail}>
@@ -425,7 +426,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
           </Field>
 
           {nodeData.error_strategy === CrudErrorStrategy.default && (
-            <Field title="Default Values" description="Fallback values to use when operations fail">
+            <Field title='Default Values' description='Fallback values to use when operations fail'>
               <DefaultValuesEditor
                 defaultValues={nodeData.default_values || []}
                 onChange={handleDefaultValuesChange}

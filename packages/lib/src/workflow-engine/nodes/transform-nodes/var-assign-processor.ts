@@ -1,9 +1,9 @@
 // packages/lib/src/workflow-engine/nodes/transform-nodes/var-assign-processor.ts
 
-import { BaseNodeProcessor } from '../base-node'
-import type { WorkflowNode, NodeExecutionResult, ValidationResult } from '../../core/types'
-import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import type { ExecutionContextManager } from '../../core/execution-context'
+import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
+import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { BaseNodeProcessor } from '../base-node'
 
 interface VariableAssignment {
   id: string
@@ -11,8 +11,8 @@ interface VariableAssignment {
   type: 'string' | 'number' | 'boolean' | 'object' | 'array'
   isArray?: boolean
   value: string | string[]
-  isConstantMode?: boolean        // UI-only: for single values
-  itemConstantModes?: boolean[]   // UI-only: for array items
+  isConstantMode?: boolean // UI-only: for single values
+  itemConstantModes?: boolean[] // UI-only: for array items
 }
 
 interface VarAssignConfig {
@@ -160,12 +160,13 @@ export class VarAssignProcessor extends BaseNodeProcessor {
         case 'string':
           return String(value)
 
-        case 'number':
+        case 'number': {
           const num = Number(value)
           if (isNaN(num)) {
             throw new Error(`Cannot convert '${value}' to number`)
           }
           return num
+        }
 
         case 'boolean':
           if (value === 'true' || value === '1') return true

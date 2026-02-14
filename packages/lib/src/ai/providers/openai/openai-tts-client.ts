@@ -1,14 +1,9 @@
 // packages/lib/src/ai/providers/openai/openai-tts-client.ts
 
-import OpenAI from 'openai'
+import type OpenAI from 'openai'
+import { createScopedLogger, type Logger } from '../../../logger'
 import { TTSClient } from '../../clients/base/tts-client'
-import type {
-  ClientConfig,
-  TTSParams,
-  TTSResponse,
-  UsageMetrics,
-} from '../../clients/base/types'
-import { createScopedLogger, Logger } from '../../../logger'
+import type { ClientConfig, TTSParams, TTSResponse, UsageMetrics } from '../../clients/base/types'
 
 /**
  * OpenAI specialized text-to-speech client
@@ -24,10 +19,10 @@ export class OpenAITTSClient extends TTSClient {
 
   async invoke(params: TTSParams): Promise<TTSResponse> {
     this.validateTTSParams(params)
-    
+
     const startTime = this.getTimestamp()
     const sanitizedText = this.sanitizeText(params.text)
-    
+
     this.logOperationStart('TTS invoke', {
       model: params.model,
       voice: params.voice,
@@ -36,46 +31,49 @@ export class OpenAITTSClient extends TTSClient {
     })
 
     try {
-      return await this.withRetryAndCircuitBreaker(async () => {
-        const requestParams: any = {
-          model: params.model,
-          input: sanitizedText,
-          voice: params.voice,
-        }
-
-        if (params.format) {
-          requestParams.response_format = params.format
-        }
-
-        if (params.speed !== undefined) {
-          requestParams.speed = params.speed
-        }
-
-        if (params.user) {
-          requestParams.user = params.user
-        }
-
-        const response = await this.apiClient.audio.speech.create(requestParams)
-
-        // Convert response to buffer
-        const audioBuffer = Buffer.from(await response.arrayBuffer())
-        const usage = this.calculateTTSUsage(sanitizedText)
-
-        return {
-          audio: audioBuffer,
-          model: params.model,
-          usage,
-          metadata: {
-            format: params.format || 'mp3',
-            duration: this.estimateAudioDuration(sanitizedText, params.speed),
+      return await this.withRetryAndCircuitBreaker(
+        async () => {
+          const requestParams: any = {
+            model: params.model,
+            input: sanitizedText,
             voice: params.voice,
-            textLength: sanitizedText.length,
-          },
+          }
+
+          if (params.format) {
+            requestParams.response_format = params.format
+          }
+
+          if (params.speed !== undefined) {
+            requestParams.speed = params.speed
+          }
+
+          if (params.user) {
+            requestParams.user = params.user
+          }
+
+          const response = await this.apiClient.audio.speech.create(requestParams)
+
+          // Convert response to buffer
+          const audioBuffer = Buffer.from(await response.arrayBuffer())
+          const usage = this.calculateTTSUsage(sanitizedText)
+
+          return {
+            audio: audioBuffer,
+            model: params.model,
+            usage,
+            metadata: {
+              format: params.format || 'mp3',
+              duration: this.estimateAudioDuration(sanitizedText, params.speed),
+              voice: params.voice,
+              textLength: sanitizedText.length,
+            },
+          }
+        },
+        {
+          operation: 'tts_invoke',
+          model: params.model,
         }
-      }, {
-        operation: 'tts_invoke',
-        model: params.model,
-      })
+      )
     } catch (error) {
       this.handleApiError(error, 'invoke')
     } finally {
@@ -90,7 +88,7 @@ export class OpenAITTSClient extends TTSClient {
    */
   async generateLongFormSpeech(params: TTSParams): Promise<TTSResponse> {
     const chunks = this.splitTextIntoChunks(params.text)
-    
+
     if (chunks.length === 1) {
       return await this.invoke(params)
     }
@@ -101,7 +99,7 @@ export class OpenAITTSClient extends TTSClient {
     })
 
     const audioBuffers: Buffer[] = []
-    let totalUsage: UsageMetrics = {
+    const totalUsage: UsageMetrics = {
       prompt_tokens: 0,
       completion_tokens: 0,
       total_tokens: 0,
@@ -109,7 +107,7 @@ export class OpenAITTSClient extends TTSClient {
 
     for (const [index, chunk] of chunks.entries()) {
       this.logger.debug(`Processing chunk ${index + 1}/${chunks.length}`)
-      
+
       const chunkResponse = await this.invoke({
         ...params,
         text: chunk,
@@ -195,13 +193,13 @@ export class OpenAITTSClient extends TTSClient {
     // OpenAI TTS pricing (per 1K characters)
     const pricing: Record<string, number> = {
       'tts-1': 0.015,
-      'tts-1-hd': 0.030,
+      'tts-1-hd': 0.03,
     }
 
     const pricePerK = pricing[model] || pricing['tts-1']
     const characters = text.length
     const costPer1K = pricePerK
-    
+
     return (characters / 1000) * costPer1K
   }
 
@@ -210,17 +208,21 @@ export class OpenAITTSClient extends TTSClient {
    */
   protected validateTTSParams(params: TTSParams): void {
     super.validateTTSParams(params)
-    
+
     if (!this.getSupportedModels().includes(params.model)) {
       throw new Error(`Unsupported TTS model: ${params.model}`)
     }
 
     if (!this.validateVoice(params.voice)) {
-      throw new Error(`Unsupported voice: ${params.voice}. Supported voices: ${this.getSupportedVoices().join(', ')}`)
+      throw new Error(
+        `Unsupported voice: ${params.voice}. Supported voices: ${this.getSupportedVoices().join(', ')}`
+      )
     }
 
     if (params.format && !this.getSupportedFormats().includes(params.format)) {
-      throw new Error(`Unsupported format: ${params.format}. Supported formats: ${this.getSupportedFormats().join(', ')}`)
+      throw new Error(
+        `Unsupported format: ${params.format}. Supported formats: ${this.getSupportedFormats().join(', ')}`
+      )
     }
 
     // Check text length
@@ -244,7 +246,7 @@ export class OpenAITTSClient extends TTSClient {
    */
   protected sanitizeText(text: string): string {
     let sanitized = super.sanitizeText(text)
-    
+
     // Additional TTS-specific cleaning
     // Remove or replace characters that might cause issues in speech synthesis
     sanitized = sanitized
@@ -258,7 +260,7 @@ export class OpenAITTSClient extends TTSClient {
       .replace(/`[^`]*`/g, '') // Remove inline code
       .replace(/\|/g, ',') // Replace pipes with commas
       .replace(/\s{2,}/g, ' ') // Normalize whitespace
-    
+
     return sanitized.trim()
   }
 
@@ -287,7 +289,7 @@ export class OpenAITTSClient extends TTSClient {
           // Paragraph is too long, split by sentences
           const sentences = paragraph.split(/(?<=[.!?])\s+/)
           let sentenceChunk = ''
-          
+
           for (const sentence of sentences) {
             if (sentenceChunk.length + sentence.length <= maxChunkSize) {
               sentenceChunk += (sentenceChunk ? ' ' : '') + sentence
@@ -301,7 +303,7 @@ export class OpenAITTSClient extends TTSClient {
               }
             }
           }
-          
+
           if (sentenceChunk) {
             currentChunk = sentenceChunk
           }
@@ -313,6 +315,6 @@ export class OpenAITTSClient extends TTSClient {
       chunks.push(currentChunk.trim())
     }
 
-    return chunks.filter(chunk => chunk.length > 0)
+    return chunks.filter((chunk) => chunk.length > 0)
   }
 }

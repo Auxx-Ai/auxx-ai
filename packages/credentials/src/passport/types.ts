@@ -65,4 +65,6 @@ export interface VerifiedPassport {
 /**
  * Passport error types
  */
-export type PassportError = { code: 'INVALID_PASSPORT'; message: string } | { code: 'PASSPORT_EXPIRED'; message: string }
+export type PassportError =
+  | { code: 'INVALID_PASSPORT'; message: string }
+  | { code: 'PASSPORT_EXPIRED'; message: string }

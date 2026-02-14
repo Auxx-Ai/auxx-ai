@@ -1,7 +1,8 @@
 // apps/web/src/server/api/routers/mediaAsset.ts
+
+import { MediaAssetService } from '@auxx/lib/files'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { MediaAssetService } from '@auxx/lib/files'
 
 /**
  * MediaAsset router for managing media assets

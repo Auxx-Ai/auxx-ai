@@ -1,6 +1,11 @@
 // packages/sdk/src/root/workflow/utils.ts
 
-import type { WorkflowBlock, WorkflowTrigger, InferWorkflowInput, InferWorkflowOutput } from './types.js'
+import type {
+  InferWorkflowInput,
+  InferWorkflowOutput,
+  WorkflowBlock,
+  WorkflowTrigger,
+} from './types.js'
 
 /**
  * Extract the schema type from a WorkflowBlock or WorkflowTrigger
@@ -14,11 +19,12 @@ import type { WorkflowBlock, WorkflowTrigger, InferWorkflowInput, InferWorkflowO
  * // Equivalent to: typeof sendEmailBlock.schema
  * ```
  */
-export type SchemaOf<T> = T extends WorkflowBlock<infer TSchema>
-  ? TSchema
-  : T extends WorkflowTrigger<infer TSchema>
+export type SchemaOf<T> =
+  T extends WorkflowBlock<infer TSchema>
     ? TSchema
-    : never
+    : T extends WorkflowTrigger<infer TSchema>
+      ? TSchema
+      : never
 
 /**
  * Extract the input type from a WorkflowBlock or WorkflowTrigger
@@ -32,11 +38,12 @@ export type SchemaOf<T> = T extends WorkflowBlock<infer TSchema>
  * // Equivalent to: { to: string, subject: string, body: string, ... }
  * ```
  */
-export type InputOf<T> = T extends WorkflowBlock<infer TSchema>
-  ? InferWorkflowInput<TSchema>
-  : T extends WorkflowTrigger<infer TSchema>
+export type InputOf<T> =
+  T extends WorkflowBlock<infer TSchema>
     ? InferWorkflowInput<TSchema>
-    : never
+    : T extends WorkflowTrigger<infer TSchema>
+      ? InferWorkflowInput<TSchema>
+      : never
 
 /**
  * Extract the output type from a WorkflowBlock or WorkflowTrigger
@@ -50,8 +57,9 @@ export type InputOf<T> = T extends WorkflowBlock<infer TSchema>
  * // Equivalent to: { messageId: string, status: string, sentAt: string }
  * ```
  */
-export type OutputOf<T> = T extends WorkflowBlock<infer TSchema>
-  ? InferWorkflowOutput<TSchema>
-  : T extends WorkflowTrigger<infer TSchema>
+export type OutputOf<T> =
+  T extends WorkflowBlock<infer TSchema>
     ? InferWorkflowOutput<TSchema>
-    : never
+    : T extends WorkflowTrigger<infer TSchema>
+      ? InferWorkflowOutput<TSchema>
+      : never

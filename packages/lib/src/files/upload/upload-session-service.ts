@@ -1,17 +1,17 @@
 // packages/lib/src/files/session/file-upload-session.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { fileUploadEventPublisher } from './progress/sse-publisher'
-import {
+import type {
   EntityType,
+  FileInfo,
   SessionConfig,
-  SessionStatus,
   SessionData,
   SessionProgress,
-  FileInfo,
+  SessionStatus,
   SessionUpdate,
 } from '../types'
 import type { FileUploadProgressTracker } from './progress/progress-tracker'
+import { fileUploadEventPublisher } from './progress/sse-publisher'
 
 const logger = createScopedLogger('file-upload-session')
 

@@ -1,9 +1,13 @@
 // apps/web/src/components/inbox/inbox-access-tab.tsx
 'use client'
 
-import { useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { api } from '~/trpc/react'
+import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import type { Inbox } from '@auxx/lib/inboxes'
+import { type ActorId, parseActorId } from '@auxx/types/actor'
+import { Button } from '@auxx/ui/components/button'
+import { Form } from '@auxx/ui/components/form'
+import { Label } from '@auxx/ui/components/label'
+import { Switch } from '@auxx/ui/components/switch'
 import {
   Table,
   TableBody,
@@ -12,19 +16,15 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import { Button } from '@auxx/ui/components/button'
-import { Switch } from '@auxx/ui/components/switch'
-import { Label } from '@auxx/ui/components/label'
-import { Form } from '@auxx/ui/components/form'
-import { X } from 'lucide-react'
 import { toastError } from '@auxx/ui/components/toast'
-import { useConfirm } from '~/hooks/use-confirm'
+import { X } from 'lucide-react'
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { ActorFormField } from '~/components/pickers/actor-picker'
 import { useResourceAccess } from '~/components/resources/hooks'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
-import { ActorFormField } from '~/components/pickers/actor-picker'
-import { parseActorId, type ActorId } from '@auxx/types/actor'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
-import type { Inbox } from '@auxx/lib/inboxes'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 /** Form data shape */
 interface FormData {
@@ -163,31 +163,31 @@ export function InboxAccessTab({ inbox }: { inbox: Inbox }) {
   const showRestrictedAccess = visibility !== 'org_members'
 
   return (
-    <div className="p-6 space-y-6">
+    <div className='p-6 space-y-6'>
       {/* Render the confirmation dialog */}
       <ConfirmDialog />
 
-      <div className="flex items-center space-x-2">
+      <div className='flex items-center space-x-2'>
         <Switch
-          id="allowAllMembers"
+          id='allowAllMembers'
           checked={visibility === 'org_members'}
           onCheckedChange={handleVisibilityChange}
           disabled={isUpdating}
         />
-        <Label htmlFor="allowAllMembers">Allow all organization members to access this inbox</Label>
+        <Label htmlFor='allowAllMembers'>Allow all organization members to access this inbox</Label>
       </div>
 
       {showRestrictedAccess && (
-        <div className="space-y-6">
+        <div className='space-y-6'>
           <div>
-            <h3 className="mb-4 text-lg font-medium">Access Management</h3>
+            <h3 className='mb-4 text-lg font-medium'>Access Management</h3>
 
             {/* Combined Access Table */}
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead className="w-20">Actions</TableHead>
+                  <TableHead className='w-20'>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -199,19 +199,19 @@ export function InboxAccessTab({ inbox }: { inbox: Inbox }) {
                       </TableCell>
                       <TableCell>
                         <Button
-                          variant="ghost"
-                          size="icon"
+                          variant='ghost'
+                          size='icon'
                           disabled={isUpdating}
                           onClick={() => handleRemoveAccess(actorId)}>
-                          <X className="h-4 w-4" />
-                          <span className="sr-only">Remove</span>
+                          <X className='h-4 w-4' />
+                          <span className='sr-only'>Remove</span>
                         </Button>
                       </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={2} className="py-4 text-center text-muted-foreground">
+                    <TableCell colSpan={2} className='py-4 text-center text-muted-foreground'>
                       {isLoadingAccess
                         ? 'Loading...'
                         : 'No members or groups have been added. Add access to grant permissions.'}
@@ -224,16 +224,20 @@ export function InboxAccessTab({ inbox }: { inbox: Inbox }) {
 
           {/* Add members/groups form */}
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
               <ActorFormField
-                name="actorIds"
+                name='actorIds'
                 control={form.control}
-                label="Select members or groups to add"
-                target="both"
-                placeholder="Add members or groups"
+                label='Select members or groups to add'
+                target='both'
+                placeholder='Add members or groups'
                 disabled={isUpdating}
               />
-              <Button type="submit" disabled={isUpdating} loading={isUpdating} loadingText="Adding...">
+              <Button
+                type='submit'
+                disabled={isUpdating}
+                loading={isUpdating}
+                loadingText='Adding...'>
                 Add Selected
               </Button>
             </form>

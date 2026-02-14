@@ -9,7 +9,7 @@ import {
   isList,
   type KeyboardShortcutCommand,
 } from '@tiptap/core'
-import { TextSelection, Transaction } from 'prosemirror-state'
+import { TextSelection, type Transaction } from 'prosemirror-state'
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {

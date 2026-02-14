@@ -1,14 +1,9 @@
 // ~/app/(protected)/app/settings/aiModels/_components/credential-configuration-dialog.tsx
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
-import { PlusIcon, Eye, EyeOff } from 'lucide-react'
-
+import { ModelType } from '@auxx/lib/ai/providers/types'
 import { Button } from '@auxx/ui/components/button'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -20,15 +15,15 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
-  FormDescription,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
-import { Checkbox } from '@auxx/ui/components/checkbox'
+import { Label } from '@auxx/ui/components/label'
+import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
 import {
   Select,
   SelectContent,
@@ -36,16 +31,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
-import { Label } from '@auxx/ui/components/label'
 import { Separator } from '@auxx/ui/components/separator'
-
-import { ModelType } from '@auxx/lib/ai/providers/types'
-import { AiProviderPicker } from '~/components/pickers/ai-provider-picker'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
-import { useConfirm } from '~/hooks/use-confirm'
+import { Textarea } from '@auxx/ui/components/textarea'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { Eye, EyeOff, PlusIcon } from 'lucide-react'
+import type React from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { TooltipExplanation } from '~/components/global/tooltip'
+import { AiProviderPicker } from '~/components/pickers/ai-provider-picker'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 import type { ProviderConfiguration } from './utils'
 
 /**
@@ -528,20 +526,20 @@ export function CredentialConfigurationDialog({
     switch (field.type) {
       case 'secret-input':
         return (
-          <div className="space-y-2">
-            <div className="relative">
+          <div className='space-y-2'>
+            <div className='relative'>
               <Input
                 {...formField}
                 type={visibleSecrets[field.variable] ? 'text' : 'password'}
                 placeholder={field.placeholder}
-                className="pr-10"
-                autoComplete="new-password"
+                className='pr-10'
+                autoComplete='new-password'
               />
               <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="absolute right-0 top-0 h-full px-3"
+                type='button'
+                variant='ghost'
+                size='sm'
+                className='absolute right-0 top-0 h-full px-3'
                 onClick={() => toggleSecretVisibility(field.variable)}>
                 {visibleSecrets[field.variable] ? <EyeOff /> : <Eye />}
               </Button>
@@ -570,9 +568,9 @@ export function CredentialConfigurationDialog({
 
       case 'checkbox':
         return (
-          <div className="flex items-center space-x-2">
+          <div className='flex items-center space-x-2'>
             <Checkbox checked={formField.value} onCheckedChange={formField.onChange} />
-            <Label className="text-sm font-normal">{field.label}</Label>
+            <Label className='text-sm font-normal'>{field.label}</Label>
           </div>
         )
 
@@ -590,10 +588,10 @@ export function CredentialConfigurationDialog({
         name={`credentials.${field.variable}`}
         render={({ field: formField }) => (
           <FormItem>
-            <FormLabel className="flex items-center gap-0.5">
+            <FormLabel className='flex items-center gap-0.5'>
               {field.label}
               {field.helpText && <TooltipExplanation text={field.helpText} />}
-              {field.required && <span className="text-destructive ml-1">*</span>}
+              {field.required && <span className='text-destructive ml-1'>*</span>}
             </FormLabel>
             <FormControl>{renderFieldControl(field, formField)}</FormControl>
             <FormMessage />
@@ -609,24 +607,24 @@ export function CredentialConfigurationDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
 
-      <DialogContent className=" max-h-[90vh] overflow-y-auto" position="tc" size="lg">
+      <DialogContent className=' max-h-[90vh] overflow-y-auto' position='tc' size='lg'>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" autoComplete="off">
+          <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6' autoComplete='off'>
             {/* Provider Selection (only when no provider specified) */}
             {mode === 'provider' && operation === 'create' && !provider && (
-              <div className="space-y-2 gap-2 flex items-center">
-                <Label className="mb-0">
-                  Provider <span className="text-destructive">*</span>
+              <div className='space-y-2 gap-2 flex items-center'>
+                <Label className='mb-0'>
+                  Provider <span className='text-destructive'>*</span>
                 </Label>
                 <AiProviderPicker
                   value={selectedProvider}
                   onChange={setSelectedProvider}
-                  placeholder="Choose an AI provider..."
+                  placeholder='Choose an AI provider...'
                   providers={providers}
                 />
               </div>
@@ -637,20 +635,20 @@ export function CredentialConfigurationDialog({
               <>
                 {/* Model-specific fields (only for custom-model mode) */}
                 {mode === 'custom-model' && (
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold uppercase text-primary-500 mb-0.5 ">
+                  <div className='space-y-4'>
+                    <h3 className='text-sm font-semibold uppercase text-primary-500 mb-0.5 '>
                       Model Information
                     </h3>
 
                     {/* Model ID Field */}
                     <FormField
                       control={form.control}
-                      name="modelId"
+                      name='modelId'
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Model ID *</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="my-custom-model" />
+                            <Input {...field} placeholder='my-custom-model' />
                           </FormControl>
                           <FormDescription>
                             Unique identifier that will be used as the model name.
@@ -663,7 +661,7 @@ export function CredentialConfigurationDialog({
                     {/* Model Type Radio Group */}
                     <FormField
                       control={form.control}
-                      name="modelType"
+                      name='modelType'
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Model Type *</FormLabel>
@@ -671,20 +669,20 @@ export function CredentialConfigurationDialog({
                             <RadioGroup
                               value={field.value}
                               onValueChange={field.onChange}
-                              className="flex flex-wrap gap-3 grid-cols-4">
+                              className='flex flex-wrap gap-3 grid-cols-4'>
                               {availableModelTypes.map((option) => (
                                 <div
                                   key={option.value}
-                                  className="relative flex flex-col flex-1 gap-3 rounded-md border border-input p-4 shadow-xs outline-none has-[&_[data-state=checked]]:border-info">
-                                  <div className="flex items-center gap-2">
+                                  className='relative flex flex-col flex-1 gap-3 rounded-md border border-input p-4 shadow-xs outline-none has-[&_[data-state=checked]]:border-info'>
+                                  <div className='flex items-center gap-2'>
                                     <RadioGroupItem
                                       id={`modelType-${option.value}`}
                                       value={option.value}
-                                      className="peer after:absolute after:inset-0"
+                                      className='peer after:absolute after:inset-0'
                                     />
                                     <Label
                                       htmlFor={`modelType-${option.value}`}
-                                      className="font-medium cursor-pointer peer-data-[state=checked]:text-info">
+                                      className='font-medium cursor-pointer peer-data-[state=checked]:text-info'>
                                       {option.label}
                                     </Label>
                                   </div>
@@ -706,42 +704,42 @@ export function CredentialConfigurationDialog({
                 {getRelevantFields.length > 0 && (
                   <>
                     <Separator />
-                    <div className="space-y-4">
-                      <h3 className="text-sm font-semibold uppercase text-primary-500 mb-0.5">
+                    <div className='space-y-4'>
+                      <h3 className='text-sm font-semibold uppercase text-primary-500 mb-0.5'>
                         {mode === 'provider' ? 'Provider Credentials' : 'Model Credentials'}
                       </h3>
-                      <div className="space-y-4">{getRelevantFields.map(renderField)}</div>
+                      <div className='space-y-4'>{getRelevantFields.map(renderField)}</div>
                     </div>
                   </>
                 )}
 
                 {/* Action Buttons */}
-                <div className="flex justify-between pt-4">
+                <div className='flex justify-between pt-4'>
                   {/* Delete button (for provider edit mode OR custom-model edit mode) */}
                   {operation === 'edit' && (
                     <Button
-                      type="button"
-                      size="sm"
-                      variant="destructive"
+                      type='button'
+                      size='sm'
+                      variant='destructive'
                       onClick={mode === 'provider' ? handleDeleteProvider : handleDeleteCustomModel}
                       loading={deleteProvider.isPending || deleteCustomModel.isPending}
-                      loadingText="Removing...">
+                      loadingText='Removing...'>
                       {mode === 'provider' ? 'Remove API Key' : 'Remove Model'}
                     </Button>
                   )}
 
-                  <div className="flex gap-2 ml-auto">
+                  <div className='flex gap-2 ml-auto'>
                     <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
+                      type='button'
+                      variant='ghost'
+                      size='sm'
                       onClick={() => onOpenChange(false)}>
                       Cancel
                     </Button>
                     <Button
-                      type="submit"
-                      size="sm"
-                      variant="outline"
+                      type='submit'
+                      size='sm'
+                      variant='outline'
                       loading={saveProviderConfiguration.isPending || saveCustomModel.isPending}
                       loadingText={
                         mode === 'provider'
@@ -779,12 +777,12 @@ export function CreateProviderButton(
   return (
     <CredentialConfigurationDialog
       {...props}
-      mode="provider"
-      operation="create"
+      mode='provider'
+      operation='create'
       open={open}
       onOpenChange={setOpen}
       trigger={
-        <Button variant="outline" size="sm">
+        <Button variant='outline' size='sm'>
           <PlusIcon />
           Add Provider
         </Button>

@@ -1,15 +1,14 @@
 // src/components/pickers/filter-date-picker.tsx
 'use client'
 
-import * as React from 'react'
-import { Calendar as CalendarIcon } from 'lucide-react'
-import { format } from 'date-fns'
-
-import { cn } from '@auxx/ui/lib/utils'
 import { Button } from '@auxx/ui/components/button'
 import { Calendar } from '@auxx/ui/components/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Separator } from '@auxx/ui/components/separator'
+import { cn } from '@auxx/ui/lib/utils'
+import { format } from 'date-fns'
+import { Calendar as CalendarIcon } from 'lucide-react'
+import * as React from 'react'
 
 /**
  * Defines the structure for a relative date option.
@@ -139,8 +138,8 @@ export function FilterDatePicker({
       <PopoverTrigger asChild>
         {children || (
           <Button
-            type="button"
-            variant="input"
+            type='button'
+            variant='input'
             className={cn(
               'w-full justify-start text-left font-normal',
               !value && 'text-muted-foreground', // Style placeholder differently
@@ -152,16 +151,16 @@ export function FilterDatePicker({
           </Button>
         )}
       </PopoverTrigger>
-      <PopoverContent className={cn('w-auto p-0', className)} align="start">
+      <PopoverContent className={cn('w-auto p-0', className)} align='start'>
         {/* Section for Relative Ranges */}
-        <div className="grid grid-cols-2 gap-1 p-2">
+        <div className='grid grid-cols-2 gap-1 p-2'>
           {relativeOptions.map((option) => (
             <Button
-              type="button"
+              type='button'
               key={option.value}
               variant={value === option.value ? 'default' : 'ghost'} // Highlight selected relative range
-              size="sm"
-              className="h-8 justify-start text-xs"
+              size='sm'
+              className='h-8 justify-start text-xs'
               onClick={() => handleRelativeSelect(option.value)}>
               {option.label}
             </Button>
@@ -172,7 +171,7 @@ export function FilterDatePicker({
 
         {/* Calendar for Specific Date Selection */}
         <Calendar
-          mode="single"
+          mode='single'
           selected={selectedCalendarDate}
           onSelect={handleDateSelect} // Calendar's onSelect provides Date | undefined
           disabled={disabled}

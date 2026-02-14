@@ -1,14 +1,14 @@
 // apps/web/src/components/workflow/utils/workflow-initializer.ts
 
 import { getConnectedEdges } from '@xyflow/react'
-import type { FlowNode, FlowEdge, EdgeData } from '../types'
-import { NodeType } from '../types/node-types'
-import type { TextClassifierNodeData } from '../nodes/core/text-classifier/types'
-import type { LoopNodeData } from '../nodes/core/loop/types'
-import type { IfElseNodeData } from '../nodes/core/if-else/types'
+import type { CrudNodeData } from '../nodes/core/crud/types'
 import type { HttpNodeData } from '../nodes/core/http/types'
 import { ErrorStrategy } from '../nodes/core/http/types'
-import type { CrudNodeData } from '../nodes/core/crud/types'
+import type { IfElseNodeData } from '../nodes/core/if-else/types'
+import type { LoopNodeData } from '../nodes/core/loop/types'
+import type { TextClassifierNodeData } from '../nodes/core/text-classifier/types'
+import type { EdgeData, FlowEdge, FlowNode } from '../types'
+import { NodeType } from '../types/node-types'
 import { branchNameCorrect } from './branch-name-correct'
 import { calculateZIndex } from './edge-utils'
 

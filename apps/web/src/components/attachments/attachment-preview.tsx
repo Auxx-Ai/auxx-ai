@@ -2,14 +2,14 @@
 
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { Download, FileText, ExternalLink, RefreshCw, AlertTriangle } from 'lucide-react'
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent } from '@auxx/ui/components/card'
-import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { api } from '~/trpc/react'
 import { cn } from '@auxx/ui/lib/utils'
+import { AlertTriangle, Download, ExternalLink, FileText, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { api } from '~/trpc/react'
 import { getFileIcon } from '../files/utils/file-icon'
 
 /**
@@ -176,10 +176,10 @@ export function AttachmentPreview({
   if (isLoading) {
     return (
       <Card className={cn('overflow-hidden', className)} style={{ width, height }}>
-        <CardContent className="p-4 h-full flex flex-col justify-center items-center">
-          <Skeleton className="w-12 h-12 rounded-lg mb-2" />
-          <Skeleton className="w-24 h-4 mb-1" />
-          <Skeleton className="w-16 h-3" />
+        <CardContent className='p-4 h-full flex flex-col justify-center items-center'>
+          <Skeleton className='w-12 h-12 rounded-lg mb-2' />
+          <Skeleton className='w-24 h-4 mb-1' />
+          <Skeleton className='w-16 h-3' />
         </CardContent>
       </Card>
     )
@@ -189,19 +189,19 @@ export function AttachmentPreview({
   if (error || isExpired) {
     return (
       <Card className={cn('overflow-hidden', className)} style={{ width, height }}>
-        <CardContent className="p-4 h-full flex flex-col justify-center">
-          <Alert variant="destructive" className="mb-4">
-            <AlertTriangle className="h-4 w-4" />
+        <CardContent className='p-4 h-full flex flex-col justify-center'>
+          <Alert variant='destructive' className='mb-4'>
+            <AlertTriangle className='h-4 w-4' />
             <AlertDescription>{isExpired ? 'Preview URL has expired' : error}</AlertDescription>
           </Alert>
           {interactive && (
-            <div className="flex gap-2 justify-center">
+            <div className='flex gap-2 justify-center'>
               <Button
-                variant="outline"
-                size="sm"
+                variant='outline'
+                size='sm'
                 onClick={handleRefresh}
                 disabled={isLoading}
-                className="flex items-center gap-2">
+                className='flex items-center gap-2'>
                 <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin')} />
                 Retry
               </Button>
@@ -218,12 +218,12 @@ export function AttachmentPreview({
 
     if (!previewUrl) {
       return (
-        <div className="flex flex-col items-center justify-center h-full text-center p-4">
-          <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-muted mb-2">
+        <div className='flex flex-col items-center justify-center h-full text-center p-4'>
+          <div className='flex items-center justify-center w-12 h-12 rounded-lg bg-muted mb-2'>
             {getFileIcon(mimeType, undefined, 'h-6 w-6')}
           </div>
-          <p className="text-sm font-medium">{filename}</p>
-          <p className="text-xs text-muted-foreground">Preview not available</p>
+          <p className='text-sm font-medium'>{filename}</p>
+          <p className='text-xs text-muted-foreground'>Preview not available</p>
         </div>
       )
     }
@@ -234,7 +234,7 @@ export function AttachmentPreview({
           <img
             src={previewUrl}
             alt={filename}
-            className="w-full h-full object-contain"
+            className='w-full h-full object-contain'
             onError={() => setError('Failed to load image')}
           />
         )
@@ -244,7 +244,7 @@ export function AttachmentPreview({
           <video
             src={previewUrl}
             controls
-            className="w-full h-full"
+            className='w-full h-full'
             onError={() => setError('Failed to load video')}>
             <source src={previewUrl} type={mimeType} />
             Your browser does not support the video tag.
@@ -253,19 +253,19 @@ export function AttachmentPreview({
 
       case 'audio':
         return (
-          <div className="flex flex-col items-center justify-center h-full p-4">
-            <div className="flex items-center justify-center w-16 h-16 rounded-lg bg-muted mb-4">
+          <div className='flex flex-col items-center justify-center h-full p-4'>
+            <div className='flex items-center justify-center w-16 h-16 rounded-lg bg-muted mb-4'>
               {getFileIcon(mimeType, undefined, 'h-8 w-8')}
             </div>
             <audio
               src={previewUrl}
               controls
-              className="w-full max-w-sm"
+              className='w-full max-w-sm'
               onError={() => setError('Failed to load audio')}>
               <source src={previewUrl} type={mimeType} />
               Your browser does not support the audio tag.
             </audio>
-            <p className="text-sm font-medium mt-2">{filename}</p>
+            <p className='text-sm font-medium mt-2'>{filename}</p>
           </div>
         )
 
@@ -273,7 +273,7 @@ export function AttachmentPreview({
         return (
           <iframe
             src={previewUrl}
-            className="w-full h-full border-0"
+            className='w-full h-full border-0'
             title={`PDF Preview: ${filename}`}
             onError={() => setError('Failed to load PDF')}
           />
@@ -283,7 +283,7 @@ export function AttachmentPreview({
         return (
           <iframe
             src={previewUrl}
-            className="w-full h-full border-0 bg-white"
+            className='w-full h-full border-0 bg-white'
             title={`Text Preview: ${filename}`}
             onError={() => setError('Failed to load text file')}
           />
@@ -291,28 +291,28 @@ export function AttachmentPreview({
 
       default:
         return (
-          <div className="flex flex-col items-center justify-center h-full text-center p-4">
-            <div className="flex items-center justify-center w-16 h-16 rounded-lg bg-muted mb-4">
+          <div className='flex flex-col items-center justify-center h-full text-center p-4'>
+            <div className='flex items-center justify-center w-16 h-16 rounded-lg bg-muted mb-4'>
               {getFileIcon(mimeType, undefined, 'h-8 w-8')}
             </div>
-            <p className="text-sm font-medium mb-1">{filename}</p>
-            <p className="text-xs text-muted-foreground mb-4">{mimeType || 'Unknown file type'}</p>
+            <p className='text-sm font-medium mb-1'>{filename}</p>
+            <p className='text-xs text-muted-foreground mb-4'>{mimeType || 'Unknown file type'}</p>
             {interactive && (
-              <div className="flex gap-2">
+              <div className='flex gap-2'>
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant='outline'
+                  size='sm'
                   onClick={handleDownload}
-                  className="flex items-center gap-2">
-                  <Download className="h-4 w-4" />
+                  className='flex items-center gap-2'>
+                  <Download className='h-4 w-4' />
                   Download
                 </Button>
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant='outline'
+                  size='sm'
                   onClick={handleOpenExternal}
-                  className="flex items-center gap-2">
-                  <ExternalLink className="h-4 w-4" />
+                  className='flex items-center gap-2'>
+                  <ExternalLink className='h-4 w-4' />
                   Open
                 </Button>
               </div>
@@ -324,42 +324,42 @@ export function AttachmentPreview({
 
   return (
     <Card className={cn('overflow-hidden', className)} style={{ width, height }}>
-      <CardContent className="p-0 h-full flex flex-col">
+      <CardContent className='p-0 h-full flex flex-col'>
         {/* Interactive toolbar */}
         {interactive && previewUrl && (
-          <div className="flex items-center justify-between p-2 border-b bg-muted/50">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className='flex items-center justify-between p-2 border-b bg-muted/50'>
+            <div className='flex items-center gap-2 text-xs text-muted-foreground'>
               <span>Version {versionNumber}</span>
               {size && <span>• {(Number(size) / 1024 / 1024).toFixed(2)} MB</span>}
             </div>
-            <div className="flex gap-1">
+            <div className='flex gap-1'>
               <Button
-                variant="ghost"
-                size="sm"
+                variant='ghost'
+                size='sm'
                 onClick={handleDownload}
-                className="h-7 px-2 text-xs">
-                <Download className="h-3 w-3" />
+                className='h-7 px-2 text-xs'>
+                <Download className='h-3 w-3' />
               </Button>
               <Button
-                variant="ghost"
-                size="sm"
+                variant='ghost'
+                size='sm'
                 onClick={handleOpenExternal}
-                className="h-7 px-2 text-xs">
-                <ExternalLink className="h-3 w-3" />
+                className='h-7 px-2 text-xs'>
+                <ExternalLink className='h-3 w-3' />
               </Button>
               <Button
-                variant="ghost"
-                size="sm"
+                variant='ghost'
+                size='sm'
                 onClick={handleRefresh}
-                className="h-7 px-2 text-xs">
-                <RefreshCw className="h-3 w-3" />
+                className='h-7 px-2 text-xs'>
+                <RefreshCw className='h-3 w-3' />
               </Button>
             </div>
           </div>
         )}
 
         {/* Preview content */}
-        <div className="flex-1 min-h-0">{renderPreview()}</div>
+        <div className='flex-1 min-h-0'>{renderPreview()}</div>
       </CardContent>
     </Card>
   )

@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/utils/schema-to-variable.ts
 
-import { type UnifiedVariable, BaseType } from '../types/variable-types'
-import { createUnifiedOutputVariable } from './variable-conversion'
+import { BaseType, type UnifiedVariable } from '../types/variable-types'
 import { type SchemaRoot, Type } from '../ui/structured-output-generator/types'
+import { createUnifiedOutputVariable } from './variable-conversion'
 
 /**
  * This file contains utilities for converting between different schema and variable formats:

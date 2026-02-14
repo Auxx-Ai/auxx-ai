@@ -1,14 +1,15 @@
 // ~/server/api/routers/billing.ts
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+
+import { BillingPortalService, SubscriptionService } from '@auxx/billing'
 import { schema } from '@auxx/database'
-import { and, eq, desc, lt } from 'drizzle-orm'
-import { getUserOrganizationId } from '@auxx/lib/email'
-import { TRPCError } from '@trpc/server'
-import { createScopedLogger } from '@auxx/logger'
-import { SubscriptionService, BillingPortalService } from '@auxx/billing'
-import { getStripe } from '~/lib/stripe'
 import { DehydrationService } from '@auxx/lib/dehydration'
+import { getUserOrganizationId } from '@auxx/lib/email'
+import { createScopedLogger } from '@auxx/logger'
+import { TRPCError } from '@trpc/server'
+import { and, desc, eq, lt } from 'drizzle-orm'
+import { z } from 'zod'
+import { getStripe } from '~/lib/stripe'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('billing-router')
 
@@ -292,10 +293,7 @@ export const billingRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
       }
 
-      const subscriptionService = new SubscriptionService(
-        ctx.db,
-        process.env.NEXT_PUBLIC_BASE_URL!
-      )
+      const subscriptionService = new SubscriptionService(ctx.db, process.env.NEXT_PUBLIC_BASE_URL!)
 
       await subscriptionService.cancelSubscription({
         organizationId,
@@ -839,8 +837,7 @@ async function getOrganizationStats(db: any, organizationId: string) {
 
     // Get integration count
     const integrationCount = await db.query.EmailIntegration.findMany({
-      where: (integrations: any, { eq }: any) =>
-        eq(integrations.organizationId, organizationId),
+      where: (integrations: any, { eq }: any) => eq(integrations.organizationId, organizationId),
     }).then((integrations: any[]) => integrations.length)
 
     return {

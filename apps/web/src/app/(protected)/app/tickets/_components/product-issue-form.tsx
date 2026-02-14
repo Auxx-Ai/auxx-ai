@@ -1,15 +1,15 @@
 // components/tickets/ticket-forms/product-issue-form.tsx
 'use client'
 
-import { UseFormReturn } from 'react-hook-form'
-import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@auxx/ui/components/form'
-import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
 import { Button } from '@auxx/ui/components/button'
 import { Calendar } from '@auxx/ui/components/calendar'
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@auxx/ui/components/form'
+import { Input } from '@auxx/ui/components/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { CalendarIcon } from 'lucide-react'
+import { Textarea } from '@auxx/ui/components/textarea'
 import { format } from 'date-fns'
+import { CalendarIcon } from 'lucide-react'
+import type { UseFormReturn } from 'react-hook-form'
 
 interface ProductIssueFormProps {
   form: UseFormReturn<any>
@@ -17,13 +17,13 @@ interface ProductIssueFormProps {
 
 export function ProductIssueForm({ form }: ProductIssueFormProps) {
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+    <div className='space-y-4'>
+      <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
         <FormField
           control={form.control}
-          name="productId"
+          name='productId'
           render={({ field }) => (
-            <FormItem className="flex flex-col">
+            <FormItem className='flex flex-col'>
               <FormLabel>Product ID</FormLabel>
               <FormControl>
                 <Input {...field} />
@@ -35,9 +35,9 @@ export function ProductIssueForm({ form }: ProductIssueFormProps) {
 
         <FormField
           control={form.control}
-          name="purchaseDate"
+          name='purchaseDate'
           render={({ field }) => (
-            <FormItem className="flex flex-col">
+            <FormItem className='flex flex-col'>
               <FormLabel>Purchase Date (Optional)</FormLabel>
               <Popover>
                 <PopoverTrigger asChild>
@@ -48,13 +48,13 @@ export function ProductIssueForm({ form }: ProductIssueFormProps) {
                         !field.value ? 'text-muted-foreground' : ''
                       }`}>
                       {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
-                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      <CalendarIcon className='ml-auto h-4 w-4 opacity-50' />
                     </Button>
                   </FormControl>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
+                <PopoverContent className='w-auto p-0' align='start'>
                   <Calendar
-                    mode="single"
+                    mode='single'
                     selected={field.value}
                     onSelect={field.onChange}
                     disabled={(date) => date > new Date(new Date().setHours(23, 59, 59, 999))}
@@ -70,7 +70,7 @@ export function ProductIssueForm({ form }: ProductIssueFormProps) {
 
       <FormField
         control={form.control}
-        name="orderId"
+        name='orderId'
         render={({ field }) => (
           <FormItem>
             <FormLabel>Order ID (Optional)</FormLabel>
@@ -84,14 +84,14 @@ export function ProductIssueForm({ form }: ProductIssueFormProps) {
 
       <FormField
         control={form.control}
-        name="issueDescription"
+        name='issueDescription'
         render={({ field }) => (
           <FormItem>
             <FormLabel>Issue Description</FormLabel>
             <FormControl>
               <Textarea
-                placeholder="Describe the product issue in detail"
-                className="min-h-[100px]"
+                placeholder='Describe the product issue in detail'
+                className='min-h-[100px]'
                 {...field}
               />
             </FormControl>

@@ -1,12 +1,12 @@
 // apps/web/src/components/tasks/hooks/use-task-completion.ts
 
-import { useCallback, useRef } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { api } from '~/trpc/react'
-import { toastError } from '@auxx/ui/components/toast'
-import { useTaskStore, LIST_UPDATE_DELAY_MS } from '../stores/task-store'
-import { useSession } from '~/auth/auth-client'
 import type { TaskWithRelations } from '@auxx/lib/tasks'
+import { toastError } from '@auxx/ui/components/toast'
+import { useQueryClient } from '@tanstack/react-query'
+import { useCallback, useRef } from 'react'
+import { useSession } from '~/auth/auth-client'
+import { api } from '~/trpc/react'
+import { LIST_UPDATE_DELAY_MS, useTaskStore } from '../stores/task-store'
 
 /**
  * Hook for optimistic task completion with delayed list updates.
@@ -45,22 +45,19 @@ export function useTaskCompletion() {
             tasks: TaskWithRelations[]
             total: number
             hasMore: boolean
-          }>(
-            { queryKey: [['task', 'list']] },
-            (oldData) => {
-              if (!oldData?.tasks) return oldData
-              return {
-                ...oldData,
-                tasks: oldData.tasks.map((t) => {
-                  const pending = pendingCompletions.get(t.id)
-                  if (pending) {
-                    return { ...t, completedAt: pending.completedAt }
-                  }
-                  return t
-                }),
-              }
+          }>({ queryKey: [['task', 'list']] }, (oldData) => {
+            if (!oldData?.tasks) return oldData
+            return {
+              ...oldData,
+              tasks: oldData.tasks.map((t) => {
+                const pending = pendingCompletions.get(t.id)
+                if (pending) {
+                  return { ...t, completedAt: pending.completedAt }
+                }
+                return t
+              }),
             }
-          )
+          })
 
           // Clear all pending states after cache is updated
           clearAllPendingCompletions()

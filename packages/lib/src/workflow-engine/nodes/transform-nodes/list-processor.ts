@@ -1,9 +1,9 @@
 // packages/lib/src/workflow-engine/nodes/transform-nodes/list-processor.ts
 
-import { BaseNodeProcessor } from '../base-node'
-import type { WorkflowNode, NodeExecutionResult, ValidationResult } from '../../core/types'
-import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import type { ExecutionContextManager } from '../../core/execution-context'
+import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
+import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { BaseNodeProcessor } from '../base-node'
 import type { ListOperation, SortConfig } from '../types/list-types'
 
 export class ListProcessor extends BaseNodeProcessor {
@@ -475,7 +475,9 @@ export class ListProcessor extends BaseNodeProcessor {
     const delimiter = config?.delimiter ?? ', '
 
     // If field is specified, extract that field from each item first
-    const values = config?.field ? list.map((item) => this.getNestedValue(item, config.field)) : list
+    const values = config?.field
+      ? list.map((item) => this.getNestedValue(item, config.field))
+      : list
 
     // Convert all values to strings and join
     return values.map((v) => (v == null ? '' : String(v))).join(delimiter)
@@ -668,7 +670,7 @@ export class ListProcessor extends BaseNodeProcessor {
     // Operation-specific validation
     switch (node.data.operation) {
       case 'filter':
-      case 'find':
+      case 'find': {
         const conditions =
           node.data.operation === 'filter'
             ? node.data.filterConfig?.conditions
@@ -677,6 +679,7 @@ export class ListProcessor extends BaseNodeProcessor {
           errors.push('At least one condition is required')
         }
         break
+      }
 
       case 'sort':
         if (!node.data.sortConfig?.field) {

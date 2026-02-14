@@ -1,22 +1,14 @@
-import { useState } from 'react'
-import { Store } from 'lucide-react'
-import { z } from 'zod'
-import { useForm } from 'react-hook-form'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
-  DialogTrigger,
+  DialogClose,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
-  DialogClose,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
 import {
   Form,
   FormControl,
@@ -26,13 +18,20 @@ import {
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
+import { Input } from '@auxx/ui/components/input'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { Store } from 'lucide-react'
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 
 // Zod schema for validation
 const shopDomainSchema = z.object({
   shopDomain: z
     .string()
     .min(1, { error: 'Shop domain is required' })
-    .regex(/^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)?myshopify\.com$/, {
+    .regex(/^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)?myshopify\.com$/, {
       error: 'Please enter a valid myshopify.com domain',
     }),
 })
@@ -77,7 +76,6 @@ export function ShopifyConnectDialog({
     defaultValues: { shopDomain: '' },
   })
 
-
   const onSubmit = (values: ShopDomainSchema) => {
     setIsConnecting(true)
     try {
@@ -99,17 +97,17 @@ export function ShopifyConnectDialog({
         <DialogTrigger asChild>{trigger}</DialogTrigger>
       ) : (
         <DialogTrigger asChild>
-          <Button variant="outline" className="flex items-center gap-2">
-            <Store className="h-5 w-5" />
+          <Button variant='outline' className='flex items-center gap-2'>
+            <Store className='h-5 w-5' />
             Connect Shopify Store
           </Button>
         </DialogTrigger>
       )}
 
-      <DialogContent size="sm">
-        <DialogHeader className="mb-4">
-          <DialogTitle className="flex items-center gap-2">
-            <Store className="h-5 w-5" />
+      <DialogContent size='sm'>
+        <DialogHeader className='mb-4'>
+          <DialogTitle className='flex items-center gap-2'>
+            <Store className='h-5 w-5' />
             Connect Shopify Store
           </DialogTitle>
           <DialogDescription>
@@ -118,18 +116,18 @@ export function ShopifyConnectDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
             <FormField
               control={form.control}
-              name="shopDomain"
+              name='shopDomain'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Shopify Store Domain</FormLabel>
                   <FormControl>
                     <Input
                       {...field}
-                      placeholder="yourstorename.myshopify.com"
-                      className="w-full"
+                      placeholder='yourstorename.myshopify.com'
+                      className='w-full'
                     />
                   </FormControl>
                   <FormDescription>Enter your Shopify store domain.</FormDescription>
@@ -141,18 +139,18 @@ export function ShopifyConnectDialog({
         </Form>
 
         <DialogFooter>
-          <Button variant="ghost" size="sm" type="button" onClick={() => handleOpenChange(false)}>
-            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+          <Button variant='ghost' size='sm' type='button' onClick={() => handleOpenChange(false)}>
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
           <Button
-            type="submit"
-            size="sm"
-            variant="outline"
+            type='submit'
+            size='sm'
+            variant='outline'
             disabled={isConnecting}
             onClick={form.handleSubmit(onSubmit)}
             loading={isConnecting}
-            loadingText="Connecting...">
-            Connect Shopify Store <KbdSubmit variant="outline" size="sm" />
+            loadingText='Connecting...'>
+            Connect Shopify Store <KbdSubmit variant='outline' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

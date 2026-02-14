@@ -2,12 +2,12 @@
 
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
-import { Popover, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Badge } from '@auxx/ui/components/badge'
-import { TagPicker } from '~/components/tags/ui/tag-picker'
-import { useTagHierarchy } from '~/components/tags/hooks/use-tag-hierarchy'
+import { Popover, PopoverTrigger } from '@auxx/ui/components/popover'
 import { ChevronDown, X } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { useTagHierarchy } from '~/components/tags/hooks/use-tag-hierarchy'
+import { TagPicker } from '~/components/tags/ui/tag-picker'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 interface TagsInputProps extends NodeInputProps {
@@ -74,42 +74,42 @@ export const TagsInput = createNodeInput<TagsInputProps>(
     )
 
     return (
-      <div className="flex flex-col gap-2 flex-1">
+      <div className='flex flex-col gap-2 flex-1'>
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <div>
               {selectedTagObjects.length > 0 ? (
-                <div className="min-h-7 flex flex-row flex-wrap items-center gap-1">
+                <div className='min-h-7 flex flex-row flex-wrap items-center gap-1'>
                   {selectedTagObjects.map((tag) => (
                     <Badge
                       key={tag.id}
-                      variant="pill"
-                      size="xs"
-                      className="gap-1 h-5 cursor-pointer">
+                      variant='pill'
+                      size='xs'
+                      className='gap-1 h-5 cursor-pointer'>
                       {tag.tag_emoji ? (
                         <span>{tag.tag_emoji}</span>
                       ) : (
                         <div
-                          className="size-2 rounded-full"
+                          className='size-2 rounded-full'
                           style={{ backgroundColor: tag.tag_color || '#94a3b8' }}
                         />
                       )}
                       <span>{tag.title}</span>
                       <button
-                        type="button"
+                        type='button'
                         onClick={() => removeTag(tag.id)}
-                        className="hover:text-destructive">
-                        <X className="size-3" />
+                        className='hover:text-destructive'>
+                        <X className='size-3' />
                       </button>
                     </Badge>
                   ))}
                 </div>
               ) : (
-                <div className="h-7 flex items-center justify-between pe-1">
-                  <span className="cursor-default text-sm text-primary-400 font-normal pt-0.5 truncate pointer-events-none">
+                <div className='h-7 flex items-center justify-between pe-1'>
+                  <span className='cursor-default text-sm text-primary-400 font-normal pt-0.5 truncate pointer-events-none'>
                     {placeholder}
                   </span>
-                  <ChevronDown className="size-4 text-foreground opacity-50" />
+                  <ChevronDown className='size-4 text-foreground opacity-50' />
                 </div>
               )}
             </div>

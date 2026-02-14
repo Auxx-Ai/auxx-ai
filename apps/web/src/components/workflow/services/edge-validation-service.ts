@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/services/edge-validation-service.ts
 
-import { Connection, Node, Edge } from '@xyflow/react'
+import type { Connection, Edge, Node } from '@xyflow/react'
 
 /**
  * Edge validation service

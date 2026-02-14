@@ -1,28 +1,28 @@
 // packages/lib/src/resources/picker/record-picker-service.ts
 
 import { type Database, schema } from '@auxx/database'
-import { eq, and, desc, asc, or, ilike, sql, inArray, type SQL } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
+import type { RecordId } from '@auxx/types/resource'
+import { and, asc, desc, eq, ilike, inArray, or, type SQL, sql } from 'drizzle-orm'
 import {
-  RESOURCE_TABLE_MAP,
-  RESOURCE_DISPLAY_CONFIG,
-  ResourceRegistryService,
-  isCustomResource,
-  type TableId,
-  type ResourceDisplayConfig,
   type CustomResource,
+  isCustomResource,
+  RESOURCE_DISPLAY_CONFIG,
+  RESOURCE_TABLE_MAP,
+  type ResourceDisplayConfig,
+  ResourceRegistryService,
+  type TableId,
 } from '../registry'
+import { parseRecordId, toRecordId } from '../resource-id'
 import { RecordPickerCacheService } from './record-picker-cache'
 import type {
-  GetResourcesInput,
-  RecordPickerItem,
-  PaginatedResourcesResult,
   GetResourceByIdInput,
+  GetResourcesInput,
   GlobalSearchParams,
   GlobalSearchResult,
+  PaginatedResourcesResult,
+  RecordPickerItem,
 } from './types'
-import type { RecordId } from '@auxx/types/resource'
-import { parseRecordId, toRecordId } from '../resource-id'
 
 const logger = createScopedLogger('record-picker-service')
 
@@ -601,9 +601,7 @@ export class RecordPickerService {
    * @param recordIds - Array of RecordId (format: entityDefinitionId:entityInstanceId)
    * @returns Record keyed by RecordId
    */
-  async getResourcesByIds(
-    recordIds: RecordId[]
-  ): Promise<Record<RecordId, RecordPickerItem>> {
+  async getResourcesByIds(recordIds: RecordId[]): Promise<Record<RecordId, RecordPickerItem>> {
     const result: Record<RecordId, RecordPickerItem> = {}
 
     // Group by entityDefinitionId for efficient batching
