@@ -2,22 +2,22 @@
 
 'use client'
 
-import React, { useMemo, useCallback, useState, useRef } from 'react'
-import { Filter, X } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
-import { Badge } from '@auxx/ui/components/badge'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import {
-  ConditionProvider,
-  ConditionContainer,
-  type ConditionSystemConfig,
-  type Condition,
-} from '~/components/conditions'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { getFieldOperators, type ResourceField } from '@auxx/lib/resources/client'
 import { BaseType } from '@auxx/lib/workflow-engine/client'
-import { type ResourceField, getFieldOperators } from '@auxx/lib/resources/client'
-import { Tooltip } from '~/components/global/tooltip'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { generateId } from '@auxx/utils/generateId'
+import { Filter, X } from 'lucide-react'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
+import {
+  type Condition,
+  ConditionContainer,
+  ConditionProvider,
+  type ConditionSystemConfig,
+} from '~/components/conditions'
+import { Tooltip } from '~/components/global/tooltip'
 
 /** Stable empty array to avoid re-renders */
 const EMPTY_CONDITIONS: Condition[] = []
@@ -146,12 +146,12 @@ export function TableFilterBuilder({
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <div>
-          <Tooltip content="Filter rows">
-            <Button variant="ghost" size="sm" disabled={disabled}>
+          <Tooltip content='Filter rows'>
+            <Button variant='ghost' size='sm' disabled={disabled}>
               <Filter />
-              <span className="hidden @lg/controls:block">Filter</span>
+              <span className='hidden @lg/controls:block'>Filter</span>
               {hasFilters && (
-                <Badge variant="secondary" className="ml-1 h-4 px-1">
+                <Badge variant='secondary' className='ml-1 h-4 px-1'>
                   {totalConditions}
                 </Badge>
               )}
@@ -161,9 +161,9 @@ export function TableFilterBuilder({
       </PopoverTrigger>
 
       <PopoverContent
-        className="w-[400px] max-h-[500px] overflow-auto px-1 pt-1 pb-2"
-        align="start">
-        <div className="space-y-2 [&_[data-field=add-group]]:ms-1 [&_[data-field=group-condition]:last-child_[data-field=group-divider]]:hidden">
+        className='w-[400px] max-h-[500px] overflow-auto px-1 pt-1 pb-2'
+        align='start'>
+        <div className='space-y-2 [&_[data-field=add-group]]:ms-1 [&_[data-field=group-condition]:last-child_[data-field=group-divider]]:hidden'>
           <ConditionProvider
             conditions={EMPTY_CONDITIONS}
             groups={draftFilters}
@@ -173,7 +173,7 @@ export function TableFilterBuilder({
             onGroupsChange={handleDraftChange}
             getAvailableFields={() => fieldDefinitions}
             getFieldDefinition={(id) => fieldDefinitions.find((f) => f.id === id)}>
-            <ConditionContainer emptyStateText="Add a filter to start" showAddButton showGrouping />
+            <ConditionContainer emptyStateText='Add a filter to start' showAddButton showGrouping />
           </ConditionProvider>
         </div>
       </PopoverContent>

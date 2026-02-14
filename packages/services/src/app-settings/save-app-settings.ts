@@ -1,7 +1,6 @@
 // packages/services/src/app-settings/save-app-settings.ts
 
-import { database } from '@auxx/database'
-import { AppSetting } from '@auxx/database'
+import { AppSetting, database } from '@auxx/database'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 

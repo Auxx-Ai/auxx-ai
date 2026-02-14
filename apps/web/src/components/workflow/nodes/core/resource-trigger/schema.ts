@@ -1,14 +1,14 @@
 // apps/web/src/components/workflow/nodes/core/resource-trigger/schema.ts
 
-import { type NodeDefinition, NodeCategory } from '~/components/workflow/types'
 import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
-import {
-  type ResourceTriggerData,
-  type ValidationResult,
-  resourceTriggerNodeDataSchema,
-} from './types'
+import { NodeCategory, type NodeDefinition } from '~/components/workflow/types'
 import { getResourceTriggerOutputVariables } from './output-variables'
 import { ResourceTriggerPanel } from './panel'
+import {
+  type ResourceTriggerData,
+  resourceTriggerNodeDataSchema,
+  type ValidationResult,
+} from './types'
 
 /** Operations configuration */
 const RESOURCE_OPERATIONS: Record<string, { operation: string; label: string }> = {
@@ -114,6 +114,10 @@ export const resourceTriggerDefinition: NodeDefinition<ResourceTriggerData> = {
   validator: validateResourceTriggerConfig,
   triggerType: WorkflowTriggerType.RESOURCE_TRIGGER,
   // Pattern: Accepts resource context from var store for dynamic variable generation
-  outputVariables: (data: ResourceTriggerData, nodeId: string, resource?: any, allResources?: any[]) =>
-    getResourceTriggerOutputVariables(data, nodeId, resource, allResources),
+  outputVariables: (
+    data: ResourceTriggerData,
+    nodeId: string,
+    resource?: any,
+    allResources?: any[]
+  ) => getResourceTriggerOutputVariables(data, nodeId, resource, allResources),
 }

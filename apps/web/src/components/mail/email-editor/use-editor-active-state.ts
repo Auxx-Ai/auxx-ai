@@ -1,5 +1,5 @@
 // apps/web/src/hooks/use-editor-active-state.ts
-import { useState, useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 export interface UseEditorActiveStateReturn {
   isActive: boolean

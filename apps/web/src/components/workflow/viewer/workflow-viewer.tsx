@@ -2,17 +2,17 @@
 
 'use client'
 
-import React, { memo, useEffect, useRef } from 'react'
-import { ReactFlowProvider, type Viewport } from '@xyflow/react'
 import { cn } from '@auxx/ui/lib/utils'
+import { ReactFlowProvider, type Viewport } from '@xyflow/react'
 import { Loader2 } from 'lucide-react'
-import { WorkflowViewerCanvas } from './workflow-viewer-canvas'
-import { WorkflowViewerProvider } from './workflow-viewer-provider'
-import { ViewerVarStoreSyncProvider } from './providers/viewer-var-store-sync-provider'
-import { useWorkflowViewer, type WorkflowViewerData } from './hooks/use-workflow-viewer'
+import React, { memo, useEffect, useRef } from 'react'
 import { setupNodeRegistry } from '../nodes/registry-setup'
 import { useWorkflowStore } from '../store/workflow-store'
 import type { FlowEdge, FlowNode } from '../types'
+import { useWorkflowViewer, type WorkflowViewerData } from './hooks/use-workflow-viewer'
+import { ViewerVarStoreSyncProvider } from './providers/viewer-var-store-sync-provider'
+import { WorkflowViewerCanvas } from './workflow-viewer-canvas'
+import { WorkflowViewerProvider } from './workflow-viewer-provider'
 
 // Initialize node registry synchronously at module load
 // This ensures all node definitions are available before any rendering
@@ -75,11 +75,11 @@ interface WorkflowViewerInnerProps {
 const WorkflowViewerInner = memo<WorkflowViewerInnerProps>(
   ({ nodes, edges, viewport, workflowName, options }) => {
     return (
-      <div className="workflow-viewer flex flex-col h-full">
+      <div className='workflow-viewer flex flex-col h-full'>
         {/* Header with workflow name */}
         {options.showTitle && (
-          <div className="flex-shrink-0 px-4 py-2 border-b bg-background/80 backdrop-blur-sm">
-            <h2 className="text-sm font-medium truncate">{workflowName}</h2>
+          <div className='flex-shrink-0 px-4 py-2 border-b bg-background/80 backdrop-blur-sm'>
+            <h2 className='text-sm font-medium truncate'>{workflowName}</h2>
           </div>
         )}
 
@@ -89,7 +89,7 @@ const WorkflowViewerInner = memo<WorkflowViewerInnerProps>(
           edges={edges}
           initialViewport={viewport}
           options={options}
-          className="flex-1"
+          className='flex-1'
         />
       </div>
     )
@@ -154,9 +154,9 @@ export const WorkflowViewer = memo<WorkflowViewerProps>(
             // mergedOptions.theme === 'dark' && 'dark',
             className
           )}>
-          <div className="text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Loading workflow...</p>
+          <div className='text-center'>
+            <Loader2 className='w-8 h-8 animate-spin mx-auto mb-4 text-muted-foreground' />
+            <p className='text-sm text-muted-foreground'>Loading workflow...</p>
           </div>
         </div>
       )
@@ -171,9 +171,9 @@ export const WorkflowViewer = memo<WorkflowViewerProps>(
             mergedOptions.theme === 'dark' && 'dark',
             className
           )}>
-          <div className="text-center max-w-md px-4">
-            <p className="text-sm text-destructive mb-2">Failed to load workflow</p>
-            <p className="text-xs text-muted-foreground">{error.message}</p>
+          <div className='text-center max-w-md px-4'>
+            <p className='text-sm text-destructive mb-2'>Failed to load workflow</p>
+            <p className='text-xs text-muted-foreground'>{error.message}</p>
           </div>
         </div>
       )

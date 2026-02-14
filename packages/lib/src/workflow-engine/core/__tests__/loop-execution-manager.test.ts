@@ -1,9 +1,14 @@
 // packages/lib/src/workflow-engine/core/__tests__/loop-execution-manager.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { LoopExecutionManager } from '../loop-execution-manager'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ExecutionContextManager } from '../execution-context'
-import type { WorkflowNode, Workflow, NodeExecutionResult, WorkflowExecutionOptions } from '../types'
-import { WorkflowNodeType, NodeRunningStatus } from '../types'
+import { LoopExecutionManager } from '../loop-execution-manager'
+import type {
+  NodeExecutionResult,
+  Workflow,
+  WorkflowExecutionOptions,
+  WorkflowNode,
+} from '../types'
+import { NodeRunningStatus, WorkflowNodeType } from '../types'
 
 describe('LoopExecutionManager', () => {
   let manager: LoopExecutionManager
@@ -64,7 +69,13 @@ describe('LoopExecutionManager', () => {
 
       const options: WorkflowExecutionOptions = {}
 
-      await manager.setupLoopExecution(loopNode, mockProcessor, contextManager, options, mockWorkflow)
+      await manager.setupLoopExecution(
+        loopNode,
+        mockProcessor,
+        contextManager,
+        options,
+        mockWorkflow
+      )
 
       // Verify callback was injected (captured during execution)
       expect(capturedCallback).toBeDefined()
@@ -100,7 +111,13 @@ describe('LoopExecutionManager', () => {
       const onNodeComplete = vi.fn()
       const options: WorkflowExecutionOptions = { onNodeComplete }
 
-      await manager.setupLoopExecution(loopNode, mockProcessor, contextManager, options, mockWorkflow)
+      await manager.setupLoopExecution(
+        loopNode,
+        mockProcessor,
+        contextManager,
+        options,
+        mockWorkflow
+      )
 
       // Verify progress callback was injected (captured during execution)
       expect(capturedProgressCallback).toBeDefined()
@@ -127,7 +144,13 @@ describe('LoopExecutionManager', () => {
 
       const options: WorkflowExecutionOptions = {}
 
-      await manager.setupLoopExecution(loopNode, mockProcessor, contextManager, options, mockWorkflow)
+      await manager.setupLoopExecution(
+        loopNode,
+        mockProcessor,
+        contextManager,
+        options,
+        mockWorkflow
+      )
 
       // Verify callbacks were cleaned up
       expect(mockProcessor.executeLoopBodyCallback).toBeUndefined()
@@ -184,7 +207,13 @@ describe('LoopExecutionManager', () => {
       const onNodeComplete = vi.fn()
       const options: WorkflowExecutionOptions = { onNodeComplete }
 
-      await manager.setupLoopExecution(loopNode, mockProcessor, contextManager, options, mockWorkflow)
+      await manager.setupLoopExecution(
+        loopNode,
+        mockProcessor,
+        contextManager,
+        options,
+        mockWorkflow
+      )
 
       // Call the captured progress callback
       await capturedProgressCallback({
@@ -243,7 +272,13 @@ describe('LoopExecutionManager', () => {
       const options: WorkflowExecutionOptions = {}
 
       await expect(
-        manager.setupLoopExecution(loopNode, mockProcessor, contextManager, options, workflowNoEdges)
+        manager.setupLoopExecution(
+          loopNode,
+          mockProcessor,
+          contextManager,
+          options,
+          workflowNoEdges
+        )
       ).rejects.toThrow('Workflow graph edges are required for loop execution')
     })
 
@@ -280,7 +315,13 @@ describe('LoopExecutionManager', () => {
 
       const options: WorkflowExecutionOptions = {}
 
-      await manager.setupLoopExecution(loopNode, mockProcessor, contextManager, options, workflowNoStart)
+      await manager.setupLoopExecution(
+        loopNode,
+        mockProcessor,
+        contextManager,
+        options,
+        workflowNoStart
+      )
 
       expect(result).toBeNull()
     })
@@ -317,9 +358,27 @@ describe('LoopExecutionManager', () => {
         graph: {
           nodes: [loopNode, bodyNode, endNode],
           edges: [
-            { id: 'e1', source: 'loop-1', target: 'body-1', sourceHandle: 'loop-start', targetHandle: 'target' },
-            { id: 'e2', source: 'body-1', target: 'end-1', sourceHandle: 'source', targetHandle: 'target' },
-            { id: 'e3', source: 'end-1', target: 'loop-1', sourceHandle: 'source', targetHandle: 'loop-back' },
+            {
+              id: 'e1',
+              source: 'loop-1',
+              target: 'body-1',
+              sourceHandle: 'loop-start',
+              targetHandle: 'target',
+            },
+            {
+              id: 'e2',
+              source: 'body-1',
+              target: 'end-1',
+              sourceHandle: 'source',
+              targetHandle: 'target',
+            },
+            {
+              id: 'e3',
+              source: 'end-1',
+              target: 'loop-1',
+              sourceHandle: 'source',
+              targetHandle: 'loop-back',
+            },
           ],
         },
       } as Workflow
@@ -349,7 +408,13 @@ describe('LoopExecutionManager', () => {
 
       const options: WorkflowExecutionOptions = {}
 
-      await manager.setupLoopExecution(loopNode, mockProcessor, contextManager, options, workflowWithBody)
+      await manager.setupLoopExecution(
+        loopNode,
+        mockProcessor,
+        contextManager,
+        options,
+        workflowWithBody
+      )
 
       // Verify executeNodeCallback was called for body node (end node has loop-back so stops before executing it)
       expect(executeNodeCallback).toHaveBeenCalledWith(bodyNode, contextManager, options)
@@ -392,9 +457,27 @@ describe('LoopExecutionManager', () => {
         graph: {
           nodes: [loopNode, bodyNode1, bodyNode2],
           edges: [
-            { id: 'e1', source: 'loop-1', target: 'body-1', sourceHandle: 'loop-start', targetHandle: 'target' },
-            { id: 'e2', source: 'body-1', target: 'body-2', sourceHandle: 'source', targetHandle: 'target' },
-            { id: 'e3', source: 'body-2', target: 'loop-1', sourceHandle: 'source', targetHandle: 'loop-back' },
+            {
+              id: 'e1',
+              source: 'loop-1',
+              target: 'body-1',
+              sourceHandle: 'loop-start',
+              targetHandle: 'target',
+            },
+            {
+              id: 'e2',
+              source: 'body-1',
+              target: 'body-2',
+              sourceHandle: 'source',
+              targetHandle: 'target',
+            },
+            {
+              id: 'e3',
+              source: 'body-2',
+              target: 'loop-1',
+              sourceHandle: 'source',
+              targetHandle: 'loop-back',
+            },
           ],
         },
       } as Workflow
@@ -425,7 +508,13 @@ describe('LoopExecutionManager', () => {
 
       const options: WorkflowExecutionOptions = {}
 
-      await manager.setupLoopExecution(loopNode, mockProcessor, contextManager, options, workflowWithMultipleNodes)
+      await manager.setupLoopExecution(
+        loopNode,
+        mockProcessor,
+        contextManager,
+        options,
+        workflowWithMultipleNodes
+      )
 
       // Should execute both body nodes (body-1 and body-2)
       // body-1 executes, then moves to body-2
@@ -460,8 +549,20 @@ describe('LoopExecutionManager', () => {
         graph: {
           nodes: [loopNode, bodyNode],
           edges: [
-            { id: 'e1', source: 'loop-1', target: 'body-1', sourceHandle: 'loop-start', targetHandle: 'target' },
-            { id: 'e2', source: 'body-1', target: 'body-1', sourceHandle: 'source', targetHandle: 'target' }, // Cycle
+            {
+              id: 'e1',
+              source: 'loop-1',
+              target: 'body-1',
+              sourceHandle: 'loop-start',
+              targetHandle: 'target',
+            },
+            {
+              id: 'e2',
+              source: 'body-1',
+              target: 'body-1',
+              sourceHandle: 'source',
+              targetHandle: 'target',
+            }, // Cycle
           ],
         },
       } as Workflow
@@ -482,7 +583,13 @@ describe('LoopExecutionManager', () => {
       const options: WorkflowExecutionOptions = {}
 
       // Should not throw, but should stop due to cycle detection
-      await manager.setupLoopExecution(loopNode, mockProcessor, contextManager, options, workflowWithCycle)
+      await manager.setupLoopExecution(
+        loopNode,
+        mockProcessor,
+        contextManager,
+        options,
+        workflowWithCycle
+      )
 
       // Should only execute once (then detect cycle)
       expect(executeNodeCallback).toHaveBeenCalledTimes(1)
@@ -511,7 +618,13 @@ describe('LoopExecutionManager', () => {
         graph: {
           nodes: [loopNode, bodyNode],
           edges: [
-            { id: 'e1', source: 'loop-1', target: 'body-1', sourceHandle: 'loop-start', targetHandle: 'target' },
+            {
+              id: 'e1',
+              source: 'loop-1',
+              target: 'body-1',
+              sourceHandle: 'loop-start',
+              targetHandle: 'target',
+            },
           ],
         },
       } as Workflow
@@ -533,7 +646,13 @@ describe('LoopExecutionManager', () => {
       const options: WorkflowExecutionOptions = {}
 
       await expect(
-        manager.setupLoopExecution(loopNode, mockProcessor, contextManager, options, workflowWithBody)
+        manager.setupLoopExecution(
+          loopNode,
+          mockProcessor,
+          contextManager,
+          options,
+          workflowWithBody
+        )
       ).rejects.toThrow('Node body-1 failed within loop')
     })
   })
@@ -553,13 +672,23 @@ describe('LoopExecutionManager', () => {
         graph: {
           nodes: [],
           edges: [
-            { id: 'e1', source: 'body-1', target: 'loop-1', sourceHandle: 'source', targetHandle: 'loop-back' },
+            {
+              id: 'e1',
+              source: 'body-1',
+              target: 'loop-1',
+              sourceHandle: 'source',
+              targetHandle: 'loop-back',
+            },
           ],
         },
       } as Workflow
 
       // Access private method via any cast for testing
-      const isLoopBack = (manager as any).isLoopBackConnection(bodyNode, 'loop-1', workflowWithLoopBack)
+      const isLoopBack = (manager as any).isLoopBackConnection(
+        bodyNode,
+        'loop-1',
+        workflowWithLoopBack
+      )
 
       expect(isLoopBack).toBe(true)
     })
@@ -578,12 +707,22 @@ describe('LoopExecutionManager', () => {
         graph: {
           nodes: [],
           edges: [
-            { id: 'e1', source: 'body-1', target: 'body-2', sourceHandle: 'source', targetHandle: 'target' },
+            {
+              id: 'e1',
+              source: 'body-1',
+              target: 'body-2',
+              sourceHandle: 'source',
+              targetHandle: 'target',
+            },
           ],
         },
       } as Workflow
 
-      const isLoopBack = (manager as any).isLoopBackConnection(bodyNode, 'loop-1', workflowWithoutLoopBack)
+      const isLoopBack = (manager as any).isLoopBackConnection(
+        bodyNode,
+        'loop-1',
+        workflowWithoutLoopBack
+      )
 
       expect(isLoopBack).toBe(false)
     })
@@ -604,7 +743,13 @@ describe('LoopExecutionManager', () => {
         graph: {
           nodes: [],
           edges: [
-            { id: 'e1', source: 'body-1', target: 'loop-1', sourceHandle: 'source', targetHandle: 'loop-back' },
+            {
+              id: 'e1',
+              source: 'body-1',
+              target: 'loop-1',
+              sourceHandle: 'source',
+              targetHandle: 'loop-back',
+            },
           ],
         },
       } as Workflow
@@ -616,7 +761,12 @@ describe('LoopExecutionManager', () => {
         executionTime: 50,
       }
 
-      const nextNode = (manager as any).resolveNextNodeForLoop(bodyNode, result, 'loop-1', workflowWithLoopBack)
+      const nextNode = (manager as any).resolveNextNodeForLoop(
+        bodyNode,
+        result,
+        'loop-1',
+        workflowWithLoopBack
+      )
 
       expect(nextNode).toBeNull()
     })
@@ -635,7 +785,13 @@ describe('LoopExecutionManager', () => {
         graph: {
           nodes: [],
           edges: [
-            { id: 'e1', source: 'body-1', target: 'body-2', sourceHandle: 'source', targetHandle: 'target' },
+            {
+              id: 'e1',
+              source: 'body-1',
+              target: 'body-2',
+              sourceHandle: 'source',
+              targetHandle: 'target',
+            },
           ],
         },
       } as Workflow
@@ -647,7 +803,12 @@ describe('LoopExecutionManager', () => {
         executionTime: 50,
       }
 
-      const nextNode = (manager as any).resolveNextNodeForLoop(bodyNode, result, 'loop-1', workflowWithNext)
+      const nextNode = (manager as any).resolveNextNodeForLoop(
+        bodyNode,
+        result,
+        'loop-1',
+        workflowWithNext
+      )
 
       expect(nextNode).toBe('body-2')
     })
@@ -666,8 +827,20 @@ describe('LoopExecutionManager', () => {
         graph: {
           nodes: [],
           edges: [
-            { id: 'e1', source: 'body-1', target: 'body-2', sourceHandle: 'true', targetHandle: 'target' },
-            { id: 'e2', source: 'body-1', target: 'body-3', sourceHandle: 'false', targetHandle: 'target' },
+            {
+              id: 'e1',
+              source: 'body-1',
+              target: 'body-2',
+              sourceHandle: 'true',
+              targetHandle: 'target',
+            },
+            {
+              id: 'e2',
+              source: 'body-1',
+              target: 'body-3',
+              sourceHandle: 'false',
+              targetHandle: 'target',
+            },
           ],
         },
       } as Workflow
@@ -680,7 +853,12 @@ describe('LoopExecutionManager', () => {
         executionTime: 50,
       }
 
-      const nextNode = (manager as any).resolveNextNodeForLoop(bodyNode, result, 'loop-1', workflowWithConditional)
+      const nextNode = (manager as any).resolveNextNodeForLoop(
+        bodyNode,
+        result,
+        'loop-1',
+        workflowWithConditional
+      )
 
       expect(nextNode).toBe('body-2')
     })

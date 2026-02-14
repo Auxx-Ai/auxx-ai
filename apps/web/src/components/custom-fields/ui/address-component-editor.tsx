@@ -1,7 +1,8 @@
 // apps/web/src/components/custom-fields/ui/address-component-editor.tsx
+
+import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Label } from '@auxx/ui/components/label'
-import type { FieldOptions } from '@auxx/lib/field-values/client'
 
 /** Available address component definitions */
 const ADDRESS_COMPONENTS = [
@@ -56,12 +57,12 @@ export function AddressComponentsEditor({ components, onChange }: AddressCompone
   }
 
   return (
-    <div className="mb-0 rounded-xl border pt-1 pb-3 px-1 bg-primary-50 relative">
-      <Label className="ps-1 mb-3 ">Address Components</Label>
-      <div className="pt-2">
-        <div className="grid grid-cols-2 gap-2">
+    <div className='mb-0 rounded-xl border pt-1 pb-3 px-1 bg-primary-50 relative'>
+      <Label className='ps-1 mb-3 '>Address Components</Label>
+      <div className='pt-2'>
+        <div className='grid grid-cols-2 gap-2'>
           {ADDRESS_COMPONENTS.map((component) => (
-            <div key={component.id} className="flex items-center space-x-2">
+            <div key={component.id} className='flex items-center space-x-2'>
               <Checkbox
                 id={`component-${component.id}`}
                 checked={components.includes(component.id)}

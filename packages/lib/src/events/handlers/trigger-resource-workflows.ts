@@ -1,17 +1,17 @@
 // packages/lib/src/events/handlers/trigger-resource-workflows.ts
 
-import type { AuxxEvent } from '../types'
 import { createScopedLogger } from '@auxx/logger'
-import { getQueue } from '../../jobs/queues'
-import { Queues } from '../../jobs/queues/types'
-import { WorkflowNodeType } from '../../workflow-engine/core/types'
-import {
-  fetchResourceById,
-  getResourceTypeFromEvent,
-  getRecordIdField,
-} from '../../resources/resource-fetcher'
 import { getWorkflowAppsByTrigger } from '@auxx/services/workflows'
 import { toRecordId } from '@auxx/types/resource'
+import { getQueue } from '../../jobs/queues'
+import { Queues } from '../../jobs/queues/types'
+import {
+  fetchResourceById,
+  getRecordIdField,
+  getResourceTypeFromEvent,
+} from '../../resources/resource-fetcher'
+import { WorkflowNodeType } from '../../workflow-engine/core/types'
+import type { AuxxEvent } from '../types'
 
 const logger = createScopedLogger('trigger-resource-workflows')
 

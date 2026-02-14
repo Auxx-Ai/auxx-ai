@@ -1,12 +1,13 @@
 // apps/web/src/components/merge/merge-target-panel.tsx
 'use client'
 
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import type { RecordId } from '@auxx/lib/resources/client'
-import { useRecord, useResource } from '~/components/resources'
 import { EntityIcon } from '@auxx/ui/components/icons'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { useRecord, useResource } from '~/components/resources'
 import { EntityFields } from '../fields'
+
 // import EntityFields from '~/components/fields/entity-fields'
 
 interface MergeTargetPanelProps {
@@ -33,7 +34,7 @@ export function MergeTargetPanel({
   const isLoading = externalLoading || recordLoading
 
   return (
-    <div className="flex-1 flex flex-col border rounded-2xl bg-muted max-h-[400px]">
+    <div className='flex-1 flex flex-col border rounded-2xl bg-muted max-h-[400px]'>
       {/* Header */}
       {/* <div className="px-3 py-2 border-b bg-muted/50">
         <h3 className="text-sm font-medium text-center">
@@ -42,29 +43,29 @@ export function MergeTargetPanel({
       </div> */}
 
       {/* Content */}
-      <ScrollArea className="">
+      <ScrollArea className=''>
         {isLoading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-6 w-3/4" />
-            <Skeleton className="h-4 w-1/2" />
-            <Skeleton className="h-4 w-2/3" />
-            <Skeleton className="h-4 w-1/2" />
+          <div className='space-y-3'>
+            <Skeleton className='h-6 w-3/4' />
+            <Skeleton className='h-4 w-1/2' />
+            <Skeleton className='h-4 w-2/3' />
+            <Skeleton className='h-4 w-1/2' />
           </div>
         ) : record ? (
-          <div className="space-y-1">
+          <div className='space-y-1'>
             {/* Title */}
-            <div className="flex flex-col gap-1 sticky top-0 z-20 backdrop-blur-sm me-2 rounded-2xl">
-              <div className="flex items-start gap-2 px-2 pt-2">
+            <div className='flex flex-col gap-1 sticky top-0 z-20 backdrop-blur-sm me-2 rounded-2xl'>
+              <div className='flex items-start gap-2 px-2 pt-2'>
                 <EntityIcon
                   iconId={resource?.icon ?? 'document'}
                   color={resource?.color ?? 'gray'}
                 />
                 <div>
-                  <span className="font-medium text-sm truncate">
+                  <span className='font-medium text-sm truncate'>
                     {record.displayName ?? 'Untitled'}
                   </span>
                   {record.secondaryDisplayValue && (
-                    <p className="text-sm text-muted-foreground truncate">
+                    <p className='text-sm text-muted-foreground truncate'>
                       {record.secondaryDisplayValue}
                     </p>
                   )}
@@ -74,10 +75,10 @@ export function MergeTargetPanel({
 
             {/* Fields - read-only view */}
             {/* TODO: Render EntityFields once ready */}
-            <div className="p-1">
+            <div className='p-1'>
               <EntityFields
                 recordId={recordId}
-                className="[&_button]:hidden"
+                className='[&_button]:hidden'
                 canEdit={false}
                 showTitle={false}
                 readOnly
@@ -86,7 +87,7 @@ export function MergeTargetPanel({
             </div>
           </div>
         ) : (
-          <div className="h-full flex items-center justify-center text-muted-foreground">
+          <div className='h-full flex items-center justify-center text-muted-foreground'>
             No target selected
           </div>
         )}

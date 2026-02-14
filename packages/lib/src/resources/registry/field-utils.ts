@@ -1,11 +1,11 @@
 // packages/lib/src/resources/registry/field-utils.ts
 
-import { getOperatorsForType } from '../../workflow-engine/operators/type-operator-map'
-import type { ResourceField } from './field-types'
-import { RESOURCE_FIELD_REGISTRY, type TableId } from './field-registry'
 import type { ExecutionContextManager } from '../../workflow-engine/core/execution-context'
+import { getOperatorsForType } from '../../workflow-engine/operators/type-operator-map'
 import { createResourceReference } from '../../workflow-engine/types/resource-reference'
 import { BaseType } from '../types'
+import { RESOURCE_FIELD_REGISTRY, type TableId } from './field-registry'
+import type { ResourceField } from './field-types'
 import { isCustomResourceId } from './types'
 
 /**

@@ -1,18 +1,19 @@
 // apps/web/src/components/workflow/ui/node-handle/source-handle.tsx
 
-import React, { memo, useCallback, useState } from 'react'
-import { Handle } from '@xyflow/react'
-import { type NodeHandleProps } from './types'
-import { useReadOnly, useAvailableBlocks, useNodeStatus } from '~/components/workflow/hooks'
-import { AddNodeTrigger } from '~/components/workflow/ui/add-node-trigger'
 import { cn } from '@auxx/ui/lib/utils'
+import { Handle } from '@xyflow/react'
 import { Plus } from 'lucide-react'
+import type React from 'react'
+import { memo, useCallback, useState } from 'react'
+import { useAvailableBlocks, useNodeStatus, useReadOnly } from '~/components/workflow/hooks'
+import { AddNodeTrigger } from '~/components/workflow/ui/add-node-trigger'
 import {
+  getIndicatorClass,
+  getPositionClass,
   type HandlePosition,
   mapPosition,
-  getPositionClass,
-  getIndicatorClass,
 } from './handle-position-utils'
+import type { NodeHandleProps } from './types'
 
 export const NodeSourceHandle = memo(
   ({
@@ -93,7 +94,7 @@ export const NodeSourceHandle = memo(
                   parentNodeId={data._isLoopStart ? id : undefined}
                   allowedNodeTypes={availableNextBlocks}
                   open={triggerOpen}
-                  align="center"
+                  align='center'
                   onOpenChange={setTriggerOpen}
                   onNodeAdded={() => setTriggerOpen(false)}>
                   <button
@@ -103,7 +104,7 @@ export const NodeSourceHandle = memo(
                       'hover:scale-110 transition-transform',
                       type === 'fail' && 'bg-bad-500'
                     )}>
-                    <Plus className="size-4" />
+                    <Plus className='size-4' />
                   </button>
                 </AddNodeTrigger>
                 {/* <div className="absolute -top-1 left-1/2 hidden -translate-x-1/2 -translate-y-full z-3 rounded-lg border-[0.5px] border-border bg-popover p-1.5 shadow-lg group-hover/handle:block pointer-events-none">
@@ -128,7 +129,7 @@ export const NodeSourceHandle = memo(
     return (
       <Handle
         id={handleId}
-        type="source"
+        type='source'
         position={mapPosition(position)}
         className={cn(
           'node-handle group/handle z-[1] !h-4 !w-4 !rounded-none !border-none !bg-transparent !outline-none',
@@ -143,9 +144,9 @@ export const NodeSourceHandle = memo(
         style={handleStyle}
         isConnectable={false}>
         {isReadOnly && (
-          <div className="absolute -top-1 left-1/2 hidden -translate-x-1/2 -translate-y-full z-[2] rounded-lg border-[0.5px] border-border bg-popover p-1.5 shadow-lg group-hover/handle:block pointer-events-none">
-            <div className="text-xs text-muted-foreground">
-              <div className="whitespace-nowrap text-muted-foreground">
+          <div className='absolute -top-1 left-1/2 hidden -translate-x-1/2 -translate-y-full z-[2] rounded-lg border-[0.5px] border-border bg-popover p-1.5 shadow-lg group-hover/handle:block pointer-events-none'>
+            <div className='text-xs text-muted-foreground'>
+              <div className='whitespace-nowrap text-muted-foreground'>
                 Read-only mode - editing disabled
               </div>
             </div>

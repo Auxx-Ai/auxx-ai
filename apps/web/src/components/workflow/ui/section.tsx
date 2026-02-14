@@ -2,8 +2,8 @@
 
 'use client'
 
-import React from 'react'
 import { Section as BaseSection, type SectionProps } from '@auxx/ui/components/section'
+import React from 'react'
 import { useReadOnly } from '../hooks'
 
 /**

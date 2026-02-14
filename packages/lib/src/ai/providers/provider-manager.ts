@@ -1,22 +1,22 @@
 // packages/lib/src/ai/providers/provider-manager.ts
 
-import { type Database } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import { createScopedLogger } from '../../logger'
-import { ProviderConfigurationService } from './provider-configuration-service'
 import { ProviderCacheService } from './provider-cache-service'
+import { ProviderConfigurationService } from './provider-configuration-service'
 import { ProviderRegistry } from './provider-registry'
-import { getSortedProviders, obfuscateCredentials } from './utils'
 import {
-  type ProviderConfiguration,
-  type ProviderConfigurations,
-  ModelType,
-  // ProviderType,
-  ProviderConfigurationError,
   type CacheOptions,
   // type ProviderCredentials,
   // type ProviderData,
   type CredentialsResponse,
+  ModelType,
+  type ProviderConfiguration,
+  // ProviderType,
+  ProviderConfigurationError,
+  type ProviderConfigurations,
 } from './types'
+import { getSortedProviders, obfuscateCredentials } from './utils'
 
 const logger = createScopedLogger('ProviderManager')
 
@@ -123,11 +123,7 @@ export class ProviderManager {
     }
 
     // Use getCurrentCredentials to get providerType and credentialSource for quota tracking
-    const result = await this.configurationService.getCurrentCredentials(
-      provider,
-      model,
-      modelType
-    )
+    const result = await this.configurationService.getCurrentCredentials(provider, model, modelType)
 
     // Optionally obfuscate credentials for display purposes
     if (obfuscate && result.credentials && Object.keys(result.credentials).length > 0) {

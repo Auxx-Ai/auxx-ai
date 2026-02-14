@@ -1,14 +1,15 @@
 // packages/lib/src/providers/google/messages/create-message.ts
-import {
-  foldMimeHeader,
-  encodeRFC2231Filename,
-  encodeQuotedPrintable,
-  normalizeMessageId,
-  htmlToPlainText,
-  generateMimeBoundary,
-} from '@auxx/utils'
-import { AttachmentFile } from '../../message-provider-interface'
+
 import { createScopedLogger } from '@auxx/logger'
+import {
+  encodeQuotedPrintable,
+  encodeRFC2231Filename,
+  foldMimeHeader,
+  generateMimeBoundary,
+  htmlToPlainText,
+  normalizeMessageId,
+} from '@auxx/utils'
+import type { AttachmentFile } from '../../message-provider-interface'
 
 const logger = createScopedLogger('google-create-message')
 
@@ -33,9 +34,7 @@ export interface CreateEmailMessageInput {
  * @param input - Email message parameters
  * @returns RFC 822 formatted message string
  */
-export async function createEmailMessage(
-  input: CreateEmailMessageInput
-): Promise<string> {
+export async function createEmailMessage(input: CreateEmailMessageInput): Promise<string> {
   const {
     from,
     to,

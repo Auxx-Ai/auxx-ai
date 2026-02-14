@@ -1,10 +1,11 @@
 // src/app/(auth)/login/page.tsx
-import React, { Suspense } from 'react' // Import Suspense
-import LoginForm from '../_components/login-form'
-import { Logo } from '~/components/global/login/logo'
-import { redirect } from 'next/navigation'
+
 import { headers } from 'next/headers'
+import { redirect } from 'next/navigation'
+import React, { Suspense } from 'react' // Import Suspense
 import { auth } from '~/auth/server'
+import { Logo } from '~/components/global/login/logo'
+import LoginForm from '../_components/login-form'
 
 // LoginContentProps captures the query params forwarded to the login form.
 interface LoginContentProps {
@@ -85,8 +86,8 @@ async function Login({ searchParams }: LoginPageProps) {
   }
 
   return (
-    <div className="flex min-h-screen w-screen items-center justify-center p-4 bg-white/10  ">
-      <div className="flex w-full max-w-sm flex-col items-center gap-4">
+    <div className='flex min-h-screen w-screen items-center justify-center p-4 bg-white/10  '>
+      <div className='flex w-full max-w-sm flex-col items-center gap-4'>
         <Logo />
         <Suspense fallback={<div>Loading...</div>}>
           <LoginPageContent searchParams={q} />

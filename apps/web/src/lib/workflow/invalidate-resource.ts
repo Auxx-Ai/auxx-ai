@@ -1,8 +1,8 @@
 // apps/web/src/lib/workflow/invalidate-resource.ts
 
+import { getModelType, parseRecordId, type RecordId } from '@auxx/types/resource'
 import { getQueryKey } from '@trpc/react-query'
-import { getQueryClient, api } from '~/trpc/react'
-import { type RecordId, parseRecordId, getModelType } from '@auxx/types/resource'
+import { api, getQueryClient } from '~/trpc/react'
 
 /**
  * Internal type for cache invalidation (derived from entityDefinitionId via getModelType)

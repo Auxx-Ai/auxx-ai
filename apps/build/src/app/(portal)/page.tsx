@@ -6,7 +6,7 @@ export default async function Home() {
   const session = await getSession()
 
   return (
-    <SimpleLayout title="Subscription">
+    <SimpleLayout title='Subscription'>
       <AccountsCard />
       <div>{session?.userName || session?.userEmail}</div>
     </SimpleLayout>

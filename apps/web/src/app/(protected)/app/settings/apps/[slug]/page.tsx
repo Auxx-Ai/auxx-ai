@@ -16,8 +16,8 @@ async function AppPage({ params }: Props) {
     <SettingsPage
       title={appData.app.title}
       icon={
-        <div className="size-10 border rounded-xl flex items-center justify-center bg-primary-100">
-          <Globe className="size-4" />
+        <div className='size-10 border rounded-xl flex items-center justify-center bg-primary-100'>
+          <Globe className='size-4' />
         </div>
       }
       description={appData.app.description ?? 'App description'}

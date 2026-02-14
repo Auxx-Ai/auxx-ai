@@ -1,6 +1,6 @@
 // packages/email/src/templates/lifecycle/trial-deletion-warning-email.tsx
 import { Container, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -66,7 +66,7 @@ export async function TrialDeletionWarningEmail({
         </div>
 
         <div style={{ textAlign: 'center', margin: '35px 0' }}>
-          <EmailButton href={reactivationLink} label="Reactivate My Account" />
+          <EmailButton href={reactivationLink} label='Reactivate My Account' />
         </div>
 
         <Text style={{ fontSize: '14px', color: '#4a5568' }}>

@@ -2,8 +2,8 @@
 
 import type { FieldType } from '@auxx/database/types'
 import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
+import type { FieldPath, FieldReference, ResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
-import type { FieldReference, FieldPath, ResourceFieldId } from '@auxx/types/field'
 
 // Re-export for convenience
 export type { FieldReference, FieldPath, ResourceFieldId }

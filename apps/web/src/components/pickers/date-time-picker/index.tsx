@@ -1,15 +1,14 @@
 // apps/web/src/components/pickers/date-time-picker/index.tsx
 'use client'
 
-import React, { useState, useMemo, useCallback } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { Calendar as CalendarIcon, Clock } from 'lucide-react'
+import React, { useCallback, useMemo, useState } from 'react'
 import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
-
-import { type DateTimePickerProps } from './types'
-import { formatTime12Hour, formatDateDisplay, formatDateTimeDisplay } from './utils'
 import { DateTimePickerContent } from './date-time-picker-content'
+import type { DateTimePickerProps } from './types'
+import { formatDateDisplay, formatDateTimeDisplay, formatTime12Hour } from './utils'
 
 /**
  * DateTimePicker
@@ -93,7 +92,7 @@ export function DateTimePicker({
 
   /** Icon based on mode */
   const TriggerIcon = mode === 'time' ? Clock : CalendarIcon
-  const triggerIcon = triggerProps?.icon ?? <TriggerIcon className="size-4 text-primary-400" />
+  const triggerIcon = triggerProps?.icon ?? <TriggerIcon className='size-4 text-primary-400' />
 
   // Default trigger using PickerTrigger
   const defaultTrigger = (
@@ -106,7 +105,7 @@ export function DateTimePicker({
       icon={triggerIcon}
       iconPosition={triggerProps?.iconPosition ?? 'start'}
       className={cn('w-[240px] justify-start', triggerProps?.className)}>
-      <span className="truncate">{displayValue}</span>
+      <span className='truncate'>{displayValue}</span>
     </PickerTrigger>
   )
 
@@ -141,14 +140,13 @@ export function DateTimePicker({
 
 // Re-export content component for standalone use
 export { DateTimePickerContent } from './date-time-picker-content'
-
-// Re-export types and utilities
-export { Period, ViewType } from './types'
+export { DEFAULT_DATE_PRESETS } from './presets'
 export type {
-  DateTimePickerProps,
   DateTimePickerContentProps,
+  DateTimePickerProps,
   PickerMode,
   RelativeDatePreset,
 } from './types'
-export { DEFAULT_DATE_PRESETS } from './presets'
-export { formatTime12Hour, formatDateDisplay, formatDateTimeDisplay } from './utils'
+// Re-export types and utilities
+export { Period, ViewType } from './types'
+export { formatDateDisplay, formatDateTimeDisplay, formatTime12Hour } from './utils'

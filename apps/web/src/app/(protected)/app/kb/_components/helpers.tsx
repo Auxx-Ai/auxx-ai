@@ -1,5 +1,5 @@
 // src/app/(protected)/app/kb/_components/helpers.tsx
-import { Article } from './kb-sidebar'
+import type { Article } from './kb-sidebar'
 
 /**
  * Build a hierarchical tree structure from a flat array of articles

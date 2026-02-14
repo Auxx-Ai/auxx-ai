@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/core/loop-progress-tracker.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { ExecutionContextManager } from './execution-context'
+import type { ExecutionContextManager } from './execution-context'
 
 const logger = createScopedLogger('loop-progress-tracker')
 

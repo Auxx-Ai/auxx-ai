@@ -2,17 +2,9 @@
 
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { format, formatDistanceToNow } from 'date-fns'
-import {
-  Clock,
-  User,
-  CheckCircle,
-  XCircle,
-  MessageSquare,
-  AlertTriangle,
-  Trash2,
-} from 'lucide-react'
+import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -20,23 +12,32 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Button } from '@auxx/ui/components/button'
-import { Badge } from '@auxx/ui/components/badge'
-import { Textarea } from '@auxx/ui/components/textarea'
-import { Separator } from '@auxx/ui/components/separator'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import {
   Empty,
+  EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-  EmptyDescription,
 } from '@auxx/ui/components/empty'
-import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Separator } from '@auxx/ui/components/separator'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { Textarea } from '@auxx/ui/components/textarea'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { format, formatDistanceToNow } from 'date-fns'
+import {
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  MessageSquare,
+  Trash2,
+  User,
+  XCircle,
+} from 'lucide-react'
+import type React from 'react'
+import { useEffect, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 interface HumanConfirmationDialogProps {
   open: boolean
@@ -178,9 +179,9 @@ export const HumanConfirmationDialog: React.FC<HumanConfirmationDialogProps> = (
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent size="xxl">
+        <DialogContent size='xxl'>
           <DialogHeader>
-            <div className="flex items-center justify-between">
+            <div className='flex items-center justify-between'>
               <div>
                 <DialogTitle>Manual Confirmation Requests</DialogTitle>
                 <DialogDescription>
@@ -188,49 +189,49 @@ export const HumanConfirmationDialog: React.FC<HumanConfirmationDialogProps> = (
                 </DialogDescription>
               </div>
               <Button
-                variant="outline"
-                size="sm"
+                variant='outline'
+                size='sm'
                 onClick={handleCleanup}
                 disabled={cleanupMutation.isPending}
                 loading={cleanupMutation.isPending}
-                loadingText="Cleaning...">
+                loadingText='Cleaning...'>
                 <Trash2 />
                 Clean Up Stopped
               </Button>
             </div>
           </DialogHeader>
 
-          <div className="flex h-full gap-2 items-start">
+          <div className='flex h-full gap-2 items-start'>
             {/* Left Panel: Requests List */}
-            <div className="w-1/3 border-r pr-4">
-              <div className="mb-4">
-                <h3 className="font-medium text-sm text-muted-foreground">
+            <div className='w-1/3 border-r pr-4'>
+              <div className='mb-4'>
+                <h3 className='font-medium text-sm text-muted-foreground'>
                   Pending Requests ({approvalRequests?.length || 0})
                 </h3>
               </div>
 
-              <ScrollArea className="h-[calc(100%-2rem)]">
+              <ScrollArea className='h-[calc(100%-2rem)]'>
                 {requestsLoading ? (
-                  <div className="space-y-3">
+                  <div className='space-y-3'>
                     {Array.from({ length: 3 }).map((_, i) => (
-                      <div key={i} className="p-3 border rounded-lg">
-                        <Skeleton className="h-4 w-full mb-2" />
-                        <Skeleton className="h-3 w-2/3 mb-1" />
-                        <Skeleton className="h-3 w-1/2" />
+                      <div key={i} className='p-3 border rounded-lg'>
+                        <Skeleton className='h-4 w-full mb-2' />
+                        <Skeleton className='h-3 w-2/3 mb-1' />
+                        <Skeleton className='h-3 w-1/2' />
                       </div>
                     ))}
                   </div>
                 ) : approvalRequests?.length === 0 ? (
                   <Empty>
                     <EmptyHeader>
-                      <EmptyMedia variant="icon">
+                      <EmptyMedia variant='icon'>
                         <CheckCircle />
                       </EmptyMedia>
                       <EmptyTitle>No pending requests</EmptyTitle>
                     </EmptyHeader>
                   </Empty>
                 ) : (
-                  <div className="space-y-2">
+                  <div className='space-y-2'>
                     {approvalRequests?.map((request) => (
                       <div
                         key={request.id}
@@ -238,24 +239,24 @@ export const HumanConfirmationDialog: React.FC<HumanConfirmationDialogProps> = (
                           selectedId === request.id ? 'bg-blue-50 border-blue-200' : ''
                         }`}
                         onClick={() => setSelectedId(request.id)}>
-                        <div className="space-y-2">
-                          <div className="flex items-start justify-between">
-                            <h4 className="font-medium text-sm truncate">
+                        <div className='space-y-2'>
+                          <div className='flex items-start justify-between'>
+                            <h4 className='font-medium text-sm truncate'>
                               {request.workflowName || 'Untitled Workflow'}
                             </h4>
-                            <Badge variant="secondary" className="text-xs">
+                            <Badge variant='secondary' className='text-xs'>
                               {request.status}
                             </Badge>
                           </div>
 
                           {request.message && (
-                            <p className="text-xs text-muted-foreground line-clamp-2">
+                            <p className='text-xs text-muted-foreground line-clamp-2'>
                               {request.message}
                             </p>
                           )}
 
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Clock className="h-3 w-3" />
+                          <div className='flex items-center gap-2 text-xs text-muted-foreground'>
+                            <Clock className='h-3 w-3' />
                             <span>
                               Expires{' '}
                               {request.expiresAt
@@ -274,12 +275,12 @@ export const HumanConfirmationDialog: React.FC<HumanConfirmationDialogProps> = (
             </div>
 
             {/* Right Panel: Request Details */}
-            <div className="flex-1 flex flex-col">
+            <div className='flex-1 flex flex-col'>
               {!selectedId ? (
-                <div className="flex flex-col items-center justify-center flex-1">
+                <div className='flex flex-col items-center justify-center flex-1'>
                   <Empty>
                     <EmptyHeader>
-                      <EmptyMedia variant="icon">
+                      <EmptyMedia variant='icon'>
                         <MessageSquare />
                       </EmptyMedia>
                       <EmptyTitle>Select a request</EmptyTitle>
@@ -288,54 +289,54 @@ export const HumanConfirmationDialog: React.FC<HumanConfirmationDialogProps> = (
                   </Empty>
                 </div>
               ) : detailsLoading ? (
-                <div className="space-y-4">
-                  <Skeleton className="h-6 w-1/2" />
-                  <Skeleton className="h-20 w-full" />
-                  <Skeleton className="h-4 w-1/3" />
-                  <Skeleton className="h-32 w-full" />
+                <div className='space-y-4'>
+                  <Skeleton className='h-6 w-1/2' />
+                  <Skeleton className='h-20 w-full' />
+                  <Skeleton className='h-4 w-1/3' />
+                  <Skeleton className='h-32 w-full' />
                 </div>
               ) : selectedRequest ? (
-                <div className="flex-1 flex flex-col space-y-3">
+                <div className='flex-1 flex flex-col space-y-3'>
                   {/* Request Header */}
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between">
+                  <div className='space-y-3'>
+                    <div className='flex items-start justify-between'>
                       <div>
-                        <h3 className="text-lg font-semibold">
+                        <h3 className='text-lg font-semibold'>
                           {selectedRequest.workflowName || 'Untitled Workflow'}
                         </h3>
-                        <p className="text-sm text-muted-foreground">
+                        <p className='text-sm text-muted-foreground'>
                           Node: {selectedRequest.nodeName}
                         </p>
                       </div>
                       <Badge
                         variant={selectedRequest.status === 'pending' ? 'default' : 'secondary'}
-                        className="capitalize">
+                        className='capitalize'>
                         {selectedRequest.status}
                       </Badge>
                     </div>
 
                     {selectedRequest.message && (
-                      <div className="p-2 bg-gray-50 rounded-lg">
-                        <h4 className="font-medium text-sm mb-1">Message</h4>
-                        <p className="text-sm">{selectedRequest.message}</p>
+                      <div className='p-2 bg-gray-50 rounded-lg'>
+                        <h4 className='font-medium text-sm mb-1'>Message</h4>
+                        <p className='text-sm'>{selectedRequest.message}</p>
                       </div>
                     )}
                   </div>
 
                   {/* Request Metadata */}
-                  <div className=" space-y-3">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className=' space-y-3'>
+                    <div className='grid grid-cols-2 gap-4 text-sm'>
                       <div>
-                        <span className="text-muted-foreground">Created:</span>
-                        <p className="font-medium">
+                        <span className='text-muted-foreground'>Created:</span>
+                        <p className='font-medium'>
                           {selectedRequest.createdAt
                             ? format(new Date(selectedRequest.createdAt), 'MMM d, yyyy h:mm a')
                             : 'Unknown'}
                         </p>
                       </div>
                       <div>
-                        <span className="text-muted-foreground">Expires:</span>
-                        <p className="font-medium">
+                        <span className='text-muted-foreground'>Expires:</span>
+                        <p className='font-medium'>
                           {selectedRequest.expiresAt
                             ? format(new Date(selectedRequest.expiresAt), 'MMM d, yyyy h:mm a')
                             : 'No expiration'}
@@ -345,39 +346,39 @@ export const HumanConfirmationDialog: React.FC<HumanConfirmationDialogProps> = (
 
                     {selectedRequest.expiresAt &&
                       new Date(selectedRequest.expiresAt) < new Date() && (
-                        <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                          <AlertTriangle className="h-4 w-4 text-red-500" />
-                          <span className="text-sm text-red-700">This request has expired</span>
+                        <div className='flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg'>
+                          <AlertTriangle className='h-4 w-4 text-red-500' />
+                          <span className='text-sm text-red-700'>This request has expired</span>
                         </div>
                       )}
                   </div>
 
-                  <Separator className="" />
+                  <Separator className='' />
 
                   {/* Comment Section */}
-                  <div className="">
-                    <label className="block text-sm font-medium mb-1">Comment (optional)</label>
+                  <div className=''>
+                    <label className='block text-sm font-medium mb-1'>Comment (optional)</label>
                     <Textarea
                       value={comment}
                       onChange={(e) => setComment(e.target.value)}
-                      placeholder="Add a comment about your decision..."
+                      placeholder='Add a comment about your decision...'
                       rows={3}
                       disabled={isPending}
                     />
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex justify-end gap-3 mt-auto">
+                  <div className='flex justify-end gap-3 mt-auto'>
                     <Button
-                      variant="ghost"
-                      size="sm"
+                      variant='ghost'
+                      size='sm'
                       onClick={() => onOpenChange(false)}
                       disabled={isPending}>
                       Cancel
                     </Button>
                     <Button
-                      variant="destructive"
-                      size="sm"
+                      variant='destructive'
+                      size='sm'
                       onClick={handleDeny}
                       disabled={
                         isPending ||
@@ -386,13 +387,13 @@ export const HumanConfirmationDialog: React.FC<HumanConfirmationDialogProps> = (
                           : false)
                       }
                       loading={denyMutation.isPending}
-                      loadingText="Denying...">
+                      loadingText='Denying...'>
                       <XCircle />
                       Deny
                     </Button>
                     <Button
                       onClick={handleApprove}
-                      size="sm"
+                      size='sm'
                       disabled={
                         isPending ||
                         (selectedRequest.expiresAt
@@ -400,17 +401,17 @@ export const HumanConfirmationDialog: React.FC<HumanConfirmationDialogProps> = (
                           : false)
                       }
                       loading={approveMutation.isPending}
-                      loadingText="Approving...">
+                      loadingText='Approving...'>
                       <CheckCircle />
                       Approve
                     </Button>
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center flex-1">
+                <div className='flex flex-col items-center justify-center flex-1'>
                   <Empty>
                     <EmptyHeader>
-                      <EmptyMedia variant="icon">
+                      <EmptyMedia variant='icon'>
                         <AlertTriangle />
                       </EmptyMedia>
                       <EmptyTitle>Request not found</EmptyTitle>

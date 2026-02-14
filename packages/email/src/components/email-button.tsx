@@ -1,7 +1,6 @@
 import { Button } from '@react-email/components'
+import type React from 'react'
 import { cn } from '../lib/utils'
-
-import React from 'react'
 
 interface EmailButtonProps {
   label: string

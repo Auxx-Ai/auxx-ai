@@ -1,7 +1,8 @@
 // apps/web/src/components/mail/email-editor/use-draft-autosave.ts
-import { useRef, useEffect, useMemo, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
-import type { DraftPayload, DraftMessage } from './types'
+import type { DraftMessage, DraftPayload } from './types'
+
 type FileAttachment = {
   id: string
   name: string

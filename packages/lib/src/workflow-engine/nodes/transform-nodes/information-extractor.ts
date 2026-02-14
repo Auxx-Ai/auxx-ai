@@ -1,20 +1,20 @@
 // packages/lib/src/workflow-engine/nodes/transform-nodes/information-extractor.ts
 
-import { BaseNodeProcessor } from '../base-node'
+import { database as db } from '@auxx/database'
+import type { Message } from '../../../ai/clients/base/types'
+import { LLMOrchestrator } from '../../../ai/orchestrator/llm-orchestrator'
+import type { AICallbacks, LLMInvocationRequest } from '../../../ai/orchestrator/types'
+import { UsageTrackingService } from '../../../ai/usage/usage-tracking-service'
+import { createScopedLogger } from '../../../logger'
+import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
-  WorkflowNode,
   NodeExecutionResult,
-  ValidationResult,
   PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
-import { createScopedLogger } from '../../../logger'
-import { LLMOrchestrator } from '../../../ai/orchestrator/llm-orchestrator'
-import { UsageTrackingService } from '../../../ai/usage/usage-tracking-service'
-import type { LLMInvocationRequest, AICallbacks } from '../../../ai/orchestrator/types'
-import type { Message } from '../../../ai/clients/base/types'
-import { database as db } from '@auxx/database'
+import { BaseNodeProcessor } from '../base-node'
 
 const logger = createScopedLogger('information-extractor-processor')
 

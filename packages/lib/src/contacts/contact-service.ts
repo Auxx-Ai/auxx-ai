@@ -1,20 +1,20 @@
 // packages/lib/src/contacts/contact-service.ts
 
 import { database, type Transaction } from '@auxx/database'
+import type { CustomerSourceType, CustomerStatus } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { v4 as uuidv4 } from 'uuid'
-import type { CustomerStatus, CustomerSourceType } from '@auxx/database/types'
-import { publisher } from '../events'
-import { SystemUserService } from '../users/system-user-service'
 import * as contactDb from '@auxx/services/contacts'
+import { v4 as uuidv4 } from 'uuid'
+import { publisher } from '../events'
 import type {
   ContactCreatedEvent,
-  ContactUpdatedEvent,
   ContactDeletedEvent,
-  ContactMergedEvent,
   ContactGroupAddedEvent,
   ContactGroupRemovedEvent,
+  ContactMergedEvent,
+  ContactUpdatedEvent,
 } from '../events/types'
+import { SystemUserService } from '../users/system-user-service'
 
 const logger = createScopedLogger('contact-service')
 

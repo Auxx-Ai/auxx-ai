@@ -1,21 +1,28 @@
 // packages/lib/src/resources/resource-fetcher.ts
 
-import { ContactModel, TicketModel, ThreadModel, MessageModel, UserModel, DatasetModel } from '@auxx/database/models'
-import { schema, type Database } from '@auxx/database'
-import { type SQL, eq, sql } from 'drizzle-orm'
-import { createScopedLogger } from '@auxx/logger'
+import { type Database, schema } from '@auxx/database'
 import {
-  RESOURCE_TABLE_MAP,
+  ContactModel,
+  DatasetModel,
+  MessageModel,
+  ThreadModel,
+  TicketModel,
+  UserModel,
+} from '@auxx/database/models'
+import { createScopedLogger } from '@auxx/logger'
+import { getEntityInstance } from '@auxx/services/entity-instances'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
+import { eq, type SQL, sql } from 'drizzle-orm'
+import {
   RESOURCE_FIELD_REGISTRY,
+  RESOURCE_TABLE_MAP,
   type TableId,
 } from './registry/field-registry'
+import type { ResourceField } from './registry/field-types'
+import { ResourceRegistryService } from './registry/resource-registry-service'
 import { isCustomResourceId } from './registry/types'
 import { BaseType } from './types'
-import { getEntityInstance } from '@auxx/services/entity-instances'
-import { ResourceRegistryService } from './registry/resource-registry-service'
-import type { ResourceField } from './registry/field-types'
-import { parseRecordId, toRecordId, type RecordId } from '@auxx/types/resource'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 
 const logger = createScopedLogger('resource-fetcher')
 
@@ -235,7 +242,12 @@ export async function fetchResourceById(
   }
 
   const whereSql = eq(schema[tableInfo.dbName].id, entityInstanceId)
-  return executeResourceQuery(resourceType as TableId, organizationId, { where: whereSql }, 'findOne')
+  return executeResourceQuery(
+    resourceType as TableId,
+    organizationId,
+    { where: whereSql },
+    'findOne'
+  )
 }
 
 /**
@@ -518,11 +530,22 @@ async function fetchHasManyRelationship(
 
   // For system resources, use existing query infrastructure
   if (targetResource.type === 'system') {
-    return fetchHasManySystemResource(parentRecordId, targetResourceType as TableId, reciprocalField, organizationId)
+    return fetchHasManySystemResource(
+      parentRecordId,
+      targetResourceType as TableId,
+      reciprocalField,
+      organizationId
+    )
   }
 
   // For custom entities, query via CustomFieldValue with cached field definitions
-  return fetchHasManyCustomEntity(parentRecordId, reciprocalField, targetResourceType, db, registryService)
+  return fetchHasManyCustomEntity(
+    parentRecordId,
+    reciprocalField,
+    targetResourceType,
+    db,
+    registryService
+  )
 }
 
 /**
@@ -569,10 +592,7 @@ async function fetchHasManyCustomEntity(
   // Use ->>'data' to extract the actual value for comparison
   const results = await db.query.CustomFieldValue.findMany({
     where: (cfv, { and }) =>
-      and(
-        eq(cfv.fieldId, reciprocalField.id!),
-        sql`${cfv.value}->>'data' = ${parentRecordId}`
-      ),
+      and(eq(cfv.fieldId, reciprocalField.id!), sql`${cfv.value}->>'data' = ${parentRecordId}`),
     with: {
       entityInstance: {
         with: {
@@ -655,7 +675,12 @@ export async function analyzePathForRelationships(
 
   for (const segment of segments) {
     // Skip array accessors (.first, .last, [0], numeric indices)
-    if (segment.match(/\[.*\]/) || segment === 'first' || segment === 'last' || /^\d+$/.test(segment)) {
+    if (
+      segment.match(/\[.*\]/) ||
+      segment === 'first' ||
+      segment === 'last' ||
+      /^\d+$/.test(segment)
+    ) {
       logger.debug('analyzePathForRelationships: skipping accessor', { segment })
       continue
     }
@@ -671,7 +696,9 @@ export async function analyzePathForRelationships(
         .filter((f) => f.type === BaseType.RELATION)
         .map((f) => ({
           key: f.key,
-          target: f.relationship ? getRelatedEntityDefinitionId(f.relationship as RelationshipConfig) : undefined,
+          target: f.relationship
+            ? getRelatedEntityDefinitionId(f.relationship as RelationshipConfig)
+            : undefined,
         })),
     })
 
@@ -679,7 +706,9 @@ export async function analyzePathForRelationships(
 
     if (field?.type === BaseType.RELATION && field.relationship) {
       // This is a relationship - needs fetching
-      const relatedEntityDefId = getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
+      const relatedEntityDefId = getRelatedEntityDefinitionId(
+        field.relationship as RelationshipConfig
+      )
       logger.debug('analyzePathForRelationships: found relationship', {
         segment,
         relatedEntityDefinitionId: relatedEntityDefId,

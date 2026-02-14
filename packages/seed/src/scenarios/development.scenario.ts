@@ -12,11 +12,11 @@ export const developmentScenario: SeedingScenarioDefinition = {
     organizations: 1,
     users: 2,
     customers: 2, // Reduced from 5
-    products: 2,  // Reduced from 3
-    orders: 2,    // Reduced from 5
-    threads: 1,   // Reduced from 2
-    messages: 2,  // Reduced from 5
-    tickets: 5,   // Support tickets for development
+    products: 2, // Reduced from 3
+    orders: 2, // Reduced from 5
+    threads: 1, // Reduced from 2
+    messages: 2, // Reduced from 5
+    tickets: 5, // Support tickets for development
   },
   features: {
     authentication: true,

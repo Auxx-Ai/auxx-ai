@@ -2,14 +2,14 @@
 
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
-import { api } from '~/trpc/react'
+import type { RecordId } from '@auxx/lib/resources/client'
+import { Badge } from '@auxx/ui/components/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { Badge } from '@auxx/ui/components/badge'
+import { useCallback, useMemo, useState } from 'react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
-import { type RecordId } from '@auxx/lib/resources/client'
+import { api } from '~/trpc/react'
 import { RecordBadge } from '../resources/ui'
 
 /**
@@ -169,12 +169,12 @@ export function MultiRelationInput({
     const remainingCount = value.length - maxDisplayItems
 
     return (
-      <div className="flex flex-wrap gap-1 flex-1 py-0.5">
+      <div className='flex flex-wrap gap-1 flex-1 py-0.5'>
         {displayItems.map((recordId) => (
           <RecordBadge key={recordId} recordId={recordId} />
         ))}
         {remainingCount > 0 && (
-          <Badge variant="outline" className="text-xs">
+          <Badge variant='outline' className='text-xs'>
             +{remainingCount}
           </Badge>
         )}
@@ -201,8 +201,8 @@ export function MultiRelationInput({
         </PickerTrigger>
       </PopoverTrigger>
       <PopoverContent
-        className="p-0 min-w-[max(var(--radix-popover-trigger-width),18rem)]"
-        align="start">
+        className='p-0 min-w-[max(var(--radix-popover-trigger-width),18rem)]'
+        align='start'>
         <MultiSelectPicker
           options={selectOptions}
           value={selectedIds}
@@ -212,7 +212,7 @@ export function MultiRelationInput({
           canManage={false}
           canAdd={false}
           multi={multi}
-          placeholder="Search..."
+          placeholder='Search...'
           onSelectSingle={handleSelectSingle}
           disabled={disabled}
           onCreate={onCreate}

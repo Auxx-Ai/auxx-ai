@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/nodes/core/resource-trigger/output-variables.ts
 
-import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
-import { generateResourceTriggerVariablesFromFields } from '@auxx/lib/workflow-engine/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import { generateResourceTriggerVariablesFromFields } from '@auxx/lib/workflow-engine/client'
+import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import type { ResourceTriggerData } from './types'
 
 /** Resource shape for variable generation (matches Find node) */

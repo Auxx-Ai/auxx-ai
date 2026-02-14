@@ -2,14 +2,14 @@
 
 'use client'
 
+import { FieldInputMode, resolveFieldInputConfig } from '@auxx/lib/conditions/client'
 import { useMemo } from 'react'
 import {
-  FieldInputAdapter,
   type AutoGrowOptions,
+  FieldInputAdapter,
 } from '~/components/fields/inputs/field-input-adapter'
-import { resolveFieldInputConfig, FieldInputMode } from '@auxx/lib/conditions/client'
 import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
-import type { FieldDefinition, Condition } from '../types'
+import type { Condition, FieldDefinition } from '../types'
 
 /**
  * Props for ResourceInput component

@@ -1,8 +1,8 @@
-import { type IEventsHandlers } from '../types'
-import { sendInvitationUserJob } from './send-invitation-user-job'
-import { updateWebhookLastTriggeredAt } from './update-webhook-last-triggered'
+import type { IEventsHandlers } from '../types'
 import { createTimelineEvent } from './create-timeline-event'
+import { sendInvitationUserJob } from './send-invitation-user-job'
 import { triggerResourceWorkflows } from './trigger-resource-workflows'
+import { updateWebhookLastTriggeredAt } from './update-webhook-last-triggered'
 
 export const EventHandlers: IEventsHandlers = {
   // user events

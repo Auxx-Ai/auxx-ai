@@ -2,16 +2,16 @@
 
 'use client'
 
-import { useState } from 'react'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Switch } from '@auxx/ui/components/switch'
-import { Badge } from '@auxx/ui/components/badge'
-import { CheckCircle, XCircle, Loader2, AlertTriangle } from 'lucide-react'
-import { useCredentialTest } from '~/hooks/use-credential-test'
 import type { CredentialTestResult } from '@auxx/workflow-nodes/types'
+import { AlertTriangle, CheckCircle, Loader2, XCircle } from 'lucide-react'
+import { useState } from 'react'
+import { useCredentialTest } from '~/hooks/use-credential-test'
 
 interface CredentialFormField {
   name: string
@@ -133,7 +133,7 @@ export function CredentialForm({
       case 'password':
         return (
           <Input
-            type="password"
+            type='password'
             value={value}
             onChange={(e) => updateField(field.name, e.target.value)}
             placeholder={field.placeholder}
@@ -170,38 +170,38 @@ export function CredentialForm({
     return (
       <Card
         className={`mt-4 ${testResult.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
-        <CardContent className="pt-4">
-          <div className="flex items-start gap-3">
+        <CardContent className='pt-4'>
+          <div className='flex items-start gap-3'>
             {testResult.success ? (
-              <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
+              <CheckCircle className='h-5 w-5 text-green-600 mt-0.5' />
             ) : (
-              <XCircle className="h-5 w-5 text-red-600 mt-0.5" />
+              <XCircle className='h-5 w-5 text-red-600 mt-0.5' />
             )}
 
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <h4 className="font-medium">
+            <div className='flex-1'>
+              <div className='flex items-center gap-2'>
+                <h4 className='font-medium'>
                   {testResult.success ? 'Connection Successful' : 'Connection Failed'}
                 </h4>
                 {testResult.details?.connectionTime && (
-                  <Badge variant="outline" className="text-xs">
+                  <Badge variant='outline' className='text-xs'>
                     {testResult.details.connectionTime}ms
                   </Badge>
                 )}
               </div>
 
-              <p className="text-sm text-muted-foreground mt-1">{testResult.message}</p>
+              <p className='text-sm text-muted-foreground mt-1'>{testResult.message}</p>
 
               {testResult.details?.serverInfo && (
-                <p className="text-xs text-muted-foreground mt-2">
+                <p className='text-xs text-muted-foreground mt-2'>
                   Server: {testResult.details.serverInfo}
                 </p>
               )}
 
               {testResult.details?.permissions && testResult.details.permissions.length > 0 && (
-                <div className="flex gap-1 mt-2">
+                <div className='flex gap-1 mt-2'>
                   {testResult.details.permissions.map((permission) => (
-                    <Badge key={permission} variant="secondary" className="text-xs">
+                    <Badge key={permission} variant='secondary' className='text-xs'>
                       {permission}
                     </Badge>
                   ))}
@@ -209,14 +209,14 @@ export function CredentialForm({
               )}
 
               {testResult.error && (
-                <div className="mt-2 p-2 bg-red-100 border border-red-200 rounded text-sm">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-red-600" />
-                    <span className="font-medium">Error: {testResult.error.type}</span>
+                <div className='mt-2 p-2 bg-red-100 border border-red-200 rounded text-sm'>
+                  <div className='flex items-center gap-2'>
+                    <AlertTriangle className='h-4 w-4 text-red-600' />
+                    <span className='font-medium'>Error: {testResult.error.type}</span>
                   </div>
-                  <p className="text-red-700 mt-1">{testResult.error.message}</p>
+                  <p className='text-red-700 mt-1'>{testResult.error.message}</p>
                   {testResult.error.code && (
-                    <p className="text-red-600 text-xs mt-1">Code: {testResult.error.code}</p>
+                    <p className='text-red-600 text-xs mt-1'>Code: {testResult.error.code}</p>
                   )}
                 </div>
               )}
@@ -228,17 +228,17 @@ export function CredentialForm({
   }
 
   return (
-    <div className="space-y-6">
+    <div className='space-y-6'>
       <Card>
         <CardHeader>
           <CardTitle>{credentialDisplayName}</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className='space-y-4'>
           {fields.map((field) => (
-            <div key={field.name} className="space-y-2">
+            <div key={field.name} className='space-y-2'>
               <Label htmlFor={field.name}>
                 {field.displayName}
-                {field.required && <span className="text-red-500 ml-1">*</span>}
+                {field.required && <span className='text-red-500 ml-1'>*</span>}
               </Label>
               {renderField(field)}
             </div>
@@ -248,12 +248,12 @@ export function CredentialForm({
 
       {renderTestResult()}
 
-      <div className="flex gap-3">
+      <div className='flex gap-3'>
         <Button
-          variant="outline"
+          variant='outline'
           onClick={handleTest}
           loading={isTestingCredentialData}
-          loadingText="Testing...">
+          loadingText='Testing...'>
           Test Connection
         </Button>
 
@@ -261,27 +261,27 @@ export function CredentialForm({
           onClick={handleTestAndSave}
           disabled={isLoading || isTestingCredentialData}
           loading={isLoading}
-          loadingText="Saving...">
+          loadingText='Saving...'>
           Test & Save
         </Button>
 
         <Button
-          variant="outline"
+          variant='outline'
           onClick={handleSave}
           disabled={isLoading || isTestingCredentialData}
           loading={isLoading}
-          loadingText="Saving...">
+          loadingText='Saving...'>
           Save Without Testing
         </Button>
 
         <Button
-          variant="outline"
+          variant='outline'
           onClick={handleSave}
           disabled={isLoading || isTestingCredentialData}>
           Save Without Testing
         </Button>
 
-        <Button variant="ghost" onClick={onCancel} disabled={isLoading || isTestingCredentialData}>
+        <Button variant='ghost' onClick={onCancel} disabled={isLoading || isTestingCredentialData}>
           Cancel
         </Button>
       </div>

@@ -1,17 +1,17 @@
 // apps/web/src/components/workflow/nodes/core/knowledge-retrieval/index.ts
 
-export { KnowledgeRetrievalPanel } from './panel'
 export { KnowledgeRetrievalNode } from './node'
+export { getKnowledgeRetrievalOutputVariables } from './output-variables'
+export { KnowledgeRetrievalPanel } from './panel'
 export {
+  extractKnowledgeRetrievalVariables,
+  knowledgeRetrievalDefaultData,
   knowledgeRetrievalDefinition,
   knowledgeRetrievalNodeDataSchema,
-  knowledgeRetrievalDefaultData,
-  extractKnowledgeRetrievalVariables,
 } from './schema'
 export type {
-  KnowledgeRetrievalNodeData,
-  KnowledgeRetrievalNode as KnowledgeRetrievalNodeType,
   DatasetEntry,
+  KnowledgeRetrievalNode as KnowledgeRetrievalNodeType,
+  KnowledgeRetrievalNodeData,
   SearchType,
 } from './types'
-export { getKnowledgeRetrievalOutputVariables } from './output-variables'

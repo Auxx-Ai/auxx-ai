@@ -2,8 +2,8 @@
 
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,12 +11,12 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { ChevronDown, Globe, Unplug } from 'lucide-react'
-import { PublishAppDialog } from './publish-app-dialog'
-import type { AppForPublishCheck } from '~/lib/publish-checks'
-import { api } from '~/trpc/react'
+import { useRouter } from 'next/navigation'
 import { useConfirm } from '@/hooks/use-confirm'
 import { toastError } from '~/components/global/toast'
-import { useRouter } from 'next/navigation'
+import type { AppForPublishCheck } from '~/lib/publish-checks'
+import { api } from '~/trpc/react'
+import { PublishAppDialog } from './publish-app-dialog'
 
 interface AppPublishButtonProps {
   app: AppForPublishCheck & {
@@ -43,7 +43,7 @@ export function AppPublishButton({ app, size = 'default', onSuccess }: AppPublis
   const handleWithdraw = async () => {
     const confirmed = await confirm({
       title: 'Withdraw from review?',
-      description: "Your app will be withdrawn from review and you can resubmit later.",
+      description: 'Your app will be withdrawn from review and you can resubmit later.',
       confirmText: 'Withdraw',
       cancelText: 'Cancel',
       destructive: true,
@@ -90,13 +90,13 @@ export function AppPublishButton({ app, size = 'default', onSuccess }: AppPublis
         <ConfirmDialog />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="default" size={size} disabled={updateAppStatus.isPending}>
+            <Button variant='default' size={size} disabled={updateAppStatus.isPending}>
               Published
               <ChevronDown />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={handleUnpublish} variant="destructive">
+          <DropdownMenuContent align='end'>
+            <DropdownMenuItem onClick={handleUnpublish} variant='destructive'>
               <Unplug />
               Unpublish
             </DropdownMenuItem>
@@ -113,12 +113,12 @@ export function AppPublishButton({ app, size = 'default', onSuccess }: AppPublis
         <ConfirmDialog />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size={size} disabled={updateAppStatus.isPending}>
+            <Button variant='outline' size={size} disabled={updateAppStatus.isPending}>
               In Review
               <ChevronDown />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align='end'>
             <DropdownMenuItem onClick={handleWithdraw}>Withdraw from Review</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -131,11 +131,11 @@ export function AppPublishButton({ app, size = 'default', onSuccess }: AppPublis
     return (
       <>
         <PublishAppDialog
-          mode="app"
+          mode='app'
           appSlug={app.slug}
           onSuccess={onSuccess}
           trigger={
-            <Button size={size} variant="outline">
+            <Button size={size} variant='outline'>
               Resubmit for Review
             </Button>
           }
@@ -149,11 +149,11 @@ export function AppPublishButton({ app, size = 'default', onSuccess }: AppPublis
     return (
       <>
         <PublishAppDialog
-          mode="app"
+          mode='app'
           appSlug={app.slug}
           onSuccess={onSuccess}
           trigger={
-            <Button size={size} variant="outline">
+            <Button size={size} variant='outline'>
               Resubmit for Review
             </Button>
           }
@@ -165,7 +165,7 @@ export function AppPublishButton({ app, size = 'default', onSuccess }: AppPublis
   // If app is approved but not published (awaiting admin publish)
   if (app.reviewStatus === 'approved' && app.publicationStatus === 'unpublished') {
     return (
-      <Button size={size} variant="outline" disabled>
+      <Button size={size} variant='outline' disabled>
         Approved (Awaiting Admin)
       </Button>
     )
@@ -175,7 +175,7 @@ export function AppPublishButton({ app, size = 'default', onSuccess }: AppPublis
   return (
     <>
       <PublishAppDialog
-        mode="app"
+        mode='app'
         appSlug={app.slug}
         onSuccess={onSuccess}
         trigger={<Button size={size}>Submit for Review</Button>}

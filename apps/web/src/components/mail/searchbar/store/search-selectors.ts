@@ -1,17 +1,17 @@
 // apps/web/src/components/mail/searchbar/store/search-selectors.ts
 'use client'
 
-import { useMemo, useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import {
-  useSearchStore,
-  selectHasActiveConditions,
-  selectConditionCount,
-  selectDisplayText,
   buildFilterChips,
   EMPTY_CHIPS,
   type FilterChip,
   type SearchCondition,
+  selectConditionCount,
+  selectDisplayText,
+  selectHasActiveConditions,
+  useSearchStore,
 } from './search-store'
 
 /**

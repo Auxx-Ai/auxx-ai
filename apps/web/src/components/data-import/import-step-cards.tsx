@@ -12,7 +12,7 @@ import {
   StepperTrigger,
 } from '@auxx/ui/components/stepper'
 import { IMPORT_STEP_CONFIG, IMPORT_STEPS } from './constants'
-import type { ImportStep, StepStatus, StepData } from './types'
+import type { ImportStep, StepData, StepStatus } from './types'
 
 interface ImportStepCardsProps {
   currentStep: ImportStep
@@ -51,8 +51,8 @@ export function ImportStepCards({
   }
 
   return (
-    <div className="border-b bg-background px-6 py-0 rounded-t-xl">
-      <Stepper value={currentStepNumber} className="h-20">
+    <div className='border-b bg-background px-6 py-0 rounded-t-xl'>
+      <Stepper value={currentStepNumber} className='h-20'>
         {IMPORT_STEPS.map((stepId, index) => {
           const config = IMPORT_STEP_CONFIG[stepId]
           const status = stepStatuses[stepId]
@@ -68,18 +68,18 @@ export function ImportStepCards({
               step={stepNumber}
               completed={isCompleted}
               disabled={isDisabled}
-              className="not-last:flex-1">
+              className='not-last:flex-1'>
               <StepperTrigger
-                className="gap-4 rounded group/trigger"
+                className='gap-4 rounded group/trigger'
                 onClick={() => handleStepClick(stepId)}>
-                <StepperIndicator className="bg-primary-300 " />
-                <div className="-order-1 cursor-pointer relative text-left group-hover/trigger:before:bg-primary-100 z-10 before:absolute before:-inset-2 before:rounded-xl before:ring-1 before:ring-transparent before:transition-colors group-hover/trigger:before:ring-primary-300/50">
-                  <StepperTitle className="z-20 relative">{config.title}</StepperTitle>
-                  <StepperDescription className="z-20 relative">{description}</StepperDescription>
+                <StepperIndicator className='bg-primary-300 ' />
+                <div className='-order-1 cursor-pointer relative text-left group-hover/trigger:before:bg-primary-100 z-10 before:absolute before:-inset-2 before:rounded-xl before:ring-1 before:ring-transparent before:transition-colors group-hover/trigger:before:ring-primary-300/50'>
+                  <StepperTitle className='z-20 relative'>{config.title}</StepperTitle>
+                  <StepperDescription className='z-20 relative'>{description}</StepperDescription>
                 </div>
               </StepperTrigger>
               {index < IMPORT_STEPS.length - 1 && (
-                <StepperSeparator className="mx-4 bg-primary-200" />
+                <StepperSeparator className='mx-4 bg-primary-200' />
               )}
             </StepperItem>
           )

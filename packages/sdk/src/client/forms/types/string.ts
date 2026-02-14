@@ -1,7 +1,7 @@
 // packages/sdk/src/client/forms/types/string.ts
 
 import { FormValue } from '../base.js'
-import type { SerializedFormValue, FormStringMetadata } from '../types.js'
+import type { FormStringMetadata, SerializedFormValue } from '../types.js'
 
 /**
  * String field builder.

@@ -1,4 +1,4 @@
-import { isToday, isYesterday, format } from 'date-fns'
+import { format, isToday, isYesterday } from 'date-fns'
 
 export function internalDateToDate(internalDate?: string | null): Date {
   if (!internalDate) return new Date()

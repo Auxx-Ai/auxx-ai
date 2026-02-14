@@ -1,33 +1,31 @@
 // apps/web/src/app/(protected)/app/workflows/_components/executions/workflow-runs-columns.tsx
+
+import type { WorkflowTriggerSourceValues } from '@auxx/database/enums'
+import type { WorkflowRunEntity as WorkflowRun } from '@auxx/database/models'
+import { Badge } from '@auxx/ui/components/badge'
+import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
+import {
+  CalendarClock,
+  CircleDot,
+  Clock,
+  Coins,
+  GitBranch,
+  Globe,
+  Hash,
+  Key,
+  PanelRight,
+  Play,
+  Square,
+  StopCircle,
+  Trash2,
+  Webhook,
+  XCircle,
+  Zap,
+} from 'lucide-react'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { CellPadding, FormattedCell, PrimaryCell } from '~/components/dynamic-table'
 import { ItemsCellView } from '~/components/ui/items-list-view'
-import { Badge } from '@auxx/ui/components/badge'
-import {
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from '@auxx/ui/components/dropdown-menu'
-import {
-  XCircle,
-  Clock,
-  Play,
-  Square,
-  PanelRight,
-  StopCircle,
-  Hash,
-  Zap,
-  GitBranch,
-  Coins,
-  Trash2,
-  Globe,
-  Key,
-  Webhook,
-  CircleDot,
-  CalendarClock,
-} from 'lucide-react'
-import { WorkflowTriggerSourceValues } from '@auxx/database/enums'
-import type { WorkflowRunEntity as WorkflowRun } from '@auxx/database/models'
-import { WorkflowRunStatusBadge, type WorkflowRunStatus } from './workflow-run-status-badge'
+import { type WorkflowRunStatus, WorkflowRunStatusBadge } from './workflow-run-status-badge'
 
 type WorkflowTriggerSource = (typeof WorkflowTriggerSourceValues)[number]
 /**
@@ -37,12 +35,12 @@ const triggerSourceConfig: Record<
   WorkflowTriggerSource,
   { icon: React.ReactNode; label: string; variant: 'default' | 'secondary' | 'outline' }
 > = {
-  DEBUGGING: { icon: <Zap className="size-3" />, label: 'Debug', variant: 'secondary' },
-  APP_RUN: { icon: <Play className="size-3" />, label: 'App Run', variant: 'default' },
-  SINGLE_STEP: { icon: <Square className="size-3" />, label: 'Single Step', variant: 'outline' },
-  PUBLIC_SHARE: { icon: <Globe className="size-3" />, label: 'Public Share', variant: 'outline' },
-  API_KEY: { icon: <Key className="size-3" />, label: 'API Key', variant: 'secondary' },
-  WEBHOOK: { icon: <Webhook className="size-3" />, label: 'Webhook', variant: 'default' },
+  DEBUGGING: { icon: <Zap className='size-3' />, label: 'Debug', variant: 'secondary' },
+  APP_RUN: { icon: <Play className='size-3' />, label: 'App Run', variant: 'default' },
+  SINGLE_STEP: { icon: <Square className='size-3' />, label: 'Single Step', variant: 'outline' },
+  PUBLIC_SHARE: { icon: <Globe className='size-3' />, label: 'Public Share', variant: 'outline' },
+  API_KEY: { icon: <Key className='size-3' />, label: 'API Key', variant: 'secondary' },
+  WEBHOOK: { icon: <Webhook className='size-3' />, label: 'Webhook', variant: 'default' },
 }
 /**
  * Format elapsed time in human readable format
@@ -96,8 +94,8 @@ export const createWorkflowRunsColumns = (
       return (
         <PrimaryCell
           value={shortId}
-          prefixIcon={<Hash className="size-3 text-muted-foreground" />}
-          titleClassName="font-mono text-sm"
+          prefixIcon={<Hash className='size-3 text-muted-foreground' />}
+          titleClassName='font-mono text-sm'
           onTitleClick={() => actions.onViewDetails(run)}>
           <DropdownMenuItem onClick={() => actions.onViewDetails(run)}>
             <PanelRight />
@@ -112,7 +110,7 @@ export const createWorkflowRunsColumns = (
           {isRunning && (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={() => actions.onStopRun(run)}>
+              <DropdownMenuItem variant='destructive' onClick={() => actions.onStopRun(run)}>
                 <StopCircle />
                 Stop Execution
               </DropdownMenuItem>
@@ -121,7 +119,7 @@ export const createWorkflowRunsColumns = (
           {!isRunning && (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={() => actions.onDeleteRun(run)}>
+              <DropdownMenuItem variant='destructive' onClick={() => actions.onDeleteRun(run)}>
                 <Trash2 />
                 Delete Run
               </DropdownMenuItem>
@@ -169,9 +167,9 @@ export const createWorkflowRunsColumns = (
         <ItemsCellView
           item={trigger}
           renderItem={() => (
-            <Badge variant={config.variant} className="text-xs">
+            <Badge variant={config.variant} className='text-xs'>
               {config.icon}
-              <span className="ml-1">{config.label}</span>
+              <span className='ml-1'>{config.label}</span>
             </Badge>
           )}
         />
@@ -192,9 +190,9 @@ export const createWorkflowRunsColumns = (
       const version = getValue<string>()
       return (
         <CellPadding>
-          <div className="flex items-center gap-1 text-sm">
-            <GitBranch className="size-3 text-muted-foreground" />
-            <span className="font-mono">{version}</span>
+          <div className='flex items-center gap-1 text-sm'>
+            <GitBranch className='size-3 text-muted-foreground' />
+            <span className='font-mono'>{version}</span>
           </div>
         </CellPadding>
       )
@@ -213,8 +211,8 @@ export const createWorkflowRunsColumns = (
       const elapsedTime = getValue<number | null>()
       return (
         <CellPadding>
-          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-            <Clock className="size-3" />
+          <div className='flex items-center gap-1 text-sm text-muted-foreground'>
+            <Clock className='size-3' />
             <span>{formatElapsedTime(elapsedTime)}</span>
           </div>
         </CellPadding>
@@ -235,8 +233,8 @@ export const createWorkflowRunsColumns = (
       const tokens = getValue<number>()
       return (
         <CellPadding>
-          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-            <Coins className="size-3" />
+          <div className='flex items-center gap-1 text-sm text-muted-foreground'>
+            <Coins className='size-3' />
             <span>{tokens.toLocaleString()}</span>
           </div>
         </CellPadding>
@@ -256,7 +254,7 @@ export const createWorkflowRunsColumns = (
     columnType: 'date',
     accessorFn: (row) => row.createdAt,
     cell: ({ getValue }) => (
-      <FormattedCell value={getValue()} fieldType="DATETIME" columnId="createdAt" />
+      <FormattedCell value={getValue()} fieldType='DATETIME' columnId='createdAt' />
     ),
     enableSorting: true,
     sortingFn: 'datetime',

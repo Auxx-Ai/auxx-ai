@@ -1,7 +1,7 @@
 // apps/web/src/components/threads/context/keyboard-context.tsx
 'use client'
 
-import { createContext, useContext, useEffect, useRef, useCallback, type ReactNode } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef } from 'react'
 
 type KeyCombo = string // e.g., 'ArrowDown', 'Meta+a', 'Shift+ArrowUp'
 type KeyCallback = (event: KeyboardEvent) => void

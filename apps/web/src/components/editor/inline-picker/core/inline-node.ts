@@ -1,9 +1,9 @@
 // apps/web/src/components/editor/inline-picker/core/inline-node.ts
 
-import { Node, mergeAttributes, nodeInputRule } from '@tiptap/core'
-import { ReactNodeViewRenderer } from '@tiptap/react'
+import { mergeAttributes, Node, nodeInputRule } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
-import type { InlineNodeConfig, InlineNodeBadgeProps } from '../types'
+import { ReactNodeViewRenderer } from '@tiptap/react'
+import type { InlineNodeBadgeProps, InlineNodeConfig } from '../types'
 import { createInlineNodeView } from './inline-node-view'
 
 /**

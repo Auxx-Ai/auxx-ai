@@ -1,6 +1,6 @@
 import React from 'react'
-import { Mailbox } from '../../../_components/mail-box'
 import { useUser } from '~/hooks/use-user'
+import { Mailbox } from '../../../_components/mail-box'
 
 // Define expected context type string matching backend router input enum keys
 type ContextType = 'personal_assigned' | 'personal_inbox'

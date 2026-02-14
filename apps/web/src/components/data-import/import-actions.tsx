@@ -2,11 +2,11 @@
 
 'use client'
 
-import { X, Save, RotateCcw } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
+import { RotateCcw, Save, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 
@@ -88,9 +88,9 @@ export function ImportActions({ wizard, basePath, importBasePath }: ImportAction
   // Show skeleton while loading
   if (wizard.isLoading) {
     return (
-      <div className="flex items-center gap-2">
-        <Skeleton className="h-7 w-24" />
-        <Skeleton className="h-7 w-20" />
+      <div className='flex items-center gap-2'>
+        <Skeleton className='h-7 w-24' />
+        <Skeleton className='h-7 w-20' />
       </div>
     )
   }
@@ -98,7 +98,7 @@ export function ImportActions({ wizard, basePath, importBasePath }: ImportAction
   // For completed imports, just show a close button
   if (wizard.isComplete) {
     return (
-      <Button variant="ghost" size="sm" onClick={() => router.push(basePath)}>
+      <Button variant='ghost' size='sm' onClick={() => router.push(basePath)}>
         <X />
         Close
       </Button>
@@ -108,27 +108,27 @@ export function ImportActions({ wizard, basePath, importBasePath }: ImportAction
   return (
     <>
       <ConfirmDialog />
-      <div className="flex items-center gap-2">
+      <div className='flex items-center gap-2'>
         {wizard.canSaveMapping && (
           <Button
-            variant="outline"
-            size="sm"
+            variant='outline'
+            size='sm'
             onClick={wizard.saveMapping}
             loading={wizard.isSaving}
-            loadingText="Saving...">
+            loadingText='Saving...'>
             <Save />
             Save Mapping
           </Button>
         )}
 
         {wizard.jobId && (
-          <Button variant="ghost" size="sm" onClick={handleStartOver}>
+          <Button variant='ghost' size='sm' onClick={handleStartOver}>
             <RotateCcw />
             Start Over
           </Button>
         )}
 
-        <Button variant="ghost" size="sm" onClick={handleCancel}>
+        <Button variant='ghost' size='sm' onClick={handleCancel}>
           <X />
           Cancel
         </Button>

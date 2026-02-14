@@ -1,8 +1,8 @@
 // apps/web/src/components/dynamic-table/context/table-instance-context.tsx
 'use client'
 
-import { createContext, useContext } from 'react'
 import type { Table } from '@tanstack/react-table'
+import { createContext, useContext } from 'react'
 
 // ============================================================================
 // TYPES

@@ -1,9 +1,9 @@
 // packages/lib/src/ai/quota/quota-service.ts
 
-import { and, eq } from 'drizzle-orm'
 import { type Database, schema } from '@auxx/database'
+import { and, eq } from 'drizzle-orm'
 import { createScopedLogger } from '../../logger'
-import { ProviderQuotaType, DEFAULT_QUOTA_LIMITS } from '../providers/types'
+import { DEFAULT_QUOTA_LIMITS, ProviderQuotaType } from '../providers/types'
 
 const logger = createScopedLogger('quota-service')
 
@@ -89,7 +89,9 @@ export class QuotaService {
    * Set trial quota for organization
    * @param trialCredits - Number of credits for trial period (default from DEFAULT_QUOTA_LIMITS)
    */
-  async setTrialQuota(trialCredits: number = DEFAULT_QUOTA_LIMITS[ProviderQuotaType.TRIAL]): Promise<void> {
+  async setTrialQuota(
+    trialCredits: number = DEFAULT_QUOTA_LIMITS[ProviderQuotaType.TRIAL]
+  ): Promise<void> {
     logger.info('Setting trial quota', { organizationId: this.organizationId, trialCredits })
 
     const now = new Date()

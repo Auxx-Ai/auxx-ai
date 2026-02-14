@@ -1,15 +1,15 @@
 // apps/web/src/components/layouts/simple-layout.tsx
 'use client'
 
-import { type ReactNode } from 'react'
-import { Logo } from '~/components/global/login/logo'
-import { Button } from '@auxx/ui/components/button'
-import { useRouter } from 'next/navigation'
-import { client } from '~/auth/auth-client'
-import Link from 'next/link'
-import { useEnvironment, useDehydratedOrganizations } from '~/providers/dehydrated-state-provider'
-import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
 import type { DehydratedOrganization } from '@auxx/lib/dehydration'
+import { Button } from '@auxx/ui/components/button'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import type { ReactNode } from 'react'
+import { client } from '~/auth/auth-client'
+import { Logo } from '~/components/global/login/logo'
+import { useDehydratedOrganizations, useEnvironment } from '~/providers/dehydrated-state-provider'
+import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
 import { ColorfulBg } from '../global/login/colorful-bg'
 
 interface SimpleLayoutProps {
@@ -49,44 +49,44 @@ export function SimpleLayout({ children, title, showBackToDashboard = true }: Si
 
   return (
     <div className='relative overflow-hidden'>
-    <ColorfulBg>
-      <div className="min-h-screen flex flex-col">
-        {/* Header */}
-        <header className="sticky top-0 z-50 w-full">
-          <div className="container flex h-16 items-center justify-between">
-            <div className="flex items-center gap-4 mx-auto">
-              <Logo />
+      <ColorfulBg>
+        <div className='min-h-screen flex flex-col'>
+          {/* Header */}
+          <header className='sticky top-0 z-50 w-full'>
+            <div className='container flex h-16 items-center justify-between'>
+              <div className='flex items-center gap-4 mx-auto'>
+                <Logo />
+              </div>
             </div>
-          </div>
-        </header>
+          </header>
 
-        {/* Main Content */}
-        <main className="flex-1 flex min-h-0 flex-col">{children}</main>
-        <footer className="container flex items-center justify-center py-3">
-          <nav className="flex items-center gap-2">
-            {showBackToDashboard && canAccessDashboard && (
-              <Button variant="ghost" asChild size="sm">
-                <Link href="/app/dashboard">Dashboard</Link>
+          {/* Main Content */}
+          <main className='flex-1 flex min-h-0 flex-col'>{children}</main>
+          <footer className='container flex items-center justify-center py-3'>
+            <nav className='flex items-center gap-2'>
+              {showBackToDashboard && canAccessDashboard && (
+                <Button variant='ghost' asChild size='sm'>
+                  <Link href='/app/dashboard'>Dashboard</Link>
+                </Button>
+              )}
+
+              <Button variant='ghost' asChild size='sm'>
+                <Link href='/organizations'>Organizations</Link>
               </Button>
-            )}
 
-            <Button variant="ghost" asChild size="sm">
-              <Link href="/organizations">Organizations</Link>
-            </Button>
+              <Button variant='ghost' asChild size='sm'>
+                <Link href={env.homepageUrl} target='_blank' rel='noopener noreferrer'>
+                  Home
+                </Link>
+              </Button>
 
-            <Button variant="ghost" asChild size="sm">
-              <Link href={env.homepageUrl} target="_blank" rel="noopener noreferrer">
-                Home
-              </Link>
-            </Button>
-
-            <Button variant="ghost" onClick={handleLogout} size="sm">
-              Sign Out
-            </Button>
-          </nav>
-        </footer>
-      </div>
-    </ColorfulBg>
+              <Button variant='ghost' onClick={handleLogout} size='sm'>
+                Sign Out
+              </Button>
+            </nav>
+          </footer>
+        </div>
+      </ColorfulBg>
     </div>
   )
 }

@@ -2,11 +2,7 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useForm } from 'react-hook-form'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { useRouter } from 'next/navigation'
-import { z } from 'zod'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -25,16 +21,16 @@ import {
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import {
-  InputGroup,
-  InputGroupInput,
-  InputGroupAddon,
-} from '@auxx/ui/components/input-group'
-import { Button } from '@auxx/ui/components/button'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
 import { Spinner } from '@auxx/ui/components/spinner'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Plus } from 'lucide-react'
-import { api } from '~/trpc/react'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { toastError } from '~/components/global/toast'
+import { api } from '~/trpc/react'
 
 /** Slugify helper function */
 function slugify(text: string): string {
@@ -47,7 +43,10 @@ function slugify(text: string): string {
 }
 
 const createAppSchema = z.object({
-  title: z.string().min(1, 'App name is required').max(255, 'App name must be less than 255 characters'),
+  title: z
+    .string()
+    .min(1, 'App name is required')
+    .max(255, 'App name must be less than 255 characters'),
   slug: z.string().min(3, 'Slug must be at least 3 characters'),
 })
 
@@ -157,30 +156,31 @@ export function CreateAppDialog({ accountSlug, trigger, onSuccess }: CreateAppDi
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger || (
-          <Button size="sm">
+          <Button size='sm'>
             <Plus />
             Create App
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent position="tc" size="sm">
+      <DialogContent position='tc' size='sm'>
         <DialogHeader>
           <DialogTitle>Create New App</DialogTitle>
           <DialogDescription>
-            Create a new app for your developer account. The slug is a unique identifier for your app.
+            Create a new app for your developer account. The slug is a unique identifier for your
+            app.
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
             <FormField
               control={form.control}
-              name="title"
+              name='title'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>App Name *</FormLabel>
                   <FormControl>
-                    <Input placeholder="Evil Rabbit" {...field} />
+                    <Input placeholder='Evil Rabbit' {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -189,14 +189,14 @@ export function CreateAppDialog({ accountSlug, trigger, onSuccess }: CreateAppDi
 
             <FormField
               control={form.control}
-              name="slug"
+              name='slug'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Slug *</FormLabel>
                   <FormControl>
                     <InputGroup>
                       <InputGroupInput
-                        placeholder="evil-rabbit"
+                        placeholder='evil-rabbit'
                         {...field}
                         onChange={(e) => {
                           field.onChange(slugify(e.target.value))
@@ -204,19 +204,19 @@ export function CreateAppDialog({ accountSlug, trigger, onSuccess }: CreateAppDi
                         }}
                       />
                       {slugValue.length >= 3 && (
-                        <InputGroupAddon align="inline-end">
+                        <InputGroupAddon align='inline-end'>
                           {isCheckingSlug ? (
                             <Spinner />
                           ) : slugValid ? (
-                            <span className="text-green-600">✓</span>
+                            <span className='text-green-600'>✓</span>
                           ) : slugError ? (
-                            <span className="text-red-600">✗</span>
+                            <span className='text-red-600'>✗</span>
                           ) : null}
                         </InputGroupAddon>
                       )}
                     </InputGroup>
                   </FormControl>
-                  {slugError && <p className="text-sm text-red-600 mt-1">{slugError}</p>}
+                  {slugError && <p className='text-sm text-red-600 mt-1'>{slugError}</p>}
                   <FormMessage />
                 </FormItem>
               )}
@@ -224,19 +224,19 @@ export function CreateAppDialog({ accountSlug, trigger, onSuccess }: CreateAppDi
 
             <DialogFooter>
               <Button
-                type="button"
-                variant="ghost"
-                size="sm"
+                type='button'
+                variant='ghost'
+                size='sm'
                 onClick={() => setOpen(false)}
                 disabled={createApp.isPending}>
                 Cancel
               </Button>
               <Button
-                variant="outline"
-                size="sm"
-                type="submit"
+                variant='outline'
+                size='sm'
+                type='submit'
                 loading={createApp.isPending}
-                loadingText="Creating..."
+                loadingText='Creating...'
                 disabled={
                   !titleValue ||
                   !slugValue ||

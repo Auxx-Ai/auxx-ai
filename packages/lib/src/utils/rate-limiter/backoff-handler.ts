@@ -72,12 +72,9 @@ export class ExponentialBackoff {
     if (this.config.retryableErrors?.length) {
       const errorMessage = error?.message?.toLowerCase() || ''
       const errorCode = error?.code || ''
-      
+
       for (const retryableError of this.config.retryableErrors) {
-        if (
-          errorMessage.includes(retryableError.toLowerCase()) ||
-          errorCode === retryableError
-        ) {
+        if (errorMessage.includes(retryableError.toLowerCase()) || errorCode === retryableError) {
           return true
         }
       }
@@ -116,7 +113,7 @@ export class ExponentialBackoff {
    */
   private async wait(): Promise<void> {
     let delay = Math.min(
-      this.config.initialDelay * Math.pow(this.config.backoffMultiplier, this.attempt),
+      this.config.initialDelay * this.config.backoffMultiplier ** this.attempt,
       this.config.maxDelay
     )
 
@@ -150,7 +147,7 @@ export class ExponentialBackoff {
    */
   getNextDelay(): number {
     let delay = Math.min(
-      this.config.initialDelay * Math.pow(this.config.backoffMultiplier, this.attempt),
+      this.config.initialDelay * this.config.backoffMultiplier ** this.attempt,
       this.config.maxDelay
     )
 

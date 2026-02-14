@@ -1,8 +1,9 @@
 // apps/web/src/app/api/integrations/chat/[integrationId]/route.ts
-import { NextRequest, NextResponse } from 'next/server'
-import { database as db, schema } from '@auxx/database'
+
 import { env } from '@auxx/config/server'
+import { database as db, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
+import { type NextRequest, NextResponse } from 'next/server'
 
 // Helper function to check domain (adjust as needed)
 function isDomainAllowed(allowedDomains: string[], requestUrl?: string | null): boolean {

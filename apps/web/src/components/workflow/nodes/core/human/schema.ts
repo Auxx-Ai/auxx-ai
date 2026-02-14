@@ -1,17 +1,17 @@
 // apps/web/src/components/workflow/nodes/core/human/schema.ts
 
 import { z } from 'zod'
-import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
 import {
-  type NodeDefinition,
-  NodeCategory,
-  type ValidationResult,
   BaseType,
+  NodeCategory,
+  type NodeDefinition,
+  type ValidationResult,
 } from '~/components/workflow/types'
+import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
 import { NodeType } from '~/components/workflow/types/node-types'
-import { type HumanConfirmationNodeData } from './types'
-import { HumanConfirmationNodePanel } from './panel'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
+import { HumanConfirmationNodePanel } from './panel'
+import type { HumanConfirmationNodeData } from './types'
 
 /**
  * Zod schema for human confirmation node data

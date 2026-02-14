@@ -1,9 +1,9 @@
 // packages/types/field-value/index.ts
 
-import { z } from 'zod'
 import { FieldType } from '@auxx/database/enums'
-import { type RecordId, recordIdSchema, toRecordId, isRecordId } from '@auxx/types/resource'
-import { type ActorId } from '@auxx/types/actor'
+import type { ActorId } from '@auxx/types/actor'
+import { isRecordId, type RecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
+import { z } from 'zod'
 
 // =============================================================================
 // VALUE TYPE CONSTANTS
@@ -425,7 +425,10 @@ export function createTypedValueInput(
     case 'boolean':
       return { type: 'boolean', value: Boolean(rawValue) }
     case 'date':
-      return { type: 'date', value: rawValue instanceof Date ? rawValue.toISOString() : String(rawValue) }
+      return {
+        type: 'date',
+        value: rawValue instanceof Date ? rawValue.toISOString() : String(rawValue),
+      }
     case 'json':
       return { type: 'json', value: rawValue as Record<string, unknown> }
     case 'option':
@@ -453,7 +456,12 @@ export function createTypedValueInput(
       return null
     case 'actor':
       // Handle object with actorType and id
-      if (typeof rawValue === 'object' && rawValue !== null && 'actorType' in rawValue && 'id' in rawValue) {
+      if (
+        typeof rawValue === 'object' &&
+        rawValue !== null &&
+        'actorType' in rawValue &&
+        'id' in rawValue
+      ) {
         const obj = rawValue as { actorType: 'user' | 'group'; id: string }
         // Parse id if it's in ActorId format (e.g., "user:abc123")
         let rawId = obj.id

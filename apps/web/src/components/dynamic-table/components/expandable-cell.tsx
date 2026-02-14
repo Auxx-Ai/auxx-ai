@@ -31,7 +31,7 @@ export function ExpandableCell({
 
   return (
     <div
-      data-slot="expandable-cell"
+      data-slot='expandable-cell'
       className={cn('relative min-w-full w-full min-h-9 flex text-sm')}>
       {/* Collapsed view - truncated */}
       <div

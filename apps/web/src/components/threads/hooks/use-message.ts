@@ -1,7 +1,7 @@
 // apps/web/src/components/threads/hooks/use-message.ts
 
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
-import { useMessageStore, type MessageMeta } from '../store'
+import { type MessageMeta, useMessageStore } from '../store'
 
 interface UseMessageOptions {
   messageId: string | null | undefined

@@ -1,4 +1,4 @@
-import { StatusSlug, VALID_STATUS_SLUGS } from '~/components/mail/types'
+import { type StatusSlug, VALID_STATUS_SLUGS } from '~/components/mail/types'
 
 /**
  * Validates if a string is a valid StatusSlug

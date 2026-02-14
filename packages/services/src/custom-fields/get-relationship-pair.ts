@@ -1,12 +1,12 @@
 // packages/services/src/custom-fields/get-relationship-pair.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
-import { type RelationshipConfig, getInverseFieldId } from './types'
 import type { CustomFieldEntity } from '@auxx/database/models'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { and, eq } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
+import { fromDatabase } from '../shared/utils'
+import { getInverseFieldId, type RelationshipConfig } from './types'
 
 /**
  * Input for getting a relationship pair
@@ -63,7 +63,8 @@ export async function getRelationshipPair(input: GetRelationshipPairInput) {
     })
   }
 
-  const relationshipConfig = (primary.options as { relationship?: RelationshipConfig })?.relationship
+  const relationshipConfig = (primary.options as { relationship?: RelationshipConfig })
+    ?.relationship
   const inverseFieldId = relationshipConfig ? getInverseFieldId(relationshipConfig) : null
 
   let inverse: CustomFieldEntity | null = null

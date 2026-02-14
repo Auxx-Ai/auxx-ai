@@ -1,8 +1,8 @@
 // apps/web/src/components/mail/email-editor/lazy-tiptap-editor.tsx
 'use client'
 
-import React, { Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
+import React, { Suspense } from 'react'
 
 const TiptapEditor = React.lazy(() => import('~/components/editor/tiptap-editor'))
 
@@ -20,8 +20,8 @@ interface LazyTiptapEditorProps {
  */
 function EditorPlaceholder() {
   return (
-    <div className="flex items-center justify-center min-h-[120px] px-4 py-3">
-      <Loader2 className="size-5 animate-spin text-muted-foreground" />
+    <div className='flex items-center justify-center min-h-[120px] px-4 py-3'>
+      <Loader2 className='size-5 animate-spin text-muted-foreground' />
     </div>
   )
 }

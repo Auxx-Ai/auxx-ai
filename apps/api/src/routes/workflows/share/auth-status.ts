@@ -4,8 +4,8 @@
  * Auth status route for shared workflows
  */
 
-import { Hono } from 'hono'
 import { getSharedWorkflowByToken, verifyWorkflowPassport } from '@auxx/services/workflow-share'
+import { Hono } from 'hono'
 
 const authStatusRoute = new Hono()
 

@@ -1,10 +1,11 @@
 // apps/web/src/components/editor/components/editor-command-item.tsx
-import React from 'react'
-import { CommandEmpty, CommandItem } from 'cmdk'
-import { useCurrentEditor } from '@tiptap/react'
-import { useAtomValue } from 'jotai'
-import type { ComponentPropsWithoutRef } from 'react'
+
 import type { Editor, Range } from '@tiptap/core'
+import { useCurrentEditor } from '@tiptap/react'
+import { CommandEmpty, CommandItem } from 'cmdk'
+import { useAtomValue } from 'jotai'
+import type React from 'react'
+import type { ComponentPropsWithoutRef } from 'react'
 import { rangeAtom } from '../utils/store'
 
 interface EditorCommandItemProps {

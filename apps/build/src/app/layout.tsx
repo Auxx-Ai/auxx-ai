@@ -74,7 +74,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang='en' suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: IS_MAC_SCRIPT }} />
       </head>

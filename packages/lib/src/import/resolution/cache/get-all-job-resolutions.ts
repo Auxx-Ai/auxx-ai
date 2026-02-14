@@ -1,8 +1,8 @@
 // packages/lib/src/import/resolution/cache/get-all-job-resolutions.ts
 
-import { eq } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { eq } from 'drizzle-orm'
 import type { ValueResolution } from '../../types/resolution'
 
 /**

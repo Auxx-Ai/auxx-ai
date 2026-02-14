@@ -1,15 +1,17 @@
 // File: packages/lib/src/events/handlers/messages.ts
+
+import { SYNC_STATUS } from '@auxx/database/enums'
 import { SyncJobModel } from '@auxx/database/models'
+import type { SYNC_STATUS as SyncStatus } from '@auxx/database/types'
+import { createScopedLogger } from '@auxx/logger'
 import type {
   EventHandler,
-  MessageSyncPendingEvent,
-  MessageSyncProcessingEvent,
   MessageSyncCompleteEvent,
   MessageSyncFailedEvent,
+  MessageSyncPendingEvent,
+  MessageSyncProcessingEvent,
 } from '../types'
-import { createScopedLogger } from '@auxx/logger'
-import { SYNC_STATUS } from '@auxx/database/enums'
-import { type SYNC_STATUS as SyncStatus } from '@auxx/database/types'
+
 const logger = createScopedLogger('event-handlers:message-sync')
 
 // Helper to update the SyncJob status

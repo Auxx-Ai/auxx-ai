@@ -1,13 +1,13 @@
 // apps/homepage/src/app/_components/sections/hero-section.tsx
 'use client'
 
-import React from 'react'
-import { Button } from '~/components/ui/button'
+import { Check, Clock, Play, TrendingUp, Zap } from 'lucide-react'
 import Link from 'next/link'
-import LogoCloud from '../logo-cloud'
-import { Check, Play, Zap, Clock, TrendingUp } from 'lucide-react'
-import { config } from '~/lib/config'
+import React from 'react'
 import MessagingFeatures from '@/app/platform/messaging/_components/messaging-features'
+import { Button } from '~/components/ui/button'
+import { config } from '~/lib/config'
+import LogoCloud from '../logo-cloud'
 
 const { urls } = config
 
@@ -16,67 +16,67 @@ export default function HeroSection() {
 
   return (
     <>
-      <main role="main" className="bg-muted/50">
-        <section id="home" className="relative mx-auto max-w-6xl px-6 pt-32 text-center pb-10">
+      <main role='main' className='bg-muted/50'>
+        <section id='home' className='relative mx-auto max-w-6xl px-6 pt-32 text-center pb-10'>
           <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 -bottom-16 mx-auto h-40 max-w-2xl rounded-t-full bg-gradient-to-b from-blue-500/10 via-purple-500/10 to-pink-500/10 blur-3xl"
+            aria-hidden='true'
+            className='pointer-events-none absolute inset-x-0 -bottom-16 mx-auto h-40 max-w-2xl rounded-t-full bg-gradient-to-b from-blue-500/10 via-purple-500/10 to-pink-500/10 blur-3xl'
           />
-          <div className="relative mx-auto max-w-4xl text-center">
-            <h1 className="text-foreground text-balance text-4xl font-semibold sm:mt-12 sm:text-6xl lg:text-7xl">
+          <div className='relative mx-auto max-w-4xl text-center'>
+            <h1 className='text-foreground text-balance text-4xl font-semibold sm:mt-12 sm:text-6xl lg:text-7xl'>
               AI That Answers Your Customer Emails in Seconds, Not Hours
             </h1>
-            <p className="text-muted-foreground mb-8 mt-6 text-balance text-lg sm:text-xl max-w-3xl mx-auto">
+            <p className='text-muted-foreground mb-8 mt-6 text-balance text-lg sm:text-xl max-w-3xl mx-auto'>
               Auxx.ai automatically responds to support tickets with accurate, personalized answers
               by understanding your store data, order history, and business policies. Cut response
               times by 90% while your team focuses on growth.
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <Button asChild size="lg" className="px-8 text-base">
+            <div className='flex flex-col sm:flex-row gap-4 justify-center items-center'>
+              <Button asChild size='lg' className='px-8 text-base'>
                 <Link href={urls.signup}>Start 14-Day Free Trial</Link>
               </Button>
               <Button
-                variant="outline"
-                size="lg"
-                className="px-8 text-base"
+                variant='outline'
+                size='lg'
+                className='px-8 text-base'
                 onClick={() => setShowVideo(true)}>
                 <Play />
                 Watch 2-Min Demo
               </Button>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 justify-center items-center mt-6 text-sm text-muted-foreground">
-              <span className="flex items-center gap-2">
-                <Check className="h-4 w-4 text-green-500" />
+            <div className='flex flex-col sm:flex-row gap-4 sm:gap-6 justify-center items-center mt-6 text-sm text-muted-foreground'>
+              <span className='flex items-center gap-2'>
+                <Check className='h-4 w-4 text-green-500' />
                 No credit card required
               </span>
-              <span className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-blue-500" />
+              <span className='flex items-center gap-2'>
+                <Clock className='h-4 w-4 text-blue-500' />
                 5-minute setup
               </span>
-              <span className="flex items-center gap-2">
-                <Zap className="h-4 w-4 text-purple-500" />
+              <span className='flex items-center gap-2'>
+                <Zap className='h-4 w-4 text-purple-500' />
                 Works with Gmail & Outlook
               </span>
             </div>
           </div>
 
           {/* Social Proof Banner */}
-          <div className="mt-16 flex flex-wrap justify-center items-center gap-8 text-sm font-medium">
-            <div className="flex flex-col items-center">
-              <span className="text-3xl font-bold text-foreground">500+</span>
-              <span className="text-muted-foreground">Shopify stores</span>
+          <div className='mt-16 flex flex-wrap justify-center items-center gap-8 text-sm font-medium'>
+            <div className='flex flex-col items-center'>
+              <span className='text-3xl font-bold text-foreground'>500+</span>
+              <span className='text-muted-foreground'>Shopify stores</span>
             </div>
-            <div className="w-px h-12 bg-border hidden sm:block" />
-            <div className="flex flex-col items-center">
-              <span className="text-3xl font-bold text-foreground">1M+</span>
-              <span className="text-muted-foreground">Tickets resolved</span>
+            <div className='w-px h-12 bg-border hidden sm:block' />
+            <div className='flex flex-col items-center'>
+              <span className='text-3xl font-bold text-foreground'>1M+</span>
+              <span className='text-muted-foreground'>Tickets resolved</span>
             </div>
-            <div className="w-px h-12 bg-border hidden sm:block" />
-            <div className="flex flex-col items-center">
-              <span className="text-3xl font-bold text-foreground">4.9/5</span>
-              <span className="text-muted-foreground">Customer satisfaction</span>
+            <div className='w-px h-12 bg-border hidden sm:block' />
+            <div className='flex flex-col items-center'>
+              <span className='text-3xl font-bold text-foreground'>4.9/5</span>
+              <span className='text-muted-foreground'>Customer satisfaction</span>
             </div>
           </div>
         </section>
@@ -180,19 +180,19 @@ export default function HeroSection() {
       {/* Video Modal */}
       {showVideo && (
         <div
-          className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          className='fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4'
           onClick={() => setShowVideo(false)}>
           <div
-            className="bg-card rounded-lg shadow-xl max-w-4xl w-full aspect-video"
+            className='bg-card rounded-lg shadow-xl max-w-4xl w-full aspect-video'
             onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 border-b flex items-center justify-between">
-              <span className="font-semibold">Auxx.ai Demo</span>
-              <Button variant="ghost" size="sm" onClick={() => setShowVideo(false)}>
+            <div className='p-4 border-b flex items-center justify-between'>
+              <span className='font-semibold'>Auxx.ai Demo</span>
+              <Button variant='ghost' size='sm' onClick={() => setShowVideo(false)}>
                 Close
               </Button>
             </div>
-            <div className="aspect-video bg-muted flex items-center justify-center">
-              <span className="text-muted-foreground">Video player would go here</span>
+            <div className='aspect-video bg-muted flex items-center justify-center'>
+              <span className='text-muted-foreground'>Video player would go here</span>
             </div>
           </div>
         </div>

@@ -1,7 +1,7 @@
 // packages/sdk/src/errors.ts
 
 import { z } from 'zod'
-import { ApiError } from './api/api.js'
+import type { ApiError } from './api/api.js'
 
 /**
  * Union type of all possible SDK errors

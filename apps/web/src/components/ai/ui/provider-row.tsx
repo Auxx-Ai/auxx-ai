@@ -1,19 +1,19 @@
 // apps/web/src/app/(protected)/app/settings/aiModels/_components/provider-row.tsx
 
 'use client'
-import React from 'react'
-import { ProviderIcon } from '~/components/ai/ui/provider-icon'
-import { ProviderCapabilities } from './provider-capabilities'
-import { ProviderActions } from './provider-actions'
-import { BadgeAiQuota } from './badge-ai-quota'
-import { ProviderTypeToggle } from './provider-type-toggle'
-import type { ProviderConfiguration, ProviderStatusInfo } from '~/components/ai/ui/utils'
-import { cn } from '@auxx/ui/lib/utils'
-import { api } from '~/trpc/react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { useConfirm } from '~/hooks/use-confirm'
-import { Tooltip } from '~/components/global/tooltip'
+import { cn } from '@auxx/ui/lib/utils'
 import { useTheme } from 'next-themes'
+import type React from 'react'
+import { ProviderIcon } from '~/components/ai/ui/provider-icon'
+import type { ProviderConfiguration, ProviderStatusInfo } from '~/components/ai/ui/utils'
+import { Tooltip } from '~/components/global/tooltip'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
+import { BadgeAiQuota } from './badge-ai-quota'
+import { ProviderActions } from './provider-actions'
+import { ProviderCapabilities } from './provider-capabilities'
+import { ProviderTypeToggle } from './provider-type-toggle'
 
 /**
  * Get provider status info based on configuration status
@@ -140,22 +140,22 @@ export const ProviderRow: React.FC<ProviderRowProps> = ({
       <button
         onClick={onToggle}
         disabled={disabled}
-        className="flex items-center gap-3 ps-3 py-2 h-auto hover:bg-transparent flex-1 justify-start focus:outline-none">
+        className='flex items-center gap-3 ps-3 py-2 h-auto hover:bg-transparent flex-1 justify-start focus:outline-none'>
         {/* Provider icon */}
         <ProviderIcon
           provider={provider}
-          size="sm"
-          variant="icon"
+          size='sm'
+          variant='icon'
           theme={theme}
-          className="flex-shrink-0"
+          className='flex-shrink-0'
         />
 
         {/* Provider info */}
-        <div className="flex-1 text-left min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm">{provider.label}</h3>
+        <div className='flex-1 text-left min-w-0'>
+          <div className='flex items-center gap-2'>
+            <h3 className='text-sm'>{provider.label}</h3>
             {provider.isDefaultProvider && (
-              <span className="text-xs text-green-600 font-medium px-2 py-0.5 bg-green-50 rounded-full">
+              <span className='text-xs text-green-600 font-medium px-2 py-0.5 bg-green-50 rounded-full'>
                 Default
               </span>
             )}
@@ -163,14 +163,14 @@ export const ProviderRow: React.FC<ProviderRowProps> = ({
             <ProviderCapabilities
               capabilities={provider.supportedModelTypes}
               modelCount={provider.models.length}
-              className="text-xs hidden @xl:flex"
+              className='text-xs hidden @xl:flex'
             />
           </div>
         </div>
       </button>
 
       {/* Right side - action buttons and status */}
-      <div className="flex items-center gap-2 flex-shrink-0 pe-3">
+      <div className='flex items-center gap-2 flex-shrink-0 pe-3'>
         {/* Quota badge - only show for system providers with quota */}
         {provider.statusInfo.quotaStatus && (
           <BadgeAiQuota
@@ -178,7 +178,7 @@ export const ProviderRow: React.FC<ProviderRowProps> = ({
             quotaUsed={provider.statusInfo.quotaStatus.used}
             quotaLimit={provider.statusInfo.quotaStatus.limit}
             resetsAt={provider.statusInfo.quotaStatus.resetsAt}
-            className="mr-1"
+            className='mr-1'
           />
         )}
 
@@ -228,5 +228,5 @@ interface ProviderHeaderProps {
  * Simplified provider header for use in layouts
  */
 export const ProviderHeader: React.FC<ProviderHeaderProps> = (props) => {
-  return <ProviderRow {...props} className="border-0 hover:bg-muted/20" />
+  return <ProviderRow {...props} className='border-0 hover:bg-muted/20' />
 }

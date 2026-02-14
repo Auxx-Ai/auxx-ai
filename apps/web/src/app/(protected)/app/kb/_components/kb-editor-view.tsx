@@ -1,17 +1,17 @@
 // app/kb/[knowledgeBaseId]/editor/[...slug]/page.tsx
 'use client'
 
-import { useMemo } from 'react'
-import { api } from '~/trpc/react'
 // import { KnowledgeBaseSidebar } from '~/components/knowledge-base/knowledge-base-sidebar'
 // import { KnowledgeBaseProvider } from '~/components/knowledge-base/knowledge-base-context'
 // import { ArticleEditor } from '~/components/knowledge-base/article-editor'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { keepPreviousData } from '@tanstack/react-query'
+import { useMemo } from 'react'
+import { api } from '~/trpc/react'
+import ArticleEditor from './article-editor'
+import { buildArticleTree, findArticleBySlugPath } from './helpers'
 import { KBProvider } from './kb-context'
 import { KBSidebar } from './kb-sidebar'
-import ArticleEditor from './article-editor'
-import { findArticleBySlugPath, buildArticleTree } from './helpers'
-import { keepPreviousData } from '@tanstack/react-query'
 // import { EditorProvider } from '~/components/blocksuite/editor-provider'
 
 import {
@@ -89,10 +89,10 @@ export default function KBEditorView({ knowledgeBaseId, slug }: KBEditorParams) 
   if (isLoading) {
     console.log('Loading knowledge base or articles...')
     return (
-      <div className="p-8">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="mt-4 h-4 w-full" />
-        <Skeleton className="mt-2 h-4 w-full" />
+      <div className='p-8'>
+        <Skeleton className='h-8 w-64' />
+        <Skeleton className='mt-4 h-4 w-full' />
+        <Skeleton className='mt-2 h-4 w-full' />
       </div>
     )
   }
@@ -102,7 +102,7 @@ export default function KBEditorView({ knowledgeBaseId, slug }: KBEditorParams) 
   if (slug && slug.length > 0 && !currentArticle) {
     console.log(`Article not found for slug path: ${slug.join('/')}`)
     // You might want to check if flatArticles is empty or null here too
-    return <div className="p-8">Article not found</div>
+    return <div className='p-8'>Article not found</div>
   }
 
   // if (!knowledgeBase || !articles) {
@@ -116,7 +116,7 @@ export default function KBEditorView({ knowledgeBaseId, slug }: KBEditorParams) 
         <MainPageHeader>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem
-              title="Knowledge base "
+              title='Knowledge base '
               href={`/app/kb/${knowledgeBaseId}/editor/general`}
             />
           </MainPageBreadcrumb>
@@ -126,14 +126,14 @@ export default function KBEditorView({ knowledgeBaseId, slug }: KBEditorParams) 
           <KBSidebar knowledgeBaseId={knowledgeBaseId} />
 
           {/* Main content */}
-          <div className="flex min-h-0 max-lg:shrink-0 lg:flex-1">
+          <div className='flex min-h-0 max-lg:shrink-0 lg:flex-1'>
             {!slug || slug.length === 0 ? (
               // Root page - show dashboard
-              <div className="p-8">
-                <h1 className="text-2xl font-bold">
+              <div className='p-8'>
+                <h1 className='text-2xl font-bold'>
                   {knowledgeBase ? knowledgeBase.name : 'No knowledge base'}
                 </h1>
-                <p className="mt-2 text-muted-foreground">
+                <p className='mt-2 text-muted-foreground'>
                   Select an article from the sidebar to edit, or create a new article.
                 </p>
 
@@ -142,7 +142,7 @@ export default function KBEditorView({ knowledgeBaseId, slug }: KBEditorParams) 
             ) : currentArticle ? (
               <ArticleEditor article={currentArticle} knowledgeBaseId={knowledgeBaseId} />
             ) : (
-              <div className="p-8">Article not found</div>
+              <div className='p-8'>Article not found</div>
             )}
           </div>
         </MainPageContent>

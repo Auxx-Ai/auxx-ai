@@ -1,9 +1,10 @@
 // packages/lib/src/providers/google/labels/update-label.ts
-import { gmail_v1 } from 'googleapis'
-import { UniversalThrottler, getGmailQuotaCost } from '../../../utils/rate-limiter'
+
+import { createScopedLogger } from '@auxx/logger'
+import type { gmail_v1 } from 'googleapis'
+import { getGmailQuotaCost, type UniversalThrottler } from '../../../utils/rate-limiter'
 import { handleGmailError } from '../shared/error-handler'
 import { executeWithThrottle } from '../shared/utils'
-import { createScopedLogger } from '@auxx/logger'
 
 const logger = createScopedLogger('google-update-label')
 

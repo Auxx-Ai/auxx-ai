@@ -6,13 +6,12 @@ var __getProtoOf = Object.getPrototypeOf
 var __hasOwnProp = Object.prototype.hasOwnProperty
 var __esm = (fn, res) =>
   function __init() {
-    return (fn && (res = (0, fn[__getOwnPropNames(fn)[0]])((fn = 0))), res)
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])((fn = 0))), res
   }
 var __commonJS = (cb, mod) =>
   function __require() {
     return (
-      mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod),
-      mod.exports
+      mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports
     )
   }
 var __export = (target, all) => {
@@ -20,7 +19,7 @@ var __export = (target, all) => {
 }
 var __copyProps = (to, from, except, desc) => {
   if ((from && typeof from === 'object') || typeof from === 'function') {
-    for (let key of __getOwnPropNames(from))
+    for (const key of __getOwnPropNames(from))
       if (!__hasOwnProp.call(to, key) && key !== except)
         __defProp(to, key, {
           get: () => from[key],
@@ -152,7 +151,7 @@ function floatSafeRemainder(val, step) {
   const decCount = valDecCount > stepDecCount ? valDecCount : stepDecCount
   const valInt = parseInt(val.toFixed(decCount).replace('.', ''))
   const stepInt = parseInt(step.toFixed(decCount).replace('.', ''))
-  return (valInt % stepInt) / Math.pow(10, decCount)
+  return (valInt % stepInt) / 10 ** decCount
 }
 function deepPartialify(schema) {
   if (schema instanceof ZodObject) {
@@ -368,7 +367,7 @@ var util,
   z
 var init_lib = __esm({
   'node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs'() {
-    ;(function (util2) {
+    ;((util2) => {
       util2.assertEqual = (val) => val
       function assertIs(_arg) {}
       util2.assertIs = assertIs
@@ -392,9 +391,7 @@ var init_lib = __esm({
         return util2.objectValues(filtered)
       }
       util2.objectValues = (obj) => {
-        return util2.objectKeys(obj).map(function (e) {
-          return obj[e]
-        })
+        return util2.objectKeys(obj).map((e) => obj[e])
       }
       util2.objectKeys =
         typeof Object.keys === 'function'
@@ -402,7 +399,7 @@ var init_lib = __esm({
           : (object) => {
               const keys = []
               for (const key in object) {
-                if (Object.prototype.hasOwnProperty.call(object, key)) {
+                if (Object.hasOwn(object, key)) {
                   keys.push(key)
                 }
               }
@@ -429,7 +426,7 @@ var init_lib = __esm({
         return value
       }
     })(util || (util = {}))
-    ;(function (objectUtil2) {
+    ;((objectUtil2) => {
       objectUtil2.mergeShapes = (first, second) => {
         return {
           ...first,
@@ -551,11 +548,7 @@ var init_lib = __esm({
         return this.issues
       }
       format(_mapper) {
-        const mapper =
-          _mapper ||
-          function (issue) {
-            return issue.message
-          }
+        const mapper = _mapper || ((issue) => issue.message)
         const fieldErrors = { _errors: [] }
         const processError = (error) => {
           for (const issue of error.issues) {
@@ -804,7 +797,7 @@ var init_lib = __esm({
     isDirty = (x) => x.status === 'dirty'
     isValid = (x) => x.status === 'valid'
     isAsync = (x) => typeof Promise !== 'undefined' && x instanceof Promise
-    ;(function (errorUtil2) {
+    ;((errorUtil2) => {
       errorUtil2.errToObj = (message) => (typeof message === 'string' ? { message } : message || {})
       errorUtil2.toString = (message) =>
         typeof message === 'string'
@@ -1110,8 +1103,7 @@ var init_lib = __esm({
     nanoidRegex = /^[a-z0-9_-]{21}$/i
     durationRegex =
       /^[-+]?P(?!$)(?:(?:[-+]?\d+Y)|(?:[-+]?\d+[.,]\d+Y$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:(?:[-+]?\d+W)|(?:[-+]?\d+[.,]\d+W$))?(?:(?:[-+]?\d+D)|(?:[-+]?\d+[.,]\d+D$))?(?:T(?=[\d+-])(?:(?:[-+]?\d+H)|(?:[-+]?\d+[.,]\d+H$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:[-+]?\d+(?:[.,]\d+)?S)?)??$/
-    emailRegex =
-      /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-\.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9\-]*\.)+[A-Z]{2,}$/i
+    emailRegex = /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9-]*\.)+[A-Z]{2,}$/i
     _emojiRegex = `^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$`
     ipv4Regex =
       /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/
@@ -3972,7 +3964,7 @@ var init_lib = __esm({
     late = {
       object: ZodObject.lazycreate,
     }
-    ;(function (ZodFirstPartyTypeKind2) {
+    ;((ZodFirstPartyTypeKind2) => {
       ZodFirstPartyTypeKind2['ZodString'] = 'ZodString'
       ZodFirstPartyTypeKind2['ZodNumber'] = 'ZodNumber'
       ZodFirstPartyTypeKind2['ZodNaN'] = 'ZodNaN'
@@ -4229,7 +4221,6 @@ async function getUser(recordId) {
 var import_server, userSchema
 var init_get_user_server = __esm({
   'src/get-user.server.ts'() {
-    'use strict'
     init_lib()
     import_server = __toESM(require_server(), 1)
     userSchema = z.object({
@@ -4267,9 +4258,7 @@ async function leadProcessedWebhook(req) {
   return new Response(null, { status: 200 })
 }
 var init_example_webhook = __esm({
-  'src/webhooks/example.webhook.ts'() {
-    'use strict'
-  },
+  'src/webhooks/example.webhook.ts'() {},
 })
 
 // src/events/connection-removed.event.ts
@@ -4298,7 +4287,6 @@ async function connectionRemoved({ connection }) {
 var import_server2
 var init_connection_removed_event = __esm({
   'src/events/connection-removed.event.ts'() {
-    'use strict'
     import_server2 = __toESM(require_server(), 1)
   },
 })
@@ -4334,7 +4322,6 @@ async function connectionAdded({ connection }) {
 var import_server3
 var init_connection_added_event = __esm({
   'src/events/connection-added.event.ts'() {
-    'use strict'
     import_server3 = __toESM(require_server(), 1)
   },
 })
@@ -4369,7 +4356,7 @@ var stdin_webhooks_default
 var stdin_events_default
 var stdin_workflow_block_handlers_default
 function main() {
-  stdin_default = async function (moduleHash, args) {
+  stdin_default = async (moduleHash, args) => {
     const module = modules.get(moduleHash)
     if (!module) {
       throw new Error(`Module ${moduleHash} not found`)
@@ -4383,7 +4370,7 @@ function main() {
     }
     return func(...args)
   }
-  stdin_webhooks_default = async function (webhookModuleId, args) {
+  stdin_webhooks_default = async (webhookModuleId, args) => {
     const module = webhookModules.get(webhookModuleId)
     if (!module) {
       throw new Error(`Webhook handler not found: ${webhookModuleId}`)
@@ -4397,7 +4384,7 @@ function main() {
     }
     return func(...args)
   }
-  stdin_events_default = async function (eventModuleId, args) {
+  stdin_events_default = async (eventModuleId, args) => {
     const module = eventModules.get(eventModuleId)
     if (!module) {
       throw new Error('Event handler not found')
@@ -4411,7 +4398,7 @@ function main() {
     }
     return func(...args)
   }
-  stdin_workflow_block_handlers_default = async function (blockId, handler, args) {
+  stdin_workflow_block_handlers_default = async (blockId, handler, args) => {
     const modules2 = workflowModules.get(blockId)
     if (!modules2) {
       throw new Error('Workflow block modules not found')

@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { env } from '@auxx/config/server'
-import { auth } from '~/auth/server'
 import { createScopedLogger } from '@auxx/logger'
 import { headers } from 'next/headers'
+import { NextRequest, NextResponse } from 'next/server'
+import { auth } from '~/auth/server'
+
 const logger = createScopedLogger('api-playground')
 
 export async function GET() {

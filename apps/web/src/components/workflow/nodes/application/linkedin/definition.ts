@@ -1,9 +1,9 @@
 // 🤖 AUTO-GENERATED from linkedin.config.json - DO NOT EDIT
 
-import { NodeDefinition, NodeCategory } from '~/components/workflow/types'
+import { NodeCategory, type NodeDefinition } from '~/components/workflow/types'
 import { NodeType } from '~/components/workflow/types/node-types'
 import { LinkedinPanel } from './components'
-import { validateLinkedinNode, linkedinNodeSchema } from './schema'
+import { linkedinNodeSchema, validateLinkedinNode } from './schema'
 import type { LinkedinNodeData } from './types'
 
 export const linkedinDefinition: NodeDefinition<LinkedinNodeData> = {

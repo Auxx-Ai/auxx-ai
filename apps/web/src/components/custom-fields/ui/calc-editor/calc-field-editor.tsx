@@ -1,10 +1,21 @@
 // apps/web/src/components/custom-fields/ui/calc-editor/calc-field-editor.tsx
 'use client'
 
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-import { EditorContent } from '@tiptap/react'
-import { Button } from '@auxx/ui/components/button'
+import { FieldType } from '@auxx/database/enums'
+import type { FieldType as FieldTypeType } from '@auxx/database/types'
+import type { ResourceField } from '@auxx/lib/resources/client'
+import type { FieldReference } from '@auxx/types/field'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import {
+  CommandGroup,
+  CommandItem,
+  CommandNavigation,
+  CommandSeparator,
+} from '@auxx/ui/components/command'
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@auxx/ui/components/field'
+import { EntityIcon } from '@auxx/ui/components/icons'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
   Select,
   SelectContent,
@@ -12,23 +23,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { CommandSeparator, CommandGroup, CommandItem } from '@auxx/ui/components/command'
-import { FieldGroup, Field, FieldLabel, FieldDescription } from '@auxx/ui/components/field'
-import { EntityIcon } from '@auxx/ui/components/icons'
-import { AlertCircle, HelpCircle } from 'lucide-react'
-import { getAvailableFunctions } from '@auxx/utils/calc-expression'
-import { FieldType } from '@auxx/database/enums'
 import { cn } from '@auxx/ui/lib/utils'
-import { CommandNavigation } from '@auxx/ui/components/command'
-import { useCalcFormula } from './use-calc-formula'
+import { getAvailableFunctions } from '@auxx/utils/calc-expression'
+import { EditorContent } from '@tiptap/react'
+import { AlertCircle, HelpCircle } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ResourcePickerInnerContent,
   type ResourcePickerNavigationItem,
 } from '~/components/pickers/resource-picker'
-import type { FieldType as FieldTypeType } from '@auxx/database/types'
-import type { FieldReference } from '@auxx/types/field'
-import type { ResourceField } from '@auxx/lib/resources/client'
+import { useCalcFormula } from './use-calc-formula'
 
 /** Options for a CALC field stored in field.options.calc */
 export interface CalcEditorOptions {
@@ -162,13 +166,13 @@ export function CalcFieldEditor({
       return (
         <>
           <CommandSeparator />
-          <CommandGroup heading="Functions">
+          <CommandGroup heading='Functions'>
             {filteredFunctions.map((fn) => (
               <CommandItem key={fn.name} onSelect={() => handleSelectFunction(fn.name)}>
-                <EntityIcon iconId="function" size="xs" className="text-muted-foreground" />
-                <div className="flex flex-col">
-                  <span className="font-mono text-sm">{fn.signature}</span>
-                  <span className="text-xs text-muted-foreground">{fn.description}</span>
+                <EntityIcon iconId='function' size='xs' className='text-muted-foreground' />
+                <div className='flex flex-col'>
+                  <span className='font-mono text-sm'>{fn.signature}</span>
+                  <span className='text-xs text-muted-foreground'>{fn.description}</span>
                 </div>
               </CommandItem>
             ))}
@@ -208,33 +212,33 @@ export function CalcFieldEditor({
   }, [suggestionState.isOpen, closeSuggestion])
 
   return (
-    <FieldGroup className="space-y-4">
+    <FieldGroup className='space-y-4'>
       {/* Formula Expression Editor */}
       <Field>
-        <div className="flex items-center justify-between">
+        <div className='flex items-center justify-between'>
           <FieldLabel>Formula Expression</FieldLabel>
           <Popover open={showFunctions} onOpenChange={setShowFunctions}>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="sm">
-                <HelpCircle className="size-4 mr-1" />
+              <Button variant='ghost' size='sm'>
+                <HelpCircle className='size-4 mr-1' />
                 Functions
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-96 max-h-80 overflow-y-auto" align="end">
-              <div className="space-y-2">
-                <h4 className="font-medium text-sm">Available Functions</h4>
-                <p className="text-xs text-muted-foreground mb-2">
+            <PopoverContent className='w-96 max-h-80 overflow-y-auto' align='end'>
+              <div className='space-y-2'>
+                <h4 className='font-medium text-sm'>Available Functions</h4>
+                <p className='text-xs text-muted-foreground mb-2'>
                   Click to insert at cursor position
                 </p>
                 {functions.map((fn) => (
                   <div
                     key={fn.name}
-                    className="p-2 border rounded hover:bg-muted cursor-pointer"
+                    className='p-2 border rounded hover:bg-muted cursor-pointer'
                     onClick={() => handleInsertFunction(fn.name)}>
-                    <div className="font-mono text-sm text-primary-900">{fn.signature}</div>
-                    <div className="text-xs text-muted-foreground">{fn.description}</div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Example: <code className="bg-muted px-1 rounded">{fn.example}</code>
+                    <div className='font-mono text-sm text-primary-900'>{fn.signature}</div>
+                    <div className='text-xs text-muted-foreground'>{fn.description}</div>
+                    <div className='text-xs text-muted-foreground mt-1'>
+                      Example: <code className='bg-muted px-1 rounded'>{fn.example}</code>
                     </div>
                   </div>
                 ))}
@@ -253,19 +257,19 @@ export function CalcFieldEditor({
               validation.error !== 'Expression is required' &&
               'border-destructive'
           )}>
-          <EditorContent editor={editor} className="min-h-[80px]" />
+          <EditorContent editor={editor} className='min-h-[80px]' />
 
           {/* Field Picker - positioned at cursor */}
           {suggestionState.isOpen && popoverPosition && (
             <div
               ref={pickerRef}
-              className="absolute z-50"
+              className='absolute z-50'
               style={{
                 top: popoverPosition.top,
                 left: popoverPosition.left,
               }}>
               <div
-                className="rounded-lg border bg-popover shadow-lg w-[320px]"
+                className='rounded-lg border bg-popover shadow-lg w-[320px]'
                 onMouseDown={(e) => e.preventDefault()}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
@@ -281,7 +285,7 @@ export function CalcFieldEditor({
                     onClose={closeSuggestion}
                     closeOnSelect
                     showBreadcrumb={false}
-                    searchPlaceholder="Search fields or functions..."
+                    searchPlaceholder='Search fields or functions...'
                     renderAdditionalContent={renderFunctionsInPicker}
                   />
                 </CommandNavigation>
@@ -294,14 +298,14 @@ export function CalcFieldEditor({
         {!validation.isValid &&
           options.expression.trim() &&
           validation.error !== 'Expression is required' && (
-            <div className="flex items-center gap-1 text-sm text-destructive mt-1">
-              <AlertCircle className="size-4" />
+            <div className='flex items-center gap-1 text-sm text-destructive mt-1'>
+              <AlertCircle className='size-4' />
               {validation.error}
             </div>
           )}
 
         <FieldDescription>
-          Type <kbd className="px-1 bg-muted rounded text-xs">{'{'}</kbd> to insert a field
+          Type <kbd className='px-1 bg-muted rounded text-xs'>{'{'}</kbd> to insert a field
           reference. Use functions like concat(), add(), multiply().
         </FieldDescription>
       </Field>
@@ -310,7 +314,7 @@ export function CalcFieldEditor({
       {sourceFields.length > 0 && (
         <Field>
           <FieldLabel>Fields Used</FieldLabel>
-          <div className="flex flex-wrap gap-1">
+          <div className='flex flex-wrap gap-1'>
             {sourceFields.map((fieldKey) => {
               const field = availableFields.find((f) => f.key === fieldKey)
               const isMissing = !field
@@ -337,10 +341,10 @@ export function CalcFieldEditor({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="TEXT">Text</SelectItem>
-            <SelectItem value="NUMBER">Number</SelectItem>
-            <SelectItem value="CURRENCY">Currency</SelectItem>
-            <SelectItem value="CHECKBOX">Yes/No</SelectItem>
+            <SelectItem value='TEXT'>Text</SelectItem>
+            <SelectItem value='NUMBER'>Number</SelectItem>
+            <SelectItem value='CURRENCY'>Currency</SelectItem>
+            <SelectItem value='CHECKBOX'>Yes/No</SelectItem>
           </SelectContent>
         </Select>
         <FieldDescription>

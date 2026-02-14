@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -11,11 +11,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
-import { useFilesystemContext } from './provider/filesystem-provider'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { useEffect, useState } from 'react'
 import type { FileItem } from './files-store'
+import { useFilesystemContext } from './provider/filesystem-provider'
 
 /**
  * Props for the RenameItemDialog component
@@ -47,7 +47,7 @@ export function RenameItemDialog({ item, open, onOpenChange }: RenameItemDialogP
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className='sm:max-w-md'>
         <RenameItemDialogContent
           item={item}
           open={open}
@@ -129,7 +129,7 @@ function RenameItemDialogContent({
       </DialogHeader>
 
       <Input
-        id="item-name"
+        id='item-name'
         placeholder={`Enter ${itemType} name...`}
         value={newName}
         onChange={(e) => setNewName(e.target.value)}
@@ -152,22 +152,17 @@ function RenameItemDialogContent({
       />
 
       <DialogFooter>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={onClose}
-          disabled={isRenaming}>
-          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+        <Button type='button' variant='ghost' size='sm' onClick={onClose} disabled={isRenaming}>
+          Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
         </Button>
         <Button
-          type="submit"
-          size="sm"
-          variant="outline"
+          type='submit'
+          size='sm'
+          variant='outline'
           disabled={!newName.trim() || newName.trim() === item?.name || isRenaming}
           loading={isRenaming}
-          loadingText="Renaming...">
-          Rename <KbdSubmit variant="outline" size="sm" />
+          loadingText='Renaming...'>
+          Rename <KbdSubmit variant='outline' size='sm' />
         </Button>
       </DialogFooter>
     </form>

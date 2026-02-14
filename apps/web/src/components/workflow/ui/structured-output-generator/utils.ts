@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/utils.ts
 
-import { Type, ArrayType, type Field, type SchemaRoot } from './types'
 import { BaseType } from '../../types/unified-types'
+import { ArrayType, type Field, type SchemaRoot, Type } from './types'
 
 /**
  *
@@ -68,7 +68,7 @@ export function checkJsonDepth(obj: any, currentDepth = 0): number {
 
   if (typeof obj === 'object' && obj !== null) {
     for (const key in obj) {
-      if (obj.hasOwnProperty(key)) {
+      if (Object.hasOwn(obj, key)) {
         const depth = checkJsonDepth(obj[key], currentDepth + 1)
         maxDepth = Math.max(maxDepth, depth)
       }

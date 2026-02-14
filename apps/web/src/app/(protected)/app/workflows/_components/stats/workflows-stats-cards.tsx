@@ -1,9 +1,9 @@
 // apps/web/src/app/(protected)/app/workflows/_components/stats/workflows-stats-cards.tsx
 'use client'
 
-import { Workflow, Play, CheckCircle, TrendingUp } from 'lucide-react'
+import { type StatCardData, StatCards } from '@auxx/ui/components/stat-card'
+import { CheckCircle, Play, TrendingUp, Workflow } from 'lucide-react'
 import { useWorkflows } from '../providers/workflows-provider'
-import { StatCards, type StatCardData } from '@auxx/ui/components/stat-card'
 
 export function WorkflowsStatsCards() {
   const { stats, isLoading } = useWorkflows()
@@ -13,28 +13,28 @@ export function WorkflowsStatsCards() {
       title: 'Total Workflows',
       body: stats?.total || 0,
       description: stats ? `${stats.enabled} enabled, ${stats.disabled} disabled` : '',
-      icon: <Workflow className="size-4" />,
+      icon: <Workflow className='size-4' />,
       color: 'text-blue-500',
     },
     {
       title: 'Active Workflows',
       body: stats?.enabled || 0,
       description: 'Currently enabled',
-      icon: <Play className="size-4" />,
+      icon: <Play className='size-4' />,
       color: 'text-comparison-500',
     },
     {
       title: 'Success Rate',
       body: stats ? `${stats.successRate}%` : '0%',
       description: 'Recent executions',
-      icon: <CheckCircle className="size-4" />,
+      icon: <CheckCircle className='size-4' />,
       color: 'text-good-500',
     },
     {
       title: 'Total Executions',
       body: stats?.totalExecutions || 0,
       description: 'All time',
-      icon: <TrendingUp className="size-4" />,
+      icon: <TrendingUp className='size-4' />,
       color: 'text-fuchsia-500',
     },
   ]
@@ -47,7 +47,7 @@ export function WorkflowsStatsCards() {
         default: 'grid-cols-2',
         md: 'md:grid-cols-4',
       }}
-      className="border-b bg-primary-50"
+      className='border-b bg-primary-50'
     />
   )
 }

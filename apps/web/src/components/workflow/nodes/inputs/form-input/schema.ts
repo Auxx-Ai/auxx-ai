@@ -2,17 +2,17 @@
 
 import { z } from 'zod'
 import {
-  type NodeDefinition,
   NodeCategory,
+  type NodeDefinition,
   type ValidationResult,
 } from '~/components/workflow/types'
-import { type FormInputNodeData } from './types'
 import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
-import { FormInputPanel } from './panel'
 import { NodeType } from '~/components/workflow/types/node-types'
-import { getFormInputOutputVariables } from './output-variables'
 import { BaseType } from '~/components/workflow/types/unified-types'
 import { VAR_TYPE_ICON_MAP } from '~/components/workflow/utils/icon-helper'
+import { getFormInputOutputVariables } from './output-variables'
+import { FormInputPanel } from './panel'
+import type { FormInputNodeData } from './types'
 
 /**
  * Zod schema for enum option

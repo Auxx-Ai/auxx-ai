@@ -1,7 +1,7 @@
 // packages/services/src/workflow-templates/get-all-templates.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, ilike, desc, or, and, sql } from 'drizzle-orm'
+import { and, desc, eq, ilike, or, sql } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { GetWorkflowTemplatesInput, WorkflowTemplateListItem } from './types'
@@ -59,10 +59,7 @@ export async function getAllTemplates(input: GetWorkflowTemplatesInput = {}) {
       })
       .from(schema.WorkflowTemplate)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(
-        desc(schema.WorkflowTemplate.popularity),
-        desc(schema.WorkflowTemplate.createdAt)
-      )
+      .orderBy(desc(schema.WorkflowTemplate.popularity), desc(schema.WorkflowTemplate.createdAt))
       .limit(limit)
       .offset(offset),
     'get-all-workflow-templates'

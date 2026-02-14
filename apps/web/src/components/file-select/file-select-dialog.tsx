@@ -2,26 +2,27 @@
 
 'use client'
 
-import React, { useState, useCallback, useMemo } from 'react'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogFooter,
 } from '@auxx/ui/components/dialog'
-import { Badge } from '@auxx/ui/components/badge'
+import { Check, FolderOpen } from 'lucide-react'
+import type React from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { FilesManagement } from '~/components/files/files-management'
+import type { FileItem } from '~/components/files/files-store'
+import { useFileSystemStore } from '~/components/files/files-store'
 import {
   FilesystemProvider,
   useFilesystemContext,
 } from '~/components/files/provider/filesystem-provider'
-import { FilesManagement } from '~/components/files/files-management'
-import { Check, FolderOpen } from 'lucide-react'
-import type { FileItem } from '~/components/files/files-store'
-import { useFileSystemStore } from '~/components/files/files-store'
 import { FileSelectWrapper } from './file-select-wrapper'
 
 /**
@@ -128,49 +129,49 @@ function FileSelectDialogContent({
   return (
     <>
       <DialogHeader>
-        <DialogTitle className="flex items-center gap-2">
-          <FolderOpen className="h-5 w-5" />
+        <DialogTitle className='flex items-center gap-2'>
+          <FolderOpen className='h-5 w-5' />
           {title}
         </DialogTitle>
         <DialogDescription>{finalDescription}</DialogDescription>
       </DialogHeader>
 
       {/* Files browser */}
-      <div className="flex-1 min-h-[400px] max-h-[600px] overflow-hidden border rounded-lg flex flex-col">
+      <div className='flex-1 min-h-[400px] max-h-[600px] overflow-hidden border rounded-lg flex flex-col'>
         <FilesManagement
-          mode="selection"
+          mode='selection'
           allowFileDetailDrawer={false}
           showHeader
           allowMultiple={allowMultiple}
         />
       </div>
 
-      <DialogFooter className="sm:justify-between flex-col pt-4">
-        <div className="">
+      <DialogFooter className='sm:justify-between flex-col pt-4'>
+        <div className=''>
           {/* Selection status */}
           {filteredSelection.length > 0 && (
-            <div className="px-1 flex flex-row items-start gap-2">
-              <div className="flex items-center shrink-0">
-                <span className="text-sm font-medium shrink-0 pe-2">
+            <div className='px-1 flex flex-row items-start gap-2'>
+              <div className='flex items-center shrink-0'>
+                <span className='text-sm font-medium shrink-0 pe-2'>
                   Selected: {filteredSelection.length}
                   {maxSelection && ` / ${maxSelection}`}
                 </span>
                 {isOverLimit && (
-                  <Badge variant="destructive" className="text-xs">
+                  <Badge variant='destructive' className='text-xs'>
                     Too many selected
                   </Badge>
                 )}
               </div>
 
               {/* Show selected items */}
-              <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+              <div className='flex flex-wrap gap-1 max-h-20 overflow-y-auto'>
                 {filteredSelection.slice(0, 10).map((item) => (
-                  <Badge key={item.id} variant="outline" className="text-xs">
+                  <Badge key={item.id} variant='outline' className='text-xs'>
                     {item.name}
                   </Badge>
                 ))}
                 {filteredSelection.length > 10 && (
-                  <Badge variant="outline" className="text-xs">
+                  <Badge variant='outline' className='text-xs'>
                     +{filteredSelection.length - 10} more
                   </Badge>
                 )}
@@ -178,15 +179,15 @@ function FileSelectDialogContent({
             </div>
           )}
         </div>
-        <div className="flex flex-col-reverse sm:flex-row gap-y-2 sm:space-y-0 sm:gap-x-2 shrink-0">
-          <Button variant="ghost" onClick={handleCancel} size="sm">
+        <div className='flex flex-col-reverse sm:flex-row gap-y-2 sm:space-y-0 sm:gap-x-2 shrink-0'>
+          <Button variant='ghost' onClick={handleCancel} size='sm'>
             {cancelText}
           </Button>
           <Button
             onClick={handleConfirmSelection}
             disabled={!canConfirm}
-            size="sm"
-            variant="outline">
+            size='sm'
+            variant='outline'>
             <Check />
             {confirmText} ({filteredSelection.length})
           </Button>
@@ -232,7 +233,7 @@ export function FileSelectDialog({
   }, [onOpenChange])
 
   const defaultTrigger = (
-    <Button variant="outline" disabled={disabled}>
+    <Button variant='outline' disabled={disabled}>
       <FolderOpen />
       Browse Files
     </Button>
@@ -242,7 +243,7 @@ export function FileSelectDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>{trigger || defaultTrigger}</DialogTrigger>
 
-      <DialogContent position="tc" className="max-w-4xl flex flex-col">
+      <DialogContent position='tc' className='max-w-4xl flex flex-col'>
         <FileSelectWrapper>
           <FilesystemProvider>
             <FileSelectDialogContent

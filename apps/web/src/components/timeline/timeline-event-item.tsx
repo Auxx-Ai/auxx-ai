@@ -1,13 +1,13 @@
 // apps/web/src/components/timeline/timeline-event-item.tsx
 'use client'
 
-import { useState } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
 import type { TimelineEventBase } from '@auxx/lib/timeline/client'
-import { EventIcon, getEventIcon, getEventColor } from './event-icon'
-import { EventDescription } from './event-description'
-import { EventTimestamp } from './event-timestamp'
+import { cn } from '@auxx/ui/lib/utils'
+import { useState } from 'react'
 import { ChangeDetail } from './change-detail'
+import { EventDescription } from './event-description'
+import { EventIcon, getEventColor, getEventIcon } from './event-icon'
+import { EventTimestamp } from './event-timestamp'
 
 /**
  * Props for the TimelineEventItem component
@@ -38,15 +38,15 @@ export function TimelineEventItem({ event, compact = false }: TimelineEventItemP
         <EventIcon icon={icon} color={color} />
 
         {/* Content */}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-4">
+        <div className='min-w-0 flex-1'>
+          <div className='flex items-start justify-between gap-4'>
             {/* Event Description */}
-            <div className="text-[14px] text-primary-400 dark:text-primary-500">
+            <div className='text-[14px] text-primary-400 dark:text-primary-500'>
               <EventDescription event={event} onToggleExpand={() => setIsExpanded(!isExpanded)} />
 
               {/* Expanded Details */}
               {isExpanded && event.changes && event.changes.length > 0 && (
-                <div className="mt-2 space-y-1 text-xs">
+                <div className='mt-2 space-y-1 text-xs'>
                   {event.changes.map((change, idx) => (
                     <ChangeDetail key={idx} change={change} />
                   ))}
@@ -55,7 +55,7 @@ export function TimelineEventItem({ event, compact = false }: TimelineEventItemP
             </div>
 
             {/* Timestamp */}
-            <div className="pt-1">
+            <div className='pt-1'>
               <EventTimestamp timestamp={event.startedAt} />
             </div>
           </div>

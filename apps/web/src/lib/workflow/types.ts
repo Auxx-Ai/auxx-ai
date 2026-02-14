@@ -13,14 +13,17 @@ export interface WorkflowBlock {
   icon?: string
   color?: string
   schema: {
-    inputs: Record<string, WorkflowBlockInput>  // Object format: { fieldName: fieldDefinition }
+    inputs: Record<string, WorkflowBlockInput> // Object format: { fieldName: fieldDefinition }
     outputs: Record<string, WorkflowBlockOutput> // Object format: { fieldName: fieldDefinition }
     handles?: {
       sources?: Array<{ id: string; label?: string }>
       targets?: Array<{ id: string; label?: string }>
     }
     validation?: {
-      custom?: (data: any) => { valid: boolean; errors: Array<{ field: string; message: string; type?: 'warning' | 'error' }> }
+      custom?: (data: any) => {
+        valid: boolean
+        errors: Array<{ field: string; message: string; type?: 'warning' | 'error' }>
+      }
     }
   }
   config?: {

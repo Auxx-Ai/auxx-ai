@@ -1,21 +1,25 @@
 // packages/lib/src/field-values/field-value-helpers.ts
 
-import { database, schema, type Database } from '@auxx/database'
-import type { FieldType } from '@auxx/database/types'
+import { type Database, database, schema } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
-import { and, eq, sql } from 'drizzle-orm'
-import { type TypedFieldValue, type TypedFieldValueInput, getValueType } from '@auxx/types'
-import { getFieldWithDefinition, type FieldWithDefinition } from '@auxx/services'
-import { formatToDisplayValue } from './formatter'
-import { type RelationshipConfig, type RelationshipType, getInverseFieldId } from '@auxx/types/custom-field'
-import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
-import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
-import { parseRecordId, toRecordId, isRecordId } from '../resources/resource-id'
-import type { RecordId } from '@auxx/types/resource'
-import type { FieldValueRow, FieldReference } from './types'
-import type { InverseFieldInfo } from './relationship-sync'
+import type { FieldType } from '@auxx/database/types'
+import { type FieldWithDefinition, getFieldWithDefinition } from '@auxx/services'
+import { getValueType, type TypedFieldValue, type TypedFieldValueInput } from '@auxx/types'
+import { type ActorId, isActorId, parseActorId, toActorId } from '@auxx/types/actor'
+import {
+  getInverseFieldId,
+  type RelationshipConfig,
+  type RelationshipType,
+} from '@auxx/types/custom-field'
 import { isFieldPath, parseResourceFieldId } from '@auxx/types/field'
-import { isActorId, parseActorId, toActorId, type ActorId } from '@auxx/types/actor'
+import type { RecordId } from '@auxx/types/resource'
+import { and, eq, sql } from 'drizzle-orm'
+import type { ResourceRegistryService } from '../resources/registry/resource-registry-service'
+import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
+import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
+import { formatToDisplayValue } from './formatter'
+import type { InverseFieldInfo } from './relationship-sync'
+import type { FieldReference, FieldValueRow } from './types'
 
 // Re-export for convenience
 export type { InverseFieldInfo }
@@ -172,9 +176,10 @@ export function rowToTypedValue(row: FieldValueRow, fieldType: FieldType): Typed
       return {
         ...base,
         type: 'relationship',
-        recordId: row.relatedEntityId && row.relatedEntityDefinitionId
-          ? toRecordId(row.relatedEntityDefinitionId, row.relatedEntityId)
-          : ('' as RecordId),
+        recordId:
+          row.relatedEntityId && row.relatedEntityDefinitionId
+            ? toRecordId(row.relatedEntityDefinitionId, row.relatedEntityId)
+            : ('' as RecordId),
       }
     case 'actor':
       // Actor can be stored as actorId (for users) or relatedEntityId (for groups)
@@ -475,7 +480,7 @@ export async function validateSingleValue(
       if (typeof value === 'object' && value !== null) {
         const obj = value as Record<string, unknown>
         const actorType = (obj.actorType ?? obj.type ?? 'user') as 'user' | 'group'
-        let id = obj.id as string
+        const id = obj.id as string
         if (!id) {
           throwValidationError({
             success: false,
@@ -522,7 +527,11 @@ export async function preBatchValidateRelationships(
   fieldTypes: FieldType[]
 ): Promise<void> {
   // Collect all relationships from values - supports both new and legacy formats
-  const relationships: Array<RecordId | { relatedEntityId: string; relatedEntityDefinitionId: string } | { recordId: RecordId }> = []
+  const relationships: Array<
+    | RecordId
+    | { relatedEntityId: string; relatedEntityDefinitionId: string }
+    | { recordId: RecordId }
+  > = []
 
   /** Helper to extract relationship value(s) from input */
   const extractRelationship = (v: unknown) => {

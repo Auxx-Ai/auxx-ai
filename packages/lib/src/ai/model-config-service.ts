@@ -143,7 +143,7 @@ export class ModelConfigService {
 
     for (const rule of capabilities.parameterRules) {
       const value = validated[rule.name]
-      
+
       // Skip if parameter not provided
       if (value === undefined) continue
 
@@ -151,15 +151,17 @@ export class ModelConfigService {
       switch (rule.type) {
         case 'int':
         case 'float': {
-          let numValue = Number(value)
-          
+          const numValue = Number(value)
+
           // Ensure it's a valid number
           if (isNaN(numValue)) {
             validated[rule.name] = rule.default || (rule.min ?? 0)
-            console.warn(`Invalid number for "${rule.name}". Using default: ${validated[rule.name]}`)
+            console.warn(
+              `Invalid number for "${rule.name}". Using default: ${validated[rule.name]}`
+            )
             break
           }
-          
+
           // Apply min/max constraints
           if (rule.min !== undefined && numValue < rule.min) {
             validated[rule.name] = rule.min
@@ -172,7 +174,7 @@ export class ModelConfigService {
           }
           break
         }
-        
+
         case 'string': {
           // Validate against options if present
           if (rule.options && !rule.options.includes(value)) {
@@ -183,20 +185,20 @@ export class ModelConfigService {
           }
           break
         }
-        
+
         case 'boolean': {
           // Ensure it's a boolean
           validated[rule.name] = Boolean(value)
           break
         }
-        
+
         case 'tag': {
           // Ensure it's an array of strings
           if (!Array.isArray(value)) {
             validated[rule.name] = rule.default || []
             console.warn(`Invalid tag array for "${rule.name}". Using default.`)
           } else {
-            validated[rule.name] = value.filter(v => typeof v === 'string')
+            validated[rule.name] = value.filter((v) => typeof v === 'string')
           }
           break
         }

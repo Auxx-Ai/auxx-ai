@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/note/types.ts
 
-import { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
+import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
 
 export type NoteTheme = 'yellow' | 'blue' | 'purple' | 'pink' | 'green'
 

@@ -2,8 +2,8 @@
 
 import type { RelationshipFieldValue } from '@auxx/types/field-value'
 import type { RecordId } from '@auxx/types/resource'
-import { toRecordId, isRecordId } from '../resources/resource-id'
 import { isMultiRelationship, isSingleRelationship, type RelationshipType } from '@auxx/utils'
+import { isRecordId, toRecordId } from '../resources/resource-id'
 
 // Re-export relationship type utilities from @auxx/utils
 export { isMultiRelationship, isSingleRelationship, type RelationshipType }
@@ -89,10 +89,10 @@ export function extractRelationshipRecordIds(value: unknown): RecordId[] {
 
 // Re-export from resource-id for convenience
 export {
-  toRecordId,
-  parseRecordId,
-  isRecordId,
-  toRecordIds,
-  getInstanceId,
   getDefinitionId,
+  getInstanceId,
+  isRecordId,
+  parseRecordId,
+  toRecordId,
+  toRecordIds,
 } from '../resources/resource-id'

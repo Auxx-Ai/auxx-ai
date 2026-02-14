@@ -1,7 +1,7 @@
 // packages/lib/src/import/resolution/resolvers/date.ts
 
-import { parse, parseISO, isValid } from 'date-fns'
-import type { ResolvedValue, ResolutionConfig } from '../../types/resolution'
+import { isValid, parse, parseISO } from 'date-fns'
+import type { ResolutionConfig, ResolvedValue } from '../../types/resolution'
 
 /**
  * Resolve ISO date string (YYYY-MM-DD).

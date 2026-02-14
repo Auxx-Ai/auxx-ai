@@ -164,11 +164,7 @@ export function createScopedLogger(scope: string, options?: { color?: ColorName 
 
       const formattedArgs = allArgs
         .map((arg) => sanitizeLogValue(arg))
-        .map((arg) =>
-          typeof arg === 'object'
-            ? JSON.stringify(arg, null, 2)
-            : String(arg)
-        )
+        .map((arg) => (typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)))
         .join(' ')
 
       const nowDate = new Date()

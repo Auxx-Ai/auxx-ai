@@ -1,5 +1,5 @@
-import type { InvitationStatus, SYNC_STATUS, TicketStatus } from '@auxx/database/types'
 import type { UserEntity as User } from '@auxx/database/models'
+import type { InvitationStatus, SYNC_STATUS, TicketStatus } from '@auxx/database/types'
 import type { RecordId } from '@auxx/types/resource'
 export type Events =
   | 'user:created'

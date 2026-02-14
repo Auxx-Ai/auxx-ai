@@ -1,9 +1,9 @@
 // apps/web/src/components/virtual-list/virtual-list-footer.tsx
 'use client'
 
-import { type ReactNode } from 'react'
-import { useVirtualListContext } from './virtual-list'
 import { cn } from '@auxx/ui/lib/utils'
+import type { ReactNode } from 'react'
+import { useVirtualListContext } from './virtual-list'
 
 /**
  * Props for the VirtualListFooter component

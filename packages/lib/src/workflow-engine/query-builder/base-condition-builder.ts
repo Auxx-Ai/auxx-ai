@@ -1,20 +1,20 @@
 // packages/lib/src/workflow-engine/query-builder/base-condition-builder.ts
 
-import { and, or, type SQL } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
-import { type FieldOptionItem, labelToValue } from '../../resources/registry/option-helpers'
-import { BaseType } from '../core/types'
+import type { ResourceFieldId } from '@auxx/types/field'
+import { parseResourceFieldId } from '@auxx/types/field'
+import { and, or, type SQL } from 'drizzle-orm'
 
 // Import from shared conditions module
 import type {
-  Condition,
   ConditionGroup as BaseConditionGroup,
+  Condition,
   ConditionValidationResult,
   Operator,
 } from '../../conditions'
 import { operatorRequiresValue } from '../../conditions'
-import type { ResourceFieldId } from '@auxx/types/field'
-import { parseResourceFieldId } from '@auxx/types/field'
+import { type FieldOptionItem, labelToValue } from '../../resources/registry/option-helpers'
+import { BaseType } from '../core/types'
 
 const logger = createScopedLogger('base-condition-builder')
 
@@ -117,12 +117,12 @@ export abstract class BaseConditionBuilder<TContext> {
       // Check if field exists (extract field key from either format)
       const fieldRef = condition.fieldId
       const fieldKey = Array.isArray(fieldRef)
-        ? (fieldRef[0].includes(':')
-            ? parseResourceFieldId(fieldRef[0] as ResourceFieldId).fieldId
-            : fieldRef[0])
-        : (fieldRef.includes(':')
-            ? parseResourceFieldId(fieldRef as ResourceFieldId).fieldId
-            : fieldRef)
+        ? fieldRef[0].includes(':')
+          ? parseResourceFieldId(fieldRef[0] as ResourceFieldId).fieldId
+          : fieldRef[0]
+        : fieldRef.includes(':')
+          ? parseResourceFieldId(fieldRef as ResourceFieldId).fieldId
+          : fieldRef
 
       const fieldType = this.getFieldType(fieldKey, context)
       if (!fieldType) {

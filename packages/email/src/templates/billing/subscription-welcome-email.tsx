@@ -1,6 +1,6 @@
 // packages/email/src/templates/billing/subscription-welcome-email.tsx
 import { Container, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -47,7 +47,7 @@ export async function SubscriptionWelcomeEmail({
           You now have access to all {planName} features. Get started by exploring your dashboard:
         </Text>
 
-        <EmailButton href={dashboardUrl} label="Go to Dashboard" />
+        <EmailButton href={dashboardUrl} label='Go to Dashboard' />
 
         <Text>
           If you have any questions or need help getting started, our support team is here to assist

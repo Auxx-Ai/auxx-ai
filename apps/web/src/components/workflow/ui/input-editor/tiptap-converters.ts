@@ -1,4 +1,4 @@
-import { JSONContent } from '@tiptap/core'
+import type { JSONContent } from '@tiptap/core'
 
 // .insertContent({ type: 'variable-node', attrs: { variableId: variable.id } })
 

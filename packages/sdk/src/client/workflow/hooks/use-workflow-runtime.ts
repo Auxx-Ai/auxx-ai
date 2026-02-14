@@ -131,9 +131,7 @@ export function useWorkflowRuntime(): WorkflowRuntimeContextData {
   const context = useContext(WorkflowRuntimeContext)
 
   if (!context) {
-    throw new Error(
-      'useWorkflowRuntime must be used within a WorkflowRuntimeContext.Provider'
-    )
+    throw new Error('useWorkflowRuntime must be used within a WorkflowRuntimeContext.Provider')
   }
 
   return context

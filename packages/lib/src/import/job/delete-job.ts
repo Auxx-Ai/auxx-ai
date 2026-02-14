@@ -1,8 +1,8 @@
 // packages/lib/src/import/job/delete-job.ts
 
-import { eq, and } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { and, eq } from 'drizzle-orm'
 
 /**
  * Input for deleting a job.
@@ -20,10 +20,7 @@ export interface DeleteJobInput {
  * @param input - Job ID and organization ID for verification
  * @returns True if job was deleted, false if not found
  */
-export async function deleteJob(
-  db: Database,
-  input: DeleteJobInput
-): Promise<boolean> {
+export async function deleteJob(db: Database, input: DeleteJobInput): Promise<boolean> {
   // First verify the job exists and belongs to the org
   const job = await db.query.ImportJob.findFirst({
     where: and(
@@ -40,14 +37,10 @@ export async function deleteJob(
   // Delete job and mapping in a transaction
   await db.transaction(async (tx) => {
     // Delete the job first (cascade handles ImportJobProperty, ImportPlan, etc.)
-    await tx
-      .delete(schema.ImportJob)
-      .where(eq(schema.ImportJob.id, input.jobId))
+    await tx.delete(schema.ImportJob).where(eq(schema.ImportJob.id, input.jobId))
 
     // Delete the associated mapping (cascade handles ImportMappingProperty)
-    await tx
-      .delete(schema.ImportMapping)
-      .where(eq(schema.ImportMapping.id, job.importMappingId))
+    await tx.delete(schema.ImportMapping).where(eq(schema.ImportMapping.id, job.importMappingId))
   })
 
   return true

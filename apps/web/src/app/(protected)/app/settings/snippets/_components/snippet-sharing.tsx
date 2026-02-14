@@ -1,10 +1,9 @@
 'use client'
-// apps/web/src/app/(protected)/app/settings/snippets/_components/snippet-sharing.tsx
-import React from 'react'
-import { UserIcon, UsersIcon, Users2Icon, PlusIcon, XIcon, SearchIcon, Trash } from 'lucide-react'
-import { api } from '~/trpc/react'
+import { SnippetSharingType as SnippetSharingTypeEnum } from '@auxx/database/enums'
+import type { SnippetSharingType } from '@auxx/database/types'
+import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
 import {
   Dialog,
   DialogContent,
@@ -13,7 +12,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { Input } from '@auxx/ui/components/input'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { RadioGroup } from '@auxx/ui/components/radio-group'
+import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import {
   Select,
   SelectContent,
@@ -21,13 +23,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
-import { Badge } from '@auxx/ui/components/badge'
-import { SnippetSharingType as SnippetSharingTypeEnum } from '@auxx/database/enums'
-import { type SnippetSharingType } from '@auxx/database/types'
+import { PlusIcon, SearchIcon, Trash, UserIcon, Users2Icon, UsersIcon, XIcon } from 'lucide-react'
+// apps/web/src/app/(protected)/app/settings/snippets/_components/snippet-sharing.tsx
+import React from 'react'
+import { api } from '~/trpc/react'
 
-import { RadioGroup } from '@auxx/ui/components/radio-group'
-import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 interface ShareItem {
   id: string
   type: 'group' | 'member'
@@ -197,87 +197,87 @@ export function SnippetSharing({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[80vh]" size="md" position="tc">
-        <DialogHeader className="mb-4">
+      <DialogContent className='max-h-[80vh]' size='md' position='tc'>
+        <DialogHeader className='mb-4'>
           <DialogTitle>Snippet Sharing Settings</DialogTitle>
           <DialogDescription>Control who can view and edit this snippet</DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 space-y-6 overflow-auto px-1">
+        <div className='flex-1 space-y-6 overflow-auto px-1'>
           {/* Sharing Type Selection */}
-          <div className="space-y-2 flex flex-col">
-            <label className="text-sm font-medium">Sharing Type</label>
+          <div className='space-y-2 flex flex-col'>
+            <label className='text-sm font-medium'>Sharing Type</label>
             <RadioGroup
               value={sharingType}
               onValueChange={(value) => setSharingType(value as SnippetSharingType)}
-              className="grid gap-2 sm:grid-cols-2">
+              className='grid gap-2 sm:grid-cols-2'>
               <RadioGroupItemCard
                 value={SnippetSharingTypeEnum.PRIVATE}
-                label="Private"
+                label='Private'
                 icon={<UserIcon />}
-                description="Only you can access"
+                description='Only you can access'
               />
               <RadioGroupItemCard
                 value={SnippetSharingTypeEnum.ORGANIZATION}
-                label="Organization"
+                label='Organization'
                 icon={<UsersIcon />}
-                description="Everyone in organization can access"
+                description='Everyone in organization can access'
               />
               <RadioGroupItemCard
                 value={SnippetSharingTypeEnum.GROUPS}
-                label="Custom"
+                label='Custom'
                 icon={<Users2Icon />}
-                description="Share with specific groups and members"
+                description='Share with specific groups and members'
               />
             </RadioGroup>
           </div>
 
           {/* Custom sharing - Groups and Members selection */}
           {sharingType === SnippetSharingTypeEnum.GROUPS && (
-            <div className="space-y-4">
+            <div className='space-y-4'>
               {/* Selected items */}
               <div>
-                <label className="text-sm font-medium">Selected Groups & Members</label>
+                <label className='text-sm font-medium'>Selected Groups & Members</label>
                 {selectedItems.length === 0 ? (
-                  <div className="mt-2 text-sm text-gray-500">No groups or members selected</div>
+                  <div className='mt-2 text-sm text-gray-500'>No groups or members selected</div>
                 ) : (
-                  <div className="mt-2 space-y-2">
+                  <div className='mt-2 space-y-2'>
                     {selectedItems.map((item) => (
                       <div
                         key={item.id}
-                        className="flex items-center justify-between rounded-2xl border p-1">
-                        <div className="flex items-center">
+                        className='flex items-center justify-between rounded-2xl border p-1'>
+                        <div className='flex items-center'>
                           {item.type === 'group' ? (
-                            <Users2Icon size={18} className="mr-2" />
+                            <Users2Icon size={18} className='mr-2' />
                           ) : (
-                            <Avatar className="mr-2 size-8 border">
+                            <Avatar className='mr-2 size-8 border'>
                               <AvatarImage src={item.icon} />
                               <AvatarFallback>{item.name.charAt(0)}</AvatarFallback>
                             </Avatar>
                           )}
-                          <span className="text-sm">{item.name}</span>
-                          <Badge variant="outline" className="ml-2 px-1 text-xs">
+                          <span className='text-sm'>{item.name}</span>
+                          <Badge variant='outline' className='ml-2 px-1 text-xs'>
                             {item.type === 'group' ? 'Group' : 'Member'}
                           </Badge>
                         </div>
-                        <div className="flex items-center space-x-2">
+                        <div className='flex items-center space-x-2'>
                           <Select
                             defaultValue={item.permission}
                             onValueChange={(value) =>
                               updateItemPermission(item.id, value as 'VIEW' | 'EDIT')
                             }>
-                            <SelectTrigger size="sm" className=" w-24">
-                              <SelectValue placeholder="Permission" />
+                            <SelectTrigger size='sm' className=' w-24'>
+                              <SelectValue placeholder='Permission' />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="VIEW">Can View</SelectItem>
-                              <SelectItem value="EDIT">Can Edit</SelectItem>
+                              <SelectItem value='VIEW'>Can View</SelectItem>
+                              <SelectItem value='EDIT'>Can Edit</SelectItem>
                             </SelectContent>
                           </Select>
                           <Button
-                            variant="destructive-hover"
-                            size="icon"
-                            className="rounded-full"
+                            variant='destructive-hover'
+                            size='icon'
+                            className='rounded-full'
                             onClick={() => removeItem(item.id)}>
                             <Trash />
                           </Button>
@@ -289,24 +289,24 @@ export function SnippetSharing({
               </div>
 
               {/* Groups section */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Add Groups</label>
-                <div className="relative">
+              <div className='space-y-2'>
+                <label className='text-sm font-medium'>Add Groups</label>
+                <div className='relative'>
                   <SearchIcon
                     size={16}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400"
+                    className='absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400'
                   />
                   <Input
-                    placeholder="Search groups..."
+                    placeholder='Search groups...'
                     value={groupSearchTerm}
                     onChange={(e) => setGroupSearchTerm(e.target.value)}
-                    className="pl-9"
+                    className='pl-9'
                   />
                 </div>
 
-                <div className="max-h-40 space-y-2 overflow-y-auto">
+                <div className='max-h-40 space-y-2 overflow-y-auto'>
                   {filteredGroups.length === 0 ? (
-                    <div className="py-4 text-center text-gray-500 text-sm">
+                    <div className='py-4 text-center text-gray-500 text-sm'>
                       {groupSearchTerm
                         ? 'No groups match your search'
                         : 'No available groups to add'}
@@ -318,18 +318,18 @@ export function SnippetSharing({
                       return (
                         <div
                           key={group.id}
-                          className="flex cursor-pointer items-center justify-between rounded-2xl border p-1 hover:bg-gray-50 dark:hover:bg-gray-800"
+                          className='flex cursor-pointer items-center justify-between rounded-2xl border p-1 hover:bg-gray-50 dark:hover:bg-gray-800'
                           onClick={() => addGroup(group)}>
-                          <div className="flex items-center">
-                            <Users2Icon size={18} className="mr-2" />
-                            <div className="flex flex-row gap-2">
-                              <div className="text-sm">{group.displayName}</div>
-                              <div className="text-xs text-gray-500">
+                          <div className='flex items-center'>
+                            <Users2Icon size={18} className='mr-2' />
+                            <div className='flex flex-row gap-2'>
+                              <div className='text-sm'>{group.displayName}</div>
+                              <div className='text-xs text-gray-500'>
                                 {memberCount} member{memberCount !== 1 ? 's' : ''}
                               </div>
                             </div>
                           </div>
-                          <Button variant="ghost" size="icon" className="rounded-full">
+                          <Button variant='ghost' size='icon' className='rounded-full'>
                             <PlusIcon />
                           </Button>
                         </div>
@@ -340,24 +340,24 @@ export function SnippetSharing({
               </div>
 
               {/* Members section */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Add Members</label>
-                <div className="relative">
+              <div className='space-y-2'>
+                <label className='text-sm font-medium'>Add Members</label>
+                <div className='relative'>
                   <SearchIcon
                     size={16}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400"
+                    className='absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400'
                   />
                   <Input
-                    placeholder="Search members..."
+                    placeholder='Search members...'
                     value={memberSearchTerm}
                     onChange={(e) => setMemberSearchTerm(e.target.value)}
-                    className="pl-9"
+                    className='pl-9'
                   />
                 </div>
 
-                <div className="max-h-40 space-y-2 overflow-y-auto">
+                <div className='max-h-40 space-y-2 overflow-y-auto'>
                   {filteredMembers.length === 0 ? (
-                    <div className="py-4 text-center text-gray-500 text-sm">
+                    <div className='py-4 text-center text-gray-500 text-sm'>
                       {memberSearchTerm
                         ? 'No members match your search'
                         : 'No available members to add'}
@@ -366,23 +366,23 @@ export function SnippetSharing({
                     filteredMembers.map((member) => (
                       <div
                         key={member.id}
-                        className="flex cursor-pointer items-center justify-between rounded-2xl border p-1 hover:bg-gray-50 dark:hover:bg-gray-800"
+                        className='flex cursor-pointer items-center justify-between rounded-2xl border p-1 hover:bg-gray-50 dark:hover:bg-gray-800'
                         onClick={() => addMember(member)}>
-                        <div className="flex items-center">
-                          <Avatar className="mr-2 size-8 border">
+                        <div className='flex items-center'>
+                          <Avatar className='mr-2 size-8 border'>
                             <AvatarImage src={member.user.image || undefined} />
                             <AvatarFallback>
                               {member.user.name?.charAt(0) || member.user.email?.charAt(0) || '?'}
                             </AvatarFallback>
                           </Avatar>
-                          <div className="flex flex-row gap-2">
-                            <div className="text-sm">{member.user.name || member.user.email}</div>
-                            <Badge variant="outline" className="px-1 text-xs">
+                          <div className='flex flex-row gap-2'>
+                            <div className='text-sm'>{member.user.name || member.user.email}</div>
+                            <Badge variant='outline' className='px-1 text-xs'>
                               {member.role}
                             </Badge>
                           </div>
                         </div>
-                        <Button variant="ghost" size="icon" className="rounded-full">
+                        <Button variant='ghost' size='icon' className='rounded-full'>
                           <PlusIcon size={16} />
                         </Button>
                       </div>
@@ -395,16 +395,16 @@ export function SnippetSharing({
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+          <Button variant='ghost' size='sm' onClick={() => onOpenChange(false)}>
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
           <Button
             onClick={handleSave}
-            variant="outline"
-            size="sm"
+            variant='outline'
+            size='sm'
             disabled={isSubmitDisabled}
             data-dialog-submit>
-            Save Sharing Settings <KbdSubmit variant="outline" size="sm" />
+            Save Sharing Settings <KbdSubmit variant='outline' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

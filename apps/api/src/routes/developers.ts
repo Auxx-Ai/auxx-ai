@@ -1,13 +1,13 @@
 // apps/api/src/routes/developers.ts
 
-import { Hono } from 'hono'
 import { database, schema } from '@auxx/database'
-import { authMiddleware } from '../middleware/auth'
-import { requireScope } from '../middleware/scope'
-import { successResponse, errorResponse, type ErrorStatusCode } from '../lib/response'
-import type { AppContext } from '../types/context'
 // import { listUserOrganizations } from '../services/organization-members'
 import { listUserOrganizations } from '@auxx/services/organization-members'
+import { Hono } from 'hono'
+import { type ErrorStatusCode, errorResponse, successResponse } from '../lib/response'
+import { authMiddleware } from '../middleware/auth'
+import { requireScope } from '../middleware/scope'
+import type { AppContext } from '../types/context'
 
 const developers = new Hono<AppContext>()
 

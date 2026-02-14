@@ -1,3 +1,2 @@
-export { WebhookService } from './webhook-service'
-
 export * from './types'
+export { WebhookService } from './webhook-service'

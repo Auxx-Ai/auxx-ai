@@ -1,10 +1,22 @@
 // apps/web/src/app/(protected)/app/tickets/settings/templates/_components/template-list.tsx
 'use client'
 
-import React, { useState } from 'react'
-import { api } from '~/trpc/react'
-import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@auxx/ui/components/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import { Switch } from '@auxx/ui/components/switch'
 import {
   Table,
   TableBody,
@@ -13,33 +25,21 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
+import { toastError } from '@auxx/ui/components/toast'
+import { formatDistance } from 'date-fns'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@auxx/ui/components/dialog'
-import { TemplateEditorDialog } from './template-editor-dialog'
-import { Switch } from '@auxx/ui/components/switch'
-import {
-  MailIcon,
-  PlusIcon,
-  MoreHorizontal,
-  PencilIcon,
-  Trash2Icon,
   EyeIcon,
   LoaderIcon,
+  MailIcon,
+  MoreHorizontal,
+  PencilIcon,
+  PlusIcon,
+  Trash2Icon,
 } from 'lucide-react'
-import { formatDistance } from 'date-fns'
-import { toastError } from '@auxx/ui/components/toast'
+import React, { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
+import { TemplateEditorDialog } from './template-editor-dialog'
 import TemplatePreview from './template-preview'
 
 /** Map template type to human readable name */
@@ -131,11 +131,11 @@ export function EmailTemplatesList() {
   }
 
   return (
-    <div className="container mx-auto">
+    <div className='container mx-auto'>
       <ConfirmDialog />
 
-      <div className="mb-6 flex items-center justify-end">
-        <Button onClick={() => setIsCreating(true)} size="sm">
+      <div className='mb-6 flex items-center justify-end'>
+        <Button onClick={() => setIsCreating(true)} size='sm'>
           <PlusIcon />
           New Template
         </Button>
@@ -143,11 +143,11 @@ export function EmailTemplatesList() {
 
       {isLoading ? (
         <Card>
-          <CardContent className="py-10 text-center">
-            <div className="flex justify-center">
-              <LoaderIcon className="h-8 w-8 animate-spin text-muted-foreground" />
+          <CardContent className='py-10 text-center'>
+            <div className='flex justify-center'>
+              <LoaderIcon className='h-8 w-8 animate-spin text-muted-foreground' />
             </div>
-            <p className="mt-4 text-muted-foreground">Loading templates...</p>
+            <p className='mt-4 text-muted-foreground'>Loading templates...</p>
           </CardContent>
         </Card>
       ) : templatesData?.templates && templatesData.templates.length > 0 ? (
@@ -159,15 +159,15 @@ export function EmailTemplatesList() {
               <TableHead>Subject</TableHead>
               <TableHead>Updated</TableHead>
               <TableHead>Active</TableHead>
-              <TableHead className="w-[50px]"></TableHead>
+              <TableHead className='w-[50px]'></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {templatesData.templates.map((template) => (
               <TableRow key={template.id}>
-                <TableCell className="font-medium">{template.name}</TableCell>
+                <TableCell className='font-medium'>{template.name}</TableCell>
                 <TableCell>{getTemplateTypeName(template.type)}</TableCell>
-                <TableCell className="max-w-xs truncate">{template.subject}</TableCell>
+                <TableCell className='max-w-xs truncate'>{template.subject}</TableCell>
                 <TableCell>
                   {formatDistance(new Date(template.updatedAt), new Date(), {
                     addSuffix: true,
@@ -182,11 +182,11 @@ export function EmailTemplatesList() {
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon-sm">
+                      <Button variant='ghost' size='icon-sm'>
                         <MoreHorizontal />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
+                    <DropdownMenuContent align='end'>
                       <DropdownMenuItem onClick={() => handlePreviewTemplate(template.id)}>
                         <EyeIcon />
                         Preview
@@ -197,7 +197,7 @@ export function EmailTemplatesList() {
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => handleDeleteTemplate(template.id)}
-                        variant="destructive">
+                        variant='destructive'>
                         <Trash2Icon />
                         Delete
                       </DropdownMenuItem>
@@ -210,10 +210,10 @@ export function EmailTemplatesList() {
         </Table>
       ) : (
         <Card>
-          <CardContent className="py-10 text-center">
-            <MailIcon className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-            <h3 className="mb-2 text-lg font-medium">No Email Templates</h3>
-            <p className="mb-4 text-muted-foreground">
+          <CardContent className='py-10 text-center'>
+            <MailIcon className='mx-auto mb-4 h-12 w-12 text-muted-foreground' />
+            <h3 className='mb-2 text-lg font-medium'>No Email Templates</h3>
+            <p className='mb-4 text-muted-foreground'>
               You don't have any email templates yet. Create your first template.
             </p>
             <Button onClick={() => setIsCreating(true)}>Create Template</Button>
@@ -237,7 +237,7 @@ export function EmailTemplatesList() {
 
       {/* Preview Template Dialog */}
       <Dialog open={isPreviewing} onOpenChange={setIsPreviewing}>
-        <DialogContent size="xxl" position="tc">
+        <DialogContent size='xxl' position='tc'>
           <DialogHeader>
             <DialogTitle>Template Preview</DialogTitle>
             <DialogDescription>Preview how this template will look when sent</DialogDescription>

@@ -1,8 +1,8 @@
 // apps/web/src/app/(protected)/app/settings/general/_components/user-preferences-section.tsx
 'use client'
 
-import { TimezoneSettings } from '~/components/settings/timezone-settings'
 import { LastLoginDisplay } from '~/components/settings/last-login-display'
+import { TimezoneSettings } from '~/components/settings/timezone-settings'
 import { useDehydratedUser } from '~/providers/dehydrated-state-provider'
 
 /**
@@ -15,7 +15,7 @@ export function UserPreferencesSection() {
   return (
     <section>
       {/* Timezone Selection */}
-      <div className="mb-8">
+      <div className='mb-8'>
         <TimezoneSettings currentTimezone={user.preferredTimezone} />
       </div>
 

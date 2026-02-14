@@ -14,16 +14,16 @@
  * - Stores output fields in context manager for downstream nodes
  */
 
-import { BaseNodeProcessor } from './base-node'
+import { createScopedLogger } from '@auxx/logger'
+import type { ExecutionContextManager } from '../core/execution-context'
 import type {
-  WorkflowNode,
   NodeExecutionResult,
-  ValidationResult,
   PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
 } from '../core/types'
 import { NodeRunningStatus } from '../core/types'
-import type { ExecutionContextManager } from '../core/execution-context'
-import { createScopedLogger } from '@auxx/logger'
+import { BaseNodeProcessor } from './base-node'
 
 const logger = createScopedLogger('app-workflow-block-processor')
 
@@ -178,13 +178,13 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
       // User and organization context
       user: {
         id: context.userId || '',
-        email: await contextManager.getVariable('sys.userEmail') || '',
-        name: await contextManager.getVariable('sys.userName') || '',
+        email: (await contextManager.getVariable('sys.userEmail')) || '',
+        name: (await contextManager.getVariable('sys.userName')) || '',
       },
       organization: {
         id: context.organizationId,
-        handle: await contextManager.getVariable('sys.organizationHandle') || '',
-        name: await contextManager.getVariable('sys.organizationName') || '',
+        handle: (await contextManager.getVariable('sys.organizationHandle')) || '',
+        name: (await contextManager.getVariable('sys.organizationName')) || '',
       },
     }
 
@@ -432,12 +432,13 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
       case 'string':
         return String(value)
 
-      case 'number':
+      case 'number': {
         const num = Number(value)
         if (isNaN(num)) {
           throw new Error(`Cannot coerce "${value}" to number`)
         }
         return num
+      }
 
       case 'boolean':
         // Handle string booleans

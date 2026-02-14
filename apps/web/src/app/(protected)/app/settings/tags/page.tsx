@@ -9,10 +9,10 @@ import { TagTreeView } from '~/components/tags/ui/tags-list'
 async function TagsPage() {
   return (
     <SettingsPage
-      title="Company Tags"
-      description="Shared tags help you and your team stay organize conversations, tickets, and more"
+      title='Company Tags'
+      description='Shared tags help you and your team stay organize conversations, tickets, and more'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Tags' }]}>
-      <div className="p-8">
+      <div className='p-8'>
         <TagTreeView />
       </div>
     </SettingsPage>

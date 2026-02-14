@@ -1,1 +1,1 @@
-export { PROVIDER_CAPABILITIES, getProviderCapabilities } from './provider-capabilities'
+export { getProviderCapabilities, PROVIDER_CAPABILITIES } from './provider-capabilities'

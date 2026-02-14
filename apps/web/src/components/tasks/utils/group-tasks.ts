@@ -1,18 +1,18 @@
 // apps/web/src/components/tasks/utils/group-tasks.ts
 
+import type { TaskWithRelations } from '@auxx/lib/tasks'
+import type { SortDirection, TaskSortField } from '@auxx/lib/tasks/client'
 import {
+  endOfWeek,
+  isPast,
+  isThisMonth,
+  isThisWeek,
   isToday,
   isTomorrow,
-  isThisWeek,
-  isPast,
   isYesterday,
-  isThisMonth,
   startOfWeek,
-  endOfWeek,
   subWeeks,
 } from 'date-fns'
-import type { TaskWithRelations } from '@auxx/lib/tasks'
-import type { TaskSortField, SortDirection } from '@auxx/lib/tasks/client'
 
 /**
  * Variant for group header styling
@@ -342,8 +342,10 @@ function groupByAssignee(tasks: TaskWithRelations[], direction: SortDirection): 
     if (aKey === null) return direction === 'asc' ? 1 : -1
     if (bKey === null) return direction === 'asc' ? -1 : 1
 
-    const aName = aTasks[0]?.assignments.find((a) => a.assignedTo.id === aKey)?.assignedTo.name ?? ''
-    const bName = bTasks[0]?.assignments.find((a) => a.assignedTo.id === bKey)?.assignedTo.name ?? ''
+    const aName =
+      aTasks[0]?.assignments.find((a) => a.assignedTo.id === aKey)?.assignedTo.name ?? ''
+    const bName =
+      bTasks[0]?.assignments.find((a) => a.assignedTo.id === bKey)?.assignedTo.name ?? ''
 
     const cmp = aName.localeCompare(bName)
     return direction === 'asc' ? cmp : -cmp

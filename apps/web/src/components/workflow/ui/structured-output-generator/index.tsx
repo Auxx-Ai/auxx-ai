@@ -1,13 +1,22 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/index.tsx
-import React, { type FC, useCallback, useState } from 'react'
-import { type SchemaRoot, Type, type SchemaView, JSON_SCHEMA_MAX_DEPTH } from './types'
-import { GitBranch, Braces, X, ExternalLink } from 'lucide-react'
+
+import { Button } from '@auxx/ui/components/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@auxx/ui/components/dialog'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Separator } from '@auxx/ui/components/separator'
+import { toastError } from '@auxx/ui/components/toast'
+import { Braces, ExternalLink, GitBranch, X } from 'lucide-react'
+import React, { type FC, useCallback, useState } from 'react'
+import ErrorMessage from './error-message'
 import JsonImporter from './json-importer'
-import { Button } from '@auxx/ui/components/button'
-import VisualEditor from './visual-editor'
 import SchemaEditor from './schema-editor'
+import { JSON_SCHEMA_MAX_DEPTH, type SchemaRoot, type SchemaView, Type } from './types'
 import {
   checkJsonSchemaDepth,
   convertBooleanToString,
@@ -16,21 +25,13 @@ import {
   preValidateSchema,
   validateSchemaAgainstDraft7,
 } from './utils'
+import VisualEditor from './visual-editor'
 import {
   EventEmitterProvider,
-  VisualEditorContextProvider,
   useEventEmitter,
+  VisualEditorContextProvider,
 } from './visual-editor/context'
-import ErrorMessage from './error-message'
 import { useVisualEditorStore } from './visual-editor/store'
-import { toastError } from '@auxx/ui/components/toast'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@auxx/ui/components/dialog'
 
 type StructuredOutputGeneratorProps = {
   isShow: boolean
@@ -199,38 +200,38 @@ const StructuredOutputGeneratorContent: FC<Omit<StructuredOutputGeneratorProps, 
   }, [currentTab, jsonSchema, json, onSave, onClose, advancedEditing, isAddingNewField])
 
   return (
-    <div className="flex h-full flex-col relative flex-1 overflow-hidden">
+    <div className='flex h-full flex-col relative flex-1 overflow-hidden'>
       {/* Header */}
-      <div className="">
+      <div className=''>
         <DialogHeader>
           <DialogTitle>Structured Output</DialogTitle>
         </DialogHeader>
         {/* Content */}
-        <div className="flex items-center justify-between py-2">
+        <div className='flex items-center justify-between py-2'>
           {/* Tab */}
           <RadioTab
             value={currentTab}
             onValueChange={handleTabChange}
-            size="sm"
-            radioGroupClassName="grid w-full"
-            className="border border-primary-200 flex">
-            <RadioTabItem value="visual" size="sm">
+            size='sm'
+            radioGroupClassName='grid w-full'
+            className='border border-primary-200 flex'>
+            <RadioTabItem value='visual' size='sm'>
               <GitBranch />
               Visual Editor
             </RadioTabItem>
-            <RadioTabItem value="json" size="sm">
+            <RadioTabItem value='json' size='sm'>
               <Braces />
               JSON Schema
             </RadioTabItem>
           </RadioTab>
-          <div className="flex items-center gap-x-0.5">
+          <div className='flex items-center gap-x-0.5'>
             {/* <Separator orientation="vertical" className="h-3" /> */}
             {/* JSON Schema Importer */}
             <JsonImporter updateBtnWidth={updateBtnWidth} onSubmit={handleSubmit} />
           </div>
         </div>
       </div>
-      <div className="flex grow flex-col gap-y-1 overflow-hidden">
+      <div className='flex grow flex-col gap-y-1 overflow-hidden'>
         {currentTab === 'visual' && (
           <VisualEditor schema={jsonSchema} onChange={handleVisualEditorUpdate} />
         )}
@@ -241,19 +242,19 @@ const StructuredOutputGeneratorContent: FC<Omit<StructuredOutputGeneratorProps, 
         {validationError && <ErrorMessage message={validationError} />}
       </div>
       {/* Footer */}
-      <DialogFooter className="justify-between">
-        <div className="flex items-center gap-x-3">
-          <div className="flex items-center gap-x-2">
-            <Button variant="ghost" size="sm" onClick={handleResetDefaults}>
+      <DialogFooter className='justify-between'>
+        <div className='flex items-center gap-x-3'>
+          <div className='flex items-center gap-x-2'>
+            <Button variant='ghost' size='sm' onClick={handleResetDefaults}>
               Reset defaults
             </Button>
-            <Separator orientation="vertical" className="ml-1 mr-0 h-4" />
+            <Separator orientation='vertical' className='ml-1 mr-0 h-4' />
           </div>
-          <div className="flex items-center gap-x-2">
-            <Button variant="ghost" size="sm" onClick={handleCancel}>
+          <div className='flex items-center gap-x-2'>
+            <Button variant='ghost' size='sm' onClick={handleCancel}>
               Cancel
             </Button>
-            <Button variant="outline" size="sm" onClick={handleSave}>
+            <Button variant='outline' size='sm' onClick={handleSave}>
               Save
             </Button>
           </div>
@@ -266,7 +267,7 @@ const StructuredOutputGeneratorContent: FC<Omit<StructuredOutputGeneratorProps, 
 const StructuredOutputGenerator: FC<StructuredOutputGeneratorProps> = ({ isShow, ...props }) => {
   return (
     <Dialog open={isShow} onOpenChange={props.onClose}>
-      <DialogContent className="max-w-4xl h-[600px] " position="tc">
+      <DialogContent className='max-w-4xl h-[600px] ' position='tc'>
         <EventEmitterProvider>
           <VisualEditorContextProvider>
             <StructuredOutputGeneratorContent {...props} />

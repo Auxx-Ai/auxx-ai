@@ -1,23 +1,26 @@
 // packages/lib/src/import/resolution/resolver-registry.ts
 
-import type { ResolvedValue, ResolutionConfig, ResolutionType } from '../types/resolution'
-
-import { resolveTextValue, resolveTextCuid } from './resolvers/text'
-import { resolveInteger, resolveDecimal } from './resolvers/number'
-import {
-  resolveDateIso,
-  resolveDateCustom,
-  resolveDatetimeIso,
-  resolveDatetimeCustom,
-} from './resolvers/date'
-import { resolveBoolean } from './resolvers/boolean'
-import { resolveEmail } from './resolvers/email'
-import { resolvePhone } from './resolvers/phone'
-import { resolveSelectValue, resolveSelectCreate } from './resolvers/select'
-import { resolveMultiselectSplit } from './resolvers/multiselect'
-import { resolveDomain } from './resolvers/domain'
+import type { ResolutionConfig, ResolutionType, ResolvedValue } from '../types/resolution'
 import { resolveArraySplit } from './resolvers/array'
-import { resolveRelationId, resolveRelationMatch, resolveRelationCreate } from './resolvers/relation'
+import { resolveBoolean } from './resolvers/boolean'
+import {
+  resolveDateCustom,
+  resolveDateIso,
+  resolveDatetimeCustom,
+  resolveDatetimeIso,
+} from './resolvers/date'
+import { resolveDomain } from './resolvers/domain'
+import { resolveEmail } from './resolvers/email'
+import { resolveMultiselectSplit } from './resolvers/multiselect'
+import { resolveDecimal, resolveInteger } from './resolvers/number'
+import { resolvePhone } from './resolvers/phone'
+import {
+  resolveRelationCreate,
+  resolveRelationId,
+  resolveRelationMatch,
+} from './resolvers/relation'
+import { resolveSelectCreate, resolveSelectValue } from './resolvers/select'
+import { resolveTextCuid, resolveTextValue } from './resolvers/text'
 
 /** Resolver function type */
 type ResolverFn = (rawValue: string, config: ResolutionConfig) => ResolvedValue

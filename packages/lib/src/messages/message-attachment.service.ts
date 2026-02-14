@@ -1,13 +1,13 @@
 // packages/lib/src/messages/message-attachment.service.ts
 
-import { database as db, type Database, schema } from '@auxx/database'
-import { and, count, eq } from 'drizzle-orm'
+import { type Database, database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { and, count, eq } from 'drizzle-orm'
 import { AttachmentService } from '../files/core/attachment-service'
 import { MediaAssetService } from '../files/core/media-asset-service'
 import {
-  transformAttachmentsForMessages,
   type MessageAttachmentInfo,
+  transformAttachmentsForMessages,
 } from './attachment-transformers'
 
 const logger = createScopedLogger('message-attachment-service')

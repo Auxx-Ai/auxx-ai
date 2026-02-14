@@ -2,33 +2,33 @@
 
 'use client'
 
-import type { ExtendedColumnDef } from '~/components/dynamic-table'
-import { FormattedCell, CellPadding, PrimaryCell } from '~/components/dynamic-table'
+import { Button } from '@auxx/ui/components/button'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
+import { getFullName } from '@auxx/utils/contact'
+import { differenceInDays, isPast, isToday } from 'date-fns'
 import {
-  Eye,
-  Edit,
-  Trash2,
-  MessageSquare,
-  User,
+  Bookmark,
   Calendar,
   CalendarClock,
-  Fingerprint,
-  TextAlignStart,
-  Tag,
   CircleAlert,
-  Bookmark,
+  Edit,
+  Eye,
+  Fingerprint,
+  MessageSquare,
+  Tag,
+  TextAlignStart,
+  Trash2,
+  User,
 } from 'lucide-react'
-import { differenceInDays, isToday, isPast } from 'date-fns'
+import { ContactHoverCard } from '~/components/contacts/contact-hover-card'
+import type { ExtendedColumnDef } from '~/components/dynamic-table'
+import { CellPadding, FormattedCell, PrimaryCell } from '~/components/dynamic-table'
 import {
   TicketPriorityBadge,
   TicketStatusBadge,
   TicketTypeBadge,
 } from '~/components/tickets/ticket-badges'
-import { getFullName } from '@auxx/utils/contact'
-import { ContactHoverCard } from '~/components/contacts/contact-hover-card'
 import type { Ticket } from './ticket-types'
-import { Button } from '@auxx/ui/components/button'
 
 /**
  * Type cell component
@@ -40,8 +40,8 @@ function TicketTypeCell({ ticket }: { ticket: Ticket }) {
   return (
     <FormattedCell
       value={null}
-      fieldType="ITEMS"
-      columnId="type"
+      fieldType='ITEMS'
+      columnId='type'
       items={[{ id: ticket.type }]}
       renderItem={() => <TicketTypeBadge type={ticket.type} closed={closed} />}
     />
@@ -58,8 +58,8 @@ function TicketStatusCell({ ticket }: { ticket: Ticket }) {
   return (
     <FormattedCell
       value={null}
-      fieldType="ITEMS"
-      columnId="status"
+      fieldType='ITEMS'
+      columnId='status'
       items={[{ id: ticket.status }]}
       renderItem={() => <TicketStatusBadge status={ticket.status} closed={closed} />}
     />
@@ -76,8 +76,8 @@ function TicketPriorityCell({ ticket }: { ticket: Ticket }) {
   return (
     <FormattedCell
       value={null}
-      fieldType="ITEMS"
-      columnId="priority"
+      fieldType='ITEMS'
+      columnId='priority'
       items={[{ id: ticket.priority }]}
       renderItem={() => <TicketPriorityBadge priority={ticket.priority} closed={closed} />}
     />
@@ -94,8 +94,8 @@ function TicketContactCell({ ticket }: { ticket: Ticket }) {
   return (
     <CellPadding>
       <ContactHoverCard contact={contact}>
-        <div className="cursor-pointer hover:underline text-sm">
-          <div className="font-medium">{getFullName(contact)}</div>
+        <div className='cursor-pointer hover:underline text-sm'>
+          <div className='font-medium'>{getFullName(contact)}</div>
         </div>
       </ContactHoverCard>
     </CellPadding>
@@ -121,7 +121,7 @@ function TicketDueDateCell({ ticket }: { ticket: Ticket }) {
               ? 'text-warning font-medium'
               : 'text-muted-foreground'
       }>
-      <span className="text-sm">{text}</span>
+      <span className='text-sm'>{text}</span>
     </CellPadding>
   )
 }
@@ -143,8 +143,8 @@ function TicketAssignmentsCell({
     return (
       <CellPadding>
         <Button
-          variant="ghost"
-          size="xs"
+          variant='ghost'
+          size='xs'
           onClick={(e) => {
             e.stopPropagation()
             onAssign?.(ticket)
@@ -158,10 +158,10 @@ function TicketAssignmentsCell({
 
   return (
     <CellPadding>
-      <div className="space-y-0.5">
+      <div className='space-y-0.5'>
         {assignments.map((assignment) => (
-          <div key={assignment.id} className="text-sm">
-            <span className="font-medium">
+          <div key={assignment.id} className='text-sm'>
+            <span className='font-medium'>
               {assignment.agent.name || assignment.agent.email.split('@')[0]}
             </span>
           </div>
@@ -227,7 +227,7 @@ export function createTicketColumns({
       accessorKey: 'number',
       header: 'Ticket ID',
       cell: ({ row }) => (
-        <CellPadding className="font-mono text-xs">#{row.getValue('number')}</CellPadding>
+        <CellPadding className='font-mono text-xs'>#{row.getValue('number')}</CellPadding>
       ),
       size: 100,
       enableSorting: true,
@@ -259,7 +259,7 @@ export function createTicketColumns({
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onClick={() => onDelete(row.original)}>
+          <DropdownMenuItem variant='destructive' onClick={() => onDelete(row.original)}>
             <Trash2 />
             Delete
           </DropdownMenuItem>
@@ -325,7 +325,7 @@ export function createTicketColumns({
       accessorKey: 'createdAt',
       header: 'Created',
       cell: ({ getValue }) => (
-        <FormattedCell value={getValue()} fieldType="DATE" columnId="createdAt" />
+        <FormattedCell value={getValue()} fieldType='DATE' columnId='createdAt' />
       ),
       size: 110,
       enableSorting: true,
@@ -337,7 +337,7 @@ export function createTicketColumns({
       accessorKey: 'updatedAt',
       header: 'Updated',
       cell: ({ getValue }) => (
-        <FormattedCell value={getValue()} fieldType="DATE" columnId="updatedAt" />
+        <FormattedCell value={getValue()} fieldType='DATE' columnId='updatedAt' />
       ),
       size: 110,
       enableSorting: true,

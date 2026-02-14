@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import { type WebhookTestEvent } from '../nodes/core/webhook/types'
+import type { WebhookTestEvent } from '../nodes/core/webhook/types'
 
 // Re-export for backwards compatibility
 export type { WebhookTestEvent }

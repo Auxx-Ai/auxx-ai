@@ -1,28 +1,28 @@
 // packages/lib/src/resources/crud/unified-handler-queries.ts
 
 import { type Database, schema } from '@auxx/database'
-import { eq, and, isNull } from 'drizzle-orm'
-import { type ConditionGroup } from '../../conditions'
+import type { FieldType } from '@auxx/database/types'
+import { createScopedLogger } from '@auxx/logger'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import {
-  systemConditionBuilder,
-  entityConditionBuilder,
-  type EntityQueryContext,
-} from '../../workflow-engine'
-import { ResourceRegistryService, RESOURCE_TABLE_MAP, RESOURCE_TABLE_REGISTRY } from '../registry'
-import type { TableId } from '../registry/field-registry'
-import type { ResourceField } from '../registry'
-import {
-  parseResourceFieldId,
-  toResourceFieldId,
   type FieldId,
   type FieldReference,
+  parseResourceFieldId,
   type ResourceFieldId,
+  toResourceFieldId,
 } from '@auxx/types/field'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
-import { createScopedLogger } from '@auxx/logger'
-import { toRecordId, type RecordId } from '../resource-id'
+import { and, eq, isNull } from 'drizzle-orm'
+import type { ConditionGroup } from '../../conditions'
 import { FieldValueService, formatToRawValue } from '../../field-values'
-import type { FieldType } from '@auxx/database/types'
+import {
+  type EntityQueryContext,
+  entityConditionBuilder,
+  systemConditionBuilder,
+} from '../../workflow-engine'
+import type { ResourceField } from '../registry'
+import { RESOURCE_TABLE_MAP, RESOURCE_TABLE_REGISTRY, ResourceRegistryService } from '../registry'
+import type { TableId } from '../registry/field-registry'
+import { type RecordId, toRecordId } from '../resource-id'
 
 const logger = createScopedLogger('unified-handler-queries')
 
@@ -98,7 +98,9 @@ export function extractRequiredRelatedEntities(
       )
 
       if (relationshipField?.relationship) {
-        const relatedEntityId = getRelatedEntityDefinitionId(relationshipField.relationship as RelationshipConfig)
+        const relatedEntityId = getRelatedEntityDefinitionId(
+          relationshipField.relationship as RelationshipConfig
+        )
         if (relatedEntityId) {
           relatedEntityIds.add(relatedEntityId)
         }
@@ -477,9 +479,8 @@ export async function listAll(
     const fieldType = resourceFieldIdToType.get(resourceFieldId)
 
     // Extract raw value from TypedFieldValue (e.g., { type: 'text', value: '#C9B6F2' } → '#C9B6F2')
-    const rawValue = fieldType && result.value != null
-      ? formatToRawValue(result.value, fieldType)
-      : result.value
+    const rawValue =
+      fieldType && result.value != null ? formatToRawValue(result.value, fieldType) : result.value
     existing[fieldKey] = rawValue
     fieldValuesByRecord.set(result.recordId, existing)
   }

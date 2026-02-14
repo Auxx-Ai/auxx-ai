@@ -1,24 +1,25 @@
 // ~/server/api/routers/thread.ts ---
-import { z } from 'zod'
-import { TRPCError } from '@trpc/server'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+
 import { schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
+import { IdentifierType } from '@auxx/database/enums'
+import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { getUserOrganizationId } from '@auxx/lib/email' // Adjust import path if needed
+import { MessageSenderService } from '@auxx/lib/messages'
+import { ProviderRegistryService, whereThreadMessageType } from '@auxx/lib/providers'
+import {
+  type ListThreadIdsInput,
+  ThreadMutationService,
+  ThreadQueryService,
+  type ThreadSortDescriptor,
+  UnreadService,
+} from '@auxx/lib/threads'
 import { createScopedLogger } from '@auxx/logger'
 import { recordIdSchema } from '@auxx/types/resource'
-import {
-  ThreadQueryService,
-  ThreadMutationService,
-  UnreadService,
-  type ThreadSortDescriptor,
-  type ListThreadIdsInput,
-} from '@auxx/lib/threads'
-import { conditionGroupsSchema } from '@auxx/lib/conditions'
-import { ProviderRegistryService } from '@auxx/lib/providers'
-import { MessageSenderService } from '@auxx/lib/messages'
-import { IdentifierType } from '@auxx/database/enums'
-import { whereThreadMessageType } from '@auxx/lib/providers'
+import { TRPCError } from '@trpc/server'
+import { and, eq } from 'drizzle-orm'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+
 const logger = createScopedLogger('thread-router')
 
 // Participant Input Schema (reusable)
@@ -155,7 +156,10 @@ export const threadRouter = createTRPCRouter({
         return await threadQuery.listThreadIds(serviceInput)
       } catch (error: unknown) {
         handleServiceError(error, 'threadQuery.listThreadIds', { organizationId, userId })
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed fetching thread IDs.' })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed fetching thread IDs.',
+        })
       }
     }),
 
@@ -177,7 +181,10 @@ export const threadRouter = createTRPCRouter({
         return await threadQuery.getThreadMetaBatch(input.ids, userId)
       } catch (error: unknown) {
         handleServiceError(error, 'threadQuery.getThreadMetaBatch', { organizationId, userId })
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed fetching thread metadata.' })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed fetching thread metadata.',
+        })
       }
     }),
 

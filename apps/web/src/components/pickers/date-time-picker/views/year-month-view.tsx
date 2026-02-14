@@ -2,9 +2,9 @@
 'use client'
 
 import React from 'react'
+import OptionListItem from '../components/option-list-item'
 import { useMonthOptions, useYearOptions } from '../hooks'
 import type { YearMonthViewProps } from '../types'
-import OptionListItem from '../components/option-list-item'
 
 /**
  * Year and month selection view with two scrollable columns
@@ -19,9 +19,9 @@ const YearMonthView: React.FC<YearMonthViewProps> = ({
   const yearOptions = useYearOptions()
 
   return (
-    <div className="grid grid-cols-2 gap-x-1 p-2">
+    <div className='grid grid-cols-2 gap-x-1 p-2'>
       {/* Month Picker */}
-      <ul className="no-scrollbar flex h-[235px] flex-col gap-y-0.5 overflow-y-auto pb-[184px]">
+      <ul className='no-scrollbar flex h-[235px] flex-col gap-y-0.5 overflow-y-auto pb-[184px]'>
         {months.map((month, index) => (
           <OptionListItem
             key={month}
@@ -33,7 +33,7 @@ const YearMonthView: React.FC<YearMonthViewProps> = ({
       </ul>
 
       {/* Year Picker */}
-      <ul className="no-scrollbar flex h-[235px] flex-col gap-y-0.5 overflow-y-auto pb-[184px]">
+      <ul className='no-scrollbar flex h-[235px] flex-col gap-y-0.5 overflow-y-auto pb-[184px]'>
         {yearOptions.map((year) => (
           <OptionListItem
             key={year}

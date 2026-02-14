@@ -1,11 +1,11 @@
 // apps/web/src/lib/extensions/components/workflow/workflow-node-handle.tsx
 
 import React from 'react'
+import type { HandlePosition } from '~/components/workflow/ui/node-handle/handle-position-utils'
 import { NodeSourceHandle } from '~/components/workflow/ui/node-handle/source-handle'
 import { NodeTargetHandle } from '~/components/workflow/ui/node-handle/target-handle'
-import { useWorkflowNodeContextOptional } from './workflow-node-context'
 import type { NodeHandleProps } from '~/components/workflow/ui/node-handle/types'
-import type { HandlePosition } from '~/components/workflow/ui/node-handle/handle-position-utils'
+import { useWorkflowNodeContextOptional } from './workflow-node-context'
 
 /** Handle type for input or output connections */
 type HandleType = 'source' | 'target'
@@ -58,7 +58,7 @@ export const WorkflowNodeHandle = ({
 
   // Delegate to appropriate handle component
   if (type === 'source') {
-    return <NodeSourceHandle {...handleProps} handleType="source" position={position} />
+    return <NodeSourceHandle {...handleProps} handleType='source' position={position} />
   } else {
     return <NodeTargetHandle {...handleProps} position={position} />
   }

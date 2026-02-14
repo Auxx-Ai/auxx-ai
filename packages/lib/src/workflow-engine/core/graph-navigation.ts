@@ -1,8 +1,8 @@
 // packages/lib/src/workflow-engine/core/graph-navigation.ts
 
-import type { Workflow, WorkflowNode, WorkflowEdge, NodeExecutionResult } from './types'
+import type { NodeExecutionResult, Workflow, WorkflowEdge, WorkflowNode } from './types'
 import { WorkflowTriggerType } from './types'
-import { WorkflowGraphHelper, type WorkflowGraph } from './workflow-graph-builder'
+import { type WorkflowGraph, WorkflowGraphHelper } from './workflow-graph-builder'
 
 /**
  * Find the entry point node in the workflow
@@ -22,9 +22,7 @@ export function findEntryNode(workflow: Workflow): WorkflowNode | undefined {
 
   // Find the trigger node that matches the workflow's trigger type
   // Since trigger types and node types are now aligned (both use -trigger suffix), we can compare directly
-  const matchingTrigger = triggerNodes.find(
-    (node) => node.type === workflow.triggerType.toString()
-  )
+  const matchingTrigger = triggerNodes.find((node) => node.type === workflow.triggerType.toString())
 
   return matchingTrigger || triggerNodes[0]
 }

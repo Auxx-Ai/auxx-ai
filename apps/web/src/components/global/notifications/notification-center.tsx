@@ -1,45 +1,46 @@
 'use client'
-// components/notifications/notification-center.tsx
-import React, { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { format, formatDistanceToNow } from 'date-fns'
-import {
-  Bell,
-  MessageSquare,
-  Heart,
-  User,
-  X,
-  Check,
-  Mail as MailIcon,
-  Play,
-  Trash,
-  CheckSquare,
-} from 'lucide-react'
+import type { NotificationType } from '@auxx/database/types'
+import { getPusherClient } from '@auxx/lib/realtime/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { getPusherClient } from '@auxx/lib/realtime/client'
-import { HumanConfirmationDialog } from '~/components/workflow/dialogs/human-confirmation-dialog'
 import { SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem } from '@auxx/ui/components/sidebar'
-import { type NotificationType } from '@auxx/database/types'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { format, formatDistanceToNow } from 'date-fns'
+import {
+  Bell,
+  Check,
+  CheckSquare,
+  Heart,
+  Mail as MailIcon,
+  MessageSquare,
+  Play,
+  Trash,
+  User,
+  X,
+} from 'lucide-react'
+import { useRouter } from 'next/navigation'
+// components/notifications/notification-center.tsx
+import React, { useEffect, useState } from 'react'
+import { HumanConfirmationDialog } from '~/components/workflow/dialogs/human-confirmation-dialog'
+import { api } from '~/trpc/react'
+
 // Helper to get icon for notification type
 const getNotificationIcon = (type: NotificationType) => {
   switch (type) {
     case 'COMMENT_MENTION':
-      return <User className="size-4 text-blue-500" />
+      return <User className='size-4 text-blue-500' />
     case 'COMMENT_REPLY':
-      return <MessageSquare className="size-4 text-green-500" />
+      return <MessageSquare className='size-4 text-green-500' />
     case 'COMMENT_REACTION':
-      return <Heart className="size-4 text-red-500" />
+      return <Heart className='size-4 text-red-500' />
     case 'WORKFLOW_APPROVAL_REQUIRED':
-      return <CheckSquare className="size-4 text-orange-500" />
+      return <CheckSquare className='size-4 text-orange-500' />
     default:
-      return <Bell className="size-4 text-gray-500" />
+      return <Bell className='size-4 text-gray-500' />
   }
 }
 // Helper to determine notification link based on entity type
@@ -89,39 +90,39 @@ const NotificationItem = ({
     <div
       className={`group/item flex relative cursor-pointer items-start gap-1 px-1 py-2 hover:bg-primary-150 ${isRead ? 'opacity-70' : 'bg-blue-50'} `}
       onClick={handleClick}>
-      <div className="mt-1 shrink-0">{getNotificationIcon(type)}</div>
+      <div className='mt-1 shrink-0'>{getNotificationIcon(type)}</div>
 
-      <div className="min-w-0 grow">
-        <div className="flex items-start justify-between">
-          <p className="truncate text-sm font-medium">{message}</p>
-          <div className="ml-2 flex shrink-0 gap-1">
-            {!isRead && <span className="bg-info size-2 rounded-full bg-blue-500 shrink-0" />}
+      <div className='min-w-0 grow'>
+        <div className='flex items-start justify-between'>
+          <p className='truncate text-sm font-medium'>{message}</p>
+          <div className='ml-2 flex shrink-0 gap-1'>
+            {!isRead && <span className='bg-info size-2 rounded-full bg-blue-500 shrink-0' />}
           </div>
         </div>
 
-        <div className="mt-1 flex items-center">
+        <div className='mt-1 flex items-center'>
           {actor && (
-            <div className="mr-2 flex items-center">
-              <Avatar className="mr-1 size-5">
+            <div className='mr-2 flex items-center'>
+              <Avatar className='mr-1 size-5'>
                 {actor.image ? (
                   <AvatarImage src={actor.image} alt={actor.name || ''} />
                 ) : (
                   <AvatarFallback>{actor.name?.charAt(0) || '?'}</AvatarFallback>
                 )}
               </Avatar>
-              <span className="text-xs text-gray-600">{actor.name}</span>
+              <span className='text-xs text-gray-600'>{actor.name}</span>
             </div>
           )}
-          <span className="text-xs text-gray-500">
+          <span className='text-xs text-gray-500'>
             {formatDistanceToNow(new Date(createdAt), { addSuffix: true })}
           </span>
         </div>
       </div>
 
       <Button
-        variant="ghost"
-        size="icon-sm"
-        className="absolute right-1 top-1 opacity-0 group-hover/item:opacity-100 hover:bg-destructive/20 hover:text-destructive border border-transparent hover:border-destructive/50"
+        variant='ghost'
+        size='icon-sm'
+        className='absolute right-1 top-1 opacity-0 group-hover/item:opacity-100 hover:bg-destructive/20 hover:text-destructive border border-transparent hover:border-destructive/50'
         onClick={(e) => {
           e.stopPropagation()
           onDelete(id)
@@ -133,11 +134,11 @@ const NotificationItem = ({
 }
 // Loading skeleton for notifications
 const NotificationSkeleton = () => (
-  <div className="flex items-start gap-3 p-3">
-    <Skeleton className="size-5 rounded-full" />
-    <div className="grow">
-      <Skeleton className="mb-2 h-4 w-full" />
-      <Skeleton className="h-3 w-1/2" />
+  <div className='flex items-start gap-3 p-3'>
+    <Skeleton className='size-5 rounded-full' />
+    <div className='grow'>
+      <Skeleton className='mb-2 h-4 w-full' />
+      <Skeleton className='h-3 w-1/2' />
     </div>
   </div>
 )
@@ -238,7 +239,7 @@ export const NotificationCenter = () => {
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip="Notifications">
+            <SidebarMenuButton tooltip='Notifications'>
               <Bell />
               <span>Notifications</span>
             </SidebarMenuButton>
@@ -260,16 +261,16 @@ export const NotificationCenter = () => {
           ) : null}
         </Button> sideOffset={-36} */}
         </PopoverTrigger>
-        <PopoverContent className="w-90 mr-4 p-0 min-h-[300px]" align="start">
-          <div className="flex items-center justify-between p-2">
-            <div className="font-medium text-base">Notifications</div>
+        <PopoverContent className='w-90 mr-4 p-0 min-h-[300px]' align='start'>
+          <div className='flex items-center justify-between p-2'>
+            <div className='font-medium text-base'>Notifications</div>
             {unreadData && unreadData?.count > 0 && (
               <Button
-                variant="ghost"
-                size="sm"
+                variant='ghost'
+                size='sm'
                 onClick={handleMarkAllAsRead}
                 loading={markAllAsRead.isPending || isLoading}
-                loadingText="Marking..."
+                loadingText='Marking...'
                 disabled={isLoading || markAllAsRead.isPending}>
                 <Check />
                 Mark all read
@@ -277,22 +278,22 @@ export const NotificationCenter = () => {
             )}
           </div>
 
-          <div className="p-2 pt-0">
+          <div className='p-2 pt-0'>
             <RadioTab
               value={mode}
               onValueChange={setMode}
-              size="sm"
-              radioGroupClassName="grid w-full"
-              className="border border-primary-200 flex flex-1 w-full">
-              <RadioTabItem value="all" size="sm">
+              size='sm'
+              radioGroupClassName='grid w-full'
+              className='border border-primary-200 flex flex-1 w-full'>
+              <RadioTabItem value='all' size='sm'>
                 <MailIcon />
                 All
               </RadioTabItem>
-              <RadioTabItem value="unread" size="sm">
+              <RadioTabItem value='unread' size='sm'>
                 <Play />
                 Unread
                 {unreadData?.count && unreadData.count > 0 ? (
-                  <Badge variant="secondary" className="ml-2 h-5 min-w-[20px] px-1.5 text-xs">
+                  <Badge variant='secondary' className='ml-2 h-5 min-w-[20px] px-1.5 text-xs'>
                     {unreadData.count}
                   </Badge>
                 ) : null}
@@ -300,8 +301,8 @@ export const NotificationCenter = () => {
             </RadioTab>
           </div>
 
-          <div className="m-0 flex-1">
-            <div className="max-h-96 overflow-y-auto">
+          <div className='m-0 flex-1'>
+            <div className='max-h-96 overflow-y-auto'>
               {isLoading ? (
                 <>
                   <NotificationSkeleton />
@@ -310,7 +311,7 @@ export const NotificationCenter = () => {
                 </>
               ) : mode === 'all' ? (
                 data?.notifications.length === 0 ? (
-                  <div className="p-4 flex justify-center items-center text-center text-gray-500 text-sm">
+                  <div className='p-4 flex justify-center items-center text-center text-gray-500 text-sm'>
                     No notifications yet
                   </div>
                 ) : (
@@ -326,7 +327,7 @@ export const NotificationCenter = () => {
                 )
               ) : mode === 'unread' ? (
                 data?.notifications.length === 0 ? (
-                  <div className="p-4 flex justify-center items-center text-center text-gray-500 text-sm">
+                  <div className='p-4 flex justify-center items-center text-center text-gray-500 text-sm'>
                     No unread notifications
                   </div>
                 ) : (
@@ -346,10 +347,10 @@ export const NotificationCenter = () => {
             </div>
 
             {data?.totalCount && data.totalCount > 10 ? (
-              <div className="p-2 text-center">
+              <div className='p-2 text-center'>
                 <Button
-                  variant="link"
-                  size="sm"
+                  variant='link'
+                  size='sm'
                   onClick={() => {
                     // Navigate to full notifications page
                     router.push(`/app/notifications`)

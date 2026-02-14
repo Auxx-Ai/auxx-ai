@@ -2,8 +2,6 @@
 
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -13,11 +11,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Input } from '@auxx/ui/components/input'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { useRouter } from 'next/navigation'
+import React, { useEffect, useState } from 'react'
 import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 
 interface DuplicateWorkflowDialogProps {
   open: boolean
@@ -97,29 +97,29 @@ function DuplicateWorkflowDialogContent({
         <DialogTitle>Duplicate Workflow</DialogTitle>
         <DialogDescription>Create a copy of this workflow with a new name.</DialogDescription>
       </DialogHeader>
-      <div className="space-y-2">
-        <Label htmlFor="name">Name</Label>
+      <div className='space-y-2'>
+        <Label htmlFor='name'>Name</Label>
         <Input
-          id="name"
+          id='name'
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Enter workflow name"
+          placeholder='Enter workflow name'
           autoFocus
         />
       </div>
       <DialogFooter>
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+        <Button variant='ghost' size='sm' onClick={onClose}>
+          Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
         </Button>
         <Button
-          variant="outline"
-          size="sm"
+          variant='outline'
+          size='sm'
           onClick={handleDuplicate}
           loading={duplicateWorkflow.isPending}
-          loadingText="Duplicating..."
+          loadingText='Duplicating...'
           disabled={!name.trim() || duplicateWorkflow.isPending}
           data-dialog-submit>
-          Duplicate <KbdSubmit variant="outline" size="sm" />
+          Duplicate <KbdSubmit variant='outline' size='sm' />
         </Button>
       </DialogFooter>
     </>

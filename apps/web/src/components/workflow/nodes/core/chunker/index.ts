@@ -1,12 +1,12 @@
 // apps/web/src/components/workflow/nodes/core/chunker/index.ts
 
-export { ChunkerPanel } from './panel'
 export { ChunkerNode } from './node'
+export { getChunkerOutputVariables } from './output-variables'
+export { ChunkerPanel } from './panel'
 export {
+  chunkerDefaultData,
   chunkerDefinition,
   chunkerNodeDataSchema,
-  chunkerDefaultData,
   extractChunkerVariables,
 } from './schema'
-export type { ChunkerNodeData, ChunkerNode as ChunkerNodeType } from './types'
-export { getChunkerOutputVariables } from './output-variables'
+export type { ChunkerNode as ChunkerNodeType, ChunkerNodeData } from './types'

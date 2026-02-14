@@ -2,13 +2,13 @@
 
 'use client'
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import type { ActorFieldOptions } from '@auxx/types/field'
 import type { ActorId } from '@auxx/types/actor'
 import { isActorId, toActorId } from '@auxx/types/actor'
+import type { ActorFieldOptions } from '@auxx/types/field'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActorPickerContent } from '~/components/pickers/actor-picker'
-import { usePropertyContext } from '../property-provider'
 import { useFieldNavigationOptional } from '../field-navigation-context'
+import { usePropertyContext } from '../property-provider'
 
 /** Actor value object from formatToRawValue */
 interface ActorValueObject {
@@ -141,7 +141,7 @@ export function ActorInputField() {
       target={options?.target}
       multi={options?.multiple ?? false}
       onCaptureChange={handleCaptureChange}
-      placeholder="Search..."
+      placeholder='Search...'
     />
   )
 }

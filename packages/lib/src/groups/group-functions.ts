@@ -1,20 +1,25 @@
 // packages/lib/src/groups/group-functions.ts
 
-import { and, eq, inArray, isNull, sql, asc, or } from 'drizzle-orm'
-import { schema } from '@auxx/database'
 import type { EntityInstanceEntity } from '@auxx/database'
-import { MemberType, GroupVisibility, ResourcePermission, ResourceGranteeType } from '@auxx/database/enums'
-import { generateNKeysBetween } from '@auxx/utils'
+import { schema } from '@auxx/database'
+import {
+  GroupVisibility,
+  MemberType,
+  ResourceGranteeType,
+  ResourcePermission,
+} from '@auxx/database/enums'
+import { createEntityInstance } from '@auxx/services/entity-instances'
 import type {
-  GroupContext,
-  CreateGroupInput,
   AddMembersInput,
   AddMembersResult,
+  CreateGroupInput,
+  GroupContext,
   GroupMember,
 } from '@auxx/types/groups'
-import { requireGroupPermission, hasGroupPermission } from './permissions'
+import { generateNKeysBetween } from '@auxx/utils'
+import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { NotFoundError } from '../errors'
-import { createEntityInstance } from '@auxx/services/entity-instances'
+import { hasGroupPermission, requireGroupPermission } from './permissions'
 
 // ============================================================================
 // Group Metadata Type
@@ -36,7 +41,10 @@ interface GroupMetadata {
 /**
  * Create a new entity group
  */
-export async function createGroup(ctx: GroupContext, input: CreateGroupInput): Promise<EntityInstanceEntity> {
+export async function createGroup(
+  ctx: GroupContext,
+  input: CreateGroupInput
+): Promise<EntityInstanceEntity> {
   const { db, organizationId, userId } = ctx
 
   // Get group EntityDefinition
@@ -163,9 +171,7 @@ export async function listAccessibleGroups(
     })
   }
 
-  const accessibleGroupIds = result.instances.map(
-    (i) => parseRecordId(i.recordId).entityInstanceId
-  )
+  const accessibleGroupIds = result.instances.map((i) => parseRecordId(i.recordId).entityInstanceId)
 
   if (accessibleGroupIds.length === 0) return []
 
@@ -187,7 +193,10 @@ export async function listAccessibleGroups(
 /**
  * Add members to a group
  */
-export async function addMembers(ctx: GroupContext, input: AddMembersInput): Promise<AddMembersResult> {
+export async function addMembers(
+  ctx: GroupContext,
+  input: AddMembersInput
+): Promise<AddMembersResult> {
   const { db, userId } = ctx
   const { groupId, members } = input
 
@@ -242,7 +251,10 @@ export async function removeMembers(
 
   // Build OR conditions for each member
   const conditions = members.map((m) =>
-    and(eq(schema.EntityGroupMember.memberType, m.type), eq(schema.EntityGroupMember.memberRefId, m.id))
+    and(
+      eq(schema.EntityGroupMember.memberType, m.type),
+      eq(schema.EntityGroupMember.memberRefId, m.id)
+    )
   )
 
   const result = await db
@@ -275,8 +287,12 @@ export async function getMembers(
   })
 
   // Separate entity and user members
-  const entityIds = memberships.filter((m) => m.memberType === MemberType.entity).map((m) => m.memberRefId)
-  const userIds = memberships.filter((m) => m.memberType === MemberType.user).map((m) => m.memberRefId)
+  const entityIds = memberships
+    .filter((m) => m.memberType === MemberType.entity)
+    .map((m) => m.memberRefId)
+  const userIds = memberships
+    .filter((m) => m.memberType === MemberType.user)
+    .map((m) => m.memberRefId)
 
   // Batch fetch entities and users
   const [entities, users] = await Promise.all([
@@ -317,7 +333,10 @@ export async function getMembers(
 /**
  * Get groups that a user belongs to
  */
-export async function getGroupsForUser(ctx: GroupContext, targetUserId: string): Promise<EntityInstanceEntity[]> {
+export async function getGroupsForUser(
+  ctx: GroupContext,
+  targetUserId: string
+): Promise<EntityInstanceEntity[]> {
   const { db } = ctx
 
   // Fetch memberships with group data using relations
@@ -347,7 +366,10 @@ export async function getGroupsForUser(ctx: GroupContext, targetUserId: string):
 /**
  * Get groups that an entity belongs to
  */
-export async function getGroupsForEntity(ctx: GroupContext, entityId: string): Promise<EntityInstanceEntity[]> {
+export async function getGroupsForEntity(
+  ctx: GroupContext,
+  entityId: string
+): Promise<EntityInstanceEntity[]> {
   const { db } = ctx
 
   // Fetch memberships with group data using relations

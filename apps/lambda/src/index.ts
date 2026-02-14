@@ -1,5 +1,9 @@
 // apps/lambda/src/index.ts
 
+import { loadBundle } from './bundle-loader.ts'
+import { createRuntimeContext } from './context-provider.ts'
+import { executeCode } from './executors/code-executor.ts'
+import { executeEventHandler } from './executors/event-executor.ts'
 /**
  * AWS Lambda Handler for Server Function Execution
  *
@@ -7,15 +11,11 @@
  * It provides Web Platform APIs (fetch, Response, etc.) but NO Node.js built-ins.
  */
 import { executeServerFunction } from './executors/server-function-executor.ts'
-import { executeEventHandler } from './executors/event-executor.ts'
 import { executeWebhookHandler } from './executors/webhook-executor.ts'
 import { executeWorkflowBlock } from './executors/workflow-block-executor.ts'
-import { executeCode } from './executors/code-executor.ts'
-import { createRuntimeContext } from './context-provider.ts'
-import { loadBundle } from './bundle-loader.ts'
-import { validateLambdaEvent, type ValidatedLambdaEvent } from './validator.ts'
-import { parseError } from './utils.ts'
 import type { LambdaEvent, LambdaResponse } from './types.ts'
+import { parseError } from './utils.ts'
+import { type ValidatedLambdaEvent, validateLambdaEvent } from './validator.ts'
 
 /**
  * Execution result type returned by all executors

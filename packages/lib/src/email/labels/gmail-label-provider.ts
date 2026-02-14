@@ -1,10 +1,11 @@
 // lib/email/providers/gmail-label-provider.ts
-import { google } from 'googleapis'
-import { LabelProvider, ProviderLabel } from './label-provider.interface'
-import { GoogleOAuthService } from '../../providers/google/google-oauth'
+
 import { IntegrationModel } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
+import { google } from 'googleapis'
+import { GoogleOAuthService } from '../../providers/google/google-oauth'
 import { ReauthenticationRequiredError } from '../errors-handlers'
+import type { LabelProvider, ProviderLabel } from './label-provider.interface'
 
 const logger = createScopedLogger('gmail-label-provider')
 

@@ -81,7 +81,7 @@ export const CALC_FUNCTIONS: Record<string, CalcFunction> = {
     fn: (n: unknown, decimals: unknown = 0) => {
       const num = Number(n) || 0
       const dec = Math.max(0, Math.min(10, Number(decimals) || 0))
-      const factor = Math.pow(10, dec)
+      const factor = 10 ** dec
       return Math.round(num * factor) / factor
     },
     minArgs: 1,
@@ -121,7 +121,7 @@ export const CALC_FUNCTIONS: Record<string, CalcFunction> = {
   // ─────────────────────────────────────────────────────────────
   if: {
     name: 'if',
-    fn: (cond: unknown, thenVal: unknown, elseVal: unknown) => (Boolean(cond) ? thenVal : elseVal),
+    fn: (cond: unknown, thenVal: unknown, elseVal: unknown) => (cond ? thenVal : elseVal),
     minArgs: 3,
     maxArgs: 3,
   },
@@ -215,7 +215,10 @@ function parseTokens(tokens: string[], index: { value: number }): ParsedExpressi
   }
 
   // String literal
-  if ((token.startsWith('"') && token.endsWith('"')) || (token.startsWith("'") && token.endsWith("'"))) {
+  if (
+    (token.startsWith('"') && token.endsWith('"')) ||
+    (token.startsWith("'") && token.endsWith("'"))
+  ) {
     index.value++
     return { type: 'literal', value: token.slice(1, -1) }
   }
@@ -345,7 +348,10 @@ function evaluateExpression(expr: ParsedExpression, fieldValues: Record<string, 
  * @param fieldValues - Map of field key to TypedFieldValue or raw value
  * @returns The computed result, or null if evaluation fails
  */
-export function evaluateCalcExpression(expression: string, fieldValues: Record<string, unknown>): unknown {
+export function evaluateCalcExpression(
+  expression: string,
+  fieldValues: Record<string, unknown>
+): unknown {
   try {
     const parsed = parseExpression(expression)
     return evaluateExpression(parsed, fieldValues)
@@ -428,9 +434,24 @@ export function getAvailableFunctions(): Array<{
       signature: 'concat(...values)',
       example: 'concat({firstName}, " ", {lastName})',
     },
-    { name: 'upper', description: 'Convert to uppercase', signature: 'upper(text)', example: 'upper({name})' },
-    { name: 'lower', description: 'Convert to lowercase', signature: 'lower(text)', example: 'lower({email})' },
-    { name: 'trim', description: 'Remove whitespace', signature: 'trim(text)', example: 'trim({notes})' },
+    {
+      name: 'upper',
+      description: 'Convert to uppercase',
+      signature: 'upper(text)',
+      example: 'upper({name})',
+    },
+    {
+      name: 'lower',
+      description: 'Convert to lowercase',
+      signature: 'lower(text)',
+      example: 'lower({email})',
+    },
+    {
+      name: 'trim',
+      description: 'Remove whitespace',
+      signature: 'trim(text)',
+      example: 'trim({notes})',
+    },
     {
       name: 'length',
       description: 'Get string length',
@@ -455,16 +476,31 @@ export function getAvailableFunctions(): Array<{
       signature: 'multiply(...numbers)',
       example: 'multiply({qty}, {price})',
     },
-    { name: 'divide', description: 'Divide a by b', signature: 'divide(a, b)', example: 'divide({total}, {count})' },
+    {
+      name: 'divide',
+      description: 'Divide a by b',
+      signature: 'divide(a, b)',
+      example: 'divide({total}, {count})',
+    },
     {
       name: 'round',
       description: 'Round to decimals',
       signature: 'round(number, decimals?)',
       example: 'round({price}, 2)',
     },
-    { name: 'floor', description: 'Round down', signature: 'floor(number)', example: 'floor({price})' },
+    {
+      name: 'floor',
+      description: 'Round down',
+      signature: 'floor(number)',
+      example: 'floor({price})',
+    },
     { name: 'ceil', description: 'Round up', signature: 'ceil(number)', example: 'ceil({price})' },
-    { name: 'abs', description: 'Absolute value', signature: 'abs(number)', example: 'abs({difference})' },
+    {
+      name: 'abs',
+      description: 'Absolute value',
+      signature: 'abs(number)',
+      example: 'abs({difference})',
+    },
     {
       name: 'min',
       description: 'Minimum value',

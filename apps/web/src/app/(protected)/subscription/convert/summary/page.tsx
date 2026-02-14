@@ -1,21 +1,21 @@
 // apps/web/src/app/(protected)/subscription/convert/summary/page.tsx
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { useRouter } from 'next/navigation'
-import { api } from '~/trpc/react'
-import { loadStripe } from '@stripe/stripe-js'
-import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
+import { Alert, AlertDescription, AlertIcon, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { Input } from '@auxx/ui/components/input'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
-import { useConvert } from '../_components/convert-provider'
-import Link from 'next/link'
-import { AlertDescription, AlertIcon, Alert, AlertTitle } from '@auxx/ui/components/alert'
+import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js'
+import { loadStripe } from '@stripe/stripe-js'
 import { Building } from 'lucide-react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { api } from '~/trpc/react'
+import { useConvert } from '../_components/convert-provider'
 
 /** Initialize Stripe */
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
@@ -180,7 +180,7 @@ function SummaryContent() {
       })
 
       let paymentMethodId = defaultPaymentMethod?.id as string | undefined
-      let previousPaymentMethodId = defaultPaymentMethod?.id as string | undefined
+      const previousPaymentMethodId = defaultPaymentMethod?.id as string | undefined
 
       if (shouldCollectNewPaymentMethod) {
         // 2. Create setup intent and confirm card when collecting a fresh payment method
@@ -249,8 +249,8 @@ function SummaryContent() {
 
   if (!state.selectedPlan) {
     return (
-      <div className="mx-auto max-w-4xl p-6">
-        <div className="text-center py-8 text-muted-foreground">
+      <div className='mx-auto max-w-4xl p-6'>
+        <div className='text-center py-8 text-muted-foreground'>
           No plan selected. Please go back and select a plan.
         </div>
       </div>
@@ -284,11 +284,11 @@ function SummaryContent() {
     updateSubscriptionDirect.isPending
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
+    <div className='mx-auto max-w-4xl p-6'>
       <form onSubmit={handleSubmit(onSubmit)}>
-        <div className="grid grid-cols-3 gap-6">
+        <div className='grid grid-cols-3 gap-6'>
           {/* Main Content */}
-          <div className="col-span-2 space-y-4">
+          <div className='col-span-2 space-y-4'>
             {/* Plan Summary */}
             {/* <Card className="shadow-md shadow-black/20 border-transparent">
               <CardHeader>
@@ -307,12 +307,12 @@ function SummaryContent() {
             </Card> */}
 
             {/* Billing Information */}
-            <Card className="shadow-md shadow-black/20 border-transparent">
-              <div className="p-3 pb-0">
-                <Alert variant="outline" className="flex items-center gap-3 ">
+            <Card className='shadow-md shadow-black/20 border-transparent'>
+              <div className='p-3 pb-0'>
+                <Alert variant='outline' className='flex items-center gap-3 '>
                   <AlertIcon icon={Building}></AlertIcon>
-                  <div className="flex flex-col gap-0">
-                    <AlertTitle className="pb-0 mt-0 mb-0">
+                  <div className='flex flex-col gap-0'>
+                    <AlertTitle className='pb-0 mt-0 mb-0'>
                       {state.selectedPlan.name} Plan
                     </AlertTitle>
                     <AlertDescription>${monthlyPrice.toFixed(2)} per user/month</AlertDescription>
@@ -320,25 +320,25 @@ function SummaryContent() {
                 </Alert>
               </div>
               <CardHeader>
-                <CardTitle className="text-lg">Billing Information</CardTitle>
+                <CardTitle className='text-lg'>Billing Information</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+              <CardContent className='space-y-3'>
+                <div className='grid grid-cols-2 gap-3'>
                   <div>
                     <Input
                       {...register('email', { required: 'Email is required' })}
-                      placeholder="Email"
-                      type="email"
+                      placeholder='Email'
+                      type='email'
                       disabled={isLoadingData}
                     />
                     {errors.email && (
-                      <p className="text-xs text-destructive mt-1">{errors.email.message}</p>
+                      <p className='text-xs text-destructive mt-1'>{errors.email.message}</p>
                     )}
                   </div>
                   <div>
                     <Input
                       {...register('companyName')}
-                      placeholder="Company"
+                      placeholder='Company'
                       disabled={isLoadingData}
                     />
                   </div>
@@ -346,70 +346,70 @@ function SummaryContent() {
 
                 <Input
                   {...register('line1', { required: 'Address is required' })}
-                  placeholder="Address Line 1"
+                  placeholder='Address Line 1'
                   disabled={isLoadingData}
                 />
                 {errors.line1 && (
-                  <p className="text-xs text-destructive mt-1">{errors.line1.message}</p>
+                  <p className='text-xs text-destructive mt-1'>{errors.line1.message}</p>
                 )}
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className='grid grid-cols-3 gap-3'>
                   <div>
                     <Input
                       {...register('city', { required: 'City is required' })}
-                      placeholder="City"
+                      placeholder='City'
                       disabled={isLoadingData}
                     />
                     {errors.city && (
-                      <p className="text-xs text-destructive mt-1">{errors.city.message}</p>
+                      <p className='text-xs text-destructive mt-1'>{errors.city.message}</p>
                     )}
                   </div>
                   <div>
-                    <Input {...register('state')} placeholder="State" disabled={isLoadingData} />
+                    <Input {...register('state')} placeholder='State' disabled={isLoadingData} />
                   </div>
                   <div>
                     <Input
                       {...register('postalCode', { required: 'Postal code is required' })}
-                      placeholder="Postal Code"
+                      placeholder='Postal Code'
                       disabled={isLoadingData}
                     />
                     {errors.postalCode && (
-                      <p className="text-xs text-destructive mt-1">{errors.postalCode.message}</p>
+                      <p className='text-xs text-destructive mt-1'>{errors.postalCode.message}</p>
                     )}
                   </div>
                 </div>
 
                 <Input
                   {...register('country', { required: 'Country is required' })}
-                  placeholder="Country"
+                  placeholder='Country'
                   disabled={isLoadingData}
                 />
                 {errors.country && (
-                  <p className="text-xs text-destructive mt-1">{errors.country.message}</p>
+                  <p className='text-xs text-destructive mt-1'>{errors.country.message}</p>
                 )}
               </CardContent>
             </Card>
 
             {/* Payment Information */}
-            <Card className="shadow-md shadow-black/20 border-transparent">
+            <Card className='shadow-md shadow-black/20 border-transparent'>
               <CardHeader>
-                <CardTitle className="text-lg">Payment Information</CardTitle>
+                <CardTitle className='text-lg'>Payment Information</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className='space-y-3'>
                 {defaultPaymentMethod ? (
-                  <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div className='flex items-center justify-between rounded-lg border p-3'>
                     <div>
-                      <p className="text-sm font-medium">
+                      <p className='text-sm font-medium'>
                         {defaultPaymentMethod.brand} •••• {defaultPaymentMethod.last4}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className='text-xs text-muted-foreground'>
                         Expires {defaultPaymentMethod.expMonth}/{defaultPaymentMethod.expYear}
                       </p>
                     </div>
                     <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
+                      type='button'
+                      variant='ghost'
+                      size='sm'
                       onClick={() => {
                         hasManuallySelectedPayment.current = true
                         setUseExistingPaymentMethod((prev) => !prev)
@@ -420,7 +420,7 @@ function SummaryContent() {
                 ) : null}
 
                 {shouldCollectNewPaymentMethod ? (
-                  <div className="p-2 border rounded-lg border-primary-200 focus:border-primary-300 bg-primary-50 dark:bg-primary-100 focus:ring-primary-400 placeholder:text-primary-500">
+                  <div className='p-2 border rounded-lg border-primary-200 focus:border-primary-300 bg-primary-50 dark:bg-primary-100 focus:ring-primary-400 placeholder:text-primary-500'>
                     <CardElement
                       options={{
                         style: {
@@ -441,22 +441,22 @@ function SummaryContent() {
                 ) : null}
               </CardContent>
             </Card>
-            <div className="">
-              <Button variant="outline" asChild>
-                <Link href="/subscription/convert/addons">Back</Link>
+            <div className=''>
+              <Button variant='outline' asChild>
+                <Link href='/subscription/convert/addons'>Back</Link>
               </Button>
             </div>
           </div>
 
           {/* Summary Sidebar */}
-          <div className="col-span-1">
-            <div className="rounded-2xl bg-foreground/5 backdrop-blur-sm ring-1 ring-foreground/10 p-4 space-y-4 sticky top-4">
-              <h3 className="font-semibold">Summary</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">
+          <div className='col-span-1'>
+            <div className='rounded-2xl bg-foreground/5 backdrop-blur-sm ring-1 ring-foreground/10 p-4 space-y-4 sticky top-4'>
+              <h3 className='font-semibold'>Summary</h3>
+              <div className='space-y-2 text-sm'>
+                <div className='flex justify-between'>
+                  <span className='text-muted-foreground'>
                     {isLoadingPreview ? (
-                      <Skeleton className="h-[20px] w-32" />
+                      <Skeleton className='h-[20px] w-32' />
                     ) : (
                       <>
                         {state.addons.seats} seat x {state.selectedPlan.name}
@@ -464,14 +464,14 @@ function SummaryContent() {
                     )}
                   </span>
                   {isLoadingPreview ? (
-                    <Skeleton className="h-[20px] w-16" />
+                    <Skeleton className='h-[20px] w-16' />
                   ) : (
-                    <span className="font-medium">${subtotal.toFixed(2)}</span>
+                    <span className='font-medium'>${subtotal.toFixed(2)}</span>
                   )}
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div className='text-xs text-muted-foreground'>
                   {isLoadingPreview ? (
-                    <Skeleton className="h-[16px] w-24" />
+                    <Skeleton className='h-[16px] w-24' />
                   ) : (
                     <>
                       at ${(selectedPrice / 100).toFixed(2)} /{' '}
@@ -480,37 +480,37 @@ function SummaryContent() {
                   )}
                 </div>
 
-                <div className="border-t border-black/15 pt-2 flex justify-between">
-                  <span className="text-muted-foreground">Subtotal</span>
+                <div className='border-t border-black/15 pt-2 flex justify-between'>
+                  <span className='text-muted-foreground'>Subtotal</span>
                   {isLoadingPreview ? (
-                    <Skeleton className="h-[20px] w-16" />
+                    <Skeleton className='h-[20px] w-16' />
                   ) : (
-                    <span className="font-medium">${subtotal.toFixed(2)}</span>
+                    <span className='font-medium'>${subtotal.toFixed(2)}</span>
                   )}
                 </div>
 
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Tax</span>
+                <div className='flex justify-between'>
+                  <span className='text-muted-foreground'>Tax</span>
                   {isLoadingPreview ? (
-                    <Skeleton className="h-[20px] w-16" />
+                    <Skeleton className='h-[20px] w-16' />
                   ) : (
-                    <span className="font-medium">${tax.toFixed(2)}</span>
+                    <span className='font-medium'>${tax.toFixed(2)}</span>
                   )}
                 </div>
 
-                <div className="border-t border-black/15 pt-2 flex justify-between font-semibold">
+                <div className='border-t border-black/15 pt-2 flex justify-between font-semibold'>
                   <span>Total</span>
                   {isLoadingPreview ? (
-                    <Skeleton className="h-[20px] w-16" />
+                    <Skeleton className='h-[20px] w-16' />
                   ) : (
                     <span>${total.toFixed(2)}</span>
                   )}
                 </div>
 
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Due today</span>
+                <div className='flex justify-between text-xs'>
+                  <span className='text-muted-foreground'>Due today</span>
                   {isLoadingPreview ? (
-                    <Skeleton className="h-[16px] w-12" />
+                    <Skeleton className='h-[16px] w-12' />
                   ) : (
                     <span>${adjustmentDueToday.toFixed(2)}</span>
                   )}
@@ -518,11 +518,11 @@ function SummaryContent() {
               </div>
 
               <Button
-                type="submit"
-                className="w-full"
-                size="lg"
+                type='submit'
+                className='w-full'
+                size='lg'
                 loading={isPending}
-                loadingText="Processing...">
+                loadingText='Processing...'>
                 Complete Subscription
               </Button>
             </div>

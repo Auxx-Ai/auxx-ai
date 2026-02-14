@@ -3,11 +3,11 @@
  * Stripe webhook handler for billing events.
  */
 
-import { NextRequest, NextResponse } from 'next/server'
 import { WebhookService } from '@auxx/billing'
+import { env } from '@auxx/config/server'
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { env } from '@auxx/config/server'
+import { type NextRequest, NextResponse } from 'next/server'
 import '~/lib/stripe' // Initialize Stripe client
 
 /**

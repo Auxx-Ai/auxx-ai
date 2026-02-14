@@ -1,15 +1,15 @@
 // components/tickets/ticket-forms/shipping-issue-form.tsx
 'use client'
 
-import { UseFormReturn } from 'react-hook-form'
-import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@auxx/ui/components/form'
-import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
 import { Button } from '@auxx/ui/components/button'
 import { Calendar } from '@auxx/ui/components/calendar'
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@auxx/ui/components/form'
+import { Input } from '@auxx/ui/components/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { CalendarIcon } from 'lucide-react'
+import { Textarea } from '@auxx/ui/components/textarea'
 import { format } from 'date-fns'
+import { CalendarIcon } from 'lucide-react'
+import type { UseFormReturn } from 'react-hook-form'
 
 interface ShippingIssueFormProps {
   form: UseFormReturn<any>
@@ -17,13 +17,13 @@ interface ShippingIssueFormProps {
 
 export function ShippingIssueForm({ form }: ShippingIssueFormProps) {
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+    <div className='space-y-4'>
+      <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
         <FormField
           control={form.control}
-          name="orderId"
+          name='orderId'
           render={({ field }) => (
-            <FormItem className="flex flex-col">
+            <FormItem className='flex flex-col'>
               <FormLabel>Order ID</FormLabel>
               <FormControl>
                 <Input {...field} />
@@ -35,9 +35,9 @@ export function ShippingIssueForm({ form }: ShippingIssueFormProps) {
 
         <FormField
           control={form.control}
-          name="orderDate"
+          name='orderDate'
           render={({ field }) => (
-            <FormItem className="flex flex-col">
+            <FormItem className='flex flex-col'>
               <FormLabel>Order Date</FormLabel>
               <Popover>
                 <PopoverTrigger asChild>
@@ -48,13 +48,13 @@ export function ShippingIssueForm({ form }: ShippingIssueFormProps) {
                         !field.value ? 'text-muted-foreground' : ''
                       }`}>
                       {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
-                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      <CalendarIcon className='ml-auto h-4 w-4 opacity-50' />
                     </Button>
                   </FormControl>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
+                <PopoverContent className='w-auto p-0' align='start'>
                   <Calendar
-                    mode="single"
+                    mode='single'
                     selected={field.value}
                     onSelect={field.onChange}
                     disabled={(date) => date > new Date(new Date().setHours(23, 59, 59, 999))}
@@ -68,12 +68,12 @@ export function ShippingIssueForm({ form }: ShippingIssueFormProps) {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
         <FormField
           control={form.control}
-          name="trackingNumber"
+          name='trackingNumber'
           render={({ field }) => (
-            <FormItem className="flex flex-col">
+            <FormItem className='flex flex-col'>
               <FormLabel>Tracking Number (Optional)</FormLabel>
               <FormControl>
                 <Input {...field} />
@@ -85,9 +85,9 @@ export function ShippingIssueForm({ form }: ShippingIssueFormProps) {
 
         <FormField
           control={form.control}
-          name="carrier"
+          name='carrier'
           render={({ field }) => (
-            <FormItem className="flex flex-col">
+            <FormItem className='flex flex-col'>
               <FormLabel>Carrier (Optional)</FormLabel>
               <FormControl>
                 <Input {...field} />
@@ -100,14 +100,14 @@ export function ShippingIssueForm({ form }: ShippingIssueFormProps) {
 
       <FormField
         control={form.control}
-        name="issue"
+        name='issue'
         render={({ field }) => (
-          <FormItem className="flex flex-col">
+          <FormItem className='flex flex-col'>
             <FormLabel>Shipping Issue Description</FormLabel>
             <FormControl>
               <Textarea
-                placeholder="Describe the shipping issue"
-                className="min-h-[80px]"
+                placeholder='Describe the shipping issue'
+                className='min-h-[80px]'
                 {...field}
               />
             </FormControl>

@@ -2,14 +2,14 @@
 
 'use client'
 
-import React from 'react'
+import type { ResourceId } from '@auxx/lib/workflow-engine/client'
 import { useStoreApi } from '@xyflow/react'
 import { Loader2 } from 'lucide-react'
-import Section from '~/components/workflow/ui/section'
-import type { ResourceId } from '@auxx/lib/workflow-engine/client'
-import type { TriggerInputProps } from '../trigger-registry'
-import { ResourceTestInput } from '~/components/workflow/panels/run/tabs/resource-test-input'
+import React from 'react'
 import { useResource } from '~/components/resources'
+import { ResourceTestInput } from '~/components/workflow/panels/run/tabs/resource-test-input'
+import Section from '~/components/workflow/ui/section'
+import type { TriggerInputProps } from '../trigger-registry'
 
 /**
  * Resource trigger input component for test mode
@@ -30,8 +30,8 @@ export function ResourceTriggerInput({ inputs, errors, onChange }: TriggerInputP
 
   if (!resourceTriggerNode) {
     return (
-      <Section title="Resource Trigger" initialOpen>
-        <div className="text-sm text-destructive">No resource trigger node found in workflow</div>
+      <Section title='Resource Trigger' initialOpen>
+        <div className='text-sm text-destructive'>No resource trigger node found in workflow</div>
       </Section>
     )
   }
@@ -42,8 +42,8 @@ export function ResourceTriggerInput({ inputs, errors, onChange }: TriggerInputP
 
   if (!resourceType || !operation) {
     return (
-      <Section title="Resource Trigger" initialOpen>
-        <div className="text-sm text-destructive">
+      <Section title='Resource Trigger' initialOpen>
+        <div className='text-sm text-destructive'>
           Resource trigger is not configured. Please configure the resource type and operation in
           the trigger node.
         </div>
@@ -57,9 +57,9 @@ export function ResourceTriggerInput({ inputs, errors, onChange }: TriggerInputP
   // Show loading state while resources are being fetched
   if (isLoadingResources) {
     return (
-      <Section title="Resource Trigger" initialOpen>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
+      <Section title='Resource Trigger' initialOpen>
+        <div className='flex items-center gap-2 text-sm text-muted-foreground'>
+          <Loader2 className='h-4 w-4 animate-spin' />
           Loading resource configuration...
         </div>
       </Section>
@@ -69,8 +69,8 @@ export function ResourceTriggerInput({ inputs, errors, onChange }: TriggerInputP
   // Validate resource type using ResourceProvider (supports both system and custom resources)
   if (!resource) {
     return (
-      <Section title="Resource Trigger" initialOpen>
-        <div className="text-sm text-destructive">
+      <Section title='Resource Trigger' initialOpen>
+        <div className='text-sm text-destructive'>
           Invalid resource type: "{resourceType}". This resource type could not be found.
         </div>
       </Section>

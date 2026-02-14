@@ -1,6 +1,7 @@
 // apps/web/src/app/(protected)/app/contacts/_components/customer-sources-card.tsx
-import { LinkIcon } from 'lucide-react'
+
 import { Badge } from '@auxx/ui/components/badge'
+import { LinkIcon } from 'lucide-react'
 
 interface CustomerSourcesCardProps {
   customer: any // Replace with proper type
@@ -35,35 +36,34 @@ export default function CustomerSourcesCard({ customer }: CustomerSourcesCardPro
   const additionalEmails =
     customer.emails?.filter((email: string) => email !== customer.email) || []
 
-  const hasAnySources =
-    Object.keys(groupedSources).length > 0 || additionalEmails.length > 0
+  const hasAnySources = Object.keys(groupedSources).length > 0 || additionalEmails.length > 0
 
   return (
-    <div className="bg-primary-100/50 rounded-2xl border py-2 px-3">
+    <div className='bg-primary-100/50 rounded-2xl border py-2 px-3'>
       {hasAnySources ? (
-        <div className="space-y-3">
+        <div className='space-y-3'>
           {Object.entries(groupedSources).map(([sourceType, sourceItems]) => (
-            <div key={sourceType} className="space-y-1">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" size="sm">
+            <div key={sourceType} className='space-y-1'>
+              <div className='flex items-center gap-2'>
+                <Badge variant='outline' size='sm'>
                   {sourceType}
                 </Badge>
-                <span className="text-xs text-muted-foreground">
+                <span className='text-xs text-muted-foreground'>
                   {sourceItems.length} {sourceItems.length === 1 ? 'connection' : 'connections'}
                 </span>
               </div>
 
-              <ul className="space-y-1 pl-2 text-sm">
+              <ul className='space-y-1 pl-2 text-sm'>
                 {sourceItems.map((item: any, index: number) => (
-                  <li key={index} className="flex items-center text-muted-foreground">
-                    <LinkIcon className="mr-1.5 size-3 shrink-0" />
+                  <li key={index} className='flex items-center text-muted-foreground'>
+                    <LinkIcon className='mr-1.5 size-3 shrink-0' />
                     {sourceType === 'SHOPIFY' ? (
-                      <span className="truncate">
+                      <span className='truncate'>
                         Shopify Customer {item.id.toString()}
                         {item.email && ` (${item.email})`}
                       </span>
                     ) : item.email ? (
-                      <span className="truncate">{item.email}</span>
+                      <span className='truncate'>{item.email}</span>
                     ) : (
                       <span>ID: {item.sourceId}</span>
                     )}
@@ -74,13 +74,13 @@ export default function CustomerSourcesCard({ customer }: CustomerSourcesCardPro
           ))}
 
           {additionalEmails.length > 0 && (
-            <div className="space-y-1 border-t pt-2">
-              <span className="text-sm font-medium">Additional Emails</span>
-              <ul className="space-y-1 pl-2 text-sm">
+            <div className='space-y-1 border-t pt-2'>
+              <span className='text-sm font-medium'>Additional Emails</span>
+              <ul className='space-y-1 pl-2 text-sm'>
                 {additionalEmails.map((email: string, index: number) => (
-                  <li key={index} className="flex items-center text-muted-foreground">
-                    <LinkIcon className="mr-1.5 size-3 shrink-0" />
-                    <span className="truncate">{email}</span>
+                  <li key={index} className='flex items-center text-muted-foreground'>
+                    <LinkIcon className='mr-1.5 size-3 shrink-0' />
+                    <span className='truncate'>{email}</span>
                   </li>
                 ))}
               </ul>
@@ -88,7 +88,7 @@ export default function CustomerSourcesCard({ customer }: CustomerSourcesCardPro
           )}
         </div>
       ) : (
-        <span className="text-sm text-muted-foreground">No connected sources</span>
+        <span className='text-sm text-muted-foreground'>No connected sources</span>
       )}
     </div>
   )

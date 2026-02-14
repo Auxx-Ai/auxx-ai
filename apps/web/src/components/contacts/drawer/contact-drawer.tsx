@@ -1,25 +1,25 @@
 'use client'
+
 // apps/web/src/components/contacts/drawer/contact-drawer.tsx
 
-import * as React from 'react'
-import { Expand, Mail, MessagesSquare, Trash, User } from 'lucide-react'
+import { Button } from '@auxx/ui/components/button'
+import { EntityIcon } from '@auxx/ui/components/icons'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { getFullName } from '@auxx/utils/contact'
 import { formatDistanceToNow } from 'date-fns'
+import { Expand, Mail, MessagesSquare, Trash, User } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-
-import { Button } from '@auxx/ui/components/button'
-import { api } from '~/trpc/react'
-import { useRecord, toRecordId } from '~/components/resources'
-import { Skeleton } from '@auxx/ui/components/skeleton'
+import * as React from 'react'
+import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
+import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
 import NewMessageDialog from '~/components/mail/email-editor/new-message-dialog'
 import type { EditorPresetValues } from '~/components/mail/email-editor/types'
+import { toRecordId, useRecord } from '~/components/resources'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
-import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
-import { EntityIcon } from '@auxx/ui/components/icons'
-import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
+import { api } from '~/trpc/react'
 
 interface ContactDrawerProps {
   /** Whether the drawer is open (for controlled usage) */
@@ -108,7 +108,7 @@ export function ContactDrawer({
       recordId={recordId}
       open={open}
       onOpenChange={onOpenChange ?? (() => {})}
-      entityType="contact"
+      entityType='contact'
       isDocked={isDocked}
       dockedWidth={dockedWidth}
       onWidthChange={setDockedWidth}
@@ -116,66 +116,66 @@ export function ContactDrawer({
       maxWidth={800}
       focusComposerTrigger={focusComposerTrigger}
       onClose={handleClose}
-      headerIcon={<EntityIcon iconId="circle-user" color="indigo" className="size-6" />}
-      headerTitle="Contact"
+      headerIcon={<EntityIcon iconId='circle-user' color='indigo' className='size-6' />}
+      headerTitle='Contact'
       headerActions={
         <>
           <NewMessageDialog
             trigger={
-              <Button variant="ghost" size="xs" disabled={!presetValues}>
+              <Button variant='ghost' size='xs' disabled={!presetValues}>
                 <Mail />
                 Compose
               </Button>
             }
             presetValues={presetValues}
           />
-          <Tooltip content="Create note">
-            <Button variant="ghost" size="icon-xs" onClick={handleCreateNoteClick}>
+          <Tooltip content='Create note'>
+            <Button variant='ghost' size='icon-xs' onClick={handleCreateNoteClick}>
               <MessagesSquare />
             </Button>
           </Tooltip>
-          <Tooltip content="View full page">
+          <Tooltip content='View full page'>
             <Button
-              variant="ghost"
-              size="icon-xs"
+              variant='ghost'
+              size='icon-xs'
               onClick={() => router.push(`/app/contacts/${contactId}`)}>
               <Expand />
             </Button>
           </Tooltip>
           <ManualTriggerButton
-            resourceType="contact"
+            resourceType='contact'
             recordId={recordId}
-            buttonVariant="ghost"
-            buttonSize="icon-sm"
-            buttonClassName="rounded-full"
-            tooltipContent="Trigger workflow"
+            buttonVariant='ghost'
+            buttonSize='icon-sm'
+            buttonClassName='rounded-full'
+            tooltipContent='Trigger workflow'
           />
-          <Tooltip content="Delete contact">
+          <Tooltip content='Delete contact'>
             <Button
-              variant="ghost"
-              size="icon-xs"
+              variant='ghost'
+              size='icon-xs'
               onClick={() => {
                 if (onDeleteContact) {
                   void onDeleteContact(contactId)
                 }
               }}>
-              <Trash className="text-bad-500" />
+              <Trash className='text-bad-500' />
             </Button>
           </Tooltip>
           <DockToggleButton />
         </>
       }
       cardContent={
-        <div className="flex gap-3 py-2 px-3 flex-row items-center justify-start border-b">
-          <div className="size-10 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0">
-            <User className="size-6 text-neutral-500 dark:text-foreground" />
+        <div className='flex gap-3 py-2 px-3 flex-row items-center justify-start border-b'>
+          <div className='size-10 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0'>
+            <User className='size-6 text-neutral-500 dark:text-foreground' />
           </div>
-          <div className="flex flex-col align-start w-full">
-            <div className="text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate">
-              {contact ? getFullName(contact) : <Skeleton className="h-6 w-80 mb-1" />}
+          <div className='flex flex-col align-start w-full'>
+            <div className='text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate'>
+              {contact ? getFullName(contact) : <Skeleton className='h-6 w-80 mb-1' />}
             </div>
-            <div className="text-xs text-neutral-500 truncate">
-              {contact ? <>{createdAtText}</> : <Skeleton className="h-4 w-40" />}
+            <div className='text-xs text-neutral-500 truncate'>
+              {contact ? <>{createdAtText}</> : <Skeleton className='h-4 w-40' />}
             </div>
           </div>
         </div>

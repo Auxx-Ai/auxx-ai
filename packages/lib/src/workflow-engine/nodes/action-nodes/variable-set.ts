@@ -1,14 +1,14 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/variable-set.ts
 
-import { BaseNodeProcessor } from '../base-node'
+import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
-  WorkflowNode,
   NodeExecutionResult,
-  ValidationResult,
   PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
+import { BaseNodeProcessor } from '../base-node'
 
 /**
  * Action node that sets variables in the execution context

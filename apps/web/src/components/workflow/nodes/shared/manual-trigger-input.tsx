@@ -2,19 +2,19 @@
 
 'use client'
 
-import { useMemo, useEffect } from 'react'
-import { Alert, AlertDescription } from '@auxx/ui/components/alert'
-import { AlertCircle } from 'lucide-react'
-import { useStore, useStoreApi } from '@xyflow/react'
-import { unifiedNodeRegistry } from '../unified-registry'
-import type { TriggerInputProps } from '../trigger-registry'
-import type { FlowNode } from '../../types'
-import type { FormInputNodeData } from '../inputs/form-input/types'
 import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
-import { VarEditorField } from '../../ui/input-editor/var-editor'
-import { FormInputField } from '../../ui/form-input-field'
-import { nodeDataToConfig } from '../../utils/form-input-utils'
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
+import { useStore, useStoreApi } from '@xyflow/react'
+import { AlertCircle } from 'lucide-react'
+import { useEffect, useMemo } from 'react'
+import type { FlowNode } from '../../types'
 import { BaseType } from '../../types'
+import { FormInputField } from '../../ui/form-input-field'
+import { VarEditorField } from '../../ui/input-editor/var-editor'
+import { nodeDataToConfig } from '../../utils/form-input-utils'
+import type { FormInputNodeData } from '../inputs/form-input/types'
+import type { TriggerInputProps } from '../trigger-registry'
+import { unifiedNodeRegistry } from '../unified-registry'
 
 /**
  * Input component for manual trigger that dynamically renders fields
@@ -77,7 +77,7 @@ export function ManualTriggerInput({ inputs, errors, onChange, isLoading }: Trig
   // Show message when no form-input nodes are connected
   if (formInputConfigs.length === 0) {
     return (
-      <div className="p-4 pb-0">
+      <div className='p-4 pb-0'>
         <Alert>
           <AlertCircle />
           <AlertDescription>
@@ -90,8 +90,8 @@ export function ManualTriggerInput({ inputs, errors, onChange, isLoading }: Trig
   }
 
   return (
-    <div className="space-y-2 p-4">
-      <div className="mb-3 text-sm font-medium text-muted-foreground">
+    <div className='space-y-2 p-4'>
+      <div className='mb-3 text-sm font-medium text-muted-foreground'>
         Manual Trigger Inputs ({formInputConfigs.length})
       </div>
 
@@ -111,7 +111,7 @@ export function ManualTriggerInput({ inputs, errors, onChange, isLoading }: Trig
 
       {/* Show general errors */}
       {errors.general && (
-        <Alert variant="destructive">
+        <Alert variant='destructive'>
           <AlertCircle />
           <AlertDescription>{errors.general}</AlertDescription>
         </Alert>

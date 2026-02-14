@@ -1,12 +1,12 @@
 // File: packages/lib/src/jobs/messages/monitor-message-sync-job.ts
 
-import type { Job } from 'bullmq'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { getQueue, Queues } from '../queues'
-import { publisher } from '../../events/publisher'
-import { MessageSyncCompleteEvent, MessageSyncFailedEvent } from '../../events/types'
+import type { Job } from 'bullmq'
 import { and, eq } from 'drizzle-orm'
+import { publisher } from '../../events/publisher'
+import type { MessageSyncCompleteEvent, MessageSyncFailedEvent } from '../../events/types'
+import { getQueue, Queues } from '../queues'
 
 const logger = createScopedLogger('job:message-sync-monitor')
 

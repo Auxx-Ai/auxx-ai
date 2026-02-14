@@ -108,7 +108,9 @@ export function isLegacyWorkflowFileData(value: unknown): value is LegacyWorkflo
  * For backwards compatibility with older file data
  */
 export function toFileReference(
-  fileData: LegacyWorkflowFileData | (LegacyWorkflowFileData & { assetId?: string; versionId?: string }),
+  fileData:
+    | LegacyWorkflowFileData
+    | (LegacyWorkflowFileData & { assetId?: string; versionId?: string }),
   source: FileSource = 'media-asset'
 ): FileReference {
   // If fileData already has assetId and versionId, use them

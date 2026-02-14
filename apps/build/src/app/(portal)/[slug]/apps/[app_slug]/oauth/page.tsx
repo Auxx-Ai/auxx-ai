@@ -2,25 +2,22 @@
 
 'use client'
 
-import { useState } from 'react'
-import { useParams } from 'next/navigation'
-import Link from 'next/link'
-import {
-  Copy,
-  Eye,
-  EyeOff,
-  ExternalLink,
-  Plus,
-  Trash2,
-  Check,
-  RotateCw,
-  Loader2,
-  X,
-} from 'lucide-react'
-import { useForm, useFieldArray } from 'react-hook-form'
-import { api } from '~/trpc/react'
 import { Button } from '@auxx/ui/components/button'
-import { Switch } from '@auxx/ui/components/switch'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@auxx/ui/components/dialog'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@auxx/ui/components/empty'
 import {
   Field,
   FieldContent,
@@ -37,23 +34,26 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from '@auxx/ui/components/input-group'
+import { Switch } from '@auxx/ui/components/switch'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@auxx/ui/components/dialog'
+  Check,
+  Copy,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Loader2,
+  Plus,
+  RotateCw,
+  Trash2,
+  X,
+} from 'lucide-react'
+import Link from 'next/link'
+import { useParams } from 'next/navigation'
+import { useState } from 'react'
+import { useFieldArray, useForm } from 'react-hook-form'
 import { toastError } from '~/components/global/toast'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@auxx/ui/components/empty'
 import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 /**
  * Form data for enabling OAuth
@@ -133,7 +133,7 @@ function EnableOAuthDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="md" position="tc">
+      <DialogContent size='md' position='tc'>
         <DialogHeader>
           <DialogTitle>Enable OAuth</DialogTitle>
           <DialogDescription>
@@ -146,10 +146,10 @@ function EnableOAuthDialog({
           <FieldGroup>
             {/* Install URL */}
             <Field>
-              <FieldLabel htmlFor="install-url">Install URL</FieldLabel>
+              <FieldLabel htmlFor='install-url'>Install URL</FieldLabel>
               <Input
-                id="install-url"
-                placeholder="https://yourapp.com/integrations/auxx"
+                id='install-url'
+                placeholder='https://yourapp.com/integrations/auxx'
                 {...form.register('externalEntrypointUrl')}
               />
               <FieldDescription>
@@ -161,20 +161,20 @@ function EnableOAuthDialog({
             {/* Redirect URIs */}
             <Field>
               <FieldLabel>Redirect URIs</FieldLabel>
-              <div className="space-y-2">
+              <div className='space-y-2'>
                 {fields.map((field, index) => (
                   <InputGroup key={field.id}>
                     <InputGroupInput
-                      placeholder="https://yourapp.com/oauth/callback"
+                      placeholder='https://yourapp.com/oauth/callback'
                       {...form.register(`redirectUris.${index}.value`)}
                     />
                     {fields.length > 1 && (
-                      <InputGroupAddon align="inline-end">
+                      <InputGroupAddon align='inline-end'>
                         <InputGroupButton
-                          type="button"
-                          aria-label="Remove redirect URI"
-                          title="Remove"
-                          size="icon-xs"
+                          type='button'
+                          aria-label='Remove redirect URI'
+                          title='Remove'
+                          size='icon-xs'
                           onClick={() => remove(index)}>
                           <Trash2 />
                         </InputGroupButton>
@@ -184,10 +184,10 @@ function EnableOAuthDialog({
                 ))}
               </div>
               <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-2"
+                type='button'
+                variant='outline'
+                size='sm'
+                className='mt-2'
                 onClick={() => append({ value: '' })}>
                 <Plus />
                 Add Redirect URI
@@ -201,19 +201,19 @@ function EnableOAuthDialog({
 
           <DialogFooter>
             <Button
-              type="button"
-              size="sm"
-              variant="ghost"
+              type='button'
+              size='sm'
+              variant='ghost'
               onClick={() => onOpenChange(false)}
               disabled={enableOAuth.isPending}>
               Cancel
             </Button>
             <Button
-              size="sm"
-              variant="outline"
-              type="submit"
+              size='sm'
+              variant='outline'
+              type='submit'
               loading={enableOAuth.isPending}
-              loadingText="Enabling...">
+              loadingText='Enabling...'>
               Enable OAuth
             </Button>
           </DialogFooter>
@@ -278,7 +278,7 @@ function EditInstallUrlDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="sm" position="tc">
+      <DialogContent size='sm' position='tc'>
         <DialogHeader>
           <DialogTitle>Edit Install URL</DialogTitle>
           <DialogDescription>
@@ -290,10 +290,10 @@ function EditInstallUrlDialog({
         <form onSubmit={onSubmit}>
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="install-url-input">Install URL</FieldLabel>
+              <FieldLabel htmlFor='install-url-input'>Install URL</FieldLabel>
               <Input
-                id="install-url-input"
-                placeholder="https://yourapp.com/integrations/auxx"
+                id='install-url-input'
+                placeholder='https://yourapp.com/integrations/auxx'
                 {...form.register('installUrl')}
               />
               <FieldDescription>
@@ -305,19 +305,19 @@ function EditInstallUrlDialog({
 
           <DialogFooter>
             <Button
-              type="button"
-              size="sm"
-              variant="ghost"
+              type='button'
+              size='sm'
+              variant='ghost'
               onClick={() => onOpenChange(false)}
               disabled={updateInstallUrl.isPending}>
               Cancel
             </Button>
             <Button
-              type="submit"
-              size="sm"
-              variant="outline"
+              type='submit'
+              size='sm'
+              variant='outline'
               loading={updateInstallUrl.isPending}
-              loadingText="Saving...">
+              loadingText='Saving...'>
               Save Changes
             </Button>
           </DialogFooter>
@@ -389,7 +389,7 @@ function EditRedirectUrisDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="sm" position="tc">
+      <DialogContent size='sm' position='tc'>
         <DialogHeader>
           <DialogTitle>Edit Redirect URIs</DialogTitle>
           <DialogDescription>
@@ -401,20 +401,20 @@ function EditRedirectUrisDialog({
           <FieldGroup>
             <Field>
               <FieldLabel>Redirect URIs</FieldLabel>
-              <div className="space-y-2">
+              <div className='space-y-2'>
                 {fields.map((field, index) => (
                   <InputGroup key={field.id}>
                     <InputGroupInput
-                      placeholder="https://yourapp.com/oauth/callback"
+                      placeholder='https://yourapp.com/oauth/callback'
                       {...form.register(`redirectUris.${index}.value`)}
                     />
                     {fields.length > 1 && (
-                      <InputGroupAddon align="inline-end">
+                      <InputGroupAddon align='inline-end'>
                         <InputGroupButton
-                          type="button"
-                          aria-label="Remove redirect URI"
-                          title="Remove"
-                          size="icon-xs"
+                          type='button'
+                          aria-label='Remove redirect URI'
+                          title='Remove'
+                          size='icon-xs'
                           onClick={() => remove(index)}>
                           <Trash2 />
                         </InputGroupButton>
@@ -424,9 +424,9 @@ function EditRedirectUrisDialog({
                 ))}
               </div>
               <Button
-                type="button"
-                variant="outline"
-                size="sm"
+                type='button'
+                variant='outline'
+                size='sm'
                 onClick={() => append({ value: '' })}>
                 <Plus />
                 Add Redirect URI
@@ -440,19 +440,19 @@ function EditRedirectUrisDialog({
 
           <DialogFooter>
             <Button
-              type="button"
-              size="sm"
-              variant="ghost"
+              type='button'
+              size='sm'
+              variant='ghost'
               onClick={() => onOpenChange(false)}
               disabled={updateRedirectUris.isPending}>
               Cancel
             </Button>
             <Button
-              type="submit"
-              size="sm"
-              variant="outline"
+              type='submit'
+              size='sm'
+              variant='outline'
               loading={updateRedirectUris.isPending}
-              loadingText="Saving...">
+              loadingText='Saving...'>
               Save Changes
             </Button>
           </DialogFooter>
@@ -555,11 +555,11 @@ export default function OAuthPage() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 overflow-y-auto">
+      <div className='flex flex-col items-center justify-center flex-1 overflow-y-auto'>
         <Empty>
           <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Loader2 className="animate-spin" />
+            <EmptyMedia variant='icon'>
+              <Loader2 className='animate-spin' />
             </EmptyMedia>
             <EmptyTitle>Loading...</EmptyTitle>
             <EmptyDescription>Fetching OAuth configuration</EmptyDescription>
@@ -571,10 +571,10 @@ export default function OAuthPage() {
 
   if (!data) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 overflow-y-auto">
-        <Empty className="border-0">
+      <div className='flex flex-col items-center justify-center flex-1 overflow-y-auto'>
+        <Empty className='border-0'>
           <EmptyHeader>
-            <EmptyMedia variant="icon">
+            <EmptyMedia variant='icon'>
               <X />
             </EmptyMedia>
             <EmptyTitle>Error</EmptyTitle>
@@ -588,10 +588,10 @@ export default function OAuthPage() {
   const isOAuthEnabled = data.hasOauth
 
   return (
-    <div className="flex flex-col items-center justify-start gap-1 py-10 px-4 overflow-y-auto">
-      <div className="max-w-3xl w-full mx-auto">
+    <div className='flex flex-col items-center justify-start gap-1 py-10 px-4 overflow-y-auto'>
+      <div className='max-w-3xl w-full mx-auto'>
         <FieldGroup>
-          <Field orientation="horizontal" className="items-center!">
+          <Field orientation='horizontal' className='items-center!'>
             <FieldContent>
               <FieldLegend>OAuth Configuration</FieldLegend>
               <FieldDescription>
@@ -610,22 +610,22 @@ export default function OAuthPage() {
           <FieldSet>
             {/* Client ID */}
             <Field>
-              <FieldLabel htmlFor="client-id">Client ID</FieldLabel>
+              <FieldLabel htmlFor='client-id'>Client ID</FieldLabel>
               <InputGroup>
                 <InputGroupInput
-                  id="client-id"
+                  id='client-id'
                   value={data.clientId || ''}
                   placeholder={!isOAuthEnabled ? 'Not configured yet' : undefined}
                   readOnly
                   disabled={!isOAuthEnabled}
-                  className="font-mono"
+                  className='font-mono'
                 />
                 {isOAuthEnabled && data.clientId && (
-                  <InputGroupAddon align="inline-end">
+                  <InputGroupAddon align='inline-end'>
                     <InputGroupButton
-                      aria-label="Copy Client ID"
-                      title="Copy"
-                      size="icon-xs"
+                      aria-label='Copy Client ID'
+                      title='Copy'
+                      size='icon-xs'
                       onClick={() => copyToClipboard(data.clientId!, 'clientId')}>
                       {copiedField === 'clientId' ? <Check /> : <Copy />}
                     </InputGroupButton>
@@ -637,37 +637,37 @@ export default function OAuthPage() {
 
             {/* Client Secret */}
             <Field>
-              <FieldLabel htmlFor="client-secret">Client Secret</FieldLabel>
+              <FieldLabel htmlFor='client-secret'>Client Secret</FieldLabel>
               <InputGroup>
                 <InputGroupInput
-                  id="client-secret"
+                  id='client-secret'
                   type={showSecret ? 'text' : 'password'}
                   value={isOAuthEnabled && data.clientSecret ? data.clientSecret : ''}
                   placeholder={!isOAuthEnabled ? 'Not configured yet' : undefined}
                   readOnly
                   disabled={!isOAuthEnabled}
-                  className="font-mono"
+                  className='font-mono'
                 />
                 {isOAuthEnabled && data.clientSecret && (
-                  <InputGroupAddon align="inline-end">
+                  <InputGroupAddon align='inline-end'>
                     <InputGroupButton
-                      aria-label="Toggle visibility"
+                      aria-label='Toggle visibility'
                       title={showSecret ? 'Hide' : 'Show'}
-                      size="icon-xs"
+                      size='icon-xs'
                       onClick={() => setShowSecret(!showSecret)}>
                       {showSecret ? <EyeOff /> : <Eye />}
                     </InputGroupButton>
                     <InputGroupButton
-                      aria-label="Copy Client Secret"
-                      title="Copy"
-                      size="icon-xs"
+                      aria-label='Copy Client Secret'
+                      title='Copy'
+                      size='icon-xs'
                       onClick={() => copyToClipboard(data.clientSecret!, 'clientSecret')}>
                       {copiedField === 'clientSecret' ? <Check /> : <Copy />}
                     </InputGroupButton>
                     <InputGroupButton
-                      aria-label="Regenerate Client Secret"
-                      title="Refresh"
-                      size="icon-xs"
+                      aria-label='Regenerate Client Secret'
+                      title='Refresh'
+                      size='icon-xs'
                       onClick={handleRegenerateSecret}
                       disabled={regenerateClientSecret.isPending}>
                       {justRefreshedSecret ? <Check /> : <RotateCw />}
@@ -683,36 +683,36 @@ export default function OAuthPage() {
 
             {/* Install URL */}
             <Field>
-              <FieldLabel htmlFor="install-url">Install URL</FieldLabel>
+              <FieldLabel htmlFor='install-url'>Install URL</FieldLabel>
               <InputGroup>
                 <InputGroupInput
-                  id="install-url"
+                  id='install-url'
                   value={isOAuthEnabled && data.installUrl ? data.installUrl : ''}
                   placeholder={
                     !isOAuthEnabled ? 'https://yourapp.com/integrations/auxx' : undefined
                   }
                   readOnly
                   disabled={!isOAuthEnabled}
-                  className="font-mono"
+                  className='font-mono'
                 />
                 {isOAuthEnabled && data.installUrl && (
-                  <InputGroupAddon align="inline-end">
-                    <Link href={data.installUrl} target="_blank" rel="noopener noreferrer">
-                      <InputGroupButton aria-label="Open in new tab" title="Open" size="icon-xs">
+                  <InputGroupAddon align='inline-end'>
+                    <Link href={data.installUrl} target='_blank' rel='noopener noreferrer'>
+                      <InputGroupButton aria-label='Open in new tab' title='Open' size='icon-xs'>
                         <ExternalLink />
                       </InputGroupButton>
                     </Link>
                     <InputGroupButton
-                      aria-label="Copy Install URL"
-                      title="Copy"
-                      size="icon-xs"
+                      aria-label='Copy Install URL'
+                      title='Copy'
+                      size='icon-xs'
                       onClick={() => copyToClipboard(data.installUrl!, 'installUrl')}>
                       {copiedField === 'installUrl' ? <Check /> : <Copy />}
                     </InputGroupButton>
                     <InputGroupButton
-                      type="button"
-                      variant="outline"
-                      size="xs"
+                      type='button'
+                      variant='outline'
+                      size='xs'
                       onClick={() => setShowEditInstallUrlDialog(true)}>
                       Edit
                     </InputGroupButton>
@@ -727,26 +727,26 @@ export default function OAuthPage() {
 
             {/* Redirect URIs */}
             <Field>
-              <div className="flex items-center justify-between">
+              <div className='flex items-center justify-between'>
                 <FieldLabel>Redirect URIs</FieldLabel>
               </div>
-              <div className="space-y-2">
+              <div className='space-y-2'>
                 {isOAuthEnabled && data.redirectUris.length > 0 ? (
                   data.redirectUris.map((uri, index) => (
                     <InputGroup key={index}>
-                      <InputGroupInput value={uri} readOnly className="font-mono" />
-                      <InputGroupAddon align="inline-end">
+                      <InputGroupInput value={uri} readOnly className='font-mono' />
+                      <InputGroupAddon align='inline-end'>
                         <InputGroupButton
-                          aria-label="Copy Redirect URI"
-                          title="Copy"
-                          size="icon-xs"
+                          aria-label='Copy Redirect URI'
+                          title='Copy'
+                          size='icon-xs'
                           onClick={() => copyToClipboard(uri, `redirectUri-${index}`)}>
                           {copiedField === `redirectUri-${index}` ? <Check /> : <Copy />}
                         </InputGroupButton>
                         <InputGroupButton
-                          type="button"
-                          variant="outline"
-                          size="xs"
+                          type='button'
+                          variant='outline'
+                          size='xs'
                           onClick={() => setShowEditDialog(true)}>
                           Edit
                         </InputGroupButton>
@@ -756,10 +756,10 @@ export default function OAuthPage() {
                 ) : (
                   <InputGroup>
                     <InputGroupInput
-                      placeholder="https://yourapp.com/oauth/callback"
+                      placeholder='https://yourapp.com/oauth/callback'
                       readOnly
                       disabled
-                      className="font-mono"
+                      className='font-mono'
                     />
                   </InputGroup>
                 )}
@@ -773,7 +773,7 @@ export default function OAuthPage() {
             {isOAuthEnabled && data.scopes.length > 0 && (
               <Field>
                 <FieldLabel>Scopes</FieldLabel>
-                <div className="text-sm text-muted-foreground font-mono">
+                <div className='text-sm text-muted-foreground font-mono'>
                   {data.scopes.join(', ')}
                 </div>
                 <FieldDescription>
@@ -793,24 +793,24 @@ export default function OAuthPage() {
             </FieldDescription>
 
             <Field>
-              <FieldLabel htmlFor="auth-endpoint">Authorization Endpoint</FieldLabel>
+              <FieldLabel htmlFor='auth-endpoint'>Authorization Endpoint</FieldLabel>
               <InputGroup>
                 <InputGroupInput
-                  id="auth-endpoint"
+                  id='auth-endpoint'
                   value={
                     isOAuthEnabled && data.authorizationEndpoint ? data.authorizationEndpoint : ''
                   }
                   placeholder={!isOAuthEnabled ? 'Not configured yet' : undefined}
                   readOnly
                   disabled={!isOAuthEnabled}
-                  className="font-mono text-xs"
+                  className='font-mono text-xs'
                 />
                 {isOAuthEnabled && data.authorizationEndpoint && (
-                  <InputGroupAddon align="inline-end">
+                  <InputGroupAddon align='inline-end'>
                     <InputGroupButton
-                      aria-label="Copy Authorization Endpoint"
-                      title="Copy"
-                      size="icon-xs"
+                      aria-label='Copy Authorization Endpoint'
+                      title='Copy'
+                      size='icon-xs'
                       onClick={() => copyToClipboard(data.authorizationEndpoint!, 'authEndpoint')}>
                       {copiedField === 'authEndpoint' ? <Check /> : <Copy />}
                     </InputGroupButton>
@@ -820,22 +820,22 @@ export default function OAuthPage() {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="token-endpoint">Token Endpoint</FieldLabel>
+              <FieldLabel htmlFor='token-endpoint'>Token Endpoint</FieldLabel>
               <InputGroup>
                 <InputGroupInput
-                  id="token-endpoint"
+                  id='token-endpoint'
                   value={isOAuthEnabled && data.tokenEndpoint ? data.tokenEndpoint : ''}
                   placeholder={!isOAuthEnabled ? 'Not configured yet' : undefined}
                   readOnly
                   disabled={!isOAuthEnabled}
-                  className="font-mono text-xs"
+                  className='font-mono text-xs'
                 />
                 {isOAuthEnabled && data.tokenEndpoint && (
-                  <InputGroupAddon align="inline-end">
+                  <InputGroupAddon align='inline-end'>
                     <InputGroupButton
-                      aria-label="Copy Token Endpoint"
-                      title="Copy"
-                      size="icon-xs"
+                      aria-label='Copy Token Endpoint'
+                      title='Copy'
+                      size='icon-xs'
                       onClick={() => copyToClipboard(data.tokenEndpoint!, 'tokenEndpoint')}>
                       {copiedField === 'tokenEndpoint' ? <Check /> : <Copy />}
                     </InputGroupButton>
@@ -845,22 +845,22 @@ export default function OAuthPage() {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="userinfo-endpoint">UserInfo Endpoint</FieldLabel>
+              <FieldLabel htmlFor='userinfo-endpoint'>UserInfo Endpoint</FieldLabel>
               <InputGroup>
                 <InputGroupInput
-                  id="userinfo-endpoint"
+                  id='userinfo-endpoint'
                   value={isOAuthEnabled && data.userInfoEndpoint ? data.userInfoEndpoint : ''}
                   placeholder={!isOAuthEnabled ? 'Not configured yet' : undefined}
                   readOnly
                   disabled={!isOAuthEnabled}
-                  className="font-mono text-xs"
+                  className='font-mono text-xs'
                 />
                 {isOAuthEnabled && data.userInfoEndpoint && (
-                  <InputGroupAddon align="inline-end">
+                  <InputGroupAddon align='inline-end'>
                     <InputGroupButton
-                      aria-label="Copy UserInfo Endpoint"
-                      title="Copy"
-                      size="icon-xs"
+                      aria-label='Copy UserInfo Endpoint'
+                      title='Copy'
+                      size='icon-xs'
                       onClick={() => copyToClipboard(data.userInfoEndpoint!, 'userInfoEndpoint')}>
                       {copiedField === 'userInfoEndpoint' ? <Check /> : <Copy />}
                     </InputGroupButton>

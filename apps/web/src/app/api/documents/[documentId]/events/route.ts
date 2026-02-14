@@ -1,12 +1,12 @@
 // apps/web/src/app/api/documents/[documentId]/events/route.ts
 
-import { NextRequest } from 'next/server'
-import { auth } from '~/auth/server'
-import { headers } from 'next/headers'
-import { RedisEventRouter } from '@auxx/redis'
-import { DocumentEventType, type DocumentEvent } from '@auxx/lib/datasets'
-import { createScopedLogger } from '@auxx/logger'
 import { DocumentModel } from '@auxx/database/models'
+import { type DocumentEvent, DocumentEventType } from '@auxx/lib/datasets'
+import { createScopedLogger } from '@auxx/logger'
+import { RedisEventRouter } from '@auxx/redis'
+import { headers } from 'next/headers'
+import type { NextRequest } from 'next/server'
+import { auth } from '~/auth/server'
 
 const logger = createScopedLogger('document-events-sse')
 

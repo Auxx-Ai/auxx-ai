@@ -62,13 +62,21 @@ export function cloneAndRewriteVariableIds(
   if (sourceVariable.properties) {
     cloned.properties = {}
     Object.entries(sourceVariable.properties).forEach(([key, prop]) => {
-      cloned.properties![key] = cloneAndRewriteVariableIds(prop, newBaseId, oldBaseId) as UnifiedVariable
+      cloned.properties![key] = cloneAndRewriteVariableIds(
+        prop,
+        newBaseId,
+        oldBaseId
+      ) as UnifiedVariable
     })
   }
 
   // Recursively update items (for ARRAY types)
   if (sourceVariable.items) {
-    cloned.items = cloneAndRewriteVariableIds(sourceVariable.items, newBaseId, oldBaseId) as UnifiedVariable
+    cloned.items = cloneAndRewriteVariableIds(
+      sourceVariable.items,
+      newBaseId,
+      oldBaseId
+    ) as UnifiedVariable
   }
 
   return cloned

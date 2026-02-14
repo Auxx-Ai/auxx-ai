@@ -26,12 +26,18 @@ export async function deleteView(input: DeleteViewInput) {
     id,
     userId,
     organizationId,
-    options: { ownerOnly: true, notFoundMessage: "View not found or you don't have permission to delete it" },
+    options: {
+      ownerOnly: true,
+      notFoundMessage: "View not found or you don't have permission to delete it",
+    },
   })
 
   if (viewResult.isErr()) return viewResult
 
-  const dbResult = await fromDatabase(database.delete(schema.TableView).where(eq(schema.TableView.id, id)), 'delete-view')
+  const dbResult = await fromDatabase(
+    database.delete(schema.TableView).where(eq(schema.TableView.id, id)),
+    'delete-view'
+  )
   if (dbResult.isErr()) return dbResult
 
   return ok({ success: true })

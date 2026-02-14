@@ -2,12 +2,12 @@
 
 'use client'
 
+import { WEBAPP_URL } from '@auxx/config/client'
+import { MainPageContent } from '@auxx/ui/components/main-page'
 import { BookTemplate, Mail, Ticket } from 'lucide-react'
 import { usePathname } from 'next/navigation'
-import { MainPageContent } from '@auxx/ui/components/main-page'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
-import { WEBAPP_URL } from '@auxx/config/client'
 
 /** Settings navigation items */
 const TICKET_SETTINGS: SidebarProps[] = [
@@ -18,7 +18,12 @@ const TICKET_SETTINGS: SidebarProps[] = [
     items: [
       { id: 'tickets-settings-format', label: 'Ticket Format', slug: 'format', icon: <Ticket /> },
       { id: 'tickets-settings-domain', label: 'Domains', slug: 'domains', icon: <Mail /> },
-      { id: 'tickets-settings-templates', label: 'Templates', slug: 'templates', icon: <BookTemplate /> },
+      {
+        id: 'tickets-settings-templates',
+        label: 'Templates',
+        slug: 'templates',
+        icon: <BookTemplate />,
+      },
     ],
   },
 ]
@@ -35,9 +40,14 @@ export default function TicketSettingsLayout({ children }: { children: React.Rea
 
   return (
     <MainPageContent>
-      <div className="flex h-full flex-1 overflow-hidden">
-        <SidebarSecondary items={TICKET_SETTINGS} baseUrl={baseUrl} current={page} title="Settings" />
-        <div className="relative flex h-full w-full flex-1 grow overflow-hidden">{children}</div>
+      <div className='flex h-full flex-1 overflow-hidden'>
+        <SidebarSecondary
+          items={TICKET_SETTINGS}
+          baseUrl={baseUrl}
+          current={page}
+          title='Settings'
+        />
+        <div className='relative flex h-full w-full flex-1 grow overflow-hidden'>{children}</div>
       </div>
     </MainPageContent>
   )

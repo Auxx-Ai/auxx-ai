@@ -1,10 +1,10 @@
 // packages/lib/src/comments/index.ts
 
 export {
-  CommentService,
-  SYSTEM_ENTITY_TYPES,
-  isSystemEntityType,
   type CommentAttachmentInfo,
   type CommentableEntityType,
+  CommentService,
+  isSystemEntityType,
+  SYSTEM_ENTITY_TYPES,
   type SystemEntityType,
 } from './comment-service'

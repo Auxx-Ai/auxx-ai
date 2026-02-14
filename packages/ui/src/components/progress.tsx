@@ -1,9 +1,8 @@
 'use client'
 
-import * as React from 'react'
-import { Progress as ProgressPrimitive } from 'radix-ui'
-
 import { cn } from '@auxx/ui/lib/utils'
+import { Progress as ProgressPrimitive } from 'radix-ui'
+import type * as React from 'react'
 
 interface ProgressProps extends React.ComponentProps<typeof ProgressPrimitive.Root> {
   indicatorClassName?: string
@@ -64,16 +63,16 @@ export function CircularProgress({
           transform: 'translateZ(0)',
         } as React.CSSProperties
       }>
-      <svg fill="none" className="size-full" strokeWidth="2" viewBox="0 0 100 100">
+      <svg fill='none' className='size-full' strokeWidth='2' viewBox='0 0 100 100'>
         {currentPercent <= 90 && currentPercent >= 0 && (
           <circle
-            cx="50"
-            cy="50"
-            r="45"
-            strokeWidth="10"
-            strokeDashoffset="0"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+            cx='50'
+            cy='50'
+            r='45'
+            strokeWidth='10'
+            strokeDashoffset='0'
+            strokeLinecap='round'
+            strokeLinejoin='round'
             className={cn('opacity-100', gaugeSecondary)}
             style={
               {
@@ -91,13 +90,13 @@ export function CircularProgress({
           />
         )}
         <circle
-          cx="50"
-          cy="50"
-          r="45"
-          strokeWidth="10"
-          strokeDashoffset="0"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+          cx='50'
+          cy='50'
+          r='45'
+          strokeWidth='10'
+          strokeDashoffset='0'
+          strokeLinecap='round'
+          strokeLinejoin='round'
           className={cn('opacity-100', gaugePrimary)}
           style={
             {
@@ -117,7 +116,7 @@ export function CircularProgress({
       </svg>
       <span
         data-current-value={currentPercent}
-        className="duration-[var(--transition-length)] delay-[var(--delay)] absolute inset-0 m-auto size-fit ease-linear animate-in fade-in">
+        className='duration-[var(--transition-length)] delay-[var(--delay)] absolute inset-0 m-auto size-fit ease-linear animate-in fade-in'>
         {currentPercent}
       </span>
     </div>

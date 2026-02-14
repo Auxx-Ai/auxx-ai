@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/hooks/run-hooks/use-run-workflow-paused.ts
 
-import { useCallback } from 'react'
-import { useRunStore } from '../../store/run-store'
-import type { ExecutionEvent } from '../../store/run-store'
-import { toastSuccess } from '@auxx/ui/components/toast'
 import { WorkflowRunStatus } from '@auxx/database/enums'
+import { toastSuccess } from '@auxx/ui/components/toast'
+import { useCallback } from 'react'
+import type { ExecutionEvent } from '../../store/run-store'
+import { useRunStore } from '../../store/run-store'
 
 export const useRunWorkflowPaused = () => {
   const updateActiveRun = useRunStore((state) => state.updateActiveRun)

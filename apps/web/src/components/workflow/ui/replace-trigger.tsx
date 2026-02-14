@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/ui/replace-trigger.tsx
 
-import { useState } from 'react'
+import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
 import { Button } from '@auxx/ui/components/button'
 import { RefreshCw } from 'lucide-react'
+import { useState } from 'react'
+import { useNodeDefinition, useTriggerDefinitions } from '../hooks'
 import { AddNodeTrigger } from './add-node-trigger'
-import { useTriggerDefinitions, useNodeDefinition } from '../hooks'
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
 
 interface ReplaceTriggerProps {
   nodeId: string
@@ -34,19 +34,19 @@ export function ReplaceTrigger({ nodeId, nodeType }: ReplaceTriggerProps) {
   }
 
   return (
-    <div className="m-3 ps-3 pe-1 py-1 rounded-md border border-comparison-200 bg-comparison-100">
-      <div className="flex items-center justify-between">
+    <div className='m-3 ps-3 pe-1 py-1 rounded-md border border-comparison-200 bg-comparison-100'>
+      <div className='flex items-center justify-between'>
         <div>
-          <p className="text-xs font-medium uppercase">Trigger</p>
+          <p className='text-xs font-medium uppercase'>Trigger</p>
         </div>
         <AddNodeTrigger
-          position="replace"
+          position='replace'
           replaceNodeId={nodeId}
           allowedNodeTypes={availableTriggerTypes}
           open={open}
           onOpenChange={setOpen}
           onNodeAdded={handleNodeAdded}>
-          <Button variant="outline" size="sm" className="bg-comparison-200 hover:bg-comparison-300">
+          <Button variant='outline' size='sm' className='bg-comparison-200 hover:bg-comparison-300'>
             <RefreshCw />
             Replace
           </Button>

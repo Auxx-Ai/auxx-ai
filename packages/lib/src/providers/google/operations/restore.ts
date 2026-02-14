@@ -1,6 +1,7 @@
 // packages/lib/src/providers/google/operations/restore.ts
-import { gmail_v1 } from 'googleapis'
+
 import { createScopedLogger } from '@auxx/logger'
+import type { gmail_v1 } from 'googleapis'
 import { getGmailQuotaCost, type UniversalThrottler } from '../../../utils/rate-limiter'
 import { executeWithThrottle, modifyWithThrottling } from '../shared/utils'
 

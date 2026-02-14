@@ -1,8 +1,8 @@
 // apps/web/src/components/mail/hooks/use-count-updates.ts
 
+import { type ConditionGroup, evaluateConditions } from '@auxx/lib/conditions/client'
 import { useCallback } from 'react'
-import { useMailCountsStore, type CountUpdates } from '../store'
-import { evaluateConditions, type ConditionGroup } from '@auxx/lib/conditions/client'
+import { type CountUpdates, useMailCountsStore } from '../store'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -58,36 +58,33 @@ export function useCountUpdates(views: ViewDefinition[] = []) {
   /**
    * Field resolver for evaluating view conditions against thread data.
    */
-  const fieldResolver = useCallback(
-    (thread: Record<string, unknown>, fieldId: string): unknown => {
-      // Handle common field mappings
-      switch (fieldId) {
-        case 'status':
-          return thread.status
-        case 'inbox':
-          return thread.inboxId
-        case 'assignee':
-          return thread.assigneeId
-        case 'tags':
-          return thread.tagIds
-        case 'tag':
-          return thread.tagIds
-        case 'labels':
-          return thread.labelIds
-        case 'subject':
-          return thread.subject
-        case 'messageCount':
-          return thread.messageCount
-        case 'lastMessageAt':
-          return thread.lastMessageAt
-        case 'createdAt':
-          return thread.createdAt
-        default:
-          return thread[fieldId]
-      }
-    },
-    []
-  )
+  const fieldResolver = useCallback((thread: Record<string, unknown>, fieldId: string): unknown => {
+    // Handle common field mappings
+    switch (fieldId) {
+      case 'status':
+        return thread.status
+      case 'inbox':
+        return thread.inboxId
+      case 'assignee':
+        return thread.assigneeId
+      case 'tags':
+        return thread.tagIds
+      case 'tag':
+        return thread.tagIds
+      case 'labels':
+        return thread.labelIds
+      case 'subject':
+        return thread.subject
+      case 'messageCount':
+        return thread.messageCount
+      case 'lastMessageAt':
+        return thread.lastMessageAt
+      case 'createdAt':
+        return thread.createdAt
+      default:
+        return thread[fieldId]
+    }
+  }, [])
 
   /**
    * Determine which views a thread matches based on filter conditions.
@@ -121,8 +118,7 @@ export function useCountUpdates(views: ViewDefinition[] = []) {
 
         // Decrement shared inbox count
         if (thread.inboxId) {
-          updates.sharedInboxes![thread.inboxId] =
-            (updates.sharedInboxes![thread.inboxId] ?? 0) - 1
+          updates.sharedInboxes![thread.inboxId] = (updates.sharedInboxes![thread.inboxId] ?? 0) - 1
         }
 
         // Decrement view counts using filter evaluation
@@ -159,8 +155,7 @@ export function useCountUpdates(views: ViewDefinition[] = []) {
 
         // Increment shared inbox count
         if (thread.inboxId) {
-          updates.sharedInboxes![thread.inboxId] =
-            (updates.sharedInboxes![thread.inboxId] ?? 0) + 1
+          updates.sharedInboxes![thread.inboxId] = (updates.sharedInboxes![thread.inboxId] ?? 0) + 1
         }
 
         // Increment view counts using filter evaluation
@@ -291,8 +286,7 @@ export function useCountUpdates(views: ViewDefinition[] = []) {
 
         // Decrement shared inbox count
         if (thread.inboxId) {
-          updates.sharedInboxes![thread.inboxId] =
-            (updates.sharedInboxes![thread.inboxId] ?? 0) - 1
+          updates.sharedInboxes![thread.inboxId] = (updates.sharedInboxes![thread.inboxId] ?? 0) - 1
         }
 
         // Decrement all matching view counts

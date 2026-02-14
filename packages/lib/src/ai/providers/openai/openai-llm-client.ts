@@ -1,28 +1,28 @@
 // packages/lib/src/ai/providers/openai/openai-llm-client.ts
 
-import OpenAI from 'openai'
+import { createScopedLogger, type Logger } from '@auxx/logger'
+import type OpenAI from 'openai'
 import { LLMClient } from '../../clients/base/llm-client'
-import { TokenCalculator } from '../../clients/utils/token-calculator'
 import type {
   ClientConfig,
+  FunctionCall,
+  InvalidParameterError,
   LLMInvokeParams,
   LLMResponse,
   LLMStreamChunk,
   LLMStreamResult,
+  Message,
+  ModelCapabilities,
   MultiModalContent,
+  ProcessedLLMParams,
+  StreamingError,
   Tool,
   ToolCall,
-  Message,
-  ProcessedLLMParams,
-  FunctionCall,
-  ModelCapabilities,
   UsageMetrics,
-  StreamingError,
-  InvalidParameterError,
 } from '../../clients/base/types'
-import { createScopedLogger, type Logger } from '@auxx/logger'
-import { ProviderRegistry } from '../provider-registry'
+import { TokenCalculator } from '../../clients/utils/token-calculator'
 import { ModelConfigService } from '../../model-config-service'
+import { ProviderRegistry } from '../provider-registry'
 
 /**
  * OpenAI specialized LLM client with production features

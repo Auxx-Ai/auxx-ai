@@ -1,26 +1,26 @@
 // apps/web/src/app/(protected)/organizations/page.tsx
 'use client'
 
-import {
-  useDehydratedOrganizations,
-  useDehydratedUser,
-} from '~/providers/dehydrated-state-provider'
-import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
-import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import { Button } from '@auxx/ui/components/button'
-import { Badge } from '@auxx/ui/components/badge'
-import { Building, MoreVertical } from 'lucide-react'
-import { useState } from 'react'
-import { api } from '~/trpc/react'
-import { toastError } from '@auxx/ui/components/toast'
 import type { DehydratedOrganization } from '@auxx/lib/dehydration'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { toastError } from '@auxx/ui/components/toast'
+import { Building, MoreVertical } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import {
+  useDehydratedOrganizations,
+  useDehydratedUser,
+} from '~/providers/dehydrated-state-provider'
+import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
+import { api } from '~/trpc/react'
 
 /** Helper to get subscription status */
 function getSubscriptionStatus(org: DehydratedOrganization) {
@@ -90,50 +90,50 @@ function OrganizationCard({
             ? 'border-primary'
             : 'opacity-60'
       }`}>
-      <div className="flex flex-row items-center gap-2">
+      <div className='flex flex-row items-center gap-2'>
         <div
           className={`size-8 border bg-muted rounded-lg flex items-center justify-center transition-colors shrink-0 ${
             status.isActive && !isCurrent ? 'group-hover:bg-secondary' : ''
           }`}>
-          <Building className="size-4" />
+          <Building className='size-4' />
         </div>
-        <div className="flex flex-col">
-          <div className="flex items-center gap-2">
-            <span className="text-sm">{org.name || `Organization ${org.id.substring(0, 6)}`}</span>
+        <div className='flex flex-col'>
+          <div className='flex items-center gap-2'>
+            <span className='text-sm'>{org.name || `Organization ${org.id.substring(0, 6)}`}</span>
             {isDefault && (
-              <Badge size="xs" variant="outline">
+              <Badge size='xs' variant='outline'>
                 Default
               </Badge>
             )}
             {isCurrent && (
-              <Badge size="xs" variant="default">
+              <Badge size='xs' variant='default'>
                 Current
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">
+          <div className='flex items-center gap-2'>
+            <span className='text-xs text-muted-foreground'>
               {org.handle || `@${org.id.substring(0, 8)}`}
             </span>
             {org.subscription && (
               <>
-                <span className="text-xs text-muted-foreground">•</span>
-                <span className="text-xs text-muted-foreground">{status.label}</span>
+                <span className='text-xs text-muted-foreground'>•</span>
+                <span className='text-xs text-muted-foreground'>{status.label}</span>
               </>
             )}
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className='flex items-center gap-2'>
         <DropdownMenu>
           <DropdownMenuTrigger asChild data-dropdown-trigger>
-            <Button variant="ghost" size="icon-sm">
+            <Button variant='ghost' size='icon-sm'>
               <MoreVertical />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align='end'>
             <DropdownMenuItem
-              variant="destructive"
+              variant='destructive'
               onClick={(e) => {
                 e.stopPropagation()
                 // Handle delete
@@ -185,18 +185,18 @@ export default function OrganizationsPage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-8rem)] w-screen items-center justify-center p-4">
-      <div className="flex w-full max-w-md flex-col items-center space-y-5 px-6">
-        <Card className="w-full bg-background shadow-md shadow-black/20 border-transparent">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-5 size-14 border flex items-center justify-center rounded-2xl bg-muted ">
-              <Building className="size-8 text-info" />
+    <div className='flex min-h-[calc(100vh-8rem)] w-screen items-center justify-center p-4'>
+      <div className='flex w-full max-w-md flex-col items-center space-y-5 px-6'>
+        <Card className='w-full bg-background shadow-md shadow-black/20 border-transparent'>
+          <CardHeader className='text-center'>
+            <div className='mx-auto mb-5 size-14 border flex items-center justify-center rounded-2xl bg-muted '>
+              <Building className='size-8 text-info' />
             </div>
 
             <CardTitle>Organizations</CardTitle>
             <CardDescription>Jump into an existing workspace or add a new one</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 min-h-[300px]">
+          <CardContent className='space-y-3 min-h-[300px]'>
             {organizations.length > 0 ? (
               organizations.map((org) => (
                 <OrganizationCard
@@ -210,7 +210,7 @@ export default function OrganizationsPage() {
                 />
               ))
             ) : (
-              <p className="text-center text-sm text-muted-foreground py-4">
+              <p className='text-center text-sm text-muted-foreground py-4'>
                 You are not a member of any organizations.
               </p>
             )}

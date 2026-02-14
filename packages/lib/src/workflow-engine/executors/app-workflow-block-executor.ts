@@ -5,8 +5,8 @@
  * Integrates app workflow blocks with the workflow engine
  */
 
-import { createHash } from 'crypto'
 import { API_URL } from '@auxx/config/urls'
+import { createHash } from 'crypto'
 
 /**
  * Workflow node data for app workflow blocks
@@ -110,11 +110,7 @@ export async function executeAppWorkflowBlock(
 /**
  * Generate cache key from inputs
  */
-function generateCacheKey(
-  nodeId: string,
-  data: any,
-  variables: Record<string, any>
-): string {
+function generateCacheKey(nodeId: string, data: any, variables: Record<string, any>): string {
   // Create deterministic cache key from inputs
   const input = JSON.stringify({ data, variables })
   const hash = createHash('sha256').update(input).digest('hex')

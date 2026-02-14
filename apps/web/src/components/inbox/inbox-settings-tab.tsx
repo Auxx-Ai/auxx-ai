@@ -1,12 +1,9 @@
 // apps/web/src/components/inbox/inbox-settings-tab.tsx
 'use client'
 
-import { useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { api } from '~/trpc/react'
+import type { Inbox, InboxStatus } from '@auxx/lib/inboxes'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
 import { Label } from '@auxx/ui/components/label'
 import {
   Select,
@@ -15,13 +12,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { FormColorTagPicker } from '~/components/pickers/color-tag-picker'
 import { Separator } from '@auxx/ui/components/separator'
-import { useConfirm } from '~/hooks/use-confirm'
+import { Textarea } from '@auxx/ui/components/textarea'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { AlertTriangle, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { Trash, AlertTriangle } from 'lucide-react'
-import type { Inbox, InboxStatus } from '@auxx/lib/inboxes'
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { FormColorTagPicker } from '~/components/pickers/color-tag-picker'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 /** Form data shape for inbox settings */
 type InboxFormData = {
@@ -125,77 +125,77 @@ export function InboxSettingsTab({ inbox }: { inbox: Inbox }) {
 
   return (
     <>
-      <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
-        <div className="space-y-2">
-          <Label htmlFor="name">Name</Label>
+      <form onSubmit={handleSubmit(onSubmit)} className='p-6 space-y-6'>
+        <div className='space-y-2'>
+          <Label htmlFor='name'>Name</Label>
           <Input
-            id="name"
+            id='name'
             {...register('name', { required: 'Name is required' })}
-            placeholder="Inbox name"
+            placeholder='Inbox name'
             className={errors.name ? 'border-red-500' : ''}
           />
-          {errors.name && <p className="text-sm text-red-500">{errors.name.message}</p>}
+          {errors.name && <p className='text-sm text-red-500'>{errors.name.message}</p>}
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="description">Description</Label>
+        <div className='space-y-2'>
+          <Label htmlFor='description'>Description</Label>
           <Textarea
-            id="description"
+            id='description'
             {...register('description')}
-            placeholder="Optional description"
+            placeholder='Optional description'
             rows={3}
           />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="color">Color</Label>
+        <div className='space-y-2'>
+          <Label htmlFor='color'>Color</Label>
           <FormColorTagPicker value={colorValue} onChange={handleColorChange} />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="status">Status</Label>
+        <div className='space-y-2'>
+          <Label htmlFor='status'>Status</Label>
           <Select
             value={watch('status')}
             onValueChange={(value) => setValue('status', value as InboxStatus)}>
             <SelectTrigger>
-              <SelectValue placeholder="Select status" />
+              <SelectValue placeholder='Select status' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ACTIVE">Active</SelectItem>
-              <SelectItem value="PAUSED">Paused</SelectItem>
-              <SelectItem value="ARCHIVED">Archived</SelectItem>
+              <SelectItem value='ACTIVE'>Active</SelectItem>
+              <SelectItem value='PAUSED'>Paused</SelectItem>
+              <SelectItem value='ARCHIVED'>Archived</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        <Button type="submit" disabled={isSubmitting}>
+        <Button type='submit' disabled={isSubmitting}>
           {isSubmitting ? 'Saving...' : 'Save Changes'}
         </Button>
       </form>
       <Separator />
-      <div className="p-6">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2  tracking-tight font-semibold text-foreground text-base">
-            <AlertTriangle className="size-4" /> Danger Zone
+      <div className='p-6'>
+        <div className='space-y-2'>
+          <div className='flex items-center gap-2  tracking-tight font-semibold text-foreground text-base'>
+            <AlertTriangle className='size-4' /> Danger Zone
           </div>
-          <div className="group flex items-center border py-2 px-3 hover:bg-destructive/2 transition-colors duration-200 rounded-2xl border-destructive/50">
-            <div className="flex flex-col justify-between gap-4 w-full md:flex-row md:items-center">
-              <div className="flex items-center gap-3">
-                <div className="size-8 border border-destructive/10 bg-destructive/2 rounded-lg flex items-center justify-center group-hover:bg-destructive/5 transition-colors overflow-hidden shrink-0">
-                  <AlertTriangle className="size-4 text-destructive" />
+          <div className='group flex items-center border py-2 px-3 hover:bg-destructive/2 transition-colors duration-200 rounded-2xl border-destructive/50'>
+            <div className='flex flex-col justify-between gap-4 w-full md:flex-row md:items-center'>
+              <div className='flex items-center gap-3'>
+                <div className='size-8 border border-destructive/10 bg-destructive/2 rounded-lg flex items-center justify-center group-hover:bg-destructive/5 transition-colors overflow-hidden shrink-0'>
+                  <AlertTriangle className='size-4 text-destructive' />
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-sm text-destructive">Delete Inbox</span>
-                  <span className="text-xs text-destructive/80">
+                <div className='flex flex-col'>
+                  <span className='text-sm text-destructive'>Delete Inbox</span>
+                  <span className='text-xs text-destructive/80'>
                     Deleting this inbox will remove all associated data and cannot be undone.
                   </span>
                 </div>
               </div>
-              <div className="shrink-0">
+              <div className='shrink-0'>
                 <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
+                  type='button'
+                  variant='destructive'
+                  size='sm'
                   onClick={async () => {
                     await handleDeleteInbox()
                   }}

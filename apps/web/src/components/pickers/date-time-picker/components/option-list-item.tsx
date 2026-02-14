@@ -1,8 +1,8 @@
 // apps/web/src/components/pickers/date-time-picker/components/option-list-item.tsx
 'use client'
 
-import React, { useEffect, useRef } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
+import React, { useEffect, useRef } from 'react'
 import type { OptionListItemProps } from '../types'
 
 /**

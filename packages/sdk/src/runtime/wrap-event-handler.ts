@@ -19,7 +19,7 @@ export function wrapEventHandler(
         returnValue.catch((error) => {
           console.error(
             `[EventHandler] Unhandled Promise Rejection in ${options.eventName}` +
-            (options.componentDisplayName ? ` in ${options.componentDisplayName}` : ''),
+              (options.componentDisplayName ? ` in ${options.componentDisplayName}` : ''),
             error
           )
         })
@@ -29,7 +29,7 @@ export function wrapEventHandler(
     } catch (error) {
       console.error(
         `[EventHandler] Uncaught Error in ${options.eventName}` +
-        (options.componentDisplayName ? ` in ${options.componentDisplayName}` : ''),
+          (options.componentDisplayName ? ` in ${options.componentDisplayName}` : ''),
         error
       )
       return null

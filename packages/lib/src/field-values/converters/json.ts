@@ -1,6 +1,6 @@
 // packages/lib/src/field-values/converters/json.ts
 
-import type { TypedFieldValueInput, TypedFieldValue, JsonFieldValue } from '@auxx/types/field-value'
+import type { JsonFieldValue, TypedFieldValue, TypedFieldValueInput } from '@auxx/types/field-value'
 import type { FieldValueConverter } from './index'
 
 /**
@@ -60,7 +60,9 @@ export const jsonConverter: FieldValueConverter = {
   /**
    * Convert TypedFieldValue/Input to raw JSON object.
    */
-  toRawValue(value: TypedFieldValue | TypedFieldValueInput | unknown): Record<string, unknown> | null {
+  toRawValue(
+    value: TypedFieldValue | TypedFieldValueInput | unknown
+  ): Record<string, unknown> | null {
     if (value === null || value === undefined) {
       return null
     }

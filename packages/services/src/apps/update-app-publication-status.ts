@@ -1,11 +1,11 @@
 // packages/services/src/apps/update-app-publication-status.ts
 
-import { database, App, AppVersion } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
+import { App, AppVersion, database } from '@auxx/database'
+import { and, eq } from 'drizzle-orm'
+import type { Result } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { AppError } from './errors'
-import type { Result } from 'neverthrow'
 
 /**
  * Update app publication status

@@ -1,13 +1,13 @@
 // apps/web/src/providers/dehydrated-state-provider.tsx
 'use client'
 
-import { createContext, useContext, type ReactNode } from 'react'
 import type {
+  DehydratedEnvironment,
+  DehydratedOrganization,
   DehydratedState,
   DehydratedUser,
-  DehydratedOrganization,
-  DehydratedEnvironment,
 } from '@auxx/lib/dehydration'
+import { createContext, type ReactNode, useContext } from 'react'
 
 /**
  * Context for dehydrated state

@@ -1,14 +1,14 @@
 // apps/web/src/app/(protected)/app/workflows/_components/executions/execution-tracing-view.tsx
 
-import { useMemo } from 'react'
-import { useRunStore } from '~/components/workflow/store/run-store'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-import { NodeExecutionCard } from '~/components/workflow/panels/run/components/node-execution-card'
-import { LoopExecutionCard } from '~/components/workflow/panels/run/components/loop-execution-card'
-import { BranchGroup } from '~/components/workflow/panels/run/components/branch-group'
-import { groupExecutionsByBranch } from '~/components/workflow/panels/run/utils/group-executions'
-import { AlertCircle, CheckCircle, StopCircle, Clock } from 'lucide-react'
 import { WorkflowRunStatus } from '@auxx/database/enums'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { AlertCircle, CheckCircle, Clock, StopCircle } from 'lucide-react'
+import { useMemo } from 'react'
+import { BranchGroup } from '~/components/workflow/panels/run/components/branch-group'
+import { LoopExecutionCard } from '~/components/workflow/panels/run/components/loop-execution-card'
+import { NodeExecutionCard } from '~/components/workflow/panels/run/components/node-execution-card'
+import { groupExecutionsByBranch } from '~/components/workflow/panels/run/utils/group-executions'
+import { useRunStore } from '~/components/workflow/store/run-store'
 import type { FlowNode } from '~/components/workflow/types'
 
 /**
@@ -49,10 +49,10 @@ export function ExecutionTracingView() {
       }
     }
     return (
-      <div className="flex flex-col items-center justify-center py-12">
-        <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-        <p className="text-lg font-medium text-muted-foreground">No node executions recorded</p>
-        <p className="text-sm text-muted-foreground mt-1">{getEmptyStateMessage()}</p>
+      <div className='flex flex-col items-center justify-center py-12'>
+        <AlertCircle className='h-12 w-12 text-muted-foreground mb-4' />
+        <p className='text-lg font-medium text-muted-foreground'>No node executions recorded</p>
+        <p className='text-sm text-muted-foreground mt-1'>{getEmptyStateMessage()}</p>
       </div>
     )
   }
@@ -60,18 +60,18 @@ export function ExecutionTracingView() {
   // Show empty state when no run data
   if (!activeRun) {
     return (
-      <div className="flex flex-col items-center justify-center py-12">
-        <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-        <p className="text-lg font-medium text-muted-foreground">No execution data</p>
+      <div className='flex flex-col items-center justify-center py-12'>
+        <AlertCircle className='h-12 w-12 text-muted-foreground mb-4' />
+        <p className='text-lg font-medium text-muted-foreground'>No execution data</p>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       {/* Completed indicator for successful workflow */}
       {activeRun.status === WorkflowRunStatus.SUCCEEDED && (
-        <Alert variant="good">
+        <Alert variant='good'>
           <AlertTitle>
             <CheckCircle />
             Workflow completed successfully
@@ -82,7 +82,7 @@ export function ExecutionTracingView() {
 
       {/* Failed indicator for failed workflow */}
       {activeRun.status === WorkflowRunStatus.FAILED && (
-        <Alert variant="destructive" className="bg-red-50/50 dark:bg-red-950/20">
+        <Alert variant='destructive' className='bg-red-50/50 dark:bg-red-950/20'>
           <AlertTitle>
             <AlertCircle />
             Workflow execution failed
@@ -95,7 +95,7 @@ export function ExecutionTracingView() {
 
       {/* Stopped indicator for manually stopped workflow */}
       {activeRun.status === WorkflowRunStatus.STOPPED && (
-        <Alert variant="comparison">
+        <Alert variant='comparison'>
           <AlertTitle>
             <StopCircle />
             Workflow was stopped
@@ -106,7 +106,7 @@ export function ExecutionTracingView() {
 
       {/* Waiting indicator for paused workflow */}
       {activeRun.status === WorkflowRunStatus.WAITING && (
-        <Alert variant="bad">
+        <Alert variant='bad'>
           <AlertTitle>
             <Clock />
             Workflow is waiting
@@ -116,7 +116,7 @@ export function ExecutionTracingView() {
       )}
 
       {/* Node execution cards with branch grouping */}
-      <div className="space-y-0.5">
+      <div className='space-y-0.5'>
         {groupedExecutions.map((group, index) => {
           if (group.type === 'single') {
             // Single execution (not part of a grouped branch)

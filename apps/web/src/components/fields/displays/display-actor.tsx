@@ -1,13 +1,13 @@
 // apps/web/src/components/fields/displays/display-actor.tsx
 
-import { useMemo } from 'react'
 import type { ActorId } from '@auxx/types/actor'
 import { isActorId, toActorId } from '@auxx/types/actor'
-import { ActorBadge } from '~/components/resources/ui/actor-badge'
+import { useMemo } from 'react'
 import { useActors } from '~/components/resources/hooks/use-actor'
+import { ActorBadge } from '~/components/resources/ui/actor-badge'
+import { type ItemsListItem, ItemsListView } from '~/components/ui/items-list-view'
 import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
-import { ItemsListView, type ItemsListItem } from '~/components/ui/items-list-view'
 
 /** Actor item for ItemsListView */
 interface ActorItem extends ItemsListItem {
@@ -91,7 +91,7 @@ export function DisplayActor() {
     <DisplayWrapper copyValue={copyText || null}>
       <ItemsListView
         items={actorItems}
-        emptyContent={<span className="text-muted-foreground">-</span>}
+        emptyContent={<span className='text-muted-foreground'>-</span>}
         renderItem={(item) => <ActorBadge actorId={item.actorId} />}
       />
     </DisplayWrapper>

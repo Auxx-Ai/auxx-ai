@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/nodes/core/list/extract-variables.ts
 
+import type { Condition } from '~/components/conditions'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import type { ListNodeData } from './types'
-import type { Condition } from '~/components/conditions'
 
 /**
  * Extract variables from list node configuration
@@ -41,10 +41,7 @@ export function extractListVariables(data: Partial<ListNodeData>): string[] {
 /**
  * Extract variables from filter configuration
  */
-function extractFilterVariables(
-  data: Partial<ListNodeData>,
-  variableIds: Set<string>
-): void {
+function extractFilterVariables(data: Partial<ListNodeData>, variableIds: Set<string>): void {
   const conditions = data.filterConfig?.conditions || []
 
   conditions.forEach((condition: Condition) => {
@@ -63,10 +60,7 @@ function extractFilterVariables(
 /**
  * Extract variables from sort configuration
  */
-function extractSortVariables(
-  data: Partial<ListNodeData>,
-  variableIds: Set<string>
-): void {
+function extractSortVariables(data: Partial<ListNodeData>, variableIds: Set<string>): void {
   const sortConfig = data.sortConfig
   if (!sortConfig) return
 
@@ -79,10 +73,7 @@ function extractSortVariables(
 /**
  * Extract variables from slice configuration
  */
-function extractSliceVariables(
-  data: Partial<ListNodeData>,
-  variableIds: Set<string>
-): void {
+function extractSliceVariables(data: Partial<ListNodeData>, variableIds: Set<string>): void {
   const sliceConfig = data.sliceConfig
   if (!sliceConfig) return
 
@@ -117,10 +108,7 @@ function extractSliceVariables(
 /**
  * Extract variables from pluck configuration
  */
-function extractPluckVariables(
-  data: Partial<ListNodeData>,
-  variableIds: Set<string>
-): void {
+function extractPluckVariables(data: Partial<ListNodeData>, variableIds: Set<string>): void {
   const pluckConfig = data.pluckConfig
   if (!pluckConfig) return
 

@@ -1,7 +1,7 @@
 // apps/web/src/lib/extensions/components/workflow/utility/alert.tsx
 
 import { cn } from '@auxx/ui/lib/utils'
-import React from 'react'
+import type React from 'react'
 
 type AlertProps = {
   variant: 'info' | 'warning' | 'error' | 'success'
@@ -28,10 +28,10 @@ export const WorkflowAlert = ({
 
   return (
     <div
-      role="alert"
+      role='alert'
       className={cn('relative w-full rounded-lg border p-4', variantClasses[variant], className)}>
-      {title && <h5 className="mb-1 font-medium leading-none tracking-tight">{title}</h5>}
-      <div className="text-sm [&_p]:leading-relaxed">{children}</div>
+      {title && <h5 className='mb-1 font-medium leading-none tracking-tight'>{title}</h5>}
+      <div className='text-sm [&_p]:leading-relaxed'>{children}</div>
     </div>
   )
 }

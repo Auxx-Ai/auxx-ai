@@ -1,18 +1,18 @@
 // apps/web/src/components/threads/realtime/use-thread-realtime.ts
 'use client'
 
-import { useEffect, useCallback } from 'react'
-import { usePusher } from '~/providers/pusher-provider'
+import { useCallback, useEffect } from 'react'
 import { useUser } from '~/hooks/use-user'
-import { useThreadStore } from '../store/thread-store'
-import { useMessageStore } from '../store/message-store'
+import { usePusher } from '~/providers/pusher-provider'
 import { useMessageListStore } from '../store/message-list-store'
+import { useMessageStore } from '../store/message-store'
+import { useThreadStore } from '../store/thread-store'
 import type {
-  SessionCreatedEvent,
-  SessionClosedEvent,
+  ChatMessagesReadEvent,
   NewChatMessageEvent,
   NewSystemMessageEvent,
-  ChatMessagesReadEvent,
+  SessionClosedEvent,
+  SessionCreatedEvent,
 } from './types'
 
 /**

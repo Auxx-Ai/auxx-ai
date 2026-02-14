@@ -2,8 +2,8 @@
 
 'use client'
 
-import React, { memo, useCallback, useMemo } from 'react'
-import { produce } from 'immer'
+import { BaseType, getFieldOperators } from '@auxx/lib/workflow-engine/client'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import {
   Select,
   SelectContent,
@@ -11,26 +11,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { type FindNodeData } from './types'
-import { BasePanel } from '../../shared/base/base-panel'
-import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import Section from '~/components/workflow/ui/section'
-import Field from '~/components/workflow/ui/field'
-import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
-import { getFieldOperators, BaseType } from '@auxx/lib/workflow-engine/client'
-import { getFindNodeOutputVariables } from './output-variables'
-import { ConditionProvider, ConditionContainer } from '~/components/conditions'
+import { produce } from 'immer'
+import type React from 'react'
+import { memo, useCallback, useMemo } from 'react'
 import type { ConditionGroup, ConditionSystemConfig } from '~/components/conditions'
-import { useFindGroups } from './hooks/use-find-groups'
+import { ConditionContainer, ConditionProvider } from '~/components/conditions'
+import { useResource, useResourceFields } from '~/components/resources'
+import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { VAR_MODE } from '~/components/workflow/types'
+import Field from '~/components/workflow/ui/field'
 import {
   VarEditor,
   VarEditorField,
   VarEditorFieldRow,
 } from '~/components/workflow/ui/input-editor/var-editor'
-import { VAR_MODE } from '~/components/workflow/types'
+import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import Section from '~/components/workflow/ui/section'
 import { useWorkflowResources } from '../../../providers'
-import { useResourceFields, useResource } from '~/components/resources'
-import { EntityIcon } from '@auxx/ui/components/icons'
+import { BasePanel } from '../../shared/base/base-panel'
+import { useFindGroups } from './hooks/use-find-groups'
+import { getFindNodeOutputVariables } from './output-variables'
+import type { FindNodeData } from './types'
 
 interface FindPanelProps {
   nodeId: string
@@ -149,8 +150,8 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
   if (isLoadingFields && nodeData.resourceType) {
     return (
       <BasePanel nodeId={nodeId} data={nodeData}>
-        <Section title="General">
-          <div className="text-center py-8 text-sm text-muted-foreground">
+        <Section title='General'>
+          <div className='text-center py-8 text-sm text-muted-foreground'>
             Loading resource fields...
           </div>
         </Section>
@@ -160,42 +161,42 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
 
   return (
     <BasePanel nodeId={nodeId} data={nodeData}>
-      <Section title="General">
-        <div className="space-y-4">
+      <Section title='General'>
+        <div className='space-y-4'>
           <Field
-            title="Resource"
-            description="Select the find mode and type of resource to find records from">
-            <VarEditorField className="px-0.5">
-              <div className="flex flex-row">
-                <div className="">
+            title='Resource'
+            description='Select the find mode and type of resource to find records from'>
+            <VarEditorField className='px-0.5'>
+              <div className='flex flex-row'>
+                <div className=''>
                   <Select
                     value={nodeData.findMode}
                     onValueChange={(value: 'findOne' | 'findMany') =>
                       setNodeData({ ...nodeData, findMode: value })
                     }>
-                    <SelectTrigger variant="outline" size="xs">
+                    <SelectTrigger variant='outline' size='xs'>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="findOne">Find One</SelectItem>
-                      <SelectItem value="findMany">Find Many</SelectItem>
+                      <SelectItem value='findOne'>Find One</SelectItem>
+                      <SelectItem value='findMany'>Find Many</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex-1">
+                <div className='flex-1'>
                   <Select value={nodeData.resourceType} onValueChange={handleResourceTypeChange}>
-                    <SelectTrigger variant="transparent" size="xs">
+                    <SelectTrigger variant='transparent' size='xs'>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {resourceOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value} className="ps-1">
-                          <div className="flex items-center">
+                        <SelectItem key={option.value} value={option.value} className='ps-1'>
+                          <div className='flex items-center'>
                             <EntityIcon
                               iconId={option.icon}
-                              variant="full"
-                              size="sm"
-                              className="mr-1"
+                              variant='full'
+                              size='sm'
+                              className='mr-1'
                             />
                             {option.label}
                           </div>
@@ -208,7 +209,7 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
             </VarEditorField>
           </Field>
           <Field
-            title="Filter Rules"
+            title='Filter Rules'
             description={
               !resource
                 ? 'Select a resource type to add condition groups'
@@ -217,7 +218,7 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
                   : `${nodeData.conditionGroups.length} group${nodeData.conditionGroups.length === 1 ? '' : 's'} with ${nodeData.conditionGroups.reduce((total, group) => total + group.conditions.length, 0)} total conditions`
             }>
             {!resource ? (
-              <div className="text-center py-8 text-sm text-muted-foreground">
+              <div className='text-center py-8 text-sm text-muted-foreground'>
                 Select a resource type to add condition groups
               </div>
             ) : (
@@ -242,11 +243,11 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
         </div>
       </Section>
 
-      <Section title="Advanced Settings" initialOpen={false}>
-        <div className="space-y-3">
-          <Field title="Order By" description="Sort results by a specific field">
-            <VarEditorField className="pe-0.5">
-              <div className="flex gap-2">
+      <Section title='Advanced Settings' initialOpen={false}>
+        <div className='space-y-3'>
+          <Field title='Order By' description='Sort results by a specific field'>
+            <VarEditorField className='pe-0.5'>
+              <div className='flex gap-2'>
                 <Select
                   value={nodeData.orderBy?.field || 'none'}
                   onValueChange={(field) =>
@@ -258,11 +259,11 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
                           : undefined,
                     })
                   }>
-                  <SelectTrigger className="flex-1" variant="transparent" size="sm">
-                    <SelectValue placeholder="Select field" />
+                  <SelectTrigger className='flex-1' variant='transparent' size='sm'>
+                    <SelectValue placeholder='Select field' />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No sorting</SelectItem>
+                    <SelectItem value='none'>No sorting</SelectItem>
                     {sortableFields.map((field) => (
                       <SelectItem key={field.key} value={field.key}>
                         {field.label}
@@ -281,12 +282,12 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
                     })
                   }
                   disabled={!nodeData.orderBy?.field}>
-                  <SelectTrigger className="w-24" variant="outline" size="sm">
+                  <SelectTrigger className='w-24' variant='outline' size='sm'>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="asc">ASC</SelectItem>
-                    <SelectItem value="desc">DESC</SelectItem>
+                    <SelectItem value='asc'>ASC</SelectItem>
+                    <SelectItem value='desc'>DESC</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -294,12 +295,12 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
           </Field>
 
           {nodeData.findMode === 'findMany' && (
-            <Field title="Limit" description="Maximum number of results to return">
-              <VarEditorField className="p-0">
+            <Field title='Limit' description='Maximum number of results to return'>
+              <VarEditorField className='p-0'>
                 <VarEditorFieldRow
-                  className="pe-2"
-                  title="Limit"
-                  description="Maximum number of results to return"
+                  className='pe-2'
+                  title='Limit'
+                  description='Maximum number of results to return'
                   type={BaseType.NUMBER}>
                   <VarEditor
                     nodeId={nodeId}
@@ -310,8 +311,8 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
                     varType={BaseType.NUMBER}
                     mode={VAR_MODE.PICKER}
                     allowedTypes={[BaseType.NUMBER]}
-                    placeholder="Pick variable"
-                    placeholderConstant="Enter limit"
+                    placeholder='Pick variable'
+                    placeholderConstant='Enter limit'
                     allowConstant
                     isConstantMode={nodeData.fieldModes?.['limit'] ?? true}
                   />

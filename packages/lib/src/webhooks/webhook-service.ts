@@ -1,7 +1,12 @@
-import { database, type Database } from '@auxx/database'
-import { schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
+import { type Database, database, schema } from '@auxx/database'
+import type { WebhookEntity as Webhook } from '@auxx/database/models'
+import { createHmac, randomBytes } from 'crypto'
+import { and, eq } from 'drizzle-orm'
+import { NotFoundError, UnprocessableEntityError } from '../errors'
 import { type AuxxEvent, publisher } from '../events'
+import { createScopedLogger } from '../logger'
+import { Result, type TypedResult } from '../result'
+import { WEBHOOK_EVENT_TYPES } from './events'
 import type {
   CreateWebhookParams,
   SendSignedWebhookParams,
@@ -14,14 +19,6 @@ import type {
   WebhookTestResponse,
 } from './types'
 
-import { Result, type TypedResult } from '../result'
-import { createHmac, randomBytes } from 'crypto'
-import { NotFoundError, UnprocessableEntityError } from '../errors'
-import { WEBHOOK_EVENT_TYPES } from './events'
-
-import { createScopedLogger } from '../logger'
-
-import type { WebhookEntity as Webhook } from '@auxx/database/models'
 const logger = createScopedLogger('webhook-service')
 
 export class WebhookService {

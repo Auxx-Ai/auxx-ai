@@ -1,9 +1,9 @@
 'use client'
 
-import React, { createContext, useContext, useMemo, ReactNode } from 'react'
+import type { ConditionGroup } from '@auxx/lib/conditions'
 
 import type { Active } from '@dnd-kit/core' // Import Active type
-import type { ConditionGroup } from '@auxx/lib/conditions'
+import React, { createContext, type ReactNode, useContext, useMemo } from 'react'
 
 // Types for view mode and sorting
 export type ViewMode = 'view' | 'edit'

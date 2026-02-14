@@ -1,6 +1,6 @@
 // packages/email/src/templates/billing/trial-started-email.tsx
 import { Container, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -49,7 +49,7 @@ export async function TrialStartedEmail({
 
         <Text>Start exploring all the features of {planName} today:</Text>
 
-        <EmailButton href={dashboardUrl} label="Get Started" />
+        <EmailButton href={dashboardUrl} label='Get Started' />
 
         <Text>
           Make the most of your trial period! If you have any questions, our team is here to help.

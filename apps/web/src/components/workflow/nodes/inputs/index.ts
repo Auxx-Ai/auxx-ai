@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/nodes/inputs/index.ts
 
-import { type NodeDefinition } from '~/components/workflow/types'
-import { type ComponentType } from 'react'
-import { type NodeProps } from '@xyflow/react'
+import type { NodeProps } from '@xyflow/react'
+import type { ComponentType } from 'react'
+import type { NodeDefinition } from '~/components/workflow/types'
 import { NodeType } from '~/components/workflow/types/node-types'
 
-import { formInputDefinition, FormInputNode } from './form-input'
+import { FormInputNode, formInputDefinition } from './form-input'
 
 export const INPUT_NODE_DEFINITIONS: NodeDefinition[] = [
   { ...formInputDefinition, component: FormInputNode },

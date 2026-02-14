@@ -1,16 +1,16 @@
 // packages/lib/src/files/upload/progress/enhanced-progress-tracker.ts
 
-import { EventEmitter } from 'events'
-import { fileUploadEventPublisher } from './sse-publisher'
-import type { 
-  UploadProgress, 
-  UploadProgressState, 
-  UploadStage, 
-  UploadError,
-  UploadRequest,
-  ProgressContext
-} from '../enhanced-types'
 import { createScopedLogger } from '@auxx/logger'
+import { EventEmitter } from 'events'
+import type {
+  ProgressContext,
+  UploadError,
+  UploadProgress,
+  UploadProgressState,
+  UploadRequest,
+  UploadStage,
+} from '../enhanced-types'
+import { fileUploadEventPublisher } from './sse-publisher'
 
 const logger = createScopedLogger('enhanced-progress-tracker')
 
@@ -40,16 +40,16 @@ export class EnhancedProgressTracker {
       errors: [],
       organizationId: request.organizationId,
     }
-    
+
     this.activeUploads.set(uploadId, state)
-    
+
     logger.debug('Created enhanced progress tracker', {
       uploadId,
       filename: request.filename,
       totalBytes: state.totalBytes,
       strategy: request.strategy,
     })
-    
+
     return new EnhancedProgressContextImpl(uploadId, state, this)
   }
 
@@ -71,19 +71,19 @@ export class EnhancedProgressTracker {
       errors: savedState.errors || [],
       organizationId: savedState.organizationId,
     }
-    
+
     // Recalculate percentage and metrics
     this.recalculateMetrics(state)
-    
+
     this.activeUploads.set(uploadId, state)
-    
+
     logger.info('Restored enhanced progress tracker', {
       uploadId,
       bytesUploaded: state.bytesUploaded,
       totalBytes: state.totalBytes,
       percentage: state.percentage,
     })
-    
+
     return new EnhancedProgressContextImpl(uploadId, state, this)
   }
 
@@ -96,24 +96,24 @@ export class EnhancedProgressTracker {
       logger.warn('Attempted to update non-existent enhanced progress tracker', { uploadId })
       return
     }
-    
+
     const now = Date.now()
     const timeDelta = now - state.lastUpdate
-    
+
     // Calculate enhanced metrics if bytes updated
     if (updates.bytesUploaded !== undefined && updates.bytesUploaded !== state.bytesUploaded) {
       this.updateSpeedMetrics(state, updates.bytesUploaded, timeDelta)
     }
-    
+
     // Apply updates
     Object.assign(state, updates, { lastUpdate: now })
-    
+
     // Recalculate all metrics
     this.recalculateMetrics(state)
-    
+
     // Emit progress event
     this.eventEmitter.emit('progress', uploadId, state)
-    
+
     // Notify via SSE with enhanced data
     this.notifyProgress(uploadId, state)
   }
@@ -124,7 +124,7 @@ export class EnhancedProgressTracker {
   getProgress(uploadId: string): UploadProgress | null {
     const state = this.activeUploads.get(uploadId)
     if (!state) return null
-    
+
     return this.stateToProgress(state)
   }
 
@@ -132,7 +132,7 @@ export class EnhancedProgressTracker {
    * Get all active uploads with metrics
    */
   getActiveUploads(): UploadProgress[] {
-    return Array.from(this.activeUploads.values()).map(state => this.stateToProgress(state))
+    return Array.from(this.activeUploads.values()).map((state) => this.stateToProgress(state))
   }
 
   /**
@@ -146,10 +146,10 @@ export class EnhancedProgressTracker {
   } | null {
     const state = this.activeUploads.get(uploadId)
     if (!state) return null
-    
+
     const elapsed = Date.now() - state.startTime
     const averageSpeed = elapsed > 0 ? (state.bytesUploaded / elapsed) * 1000 : 0
-    
+
     return {
       averageSpeed,
       peakSpeed: state.speed, // Current speed as peak for now
@@ -166,17 +166,17 @@ export class EnhancedProgressTracker {
     if (state) {
       state.stage = 'failed'
       state.message = reason || 'Upload cancelled'
-      
+
       this.eventEmitter.emit('cancelled', uploadId, state)
-      
+
       // Notify via SSE
       this.notifyProgress(uploadId, state)
-      
+
       // Clean up after delay
       setTimeout(() => {
         this.activeUploads.delete(uploadId)
       }, 5000) // 5 seconds
-      
+
       logger.info('Upload cancelled', { uploadId, reason })
     }
   }
@@ -191,30 +191,30 @@ export class EnhancedProgressTracker {
       state.percentage = 100
       state.bytesUploaded = state.totalBytes
       state.message = message || 'Upload completed successfully'
-      
+
       // Calculate final metrics
       const totalTime = Date.now() - state.startTime
       const averageSpeed = totalTime > 0 ? (state.totalBytes / totalTime) * 1000 : 0
-      
+
       this.eventEmitter.emit('completed', uploadId, state, {
         totalTime,
         averageSpeed,
         totalBytes: state.totalBytes,
       })
-      
+
       // Notify via SSE
       this.notifyProgress(uploadId, state)
-      
+
       // Keep completed uploads for status queries
       setTimeout(() => {
         this.activeUploads.delete(uploadId)
       }, 60000) // 1 minute
-      
-      logger.info('Upload completed', { 
-        uploadId, 
-        totalTime, 
+
+      logger.info('Upload completed', {
+        uploadId,
+        totalTime,
         averageSpeed: Math.round(averageSpeed),
-        totalBytes: state.totalBytes 
+        totalBytes: state.totalBytes,
       })
     }
   }
@@ -228,12 +228,12 @@ export class EnhancedProgressTracker {
       state.stage = 'failed'
       state.message = error.message
       state.errors.push(error)
-      
+
       this.eventEmitter.emit('failed', uploadId, state, error)
-      
+
       // Notify via SSE
       this.notifyProgress(uploadId, state)
-      
+
       logger.error('Upload failed', {
         uploadId,
         error: error.message,
@@ -262,17 +262,20 @@ export class EnhancedProgressTracker {
   /**
    * Update speed metrics with smoothing
    */
-  private updateSpeedMetrics(state: UploadProgressState, newBytesUploaded: number, timeDelta: number): void {
+  private updateSpeedMetrics(
+    state: UploadProgressState,
+    newBytesUploaded: number,
+    timeDelta: number
+  ): void {
     const bytesDelta = newBytesUploaded - state.bytesUploaded
-    
+
     if (timeDelta > 0 && bytesDelta > 0) {
       const instantSpeed = (bytesDelta / timeDelta) * 1000 // bytes/second
-      
+
       // Apply exponential smoothing to speed for stability
       const alpha = 0.3 // Smoothing factor
-      state.speed = state.speed === 0 
-        ? instantSpeed 
-        : alpha * instantSpeed + (1 - alpha) * state.speed
+      state.speed =
+        state.speed === 0 ? instantSpeed : alpha * instantSpeed + (1 - alpha) * state.speed
     }
   }
 
@@ -284,7 +287,7 @@ export class EnhancedProgressTracker {
     if (state.totalBytes > 0) {
       state.percentage = Math.min(100, (state.bytesUploaded / state.totalBytes) * 100)
     }
-    
+
     // Calculate ETA
     if (state.speed > 0 && state.totalBytes > 0) {
       const remainingBytes = state.totalBytes - state.bytesUploaded
@@ -299,7 +302,7 @@ export class EnhancedProgressTracker {
    */
   private async notifyProgress(uploadId: string, state: UploadProgressState): Promise<void> {
     if (!state.organizationId) return
-    
+
     try {
       // Convert to format expected by existing SSE publisher with enhanced data
       await fileUploadEventPublisher.emitUploadProgress(uploadId, state.organizationId, {
@@ -353,7 +356,7 @@ export class EnhancedProgressTracker {
   cleanup(): void {
     const now = Date.now()
     const maxAge = 24 * 60 * 60 * 1000 // 24 hours
-    
+
     for (const [uploadId, state] of this.activeUploads.entries()) {
       if (now - state.lastUpdate > maxAge) {
         this.activeUploads.delete(uploadId)
@@ -373,10 +376,11 @@ export class EnhancedProgressTracker {
   } {
     const activeStates = Array.from(this.activeUploads.values())
     const totalBytes = activeStates.reduce((sum, state) => sum + state.totalBytes, 0)
-    const averageSpeed = activeStates.length > 0 
-      ? activeStates.reduce((sum, state) => sum + state.speed, 0) / activeStates.length
-      : 0
-    
+    const averageSpeed =
+      activeStates.length > 0
+        ? activeStates.reduce((sum, state) => sum + state.speed, 0) / activeStates.length
+        : 0
+
     return {
       activeUploads: activeStates.length,
       totalBytesUploading: totalBytes,
@@ -417,9 +421,9 @@ class EnhancedProgressContextImpl implements ProgressContext {
         callback(this.tracker['stateToProgress'](state))
       }
     }
-    
+
     this.tracker['eventEmitter'].on('progress', handler)
-    
+
     return () => this.tracker['eventEmitter'].off('progress', handler)
   }
 
@@ -434,8 +438,9 @@ class EnhancedProgressContextImpl implements ProgressContext {
   } {
     const elapsed = Date.now() - this.state.startTime
     const averageSpeed = elapsed > 0 ? (this.state.bytesUploaded / elapsed) * 1000 : 0
-    const efficiency = this.state.totalBytes > 0 ? (this.state.bytesUploaded / this.state.totalBytes) * 100 : 0
-    
+    const efficiency =
+      this.state.totalBytes > 0 ? (this.state.bytesUploaded / this.state.totalBytes) * 100 : 0
+
     return {
       averageSpeed,
       currentSpeed: this.state.speed,
@@ -449,6 +454,9 @@ class EnhancedProgressContextImpl implements ProgressContext {
 export const enhancedProgressTracker = new EnhancedProgressTracker()
 
 // Start cleanup interval
-setInterval(() => {
-  enhancedProgressTracker.cleanup()
-}, 60 * 60 * 1000) // Every hour
+setInterval(
+  () => {
+    enhancedProgressTracker.cleanup()
+  },
+  60 * 60 * 1000
+) // Every hour

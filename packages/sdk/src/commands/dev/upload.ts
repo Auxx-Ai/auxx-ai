@@ -1,11 +1,11 @@
 import chalk from 'chalk'
 import notifier from 'node-notifier'
-import { combineAsync, complete, isErrored } from '../../errors.js'
 import { api } from '../../api/api.js'
+import { combineAsync, complete, isErrored } from '../../errors.js'
+import { calculateBundleShas } from '../../util/calculate-bundle-sha.js'
+import type { SettingsSchema } from '../../util/extract-settings-schema.js'
 import { spinnerify } from '../../util/spinner.js'
 import { uploadBundle } from '../../util/upload-bundle.js'
-import { calculateBundleShas } from '../../util/calculate-bundle-sha.js'
-import { type SettingsSchema } from '../../util/extract-settings-schema.js'
 
 export async function upload({
   contents,

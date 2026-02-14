@@ -1,5 +1,5 @@
 // components/organization/types.ts
-import type { OrganizationType, OrganizationRole } from '@auxx/database/types'
+import type { OrganizationRole, OrganizationType } from '@auxx/database/types'
 
 /** Organization membership data */
 export type OrganizationMembership = {

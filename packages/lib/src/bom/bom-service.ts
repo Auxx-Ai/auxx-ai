@@ -3,7 +3,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { and, asc, eq, inArray } from 'drizzle-orm'
-import type { Subpart, PartCost, PartItem, RequieredQuantity } from './types'
+import type { PartCost, PartItem, RequieredQuantity, Subpart } from './types'
 
 /** Service for BOM (Bill of Materials) operations */
 export class BomService {
@@ -25,7 +25,7 @@ export class BomService {
     }
 
     // Get all subparts recursively
-    const bomItems = await this.getSubpartsRecursive(organizationId, partId, 1, depth)
+    const bomItems = await BomService.getSubpartsRecursive(organizationId, partId, 1, depth)
 
     // Return flattened BOM with totals
     return { part, items: bomItems }
@@ -126,7 +126,7 @@ export class BomService {
 
       // Recursively get subparts of this subpart
       if (level < maxDepth) {
-        const children = await this.getSubpartsRecursive(
+        const children = await BomService.getSubpartsRecursive(
           organizationId,
           row.sub.childPartId,
           level + 1,
@@ -153,7 +153,7 @@ export class BomService {
     }
 
     // Check if the subpart already has the parent as its subpart (at any level)
-    return this.isParentOfRecursive(subPartId, parentId)
+    return BomService.isParentOfRecursive(subPartId, parentId)
   }
 
   /**
@@ -175,7 +175,7 @@ export class BomService {
       }
 
       // Check recursively
-      const isParent = await this.isParentOfRecursive(parent.parentPartId, parentId)
+      const isParent = await BomService.isParentOfRecursive(parent.parentPartId, parentId)
       if (isParent) {
         return true
       }
@@ -195,7 +195,7 @@ export class BomService {
     quantity: number = 1
   ): Promise<RequieredQuantity[]> {
     // Get the flattened BOM
-    const bom = await this.getFlattenedBom(organizationId, partId)
+    const bom = await BomService.getFlattenedBom(organizationId, partId)
 
     // Calculate required quantities for each part
     const requiredQuantities = []
@@ -295,7 +295,11 @@ export class BomService {
     partId: string,
     quantity: number = 1
   ) {
-    const requirements = await this.calculateRequiredQuantities(organizationId, partId, quantity)
+    const requirements = await BomService.calculateRequiredQuantities(
+      organizationId,
+      partId,
+      quantity
+    )
 
     // Filter to parts with shortage
     const shortages = requirements.filter((req) => req.shortage > 0)
@@ -310,7 +314,11 @@ export class BomService {
    */
   static async buildPart(organizationId: string, partId: string, quantity: number = 1) {
     // First check if we can build it
-    const inventoryCheck = await this.checkInventorySufficiency(organizationId, partId, quantity)
+    const inventoryCheck = await BomService.checkInventorySufficiency(
+      organizationId,
+      partId,
+      quantity
+    )
 
     if (!inventoryCheck.canBuild) {
       throw new Error('Insufficient inventory to build this part')
@@ -489,7 +497,7 @@ export class BomService {
       const subpartCosts: NonNullable<PartCost['subpartCosts']> = []
 
       for (const s of subRows) {
-        const subCost = await this.calculatePartCost(
+        const subCost = await BomService.calculatePartCost(
           organizationId,
           s.childPartId,
           usePreferredVendorsOnly

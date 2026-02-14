@@ -8,12 +8,7 @@ export type ImportPlanStatus =
   | 'completed' // Finished
 
 /** Strategy status */
-export type StrategyStatus =
-  | 'planning_queued'
-  | 'planning'
-  | 'planned'
-  | 'executing'
-  | 'completed'
+export type StrategyStatus = 'planning_queued' | 'planning' | 'planned' | 'executing' | 'completed'
 
 /** Strategy type */
 export type StrategyType = 'create' | 'update' | 'skip'

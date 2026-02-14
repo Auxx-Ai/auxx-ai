@@ -1,20 +1,20 @@
 // apps/web/src/components/workflow/panels/run/tabs/input-tab.tsx
 
-import React, { useState, useEffect, useCallback } from 'react'
-import { Button } from '@auxx/ui/components/button'
-import { Alert, AlertIcon, AlertDescription } from '@auxx/ui/components/alert'
-import { Play, AlertCircle, AlertTriangle } from 'lucide-react'
-import { useStoreApi } from '@xyflow/react'
-import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
-import { useRunStore } from '~/components/workflow/store/run-store'
-import { usePanelStore } from '~/components/workflow/store/panel-store'
-import { useWorkflowTrigger } from '~/components/workflow/hooks'
-import { useWorkflowRun } from '~/hooks/use-workflow-run'
-import { toastError } from '@auxx/ui/components/toast'
 import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
-import { useThread, useMessages, useMessageParticipants } from '~/components/threads/hooks'
-import { transformThreadToWorkflowInput } from '~/components/workflow/nodes/shared/node-inputs'
+import { Alert, AlertDescription, AlertIcon } from '@auxx/ui/components/alert'
+import { Button } from '@auxx/ui/components/button'
+import { toastError } from '@auxx/ui/components/toast'
+import { useStoreApi } from '@xyflow/react'
+import { AlertCircle, AlertTriangle, Play } from 'lucide-react'
+import React, { useCallback, useEffect, useState } from 'react'
+import { useMessageParticipants, useMessages, useThread } from '~/components/threads/hooks'
+import { useWorkflowTrigger } from '~/components/workflow/hooks'
 import { initializeTriggers } from '~/components/workflow/nodes/initialize-triggers'
+import { transformThreadToWorkflowInput } from '~/components/workflow/nodes/shared/node-inputs'
+import { usePanelStore } from '~/components/workflow/store/panel-store'
+import { useRunStore } from '~/components/workflow/store/run-store'
+import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
+import { useWorkflowRun } from '~/hooks/use-workflow-run'
 
 // Initialize triggers once
 initializeTriggers()
@@ -276,11 +276,11 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       {/* No trigger warning */}
       {!hasTrigger && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
+        <Alert variant='destructive'>
+          <AlertTriangle className='h-4 w-4' />
           <AlertDescription>
             This workflow doesn't have a trigger node. Add a trigger node (like "Message Received")
             to enable workflow execution.
@@ -298,14 +298,14 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
         />
       )}
 
-      <div className="p-3">
+      <div className='p-3'>
         {/* No inputs message */}
         {hasTrigger &&
           !triggerConfig &&
           (!(workflow as any)?.envVars ||
             ((workflow as any).envVars as Array<any>).length === 0) && (
-            <Alert className="mb-3">
-              <div className="flex items-center gap-2 flex-row">
+            <Alert className='mb-3'>
+              <div className='flex items-center gap-2 flex-row'>
                 <AlertIcon icon={AlertCircle}></AlertIcon>
                 <AlertDescription>
                   This workflow doesn't require any inputs. Click "Run Workflow" to start testing.
@@ -316,8 +316,8 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
 
         {/* Error summary */}
         {Object.keys(errors).length > 0 && (
-          <Alert variant="destructive">
-            <AlertCircle className="size-4" />
+          <Alert variant='destructive'>
+            <AlertCircle className='size-4' />
             <AlertDescription>
               Please fix the errors above before running the workflow.
             </AlertDescription>
@@ -333,8 +333,8 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
             (isMessageReceivedTrigger && inputs.threadId && threadDataLoading)
           }
           loading={isRunning && activeRun?.status === 'RUNNING'}
-          loadingText="Running..."
-          className="w-full"
+          loadingText='Running...'
+          className='w-full'
           title={!hasTrigger ? 'Workflow needs a trigger node to run' : undefined}>
           <Play />
           Run Workflow

@@ -1,26 +1,29 @@
 // apps/web/src/components/workflow/panels/run/components/node-execution-card.tsx
-import React, { useState } from 'react'
+
+import { WorkflowRunStatus as WorkflowRunStatusEnum } from '@auxx/database/enums'
+import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/models'
+import type { WorkflowRunStatus } from '@auxx/database/types'
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { Alert, AlertDescription } from '@auxx/ui/components/alert'
+import { cn } from '@auxx/ui/lib/utils'
 import {
-  Clock,
   AlertCircle,
   CheckCircle,
-  Loader2,
-  Coins,
-  Hash,
-  FileOutput,
-  FileInput,
-  FileText,
   ChevronRight,
+  Clock,
+  Coins,
+  FileInput,
+  FileOutput,
+  FileText,
+  Hash,
+  Loader2,
 } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
-import { unifiedNodeRegistry } from '../../../nodes/unified-registry'
+import type React from 'react'
+import { useState } from 'react'
 import { NodeRunningStatus } from '~/components/workflow/types'
-import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/models'
-import { WorkflowRunStatus as WorkflowRunStatusEnum } from '@auxx/database/enums'
-import type { WorkflowRunStatus } from '@auxx/database/types'
+import { unifiedNodeRegistry } from '../../../nodes/unified-registry'
+
 interface NodeExecutionCardProps {
   execution: WorkflowNodeExecution
   workflowStatus?: WorkflowRunStatus
@@ -85,19 +88,19 @@ const computeDisplayStatus = (
 const getStatusIcon = (status: NodeRunningStatus) => {
   switch (status) {
     case NodeRunningStatus.Running:
-      return <Loader2 className="size-4 animate-spin text-blue-500" />
+      return <Loader2 className='size-4 animate-spin text-blue-500' />
     case NodeRunningStatus.Succeeded:
-      return <CheckCircle className="size-4 text-green-500" />
+      return <CheckCircle className='size-4 text-green-500' />
     case NodeRunningStatus.Failed:
-      return <AlertCircle className="size-4 text-red-500" />
+      return <AlertCircle className='size-4 text-red-500' />
     case NodeRunningStatus.Pending:
-      return <Loader2 className="size-4 text-yellow-500 animate-pulse" />
+      return <Loader2 className='size-4 text-yellow-500 animate-pulse' />
     case NodeRunningStatus.Paused:
-      return <Clock className="size-4 text-orange-500" />
+      return <Clock className='size-4 text-orange-500' />
     case NodeRunningStatus.Stopped:
-      return <AlertCircle className="size-4 text-orange-500" />
+      return <AlertCircle className='size-4 text-orange-500' />
     case NodeRunningStatus.Skipped:
-      return <CheckCircle className="size-4 text-muted-foreground" />
+      return <CheckCircle className='size-4 text-muted-foreground' />
     default:
       return null
   }
@@ -144,11 +147,11 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
           displayStatus === NodeRunningStatus.Skipped && 'border-muted/30 bg-muted/5'
         )}></div>
       <div
-        className="cursor-pointer py-0 hover:bg-muted/50 transition-colors pe-2"
+        className='cursor-pointer py-0 hover:bg-muted/50 transition-colors pe-2'
         onClick={() => setExpanded(!expanded)}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <Button variant="ghost" size="icon-sm" className="">
+        <div className='flex items-center justify-between'>
+          <div className='flex items-center'>
+            <Button variant='ghost' size='icon-sm' className=''>
               <ChevronRight
                 className={cn(
                   'text-primary-200 transition-transform duration-200 group-hover/node:text-primary-400',
@@ -158,34 +161,34 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
             </Button>
 
             <div
-              className="flex size-6 items-center justify-center rounded-lg me-2"
+              className='flex size-6 items-center justify-center rounded-lg me-2'
               style={{ backgroundColor: `${nodeColor}20` }}>
               <div style={{ color: nodeColor }}>{nodeIcon}</div>
             </div>
-            <div className="text-sm font-medium">{execution.title}</div>
+            <div className='text-sm font-medium'>{execution.title}</div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className='flex items-center gap-3'>
             {/* <p className="text-sm text-muted-foreground">Step {execution.index + 1}</p> */}
 
             {/* Token count if available */}
             {totalTokens && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Hash className="size-3" />
+              <div className='flex items-center gap-1 text-xs text-muted-foreground'>
+                <Hash className='size-3' />
                 {formatTokens(totalTokens)}
               </div>
             )}
 
             {/* Execution time */}
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Clock className="size-3" />
+            <div className='flex items-center gap-1 text-xs text-muted-foreground'>
+              <Clock className='size-3' />
               {formatTime(execution.elapsedTime)}
             </div>
 
             {/* Cost if available */}
             {totalPrice && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Coins className="size-3" />${totalPrice.toFixed(4)}
+              <div className='flex items-center gap-1 text-xs text-muted-foreground'>
+                <Coins className='size-3' />${totalPrice.toFixed(4)}
               </div>
             )}
             {getStatusIcon(displayStatus)}
@@ -198,31 +201,31 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
           'overflow-hidden transition-all duration-200',
           showChildren ? '' : 'max-h-0'
         )}>
-        <div className="p-2">
+        <div className='p-2'>
           <RadioTab
             value={activeTab}
             onValueChange={(value) => setActiveTab(value as 'outputs' | 'inputs' | 'metadata')}
-            size="sm"
-            radioGroupClassName="grid w-full grid-cols-3 after:rounded-2xl"
-            className="border border-primary-50 h-8 w-full rounded-2xl">
-            <RadioTabItem value="outputs" size="sm" className="gap-1">
-              <FileOutput className="size-3.5!" />
+            size='sm'
+            radioGroupClassName='grid w-full grid-cols-3 after:rounded-2xl'
+            className='border border-primary-50 h-8 w-full rounded-2xl'>
+            <RadioTabItem value='outputs' size='sm' className='gap-1'>
+              <FileOutput className='size-3.5!' />
               Outputs
             </RadioTabItem>
-            <RadioTabItem value="inputs" size="sm" className="gap-1">
-              <FileInput className="size-3.5!" />
+            <RadioTabItem value='inputs' size='sm' className='gap-1'>
+              <FileInput className='size-3.5!' />
               Inputs
             </RadioTabItem>
-            <RadioTabItem value="metadata" size="sm" className="gap-1">
-              <FileText className="size-3.5!" />
+            <RadioTabItem value='metadata' size='sm' className='gap-1'>
+              <FileText className='size-3.5!' />
               Metadata
             </RadioTabItem>
           </RadioTab>
 
           {activeTab === 'outputs' && (
-            <div className="mt-3">
+            <div className='mt-3'>
               {execution.outputs && (
-                <pre className="p-3 bg-muted rounded-md text-xs overflow-auto max-h-[300px] font-mono">
+                <pre className='p-3 bg-muted rounded-md text-xs overflow-auto max-h-[300px] font-mono'>
                   {JSON.stringify(execution.outputs, null, 2)}
                 </pre>
               )}
@@ -230,44 +233,44 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
           )}
 
           {activeTab === 'inputs' && (
-            <div className="mt-3">
+            <div className='mt-3'>
               {execution.inputs ? (
-                <pre className="p-3 bg-muted rounded-md text-xs overflow-auto max-h-[300px] font-mono">
+                <pre className='p-3 bg-muted rounded-md text-xs overflow-auto max-h-[300px] font-mono'>
                   {JSON.stringify(execution.inputs, null, 2)}
                 </pre>
               ) : (
-                <p className="text-sm text-muted-foreground py-8 text-center">No inputs provided</p>
+                <p className='text-sm text-muted-foreground py-8 text-center'>No inputs provided</p>
               )}
             </div>
           )}
 
           {activeTab === 'metadata' && (
-            <div className="mt-3">
-              <div className="space-y-3 text-sm">
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+            <div className='mt-3'>
+              <div className='space-y-3 text-sm'>
+                <div className='grid grid-cols-2 gap-x-4 gap-y-2'>
                   <div>
-                    <span className="text-muted-foreground">Node ID</span>
-                    <p className="font-mono text-xs mt-0.5">{execution.nodeId}</p>
+                    <span className='text-muted-foreground'>Node ID</span>
+                    <p className='font-mono text-xs mt-0.5'>{execution.nodeId}</p>
                   </div>
 
                   {execution.predecessorNodeId && (
                     <div>
-                      <span className="text-muted-foreground">Previous Node</span>
-                      <p className="font-mono text-xs mt-0.5">{execution.predecessorNodeId}</p>
+                      <span className='text-muted-foreground'>Previous Node</span>
+                      <p className='font-mono text-xs mt-0.5'>{execution.predecessorNodeId}</p>
                     </div>
                   )}
 
                   <div>
-                    <span className="text-muted-foreground">Started At</span>
-                    <p className="text-xs mt-0.5">
+                    <span className='text-muted-foreground'>Started At</span>
+                    <p className='text-xs mt-0.5'>
                       {new Date(execution.createdAt).toLocaleString()}
                     </p>
                   </div>
 
                   {execution.finishedAt && (
                     <div>
-                      <span className="text-muted-foreground">Completed At</span>
-                      <p className="text-xs mt-0.5">
+                      <span className='text-muted-foreground'>Completed At</span>
+                      <p className='text-xs mt-0.5'>
                         {new Date(execution.finishedAt).toLocaleString()}
                       </p>
                     </div>
@@ -277,33 +280,33 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
                 {/* AI-specific metadata */}
                 {metadata &&
                   (metadata.promptTokens || metadata.completionTokens || metadata.model) && (
-                    <div className="border-t pt-3 mt-3">
-                      <p className="text-muted-foreground mb-2 font-medium">AI Execution Details</p>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                    <div className='border-t pt-3 mt-3'>
+                      <p className='text-muted-foreground mb-2 font-medium'>AI Execution Details</p>
+                      <div className='grid grid-cols-2 gap-x-4 gap-y-2'>
                         {metadata.model && (
                           <div>
-                            <span className="text-muted-foreground">Model</span>
-                            <p className="text-xs mt-0.5">{metadata.model}</p>
+                            <span className='text-muted-foreground'>Model</span>
+                            <p className='text-xs mt-0.5'>{metadata.model}</p>
                           </div>
                         )}
                         {metadata.promptTokens && (
                           <div>
-                            <span className="text-muted-foreground">Prompt Tokens</span>
-                            <p className="text-xs mt-0.5">{formatTokens(metadata.promptTokens)}</p>
+                            <span className='text-muted-foreground'>Prompt Tokens</span>
+                            <p className='text-xs mt-0.5'>{formatTokens(metadata.promptTokens)}</p>
                           </div>
                         )}
                         {metadata.completionTokens && (
                           <div>
-                            <span className="text-muted-foreground">Completion Tokens</span>
-                            <p className="text-xs mt-0.5">
+                            <span className='text-muted-foreground'>Completion Tokens</span>
+                            <p className='text-xs mt-0.5'>
                               {formatTokens(metadata.completionTokens)}
                             </p>
                           </div>
                         )}
                         {metadata.temperature !== undefined && (
                           <div>
-                            <span className="text-muted-foreground">Temperature</span>
-                            <p className="text-xs mt-0.5">{metadata.temperature}</p>
+                            <span className='text-muted-foreground'>Temperature</span>
+                            <p className='text-xs mt-0.5'>{metadata.temperature}</p>
                           </div>
                         )}
                       </div>
@@ -312,9 +315,9 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
 
                 {/* Raw metadata if there's more */}
                 {metadata && Object.keys(metadata).length > 0 && (
-                  <div className="border-t pt-3 mt-3">
-                    <p className="text-muted-foreground mb-2">Raw Metadata</p>
-                    <pre className="p-2 bg-muted rounded text-xs overflow-auto max-h-[150px] font-mono">
+                  <div className='border-t pt-3 mt-3'>
+                    <p className='text-muted-foreground mb-2'>Raw Metadata</p>
+                    <pre className='p-2 bg-muted rounded text-xs overflow-auto max-h-[150px] font-mono'>
                       {JSON.stringify(metadata, null, 2)}
                     </pre>
                   </div>
@@ -325,17 +328,17 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
 
           {/* Error details */}
           {execution.error && (
-            <Alert variant="destructive" className="mt-3">
+            <Alert variant='destructive' className='mt-3'>
               <AlertCircle />
-              <AlertDescription className="mt-1">
-                <p className="font-medium">Execution Error</p>
-                <p className="text-sm mt-1">{execution.error}</p>
+              <AlertDescription className='mt-1'>
+                <p className='font-medium'>Execution Error</p>
+                <p className='text-sm mt-1'>{execution.error}</p>
               </AlertDescription>
             </Alert>
           )}
 
           {/* Render children if provided (for loop iterations) */}
-          {children && <div className="mt-3 border-t pt-3">{children}</div>}
+          {children && <div className='mt-3 border-t pt-3'>{children}</div>}
         </div>
       </div>
     </div>

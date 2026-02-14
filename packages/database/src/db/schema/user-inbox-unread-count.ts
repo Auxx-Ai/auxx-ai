@@ -1,8 +1,8 @@
 // packages/database/src/db/schema/user-inbox-unread-count.ts
 // Drizzle table: userInboxUnreadCount
 
-import { pgTable, uniqueIndex, index, text, timestamp, integer, type AnyPgColumn } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, index, integer, pgTable, text, timestamp, uniqueIndex } from './_shared'
 
 import { EntityInstance } from './entity-instance'
 import { Organization } from './organization'
@@ -22,7 +22,10 @@ export const UserInboxUnreadCount = pgTable(
     /** References inbox EntityInstance.id */
     inboxId: text()
       .notNull()
-      .references((): AnyPgColumn => EntityInstance.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
+      .references((): AnyPgColumn => EntityInstance.id, {
+        onUpdate: 'cascade',
+        onDelete: 'cascade',
+      }),
     userId: text()
       .notNull()
       .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'cascade' }),

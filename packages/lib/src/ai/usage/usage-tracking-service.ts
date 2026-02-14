@@ -1,8 +1,8 @@
 // packages/lib/src/ai/usage/usage-tracking-service.ts
 
-import { database as db, schema, type Database } from '@auxx/database'
-import { eq, and, sql, sum, count, gte, lte, isNotNull } from 'drizzle-orm'
-import type { UsageTrackingRequest, UsageSource } from '../orchestrator/types'
+import { type Database, database as db, schema } from '@auxx/database'
+import { and, count, eq, gte, isNotNull, lte, sql, sum } from 'drizzle-orm'
+import type { UsageSource, UsageTrackingRequest } from '../orchestrator/types'
 
 /** Entry for usage grouped by day */
 export interface UsageDayEntry {

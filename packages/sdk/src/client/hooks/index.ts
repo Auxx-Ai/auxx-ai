@@ -5,7 +5,7 @@
  */
 
 // Export async cache hook
-export { useAsyncCache, type AsyncFunction, type AsyncCacheConfig } from './use-async-cache.js'
+export { type AsyncCacheConfig, type AsyncFunction, useAsyncCache } from './use-async-cache.js'
 
 /**
  * Record data structure

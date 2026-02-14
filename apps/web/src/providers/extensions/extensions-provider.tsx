@@ -1,25 +1,25 @@
 // apps/web/src/providers/extensions/extensions-provider.tsx
 'use client'
 
-import { Fragment, type ReactNode, Suspense, useState, useEffect } from 'react'
-import { InternalAppsContextProvider } from './internal-apps-context'
-import { ExtensionsContextProvider } from './extensions-context'
-import { ExtensionDataHandlerContextProvider } from './extension-data-handler-context'
-import { MessageClientWrapper } from '~/components/extensions/message-client-wrapper'
-import { SurfacesDataHandler } from '~/components/extensions/data-handlers/surfaces-data-handler'
+import { toastError } from '@auxx/ui/components/toast'
+import { Fragment, type ReactNode, Suspense, useEffect, useState } from 'react'
+import { ConnectionExpiredDialog } from '~/components/apps/connection-expired-dialog'
 import { AssetsDataHandler } from '~/components/extensions/data-handlers/assets-data-handler'
-import { RenderDataHandler } from '~/components/extensions/data-handlers/render-data-handler'
-import { TriggerDataHandler } from '~/components/extensions/data-handlers/trigger-data-handler'
 import { DialogDataHandler } from '~/components/extensions/data-handlers/dialog-data-handler'
+import { RenderDataHandler } from '~/components/extensions/data-handlers/render-data-handler'
+import { SurfacesDataHandler } from '~/components/extensions/data-handlers/surfaces-data-handler'
+import { TriggerDataHandler } from '~/components/extensions/data-handlers/trigger-data-handler'
 import { ErrorBoundary } from '~/components/extensions/error-boundary'
+import { MessageClientWrapper } from '~/components/extensions/message-client-wrapper'
+import {
+  type ConnectionExpiredEvent,
+  connectionExpiredEmitter,
+} from '~/lib/extensions/connection-expired-emitter'
 import { useDehydratedOrganizationId } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
-import { toastError } from '@auxx/ui/components/toast'
-import { ConnectionExpiredDialog } from '~/components/apps/connection-expired-dialog'
-import {
-  connectionExpiredEmitter,
-  type ConnectionExpiredEvent,
-} from '~/lib/extensions/connection-expired-emitter'
+import { ExtensionDataHandlerContextProvider } from './extension-data-handler-context'
+import { ExtensionsContextProvider } from './extensions-context'
+import { InternalAppsContextProvider } from './internal-apps-context'
 
 /**
  * Props for ExtensionsProvider

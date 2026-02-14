@@ -1,11 +1,17 @@
 // ~/server/api/routers/timeline.ts
+
+import * as schema from '@auxx/database'
+import { TimelineService } from '@auxx/lib/timeline'
+import {
+  getDefinitionId,
+  isSystemModelType,
+  parseRecordId,
+  recordIdSchema,
+} from '@auxx/types/resource'
+import { TRPCError } from '@trpc/server'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { TRPCError } from '@trpc/server'
-import { TimelineService } from '@auxx/lib/timeline'
-import { and, eq } from 'drizzle-orm'
-import * as schema from '@auxx/database'
-import { recordIdSchema, parseRecordId, getDefinitionId, isSystemModelType } from '@auxx/types/resource'
 
 export const timelineRouter = createTRPCRouter({
   /** Get timeline for an entity */

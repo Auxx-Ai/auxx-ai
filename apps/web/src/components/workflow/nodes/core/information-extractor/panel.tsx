@@ -2,32 +2,32 @@
 
 'use client'
 
-import React, { useCallback, useState } from 'react'
-import { type InformationExtractorNodeData } from './types'
-import { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
-import { BasePanel } from '../../shared/base/base-panel'
-import { Label } from '@auxx/ui/components/label'
-import { Switch } from '@auxx/ui/components/switch'
 import { Button } from '@auxx/ui/components/button'
-import {
-  InformationExtractorProvider,
-  useInformationExtractor,
-} from './information-extractor-context'
-import ModelParameterModal from '~/components/workflow/ui/model-parameter'
-import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import Section from '../../../ui/section'
-import { Editor } from '~/components/workflow/ui/prompt-editor'
-import StructuredOutputGenerator from '~/components/workflow/ui/structured-output-generator'
-import { Pencil, FileJson, BookText } from 'lucide-react'
-import { getTemplatesArray } from './constants'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { Label } from '@auxx/ui/components/label'
+import { Switch } from '@auxx/ui/components/switch'
+import { BookText, FileJson, Pencil } from 'lucide-react'
+import React, { useCallback, useState } from 'react'
+import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import ModelParameterModal from '~/components/workflow/ui/model-parameter'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import { Editor } from '~/components/workflow/ui/prompt-editor'
+import StructuredOutputGenerator from '~/components/workflow/ui/structured-output-generator'
+import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
+import Section from '../../../ui/section'
+import { BasePanel } from '../../shared/base/base-panel'
+import { getTemplatesArray } from './constants'
+import {
+  InformationExtractorProvider,
+  useInformationExtractor,
+} from './information-extractor-context'
 import { informationExtractorDefinition } from './schema'
+import type { InformationExtractorNodeData } from './types'
 
 /**
  * Props for InformationExtractorPanel
@@ -95,8 +95,8 @@ const InformationExtractorPanelContentComponent: React.FC<
     <>
       {/* Model & Parameters Section */}
       <Section
-        title="Model & Parameters"
-        description="Configure the AI model and its parameters."
+        title='Model & Parameters'
+        description='Configure the AI model and its parameters.'
         isRequired>
         <ModelParameterModal
           isAdvancedMode={true}
@@ -119,15 +119,15 @@ const InformationExtractorPanelContentComponent: React.FC<
 
       {/* Text to Extract From Section */}
       <Section
-        title="Text to Extract From"
-        description="Enter the text you want to extract information from."
+        title='Text to Extract From'
+        description='Enter the text you want to extract information from.'
         isRequired>
         <Editor
-          title={<label className="text-xs font-medium">Text Input</label>}
+          title={<label className='text-xs font-medium'>Text Input</label>}
           value={config.text || ''}
           onChange={handleTextChange}
           nodeId={nodeId}
-          placeholder="Enter text or use {{variables}}..."
+          placeholder='Enter text or use {{variables}}...'
           readOnly={isReadOnly}
           minHeight={100}
         />
@@ -135,39 +135,39 @@ const InformationExtractorPanelContentComponent: React.FC<
 
       {/* Structured Output Section */}
       <Section
-        title="Extraction Schema"
-        description="Define what information to extract from the text."
+        title='Extraction Schema'
+        description='Define what information to extract from the text.'
         isRequired>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Label className="text-xs mb-0">Schema Configuration</Label>
+        <div className='space-y-2'>
+          <div className='flex items-center justify-between'>
+            <div className='flex items-center gap-2'>
+              <Label className='text-xs mb-0'>Schema Configuration</Label>
               {config.structured_output?.schema && (
-                <span className="text-xs text-muted-foreground">
+                <span className='text-xs text-muted-foreground'>
                   ({Object.keys(config.structured_output.schema.properties || {}).length} fields)
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-1">
+            <div className='flex items-center gap-1'>
               {/* Templates Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="xs" disabled={isReadOnly}>
+                  <Button variant='outline' size='xs' disabled={isReadOnly}>
                     <BookText />
                     Templates
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuContent align='end' className='w-64'>
                   {getTemplatesArray().map((template) => (
                     <DropdownMenuItem
                       key={template.key}
                       onClick={() => handleTemplateSelect(template)}
-                      className="flex flex-col items-start gap-1 py-2">
-                      <div className="flex items-center gap-2">
-                        <FileJson className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">{template.name}</span>
+                      className='flex flex-col items-start gap-1 py-2'>
+                      <div className='flex items-center gap-2'>
+                        <FileJson className='h-4 w-4 text-muted-foreground' />
+                        <span className='font-medium'>{template.name}</span>
                       </div>
-                      <span className="text-xs text-muted-foreground">{template.description}</span>
+                      <span className='text-xs text-muted-foreground'>{template.description}</span>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -175,8 +175,8 @@ const InformationExtractorPanelContentComponent: React.FC<
 
               {/* Edit Schema Button */}
               <Button
-                variant="outline"
-                size="xs"
+                variant='outline'
+                size='xs'
                 onClick={() => setIsSchemaOpen(true)}
                 disabled={isReadOnly}>
                 <Pencil />
@@ -199,38 +199,38 @@ const InformationExtractorPanelContentComponent: React.FC<
 
       {/* Advanced Settings Section */}
       <Section
-        title="Advanced Settings"
-        description="Additional configuration options."
+        title='Advanced Settings'
+        description='Additional configuration options.'
         initialOpen={false}>
-        <div className="space-y-4">
+        <div className='space-y-4'>
           {/* Vision Toggle */}
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label className="text-xs">Enable Vision</Label>
-              <p className="text-xs text-muted-foreground">
+          <div className='flex items-center justify-between'>
+            <div className='space-y-0.5'>
+              <Label className='text-xs'>Enable Vision</Label>
+              <p className='text-xs text-muted-foreground'>
                 Allow the AI to process images for extraction
               </p>
             </div>
             <Switch
               checked={config.vision.enabled}
-              size="sm"
+              size='sm'
               onCheckedChange={updateVision}
               disabled={isReadOnly}
             />
           </div>
 
           {/* Custom Instructions */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label className="text-xs">Custom Instructions</Label>
-                <p className="text-xs text-muted-foreground">
+          <div className='space-y-2'>
+            <div className='flex items-center justify-between'>
+              <div className='space-y-0.5'>
+                <Label className='text-xs'>Custom Instructions</Label>
+                <p className='text-xs text-muted-foreground'>
                   Add specific instructions for the extraction
                 </p>
               </div>
               <Switch
                 checked={config.instruction.enabled}
-                size="sm"
+                size='sm'
                 onCheckedChange={(enabled) => updateInstruction(enabled, config.instruction.text)}
                 disabled={isReadOnly}
               />
@@ -241,7 +241,7 @@ const InformationExtractorPanelContentComponent: React.FC<
                 value={config.instruction.text || ''}
                 onChange={handleInstructionChange}
                 nodeId={nodeId}
-                placeholder="e.g., Extract only business emails, ignore personal ones..."
+                placeholder='e.g., Extract only business emails, ignore personal ones...'
                 minHeight={80}
                 readOnly={isReadOnly}
               />

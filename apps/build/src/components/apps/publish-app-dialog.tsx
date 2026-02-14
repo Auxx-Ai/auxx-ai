@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -13,13 +13,13 @@ import {
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
 import { KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
 import { CheckCircle2, Circle } from 'lucide-react'
-import { api, RouterOutputs } from '~/trpc/react'
-import { isMainAppListingComplete, isOAuthConfigComplete } from '~/lib/publish-checks'
-import type { AppForPublishCheck } from '~/lib/publish-checks'
-import { toastError } from '~/components/global/toast'
 import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { toastError } from '~/components/global/toast'
+import type { AppForPublishCheck } from '~/lib/publish-checks'
+import { isMainAppListingComplete, isOAuthConfigComplete } from '~/lib/publish-checks'
+import { api, type RouterOutputs } from '~/trpc/react'
 
 type Version = RouterOutputs['versions']['list'][number]
 
@@ -205,12 +205,12 @@ export function PublishAppDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger || (
-          <Button size="sm" variant="outline">
+          <Button size='sm' variant='outline'>
             Publish App
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent position="tc" size="sm">
+      <DialogContent position='tc' size='sm'>
         <DialogHeader>
           <DialogTitle>Publish your app</DialogTitle>
           <DialogDescription>
@@ -219,17 +219,17 @@ export function PublishAppDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <p className="text-sm font-medium text-foreground">
+        <div className='space-y-3'>
+          <p className='text-sm font-medium text-foreground'>
             Before publishing, please ensure you have:
           </p>
-          <div className="space-y-2">
+          <div className='space-y-2'>
             {checklist.map((item) => (
-              <div key={item.id} className="flex flex-row items-center gap-3">
+              <div key={item.id} className='flex flex-row items-center gap-3'>
                 {item.completed ? (
-                  <CheckCircle2 className="size-5 text-green-600 shrink-0" />
+                  <CheckCircle2 className='size-5 text-green-600 shrink-0' />
                 ) : (
-                  <Circle className="size-5 text-muted-foreground shrink-0" />
+                  <Circle className='size-5 text-muted-foreground shrink-0' />
                 )}
                 <span
                   className={`text-sm ${
@@ -243,12 +243,12 @@ export function PublishAppDialog({
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
+          <Button type='button' variant='ghost' size='sm' onClick={() => setOpen(false)}>
             Cancel
           </Button>
           <Button
-            variant="outline"
-            size="sm"
+            variant='outline'
+            size='sm'
             onClick={handleAction}
             disabled={!canPublish || !versions}
             loading={isPending}

@@ -1,8 +1,8 @@
 // packages/lib/src/resources/registry/resources/tag-fields.ts
 
 import { FieldType } from '@auxx/database/enums'
+import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
-import { toFieldId, type ResourceFieldId } from '@auxx/types/field'
 
 import type { ResourceField } from '../field-types'
 

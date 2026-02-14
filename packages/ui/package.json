@@ -17,8 +17,6 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . --max-warnings 0",
-    "lint:fix": "eslint . --fix",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "clean": "rm -rf node_modules .turbo *.tsbuildinfo"
@@ -99,7 +97,6 @@
     }
   },
   "devDependencies": {
-    "@auxx/eslint-config": "workspace:*",
     "@auxx/typescript-config": "workspace:*",
     "@dnd-kit/core": "catalog:",
     "@dnd-kit/modifiers": "catalog:",
@@ -111,7 +108,6 @@
     "@testing-library/react": "^16.1.0",
     "@vitejs/plugin-react": "catalog:",
     "@vitest/ui": "catalog:",
-    "eslint": "catalog:",
     "jsdom": "catalog:",
     "react": "catalog:",
     "next": "catalog:",

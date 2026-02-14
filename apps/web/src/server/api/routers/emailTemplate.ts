@@ -1,11 +1,12 @@
 // server/api/routers/email-templates.ts
-import { TRPCError } from '@trpc/server'
-import { z } from 'zod'
+
 import { schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
 import { EmailTemplateService } from '@auxx/lib/email'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 import { createScopedLogger } from '@auxx/logger'
+import { TRPCError } from '@trpc/server'
+import { and, eq } from 'drizzle-orm'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api-email-templates')
 
@@ -37,12 +38,15 @@ export const emailTemplateRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       const { id } = input
 
-      const [template] = await ctx.db.select()
+      const [template] = await ctx.db
+        .select()
         .from(schema.EmailTemplate)
-        .where(and(
-          eq(schema.EmailTemplate.id, id),
-          eq(schema.EmailTemplate.organizationId, organizationId)
-        ))
+        .where(
+          and(
+            eq(schema.EmailTemplate.id, id),
+            eq(schema.EmailTemplate.organizationId, organizationId)
+          )
+        )
         .limit(1)
 
       if (!template) {
@@ -105,12 +109,15 @@ export const emailTemplateRouter = createTRPCRouter({
       const { id, name, description, subject, bodyHtml, bodyPlain, isActive } = input
       try {
         // Check if template exists and belongs to organization
-        const [existingTemplate] = await ctx.db.select()
+        const [existingTemplate] = await ctx.db
+          .select()
           .from(schema.EmailTemplate)
-          .where(and(
-            eq(schema.EmailTemplate.id, id),
-            eq(schema.EmailTemplate.organizationId, organizationId)
-          ))
+          .where(
+            and(
+              eq(schema.EmailTemplate.id, id),
+              eq(schema.EmailTemplate.organizationId, organizationId)
+            )
+          )
           .limit(1)
 
         if (!existingTemplate) {
@@ -118,7 +125,8 @@ export const emailTemplateRouter = createTRPCRouter({
         }
 
         // Update the template
-        const [template] = await ctx.db.update(schema.EmailTemplate)
+        const [template] = await ctx.db
+          .update(schema.EmailTemplate)
           .set({
             name,
             description,
@@ -147,12 +155,15 @@ export const emailTemplateRouter = createTRPCRouter({
 
       try {
         // Check if template exists and belongs to organization
-        const [existingTemplate] = await ctx.db.select()
+        const [existingTemplate] = await ctx.db
+          .select()
           .from(schema.EmailTemplate)
-          .where(and(
-            eq(schema.EmailTemplate.id, id),
-            eq(schema.EmailTemplate.organizationId, organizationId)
-          ))
+          .where(
+            and(
+              eq(schema.EmailTemplate.id, id),
+              eq(schema.EmailTemplate.organizationId, organizationId)
+            )
+          )
           .limit(1)
 
         if (!existingTemplate) {
@@ -160,8 +171,7 @@ export const emailTemplateRouter = createTRPCRouter({
         }
 
         // Delete the template
-        await ctx.db.delete(schema.EmailTemplate)
-          .where(eq(schema.EmailTemplate.id, id))
+        await ctx.db.delete(schema.EmailTemplate).where(eq(schema.EmailTemplate.id, id))
 
         return { success: true }
       } catch (error) {
@@ -191,12 +201,15 @@ export const emailTemplateRouter = createTRPCRouter({
 
         if (templateId) {
           // Get existing template
-          const [foundTemplate] = await ctx.db.select()
+          const [foundTemplate] = await ctx.db
+            .select()
             .from(schema.EmailTemplate)
-            .where(and(
-              eq(schema.EmailTemplate.id, templateId),
-              eq(schema.EmailTemplate.organizationId, organizationId)
-            ))
+            .where(
+              and(
+                eq(schema.EmailTemplate.id, templateId),
+                eq(schema.EmailTemplate.organizationId, organizationId)
+              )
+            )
             .limit(1)
           template = foundTemplate
 
@@ -211,7 +224,8 @@ export const emailTemplateRouter = createTRPCRouter({
         }
 
         // Get organization info
-        const [organization] = await ctx.db.select({ name: schema.Organization.name })
+        const [organization] = await ctx.db
+          .select({ name: schema.Organization.name })
           .from(schema.Organization)
           .where(eq(schema.Organization.id, organizationId))
           .limit(1)
@@ -246,7 +260,7 @@ async function renderSampleTemplate(
   const Handlebars = await import('handlebars').then((m) => m.default || m)
 
   // Register helpers
-  Handlebars.registerHelper('formatDate', function (date: Date) {
+  Handlebars.registerHelper('formatDate', (date: Date) => {
     if (!date) return ''
     const d = new Date(date)
     return d.toLocaleDateString()

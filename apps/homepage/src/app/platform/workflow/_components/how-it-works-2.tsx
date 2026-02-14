@@ -1,123 +1,123 @@
+import { avatars } from '~/app/_components/avatars'
+import { cn } from '~/lib/utils'
 import { ChartIllustration } from './chart-illustration'
 import { GanttChartIllustration } from './gantt-chart-illustration'
 import { LayoutIllustration } from './layout-illustration'
-import { cn } from '~/lib/utils'
-import { avatars } from '~/app/_components/avatars'
 
 export default function HowItWorksTwo() {
   return (
-    <section className="border-foreground/10 relative  border-b">
-      <div className="mx-auto max-w-6xl border-x px-3">
-        <div className="border-x">
-          <section className="bg-background overflow-hidden">
-            <div className="bg-muted/50 py-24">
-              <div className="relative mx-auto max-w-5xl space-y-2 pr-6 md:px-6">
-                <div className="mb-32 max-w-xl space-y-4 max-md:pl-6">
-                  <h2 className="text-foreground text-balance text-3xl font-semibold">
+    <section className='border-foreground/10 relative  border-b'>
+      <div className='mx-auto max-w-6xl border-x px-3'>
+        <div className='border-x'>
+          <section className='bg-background overflow-hidden'>
+            <div className='bg-muted/50 py-24'>
+              <div className='relative mx-auto max-w-5xl space-y-2 pr-6 md:px-6'>
+                <div className='mb-32 max-w-xl space-y-4 max-md:pl-6'>
+                  <h2 className='text-foreground text-balance text-3xl font-semibold'>
                     Set up your pipeline in minutes with Quartz analytics platform
                   </h2>
-                  <p className="text-muted-foreground text-balance text-lg">
+                  <p className='text-muted-foreground text-balance text-lg'>
                     Our powerful analytics platform helps you visualize complex data, identify
                     trends, and make data-driven decisions with confidence.
                   </p>
                 </div>
 
-                <div className="flex gap-4 max-md:pl-4 sm:gap-8 md:gap-16 lg:gap-24">
+                <div className='flex gap-4 max-md:pl-4 sm:gap-8 md:gap-16 lg:gap-24'>
                   <LineGroup>
                     <StepNumber>1</StepNumber>
-                    <Line nodePosition="bottom" nodeSide="right" />
+                    <Line nodePosition='bottom' nodeSide='right' />
                   </LineGroup>
-                  <div className="w-full pb-32">
-                    <div className="relative z-10 max-w-xl space-y-3">
-                      <h3 className="text-foreground text-balance text-xl font-semibold">
+                  <div className='w-full pb-32'>
+                    <div className='relative z-10 max-w-xl space-y-3'>
+                      <h3 className='text-foreground text-balance text-xl font-semibold'>
                         Transform your data into visual insights
                       </h3>
-                      <p className="text-muted-foreground text-balance md:text-lg">
+                      <p className='text-muted-foreground text-balance md:text-lg'>
                         Transform raw data into actionable insights with our intuitive visualization
                         tools. Create beautiful charts and graphs that make complex information easy
                         to understand and share.
                       </p>
 
-                      <div className="mt-12 flex gap-12">
-                        <div className="space-y-1">
-                          <div className="text-foreground text-4xl font-bold">90+</div>
-                          <p className="text-muted-foreground text-sm">Integrations</p>
+                      <div className='mt-12 flex gap-12'>
+                        <div className='space-y-1'>
+                          <div className='text-foreground text-4xl font-bold'>90+</div>
+                          <p className='text-muted-foreground text-sm'>Integrations</p>
                         </div>
-                        <div className="space-y-1">
-                          <div className="text-foreground text-4xl font-bold">56%</div>
-                          <p className="text-muted-foreground text-sm">Productivity Boost</p>
+                        <div className='space-y-1'>
+                          <div className='text-foreground text-4xl font-bold'>56%</div>
+                          <p className='text-muted-foreground text-sm'>Productivity Boost</p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="-mt-24" aria-hidden>
+                    <div className='-mt-24' aria-hidden>
                       <ChartIllustration />
                     </div>
                   </div>
                 </div>
 
-                <div className="flex gap-4 max-md:pl-4 sm:gap-8 md:gap-16 lg:gap-24">
+                <div className='flex gap-4 max-md:pl-4 sm:gap-8 md:gap-16 lg:gap-24'>
                   <LineGroup>
                     <StepNumber>2</StepNumber>
-                    <Line nodePosition="bottom" nodeSide="right" />
+                    <Line nodePosition='bottom' nodeSide='right' />
                   </LineGroup>
-                  <div className="w-[calc(100%-3rem)] pb-32 md:w-[calc(100%-8rem)]">
-                    <div className="max-w-xl space-y-3">
-                      <h3 className="text-foreground text-balance text-xl font-semibold">
+                  <div className='w-[calc(100%-3rem)] pb-32 md:w-[calc(100%-8rem)]'>
+                    <div className='max-w-xl space-y-3'>
+                      <h3 className='text-foreground text-balance text-xl font-semibold'>
                         Manage your projects efficiently
                       </h3>
-                      <p className="text-muted-foreground text-balance md:text-lg">
+                      <p className='text-muted-foreground text-balance md:text-lg'>
                         Plan, track, and manage your projects with our comprehensive Gantt chart
                         system. Visualize timelines, allocate resources, and keep your team aligned
                         on project milestones.
                       </p>
                     </div>
 
-                    <div className="mt-16" aria-hidden>
+                    <div className='mt-16' aria-hidden>
                       <GanttChartIllustration />
                     </div>
 
-                    <blockquote className="before:bg-primary relative mt-12 max-w-xl pl-4 before:absolute before:inset-y-0 before:left-0 before:w-1 before:rounded-full">
+                    <blockquote className='before:bg-primary relative mt-12 max-w-xl pl-4 before:absolute before:inset-y-0 before:left-0 before:w-1 before:rounded-full'>
                       <p>
                         It's the perfect fusion of simplicity and versatility, enabling us to create
                         UIs that are as stunning as they are user-friendly.
                       </p>
 
-                      <div className="mt-6 flex items-center gap-2">
-                        <div className="bg-background size-6 rounded-full border p-0.5 shadow shadow-zinc-950/5">
+                      <div className='mt-6 flex items-center gap-2'>
+                        <div className='bg-background size-6 rounded-full border p-0.5 shadow shadow-zinc-950/5'>
                           <img
-                            className="aspect-square rounded-full object-cover"
+                            className='aspect-square rounded-full object-cover'
                             src={avatars.zach}
-                            alt="Zach"
-                            height="460"
-                            width="460"
+                            alt='Zach'
+                            height='460'
+                            width='460'
                           />
                         </div>
                         <span>Zachery Melton</span>
-                        <span className="text-muted-foreground">@zach</span>
+                        <span className='text-muted-foreground'>@zach</span>
                       </div>
                     </blockquote>
                   </div>
                 </div>
 
-                <div className="flex gap-4 max-md:pl-4 sm:gap-8 md:gap-16 lg:gap-24">
+                <div className='flex gap-4 max-md:pl-4 sm:gap-8 md:gap-16 lg:gap-24'>
                   <LineGroup>
                     <StepNumber>3</StepNumber>
-                    <Line nodePosition="top" isLast />
+                    <Line nodePosition='top' isLast />
                   </LineGroup>
-                  <div className="w-[calc(100%-3rem)] md:w-[calc(100%-8rem)]">
-                    <div className="relative z-10 max-w-xl space-y-3">
-                      <h3 className="text-foreground text-balance text-xl font-semibold">
+                  <div className='w-[calc(100%-3rem)] md:w-[calc(100%-8rem)]'>
+                    <div className='relative z-10 max-w-xl space-y-3'>
+                      <h3 className='text-foreground text-balance text-xl font-semibold'>
                         Create your perfect workspace layout
                       </h3>
-                      <p className="text-muted-foreground text-balance md:text-lg">
+                      <p className='text-muted-foreground text-balance md:text-lg'>
                         Design your ideal analytics dashboard with our flexible layout options.
                         Arrange components, resize panels, and create personalized views that match
                         your specific workflow needs.
                       </p>
                     </div>
 
-                    <div className="mt-16" aria-hidden>
+                    <div className='mt-16' aria-hidden>
                       <LayoutIllustration />
                     </div>
                   </div>
@@ -133,7 +133,7 @@ export default function HowItWorksTwo() {
 
 const StepNumber = ({ children }: { children: React.ReactNode }) => {
   return (
-    <span className="bg-background ring-foreground/10 text-foreground relative flex size-6 items-center justify-center rounded-full border border-transparent font-mono text-xs font-medium shadow ring-1">
+    <span className='bg-background ring-foreground/10 text-foreground relative flex size-6 items-center justify-center rounded-full border border-transparent font-mono text-xs font-medium shadow ring-1'>
       {children}
     </span>
   )
@@ -204,7 +204,7 @@ const LineNode = ({ position = 'top', side = 'left' }: NodeProps) => {
 
 const Line = ({ isLast, nodePosition = 'top', nodeSide = 'left' }: ProgressLineProps) => {
   return (
-    <div className="relative" aria-hidden>
+    <div className='relative' aria-hidden>
       <div
         className={cn(
           'bg-border border-background absolute inset-x-0 top-2 mx-auto w-0.5 border-r',
@@ -235,7 +235,7 @@ const Line = ({ isLast, nodePosition = 'top', nodeSide = 'left' }: ProgressLineP
 
 const LineGroup = ({ children }: { children: React.ReactNode }) => {
   return (
-    <div className="relative grid w-7 grid-rows-[auto_1fr] [--color-border:color-mix(in_oklab,var(--color-foreground)10%,var(--color-background))]">
+    <div className='relative grid w-7 grid-rows-[auto_1fr] [--color-border:color-mix(in_oklab,var(--color-foreground)10%,var(--color-background))]'>
       {children}
     </div>
   )

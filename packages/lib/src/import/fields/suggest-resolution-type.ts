@@ -63,7 +63,7 @@ export function suggestResolutionType(field: ImportableField): ResolutionType {
 
     case 'text':
     case 'string':
-    default:
+    default: {
       // Check for known field names that have specific types
       const key = field.key.toLowerCase()
 
@@ -84,6 +84,7 @@ export function suggestResolutionType(field: ImportableField): ResolutionType {
       }
 
       return 'text:value'
+    }
   }
 }
 

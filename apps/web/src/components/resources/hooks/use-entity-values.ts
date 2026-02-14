@@ -1,12 +1,12 @@
 // apps/web/src/components/resources/hooks/use-entity-values.ts
 
 import { useMemo } from 'react'
-import { useFieldValues } from './use-field-values'
 import {
-  type StoredFieldValue,
   parseRecordId,
   type RecordId,
+  type StoredFieldValue,
 } from '~/components/resources/store/field-value-store'
+import { useFieldValues } from './use-field-values'
 import { useResourceFields } from './use-resource-fields'
 
 /** Stable empty array */

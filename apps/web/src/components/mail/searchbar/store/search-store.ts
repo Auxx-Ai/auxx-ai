@@ -1,15 +1,12 @@
 // apps/web/src/components/mail/searchbar/store/search-store.ts
 'use client'
 
-import { create } from 'zustand'
-import { immer } from 'zustand/middleware/immer'
-import { persist } from 'zustand/middleware'
-import { v4 as generateId } from 'uuid'
 import type { Operator } from '@auxx/lib/conditions/client'
-import {
-  getMailViewFieldDefinition,
-  getDefaultOperatorForField,
-} from '@auxx/lib/mail-views/client'
+import { getDefaultOperatorForField, getMailViewFieldDefinition } from '@auxx/lib/mail-views/client'
+import { v4 as generateId } from 'uuid'
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+import { immer } from 'zustand/middleware/immer'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES

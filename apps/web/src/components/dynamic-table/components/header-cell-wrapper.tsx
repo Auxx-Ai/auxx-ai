@@ -2,13 +2,13 @@
 
 'use client'
 
-import { type Header } from '@tanstack/react-table'
 import { cn } from '@auxx/ui/lib/utils'
-import { HeaderCell } from './header-cell'
-import type { ExtendedColumnDef } from '../types'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import type { Header } from '@tanstack/react-table'
+import type { ExtendedColumnDef } from '../types'
 import { sanitizeColumnId } from '../utils/sanitize-column-id'
+import { HeaderCell } from './header-cell'
 
 interface HeaderCellWrapperProps<TData> {
   header: Header<TData, unknown>
@@ -41,10 +41,10 @@ export function HeaderCellWrapper<TData>({ header }: HeaderCellWrapperProps<TDat
       }}
       className={cn('relative shrink-0 border-t', isDragging && 'opacity-30 z-50')}>
       <div
-        className="group min-w-min py-2 h-full font-inter font-medium w-full"
+        className='group min-w-min py-2 h-full font-inter font-medium w-full'
         {...(!isCheckboxColumn ? attributes : {})}
         {...(!isCheckboxColumn ? listeners : {})}
-        aria-describedby="header-tooltip">
+        aria-describedby='header-tooltip'>
         <div
           className={cn(
             header.index === 0 ? '' : 'border-l border-foreground-200/80 dark:border-foreground/10',

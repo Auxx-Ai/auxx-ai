@@ -2,7 +2,6 @@
 
 'use client'
 
-import React from 'react'
 import {
   Select,
   SelectContent,
@@ -10,9 +9,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { ScheduledTriggerUIConfig } from '../types'
-import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import type React from 'react'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
+import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import type { ScheduledTriggerUIConfig } from '../types'
+
 interface IntervalSelectorProps {
   config: ScheduledTriggerUIConfig
   onIntervalChange: (interval: ScheduledTriggerUIConfig['triggerInterval']) => void
@@ -48,25 +49,25 @@ export const IntervalSelector: React.FC<IntervalSelectorProps> = ({
   }
 
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       {/* Interval Type and Value */}
       <VarEditorField>
-        <div className="flex items-center gap-1 flex-row">
+        <div className='flex items-center gap-1 flex-row'>
           <Select
             value={config.triggerInterval}
             onValueChange={onIntervalChange}
             disabled={disabled}>
-            <SelectTrigger id="interval-type" variant="transparent" className="w-30">
-              <SelectValue placeholder="Select interval type" />
+            <SelectTrigger id='interval-type' variant='transparent' className='w-30'>
+              <SelectValue placeholder='Select interval type' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="minutes">Minutes</SelectItem>
-              <SelectItem value="hours">Hours</SelectItem>
-              <SelectItem value="days">Days</SelectItem>
-              <SelectItem value="weeks">Weeks</SelectItem>
+              <SelectItem value='minutes'>Minutes</SelectItem>
+              <SelectItem value='hours'>Hours</SelectItem>
+              <SelectItem value='days'>Days</SelectItem>
+              <SelectItem value='weeks'>Weeks</SelectItem>
             </SelectContent>
           </Select>
-          <div className="flex-1">
+          <div className='flex-1'>
             <VarEditor
               value={getCurrentValueForDisplay()}
               nodeId={nodeId}
@@ -95,8 +96,8 @@ export const IntervalSelector: React.FC<IntervalSelectorProps> = ({
               }}
               varType={BaseType.NUMBER}
               mode={VAR_MODE.PICKER}
-              placeholder="Select variable..."
-              placeholderConstant="Enter duration..."
+              placeholder='Select variable...'
+              placeholderConstant='Enter duration...'
               allowConstant
               disabled={disabled}
             />

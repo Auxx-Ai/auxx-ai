@@ -1,30 +1,31 @@
 // packages/lib/src/messages/message-sender.service.ts
-import { database as db, schema, type Database } from '@auxx/database'
-import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { type Database, database as db, schema } from '@auxx/database'
+import { ParticipantRole } from '@auxx/database/enums'
+import type { ParticipantRole as ParticipantRoleType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
+import { getRedisClient } from '@auxx/redis'
+import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { FileService } from '../files/core/file-service'
+import { MediaAssetService } from '../files/core/media-asset-service'
+import { ParticipantService } from '../participants/participant-service'
+import type { AttachmentFile } from '../providers/message-provider-interface'
+import type { ProviderRegistryService } from '../providers/provider-registry-service'
+import { MessageComposerService } from './message-composer.service'
+import { MessageReconcilerService } from './message-reconciler.service'
+import { ThreadManagerService } from './thread-manager.service'
 import type {
-  SendMessageInput,
-  SentMessage,
-  ProcessedParticipants,
-  ProcessedParticipant,
   ComposedMessage,
-  ThreadContext,
   PostSendSyncJob,
+  ProcessedParticipant,
+  ProcessedParticipants,
   ProviderSendResponse,
   RetryMessageInput,
   RetryMessageResult,
+  SendMessageInput,
+  SentMessage,
+  ThreadContext,
 } from './types/message-sending.types'
-import { ThreadManagerService } from './thread-manager.service'
-import { MessageComposerService } from './message-composer.service'
-import { MessageReconcilerService } from './message-reconciler.service'
-import { ParticipantService } from '../participants/participant-service'
-import { ProviderRegistryService } from '../providers/provider-registry-service'
-import { getRedisClient } from '@auxx/redis'
-import { MediaAssetService } from '../files/core/media-asset-service'
-import { FileService } from '../files/core/file-service'
-import type { AttachmentFile } from '../providers/message-provider-interface'
-import { ParticipantRole } from '@auxx/database/enums'
-import type { ParticipantRole as ParticipantRoleType } from '@auxx/database/types'
+
 const logger = createScopedLogger('message-sender')
 /**
  * Main orchestrator for sending messages
@@ -244,9 +245,7 @@ export class MessageSenderService {
     const rows = await db
       .select({ internetMessageId: schema.Message.internetMessageId })
       .from(schema.Message)
-      .where(
-        and(eq(schema.Message.threadId, threadId), sql`("internetMessageId" IS NOT NULL)`)
-      )
+      .where(and(eq(schema.Message.threadId, threadId), sql`("internetMessageId" IS NOT NULL)`))
       .orderBy(desc(schema.Message.sentAt))
       .limit(1)
     return rows?.[0]?.internetMessageId ?? null
@@ -258,9 +257,7 @@ export class MessageSenderService {
     const rows = await db
       .select({ internetMessageId: schema.Message.internetMessageId })
       .from(schema.Message)
-      .where(
-        and(eq(schema.Message.threadId, threadId), sql`("internetMessageId" IS NOT NULL)`)
-      )
+      .where(and(eq(schema.Message.threadId, threadId), sql`("internetMessageId" IS NOT NULL)`))
       .orderBy(asc(schema.Message.sentAt))
       .limit(10)
     if (!rows || rows.length === 0) return null

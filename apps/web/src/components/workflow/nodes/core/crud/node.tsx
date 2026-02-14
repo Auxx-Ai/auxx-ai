@@ -2,12 +2,12 @@
 
 'use client'
 
-import React from 'react'
-import { BaseNode } from '../../shared/base/base-node'
-import { type CrudNodeData, CrudErrorStrategy } from './types'
-import { NodeTargetHandle } from '~/components/workflow/ui/node-handle/target-handle'
+import type React from 'react'
 import { NodeSourceHandle } from '~/components/workflow/ui/node-handle'
+import { NodeTargetHandle } from '~/components/workflow/ui/node-handle/target-handle'
 import { useWorkflowResources } from '../../../providers'
+import { BaseNode } from '../../shared/base/base-node'
+import { CrudErrorStrategy, type CrudNodeData } from './types'
 
 interface CrudNodeProps {
   id: string
@@ -44,24 +44,26 @@ export const CrudNode: React.FC<CrudNodeProps> = ({ id, data, selected }) => {
   }
 
   return (
-    <BaseNode id={id} data={augmentedData} selected={selected} width={244} height="auto">
-      <NodeTargetHandle id={id} data={{ ...augmentedData, selected }} handleId="target" />
+    <BaseNode id={id} data={augmentedData} selected={selected} width={244} height='auto'>
+      <NodeTargetHandle id={id} data={{ ...augmentedData, selected }} handleId='target' />
 
-      <div className="space-y-1 pb-2">
+      <div className='space-y-1 pb-2'>
         {/* Main operation display */}
-        <div className="relative px-2">
-          <div className="flex items-start justify-start rounded-md bg-primary-100 p-1">
+        <div className='relative px-2'>
+          <div className='flex items-start justify-start rounded-md bg-primary-100 p-1'>
             <div
               className={`flex h-4 shrink-0 items-center rounded-md px-1 text-xs font-semibold uppercase ${getOperationColor()}`}>
               {mode?.toUpperCase()}
             </div>
-            <div className="pl-1 text-xs break-all whitespace-pre-line">{resource?.label || resourceType}</div>
+            <div className='pl-1 text-xs break-all whitespace-pre-line'>
+              {resource?.label || resourceType}
+            </div>
           </div>
           <NodeSourceHandle
-            handleId="source"
+            handleId='source'
             id={id}
             data={{ ...augmentedData, selected }}
-            handleClassName="!bottom-5"
+            handleClassName='!bottom-5'
             handleIndex={0}
             handleTotal={totalSourceHandles}
           />
@@ -69,19 +71,19 @@ export const CrudNode: React.FC<CrudNodeProps> = ({ id, data, selected }) => {
 
         {/* Fail branch display - conditional on error strategy */}
         {hasFailBranch && (
-          <div className="relative px-2">
-            <div className="flex items-center justify-between rounded-md bg-primary-100 p-1 text-xs">
-              <div className="h-4 rounded-md px-1 font-semibold uppercase bg-bad-100 text-bad-500 whitespace-pre-line">
+          <div className='relative px-2'>
+            <div className='flex items-center justify-between rounded-md bg-primary-100 p-1 text-xs'>
+              <div className='h-4 rounded-md px-1 font-semibold uppercase bg-bad-100 text-bad-500 whitespace-pre-line'>
                 On Failure
               </div>
-              <div className="text-primary-500">Fail Branch</div>
+              <div className='text-primary-500'>Fail Branch</div>
             </div>
             <NodeSourceHandle
               id={id}
-              handleId="fail"
-              type="fail"
+              handleId='fail'
+              type='fail'
               data={{ ...augmentedData, selected }}
-              handleClassName="!bottom-5"
+              handleClassName='!bottom-5'
               handleIndex={1}
               handleTotal={totalSourceHandles}
             />

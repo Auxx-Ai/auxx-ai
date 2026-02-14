@@ -1,13 +1,21 @@
-import { NextRequest } from 'next/server'
-import { database as db } from '@auxx/database'
-import { ShopifyIntegrationModel, SubscriptionModel, WebhookEventModel } from '@auxx/database/models'
-import { createScopedLogger } from '@auxx/logger'
 import { env } from '@auxx/config/server'
-import { createHmac } from 'crypto'
-import { SHOPIFY_WEBHOOK_EVENTS, ShopifyWebhookEventKey, WEBHOOK_TOPIC } from '@auxx/lib/shopify'
-import { deleteWebhook } from '@auxx/lib/shopify'
+import { database as db } from '@auxx/database'
+import {
+  ShopifyIntegrationModel,
+  SubscriptionModel,
+  WebhookEventModel,
+} from '@auxx/database/models'
 import { getQueue } from '@auxx/lib/jobs/queues'
 import { Queues } from '@auxx/lib/jobs/queues/types'
+import {
+  deleteWebhook,
+  SHOPIFY_WEBHOOK_EVENTS,
+  type ShopifyWebhookEventKey,
+  WEBHOOK_TOPIC,
+} from '@auxx/lib/shopify'
+import { createScopedLogger } from '@auxx/logger'
+import { createHmac } from 'crypto'
+import type { NextRequest } from 'next/server'
 
 const logger = createScopedLogger('shopify/webhook')
 

@@ -1,12 +1,12 @@
 // apps/web/src/components/resources/hooks/use-record-batch-fetcher.ts
 
-import { useEffect, useState, useMemo } from 'react'
-import { api } from '~/trpc/react'
-import { useRecordStore, getRecordStoreState, type RecordMeta } from '../store/record-store'
-import { useResourceStore } from '../store/resource-store'
-import { hydrateMultipleRecords } from '~/components/resources/store/hydrate-field-values'
 import type { RecordId } from '@auxx/lib/resources/client'
-import { toRecordId, getDefinitionId } from '@auxx/lib/resources/client'
+import { getDefinitionId, toRecordId } from '@auxx/lib/resources/client'
+import { useEffect, useMemo, useState } from 'react'
+import { hydrateMultipleRecords } from '~/components/resources/store/hydrate-field-values'
+import { api } from '~/trpc/react'
+import { getRecordStoreState, type RecordMeta, useRecordStore } from '../store/record-store'
+import { useResourceStore } from '../store/resource-store'
 
 const BATCH_DELAY = 50
 const EMPTY_ITEMS: RecordId[] = []

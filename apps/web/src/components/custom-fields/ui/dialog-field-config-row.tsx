@@ -1,12 +1,12 @@
 // apps/web/src/components/custom-fields/ui/dialog-field-config-row.tsx
 'use client'
 
-import { memo, useMemo } from 'react'
+import { Switch } from '@auxx/ui/components/switch'
+import { cn } from '@auxx/ui/lib/utils'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical } from 'lucide-react'
-import { Switch } from '@auxx/ui/components/switch'
-import { cn } from '@auxx/ui/lib/utils'
+import { memo, useMemo } from 'react'
 
 /** Props for DialogFieldConfigRow */
 interface DialogFieldConfigRowProps {
@@ -51,7 +51,7 @@ export const DialogFieldConfigRow = memo(function DialogFieldConfigRow({
     <div
       ref={setNodeRef}
       style={style}
-      data-slot="field-row"
+      data-slot='field-row'
       className={cn(
         'relative flex border-b dark:border-b-[#404754]/20',
         isDragging && 'bg-accent rounded',
@@ -59,25 +59,21 @@ export const DialogFieldConfigRow = memo(function DialogFieldConfigRow({
       )}>
       {/* Label area — matches VarEditorFieldRow [data-slot="field-row-label"] */}
       <div
-        data-slot="field-row-label"
-        className="flex flex-row gap-1 ps-2 items-center cursor-grab active:cursor-grabbing"
+        data-slot='field-row-label'
+        className='flex flex-row gap-1 ps-2 items-center cursor-grab active:cursor-grabbing'
         {...attributes}
         {...listeners}>
-        <GripVertical className="size-4 text-neutral-400 shrink-0" />
-        <div className="text-sm">
-          <span className="text-primary-600">{label}</span>
+        <GripVertical className='size-4 text-neutral-400 shrink-0' />
+        <div className='text-sm'>
+          <span className='text-primary-600'>{label}</span>
         </div>
       </div>
 
       {/* Content area — matches VarEditorFieldRow [data-slot="field-row-content"] */}
       <div
-        data-slot="field-row-content"
-        className="w-full flex-1 flex items-center justify-end pe-2 py-1.5">
-        <Switch
-          checked={isVisible}
-          size="sm"
-          onCheckedChange={onToggleVisibility}
-        />
+        data-slot='field-row-content'
+        className='w-full flex-1 flex items-center justify-end pe-2 py-1.5'>
+        <Switch checked={isVisible} size='sm' onCheckedChange={onToggleVisibility} />
       </div>
     </div>
   )

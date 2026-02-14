@@ -1,10 +1,10 @@
 // packages/lib/src/import/resolution/get-pending-relation-lookups.ts
 
-import { eq, and } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { isPendingRelationLookup } from './resolvers'
+import { and, eq } from 'drizzle-orm'
 import type { PendingRelationLookup } from './resolve-relation-lookups'
+import { isPendingRelationLookup } from './resolvers'
 
 /**
  * Get all pending relation lookups for a job.

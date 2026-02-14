@@ -1,7 +1,7 @@
 // apps/web/src/components/threads/hooks/use-participant.ts
 
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
-import { useParticipantStore, type ParticipantMeta } from '../store'
+import { type ParticipantMeta, useParticipantStore } from '../store'
 
 interface UseParticipantOptions {
   participantId: string | null | undefined

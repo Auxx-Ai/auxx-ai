@@ -1,8 +1,8 @@
 // apps/web/src/components/ui/input-search.tsx
 'use client'
-import * as React from 'react'
-import { Search, X } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
+import { Search, X } from 'lucide-react'
+import type * as React from 'react'
 
 export interface InputSearchProps extends React.InputHTMLAttributes<HTMLInputElement> {
   value: string
@@ -33,8 +33,8 @@ function InputSearch({
   }
 
   return (
-    <div className="group/search relative flex flex-1 gap-2">
-      <Search className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
+    <div className='group/search relative flex flex-1 gap-2'>
+      <Search className='pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground' />
       <input
         placeholder={placeholder}
         value={value}
@@ -50,10 +50,10 @@ function InputSearch({
       />
       {value && (
         <button
-          type="button"
+          type='button'
           onClick={handleClear}
-          className="absolute flex items-center transition-colors justify-center h-6 w-6 my-0.5 group-hover/search:bg-primary-150 right-0.5 rounded-md hover:text-bad-500 hover:bg-bad-100">
-          <X className="size-3" />
+          className='absolute flex items-center transition-colors justify-center h-6 w-6 my-0.5 group-hover/search:bg-primary-150 right-0.5 rounded-md hover:text-bad-500 hover:bg-bad-100'>
+          <X className='size-3' />
         </button>
       )}
     </div>

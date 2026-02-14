@@ -1,11 +1,9 @@
 // apps/web/src/app/admin/organizations/[id]/_components/action-history-panel.tsx
 'use client'
 
-import { useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Skeleton } from '@auxx/ui/components/skeleton'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   Dialog,
   DialogContent,
@@ -13,22 +11,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { api } from '~/trpc/react'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { format } from 'date-fns'
 import {
-  History,
-  Clock,
-  User,
-  FileText,
+  Ban,
   ChevronDown,
   ChevronUp,
-  Shield,
-  DollarSign,
-  Settings,
-  Ban,
-  RefreshCw,
+  Clock,
   Crown,
+  DollarSign,
+  FileText,
+  History,
+  RefreshCw,
+  Settings,
+  Shield,
+  User,
 } from 'lucide-react'
+import { useState } from 'react'
+import { api } from '~/trpc/react'
 
 interface ActionHistoryPanelProps {
   organizationId: string
@@ -123,16 +123,16 @@ export function ActionHistoryPanel({ organizationId }: ActionHistoryPanelProps) 
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <History className="size-5" />
+          <CardTitle className='flex items-center gap-2'>
+            <History className='size-5' />
             Action History
           </CardTitle>
           <CardDescription>Recent admin actions taken on this organization</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <Skeleton className="h-20 w-full" />
-          <Skeleton className="h-20 w-full" />
-          <Skeleton className="h-20 w-full" />
+        <CardContent className='space-y-3'>
+          <Skeleton className='h-20 w-full' />
+          <Skeleton className='h-20 w-full' />
+          <Skeleton className='h-20 w-full' />
         </CardContent>
       </Card>
     )
@@ -142,15 +142,15 @@ export function ActionHistoryPanel({ organizationId }: ActionHistoryPanelProps) 
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <History className="size-5" />
+          <CardTitle className='flex items-center gap-2'>
+            <History className='size-5' />
             Action History
           </CardTitle>
           <CardDescription>Recent admin actions taken on this organization</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8 text-muted-foreground">
-            <History className="size-12 mx-auto mb-3 opacity-50" />
+          <div className='text-center py-8 text-muted-foreground'>
+            <History className='size-12 mx-auto mb-3 opacity-50' />
             <p>No admin actions recorded yet</p>
           </div>
         </CardContent>
@@ -162,8 +162,8 @@ export function ActionHistoryPanel({ organizationId }: ActionHistoryPanelProps) 
     <>
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <History className="size-5" />
+          <CardTitle className='flex items-center gap-2'>
+            <History className='size-5' />
             Action History
           </CardTitle>
           <CardDescription>
@@ -171,7 +171,7 @@ export function ActionHistoryPanel({ organizationId }: ActionHistoryPanelProps) 
             organization
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className='space-y-2'>
           {history.map((action: any) => {
             const Icon = getActionIcon(action.actionType)
             const isExpanded = expandedIds.has(action.id)
@@ -179,43 +179,43 @@ export function ActionHistoryPanel({ organizationId }: ActionHistoryPanelProps) 
             return (
               <div
                 key={action.id}
-                className="border rounded-lg p-4 hover:bg-accent/50 transition-colors">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3 flex-1">
-                    <div className="mt-1">
-                      <Icon className="size-4 text-muted-foreground" />
+                className='border rounded-lg p-4 hover:bg-accent/50 transition-colors'>
+                <div className='flex items-start justify-between gap-3'>
+                  <div className='flex items-start gap-3 flex-1'>
+                    <div className='mt-1'>
+                      <Icon className='size-4 text-muted-foreground' />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <div className='flex-1 min-w-0'>
+                      <div className='flex items-center gap-2 flex-wrap mb-1'>
                         <Badge variant={getActionBadgeVariant(action.actionType)}>
                           {formatActionType(action.actionType)}
                         </Badge>
-                        <span className="text-xs text-muted-foreground">
+                        <span className='text-xs text-muted-foreground'>
                           {format(new Date(action.createdAt), 'PPP p')}
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-                        <User className="size-3" />
+                      <div className='flex items-center gap-2 text-sm text-muted-foreground mb-2'>
+                        <User className='size-3' />
                         <span>
                           {action.adminUser?.name || action.adminUser?.email || 'Unknown Admin'}
                         </span>
                       </div>
 
                       {action.reason && (
-                        <div className="text-sm mb-2">
-                          <span className="font-medium">Reason:</span> {action.reason}
+                        <div className='text-sm mb-2'>
+                          <span className='font-medium'>Reason:</span> {action.reason}
                         </div>
                       )}
 
                       {isExpanded && (
-                        <div className="mt-3 space-y-2 text-sm">
+                        <div className='mt-3 space-y-2 text-sm'>
                           {action.details && Object.keys(action.details).length > 0 && (
                             <div>
-                              <div className="font-medium text-xs text-muted-foreground mb-1">
+                              <div className='font-medium text-xs text-muted-foreground mb-1'>
                                 Details
                               </div>
-                              <pre className="bg-muted p-2 rounded text-xs overflow-x-auto">
+                              <pre className='bg-muted p-2 rounded text-xs overflow-x-auto'>
                                 {JSON.stringify(action.details, null, 2)}
                               </pre>
                             </div>
@@ -223,10 +223,10 @@ export function ActionHistoryPanel({ organizationId }: ActionHistoryPanelProps) 
 
                           {action.previousState && Object.keys(action.previousState).length > 0 && (
                             <div>
-                              <div className="font-medium text-xs text-muted-foreground mb-1">
+                              <div className='font-medium text-xs text-muted-foreground mb-1'>
                                 Previous State
                               </div>
-                              <pre className="bg-muted p-2 rounded text-xs overflow-x-auto">
+                              <pre className='bg-muted p-2 rounded text-xs overflow-x-auto'>
                                 {JSON.stringify(action.previousState, null, 2)}
                               </pre>
                             </div>
@@ -234,17 +234,17 @@ export function ActionHistoryPanel({ organizationId }: ActionHistoryPanelProps) 
 
                           {action.newState && Object.keys(action.newState).length > 0 && (
                             <div>
-                              <div className="font-medium text-xs text-muted-foreground mb-1">
+                              <div className='font-medium text-xs text-muted-foreground mb-1'>
                                 New State
                               </div>
-                              <pre className="bg-muted p-2 rounded text-xs overflow-x-auto">
+                              <pre className='bg-muted p-2 rounded text-xs overflow-x-auto'>
                                 {JSON.stringify(action.newState, null, 2)}
                               </pre>
                             </div>
                           )}
 
                           {action.ipAddress && (
-                            <div className="text-xs text-muted-foreground">
+                            <div className='text-xs text-muted-foreground'>
                               IP: {action.ipAddress}
                             </div>
                           )}
@@ -254,14 +254,14 @@ export function ActionHistoryPanel({ organizationId }: ActionHistoryPanelProps) 
                   </div>
 
                   <Button
-                    variant="ghost"
-                    size="sm"
+                    variant='ghost'
+                    size='sm'
                     onClick={() => toggleExpanded(action.id)}
-                    className="shrink-0">
+                    className='shrink-0'>
                     {isExpanded ? (
-                      <ChevronUp className="size-4" />
+                      <ChevronUp className='size-4' />
                     ) : (
-                      <ChevronDown className="size-4" />
+                      <ChevronDown className='size-4' />
                     )}
                   </Button>
                 </div>
@@ -270,8 +270,8 @@ export function ActionHistoryPanel({ organizationId }: ActionHistoryPanelProps) 
           })}
 
           {history.length >= limit && (
-            <div className="pt-4 text-center">
-              <Button variant="outline" onClick={() => setLimit(limit + 20)}>
+            <div className='pt-4 text-center'>
+              <Button variant='outline' onClick={() => setLimit(limit + 20)}>
                 Load More
               </Button>
             </div>
@@ -281,43 +281,43 @@ export function ActionHistoryPanel({ organizationId }: ActionHistoryPanelProps) 
 
       {/* Details Dialog */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className='max-w-2xl max-h-[80vh] overflow-y-auto'>
           <DialogHeader>
             <DialogTitle>Action Details</DialogTitle>
             <DialogDescription>Complete information about this admin action</DialogDescription>
           </DialogHeader>
           {selectedAction && (
-            <div className="space-y-4">
+            <div className='space-y-4'>
               <div>
-                <div className="text-sm font-medium text-muted-foreground mb-1">Action Type</div>
+                <div className='text-sm font-medium text-muted-foreground mb-1'>Action Type</div>
                 <Badge variant={getActionBadgeVariant(selectedAction.actionType)}>
                   {formatActionType(selectedAction.actionType)}
                 </Badge>
               </div>
 
               <div>
-                <div className="text-sm font-medium text-muted-foreground mb-1">Performed By</div>
+                <div className='text-sm font-medium text-muted-foreground mb-1'>Performed By</div>
                 <div>
                   {selectedAction.adminUser?.name || selectedAction.adminUser?.email || 'Unknown'}
                 </div>
               </div>
 
               <div>
-                <div className="text-sm font-medium text-muted-foreground mb-1">Date & Time</div>
+                <div className='text-sm font-medium text-muted-foreground mb-1'>Date & Time</div>
                 <div>{format(new Date(selectedAction.createdAt), 'PPP p')}</div>
               </div>
 
               {selectedAction.reason && (
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground mb-1">Reason</div>
+                  <div className='text-sm font-medium text-muted-foreground mb-1'>Reason</div>
                   <div>{selectedAction.reason}</div>
                 </div>
               )}
 
               {selectedAction.details && (
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground mb-1">Details</div>
-                  <pre className="bg-muted p-3 rounded text-xs overflow-x-auto">
+                  <div className='text-sm font-medium text-muted-foreground mb-1'>Details</div>
+                  <pre className='bg-muted p-3 rounded text-xs overflow-x-auto'>
                     {JSON.stringify(selectedAction.details, null, 2)}
                   </pre>
                 </div>
@@ -325,10 +325,10 @@ export function ActionHistoryPanel({ organizationId }: ActionHistoryPanelProps) 
 
               {selectedAction.previousState && (
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground mb-1">
+                  <div className='text-sm font-medium text-muted-foreground mb-1'>
                     Previous State
                   </div>
-                  <pre className="bg-muted p-3 rounded text-xs overflow-x-auto">
+                  <pre className='bg-muted p-3 rounded text-xs overflow-x-auto'>
                     {JSON.stringify(selectedAction.previousState, null, 2)}
                   </pre>
                 </div>
@@ -336,8 +336,8 @@ export function ActionHistoryPanel({ organizationId }: ActionHistoryPanelProps) 
 
               {selectedAction.newState && (
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground mb-1">New State</div>
-                  <pre className="bg-muted p-3 rounded text-xs overflow-x-auto">
+                  <div className='text-sm font-medium text-muted-foreground mb-1'>New State</div>
+                  <pre className='bg-muted p-3 rounded text-xs overflow-x-auto'>
                     {JSON.stringify(selectedAction.newState, null, 2)}
                   </pre>
                 </div>
@@ -345,15 +345,15 @@ export function ActionHistoryPanel({ organizationId }: ActionHistoryPanelProps) 
 
               {selectedAction.ipAddress && (
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground mb-1">IP Address</div>
-                  <div className="font-mono text-sm">{selectedAction.ipAddress}</div>
+                  <div className='text-sm font-medium text-muted-foreground mb-1'>IP Address</div>
+                  <div className='font-mono text-sm'>{selectedAction.ipAddress}</div>
                 </div>
               )}
 
               {selectedAction.userAgent && (
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground mb-1">User Agent</div>
-                  <div className="text-sm text-muted-foreground break-all">
+                  <div className='text-sm font-medium text-muted-foreground mb-1'>User Agent</div>
+                  <div className='text-sm text-muted-foreground break-all'>
                     {selectedAction.userAgent}
                   </div>
                 </div>

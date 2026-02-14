@@ -1,18 +1,18 @@
 // packages/lib/src/workflow-engine/nodes/wait/wait-processor.ts
 
-import { BaseNodeProcessor } from '../base-node'
-import type {
-  WorkflowNode,
-  NodeExecutionResult,
-  ValidationResult,
-  PauseReason,
-  PreprocessedNodeData,
-} from '../../core/types'
-import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
 import { getQueue, Queues } from '../../../jobs/queues'
 import { WAIT_CONSTANTS } from '../../constants'
-import { type WaitNodeConfig, DurationUnit, WaitType } from './types'
+import type { ExecutionContextManager } from '../../core/execution-context'
+import type {
+  NodeExecutionResult,
+  PauseReason,
+  PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
+} from '../../core/types'
+import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { BaseNodeProcessor } from '../base-node'
+import { DurationUnit, type WaitNodeConfig, WaitType } from './types'
 
 /**
  * Wait node configuration

@@ -2,8 +2,8 @@
 
 'use client'
 
-import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 
 interface EditorHeightResizeWrapProps {
   className?: string
@@ -90,7 +90,7 @@ const EditorHeightResizeWrap: React.FC<EditorHeightResizeWrapProps> = ({
   }, [handleResize, handleStopResize])
 
   return (
-    <div className="relative">
+    <div className='relative'>
       <div className={cn('overflow-y-auto flex min-h-0 flex-1', className)} style={{ height }}>
         {children}
       </div>
@@ -101,7 +101,7 @@ const EditorHeightResizeWrap: React.FC<EditorHeightResizeWrapProps> = ({
       {/* Resize handler */}
       {!hideResize && (
         <div
-          className="group absolute bottom-0 left-0 flex h-3 w-full cursor-row-resize items-center justify-center hover:bg-accent/10"
+          className='group absolute bottom-0 left-0 flex h-3 w-full cursor-row-resize items-center justify-center hover:bg-accent/10'
           onMouseDown={handleStartResize}>
           <div
             className={cn(

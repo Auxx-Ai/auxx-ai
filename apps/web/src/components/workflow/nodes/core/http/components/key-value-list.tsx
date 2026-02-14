@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/nodes/core/http/components/key-value-list.tsx
 
-import React, { type FC, useCallback } from 'react'
-import { produce } from 'immer'
 import { cn } from '@auxx/ui/lib/utils'
+import { produce } from 'immer'
+import React, { type FC, useCallback } from 'react'
 import type { KeyValue } from '../types'
 import KeyValueItem from './key-value-item'
 
@@ -56,7 +56,7 @@ const KeyValueList: FC<Props> = ({
   if (!Array.isArray(list)) return null
 
   return (
-    <div className="overflow-hidden rounded-lg border border-primary-200">
+    <div className='overflow-hidden rounded-lg border border-primary-200'>
       <div
         className={cn(
           'text-xs font-medium uppercase flex h-7 items-center leading-7 text-muted-foreground'
@@ -69,7 +69,7 @@ const KeyValueList: FC<Props> = ({
           Key
         </div>
         {isSupportFile && (
-          <div className="h-full w-[70px] shrink-0 border-r border-primary-200 pl-3">Type</div>
+          <div className='h-full w-[70px] shrink-0 border-r border-primary-200 pl-3'>Type</div>
         )}
         <div
           className={cn(

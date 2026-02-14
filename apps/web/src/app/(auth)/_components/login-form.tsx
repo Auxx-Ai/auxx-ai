@@ -1,33 +1,33 @@
 // src/app/(auth)/login/_components/login-form.tsx
 'use client'
-import React, { useEffect, useState } from 'react'
+// import { getCsrfToken } from 'next-auth/react' // Needed if CSRF protection is strict
+import { getHomepageUrl } from '@auxx/config/client'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter, // Import CardFooter if needed for links
   CardHeader,
   CardTitle,
-  CardFooter, // Import CardFooter if needed for links
 } from '@auxx/ui/components/card'
-import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
-import { client } from '~/auth/auth-client' // Use the cached auth
-import Link from 'next/link' // For Sign Up link
-import { useSearchParams } from 'next/navigation'
-import { z } from 'zod'
-
-import { AnimatePresence, motion } from 'motion/react'
-
-import { Lock } from 'lucide-react'
-import { GeneralSubmitButton } from './submit-button'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@auxx/ui/components/input-otp'
 import { toastSuccess } from '@auxx/ui/components/toast'
-import { useRouter } from 'next/navigation'
-import { GithubIcon, GoogleIcon } from '~/constants/icons'
-import { Badge } from '@auxx/ui/components/badge'
+import { Lock } from 'lucide-react'
+
+import { AnimatePresence, motion } from 'motion/react'
+import Link from 'next/link' // For Sign Up link
+import { useRouter, useSearchParams } from 'next/navigation'
+import type React from 'react'
+import { useEffect, useState } from 'react'
+import { z } from 'zod'
+import { client } from '~/auth/auth-client' // Use the cached auth
 import { PasswordInput } from '~/components/credentials/password-fields'
-// import { getCsrfToken } from 'next-auth/react' // Needed if CSRF protection is strict
-import { getHomepageUrl } from '@auxx/config/client'
+import { GithubIcon, GoogleIcon } from '~/constants/icons'
+import { GeneralSubmitButton } from './submit-button'
+
 const loginSchema = z.object({
   email: z.string().min(1, 'Email is required'),
   password: z.string().min(8, 'Password must be at least 8 characters long'),
@@ -73,7 +73,11 @@ export default function LoginForm({
       let isExternal = false
 
       if (typeof processedUrl === 'string') {
-        if (processedUrl.startsWith('/') && !processedUrl.startsWith('//') && !processedUrl.includes('..')) {
+        if (
+          processedUrl.startsWith('/') &&
+          !processedUrl.startsWith('//') &&
+          !processedUrl.includes('..')
+        ) {
           redirectTo = processedUrl
         } else if (processedUrl.startsWith('http://') || processedUrl.startsWith('https://')) {
           try {
@@ -234,7 +238,10 @@ export default function LoginForm({
       redirectToPath = initialCallbackUrl
     }
     // Check if it's an external URL (for cross-app redirects like developer portal)
-    else if (initialCallbackUrl.startsWith('http://') || initialCallbackUrl.startsWith('https://')) {
+    else if (
+      initialCallbackUrl.startsWith('http://') ||
+      initialCallbackUrl.startsWith('https://')
+    ) {
       // Allow redirects to trusted domains only
       try {
         const url = new URL(initialCallbackUrl)
@@ -270,91 +277,91 @@ export default function LoginForm({
   }
 
   return (
-    <div className="flex w-full flex-col gap-6">
-      <Card className="shadow-md shadow-black/20 border-transparent">
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl">Welcome Back</CardTitle>
-          <CardDescription className="sr-only">Sign in to your AuxxLift account</CardDescription>
+    <div className='flex w-full flex-col gap-6'>
+      <Card className='shadow-md shadow-black/20 border-transparent'>
+        <CardHeader className='text-center'>
+          <CardTitle className='text-xl'>Welcome Back</CardTitle>
+          <CardDescription className='sr-only'>Sign in to your AuxxLift account</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <AnimatePresence mode="wait">
+        <CardContent className='flex flex-col gap-4'>
+          <AnimatePresence mode='wait'>
             {/* Display Login Errors */}
             {/* Email/Password Form */}
             {/* <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4"> */}
 
             {step === 'initial' && (
               <motion.form
-                key="initial"
+                key='initial'
                 onSubmit={handleContinue}
-                initial="enter"
-                animate="center"
-                exit="exit"
+                initial='enter'
+                animate='center'
+                exit='exit'
                 variants={variants}
                 transition={{ duration: 0.3 }}>
-                <div className="space-y-2">
+                <div className='space-y-2'>
                   <Input
-                    placeholder="Email or phone"
+                    placeholder='Email or phone'
                     value={contact}
-                    autoComplete="username webauthn"
+                    autoComplete='username webauthn'
                     onChange={(e) => setContact(e.target.value.trim())}
                   />
                   {error && (
                     <p
-                      className="peer-aria-invalid:text-red-500 mt-2 text-xs text-red-500"
-                      role="alert"
-                      aria-live="polite">
+                      className='peer-aria-invalid:text-red-500 mt-2 text-xs text-red-500'
+                      role='alert'
+                      aria-live='polite'>
                       {error}
                     </p>
                   )}
                   <Button
-                    type="submit"
-                    variant="outline"
-                    className="w-full"
+                    type='submit'
+                    variant='outline'
+                    className='w-full'
                     loading={isLoading}
-                    loadingText="Logging in...">
+                    loadingText='Logging in...'>
                     Continue with Email or Phone
                   </Button>
                 </div>
                 {/* Divider */}
-                <div className="relative my-4">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t" />
+                <div className='relative my-4'>
+                  <div className='absolute inset-0 flex items-center'>
+                    <span className='w-full border-t' />
                   </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">
+                  <div className='relative flex justify-center text-xs uppercase'>
+                    <span className='bg-background px-2 text-muted-foreground'>
                       Or continue with
                     </span>
                   </div>
                 </div>
 
                 {/* OAuth Buttons */}
-                <div className="flex flex-col gap-3">
+                <div className='flex flex-col gap-3'>
                   <GeneralSubmitButton
-                    icon={<GoogleIcon className="mr-2 size-4" />} // Add margin if needed
-                    width="w-full"
-                    variant="outline"
-                    text="Login with Google"
+                    icon={<GoogleIcon className='mr-2 size-4' />} // Add margin if needed
+                    width='w-full'
+                    variant='outline'
+                    text='Login with Google'
                     onClick={() => {
                       setIsLoading(true)
                       client.signIn.social({ provider: 'google', callbackURL: redirectToPath })
                     }}
                   />
                   <GeneralSubmitButton
-                    icon={<GithubIcon className="mr-2 size-4 text-foreground" />} // Add margin if needed
-                    width="w-full"
-                    variant="outline"
-                    text="Login with Github"
+                    icon={<GithubIcon className='mr-2 size-4 text-foreground' />} // Add margin if needed
+                    width='w-full'
+                    variant='outline'
+                    text='Login with Github'
                     onClick={() => {
                       setIsLoading(true)
                       client.signIn.social({ provider: 'github', callbackURL: redirectToPath })
                     }}
                   />
                   <Button
-                    type="button"
-                    className="w-full"
-                    variant="outline"
+                    type='button'
+                    className='w-full'
+                    variant='outline'
                     onClick={() => handleSSO()}>
-                    <Lock className="size-4" />
+                    <Lock className='size-4' />
                     Continue with SSO
                   </Button>
                 </div>
@@ -367,17 +374,17 @@ export default function LoginForm({
 
             {step === 'otp' && (
               <motion.form
-                key="otp"
+                key='otp'
                 onSubmit={handleVerifyOtp}
-                initial="enter"
-                animate="center"
-                exit="exit"
+                initial='enter'
+                animate='center'
+                exit='exit'
                 variants={variants}
                 transition={{ duration: 0.3 }}>
-                <div className="space-y-4">
+                <div className='space-y-4'>
                   <p>Enter the code we sent to {contact}</p>
                   {error && <p style={{ color: 'red' }}>{error}</p>}
-                  <div className="flex items-center justify-center">
+                  <div className='flex items-center justify-center'>
                     <InputOTP maxLength={6} value={otp} onChange={(value) => setOtp(value)}>
                       <InputOTPGroup>
                         <InputOTPSlot index={0} />
@@ -391,18 +398,18 @@ export default function LoginForm({
                   </div>
 
                   <Button
-                    type="submit"
-                    className="w-full mt-4"
+                    type='submit'
+                    className='w-full mt-4'
                     disabled={isLoading || otp.length < 6}
-                    loadingText="Verifying...">
+                    loadingText='Verifying...'>
                     Verify Code
                   </Button>
-                  <div className="">
-                    <div className="text-sm text-muted-foreground">
+                  <div className=''>
+                    <div className='text-sm text-muted-foreground'>
                       Didn&apos;t receive the code?{' '}
                       <Button
-                        variant="link"
-                        className="h-auto p-0 font-normal"
+                        variant='link'
+                        className='h-auto p-0 font-normal'
                         disabled={resendTimeout > 0 || isLoading}
                         onClick={async () => {
                           setIsLoading(true)
@@ -430,17 +437,17 @@ export default function LoginForm({
                       </Button>
                     </div>
                     {resendTimeout > 0 && (
-                      <p className="text-sm text-muted-foreground">
+                      <p className='text-sm text-muted-foreground'>
                         New code will be available in {resendTimeout} seconds.
                       </p>
                     )}
                   </div>
                 </div>
-                <div className="text-right flex items-center justify-between mt-4">
+                <div className='text-right flex items-center justify-between mt-4'>
                   <Button
-                    variant="link"
-                    size="sm"
-                    className="h-auto p-0 font-normal"
+                    variant='link'
+                    size='sm'
+                    className='h-auto p-0 font-normal'
                     onClick={() => setStep('initial')}>
                     Back
                   </Button>
@@ -450,25 +457,25 @@ export default function LoginForm({
 
             {step === 'password' && (
               <motion.form
-                key="password"
+                key='password'
                 onSubmit={handleEmailSignIn}
-                initial="enter"
-                animate="center"
-                exit="exit"
+                initial='enter'
+                animate='center'
+                exit='exit'
                 variants={variants}
                 transition={{ duration: 0.3 }}>
-                <div className="space-y-4">
-                  <div className="text-sm">
+                <div className='space-y-4'>
+                  <div className='text-sm'>
                     Sign in as{' '}
-                    <Badge variant="pill" size="sm">
+                    <Badge variant='pill' size='sm'>
                       {contact}
                     </Badge>
                   </div>
-                  {error && <p className="text-xs text-red-500">{error}</p>}
+                  {error && <p className='text-xs text-red-500'>{error}</p>}
                   <PasswordInput
-                    placeholder="Your password"
+                    placeholder='Your password'
                     onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="current-password webauthn"
+                    autoComplete='current-password webauthn'
                     value={password}
                     required
                   />
@@ -481,24 +488,24 @@ export default function LoginForm({
                     required
                   /> */}
                   <Button
-                    type="submit"
-                    className="w-full"
+                    type='submit'
+                    className='w-full'
                     loading={isLoading}
-                    loadingText="Signing in...">
+                    loadingText='Signing in...'>
                     Sign in
                   </Button>
                 </div>
-                <div className="text-right flex items-center justify-between mt-4">
+                <div className='text-right flex items-center justify-between mt-4'>
                   <Button
-                    variant="link"
-                    size="sm"
-                    className="h-auto p-0 font-normal"
+                    variant='link'
+                    size='sm'
+                    className='h-auto p-0 font-normal'
                     onClick={() => setStep('initial')}>
                     Back
                   </Button>
 
-                  <Button variant="link" size="sm" className="h-auto p-0 font-normal" asChild>
-                    <Link href="/forgot-password">Forgot password?</Link>
+                  <Button variant='link' size='sm' className='h-auto p-0 font-normal' asChild>
+                    <Link href='/forgot-password'>Forgot password?</Link>
                   </Button>
                 </div>
               </motion.form>
@@ -509,11 +516,11 @@ export default function LoginForm({
             {/* </form> */}
           </AnimatePresence>
         </CardContent>
-        <CardFooter className="flex flex-col items-center gap-2 text-center text-xs text-muted-foreground">
-          <div className="flex flex-row items-center gap-2">
+        <CardFooter className='flex flex-col items-center gap-2 text-center text-xs text-muted-foreground'>
+          <div className='flex flex-row items-center gap-2'>
             <span>
               Don&apos;t have an account?{' '}
-              <Button variant="link" className="h-auto p-0" asChild>
+              <Button variant='link' className='h-auto p-0' asChild>
                 <Link
                   href={
                     redirectToPath !== defaultRedirectPath
@@ -528,29 +535,29 @@ export default function LoginForm({
               <>
                 |
                 <span>
-                  <Button variant="link" className="h-auto p-0" asChild>
-                    <Link href="/forgot-password">Forgot password?</Link>
+                  <Button variant='link' className='h-auto p-0' asChild>
+                    <Link href='/forgot-password'>Forgot password?</Link>
                   </Button>
                 </span>
               </>
             )}
           </div>
-          <span className="">
+          <span className=''>
             By clicking continue, you agree to our{' '}
-            <Button variant="link" className="h-auto p-0 text-xs" asChild>
+            <Button variant='link' className='h-auto p-0 text-xs' asChild>
               <Link
                 href={getHomepageUrl('terms-of-service')}
-                target="_blank"
-                rel="noopener noreferrer">
+                target='_blank'
+                rel='noopener noreferrer'>
                 terms and service
               </Link>
             </Button>{' '}
             and{' '}
-            <Button variant="link" className="h-auto p-0 text-xs" asChild>
+            <Button variant='link' className='h-auto p-0 text-xs' asChild>
               <Link
                 href={getHomepageUrl('privacy-policy')}
-                target="_blank"
-                rel="noopener noreferrer">
+                target='_blank'
+                rel='noopener noreferrer'>
                 privacy policy
               </Link>
             </Button>

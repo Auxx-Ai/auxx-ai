@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/ui/model-parameter/types.ts
 
 // Import clean types from consolidated architecture
-import type { ModelData, ProviderData, ParameterRule } from '@auxx/lib/ai/providers/types'
+import type { ModelData, ParameterRule, ProviderData } from '@auxx/lib/ai/providers/types'
 
 // Keep TypeWithI18N for legacy compatibility but prefer simple strings
 export type TypeWithI18N<T = string> = { en_US: T; [key: string]: T }

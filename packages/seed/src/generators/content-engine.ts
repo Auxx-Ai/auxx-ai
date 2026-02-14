@@ -12,7 +12,13 @@ export interface EmailContent {
   /** tone/sentiment of the email */
   tone: 'urgent' | 'neutral' | 'positive' | 'frustrated' | 'grateful'
   /** business category this email belongs to */
-  category: 'order_inquiry' | 'shipping' | 'returns' | 'product_question' | 'complaint' | 'compliment'
+  category:
+    | 'order_inquiry'
+    | 'shipping'
+    | 'returns'
+    | 'product_question'
+    | 'complaint'
+    | 'compliment'
 }
 
 /** CustomerInquiry represents a realistic customer support request. */
@@ -143,7 +149,7 @@ export class ContentEngine {
    * @returns Array of support responses.
    */
   generateSupportResponses(inquiries: CustomerInquiry[]): SupportResponse[] {
-    return inquiries.map(inquiry => {
+    return inquiries.map((inquiry) => {
       const tone = this.selectResponseTone(inquiry.priority, inquiry.type)
       const resolutionTime = this.selectResolutionTime(inquiry.complexity, inquiry.priority)
 
@@ -158,9 +164,14 @@ export class ContentEngine {
   /** selectEmailCategory chooses appropriate email categories based on business context. */
   private selectEmailCategory(): EmailContent['category'] {
     const categories: EmailContent['category'][] = [
-      'order_inquiry', 'shipping', 'returns', 'product_question', 'complaint', 'compliment'
+      'order_inquiry',
+      'shipping',
+      'returns',
+      'product_question',
+      'complaint',
+      'compliment',
     ]
-    const weights = [0.25, 0.20, 0.15, 0.20, 0.15, 0.05] // Realistic distribution
+    const weights = [0.25, 0.2, 0.15, 0.2, 0.15, 0.05] // Realistic distribution
 
     return this.weightedSelect(categories, weights)
   }
@@ -224,25 +235,30 @@ export class ContentEngine {
     const templates = subjectTemplates[category]
     const template = templates[Math.floor(Math.random() * templates.length)]!
 
-    return template.replace('{{orderNumber}}', `ORD-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`)
+    return template.replace(
+      '{{orderNumber}}',
+      `ORD-${Math.floor(Math.random() * 10000)
+        .toString()
+        .padStart(4, '0')}`
+    )
   }
 
   /** getEmailTemplate selects appropriate email template structure. */
   private getEmailTemplate(category: EmailContent['category'], tone: EmailContent['tone']): string {
     const templates: Record<string, string[]> = {
-      'order_inquiry_neutral': [
+      order_inquiry_neutral: [
         'Hi there,\n\nI placed an order recently and wanted to check on the status. Could you please provide an update?\n\nThanks!',
-        'Hello,\n\nI\'m writing to inquire about my recent order. When can I expect it to ship?\n\nBest regards,',
+        "Hello,\n\nI'm writing to inquire about my recent order. When can I expect it to ship?\n\nBest regards,",
       ],
-      'shipping_frustrated': [
-        'Hello,\n\nI\'m frustrated that my package hasn\'t arrived yet. The tracking shows it was supposed to be delivered yesterday. What\'s going on?\n\nPlease resolve this quickly.',
+      shipping_frustrated: [
+        "Hello,\n\nI'm frustrated that my package hasn't arrived yet. The tracking shows it was supposed to be delivered yesterday. What's going on?\n\nPlease resolve this quickly.",
         'Hi,\n\nThis is unacceptable. My order is now 3 days late and I need it urgently. Please explain what happened and when I can expect delivery.',
       ],
-      'complaint_urgent': [
+      complaint_urgent: [
         'URGENT: I need to speak with a manager immediately. The customer service I received today was completely unacceptable.',
-        'This is urgent. I\'ve been trying to resolve this issue for weeks and no one seems to care about helping customers.',
+        "This is urgent. I've been trying to resolve this issue for weeks and no one seems to care about helping customers.",
       ],
-      'compliment_positive': [
+      compliment_positive: [
         'I just wanted to take a moment to say how impressed I am with your customer service. Thank you!',
         'Excellent service! The representative I spoke with went above and beyond to help me.',
       ],
@@ -260,8 +276,14 @@ export class ContentEngine {
 
   /** selectInquiryType chooses realistic inquiry types. */
   private selectInquiryType(): CustomerInquiry['type'] {
-    const types: CustomerInquiry['type'][] = ['pre_sale', 'post_sale', 'technical', 'billing', 'general']
-    const weights = [0.20, 0.35, 0.20, 0.15, 0.10]
+    const types: CustomerInquiry['type'][] = [
+      'pre_sale',
+      'post_sale',
+      'technical',
+      'billing',
+      'general',
+    ]
+    const weights = [0.2, 0.35, 0.2, 0.15, 0.1]
 
     return this.weightedSelect(types, weights)
   }
@@ -300,29 +322,29 @@ export class ContentEngine {
   ): string {
     const inquiryTemplates: Record<CustomerInquiry['type'], string[]> = {
       pre_sale: [
-        'I\'m interested in purchasing your product but have some questions about compatibility.',
+        "I'm interested in purchasing your product but have some questions about compatibility.",
         'Can you help me choose the right size/model for my needs?',
-        'What\'s the difference between these two products?',
+        "What's the difference between these two products?",
       ],
       post_sale: [
-        'I received my order but it\'s not what I expected. Can we discuss options?',
+        "I received my order but it's not what I expected. Can we discuss options?",
         'The product I received seems to be defective. What are my next steps?',
         'I need help setting up the product I just purchased.',
       ],
       technical: [
-        'I\'m having trouble with the technical setup and need guidance.',
-        'The product isn\'t working as described in the manual.',
+        "I'm having trouble with the technical setup and need guidance.",
+        "The product isn't working as described in the manual.",
         'There seems to be a compatibility issue with my system.',
       ],
       billing: [
         'I was charged twice for the same order. Please review my account.',
-        'The amount on my credit card doesn\'t match what I expected to pay.',
+        "The amount on my credit card doesn't match what I expected to pay.",
         'I need a detailed breakdown of the charges on my account.',
       ],
       general: [
         'I have a general question about your company policies.',
         'When do you typically restock popular items?',
-        'I\'d like to provide some feedback about my experience.',
+        "I'd like to provide some feedback about my experience.",
       ],
     }
 
@@ -333,9 +355,16 @@ export class ContentEngine {
   /** selectProductCategory chooses realistic product categories. */
   private selectProductCategory(): string {
     const categories = [
-      'Electronics', 'Clothing & Apparel', 'Home & Garden', 'Sports & Outdoor',
-      'Books & Media', 'Health & Beauty', 'Automotive', 'Pet Supplies',
-      'Office Supplies', 'Jewelry & Accessories'
+      'Electronics',
+      'Clothing & Apparel',
+      'Home & Garden',
+      'Sports & Outdoor',
+      'Books & Media',
+      'Health & Beauty',
+      'Automotive',
+      'Pet Supplies',
+      'Office Supplies',
+      'Jewelry & Accessories',
     ]
 
     return categories[Math.floor(Math.random() * categories.length)]!
@@ -344,13 +373,16 @@ export class ContentEngine {
   /** selectPriceRange chooses appropriate pricing tier. */
   private selectPriceRange(): ProductDescription['priceRange'] {
     const ranges: ProductDescription['priceRange'][] = ['budget', 'mid', 'premium', 'luxury']
-    const weights = [0.40, 0.35, 0.20, 0.05] // Realistic market distribution
+    const weights = [0.4, 0.35, 0.2, 0.05] // Realistic market distribution
 
     return this.weightedSelect(ranges, weights)
   }
 
   /** generateProductName creates realistic product names. */
-  private generateProductName(category: string, priceRange: ProductDescription['priceRange']): string {
+  private generateProductName(
+    category: string,
+    priceRange: ProductDescription['priceRange']
+  ): string {
     const prefixes: Record<ProductDescription['priceRange'], string[]> = {
       budget: ['Essential', 'Basic', 'Value', 'Economy'],
       mid: ['Premium', 'Professional', 'Advanced', 'Elite'],
@@ -359,7 +391,7 @@ export class ContentEngine {
     }
 
     const productTypes: Record<string, string[]> = {
-      'Electronics': ['Smartphone', 'Laptop', 'Headphones', 'Tablet', 'Speaker'],
+      Electronics: ['Smartphone', 'Laptop', 'Headphones', 'Tablet', 'Speaker'],
       'Clothing & Apparel': ['T-Shirt', 'Jeans', 'Dress', 'Jacket', 'Sneakers'],
       'Home & Garden': ['Coffee Maker', 'Garden Tool', 'Lamp', 'Vase', 'Pillow'],
       'Sports & Outdoor': ['Running Shoes', 'Backpack', 'Water Bottle', 'Tent', 'Bike'],
@@ -385,7 +417,10 @@ export class ContentEngine {
       luxury: ['exquisite', 'handcrafted', 'exclusive', 'world-class'],
     }
 
-    const descriptor = qualityDescriptors[priceRange][Math.floor(Math.random() * qualityDescriptors[priceRange].length)]
+    const descriptor =
+      qualityDescriptors[priceRange][
+        Math.floor(Math.random() * qualityDescriptors[priceRange].length)
+      ]
 
     return `This ${descriptor} ${name.toLowerCase()} combines style and functionality to deliver an outstanding experience. Perfect for those who demand quality and performance in their ${category.toLowerCase()}.`
   }
@@ -431,23 +466,23 @@ export class ContentEngine {
   private generateResponseText(inquiry: CustomerInquiry, tone: SupportResponse['tone']): string {
     const responseTemplates: Record<SupportResponse['tone'], string[]> = {
       helpful: [
-        'Thank you for reaching out! I\'d be happy to help you with this.',
-        'I understand your concern and I\'m here to assist you.',
+        "Thank you for reaching out! I'd be happy to help you with this.",
+        "I understand your concern and I'm here to assist you.",
         'Let me help you resolve this issue right away.',
       ],
       apologetic: [
         'I sincerely apologize for the inconvenience this has caused.',
-        'I\'m very sorry about this issue. Let me make it right.',
-        'I apologize for the trouble you\'ve experienced.',
+        "I'm very sorry about this issue. Let me make it right.",
+        "I apologize for the trouble you've experienced.",
       ],
       informative: [
-        'Based on your description, here\'s what I recommend:',
+        "Based on your description, here's what I recommend:",
         'Let me walk you through the solution step by step.',
-        'Here\'s the information you requested:',
+        "Here's the information you requested:",
       ],
       escalation: [
-        'I\'m escalating this to our specialized team for immediate attention.',
-        'This requires additional expertise, so I\'m connecting you with our senior support team.',
+        "I'm escalating this to our specialized team for immediate attention.",
+        "This requires additional expertise, so I'm connecting you with our senior support team.",
         'Let me transfer this to someone who can provide more detailed assistance.',
       ],
     }

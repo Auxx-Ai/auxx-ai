@@ -1,12 +1,11 @@
 // packages/lib/src/workflow-engine/resources/registry/resources/contact-fields.ts
 
 import { FieldType } from '@auxx/database/enums'
+import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
-import { toFieldId, type ResourceFieldId } from '@auxx/types/field'
-
-import type { ResourceField } from '../field-types'
-import { ContactStatus } from '../enum-values'
 import { CREATED_BY_FIELD } from '../common-fields'
+import { ContactStatus } from '../enum-values'
+import type { ResourceField } from '../field-types'
 
 /**
  * Field definitions for the Contact resource

@@ -1,5 +1,5 @@
-import { cn } from '~/lib/utils'
 import { avatars } from '~/app/_components/avatars'
+import { cn } from '~/lib/utils'
 
 export const Table = ({ className }: { className?: string }) => {
   const customers = [
@@ -48,25 +48,25 @@ export const Table = ({ className }: { className?: string }) => {
         'bg-linear-to-b to-background ring-border-illustration relative mx-auto max-w-4xl rounded-2xl border border-transparent from-zinc-50 p-6 shadow-md shadow-black/10 ring-1',
         className
       )}>
-      <div className="mb-4">
-        <div className="font-medium">Customers</div>
-        <p className="text-muted-foreground mt-0.5 line-clamp-1 text-sm">
+      <div className='mb-4'>
+        <div className='font-medium'>Customers</div>
+        <p className='text-muted-foreground mt-0.5 line-clamp-1 text-sm'>
           New users by First user primary channel group (Default Channel Group)
         </p>
       </div>
-      <table className="w-max table-auto border-collapse lg:w-full" data-rounded="medium">
-        <thead className="dark:bg-background bg-gray-950/5">
-          <tr className="*:border *:p-3 *:text-left *:text-sm *:font-medium">
-            <th className="rounded-l-[--card-radius]">#</th>
+      <table className='w-max table-auto border-collapse lg:w-full' data-rounded='medium'>
+        <thead className='dark:bg-background bg-gray-950/5'>
+          <tr className='*:border *:p-3 *:text-left *:text-sm *:font-medium'>
+            <th className='rounded-l-[--card-radius]'>#</th>
             <th>Date</th>
             <th>Status</th>
             <th>Customer</th>
-            <th className="rounded-r-[--card-radius]">Revenue</th>
+            <th className='rounded-r-[--card-radius]'>Revenue</th>
           </tr>
         </thead>
-        <tbody className="text-sm">
+        <tbody className='text-sm'>
           {customers.map((customer, index) => (
-            <tr key={customer.id} className="*:border *:p-2">
+            <tr key={customer.id} className='*:border *:p-2'>
               <td>{customer.id}</td>
               <td>{customer.date}</td>
               <td>
@@ -81,17 +81,17 @@ export const Table = ({ className }: { className?: string }) => {
                 </span>
               </td>
               <td>
-                <div className="text-title flex items-center gap-2">
-                  <div className="size-6 overflow-hidden rounded-full">
+                <div className='text-title flex items-center gap-2'>
+                  <div className='size-6 overflow-hidden rounded-full'>
                     <img
                       src={customer.avatar}
                       alt={customer.name}
-                      width="120"
-                      height="120"
-                      loading="lazy"
+                      width='120'
+                      height='120'
+                      loading='lazy'
                     />
                   </div>
-                  <span className="text-foreground">{customer.name}</span>
+                  <span className='text-foreground'>{customer.name}</span>
                 </div>
               </td>
               <td>{customer.revenue}</td>

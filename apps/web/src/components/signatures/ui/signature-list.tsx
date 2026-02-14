@@ -1,8 +1,15 @@
 // apps/web/src/components/signatures/ui/signature-list.tsx
 'use client'
 
-import React from 'react'
-import { useRouter } from 'next/navigation'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
   Table,
   TableBody,
@@ -11,32 +18,25 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import { Button } from '@auxx/ui/components/button'
-import { Badge } from '@auxx/ui/components/badge'
+import { toastError } from '@auxx/ui/components/toast'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
-import {
+  Feather,
+  GlobeIcon,
+  Loader2,
+  LockIcon,
   MoreHorizontal,
   PencilIcon,
-  Trash2Icon,
-  StarIcon,
-  LockIcon,
-  GlobeIcon,
-  UsersIcon,
   Plus,
-  Feather,
-  Loader2,
+  StarIcon,
+  Trash2Icon,
+  UsersIcon,
 } from 'lucide-react'
-import { toastError } from '@auxx/ui/components/toast'
-import { useConfirm } from '~/hooks/use-confirm'
-import { EmptyState } from '~/components/global/empty-state'
 import Link from 'next/link'
-import { useSignatures, useSignatureMutations, type SignatureVisibility } from '../hooks'
-import { Skeleton } from '@auxx/ui/components/skeleton'
+import { useRouter } from 'next/navigation'
+import React from 'react'
+import { EmptyState } from '~/components/global/empty-state'
+import { useConfirm } from '~/hooks/use-confirm'
+import { type SignatureVisibility, useSignatureMutations, useSignatures } from '../hooks'
 
 interface SignatureListProps {
   isAdmin?: boolean
@@ -104,21 +104,21 @@ export function SignatureList({ isAdmin = false }: SignatureListProps) {
       case 'private':
         return {
           label: 'Private',
-          icon: <LockIcon className="mr-1 h-4 w-4" />,
+          icon: <LockIcon className='mr-1 h-4 w-4' />,
           color: 'bg-gray-100 text-gray-800',
           detail: 'Only you',
         }
       case 'org_members':
         return {
           label: 'Organization',
-          icon: <GlobeIcon className="mr-1 h-4 w-4" />,
+          icon: <GlobeIcon className='mr-1 h-4 w-4' />,
           color: 'bg-blue-100 text-blue-800',
           detail: 'All members',
         }
       case 'custom':
         return {
           label: 'Custom',
-          icon: <UsersIcon className="mr-1 h-4 w-4" />,
+          icon: <UsersIcon className='mr-1 h-4 w-4' />,
           color: 'bg-green-100 text-green-800',
           detail: 'Selected groups',
         }
@@ -129,10 +129,10 @@ export function SignatureList({ isAdmin = false }: SignatureListProps) {
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-10 w-full" />
+      <div className='space-y-4'>
+        <Skeleton className='h-10 w-full' />
+        <Skeleton className='h-10 w-full' />
+        <Skeleton className='h-10 w-full' />
       </div>
     )
   }
@@ -142,16 +142,16 @@ export function SignatureList({ isAdmin = false }: SignatureListProps) {
       {!signatures.length ? (
         <EmptyState
           icon={Feather}
-          title="No signatures"
+          title='No signatures'
           description={
-            <div className="max-w-sm">
+            <div className='max-w-sm'>
               Give your teammates access to predefined signatures on email channels by creating
               shared signatures.
             </div>
           }
           button={
-            <Link href="/app/settings/signatures/new" asChild>
-              <Button size="sm" variant="outline" onClick={() => {}}>
+            <Link href='/app/settings/signatures/new' asChild>
+              <Button size='sm' variant='outline' onClick={() => {}}>
                 <Plus />
                 Create signature
               </Button>
@@ -165,7 +165,7 @@ export function SignatureList({ isAdmin = false }: SignatureListProps) {
               <TableHead>Name</TableHead>
               <TableHead>Visibility</TableHead>
               <TableHead>Default</TableHead>
-              <TableHead className="w-[100px]">Actions</TableHead>
+              <TableHead className='w-[100px]'>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -173,39 +173,39 @@ export function SignatureList({ isAdmin = false }: SignatureListProps) {
               const visibilityInfo = getVisibilityInfo(signature.visibility)
               return (
                 <TableRow key={signature.id}>
-                  <TableCell className="font-medium">{signature.name}</TableCell>
+                  <TableCell className='font-medium'>{signature.name}</TableCell>
                   <TableCell>
                     <Badge
-                      variant="outline"
+                      variant='outline'
                       className={`inline-flex items-center ${visibilityInfo.color}`}>
                       {visibilityInfo.icon}
                       {visibilityInfo.label}
                       {visibilityInfo.detail && (
-                        <span className="ml-1 text-xs opacity-70">({visibilityInfo.detail})</span>
+                        <span className='ml-1 text-xs opacity-70'>({visibilityInfo.detail})</span>
                       )}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     {signature.isDefault ? (
-                      <StarIcon className="h-5 w-5 text-yellow-500" />
+                      <StarIcon className='h-5 w-5 text-yellow-500' />
                     ) : (
                       <Button
-                        variant="ghost"
-                        size="sm"
+                        variant='ghost'
+                        size='sm'
                         onClick={() => handleSetDefault(signature.recordId)}
                         disabled={isUpdating}>
-                        {isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Set Default'}
+                        {isUpdating ? <Loader2 className='h-4 w-4 animate-spin' /> : 'Set Default'}
                       </Button>
                     )}
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-sm">
+                        <Button variant='ghost' size='icon-sm'>
                           <MoreHorizontal />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
+                      <DropdownMenuContent align='end'>
                         <DropdownMenuItem
                           onClick={() =>
                             router.push(`/app/settings/signatures/${signature.id}/edit`)
@@ -214,7 +214,7 @@ export function SignatureList({ isAdmin = false }: SignatureListProps) {
                           Edit
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          variant="destructive"
+                          variant='destructive'
                           disabled={isDeleting}
                           onClick={() => handleDelete(signature.recordId, signature.name)}>
                           <Trash2Icon />

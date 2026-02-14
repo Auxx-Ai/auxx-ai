@@ -1,7 +1,7 @@
 // packages/sdk/src/commands/logs/subscribe-to-logs.ts
 
-import { complete, isComplete } from '../../errors.js'
 import { api } from '../../api/api.js'
+import { complete, isComplete } from '../../errors.js'
 import type { LogEvent } from './log-event.js'
 import { LogsBuffer } from './logs-buffer.js'
 
@@ -51,7 +51,7 @@ export async function subscribeToLogs(
 
   let isActive = true
   let pollTimeout: NodeJS.Timeout | null = null
-  let newestTimestamp: string | undefined = undefined
+  let newestTimestamp: string | undefined
   let seenLogIds = new Set<string>()
   let isFirstPoll = true
 

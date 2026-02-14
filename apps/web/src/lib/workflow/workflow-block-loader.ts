@@ -1,8 +1,8 @@
 // apps/web/src/lib/workflow/workflow-block-loader.ts
 
+import type { AppInstallation } from '~/providers/extensions/extensions-context'
 import type { AppStore } from '../extensions/app-store'
 import type { WorkflowBlock } from './types'
-import type { AppInstallation } from '~/providers/extensions/extensions-context'
 
 /**
  * Responsible for loading workflow blocks from installed apps
@@ -48,7 +48,7 @@ export class WorkflowBlockLoader {
 
     try {
       // Get or create message client for this app
-      let messageClient = this.appStore.getMessageClient({
+      const messageClient = this.appStore.getMessageClient({
         appId,
         appInstallationId: installationId,
       })
@@ -87,7 +87,6 @@ export class WorkflowBlockLoader {
       // Don't throw - already handled by Promise.allSettled
     }
   }
-
 
   /**
    * Get all loaded workflow blocks

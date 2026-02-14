@@ -1,31 +1,31 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/find.ts
 
-import { BaseNodeProcessor } from '../base-node'
-import type {
-  WorkflowNode,
-  NodeExecutionResult,
-  ValidationResult,
-  PreprocessedNodeData,
-} from '../../core/types'
-import { NodeRunningStatus, WorkflowNodeType, BaseType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
+import { type Database, database, schema } from '@auxx/database'
 import type { SQL } from 'drizzle-orm'
 import { FIND_RESOURCE_CONFIGS } from '../../../resources/find-definitions'
 import {
-  RESOURCE_FIELD_REGISTRY,
-  isValidFieldOptionValue,
-  getFieldOptions,
   getFieldOperators,
-  isValidOperatorForField,
-  isSystemResourceId,
+  getFieldOptions,
   isCustomResourceId,
+  isSystemResourceId,
+  isValidFieldOptionValue,
+  isValidOperatorForField,
+  RESOURCE_FIELD_REGISTRY,
 } from '../../../resources/registry'
-import { ConditionQueryBuilder } from '../../query-builder/condition-query-builder'
-import type { GenericCondition, ConditionGroup } from '../../query-builder/base-condition-builder'
-import { executeResourceQuery } from '../../../resources/resource-fetcher'
-import { ResourceRegistryService } from '../../../resources/registry/resource-registry-service'
 import type { TableId } from '../../../resources/registry/field-registry'
-import { database, schema, type Database } from '@auxx/database'
+import { ResourceRegistryService } from '../../../resources/registry/resource-registry-service'
+import { executeResourceQuery } from '../../../resources/resource-fetcher'
+import type { ExecutionContextManager } from '../../core/execution-context'
+import type {
+  NodeExecutionResult,
+  PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
+} from '../../core/types'
+import { BaseType, NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import type { ConditionGroup, GenericCondition } from '../../query-builder/base-condition-builder'
+import { ConditionQueryBuilder } from '../../query-builder/condition-query-builder'
+import { BaseNodeProcessor } from '../base-node'
 
 interface FindNodeData {
   resourceType: string // Supports both system resources and custom entities (UUID/CUID format)
@@ -114,9 +114,15 @@ export class FindProcessor extends BaseNodeProcessor {
       // ✅ Validate option values (updated to use 'is' operator)
       if (field.type === BaseType.ENUM && condition.operator === 'is') {
         if (
-          !isValidFieldOptionValue(resourceType as TableId, condition.fieldId, String(condition.value))
+          !isValidFieldOptionValue(
+            resourceType as TableId,
+            condition.fieldId,
+            String(condition.value)
+          )
         ) {
-          const validValues = getFieldOptions(field).map((opt) => opt.value).join(', ')
+          const validValues = getFieldOptions(field)
+            .map((opt) => opt.value)
+            .join(', ')
           errors.push(
             `Invalid value for ${field.label}: "${condition.value}". Valid values: ${validValues}`
           )
@@ -131,7 +137,9 @@ export class FindProcessor extends BaseNodeProcessor {
         const values = Array.isArray(condition.value) ? condition.value : [condition.value]
         for (const val of values) {
           if (!isValidFieldOptionValue(resourceType as TableId, condition.fieldId, String(val))) {
-            const validValues = getFieldOptions(field).map((opt) => opt.value).join(', ')
+            const validValues = getFieldOptions(field)
+              .map((opt) => opt.value)
+              .join(', ')
             errors.push(`Invalid value for ${field.label}: "${val}". Valid values: ${validValues}`)
           }
         }
@@ -270,7 +278,7 @@ export class FindProcessor extends BaseNodeProcessor {
     }
 
     // Resolve limit if it's a variable (string) or object (legacy)
-    let resolvedLimit: number | undefined = undefined
+    let resolvedLimit: number | undefined
     if (config.limit !== undefined) {
       if (typeof config.limit === 'string') {
         // Variable mode: resolve the variable reference
@@ -489,14 +497,24 @@ export class FindProcessor extends BaseNodeProcessor {
         resultCount = queryResult.count
       } else {
         // Handle system resource query (existing logic)
-        const query = this.buildQuery(resourceType as TableId, conditions, conditionGroups, orderBy, limit)
+        const query = this.buildQuery(
+          resourceType as TableId,
+          conditions,
+          conditionGroups,
+          orderBy,
+          limit
+        )
         const queryResult = {
           results: await this.executeQueryOne(query, resourceType as TableId, organizationId),
           count: 1,
         }
 
         if (findMode === 'findMany') {
-          const manyResult = await this.executeQueryMany(query, resourceType as TableId, organizationId)
+          const manyResult = await this.executeQueryMany(
+            query,
+            resourceType as TableId,
+            organizationId
+          )
           result = manyResult
           resultCount = Array.isArray(manyResult) ? manyResult.length : 0
         } else {
@@ -512,7 +530,11 @@ export class FindProcessor extends BaseNodeProcessor {
         resultType: Array.isArray(result) ? 'array' : typeof result,
       })
 
-      contextManager.log('INFO', node.nodeId, `Found ${resultCount} ${resource.plural.toLowerCase()}`)
+      contextManager.log(
+        'INFO',
+        node.nodeId,
+        `Found ${resultCount} ${resource.plural.toLowerCase()}`
+      )
 
       // Prepare output object using resource's plural name
       const pluralName = resource.plural.toLowerCase()
@@ -923,9 +945,7 @@ export class FindProcessor extends BaseNodeProcessor {
     } else if (config.resourceType && isCustomResourceId(config.resourceType)) {
       // For custom entities, we can't validate at design time, so just warn
       if ((config.conditions?.length || 0) > 0) {
-        warnings.push(
-          'Flat conditions on custom entities will be validated at runtime'
-        )
+        warnings.push('Flat conditions on custom entities will be validated at runtime')
       }
     }
 
@@ -1002,9 +1022,7 @@ export class FindProcessor extends BaseNodeProcessor {
     } else if (config.resourceType && isCustomResourceId(config.resourceType)) {
       // For custom entities, we can't validate at design time, so just warn
       if ((config.conditionGroups?.length || 0) > 0) {
-        warnings.push(
-          'Condition groups on custom entities will be validated at runtime'
-        )
+        warnings.push('Condition groups on custom entities will be validated at runtime')
       }
     }
 

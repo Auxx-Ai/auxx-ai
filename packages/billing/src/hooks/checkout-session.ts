@@ -3,12 +3,12 @@
  * Webhook handler for checkout session completion.
  */
 
-import type Stripe from 'stripe'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import { stripeClient } from '../services/stripe-client'
 import { createScopedLogger } from '@auxx/logger'
+import { and, eq } from 'drizzle-orm'
+import type Stripe from 'stripe'
+import { stripeClient } from '../services/stripe-client'
 
 const logger = createScopedLogger('webhook:checkout-session')
 

@@ -1,7 +1,7 @@
 // packages/services/src/apps/get-available-apps.ts
 
 import { database } from '@auxx/database'
-import { ok, err } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 // import type { AppError } from './errors'
 import { fromDatabase } from '../shared/utils'
 
@@ -211,7 +211,7 @@ export async function getAvailableApps(input: GetAvailableAppsInput) {
 
   // Combine published and dev apps, deduplicating by app ID
   // Dev apps take priority over published apps (if an app has both)
-  const appsMap = new Map<string, typeof publishedAppsResult.value[0]>()
+  const appsMap = new Map<string, (typeof publishedAppsResult.value)[0]>()
 
   // Add published apps first
   for (const app of publishedAppsResult.value) {

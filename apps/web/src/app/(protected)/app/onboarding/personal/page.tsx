@@ -1,12 +1,6 @@
 // apps/web/src/app/(protected)/app/onboarding/personal/page.tsx
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
-import { motion } from 'motion/react'
 import { CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   Form,
@@ -17,10 +11,16 @@ import {
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { motion } from 'motion/react'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { AvatarUpload } from '~/components/file-upload/ui/avatar-upload'
+import { useDehydratedUser } from '~/providers/dehydrated-state-provider'
 import { OnboardingNavigation } from '../_components/onboarding-navigation'
 import { useOnboarding } from '../_components/onboarding-provider'
-import { useDehydratedUser } from '~/providers/dehydrated-state-provider'
 
 const formSchema = z.object({
   firstName: z.string().min(1, { error: 'First name is required' }),
@@ -89,13 +89,13 @@ export default function PersonalOnboardingPage() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 w-full">
+    <div className='grid grid-cols-1 md:grid-cols-2 w-full'>
       {/* Left column: Personal information form */}
-      <div className="relative md:border-r p-3">
-        <motion.div variants={containerVariants} initial="hidden" animate="visible">
+      <div className='relative md:border-r p-3'>
+        <motion.div variants={containerVariants} initial='hidden' animate='visible'>
           <motion.div variants={itemVariants}>
             <CardHeader>
-              <CardTitle className=" font-normal">Let's get to know you</CardTitle>
+              <CardTitle className=' font-normal'>Let's get to know you</CardTitle>
               <CardDescription>
                 Tell us a bit about yourself to personalize your experience
               </CardDescription>
@@ -104,22 +104,22 @@ export default function PersonalOnboardingPage() {
 
           <CardContent>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
                 {/* Avatar Upload */}
-                <motion.div variants={itemVariants} className="flex justify-center">
-                  <AvatarUpload currentAvatarUrl={userData.image} className="pb-6" />
+                <motion.div variants={itemVariants} className='flex justify-center'>
+                  <AvatarUpload currentAvatarUrl={userData.image} className='pb-6' />
                 </motion.div>
 
                 {/* First Name */}
                 <motion.div variants={itemVariants}>
                   <FormField
                     control={form.control}
-                    name="firstName"
+                    name='firstName'
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>First Name</FormLabel>
                         <FormControl>
-                          <Input placeholder="John" {...field} />
+                          <Input placeholder='John' {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -131,12 +131,12 @@ export default function PersonalOnboardingPage() {
                 <motion.div variants={itemVariants}>
                   <FormField
                     control={form.control}
-                    name="lastName"
+                    name='lastName'
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Last Name</FormLabel>
                         <FormControl>
-                          <Input placeholder="Doe" {...field} />
+                          <Input placeholder='Doe' {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -160,21 +160,21 @@ export default function PersonalOnboardingPage() {
       </div>
 
       {/* Right column: Illustration - hidden on mobile */}
-      <div className="hidden md:flex items-center justify-center p-14">
+      <div className='hidden md:flex items-center justify-center p-14'>
         <motion.div
-          className="text-center"
+          className='text-center'
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.6, delay: 0.3, ease: 'easeOut' }}>
           <motion.h2
-            className="text-2xl font-semibold mb-4"
+            className='text-2xl font-semibold mb-4'
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.5 }}>
             Welcome to Auxx.ai! 🚀
           </motion.h2>
           <motion.p
-            className="text-muted-foreground"
+            className='text-muted-foreground'
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.6 }}>

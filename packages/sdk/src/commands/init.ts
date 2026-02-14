@@ -4,12 +4,12 @@ import boxen from 'boxen'
 import chalk from 'chalk'
 import { Argument, Command } from 'commander'
 import { z } from 'zod'
-import { authenticator } from '../auth/auth.js'
 import { api } from '../api/api.js'
+import { authenticator } from '../auth/auth.js'
+import { isErrored } from '../errors.js'
+import { isError } from '../types/result.js'
 import { printLogo } from '../util/print-logo.js'
 import { createProject } from './init/create-project.js'
-import { isError } from '../types/result.js'
-import { isErrored } from '../errors.js'
 
 /**
  * Schema for slug validation
@@ -36,9 +36,7 @@ export const init = new Command('init')
       // Ensure user is authenticated
       const authResult = await authenticator.ensureAuthed()
       if (isError(authResult)) {
-        process.stderr.write(
-          chalk.red("✖ Authentication failed. Please run 'auxx login' first.\n")
-        )
+        process.stderr.write(chalk.red("✖ Authentication failed. Please run 'auxx login' first.\n"))
         process.exit(1)
       }
 

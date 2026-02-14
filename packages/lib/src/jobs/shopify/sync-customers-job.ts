@@ -1,6 +1,6 @@
-import { createShopifyAdminClient, CustomerSync, SyncManager } from '@auxx/lib/shopify'
 import { database as db } from '@auxx/database'
 import { ShopifyIntegrationModel } from '@auxx/database/models'
+import { CustomerSync, createShopifyAdminClient, SyncManager } from '@auxx/lib/shopify'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 

@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/hooks/use-checklist.ts
 
+import { isTerminalNodeType } from '@auxx/lib/workflow-engine/client'
+import { useStoreApi } from '@xyflow/react'
 import { useMemo } from 'react'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
 import { NodeType } from '../types/node-types'
-import { useStoreApi } from '@xyflow/react'
-import { isTerminalNodeType } from '@auxx/lib/workflow-engine/client'
 
 export interface NodeIssue {
   severity: 'error' | 'warning'
@@ -139,9 +139,11 @@ export const useChecklist = (): UseChecklistReturn => {
       if (nodes.length > 1) {
         // Orphaned nodes (no incoming connections) are now warnings
         // Exclude trigger nodes and input nodes as they are designed to be entry points
-        if (!hasIncomingEdges && 
-            !unifiedNodeRegistry.isTrigger(nodeType as string) && 
-            !unifiedNodeRegistry.isInputNode(nodeType as string)) {
+        if (
+          !hasIncomingEdges &&
+          !unifiedNodeRegistry.isTrigger(nodeType as string) &&
+          !unifiedNodeRegistry.isInputNode(nodeType as string)
+        ) {
           addIssueToNode(node.id, nodeType, node.data, {
             severity: 'warning',
             message: 'Node has no incoming connections',

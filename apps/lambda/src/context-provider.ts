@@ -12,7 +12,7 @@
  * Phase 2: User secrets passed from API (not platform secrets)
  */
 
-import type { RuntimeContext, ExecutionContext } from './types.ts'
+import type { ExecutionContext, RuntimeContext } from './types.ts'
 
 /**
  * Create runtime context for server function execution.

@@ -2,19 +2,19 @@
 
 'use client'
 
-import { useCallback, useState } from 'react'
-import { useDropzone } from 'react-dropzone'
-import { Card, CardContent } from '@auxx/ui/components/card'
-import { Button } from '@auxx/ui/components/button'
-import { Progress } from '@auxx/ui/components/progress'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
-import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
-import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
+import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent } from '@auxx/ui/components/card'
+import { Progress } from '@auxx/ui/components/progress'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-
 import { formatBytes } from '@auxx/utils/file'
+import { AlertCircle, CheckCircle, FileText, Loader2, Upload, X } from 'lucide-react'
+import { useCallback, useState } from 'react'
+import { useDropzone } from 'react-dropzone'
+import { api } from '~/trpc/react'
+
 interface FileWithProgress {
   file: File
   progress: number
@@ -210,13 +210,13 @@ export function DocumentUploadZone({
   const getStatusIcon = (status: FileWithProgress['status']) => {
     switch (status) {
       case 'uploading':
-        return <Loader2 className="h-4 w-4 animate-spin" />
+        return <Loader2 className='h-4 w-4 animate-spin' />
       case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-600" />
+        return <CheckCircle className='h-4 w-4 text-green-600' />
       case 'error':
-        return <AlertCircle className="h-4 w-4 text-red-600" />
+        return <AlertCircle className='h-4 w-4 text-red-600' />
       default:
-        return <FileText className="h-4 w-4" />
+        return <FileText className='h-4 w-4' />
     }
   }
 
@@ -231,85 +231,85 @@ export function DocumentUploadZone({
           'hover:border-primary hover:bg-primary/5',
           isUploading && 'cursor-not-allowed opacity-50'
         )}>
-        <CardContent className="flex flex-col items-center justify-center py-12 px-6">
+        <CardContent className='flex flex-col items-center justify-center py-12 px-6'>
           <input {...getInputProps()} disabled={isUploading} />
-          <Upload className="h-12 w-12 text-muted-foreground mb-4" />
-          <div className="text-center">
-            <p className="text-lg font-medium mb-2">
+          <Upload className='h-12 w-12 text-muted-foreground mb-4' />
+          <div className='text-center'>
+            <p className='text-lg font-medium mb-2'>
               {isDragActive ? 'Drop files here...' : 'Upload documents to your dataset'}
             </p>
-            <p className="text-sm text-muted-foreground mb-4">
+            <p className='text-sm text-muted-foreground mb-4'>
               Drag and drop files here, or click to browse
             </p>
-            <div className="flex flex-wrap gap-2 justify-center">
-              <Badge variant="secondary">PDF</Badge>
-              <Badge variant="secondary">DOCX</Badge>
-              <Badge variant="secondary">TXT</Badge>
-              <Badge variant="secondary">MD</Badge>
-              <Badge variant="secondary">CSV</Badge>
-              <Badge variant="secondary">JSON</Badge>
+            <div className='flex flex-wrap gap-2 justify-center'>
+              <Badge variant='secondary'>PDF</Badge>
+              <Badge variant='secondary'>DOCX</Badge>
+              <Badge variant='secondary'>TXT</Badge>
+              <Badge variant='secondary'>MD</Badge>
+              <Badge variant='secondary'>CSV</Badge>
+              <Badge variant='secondary'>JSON</Badge>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">Maximum file size: 50MB per file</p>
+            <p className='text-xs text-muted-foreground mt-2'>Maximum file size: 50MB per file</p>
           </div>
         </CardContent>
       </Card>
 
       {/* File List */}
       {files.length > 0 && (
-        <div className="mt-6 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium">Files ({files.length})</h3>
-            <div className="space-x-2">
+        <div className='mt-6 space-y-3'>
+          <div className='flex items-center justify-between'>
+            <h3 className='text-lg font-medium'>Files ({files.length})</h3>
+            <div className='space-x-2'>
               <Button
-                variant="outline"
-                size="sm"
+                variant='outline'
+                size='sm'
                 onClick={() => setFiles([])}
                 disabled={isUploading}>
                 Clear All
               </Button>
               <Button
-                size="sm"
+                size='sm'
                 onClick={handleUpload}
                 disabled={isUploading || files.length === 0}
                 loading={isUploading}
-                loadingText="Uploading...">
+                loadingText='Uploading...'>
                 Upload {files.length} File{files.length !== 1 ? 's' : ''}
               </Button>
             </div>
           </div>
 
-          <div className="space-y-2">
+          <div className='space-y-2'>
             {files.map((fileItem, index) => (
               <Card key={index}>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex-shrink-0">{getStatusIcon(fileItem.status)}</div>
+                <CardContent className='p-4'>
+                  <div className='flex items-center gap-3'>
+                    <div className='flex-shrink-0'>{getStatusIcon(fileItem.status)}</div>
 
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{fileItem.file.name}</p>
-                      <p className="text-sm text-muted-foreground">
+                    <div className='flex-1 min-w-0'>
+                      <p className='font-medium truncate'>{fileItem.file.name}</p>
+                      <p className='text-sm text-muted-foreground'>
                         {formatBytes(fileItem.file.size)}
                       </p>
 
                       {fileItem.status === 'uploading' && (
-                        <Progress value={fileItem.progress} className="mt-2" />
+                        <Progress value={fileItem.progress} className='mt-2' />
                       )}
 
                       {fileItem.status === 'error' && fileItem.error && (
-                        <Alert className="mt-2">
-                          <AlertCircle className="h-4 w-4" />
-                          <AlertDescription className="text-sm">{fileItem.error}</AlertDescription>
+                        <Alert className='mt-2'>
+                          <AlertCircle className='h-4 w-4' />
+                          <AlertDescription className='text-sm'>{fileItem.error}</AlertDescription>
                         </Alert>
                       )}
 
                       {fileItem.status === 'completed' && (
-                        <p className="text-sm text-green-600 mt-1">Successfully uploaded</p>
+                        <p className='text-sm text-green-600 mt-1'>Successfully uploaded</p>
                       )}
                     </div>
 
                     {!isUploading && fileItem.status === 'pending' && (
-                      <Button variant="ghost" size="sm" onClick={() => removeFile(index)}>
-                        <X className="h-4 w-4" />
+                      <Button variant='ghost' size='sm' onClick={() => removeFile(index)}>
+                        <X className='h-4 w-4' />
                       </Button>
                     )}
                   </div>

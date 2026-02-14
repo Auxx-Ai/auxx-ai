@@ -1,9 +1,10 @@
 // apps/web/src/components/workflow/providers/var-store-sync-provider.tsx
 
-import React, { useEffect, useRef } from 'react'
+import { useNodesInitialized, useStoreApi } from '@xyflow/react'
+import type React from 'react'
+import { useEffect, useRef } from 'react'
 import { useVarStoreSync } from '../hooks/use-var-store-sync'
 import { useVarStore } from '../store/use-var-store'
-import { useStoreApi, useNodesInitialized } from '@xyflow/react'
 
 interface VarStoreSyncProviderProps {
   children: React.ReactNode

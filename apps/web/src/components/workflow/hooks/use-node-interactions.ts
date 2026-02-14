@@ -1,48 +1,47 @@
 // apps/web/src/components/workflow/nodes/ui/node-handle/hooks/use-node-interactions.ts
 
-import { useCallback, useRef } from 'react'
-import {
-  useStoreApi,
-  useReactFlow,
-  getConnectedEdges,
-  type Node,
-  type Edge,
-  type OnConnect,
-  type OnConnectStart,
-  type OnConnectEnd,
-  type OnNodesChange,
-} from '@xyflow/react'
-
-import { produce } from 'immer'
+import { toastError, toastInfo, toastSuccess } from '@auxx/ui/components/toast'
 import { uniqueBy } from '@auxx/utils'
 import { generateId } from '@auxx/utils/generateId'
-
 import {
+  type Edge,
+  getConnectedEdges,
+  type Node,
+  type OnConnect,
+  type OnConnectEnd,
+  type OnConnectStart,
+  type OnNodesChange,
+  useReactFlow,
+  useStoreApi,
+} from '@xyflow/react'
+import { produce } from 'immer'
+import { useCallback, useRef } from 'react'
+import {
+  useHelpline,
+  useNodesReadOnly,
+  useNodeValidation,
   useSelectionActions,
   useWorkflowSave,
-  useHelpline,
-  useNodeValidation,
-  useNodesReadOnly,
 } from '~/components/workflow/hooks'
-import { calculateZIndex } from '~/components/workflow/utils/edge-utils'
-import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'
-import type { HandleNodeAddParams, HandleConnectionParams } from '../ui/node-handle/types'
 import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registry'
+import { storeEventBus } from '~/components/workflow/store/event-bus'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
-import { toastSuccess, toastInfo, toastError } from '@auxx/ui/components/toast'
-import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
+import type { FlowNode } from '~/components/workflow/store/types'
 import { useVarStore } from '~/components/workflow/store/use-var-store'
-import { generateUniqueTitle } from '~/components/workflow/utils/unique-title-generator'
-import { centerOnNode } from '~/components/workflow/utils/viewport-utils'
+import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
+import { NodeType } from '~/components/workflow/types/node-types'
+import { getNodesConnectedSourceOrTargetHandleIdsMap } from '~/components/workflow/utils'
+import { calculateZIndex } from '~/components/workflow/utils/edge-utils'
 import {
   LAYOUT_SPACING,
   type ResizeParamsWithDirection,
 } from '~/components/workflow/utils/layout-constants'
 import { NodeFactory } from '~/components/workflow/utils/node-layout'
-import { storeEventBus } from '~/components/workflow/store/event-bus'
-import { getNodesConnectedSourceOrTargetHandleIdsMap } from '~/components/workflow/utils'
-import { NodeType } from '~/components/workflow/types/node-types'
-import type { FlowNode } from '~/components/workflow/store/types'
+import { generateUniqueTitle } from '~/components/workflow/utils/unique-title-generator'
+import { centerOnNode } from '~/components/workflow/utils/viewport-utils'
+import type { HandleConnectionParams, HandleNodeAddParams } from '../ui/node-handle/types'
+import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'
+
 // Variable syncing now handled automatically by VarStoreSyncProvider
 
 // Type for node mouse event handlers

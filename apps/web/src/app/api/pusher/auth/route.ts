@@ -1,10 +1,11 @@
 // ~/app/api/pusher/auth/route.ts
-import { RealTimeService } from '@auxx/lib/realtime'
-import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '~/auth/server'
+
 import { ChatSessionModel, OrganizationMemberModel } from '@auxx/database/models'
+import { RealTimeService } from '@auxx/lib/realtime'
 import { createScopedLogger } from '@auxx/logger'
 import { headers } from 'next/headers'
+import { type NextRequest, NextResponse } from 'next/server'
+import { auth } from '~/auth/server'
 
 const logger = createScopedLogger('pusher-auth')
 

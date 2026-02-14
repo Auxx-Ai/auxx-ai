@@ -2,9 +2,9 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { toResourceFieldId, toFieldId } from '@auxx/types/field'
-import type { EntityDefMap, FieldMap } from './types'
+import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { DEFAULT_VIEW_CONFIGS } from '../default-view-configs'
+import type { EntityDefMap, FieldMap } from './types'
 
 const logger = createScopedLogger('entity-seeder:create-default-views')
 

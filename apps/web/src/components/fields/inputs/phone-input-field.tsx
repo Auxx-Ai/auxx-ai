@@ -1,7 +1,7 @@
 // apps/web/src/components/fields/inputs/phone-input-field.tsx
 import PhoneInputWithFlag from '@auxx/ui/components/phone-input'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePropertyContext } from '../property-provider'
-import { useRef, useEffect, useState, useCallback } from 'react'
 
 /**
  * PhoneInputField

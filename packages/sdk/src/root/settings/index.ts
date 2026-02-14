@@ -1,6 +1,6 @@
 export * from './settings-schema.js'
 
-import { string, number, boolean, select, struct } from './settings-schema.js'
+import { boolean, number, select, string, struct } from './settings-schema.js'
 
 /**
  * Settings namespace for cleaner API

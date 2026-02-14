@@ -1,12 +1,14 @@
 // ~/server/api/routers/kb.ts
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+
 import { schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
-import { TRPCError } from '@trpc/server'
+import { ArticleStatus } from '@auxx/database/enums'
 import { getUserOrganizationId } from '@auxx/lib/email'
 import { KBService } from '@auxx/lib/kb'
-import { ArticleStatus } from '@auxx/database/enums'
+import { TRPCError } from '@trpc/server'
+import { eq } from 'drizzle-orm'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+
 // Base knowledge base fields schema
 const kbFieldsSchema = z.object({
   name: z.string().min(1).optional(),

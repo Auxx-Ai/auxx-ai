@@ -130,8 +130,6 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . --max-warnings 1000",
-    "lint:fix": "eslint . --fix --max-warnings 1000",
     "clean": "rm -rf node_modules .turbo dist *.tsbuildinfo",
     "test": "vitest",
     "test:ui": "vitest --ui",
@@ -213,7 +211,6 @@
   },
   "devDependencies": {
     "@faker-js/faker": "catalog:",
-    "@auxx/eslint-config": "workspace:*",
     "@auxx/typescript-config": "workspace:*",
     "@types/addressparser": "^1.0.3",
     "@types/email-reply-parser": "^1.4.2",
@@ -225,7 +222,6 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "dotenv": "catalog:",
-    "eslint": "catalog:",
     "tsup": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",

@@ -1,24 +1,28 @@
 // apps/web/src/components/manufacturing/parts/vendor-part-dialog.tsx
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import type { VendorPartEntity as VendorPart } from '@auxx/database/models'
+import { getInstanceId, type RecordId, toRecordId } from '@auxx/lib/field-values/client'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
-import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { toRecordId, getInstanceId, type RecordId } from '@auxx/lib/field-values/client'
-import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
-import type { VendorPartEntity as VendorPart } from '@auxx/database/models'
-import { VendorPartFields, defaultVendorPartValues, type VendorPartFormValues } from './vendor-part-fields'
+import { useCallback, useEffect, useState } from 'react'
+import { MultiRelationInput } from '~/components/shared/multi-relation-input'
+import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { api } from '~/trpc/react'
+import {
+  defaultVendorPartValues,
+  VendorPartFields,
+  type VendorPartFormValues,
+} from './vendor-part-fields'
 
 /** Props for VendorPartDialog component */
 interface VendorPartDialogProps {
@@ -161,7 +165,7 @@ export function VendorPartDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]" position="tc">
+      <DialogContent className='sm:max-w-[500px]' position='tc'>
         <DialogHeader>
           <DialogTitle>{isEditMode ? 'Edit Supplier' : 'Add Supplier'}</DialogTitle>
           <DialogDescription>
@@ -173,19 +177,21 @@ export function VendorPartDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <VarEditorField className="p-0">
+        <VarEditorField className='p-0'>
           {/* Part Selection - only shown in contact-centric mode */}
           {isContactMode && (
             <VarEditorFieldRow
-              title="Part"
+              title='Part'
               isRequired
               validationError={errors.partId}
-              validationType="error">
+              validationType='error'>
               <MultiRelationInput
-                entityDefinitionId="part"
+                entityDefinitionId='part'
                 value={values.partId ? [toRecordId('part', values.partId)] : []}
-                onChange={(recordIds: RecordId[]) => handleChange('partId', recordIds[0] ? getInstanceId(recordIds[0]) : '')}
-                placeholder="Select part..."
+                onChange={(recordIds: RecordId[]) =>
+                  handleChange('partId', recordIds[0] ? getInstanceId(recordIds[0]) : '')
+                }
+                placeholder='Select part...'
                 disabled={isPending || isEditMode}
                 multi={false}
               />
@@ -205,21 +211,22 @@ export function VendorPartDialog({
 
         <DialogFooter>
           <Button
-            type="button"
-            variant="ghost"
-            size="sm"
+            type='button'
+            variant='ghost'
+            size='sm'
             onClick={() => onOpenChange(false)}
             disabled={isPending}>
-            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
           <Button
             onClick={handleSubmit}
-            variant="outline"
-            size="sm"
+            variant='outline'
+            size='sm'
             loading={isPending}
             loadingText={isEditMode ? 'Updating...' : 'Adding...'}
             data-dialog-submit>
-            {isEditMode ? 'Update Supplier' : 'Add Supplier'} <KbdSubmit variant="outline" size="sm" />
+            {isEditMode ? 'Update Supplier' : 'Add Supplier'}{' '}
+            <KbdSubmit variant='outline' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

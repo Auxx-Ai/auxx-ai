@@ -1,7 +1,7 @@
 // packages/sdk/src/runtime/reconciler/tags/button-tag.ts
 
-import { BaseTag } from './base-tag.js'
 import { registerEventHandler } from '../../register-event-handler.js'
+import { BaseTag } from './base-tag.js'
 
 /**
  * Tag for Button component.
@@ -40,7 +40,7 @@ export class ButtonTag extends BaseTag {
       icon,
       loading,
       loadingText,
-      __hasOnClick: typeof props.onClick === 'function'
+      __hasOnClick: typeof props.onClick === 'function',
     }
 
     console.log('[ButtonTag.getAttributes] Output:', result)

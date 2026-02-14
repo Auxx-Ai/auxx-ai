@@ -1,17 +1,16 @@
 // packages/lib/src/jobs/import/generate-plan-job.ts
 
-import { eq } from 'drizzle-orm'
-import { database as db } from '@auxx/database'
-import { schema } from '@auxx/database'
-import { getPublishingClient } from '@auxx/redis'
+import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { getPublishingClient } from '@auxx/redis'
 import type { Job } from 'bullmq'
+import { eq } from 'drizzle-orm'
 import {
-  generatePlan,
-  getRawDataAsMap,
   createEventPublisher,
+  generatePlan,
   getAllJobResolutions,
   getPendingRelationLookups,
+  getRawDataAsMap,
   resolveRelationLookups,
   updateResolutionsWithLookupResults,
 } from '../../import'

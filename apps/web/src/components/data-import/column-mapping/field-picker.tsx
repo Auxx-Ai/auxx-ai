@@ -2,26 +2,26 @@
 
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
-import { PopoverContent } from '@auxx/ui/components/popover'
-import {
-  Command,
-  CommandInput,
-  CommandList,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-  CommandSeparator,
-} from '@auxx/ui/components/command'
-import { ChevronRight, ChevronLeft, Hash, Type, Check, Ban } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { cn } from '@auxx/ui/lib/utils'
-import { useResourceFields, useResource } from '~/components/resources'
-import { EntityIcon } from '@auxx/ui/components/icons'
-import { VarTypeIcon } from '~/components/workflow/utils/icon-helper'
 import type { ImportableField } from '@auxx/lib/import'
 import type { BaseType } from '@auxx/lib/workflow-engine'
+import { Button } from '@auxx/ui/components/button'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from '@auxx/ui/components/command'
+import { EntityIcon } from '@auxx/ui/components/icons'
+import { PopoverContent } from '@auxx/ui/components/popover'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { cn } from '@auxx/ui/lib/utils'
+import { Ban, Check, ChevronLeft, ChevronRight, Hash, Type } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useResource, useResourceFields } from '~/components/resources'
+import { VarTypeIcon } from '~/components/workflow/utils/icon-helper'
 
 interface FieldPickerProps {
   open: boolean
@@ -59,7 +59,9 @@ export function FieldPicker({
   const contentRef = useRef<HTMLDivElement>(null)
 
   // Get target resource info for icon display
-  const { resource: targetResource } = useResource(relationshipContext?.relatedEntityDefinitionId ?? null)
+  const { resource: targetResource } = useResource(
+    relationshipContext?.relatedEntityDefinitionId ?? null
+  )
 
   // For relationship navigation - get target resource fields
   const { filterableFields: targetFields } = useResourceFields(
@@ -158,8 +160,8 @@ export function FieldPicker({
 
   // Get icon for field based on type
   const getFieldIcon = (field: ImportableField) => {
-    if (field.isIdentifier) return <Hash className="h-4 w-4 text-muted-foreground" />
-    return <Type className="h-4 w-4 text-muted-foreground" />
+    if (field.isIdentifier) return <Hash className='h-4 w-4 text-muted-foreground' />
+    return <Type className='h-4 w-4 text-muted-foreground' />
   }
 
   // Render field item
@@ -171,21 +173,23 @@ export function FieldPicker({
       <CommandItem
         key={field.key}
         onSelect={() => selectField(field)}
-        className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        className='flex items-center justify-between'>
+        <div className='flex items-center gap-2'>
           {isSelected ? (
-            <Check className="" />
+            <Check className='' />
           ) : field.isRelation && field.relationConfig ? (
-            <RelationFieldIcon relatedEntityDefinitionId={field.relationConfig.relatedEntityDefinitionId} />
+            <RelationFieldIcon
+              relatedEntityDefinitionId={field.relationConfig.relatedEntityDefinitionId}
+            />
           ) : (
             getFieldIcon(field)
           )}
           <span>{field.label}</span>
-          {field.required && <span className="text-destructive">*</span>}
+          {field.required && <span className='text-destructive'>*</span>}
         </div>
-        <div className="flex items-center gap-1">
-          {isUsed && <span className="text-xs text-muted-foreground">will replace</span>}
-          {field.isRelation && <ChevronRight className="h-4 w-4 opacity-50" />}
+        <div className='flex items-center gap-1'>
+          {isUsed && <span className='text-xs text-muted-foreground'>will replace</span>}
+          {field.isRelation && <ChevronRight className='h-4 w-4 opacity-50' />}
         </div>
       </CommandItem>
     )
@@ -196,7 +200,7 @@ export function FieldPicker({
     filteredFields.relationFields.length > 0
 
   return (
-    <PopoverContent className={cn('w-[320px] p-0', className)} ref={contentRef} align="start">
+    <PopoverContent className={cn('w-[320px] p-0', className)} ref={contentRef} align='start'>
       <Command shouldFilter={false}>
         <CommandInput
           placeholder={relationshipContext ? 'Search match fields...' : 'Search fields...'}
@@ -207,22 +211,22 @@ export function FieldPicker({
         <CommandList>
           {/* Breadcrumb for relationship context */}
           {relationshipContext && (
-            <div className="flex items-center border-b px-2 py-1.5 text-sm">
-              <Button variant="ghost" size="icon-xs" onClick={navigateBack}>
+            <div className='flex items-center border-b px-2 py-1.5 text-sm'>
+              <Button variant='ghost' size='icon-xs' onClick={navigateBack}>
                 <ChevronLeft />
               </Button>
-              <div className="flex items-center gap-1 text-muted-foreground">
+              <div className='flex items-center gap-1 text-muted-foreground'>
                 {targetResource && (
                   <EntityIcon
                     iconId={targetResource.icon}
                     color={'color' in targetResource ? targetResource.color : undefined}
-                    size="xs"
+                    size='xs'
                   />
                 )}
-                <span className="font-medium text-foreground">
+                <span className='font-medium text-foreground'>
                   {relationshipContext.fieldLabel}
                 </span>
-                <ChevronRight className="h-3.5 w-3.5 opacity-50 shrink-0" />
+                <ChevronRight className='h-3.5 w-3.5 opacity-50 shrink-0' />
                 <span>Select match field</span>
               </div>
             </div>
@@ -230,7 +234,7 @@ export function FieldPicker({
 
           {/* Instruction for match field selection */}
           {relationshipContext && (
-            <div className="border-b bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+            <div className='border-b bg-muted/50 px-3 py-2 text-xs text-muted-foreground'>
               Choose which field in the target to match CSV values against
             </div>
           )}
@@ -242,7 +246,7 @@ export function FieldPicker({
                 {/* Skip option */}
                 <CommandItem
                   onSelect={skipColumn}
-                  className="flex items-center gap-2 text-muted-foreground">
+                  className='flex items-center gap-2 text-muted-foreground'>
                   <Ban />
                   <span>Skip this column</span>
                 </CommandItem>
@@ -251,21 +255,21 @@ export function FieldPicker({
 
               {/* Identifier fields */}
               {filteredFields.identifierFields.length > 0 && (
-                <CommandGroup heading="Identifiers">
+                <CommandGroup heading='Identifiers'>
                   {filteredFields.identifierFields.map(renderFieldItem)}
                 </CommandGroup>
               )}
 
               {/* Scalar fields */}
               {filteredFields.scalarFields.length > 0 && (
-                <CommandGroup heading="Fields">
+                <CommandGroup heading='Fields'>
                   {filteredFields.scalarFields.map(renderFieldItem)}
                 </CommandGroup>
               )}
 
               {/* Relationship fields */}
               {filteredFields.relationFields.length > 0 && (
-                <CommandGroup heading="Relationships">
+                <CommandGroup heading='Relationships'>
                   {filteredFields.relationFields.map(renderFieldItem)}
                 </CommandGroup>
               )}
@@ -287,19 +291,19 @@ export function FieldPicker({
                     <CommandItem
                       key={field.key}
                       onSelect={() => selectMatchField(field.key)}
-                      className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {isSelected && <Check className="" />}
+                      className='flex items-center justify-between'>
+                      <div className='flex items-center gap-2'>
+                        {isSelected && <Check className='' />}
                         {!isSelected && (
                           <VarTypeIcon
                             type={field.type as BaseType}
-                            className="text-muted-foreground"
+                            className='text-muted-foreground'
                           />
                         )}
                         <span>{field.label}</span>
                       </div>
                       {isRecommended && (
-                        <span className="text-xs text-muted-foreground">recommended</span>
+                        <span className='text-xs text-muted-foreground'>recommended</span>
                       )}
                     </CommandItem>
                   )
@@ -321,15 +325,15 @@ function RelationFieldIcon({ relatedEntityDefinitionId }: { relatedEntityDefinit
   const { resource } = useResource(relatedEntityDefinitionId)
 
   if (!resource) {
-    return <Type className="h-4 w-4 text-muted-foreground" />
+    return <Type className='h-4 w-4 text-muted-foreground' />
   }
 
   return (
     <EntityIcon
       iconId={resource.icon}
       color={'color' in resource ? resource.color : undefined}
-      size="xs"
-      className="text-muted-foreground"
+      size='xs'
+      className='text-muted-foreground'
     />
   )
 }

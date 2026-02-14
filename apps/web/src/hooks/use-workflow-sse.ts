@@ -1,7 +1,7 @@
 // apps/web/src/hooks/use-workflow-sse.ts
 
-import { useEffect, useRef, useState } from 'react'
 import { createScopedLogger } from '@auxx/logger'
+import { useEffect, useRef, useState } from 'react'
 
 const logger = createScopedLogger('use-workflow-sse')
 

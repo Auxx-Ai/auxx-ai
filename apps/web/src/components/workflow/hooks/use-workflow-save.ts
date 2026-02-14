@@ -1,20 +1,20 @@
 // apps/web/src/components/workflow/hooks/use-workflow-save.ts
 
-import { useCallback, useEffect, useRef } from 'react'
-import { useStoreApi } from '@xyflow/react'
-import { debounce } from '@auxx/utils'
-import { api } from '~/trpc/react'
-import { useWorkflowStore } from '../store/workflow-store'
-import { useVarStore } from '../store/use-var-store'
-import { useCanvasStore } from '../store/canvas-store'
-import { useTestInputStore } from '../store/test-input-store'
-import { useReadOnly } from './use-read-only'
-import { toastError } from '@auxx/ui/components/toast'
 import {
-  type ResourceTriggerOperation,
   RESOURCE_OPERATION_TO_TRIGGER_TYPE,
+  type ResourceTriggerOperation,
   WorkflowTriggerType as TriggerType,
 } from '@auxx/lib/workflow-engine/types'
+import { toastError } from '@auxx/ui/components/toast'
+import { debounce } from '@auxx/utils'
+import { useStoreApi } from '@xyflow/react'
+import { useCallback, useEffect, useRef } from 'react'
+import { api } from '~/trpc/react'
+import { useCanvasStore } from '../store/canvas-store'
+import { useTestInputStore } from '../store/test-input-store'
+import { useVarStore } from '../store/use-var-store'
+import { useWorkflowStore } from '../store/workflow-store'
+import { useReadOnly } from './use-read-only'
 
 const DEBOUNCE_MS = 5000
 

@@ -3,10 +3,10 @@
 'use client'
 
 import '~/lib/immer-config' // Enables Map/Set support for immer
-import { create } from 'zustand'
-import { immer } from 'zustand/middleware/immer'
-import { subscribeWithSelector } from 'zustand/middleware'
 import type { TaskWithRelations } from '@auxx/lib/tasks'
+import { create } from 'zustand'
+import { subscribeWithSelector } from 'zustand/middleware'
+import { immer } from 'zustand/middleware/immer'
 
 /** Delay before list reorders after completion toggle (ms) */
 export const LIST_UPDATE_DELAY_MS = 2000

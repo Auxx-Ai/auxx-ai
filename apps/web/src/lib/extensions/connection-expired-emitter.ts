@@ -40,7 +40,7 @@ class ConnectionExpiredEmitter {
 
     // Return unsubscribe function
     return () => {
-      this.listeners = this.listeners.filter(l => l !== listener)
+      this.listeners = this.listeners.filter((l) => l !== listener)
     }
   }
 
@@ -49,7 +49,7 @@ class ConnectionExpiredEmitter {
    * @param event - The connection expired event data
    */
   emit(event: ConnectionExpiredEvent): void {
-    this.listeners.forEach(listener => listener(event))
+    this.listeners.forEach((listener) => listener(event))
   }
 }
 

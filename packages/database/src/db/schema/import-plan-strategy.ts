@@ -1,18 +1,18 @@
 // packages/database/src/db/schema/import-plan-strategy.ts
 
+import { createId } from '@paralleldrive/cuid2'
 import {
-  pgTable,
-  index,
-  text,
-  timestamp,
-  jsonb,
   type AnyPgColumn,
   importStrategyStatus,
   importStrategyType,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
 } from './_shared'
-import { createId } from '@paralleldrive/cuid2'
-import { ImportPlan } from './import-plan'
 import { CustomField } from './custom-field'
+import { ImportPlan } from './import-plan'
 
 /**
  * ImportPlanStrategy - Strategy within a plan

@@ -1,9 +1,9 @@
 // apps/web/src/components/workflow/nodes/shared/node-inputs/boolean-input.tsx
 
-import React from 'react'
-import { ButtonGroup } from '@auxx/ui/components/button-group'
 import { Button } from '@auxx/ui/components/button'
+import { ButtonGroup } from '@auxx/ui/components/button-group'
 import { Switch } from '@auxx/ui/components/switch'
+import React from 'react'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 interface BooleanInputProps extends NodeInputProps {
@@ -70,14 +70,14 @@ export const BooleanInput = createNodeInput<BooleanInputProps>(
     // Switch variant: binary toggle
     if (variant === 'switch') {
       return (
-        <div className="flex items-center h-8 gap-2">
+        <div className='flex items-center h-8 gap-2'>
           <Switch
             checked={value === true}
             onCheckedChange={handleSwitchChange}
             disabled={isLoading}
-            size="sm"
+            size='sm'
           />
-          {label && <span className="text-sm text-foreground-muted">{label}</span>}
+          {label && <span className='text-sm text-foreground-muted'>{label}</span>}
         </div>
       )
     }
@@ -87,26 +87,26 @@ export const BooleanInput = createNodeInput<BooleanInputProps>(
     const selectedIndices = value === true ? [0] : value === false ? [1] : []
 
     return (
-      <div className="flex items-center h-8">
+      <div className='flex items-center h-8'>
         <ButtonGroup
-          mode="toggle"
-          toggleMode="single"
+          mode='toggle'
+          toggleMode='single'
           isPill={true}
           value={selectedIndices}
           onChange={handleButtonGroupChange}
-          className="w-full">
+          className='w-full'>
           <Button
-            variant="transparent"
-            size="xs"
+            variant='transparent'
+            size='xs'
             disabled={isLoading}
-            className="aria-checked:inset-shadow-black/20 rounded-full aria-checked:bg-info aria-checked:to-info aria-checked:from-info aria-checked:text-white duration-0">
+            className='aria-checked:inset-shadow-black/20 rounded-full aria-checked:bg-info aria-checked:to-info aria-checked:from-info aria-checked:text-white duration-0'>
             {trueLabel}
           </Button>
           <Button
-            variant="transparent"
-            size="xs"
+            variant='transparent'
+            size='xs'
             disabled={isLoading}
-            className="aria-checked:inset-shadow-black/20 rounded-full aria-checked:bg-info aria-checked:to-info aria-checked:from-info aria-checked:text-white duration-0">
+            className='aria-checked:inset-shadow-black/20 rounded-full aria-checked:bg-info aria-checked:to-info aria-checked:from-info aria-checked:text-white duration-0'>
             {falseLabel}
           </Button>
         </ButtonGroup>

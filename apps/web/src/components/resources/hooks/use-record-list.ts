@@ -1,17 +1,17 @@
 // apps/web/src/components/resources/hooks/use-record-list.ts
 
-import { useEffect, useMemo, useCallback, useRef } from 'react'
-import { api } from '~/trpc/react'
-import {
-  useRecordStore,
-  createListKey,
-  isListStale,
-  EMPTY_FILTERS,
-  EMPTY_SORTING,
-  type RecordMeta,
-} from '../store/record-store'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { toRecordId } from '@auxx/lib/resources/client'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { api } from '~/trpc/react'
+import {
+  createListKey,
+  EMPTY_FILTERS,
+  EMPTY_SORTING,
+  isListStale,
+  type RecordMeta,
+  useRecordStore,
+} from '../store/record-store'
 
 /** Stable empty array for default return */
 const EMPTY_IDS: string[] = []
@@ -201,7 +201,8 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
   // Return IDs and resolved items from record store
 
   // Prefer cached data if available
-  const recordIds = cachedList?.ids ?? (data?.pages?.flatMap((p: { ids: string[] }) => p.ids) || EMPTY_IDS)
+  const recordIds =
+    cachedList?.ids ?? (data?.pages?.flatMap((p: { ids: string[] }) => p.ids) || EMPTY_IDS)
   const total = cachedList?.total ?? data?.pages?.[data.pages.length - 1]?.total ?? 0
 
   // ─── RESOLVE RECORDS FROM RECORD STORE ─────────────────────────────────
@@ -240,7 +241,7 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     total,
     isLoading: shouldFetch && isLoading,
     isFetchingNextPage,
-    hasNextPage: hasNextPage ?? (cachedList?.nextCursor !== null),
+    hasNextPage: hasNextPage ?? cachedList?.nextCursor !== null,
     fetchNextPage,
     refresh,
     isCached: !!cachedList,

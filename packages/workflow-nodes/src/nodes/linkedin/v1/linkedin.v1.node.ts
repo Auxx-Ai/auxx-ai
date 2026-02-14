@@ -1,10 +1,10 @@
 // packages/workflow-nodes/src/nodes/linkedin/v1/linkedin.v1.node.ts
 
 import type {
-  INodeType,
-  INodeTypeDescription,
-  INodeTypeBaseDescription,
   IExecuteContext,
+  INodeType,
+  INodeTypeBaseDescription,
+  INodeTypeDescription,
   NodeData,
 } from '../../../types'
 import { contentConfigurationSchema } from './node-types'

@@ -1,24 +1,24 @@
 // apps/web/src/components/custom-fields/ui/field-list.tsx
 'use client'
 
-import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { TableCell, TableRow } from '@auxx/ui/components/table'
-import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
 import type { FieldType } from '@auxx/database/types'
-import { EntityIcon } from '@auxx/ui/components/icons'
-import { GripVertical, MoreHorizontal, FilePen, Trash2, Copy, Settings } from 'lucide-react'
+import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
+import type { ResourceField } from '@auxx/lib/resources/client'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { Button } from '@auxx/ui/components/button'
-import { Badge } from '@auxx/ui/components/badge'
-import { cn } from '@auxx/ui/lib/utils'
-import type { ResourceField } from '@auxx/lib/resources/client'
+import { EntityIcon } from '@auxx/ui/components/icons'
+import { TableCell, TableRow } from '@auxx/ui/components/table'
 import { useCopy } from '@auxx/ui/hooks/use-copy'
+import { cn } from '@auxx/ui/lib/utils'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { Copy, FilePen, GripVertical, MoreHorizontal, Settings, Trash2 } from 'lucide-react'
 
 /** Props for CustomFieldRow component */
 interface CustomFieldRowProps {
@@ -62,54 +62,54 @@ export function CustomFieldRow({
       ref={setNodeRef}
       style={style}
       className={cn(isDragging ? 'bg-accent' : '', 'transition-colors')}>
-      <TableCell className="w-[40px] py-1">
-        <div {...attributes} {...listeners} className="cursor-grab">
-          <GripVertical className="size-4 text-muted-foreground" />
+      <TableCell className='w-[40px] py-1'>
+        <div {...attributes} {...listeners} className='cursor-grab'>
+          <GripVertical className='size-4 text-muted-foreground' />
         </div>
       </TableCell>
-      <TableCell className="py-1">
-        <div className="text-sm">
+      <TableCell className='py-1'>
+        <div className='text-sm'>
           {field.name}
-          {field.required && <span className="ml-2 text-orange-500 text-xs">Required</span>}
-          {field.isUnique && <span className="ml-2 text-purple-500 text-xs">Unique</span>}
+          {field.required && <span className='ml-2 text-orange-500 text-xs'>Required</span>}
+          {field.isUnique && <span className='ml-2 text-purple-500 text-xs'>Unique</span>}
         </div>
         {field.defaultValue && (
-          <div className="text-xs text-muted-foreground">Default: {field.defaultValue}</div>
+          <div className='text-xs text-muted-foreground'>Default: {field.defaultValue}</div>
         )}
       </TableCell>
-      <TableCell className="py-1">
-        <div className="flex flex-row items-center gap-2 text-sm">
-          <EntityIcon iconId={iconId} variant="default" size="default" />
-          <div className="text-foreground/50">{fieldTypeLabel}</div>
+      <TableCell className='py-1'>
+        <div className='flex flex-row items-center gap-2 text-sm'>
+          <EntityIcon iconId={iconId} variant='default' size='default' />
+          <div className='text-foreground/50'>{fieldTypeLabel}</div>
         </div>
       </TableCell>
-      <TableCell className="max-w-[300px] text-foreground/50 text-sm py-1">
+      <TableCell className='max-w-[300px] text-foreground/50 text-sm py-1'>
         {field.description ? (
-          <div className="truncate" title={field.description}>
+          <div className='truncate' title={field.description}>
             {field.description}
           </div>
         ) : (
           <span>—</span>
         )}
       </TableCell>
-      <TableCell className="py-1">
+      <TableCell className='py-1'>
         {field.isSystem && (
-          <Badge variant="secondary" className="gap-1">
-            <Settings className="size-3" />
+          <Badge variant='secondary' className='gap-1'>
+            <Settings className='size-3' />
             System
           </Badge>
         )}
       </TableCell>
-      <TableCell className="text-right py-1 w-[30px]">
-        <div className="flex justify-end gap-2">
+      <TableCell className='text-right py-1 w-[30px]'>
+        <div className='flex justify-end gap-2'>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm">
-                <span className="sr-only">Open menu</span>
+              <Button variant='ghost' size='icon-sm'>
+                <span className='sr-only'>Open menu</span>
                 <MoreHorizontal />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align='end'>
               <DropdownMenuItem onClick={() => copy(field.id)}>
                 <Copy />
                 Copy Id
@@ -125,7 +125,7 @@ export function CustomFieldRow({
                     Edit
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    variant="destructive"
+                    variant='destructive'
                     disabled={isPending}
                     onClick={() => onDelete(field.id, field.name)}>
                     <Trash2 />

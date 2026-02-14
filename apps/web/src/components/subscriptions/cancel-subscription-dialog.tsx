@@ -1,8 +1,6 @@
 // app/(protected)/app/settings/plans/_components/cancel-subscription-dialog.tsx
 'use client'
 
-import { useState } from 'react'
-import type { ReactNode } from 'react'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -13,12 +11,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
+import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
-import { Loader2 } from 'lucide-react'
-import { api } from '~/trpc/react'
-import { useRouter } from 'next/navigation'
-import { format } from 'date-fns'
-import { toastError } from '@auxx/ui/components/toast'
 import {
   Select,
   SelectContent,
@@ -26,9 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Input } from '@auxx/ui/components/input'
+import { toastError } from '@auxx/ui/components/toast'
+import { format } from 'date-fns'
+import { Loader2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import type { ReactNode } from 'react'
+import { useState } from 'react'
 import { useDehydratedOrganization } from '~/providers/dehydrated-state-provider'
 import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
+import { api } from '~/trpc/react'
 
 /**
  * cancelReasons
@@ -132,8 +132,8 @@ export function CancelSubscriptionDialog() {
   if (isLoading) {
     dialogHeader = (
       <DialogHeader>
-        <DialogTitle className="flex items-center">
-          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+        <DialogTitle className='flex items-center'>
+          <Loader2 className='mr-2 h-5 w-5 animate-spin' />
           Loading subscription details...
         </DialogTitle>
       </DialogHeader>
@@ -171,7 +171,7 @@ export function CancelSubscriptionDialog() {
   } else {
     dialogHeader = (
       <DialogHeader>
-        <DialogTitle className="flex items-center">Cancel Your Subscription</DialogTitle>
+        <DialogTitle className='flex items-center'>Cancel Your Subscription</DialogTitle>
         <DialogDescription>
           Your subscription will remain active until the end of your current billing period on{' '}
           {subscription.periodEnd
@@ -182,15 +182,15 @@ export function CancelSubscriptionDialog() {
       </DialogHeader>
     )
     dialogBody = (
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="cancel-reason">Why are you canceling?</Label>
+      <div className='space-y-4'>
+        <div className='space-y-2'>
+          <Label htmlFor='cancel-reason'>Why are you canceling?</Label>
           <Select
             value={reason || undefined}
             onValueChange={setReason}
             disabled={cancelSubscription.isPending}>
-            <SelectTrigger id="cancel-reason">
-              <SelectValue placeholder="Select a reason" />
+            <SelectTrigger id='cancel-reason'>
+              <SelectValue placeholder='Select a reason' />
             </SelectTrigger>
             <SelectContent>
               {cancelReasons.map((cancelReason) => (
@@ -202,43 +202,43 @@ export function CancelSubscriptionDialog() {
           </Select>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="feedback">Additional feedback (optional)</Label>
+        <div className='space-y-2'>
+          <Label htmlFor='feedback'>Additional feedback (optional)</Label>
           <Input
-            id="feedback"
-            placeholder="Tell us how we could improve..."
+            id='feedback'
+            placeholder='Tell us how we could improve...'
             value={feedback}
             onChange={(event) => setFeedback(event.target.value)}
             disabled={cancelSubscription.isPending}
           />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="cancel-confirmation">
+        <div className='space-y-2'>
+          <Label htmlFor='cancel-confirmation'>
             Please type "Cancel subscription" below to confirm cancellation.
           </Label>
           <Input
-            id="cancel-confirmation"
-            placeholder="Cancel subscription"
+            id='cancel-confirmation'
+            placeholder='Cancel subscription'
             value={confirmationText}
             onChange={(event) => setConfirmationText(event.target.value)}
             disabled={cancelSubscription.isPending}
-            autoComplete="off"
+            autoComplete='off'
           />
         </div>
       </div>
     )
     dialogFooter = (
       <DialogFooter>
-        <Button variant="outline" size="sm" onClick={handleReturnToBilling}>
+        <Button variant='outline' size='sm' onClick={handleReturnToBilling}>
           Keep My Subscription
         </Button>
         <Button
-          variant="destructive"
-          size="sm"
+          variant='destructive'
+          size='sm'
           onClick={handleCancel}
           loading={cancelSubscription.isPending}
-          loadingText="Processing..."
+          loadingText='Processing...'
           disabled={!reason || confirmationText.trim() !== 'Cancel subscription'}>
           Cancel Subscription
         </Button>
@@ -250,10 +250,10 @@ export function CancelSubscriptionDialog() {
   if (subscription?.cancelAtPeriodEnd) {
     return (
       <Button
-        size="sm"
+        size='sm'
         onClick={handleRestore}
         loading={restoreSubscription.isPending}
-        loadingText="Restoring..."
+        loadingText='Restoring...'
         disabled={isLoading}>
         Restore subscription
       </Button>
@@ -263,11 +263,11 @@ export function CancelSubscriptionDialog() {
   return (
     <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" disabled={isLoading}>
+        <Button variant='outline' size='sm' disabled={isLoading}>
           Cancel subscription
         </Button>
       </DialogTrigger>
-      <DialogContent size="md" position="tc">
+      <DialogContent size='md' position='tc'>
         {dialogHeader}
         {dialogBody}
         {dialogFooter}

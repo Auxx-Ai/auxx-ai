@@ -1,8 +1,8 @@
 // apps/web/src/components/dynamic-table/utils/field-exists.ts
 
-import { decodeColumnId } from './column-id'
-import { getResourceStoreState } from '~/components/resources'
 import type { ResourceFieldId } from '@auxx/types/field'
+import { getResourceStoreState } from '~/components/resources'
+import { decodeColumnId } from './column-id'
 
 /**
  * Check if all fields referenced by a column ID exist in the resource store.

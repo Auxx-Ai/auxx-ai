@@ -5,15 +5,15 @@
  * Executes app event handlers in a Deno sandbox.
  */
 
+import {
+  type ConsoleLog,
+  cleanupServerRuntimeHelpers,
+  getCapturedLogs,
+  getRegisteredSettingsSchema,
+  injectServerRuntimeHelpers,
+} from '../runtime-helpers/index.ts'
 import type { ExecutionResult, RuntimeContext } from '../types.ts'
 import type { EventExecutionEvent } from '../validator.ts'
-import {
-  injectServerRuntimeHelpers,
-  cleanupServerRuntimeHelpers,
-  getRegisteredSettingsSchema,
-  getCapturedLogs,
-  type ConsoleLog,
-} from '../runtime-helpers/index.ts'
 
 /**
  * Execute event handler
@@ -30,7 +30,7 @@ export async function executeEventHandler(
     eventType,
     eventPayload,
     context,
-    timeout  // Default provided by Zod schema
+    timeout, // Default provided by Zod schema
   } = options
 
   console.log('[Executor] Starting event execution:', { eventType })

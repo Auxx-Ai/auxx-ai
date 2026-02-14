@@ -1,12 +1,12 @@
 // packages/lib/src/jobs/workflow/resource-trigger-job.ts
 
-import { Job } from 'bullmq'
-import { createScopedLogger } from '@auxx/logger'
-import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
-import { RedisWorkflowExecutionReporter } from '../../workflow-engine'
 import { database as db } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { getWorkflowApp } from '@auxx/services/workflows'
+import type { Job } from 'bullmq'
 import { SystemUserService } from '../../users/system-user-service'
+import { RedisWorkflowExecutionReporter } from '../../workflow-engine'
+import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
 
 const logger = createScopedLogger('resource-trigger-job')
 
@@ -46,10 +46,7 @@ export async function executeResourceTrigger(job: Job<ResourceTriggerJobData>) {
       const error = workflowAppResult.error
 
       // Log and skip if workflow not found/disabled (expected scenarios)
-      if (
-        error.code === 'WORKFLOW_APP_NOT_FOUND' ||
-        error.code === 'WORKFLOW_NOT_PUBLISHED'
-      ) {
+      if (error.code === 'WORKFLOW_APP_NOT_FOUND' || error.code === 'WORKFLOW_NOT_PUBLISHED') {
         logger.warn('Workflow not found or disabled, skipping', {
           error: error.code,
           message: error.message,

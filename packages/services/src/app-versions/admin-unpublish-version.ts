@@ -1,12 +1,12 @@
 // packages/services/src/app-versions/admin-unpublish-version.ts
 
-import { database, AppVersion, AdminActionLog } from '@auxx/database'
+import { AdminActionLog, AppVersion, database } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
-import { recalculateAppStatus } from './recalculate-app-status'
-import type { AppVersionError } from './errors'
 import type { Result } from 'neverthrow'
+import { err, ok } from 'neverthrow'
+import { fromDatabase } from '../shared/utils'
+import type { AppVersionError } from './errors'
+import { recalculateAppStatus } from './recalculate-app-status'
 
 /**
  * Admin-only: Unpublish version (published → unpublished)

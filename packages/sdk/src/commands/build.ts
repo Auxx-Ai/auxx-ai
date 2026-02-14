@@ -1,15 +1,15 @@
 // packages/sdk/src/commands/build.ts
 
-import { Command } from 'commander'
 import chalk from 'chalk'
+import { Command } from 'commander'
+import type { Message } from 'esbuild'
+import { isErrored } from '../errors.js'
 import { ensureAppEntryPoint } from '../util/ensure-app-entry-point.js'
+import { printJsError, printTsError } from '../util/error-reporting.js'
 import { hardExit } from '../util/hard-exit.js'
 import { spinnerify } from '../util/spinner.js'
-import { printTsError, printJsError } from '../util/error-reporting.js'
-import { validateTypeScript } from './build/validate-typescript.js'
 import { buildJavaScript } from './build/build-javascript.js'
-import { isErrored } from '../errors.js'
-import type { Message } from 'esbuild'
+import { validateTypeScript } from './build/validate-typescript.js'
 
 /**
  * Build command - compiles the Auxx app for production

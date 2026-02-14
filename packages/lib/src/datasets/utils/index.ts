@@ -4,9 +4,9 @@ export {
   EMBEDDING_DIMENSIONS,
   type EmbeddingDimension,
   getEmbeddingColumnName,
-  normalizeToSupportedDimension,
-  isSupportedDimension,
   getModelDefaultDimensionFromDefinition,
-  getModelDimensionOptions,
   getModelDimensionHelp,
+  getModelDimensionOptions,
+  isSupportedDimension,
+  normalizeToSupportedDimension,
 } from './embedding-columns'

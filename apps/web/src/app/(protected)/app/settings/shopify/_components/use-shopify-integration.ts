@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
-import { api } from '~/trpc/react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 /** Integration data type from the API */
 // type ShopifyIntegration = { id: string; shopDomain: string; enabled: boolean; createdAt: Date }

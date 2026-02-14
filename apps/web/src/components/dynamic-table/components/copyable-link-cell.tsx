@@ -1,9 +1,9 @@
 // apps/web/src/components/dynamic-table/components/copyable-link-cell.tsx
 'use client'
 
-import { useState, useCallback } from 'react'
-import { Copy, Check, ExternalLink } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
+import { Check, Copy, ExternalLink } from 'lucide-react'
+import { useCallback, useState } from 'react'
 
 /** Props for CopyableLinkCell component */
 interface CopyableLinkCellProps {
@@ -58,18 +58,18 @@ export function CopyableLinkCell({ displayText, value, type, className }: Copyab
   return (
     <div className={cn('group/link w-fit relative max-w-full overflow-hidden', className)}>
       {/* Content with hover background */}
-      <div className="group-hover/link:bg-primary-50 rounded-md flex items-center w-full px-1 ">
-        <span className="whitespace-nowrap truncate cursor-default">{displayText}</span>
+      <div className='group-hover/link:bg-primary-50 rounded-md flex items-center w-full px-1 '>
+        <span className='whitespace-nowrap truncate cursor-default'>{displayText}</span>
       </div>
 
       {/* Gradient fade + buttons - slides in from right */}
       <div
         style={{ '--btn-width': maskWidth } as React.CSSProperties}
-        className="absolute inset-y-0 right-0 flex items-center translate-x-[calc(var(--btn-width)+8px)] group-hover/link:translate-x-0 transition-transform duration-200 ease-out">
+        className='absolute inset-y-0 right-0 flex items-center translate-x-[calc(var(--btn-width)+8px)] group-hover/link:translate-x-0 transition-transform duration-200 ease-out'>
         {/* Gradient fade overlay */}
-        <div className="w-4 h-full bg-gradient-to-r from-transparent to-primary-50 opacity-0 group-hover/link:opacity-100 transition-opacity duration-200" />
+        <div className='w-4 h-full bg-gradient-to-r from-transparent to-primary-50 opacity-0 group-hover/link:opacity-100 transition-opacity duration-200' />
         {/* Buttons */}
-        <div className="flex items-center gap-0.5 bg-primary-50 pr-0.5">
+        <div className='flex items-center gap-0.5 bg-primary-50 pr-0.5'>
           <button
             onClick={handleExternalClick}
             className={cn(
@@ -78,7 +78,7 @@ export function CopyableLinkCell({ displayText, value, type, className }: Copyab
               'rounded hover:bg-primary-200'
             )}
             title={type === 'email' ? 'Send email' : type === 'phone' ? 'Call' : 'Open link'}>
-            <ExternalLink className="size-3" />
+            <ExternalLink className='size-3' />
           </button>
           <button
             onClick={handleCopy}
@@ -87,8 +87,8 @@ export function CopyableLinkCell({ displayText, value, type, className }: Copyab
               'text-muted-foreground hover:text-foreground',
               'rounded hover:bg-primary-200'
             )}
-            title="Copy to clipboard">
-            {copied ? <Check className="size-3 text-green-600" /> : <Copy className="size-3" />}
+            title='Copy to clipboard'>
+            {copied ? <Check className='size-3 text-green-600' /> : <Copy className='size-3' />}
           </button>
         </div>
       </div>

@@ -2,10 +2,10 @@
 
 'use client'
 
-import { api } from '~/trpc/react'
+import type { TicketPriority, TicketStatus } from '@auxx/database/enums'
 import { toastError } from '@auxx/ui/components/toast'
 import { useRecordInvalidation } from '~/components/resources'
-import type { TicketStatus, TicketPriority } from '@auxx/database/enums'
+import { api } from '~/trpc/react'
 
 interface UseTicketMutationsOptions {
   onSuccess?: () => void
@@ -17,13 +17,8 @@ interface UseTicketMutationsOptions {
  */
 export function useTicketMutations(options?: UseTicketMutationsOptions) {
   const utils = api.useUtils()
-  const {
-    onRecordUpdated,
-    onRecordDeleted,
-    onBulkUpdated,
-    onBulkDeleted,
-    onRecordCreated,
-  } = useRecordInvalidation()
+  const { onRecordUpdated, onRecordDeleted, onBulkUpdated, onBulkDeleted, onRecordCreated } =
+    useRecordInvalidation()
 
   // Delete ticket
   const deleteTicket = api.ticket.deleteTicket.useMutation({

@@ -1,18 +1,19 @@
 // packages/redis/src/core/redis-client-factory.ts
+
+import { createIORedisClient } from '../providers/ioredis-provider'
+import {
+  getConnectionOptions,
+  getProviderCapabilities,
+  getRedisProvider,
+  validateProviderConfiguration,
+} from '../providers/provider-detector'
+import { createUpstashClient } from '../providers/upstash-provider'
 import {
   logger,
   type RedisClient,
   type RedisProvider,
   type RedisProviderCapabilities,
 } from '../types'
-import {
-  getRedisProvider,
-  getProviderCapabilities,
-  getConnectionOptions,
-  validateProviderConfiguration,
-} from '../providers/provider-detector'
-import { createUpstashClient } from '../providers/upstash-provider'
-import { createIORedisClient } from '../providers/ioredis-provider'
 
 /**
  * Factory pattern for creating Redis clients
@@ -34,8 +35,8 @@ export class RedisClientFactory {
     const cacheKey = `${provider ?? 'auto'}-${instanceId}`
 
     // Return existing instance if available
-    if (this.instances.has(cacheKey)) {
-      const existingClient = this.instances.get(cacheKey)!
+    if (RedisClientFactory.instances.has(cacheKey)) {
+      const existingClient = RedisClientFactory.instances.get(cacheKey)!
       try {
         // Test if connection is still alive
         await existingClient.ping()
@@ -45,7 +46,7 @@ export class RedisClientFactory {
           error: (error as Error).message,
         })
         // Remove failed instance
-        this.instances.delete(cacheKey)
+        RedisClientFactory.instances.delete(cacheKey)
       }
     }
 
@@ -88,7 +89,7 @@ export class RedisClientFactory {
     }
 
     // Cache the instance
-    this.instances.set(cacheKey, client)
+    RedisClientFactory.instances.set(cacheKey, client)
     return client
   }
 
@@ -149,7 +150,7 @@ export class RedisClientFactory {
    */
   static async testConnection(provider?: RedisProvider): Promise<boolean> {
     try {
-      const client = await this.createDedicatedClient(provider)
+      const client = await RedisClientFactory.createDedicatedClient(provider)
       await client.ping()
       await client.quit()
       return true
@@ -163,21 +164,23 @@ export class RedisClientFactory {
    * Close all cached client instances
    */
   static async closeAllClients(): Promise<void> {
-    const promises = Array.from(this.instances.entries()).map(async ([key, client]) => {
-      try {
-        await client.quit()
-        logger.info(`Closed Redis client: ${key}`)
-      } catch (error) {
-        logger.error(`Error closing Redis client ${key}`, { error: (error as Error).message })
-        // Force disconnect if quit fails
-        if (client.disconnect) {
-          client.disconnect()
+    const promises = Array.from(RedisClientFactory.instances.entries()).map(
+      async ([key, client]) => {
+        try {
+          await client.quit()
+          logger.info(`Closed Redis client: ${key}`)
+        } catch (error) {
+          logger.error(`Error closing Redis client ${key}`, { error: (error as Error).message })
+          // Force disconnect if quit fails
+          if (client.disconnect) {
+            client.disconnect()
+          }
         }
       }
-    })
+    )
 
     await Promise.all(promises)
-    this.instances.clear()
+    RedisClientFactory.instances.clear()
     logger.info('All Redis client instances closed')
   }
 
@@ -186,7 +189,7 @@ export class RedisClientFactory {
    */
   static async closeClient(instanceId = 'default', provider?: RedisProvider): Promise<void> {
     const cacheKey = `${provider ?? 'auto'}-${instanceId}`
-    const client = this.instances.get(cacheKey)
+    const client = RedisClientFactory.instances.get(cacheKey)
 
     if (client) {
       try {
@@ -198,7 +201,7 @@ export class RedisClientFactory {
           client.disconnect()
         }
       }
-      this.instances.delete(cacheKey)
+      RedisClientFactory.instances.delete(cacheKey)
     }
   }
 

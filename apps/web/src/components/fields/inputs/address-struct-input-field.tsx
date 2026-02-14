@@ -1,11 +1,11 @@
 'use client'
 
-// apps/web/src/components/fields/inputs/address-struct-input-field.tsx
-import { useState, useCallback, useEffect } from 'react'
-import { ChevronsUpDown } from 'lucide-react'
+import { Combobox } from '@auxx/ui/components/combobox'
 import { Input, inputVariants } from '@auxx/ui/components/input'
 import { cn } from '@auxx/ui/lib/utils'
-import { Combobox } from '@auxx/ui/components/combobox'
+import { ChevronsUpDown } from 'lucide-react'
+// apps/web/src/components/fields/inputs/address-struct-input-field.tsx
+import { useCallback, useEffect, useState } from 'react'
 import { countries } from '~/constants/countries'
 import { usePropertyContext } from '../property-provider'
 
@@ -60,8 +60,8 @@ export function AddressStructFields({
     <div className={className}>
       {/* Street Address - full width */}
       <Input
-        size="sm"
-        placeholder="Street address"
+        size='sm'
+        placeholder='Street address'
         value={value.street1}
         onChange={(e) => handleFieldChange('street1', e.target.value)}
         disabled={disabled}
@@ -70,27 +70,27 @@ export function AddressStructFields({
 
       {/* Apartment/Suite - full width */}
       <Input
-        size="sm"
-        placeholder="Apartment, suite, etc. (optional)"
+        size='sm'
+        placeholder='Apartment, suite, etc. (optional)'
         value={value.street2}
         onChange={(e) => handleFieldChange('street2', e.target.value)}
         disabled={disabled}
       />
 
       {/* City and State - side by side */}
-      <div className="flex gap-2">
+      <div className='flex gap-2'>
         <Input
-          size="sm"
-          className="min-w-0 flex-1"
-          placeholder="City"
+          size='sm'
+          className='min-w-0 flex-1'
+          placeholder='City'
           value={value.city}
           onChange={(e) => handleFieldChange('city', e.target.value)}
           disabled={disabled}
         />
         <Input
-          size="sm"
-          className="w-24"
-          placeholder="State"
+          size='sm'
+          className='w-24'
+          placeholder='State'
           value={value.state}
           onChange={(e) => handleFieldChange('state', e.target.value)}
           disabled={disabled}
@@ -98,26 +98,26 @@ export function AddressStructFields({
       </div>
 
       {/* ZIP Code and Country - side by side */}
-      <div className="flex gap-2">
+      <div className='flex gap-2'>
         <Input
-          size="sm"
-          className="w-24"
-          placeholder="ZIP Code"
+          size='sm'
+          className='w-24'
+          placeholder='ZIP Code'
           value={value.zipCode}
           onChange={(e) => handleFieldChange('zipCode', e.target.value)}
           disabled={disabled}
         />
-        <div className="min-w-0 flex-1">
+        <div className='min-w-0 flex-1'>
           <Combobox
             options={countries}
-            placeholder="Country"
+            placeholder='Country'
             emptyText={<span>No countries found</span>}
             value={value.country}
             onChangeValue={(val) => handleFieldChange('country', val)}
             disabled={disabled}
             trigger={
               <button
-                type="button"
+                type='button'
                 disabled={disabled}
                 className={cn(
                   inputVariants({ size: 'sm' }),
@@ -127,7 +127,7 @@ export function AddressStructFields({
                 <span className={cn(!value.country && 'text-primary-500')}>
                   {countries.find((c) => c.value === value.country)?.label || 'Country'}
                 </span>
-                <ChevronsUpDown className="size-3 shrink-0 opacity-50" />
+                <ChevronsUpDown className='size-3 shrink-0 opacity-50' />
               </button>
             }
           />

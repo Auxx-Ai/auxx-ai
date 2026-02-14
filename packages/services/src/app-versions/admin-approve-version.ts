@@ -1,8 +1,8 @@
 // packages/services/src/app-versions/admin-approve-version.ts
 
-import { database, AppVersion, App, AdminActionLog } from '@auxx/database'
+import { AdminActionLog, App, AppVersion, database } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 
 /**

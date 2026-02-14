@@ -1,9 +1,14 @@
 // apps/web/src/components/resources/hooks/use-resource-fields.ts
 
-import { useMemo, useCallback } from 'react'
-import { useResourceStore } from '../store/resource-store'
 import type { ResourceField } from '@auxx/lib/resources/client'
-import { toResourceFieldId, parseResourceFieldId, type FieldId, type ResourceFieldId } from '@auxx/types/field'
+import {
+  type FieldId,
+  parseResourceFieldId,
+  type ResourceFieldId,
+  toResourceFieldId,
+} from '@auxx/types/field'
+import { useCallback, useMemo } from 'react'
+import { useResourceStore } from '../store/resource-store'
 
 /** Stable empty array to prevent unnecessary re-renders */
 const EMPTY_FIELDS: ResourceField[] = []
@@ -65,16 +70,25 @@ export function useResourceFields(
     // Use both resource.id and resource.entityDefinitionId for matching (they should be equal but handle edge cases)
     const resourceId = resource.id
     const resourceEntityDefId = resource.entityDefinitionId
-    for (const [key, field] of Object.entries(optimisticNewFields) as Array<[ResourceFieldId, ResourceField]>) {
+    for (const [key, field] of Object.entries(optimisticNewFields) as Array<
+      [ResourceFieldId, ResourceField]
+    >) {
       const { entityDefinitionId: fieldEntityDefId } = parseResourceFieldId(key)
-      const matchesResource = fieldEntityDefId === resourceId || fieldEntityDefId === resourceEntityDefId
+      const matchesResource =
+        fieldEntityDefId === resourceId || fieldEntityDefId === resourceEntityDefId
       if (matchesResource && !optimisticDeletedFields.has(key)) {
         effectiveFields.push(field)
       }
     }
 
     return effectiveFields
-  }, [resource, fieldMap, optimisticDeletedFields, optimisticNewFields, entityDefinitionIdOrApiSlug])
+  }, [
+    resource,
+    fieldMap,
+    optimisticDeletedFields,
+    optimisticNewFields,
+    entityDefinitionIdOrApiSlug,
+  ])
 
   const filterableFields = useMemo(() => fields.filter((f) => f.capabilities?.filterable), [fields])
   const sortableFields = useMemo(() => fields.filter((f) => f.capabilities?.sortable), [fields])

@@ -1,8 +1,7 @@
 // apps/web/src/components/groups/ui/group-picker.tsx
 'use client'
 
-import { useState } from 'react'
-import { Check, ChevronsUpDown, PlusCircle } from 'lucide-react'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   Command,
@@ -14,9 +13,10 @@ import {
   CommandSeparator,
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { Badge } from '@auxx/ui/components/badge'
-import { cn } from '@auxx/ui/lib/utils'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { cn } from '@auxx/ui/lib/utils'
+import { Check, ChevronsUpDown, PlusCircle } from 'lucide-react'
+import { useState } from 'react'
 import { useGroups } from '../hooks'
 import { getGroupMetadata } from '../utils'
 
@@ -91,39 +91,46 @@ export function GroupPicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant="outline"
-          role="combobox"
+          variant='outline'
+          role='combobox'
           aria-expanded={open}
           className={cn('w-full justify-between', className)}
           disabled={disabled}>
           {selectedGroups.length > 0 ? (
-            <div className="flex flex-wrap gap-1 overflow-hidden">
+            <div className='flex flex-wrap gap-1 overflow-hidden'>
               {selectedGroupsDetails.map((group) => (
-                <Badge key={group.id} style={{ backgroundColor: group.color }} className="mr-1 flex items-center">
-                  <span className="mr-1">{group.emoji}</span>
+                <Badge
+                  key={group.id}
+                  style={{ backgroundColor: group.color }}
+                  className='mr-1 flex items-center'>
+                  <span className='mr-1'>{group.emoji}</span>
                   {group.name}
                 </Badge>
               ))}
             </div>
           ) : (
-            <span className="text-muted-foreground">{placeholder}</span>
+            <span className='text-muted-foreground'>{placeholder}</span>
           )}
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          <ChevronsUpDown className='ml-2 h-4 w-4 shrink-0 opacity-50' />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full min-w-[300px] p-0">
+      <PopoverContent className='w-full min-w-[300px] p-0'>
         <Command>
-          <CommandInput placeholder="Search groups..." value={searchQuery} onValueChange={setSearchQuery} />
+          <CommandInput
+            placeholder='Search groups...'
+            value={searchQuery}
+            onValueChange={setSearchQuery}
+          />
           <CommandList>
             <CommandEmpty>{searchQuery ? 'No groups found.' : 'No groups available.'}</CommandEmpty>
             {isLoading ? (
-              <div className="p-2">
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="mt-2 h-8 w-full" />
-                <Skeleton className="mt-2 h-8 w-full" />
+              <div className='p-2'>
+                <Skeleton className='h-8 w-full' />
+                <Skeleton className='mt-2 h-8 w-full' />
+                <Skeleton className='mt-2 h-8 w-full' />
               </div>
             ) : (
-              <CommandGroup heading="Groups">
+              <CommandGroup heading='Groups'>
                 {groupOptions.map((group) => {
                   const isSelected = selectedGroups.includes(group.id)
 
@@ -132,10 +139,12 @@ export function GroupPicker({
                       key={group.id}
                       value={group.name}
                       onSelect={() => toggleGroup(group.id)}
-                      className="flex items-center">
-                      <span className="mr-2">{group.emoji}</span>
+                      className='flex items-center'>
+                      <span className='mr-2'>{group.emoji}</span>
                       <span>{group.name}</span>
-                      <Check className={cn('ml-auto h-4 w-4', isSelected ? 'opacity-100' : 'opacity-0')} />
+                      <Check
+                        className={cn('ml-auto h-4 w-4', isSelected ? 'opacity-100' : 'opacity-0')}
+                      />
                     </CommandItem>
                   )
                 })}
@@ -150,7 +159,7 @@ export function GroupPicker({
                     onSelect={() => {
                       window.location.href = createNewHref
                     }}>
-                    <PlusCircle className="mr-2 h-4 w-4" />
+                    <PlusCircle className='mr-2 h-4 w-4' />
                     Create Group
                   </CommandItem>
                 </CommandGroup>
@@ -178,7 +187,13 @@ type FormGroupPickerProps = Omit<GroupPickerProps, 'selectedGroups' | 'onChange'
 /**
  * Form-connected version for use with react-hook-form
  */
-export function FormGroupPicker({ value = [], onChange, onBlur, name, ...props }: FormGroupPickerProps) {
+export function FormGroupPicker({
+  value = [],
+  onChange,
+  onBlur,
+  name,
+  ...props
+}: FormGroupPickerProps) {
   const handleChange = (newValue: string[]) => {
     onChange?.(newValue)
   }

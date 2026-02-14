@@ -1,42 +1,42 @@
 // src/components/mail/thread-header.tsx
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import type { ActorId, ActorId as ActorIdString } from '@auxx/types/actor'
+import { toRecordId } from '@auxx/types/resource'
+import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { EditableText } from '../editor/editable-text'
-import { Tooltip } from '../global/tooltip'
-import {
-  MailWarning,
-  Tags,
-  Trash,
-  MoreHorizontal,
-  Zap,
-  Archive,
-  PackageOpen,
-  UserPlus,
-} from 'lucide-react'
-import { InboxPicker } from '../pickers/inbox-picker'
-import { TagPicker } from '../pickers/tag-picker'
-import { ActorPicker } from '../pickers/actor-picker'
-import { useThreadContext } from './thread-provider'
-import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
-import { useThread, useInbox } from '~/components/threads/hooks'
-import { useActor, useResource } from '~/components/resources/hooks'
-import { useConfirm } from '~/hooks/use-confirm'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { ThreadTag } from './thread-tag'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import {
+  Archive,
+  MailWarning,
+  MoreHorizontal,
+  PackageOpen,
+  Tags,
+  Trash,
+  UserPlus,
+  Zap,
+} from 'lucide-react'
+import { useCallback, useRef, useState } from 'react'
+import { useActor, useResource } from '~/components/resources/hooks'
+import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
+import { useInbox, useThread } from '~/components/threads/hooks'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
-import { toRecordId } from '@auxx/types/resource'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
-import type { ActorId, ActorId as ActorIdString } from '@auxx/types/actor'
+import { useConfirm } from '~/hooks/use-confirm'
+import { EditableText } from '../editor/editable-text'
+import { Tooltip } from '../global/tooltip'
+import { ActorPicker } from '../pickers/actor-picker'
+import { InboxPicker } from '../pickers/inbox-picker'
+import { TagPicker } from '../pickers/tag-picker'
 import { RecordBadge } from '../resources/ui'
+import { useThreadContext } from './thread-provider'
+import { ThreadTag } from './thread-tag'
 
 /**
  * Header component for thread details with thread actions.
@@ -202,14 +202,14 @@ export function ThreadHeader() {
   return (
     <>
       <ConfirmDialog />
-      <div className="flex items-center px-4 py-2 sticky inset-x-0 top-0 z-1 bg-secondary dark:bg-primary-100 pb-3 mask-b-from-80% mask-b-to-100% w-full">
-        <div className="flex  w-full justify-between shrink-0 overflow-x-auto no-scrollbar ">
-          <div className="flex shrink-0 items-start pt-0.5 ps-0.5">
+      <div className='flex items-center px-4 py-2 sticky inset-x-0 top-0 z-1 bg-secondary dark:bg-primary-100 pb-3 mask-b-from-80% mask-b-to-100% w-full'>
+        <div className='flex  w-full justify-between shrink-0 overflow-x-auto no-scrollbar '>
+          <div className='flex shrink-0 items-start pt-0.5 ps-0.5'>
             <InboxPicker
               onChange={handleInboxChange}
               selected={thread?.inboxId ? [thread.inboxId] : undefined}
               allowMultiple={false}>
-              <RecordBadge recordId={thread?.inboxId} size="sm" className="me-2" />
+              <RecordBadge recordId={thread?.inboxId} size='sm' className='me-2' />
               {/* <Badge
                 variant="blue"
                 className="cursor-pointer data-[state=open]:brightness-90 shrink-0 text-nowrap rounded-full">
@@ -217,52 +217,52 @@ export function ThreadHeader() {
               </Badge> */}
             </InboxPicker>
           </div>
-          <div className=" flex items-center ">
+          <div className=' flex items-center '>
             <Tooltip content={isDone ? 'Unarchive' : 'Archive'}>
               <Button
-                variant="ghost"
-                size="icon"
+                variant='ghost'
+                size='icon'
                 disabled={!thread}
                 onClick={handleMarkDone}
-                className="rounded-full hover:bg-foreground/10">
+                className='rounded-full hover:bg-foreground/10'>
                 {isDone ? <PackageOpen /> : <Archive />}
-                <span className="sr-only">Mark done/undone</span>
+                <span className='sr-only'>Mark done/undone</span>
               </Button>
             </Tooltip>
 
-            <Tooltip content="Trash Thread">
+            <Tooltip content='Trash Thread'>
               <Button
-                variant="ghost"
-                size="icon"
+                variant='ghost'
+                size='icon'
                 disabled={!thread}
                 onClick={handleMarkTrash}
-                className="rounded-full hover:bg-foreground/10">
+                className='rounded-full hover:bg-foreground/10'>
                 <Trash />
-                <span className="sr-only">Delete</span>
+                <span className='sr-only'>Delete</span>
               </Button>
             </Tooltip>
-            <Tooltip content="Mark as spam">
+            <Tooltip content='Mark as spam'>
               <Button
-                variant="ghost"
-                size="icon"
+                variant='ghost'
+                size='icon'
                 disabled={!thread}
                 onClick={handleMarkSpam}
-                className="rounded-full hover:bg-foreground/10">
+                className='rounded-full hover:bg-foreground/10'>
                 <MailWarning />
-                <span className="sr-only">Mark as spam</span>
+                <span className='sr-only'>Mark as spam</span>
               </Button>
             </Tooltip>
 
-            <Tooltip content="Apply Tags">
+            <Tooltip content='Apply Tags'>
               <Button
                 ref={tagButtonRef}
-                variant="ghost"
-                size="icon"
+                variant='ghost'
+                size='icon'
                 disabled={!thread}
                 onClick={() => setOpen(true)}
-                className="rounded-full hover:bg-foreground/10">
+                className='rounded-full hover:bg-foreground/10'>
                 <Tags />
-                <span className="sr-only">Add Tags</span>
+                <span className='sr-only'>Add Tags</span>
               </Button>
             </Tooltip>
             {open && (
@@ -277,14 +277,14 @@ export function ThreadHeader() {
               />
             )}
             <ManualTriggerButton recordId={toRecordId('thread', thread.id)}>
-              <Tooltip content="Run workflow">
+              <Tooltip content='Run workflow'>
                 <Button
-                  variant="ghost"
-                  size="icon"
+                  variant='ghost'
+                  size='icon'
                   disabled={!thread}
-                  className="rounded-full hover:bg-foreground/10">
+                  className='rounded-full hover:bg-foreground/10'>
                   <Zap />
-                  <span className="sr-only">Run workflow</span>
+                  <span className='sr-only'>Run workflow</span>
                 </Button>
               </Tooltip>
             </ManualTriggerButton>
@@ -294,22 +294,22 @@ export function ThreadHeader() {
               value={assigneeValue}
               onChange={handleAssigneeChange}
               multi={false}
-              target="user"
-              emptyLabel="Assign">
+              target='user'
+              emptyLabel='Assign'>
               <div>
                 <Tooltip content={assignee ? assignee.name || 'Assigned' : 'Assign'}>
                   <Button
-                    variant="ghost"
-                    size="icon"
+                    variant='ghost'
+                    size='icon'
                     disabled={!thread}
-                    className="rounded-full hover:bg-foreground/10">
+                    className='rounded-full hover:bg-foreground/10'>
                     {assignee ? (
-                      <Avatar className="size-6">
+                      <Avatar className='size-6'>
                         <AvatarImage
                           src={assignee.image || undefined}
                           alt={assignee.name || 'Assignee'}
                         />
-                        <AvatarFallback className="text-xs">
+                        <AvatarFallback className='text-xs'>
                           {assignee.name
                             ?.split(' ')
                             .map((n) => n[0])
@@ -321,7 +321,7 @@ export function ThreadHeader() {
                     ) : (
                       <UserPlus />
                     )}
-                    <span className="sr-only">Assign</span>
+                    <span className='sr-only'>Assign</span>
                   </Button>
                 </Tooltip>
               </div>
@@ -331,16 +331,16 @@ export function ThreadHeader() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant="ghost"
-                  size="icon"
+                  variant='ghost'
+                  size='icon'
                   disabled={!thread}
-                  className="ml-2 rounded-full hover:bg-foreground/10">
+                  className='ml-2 rounded-full hover:bg-foreground/10'>
                   <MoreHorizontal />
-                  <span className="sr-only">More actions</span>
+                  <span className='sr-only'>More actions</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handlePermanentlyDelete} variant="destructive">
+              <DropdownMenuContent align='end'>
+                <DropdownMenuItem onClick={handlePermanentlyDelete} variant='destructive'>
                   <Trash />
                   Permanently delete
                 </DropdownMenuItem>
@@ -349,11 +349,11 @@ export function ThreadHeader() {
           </div>
         </div>
       </div>
-      <div className="position-relative flex flex-wrap items-center px-4  ">
+      <div className='position-relative flex flex-wrap items-center px-4  '>
         {/* Tag list */}
 
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-          <div className="p-1">
+        <div className='flex items-center gap-2 overflow-x-auto no-scrollbar'>
+          <div className='p-1'>
             <EditableText
               key={`editable-${thread.id}`}
               initialText={thread.subject}
@@ -361,7 +361,7 @@ export function ThreadHeader() {
             />
           </div>
           {thread.tagIds && thread.tagIds.length > 0 && (
-            <div className="flex flex-row no-wrap gap-2 shrink-0">
+            <div className='flex flex-row no-wrap gap-2 shrink-0'>
               {thread.tagIds.map((tagId) => (
                 <ThreadTag
                   tagId={tagId}

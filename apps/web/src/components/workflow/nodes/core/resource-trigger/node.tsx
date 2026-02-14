@@ -2,12 +2,12 @@
 
 'use client'
 
-import React, { memo, type FC } from 'react'
-import { type NodeProps } from '@xyflow/react'
-import { BaseNode } from '../../shared/base/base-node'
-import { NodeSourceHandle } from '../../../ui/node-handle'
-import { type ResourceTriggerData } from './types'
 import { cn } from '@auxx/ui/lib/utils'
+import type { NodeProps } from '@xyflow/react'
+import React, { type FC, memo } from 'react'
+import { NodeSourceHandle } from '../../../ui/node-handle'
+import { BaseNode } from '../../shared/base/base-node'
+import type { ResourceTriggerData } from './types'
 
 /** Props for ResourceTriggerNode component */
 interface ResourceTriggerNodeProps extends NodeProps {
@@ -24,8 +24,8 @@ interface ResourceTriggerNodeProps extends NodeProps {
 const ResourceTriggerNodeComponent: FC<ResourceTriggerNodeProps> = ({ id, data, selected }) => {
   // console.log('Rendering ResourceTriggerNode:', id, data, selected)
   return (
-    <BaseNode id={id} data={data} selected={selected} className="rounded-tl-none!">
-      <NodeSourceHandle id={id} data={{ ...data, selected }} handleId="source" />
+    <BaseNode id={id} data={data} selected={selected} className='rounded-tl-none!'>
+      <NodeSourceHandle id={id} data={{ ...data, selected }} handleId='source' />
       <div
         className={cn(
           'z-3 absolute top-[-24px] left-[-1px] rounded-t-md border-t border-x text-xs text-muted-foreground bg-secondary px-2 py-1',

@@ -1,19 +1,19 @@
 // packages/lib/src/workflow-engine/nodes/dataset/document-extractor.ts
 
-import { createScopedLogger } from '@auxx/logger'
-import { BaseNodeProcessor } from '../base-node'
-import type {
-  WorkflowNode,
-  NodeExecutionResult,
-  ValidationResult,
-  PreprocessedNodeData,
-} from '../../core/types'
-import { NodeRunningStatus, WorkflowActionType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
-import { z } from 'zod'
 import { ExtractorFactory } from '@auxx/lib/datasets'
 import { createFileService } from '@auxx/lib/files'
+import { createScopedLogger } from '@auxx/logger'
+import { z } from 'zod'
+import type { ExecutionContextManager } from '../../core/execution-context'
+import type {
+  NodeExecutionResult,
+  PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
+} from '../../core/types'
+import { NodeRunningStatus, WorkflowActionType } from '../../core/types'
 import type { WorkflowFileData } from '../../types/file-variable'
+import { BaseNodeProcessor } from '../base-node'
 
 const logger = createScopedLogger('document-extractor-processor')
 
@@ -107,11 +107,9 @@ export class DocumentExtractorProcessor extends BaseNodeProcessor {
 
     if (config.sourceType === DocumentSourceType.FILE) {
       if (!config.fileId) {
-        throw this.createProcessingError(
-          'File ID is required when source type is "file"',
-          node,
-          { sourceType: config.sourceType }
-        )
+        throw this.createProcessingError('File ID is required when source type is "file"', node, {
+          sourceType: config.sourceType,
+        })
       }
 
       // Check if fileId is in constant mode (direct MediaAsset ID) or variable mode

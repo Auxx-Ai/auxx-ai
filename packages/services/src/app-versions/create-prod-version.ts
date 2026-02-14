@@ -1,7 +1,7 @@
 // apps/api/src/services/app-versions/create-prod-version.ts
 
 import { database, schema } from '@auxx/database'
-import { ok, err } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 // import type { AppVersionError } from './errors'
 import { fromDatabase } from '../shared/utils'
 import { getLatestProdVersion } from './get-latest-prod-version'

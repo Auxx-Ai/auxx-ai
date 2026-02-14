@@ -1,18 +1,18 @@
 // apps/web/src/components/workflow/nodes/core/wait/schema.ts
 
-import { z } from 'zod'
-import { type WaitNodeData, WaitType, DurationUnit } from './types'
-import { WaitNodePanel } from './panel'
-import { NodeType } from '~/components/workflow/types/node-types'
 import { WAIT_CONSTANTS } from '@auxx/lib/workflow-engine/constants'
+import { z } from 'zod'
 import {
-  type NodeDefinition,
   NodeCategory,
+  type NodeDefinition,
   type ValidationResult,
 } from '~/components/workflow/types'
-import { BaseType } from '../if-else'
-import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
 import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
+import { NodeType } from '~/components/workflow/types/node-types'
+import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
+import { BaseType } from '../if-else'
+import { WaitNodePanel } from './panel'
+import { DurationUnit, type WaitNodeData, WaitType } from './types'
 
 /**
  * Zod schema for wait node data

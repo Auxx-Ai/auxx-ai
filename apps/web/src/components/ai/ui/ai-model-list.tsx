@@ -1,21 +1,20 @@
 'use client'
-import React from 'react'
 import { Button } from '@auxx/ui/components/button'
-import { api, type RouterOutputs } from '~/trpc/react'
-import { CredentialConfigurationDialog } from './credential-configuration-dialog'
-import { SystemModelSettingsDialog } from './system-model-settings-dialog'
-import { AiUsageDialog } from './ai-usage-dialog'
-import { RefreshCw, Plus, BotIcon, BarChart3 } from 'lucide-react'
-import { useUser } from '~/hooks/use-user'
-import { EmptyState } from '~/components/global/empty-state'
-import SettingsPage from '~/components/global/settings-page'
-import { useTheme } from 'next-themes'
-
-// New components
-import { ProviderRow } from '~/components/ai/ui/provider-row'
-import { ModelRow } from '~/components/ai/ui/model-row'
 // import { processUnifiedModelData } from './utils'
 import { cn } from '@auxx/ui/lib/utils'
+import { BarChart3, BotIcon, Plus, RefreshCw } from 'lucide-react'
+import { useTheme } from 'next-themes'
+import React from 'react'
+import { ModelRow } from '~/components/ai/ui/model-row'
+// New components
+import { ProviderRow } from '~/components/ai/ui/provider-row'
+import { EmptyState } from '~/components/global/empty-state'
+import SettingsPage from '~/components/global/settings-page'
+import { useUser } from '~/hooks/use-user'
+import { api, type RouterOutputs } from '~/trpc/react'
+import { AiUsageDialog } from './ai-usage-dialog'
+import { CredentialConfigurationDialog } from './credential-configuration-dialog'
+import { SystemModelSettingsDialog } from './system-model-settings-dialog'
 
 interface AiModelsListProps {
   initialUnifiedData?: RouterOutputs['aiIntegration']['getUnifiedModelData']
@@ -105,48 +104,48 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
 
   return (
     <SettingsPage
-      title="AI Models"
-      description="Connect your AI provider to Auxx.Ai"
+      title='AI Models'
+      description='Connect your AI provider to Auxx.Ai'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'AI Models' }]}
-      button={<div className="flex gap-2"></div>}>
+      button={<div className='flex gap-2'></div>}>
       {isLoading ? (
         <EmptyState
           icon={RefreshCw}
-          iconClassName="animate-spin"
-          title="Loading models..."
+          iconClassName='animate-spin'
+          title='Loading models...'
           description={<>Hang on tight while we load your models...</>}
-          button={<div className="h-12"></div>}
+          button={<div className='h-12'></div>}
         />
       ) : !providersData || providersData.length === 0 ? (
         <EmptyState
           icon={BotIcon}
-          title="Add your first AI model"
+          title='Add your first AI model'
           description={<>Add OpenAI, Anthropic, and other AI providers</>}
           button={
-            <Button size="sm" variant="outline" onClick={handleCreateGeneric}>
+            <Button size='sm' variant='outline' onClick={handleCreateGeneric}>
               <Plus />
               Connect Provider
             </Button>
           }
         />
       ) : (
-        <div className="flex-1 h-full shrink-0 flex flex-col @container">
-          <div className="h-12 shrink-0 flex items-center justify-end border-b px-2 gap-2 bg-primary-200/50 sticky top-[67px] z-10 backdrop-blur">
+        <div className='flex-1 h-full shrink-0 flex flex-col @container'>
+          <div className='h-12 shrink-0 flex items-center justify-end border-b px-2 gap-2 bg-primary-200/50 sticky top-[67px] z-10 backdrop-blur'>
             <AiUsageDialog
               trigger={
-                <Button variant="outline" size="sm">
+                <Button variant='outline' size='sm'>
                   <BarChart3 />
-                  <span className="hidden @md:inline">View Usage</span>
+                  <span className='hidden @md:inline'>View Usage</span>
                 </Button>
               }
             />
             <SystemModelSettingsDialog />
-            <Button variant="outline" size="sm" onClick={handleCreateGeneric}>
+            <Button variant='outline' size='sm' onClick={handleCreateGeneric}>
               <Plus />
-              <span className="hidden @lg:inline">Add Provider</span>
+              <span className='hidden @lg:inline'>Add Provider</span>
             </Button>
           </div>
-          <div className="space-y-0">
+          <div className='space-y-0'>
             {providersData.map((provider) => {
               const isExpanded = expandedProviders.has(provider.provider)
 
@@ -166,8 +165,8 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
 
                   {/* Expanded Models */}
                   {isExpanded && provider.models && provider.models.length > 0 && (
-                    <div className="p-2 inset-shadow-sm">
-                      <div className="bg-background rounded-md animate-in slide-down-from-top-1 duration-200 ease-out">
+                    <div className='p-2 inset-shadow-sm'>
+                      <div className='bg-background rounded-md animate-in slide-down-from-top-1 duration-200 ease-out'>
                         {provider.models.map((model) => {
                           const modelId = `${provider.provider}:${model.modelId}`
                           return (
@@ -186,13 +185,13 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
 
                   {/* Empty state for expanded provider with no models */}
                   {isExpanded && (!provider.models || provider.models.length === 0) && (
-                    <div className="py-8 px-12 text-center text-muted-foreground bg-muted/10 animate-in fade-in duration-200">
-                      <BotIcon className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
-                      <p className="text-sm">No models configured for this provider</p>
+                    <div className='py-8 px-12 text-center text-muted-foreground bg-muted/10 animate-in fade-in duration-200'>
+                      <BotIcon className='h-8 w-8 mx-auto mb-2 text-muted-foreground/50' />
+                      <p className='text-sm'>No models configured for this provider</p>
                       <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-2"
+                        variant='outline'
+                        size='sm'
+                        className='mt-2'
                         onClick={() => handleCreateCustomModel(provider.provider)}>
                         <Plus />
                         Add Model

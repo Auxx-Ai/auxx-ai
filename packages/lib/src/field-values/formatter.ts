@@ -1,22 +1,28 @@
 // packages/lib/src/field-values/formatter.ts
 
-import type { TypedFieldValue, TypedFieldValueInput, ActorFieldOptions } from '@auxx/types/field-value'
+import type {
+  ActorFieldOptions,
+  TypedFieldValue,
+  TypedFieldValueInput,
+} from '@auxx/types/field-value'
 import {
-  isMultiValueFieldType as isMultiValueType,
   isArrayReturnFieldType as isArrayReturnType,
+  isMultiValueFieldType as isMultiValueType,
 } from '@auxx/types/field-value'
 
 /** Options for field type checking with actor support */
 export interface FieldTypeOptions {
   actor?: ActorFieldOptions
 }
-import {
-  converters,
-  type FieldValueConverter,
-  type ConverterOptions,
-  type FieldOptions,
-} from './converters'
+
 import type { FieldType } from '@auxx/database/types'
+import {
+  type ConverterOptions,
+  converters,
+  type FieldOptions,
+  type FieldValueConverter,
+} from './converters'
+
 /**
  * Get converter for a field type.
  * Throws if field type is unknown.
@@ -307,11 +313,11 @@ function deepEqual(a: unknown, b: unknown): boolean {
 
 // Re-export types for convenience
 export type { ConverterOptions, FieldOptions, FieldValueConverter }
-export {
-  type NumberFieldOptions,
-  type DateFieldOptions,
-  type BooleanFieldOptions,
-  type TextFieldOptions,
-  type SelectFieldOptions,
-  type PhoneFieldOptions,
+export type {
+  BooleanFieldOptions,
+  DateFieldOptions,
+  NumberFieldOptions,
+  PhoneFieldOptions,
+  SelectFieldOptions,
+  TextFieldOptions,
 } from './converters'

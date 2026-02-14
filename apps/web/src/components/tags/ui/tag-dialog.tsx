@@ -1,31 +1,29 @@
 // apps/web/src/components/tags/ui/tag-dialog.tsx
 'use client'
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useForm } from 'react-hook-form'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { z } from 'zod'
+import type { FieldType } from '@auxx/database/types'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import { Button, buttonVariants } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { FormEmojiPicker } from '@auxx/ui/components/emoji-picker'
 import {
   Form,
+  FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
-  FormControl,
   FormMessage,
-  FormDescription,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
-import { Button } from '@auxx/ui/components/button'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Select,
   SelectContent,
@@ -34,18 +32,19 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { Switch } from '@auxx/ui/components/switch'
-import { cn } from '@auxx/ui/lib/utils'
-import { buttonVariants } from '@auxx/ui/components/button'
-import { Loader2, Tag } from 'lucide-react'
+import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
-import { FormEmojiPicker } from '@auxx/ui/components/emoji-picker'
-import { FormColorTagPicker } from './color-tag-picker'
-import { useTagHierarchy } from '../hooks/use-tag-hierarchy'
+import { cn } from '@auxx/ui/lib/utils'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { Loader2, Tag } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
-import { toRecordId, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { api } from '~/trpc/react'
+import { useTagHierarchy } from '../hooks/use-tag-hierarchy'
 import type { TagNode } from '../types'
-import type { FieldType } from '@auxx/database/types'
+import { FormColorTagPicker } from './color-tag-picker'
 
 /** Schema for tag form validation */
 const tagFormSchema = z.object({
@@ -174,17 +173,33 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
         // Build field values array with resolved field IDs
         const fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }> = [
           { fieldId: getFieldId('title'), value: values.title, fieldType: 'TEXT' },
-          { fieldId: getFieldId('tag_description'), value: values.tag_description || null, fieldType: 'RICH_TEXT' },
+          {
+            fieldId: getFieldId('tag_description'),
+            value: values.tag_description || null,
+            fieldType: 'RICH_TEXT',
+          },
           { fieldId: getFieldId('tag_emoji'), value: values.tag_emoji || null, fieldType: 'TEXT' },
-          { fieldId: getFieldId('tag_color'), value: values.tag_color || '#94a3b8', fieldType: 'TEXT' },
+          {
+            fieldId: getFieldId('tag_color'),
+            value: values.tag_color || '#94a3b8',
+            fieldType: 'TEXT',
+          },
         ]
 
         // Handle parent relationship (key is 'tag_parent')
         if (values.parentId) {
           const parentRecordId = toRecordId(entityDefinitionId, values.parentId)
-          fieldValues.push({ fieldId: getFieldId('tag_parent'), value: [parentRecordId], fieldType: 'RELATIONSHIP' })
+          fieldValues.push({
+            fieldId: getFieldId('tag_parent'),
+            value: [parentRecordId],
+            fieldType: 'RELATIONSHIP',
+          })
         } else {
-          fieldValues.push({ fieldId: getFieldId('tag_parent'), value: [], fieldType: 'RELATIONSHIP' })
+          fieldValues.push({
+            fieldId: getFieldId('tag_parent'),
+            value: [],
+            fieldType: 'RELATIONSHIP',
+          })
         }
 
         const success = await saveMultipleAsync(tagRecordId, fieldValues)
@@ -263,7 +278,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="sm" position="tc">
+      <DialogContent size='sm' position='tc'>
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit Tag' : 'Create New Tag'}</DialogTitle>
           <DialogDescription>
@@ -275,13 +290,13 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)}>
-            <div className="space-y-4">
+            <div className='space-y-4'>
               {/* Title with emoji picker */}
-              <div className="grid w-full grid-cols-[38px_auto] items-center justify-items-start gap-x-0">
+              <div className='grid w-full grid-cols-[38px_auto] items-center justify-items-start gap-x-0'>
                 <div>
                   <FormField
                     control={form.control}
-                    name="tag_emoji"
+                    name='tag_emoji'
                     render={({ field }) => (
                       <FormItem>
                         <FormControl>
@@ -289,7 +304,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
                             value={field.value || ''}
                             onChange={field.onChange}
                             modal={false}>
-                            <Button variant="outline" size="icon" className="mt-px rounded-full">
+                            <Button variant='outline' size='icon' className='mt-px rounded-full'>
                               {field.value || <Tag />}
                             </Button>
                           </FormEmojiPicker>
@@ -298,14 +313,14 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
                     )}
                   />
                 </div>
-                <div className="w-full">
+                <div className='w-full'>
                   <FormField
                     control={form.control}
-                    name="title"
+                    name='title'
                     render={({ field }) => (
                       <FormItem>
                         <FormControl>
-                          <Input placeholder="Tag name" {...field} />
+                          <Input placeholder='Tag name' {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -317,13 +332,13 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
               {/* Description */}
               <FormField
                 control={form.control}
-                name="tag_description"
+                name='tag_description'
                 render={({ field }) => (
                   <FormItem>
                     <FormControl>
                       <Textarea
-                        placeholder="Optional description"
-                        className="h-20 resize-none"
+                        placeholder='Optional description'
+                        className='h-20 resize-none'
                         {...field}
                         value={field.value || ''}
                       />
@@ -337,12 +352,15 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
               {/* Color picker */}
               <FormField
                 control={form.control}
-                name="tag_color"
+                name='tag_color'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Color</FormLabel>
                     <FormControl>
-                      <FormColorTagPicker value={field.value || '#94a3b8'} onChange={field.onChange} />
+                      <FormColorTagPicker
+                        value={field.value || '#94a3b8'}
+                        onChange={field.onChange}
+                      />
                     </FormControl>
                     <FormDescription>Choose a color for this tag</FormDescription>
                     <FormMessage />
@@ -353,21 +371,21 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
               {/* Parent tag selection */}
               <FormField
                 control={form.control}
-                name="parentId"
+                name='parentId'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Parent Tag</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value || ''}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="No parent (root level)" />
+                          <SelectValue placeholder='No parent (root level)' />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="root">No parent (root level)</SelectItem>
+                        <SelectItem value='root'>No parent (root level)</SelectItem>
                         {!hierarchy ? (
-                          <div className="flex items-center justify-center p-2">
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          <div className='flex items-center justify-center p-2'>
+                            <Loader2 className='mr-2 h-4 w-4 animate-spin' />
                             Loading tags...
                           </div>
                         ) : (
@@ -375,14 +393,16 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
                         )}
                       </SelectContent>
                     </Select>
-                    <FormDescription>Optional parent tag for hierarchical organization</FormDescription>
+                    <FormDescription>
+                      Optional parent tag for hierarchical organization
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
 
-            <DialogFooter className="sm:justify-between">
+            <DialogFooter className='sm:justify-between'>
               {/* Left side: Create more toggle (only in create mode) */}
               <div>
                 {!isEditing && (
@@ -391,9 +411,9 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
                       buttonVariants({ variant: 'ghost', size: 'sm' }),
                       'gap-2 cursor-pointer'
                     )}>
-                    <span className="text-muted-foreground text-xs">Create more</span>
+                    <span className='text-muted-foreground text-xs'>Create more</span>
                     <Switch
-                      size="sm"
+                      size='sm'
                       checked={createMore}
                       onCheckedChange={setCreateMore}
                       disabled={isPending}
@@ -403,23 +423,24 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
               </div>
 
               {/* Right side: Action buttons */}
-              <div className="flex items-center gap-2">
+              <div className='flex items-center gap-2'>
                 <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
+                  type='button'
+                  size='sm'
+                  variant='ghost'
                   onClick={() => onOpenChange(false)}
                   disabled={isPending}>
-                  Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+                  Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
                 </Button>
                 <Button
-                  size="sm"
-                  variant="outline"
-                  type="submit"
+                  size='sm'
+                  variant='outline'
+                  type='submit'
                   loading={isPending}
                   loadingText={isEditing ? 'Saving...' : 'Creating...'}
                   data-dialog-submit>
-                  {isEditing ? 'Save Changes' : 'Create Tag'} <KbdSubmit variant="outline" size="sm" />
+                  {isEditing ? 'Save Changes' : 'Create Tag'}{' '}
+                  <KbdSubmit variant='outline' size='sm' />
                 </Button>
               </div>
             </DialogFooter>

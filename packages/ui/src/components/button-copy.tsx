@@ -1,8 +1,14 @@
 // components/email/CopyButton.tsx
-import { useState } from 'react'
+
 import { Button } from '@auxx/ui/components/button'
-import { Copy, Check } from 'lucide-react'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@auxx/ui/components/tooltip'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@auxx/ui/components/tooltip'
+import { Check, Copy } from 'lucide-react'
+import { useState } from 'react'
 
 interface CopyButtonProps {
   text: string
@@ -26,9 +32,9 @@ export function CopyButton({ text, className }: CopyButtonProps) {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" className="size-5" onClick={handleCopy}>
-            {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-            <span className="sr-only">Copy</span>
+          <Button variant='ghost' size='icon' className='size-5' onClick={handleCopy}>
+            {copied ? <Check className='size-3' /> : <Copy className='size-3' />}
+            <span className='sr-only'>Copy</span>
           </Button>
         </TooltipTrigger>
         <TooltipContent>

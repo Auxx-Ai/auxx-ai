@@ -1,13 +1,13 @@
 // apps/web/src/app/api/workflow/run/[runId]/events/route.ts
 
-import { NextRequest } from 'next/server'
-import { auth } from '~/auth/server'
-import { createScopedLogger } from '@auxx/logger'
-import { headers } from 'next/headers'
 import { database as db, schema } from '@auxx/database'
-import { and, eq, asc } from 'drizzle-orm'
-import { getRedisClient } from '@auxx/redis'
 import { safeJsonStringify } from '@auxx/lib/workflow-engine'
+import { createScopedLogger } from '@auxx/logger'
+import { getRedisClient } from '@auxx/redis'
+import { and, asc, eq } from 'drizzle-orm'
+import { headers } from 'next/headers'
+import type { NextRequest } from 'next/server'
+import { auth } from '~/auth/server'
 
 const logger = createScopedLogger('workflow-run-events-api')
 

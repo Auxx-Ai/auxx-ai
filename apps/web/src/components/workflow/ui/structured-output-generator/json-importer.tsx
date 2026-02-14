@@ -1,15 +1,16 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/json-importer.tsx
-import React, { type FC, useCallback, useEffect, useRef, useState } from 'react'
+
+import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { X } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
-import { checkJsonDepth } from './utils'
-import { JSON_SCHEMA_MAX_DEPTH } from './types'
+import React, { type FC, useCallback, useEffect, useRef, useState } from 'react'
 import CodeEditor from './code-editor'
 import ErrorMessage from './error-message'
-import { useVisualEditorStore } from './visual-editor/store'
+import { JSON_SCHEMA_MAX_DEPTH } from './types'
+import { checkJsonDepth } from './utils'
 import { useEventEmitter } from './visual-editor/context'
+import { useVisualEditorStore } from './visual-editor/store'
 
 type JsonImporterProps = {
   onSubmit: (schema: any) => void
@@ -75,29 +76,29 @@ const JsonImporter: FC<JsonImporterProps> = ({ onSubmit, updateBtnWidth }) => {
       <PopoverTrigger asChild>
         <Button
           ref={importBtnRef}
-          variant="outline"
-          size="sm"
+          variant='outline'
+          size='sm'
           className={cn(open && 'bg-components-button-ghost-bg-hover')}
           onClick={handleTrigger}>
           Import
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[400px] p-0" align="end" sideOffset={4} alignOffset={16}>
-        <div className="flex flex-col">
+      <PopoverContent className='w-[400px] p-0' align='end' sideOffset={4} alignOffset={16}>
+        <div className='flex flex-col'>
           {/* Title */}
-          <div className="relative px-3 pb-1 pt-3.5">
+          <div className='relative px-3 pb-1 pt-3.5'>
             <button
-              className="absolute bottom-0 right-2.5 flex h-8 w-8 items-center justify-center"
+              className='absolute bottom-0 right-2.5 flex h-8 w-8 items-center justify-center'
               onClick={onClose}>
-              <X className="h-4 w-4" />
+              <X className='h-4 w-4' />
             </button>
-            <div className="font-semibold flex pl-1 pr-8 text-primary-500">Import</div>
+            <div className='font-semibold flex pl-1 pr-8 text-primary-500'>Import</div>
           </div>
           {/* Content */}
-          <div className="px-4 py-2">
+          <div className='px-4 py-2'>
             <CodeEditor
-              className="rounded-lg"
-              editorWrapperClassName="h-[340px]"
+              className='rounded-lg'
+              editorWrapperClassName='h-[340px]'
               value={json}
               onUpdate={setJson}
               showFormatButton={false}
@@ -105,11 +106,11 @@ const JsonImporter: FC<JsonImporterProps> = ({ onSubmit, updateBtnWidth }) => {
             {parseError && <ErrorMessage message={parseError.message} />}
           </div>
           {/* Footer */}
-          <div className="flex items-center justify-end gap-x-2 p-4 pt-2">
-            <Button variant="ghost" size="sm" onClick={onClose}>
+          <div className='flex items-center justify-end gap-x-2 p-4 pt-2'>
+            <Button variant='ghost' size='sm' onClick={onClose}>
               Cancel
             </Button>
-            <Button variant="outline" size="sm" onClick={handleSubmit}>
+            <Button variant='outline' size='sm' onClick={handleSubmit}>
               Submit
             </Button>
           </div>

@@ -2,22 +2,22 @@
 
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
-import { RefreshCw, AlertCircle, AlertTriangle, Plus, CheckCircle2, Clock } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Combobox } from '@auxx/ui/components/combobox'
+import { InputSearch } from '@auxx/ui/components/input-search'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
-import { api } from '~/trpc/react'
-import { ValueStatusGroup } from '../value-review/value-status-group'
-import { ValueRow } from '../value-review/value-row'
-import { InputSearch } from '@auxx/ui/components/input-search'
-import { ResolutionProgress } from '../progress/resolution-progress'
-import { Combobox } from '@auxx/ui/components/combobox'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
+import { AlertCircle, AlertTriangle, CheckCircle2, Clock, Plus, RefreshCw } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { VirtualList, VirtualListContent, VirtualListItems } from '~/components/virtual-list'
+import { api } from '~/trpc/react'
 import { useImportSSE } from '../hooks/use-import-sse'
+import { ResolutionProgress } from '../progress/resolution-progress'
 import type { UniqueValueSummary } from '../types'
+import { ValueRow } from '../value-review/value-row'
+import { ValueStatusGroup } from '../value-review/value-status-group'
 
 /** Filter type for value display */
 type ValueFilter = 'all' | 'overridden'
@@ -246,13 +246,13 @@ export function StepReviewValues({ jobId, onComplete }: StepReviewValuesProps) {
   // Note: Only use isResolutionActive, not resolveValues.isPending
   // The mutation's isPending can be unreliable when managing state manually
   if (isLoading) {
-    return <ResolutionProgress jobId={jobId} variant="loading" enabled={false} />
+    return <ResolutionProgress jobId={jobId} variant='loading' enabled={false} />
   }
   if (isResolutionActive) {
     return (
       <ResolutionProgress
         jobId={jobId}
-        variant="resolving"
+        variant='resolving'
         enabled={isResolutionActive}
         onComplete={handleResolutionComplete}
       />
@@ -260,14 +260,14 @@ export function StepReviewValues({ jobId, onComplete }: StepReviewValuesProps) {
   }
 
   return (
-    <div className="flex flex-1 flex-row justify-start w-full min-h-0 overflow-hidden">
+    <div className='flex flex-1 flex-row justify-start w-full min-h-0 overflow-hidden'>
       {/* Sidebar - Column Selection */}
-      <div className="w-64 border-r bg-muted/30 flex flex-col">
-        <ScrollArea className="flex-1">
-          <h3 className="px-3 h-10 flex z-10 items-center pb-0 text-sm font-semibold text-muted-foreground sticky top-0 bg-muted/30 backdrop-blur border-b">
+      <div className='w-64 border-r bg-muted/30 flex flex-col'>
+        <ScrollArea className='flex-1'>
+          <h3 className='px-3 h-10 flex z-10 items-center pb-0 text-sm font-semibold text-muted-foreground sticky top-0 bg-muted/30 backdrop-blur border-b'>
             Columns
           </h3>
-          <div className="p-3">
+          <div className='p-3'>
             <RadioGroup value={selectedColumn ?? ''} onValueChange={setSelectedColumn}>
               {mappedColumns?.map((col) => (
                 <RadioGroupItemCard
@@ -278,13 +278,13 @@ export function StepReviewValues({ jobId, onComplete }: StepReviewValuesProps) {
                   icon={
                     col.errorCount > 0 ? (
                       <>
-                        <AlertCircle className="size-4 text-destructive" />
-                        <div className="absolute -right-2.5 -top-1.5 flex h-[16px] min-w-[16px] items-center justify-center rounded-full border border-black/10 bg-bad-500 dark:bg-bad-300 text-[9px] font-semibold text-white">
+                        <AlertCircle className='size-4 text-destructive' />
+                        <div className='absolute -right-2.5 -top-1.5 flex h-[16px] min-w-[16px] items-center justify-center rounded-full border border-black/10 bg-bad-500 dark:bg-bad-300 text-[9px] font-semibold text-white'>
                           {col.errorCount}
                         </div>
                       </>
                     ) : (
-                      <CheckCircle2 className="size-4 text-green-600" />
+                      <CheckCircle2 className='size-4 text-green-600' />
                     )
                   }
                 />
@@ -294,38 +294,38 @@ export function StepReviewValues({ jobId, onComplete }: StepReviewValuesProps) {
         </ScrollArea>
 
         {/* Continue button in sidebar footer */}
-        <div className="px-3 h-12 flex items-center border-t bg-muted/50">
-          <Button onClick={onComplete} disabled={!canContinue} className="w-full">
+        <div className='px-3 h-12 flex items-center border-t bg-muted/50'>
+          <Button onClick={onComplete} disabled={!canContinue} className='w-full'>
             {totalErrors > 0 ? `Fix ${totalErrors} Errors` : 'Continue'}
           </Button>
         </div>
       </div>
 
       {/* Main Content - Value List */}
-      <div className="flex-1 overflow-hidden flex flex-col bg-background">
+      <div className='flex-1 overflow-hidden flex flex-col bg-background'>
         {/* Header with search and actions */}
-        <div className="h-10 shrink-0 flex items-center justify-between border-b px-2 gap-2 bg-primary-200/50">
-          <div className="flex-1 max-w-sm">
+        <div className='h-10 shrink-0 flex items-center justify-between border-b px-2 gap-2 bg-primary-200/50'>
+          <div className='flex-1 max-w-sm'>
             <InputSearch
-              placeholder="Search values..."
+              placeholder='Search values...'
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onClear={() => setSearchQuery('')}
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className='flex items-center gap-2'>
             <Combobox
               options={VALUE_FILTER_OPTIONS}
               value={valueFilter}
               onChangeValue={(v) => setValueFilter((v as ValueFilter) || 'all')}
-              placeholder="Filter"
-              emptyText="No options"
-              align="end"
+              placeholder='Filter'
+              emptyText='No options'
+              align='end'
               loading={false}
-              variant="outline"
-              size="sm"
+              variant='outline'
+              size='sm'
             />
-            <Button variant="outline" size="sm" onClick={handleResolveAll}>
+            <Button variant='outline' size='sm' onClick={handleResolveAll}>
               <RefreshCw />
               Re-resolve
             </Button>
@@ -333,7 +333,7 @@ export function StepReviewValues({ jobId, onComplete }: StepReviewValuesProps) {
         </div>
 
         {/* Status groups */}
-        <div className="flex-1 overflow-y-auto">
+        <div className='flex-1 overflow-y-auto'>
           {nonEmptyGroups.map((group) => {
             const isExpanded = expandedStatuses.has(group.status)
 
@@ -350,7 +350,7 @@ export function StepReviewValues({ jobId, onComplete }: StepReviewValuesProps) {
                 />
                 {isExpanded && (
                   <div className={cn('p-4 bg-background')}>
-                    <div className="bg-primary-200/30 rounded-2xl shadow-sm border">
+                    <div className='bg-primary-200/30 rounded-2xl shadow-sm border'>
                       <VirtualList
                         items={group.values}
                         estimateSize={36}
@@ -380,8 +380,8 @@ export function StepReviewValues({ jobId, onComplete }: StepReviewValuesProps) {
 
         {/* Footer with count */}
         {filteredValues && filteredValues.length > 0 && (
-          <div className="border-t px-4 flex items-center h-12 bg-muted/30">
-            <p className="text-sm text-muted-foreground">
+          <div className='border-t px-4 flex items-center h-12 bg-muted/30'>
+            <p className='text-sm text-muted-foreground'>
               Showing {filteredValues.length} value{filteredValues.length !== 1 ? 's' : ''}
             </p>
           </div>

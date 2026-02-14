@@ -1,23 +1,23 @@
 // apps/web/src/components/pickers/timezone-picker.tsx
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { IANA_TIME_ZONES } from '@auxx/config/client'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   Command,
-  CommandInput,
-  CommandList,
   CommandEmpty,
   CommandGroup,
+  CommandInput,
   CommandItem,
+  CommandList,
 } from '@auxx/ui/components/command'
-import { Badge } from '@auxx/ui/components/badge'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { IANA_TIME_ZONES } from '@auxx/config/client'
-import { formatInTimeZone } from 'date-fns-tz'
 import { enUS } from 'date-fns/locale'
+import { formatInTimeZone } from 'date-fns-tz'
 import { Check } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
+import { useEffect, useMemo, useState } from 'react'
 
 /**
  * Format timezone label with GMT offset and location
@@ -143,25 +143,25 @@ export function TimeZonePicker({
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         {children || (
-          <Button variant="outline">
+          <Button variant='outline'>
             {selected ? (
-              <div className="flex items-center gap-2 truncate">
-                <span className="truncate">{selected}</span>
+              <div className='flex items-center gap-2 truncate'>
+                <span className='truncate'>{selected}</span>
               </div>
             ) : (
-              <span className="text-muted-foreground">Pick...</span>
+              <span className='text-muted-foreground'>Pick...</span>
             )}
           </Button>
         )}
       </PopoverTrigger>
       <PopoverContent className={cn('w-[400px] p-0', className)} align={align} {...props}>
         <Command shouldFilter={false}>
-          <CommandInput placeholder="Search timezone..." value={search} onValueChange={setSearch} />
+          <CommandInput placeholder='Search timezone...' value={search} onValueChange={setSearch} />
           <CommandList>
             {filteredGroups.length === 0 ? (
               <CommandEmpty>No timezone found.</CommandEmpty>
             ) : (
-              <div className="h-[300px]">
+              <div className='h-[300px]'>
                 {filteredGroups.map((group) => (
                   <CommandGroup heading={group.offset} key={group.offset}>
                     {group.timezones.map((tz) => (
@@ -169,16 +169,16 @@ export function TimeZonePicker({
                         key={tz.value}
                         value={tz.value}
                         onSelect={() => handleSelect(tz.value)}
-                        className="px-1">
-                        <div className="flex flex-row items-center gap-2 w-full">
+                        className='px-1'>
+                        <div className='flex flex-row items-center gap-2 w-full'>
                           <Badge
-                            size="sm"
-                            variant="blue"
-                            className="font-mono shrink-0 rounded-full">
+                            size='sm'
+                            variant='blue'
+                            className='font-mono shrink-0 rounded-full'>
                             {tz.offset}
                           </Badge>
-                          <span className="truncate">{tz.label}</span>
-                          {selected === tz.value && <Check className="size-4 shrink-0" />}
+                          <span className='truncate'>{tz.label}</span>
+                          {selected === tz.value && <Check className='size-4 shrink-0' />}
                         </div>
                       </CommandItem>
                     ))}

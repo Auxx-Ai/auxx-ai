@@ -1,23 +1,23 @@
 // packages/ui/src/components/emoji-picker.tsx
 'use client'
 
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Button } from '@auxx/ui/components/button'
+import { Input } from '@auxx/ui/components/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
+import { ChevronLeft, Search, X } from 'lucide-react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  EMOJI_GROUPS,
-  EMOJI_DATA,
-  SKIN_TONES,
-  SKIN_TONE_COLORS,
   applyEmojiSkinTone,
-  type EmojiItem,
+  EMOJI_DATA,
+  EMOJI_GROUPS,
   type EmojiGroup,
+  type EmojiItem,
+  SKIN_TONE_COLORS,
+  SKIN_TONES,
   type SkinTone,
 } from './emojis'
-import { Input } from '@auxx/ui/components/input'
-import { Search, X, ChevronLeft } from 'lucide-react'
 
 /** localStorage key for skin tone preference */
 const SKIN_TONE_STORAGE_KEY = 'emoji-picker-skin-tone'
@@ -137,13 +137,11 @@ const EmojiButton = React.memo<{
   onSelect: (emoji: string) => void
 }>(({ item, skinTone, onSelect }) => {
   // Apply skin tone modifier if the emoji supports it
-  const displayEmoji = item.supportsSkinTone
-    ? applyEmojiSkinTone(item.emoji, skinTone)
-    : item.emoji
+  const displayEmoji = item.supportsSkinTone ? applyEmojiSkinTone(item.emoji, skinTone) : item.emoji
 
   return (
     <button
-      className="flex size-8 cursor-pointer items-center justify-center rounded-md text-lg hover:bg-primary-100"
+      className='flex size-8 cursor-pointer items-center justify-center rounded-md text-lg hover:bg-primary-100'
       onClick={() => onSelect(displayEmoji)}
       title={item.label}>
       {displayEmoji}
@@ -169,13 +167,13 @@ const EmojiSection = React.memo<{
   )
 
   return (
-    <div ref={sectionRef} data-section={group.id} className="mb-0 px-2 scroll-mt-8 min-h-[260px]">
-      <div className="sticky top-0 z-10  py-2">
-        <h3 className="text-sm font-medium rounded-full bg-background border inline-flex px-1 text-muted-foreground">
+    <div ref={sectionRef} data-section={group.id} className='mb-0 px-2 scroll-mt-8 min-h-[260px]'>
+      <div className='sticky top-0 z-10  py-2'>
+        <h3 className='text-sm font-medium rounded-full bg-background border inline-flex px-1 text-muted-foreground'>
           {group.label}
         </h3>
       </div>
-      <div className="grid grid-cols-10 gap-0.5">
+      <div className='grid grid-cols-10 gap-0.5'>
         {emojis.map((item) => (
           <EmojiButton key={item.id} item={item} skinTone={skinTone} onSelect={onEmojiSelect} />
         ))}
@@ -195,8 +193,8 @@ const TabButton = React.memo<{
   const Icon = group.icon
   return (
     <Button
-      size="icon-sm"
-      variant="ghost"
+      size='icon-sm'
+      variant='ghost'
       className={cn(isActive && 'bg-primary-100 text-info hover:text-info')}
       onClick={onClick}
       title={group.label}>
@@ -213,9 +211,9 @@ const SkinToneButton = React.memo<{
   showingSelector: boolean
   onClick: () => void
 }>(({ currentTone, showingSelector, onClick }) => (
-  <Button size="icon-sm" variant="ghost" onClick={onClick} title="Skin tone">
+  <Button size='icon-sm' variant='ghost' onClick={onClick} title='Skin tone'>
     {showingSelector ? (
-      <ChevronLeft className="size-4" />
+      <ChevronLeft className='size-4' />
     ) : (
       <span className={cn('size-4 rounded-full', SKIN_TONE_COLORS[currentTone])} />
     )}
@@ -229,12 +227,12 @@ const SkinToneSelector = React.memo<{
   selected: SkinTone
   onSelect: (tone: SkinTone) => void
 }>(({ selected, onSelect }) => (
-  <div className="flex gap-0.5">
+  <div className='flex gap-0.5'>
     {SKIN_TONES.map((tone) => (
       <Button
         key={tone || 'default'}
-        size="icon-sm"
-        variant="ghost"
+        size='icon-sm'
+        variant='ghost'
         onClick={() => onSelect(tone)}
         title={tone === '' ? 'Default' : `Skin tone ${SKIN_TONES.indexOf(tone)}`}
         className={cn(selected === tone && 'bg-primary-100')}>
@@ -362,8 +360,8 @@ export function EmojiPicker({
   // Default trigger if none provided
   const defaultTrigger = (
     <Button
-      variant="outline"
-      size="icon"
+      variant='outline'
+      size='icon'
       className={cn('h-10 w-10 text-lg', className)}
       disabled={disabled}>
       {value || '= '}
@@ -373,39 +371,39 @@ export function EmojiPicker({
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange} modal={modal}>
       <PopoverTrigger asChild>{children || defaultTrigger}</PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align={align}>
+      <PopoverContent className='w-80 p-0' align={align}>
         {/* Search input */}
-        <div className="flex items-center border-b px-3 py-0.5">
-          <Search className="mr-2 size-4 shrink-0 opacity-50" />
+        <div className='flex items-center border-b px-3 py-0.5'>
+          <Search className='mr-2 size-4 shrink-0 opacity-50' />
           <Input
-            placeholder="Search emojis..."
+            placeholder='Search emojis...'
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-7 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
+            className='h-7 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0'
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full bg-primary-100 hover:bg-bad-100 hover:text-bad-500">
-              <X className="size-3" />
+              className='flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full bg-primary-100 hover:bg-bad-100 hover:text-bad-500'>
+              <X className='size-3' />
             </button>
           )}
         </div>
 
         {/* Tab navigation with skin tone picker */}
-        <div className="border-b p-1">
-          <div className="flex gap-0.5 items-center">
+        <div className='border-b p-1'>
+          <div className='flex gap-0.5 items-center'>
             <SkinToneButton
               currentTone={skinTone}
               showingSelector={showSkinTones}
               onClick={() => setShowSkinTones(!showSkinTones)}
             />
-            <Separator orientation="vertical" className="h-5 mx-1" />
+            <Separator orientation='vertical' className='h-5 mx-1' />
 
             {showSkinTones ? (
               <SkinToneSelector selected={skinTone} onSelect={handleSkinToneSelect} />
             ) : (
-              <div className="flex gap-0.5 overflow-x-auto">
+              <div className='flex gap-0.5 overflow-x-auto'>
                 {EMOJI_GROUPS.map((group) => (
                   <TabButton
                     key={group.id}
@@ -421,18 +419,18 @@ export function EmojiPicker({
 
         {/* Emoji content */}
         <div
-          className="h-64 overflow-y-auto"
+          className='h-64 overflow-y-auto'
           ref={scrollContainerRef}
           onWheel={(e) => e.stopPropagation()}>
           {/* Show search results if search is active */}
           {searchQuery.trim() ? (
-            <div className="px-2">
+            <div className='px-2'>
               {filteredEmojis?.length ? (
                 <>
-                  <div className="sticky top-0 z-10 bg-background py-2">
-                    <h3 className="text-sm font-medium text-muted-foreground">Search results</h3>
+                  <div className='sticky top-0 z-10 bg-background py-2'>
+                    <h3 className='text-sm font-medium text-muted-foreground'>Search results</h3>
                   </div>
-                  <div className="grid grid-cols-10 gap-0.5">
+                  <div className='grid grid-cols-10 gap-0.5'>
                     {filteredEmojis.map((item) => (
                       <EmojiButton
                         key={item.id}
@@ -444,7 +442,7 @@ export function EmojiPicker({
                   </div>
                 </>
               ) : (
-                <div className="flex h-full items-center justify-center text-muted-foreground">
+                <div className='flex h-full items-center justify-center text-muted-foreground'>
                   No emojis found
                 </div>
               )}

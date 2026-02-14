@@ -3,11 +3,11 @@
  * Webhook handler for failed invoice payment.
  */
 
-import type Stripe from 'stripe'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
+import type Stripe from 'stripe'
 
 /** Scoped logger for invoice payment failure webhook handling. */
 const logger = createScopedLogger('webhook:invoice-payment-failed')

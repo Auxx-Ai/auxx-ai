@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/nodes/shared/webhook-trigger-input.tsx
 
+import { useStoreApi } from '@xyflow/react'
 import React, { useCallback } from 'react'
 import { CodeEditor } from '~/components/workflow/ui/code-editor'
-import { useStoreApi } from '@xyflow/react'
-import type { TriggerInputProps } from '../trigger-registry'
 import Field from '~/components/workflow/ui/field'
 import Section from '~/components/workflow/ui/section'
+import type { TriggerInputProps } from '../trigger-registry'
 
 /**
  * Webhook trigger input component for test mode
@@ -72,45 +72,45 @@ export function WebhookTriggerInput({ inputs, errors, onChange }: TriggerInputPr
     'Query parameters as JSON object (e.g., {"param1": "value1", "param2": "value2"})'
 
   return (
-    <Section title="Webhook Trigger" initialOpen>
-      <div className="space-y-4">
+    <Section title='Webhook Trigger' initialOpen>
+      <div className='space-y-4'>
         {/* Headers */}
-        <Field title="Headers" description={headersDesc}>
+        <Field title='Headers' description={headersDesc}>
           <CodeEditor
             value={formatValue(inputs.headers)}
             onChange={handleHeadersChange}
             readOnly={false}
-            className="min-h-[100px]"
-            editorWrapperClassName="h-[100px]"
+            className='min-h-[100px]'
+            editorWrapperClassName='h-[100px]'
             hideTopMenu={false}
           />
-          {errors.headers && <p className="text-sm text-destructive">{errors.headers}</p>}
+          {errors.headers && <p className='text-sm text-destructive'>{errors.headers}</p>}
         </Field>
 
-        <Field title="Query Parameters" description={queryDesc}>
+        <Field title='Query Parameters' description={queryDesc}>
           <CodeEditor
             value={formatValue(inputs.query)}
             onChange={handleQueryChange}
             readOnly={false}
-            className="min-h-[100px]"
-            editorWrapperClassName="h-[100px]"
+            className='min-h-[100px]'
+            editorWrapperClassName='h-[100px]'
             hideTopMenu={false}
           />
-          {errors.query && <p className="text-sm text-destructive">{errors.query}</p>}
+          {errors.query && <p className='text-sm text-destructive'>{errors.query}</p>}
         </Field>
         {method === 'POST' && (
           <Field
-            title="Request Body"
-            description="Request body as JSON (can be object, array, or primitive)">
+            title='Request Body'
+            description='Request body as JSON (can be object, array, or primitive)'>
             <CodeEditor
               value={formatValue(inputs.body)}
               onChange={handleBodyChange}
               readOnly={false}
-              className="min-h-[100px]"
-              editorWrapperClassName="h-[100px]"
+              className='min-h-[100px]'
+              editorWrapperClassName='h-[100px]'
               hideTopMenu={false}
             />
-            {errors.body && <p className="text-sm text-destructive">{errors.body}</p>}
+            {errors.body && <p className='text-sm text-destructive'>{errors.body}</p>}
           </Field>
         )}
       </div>

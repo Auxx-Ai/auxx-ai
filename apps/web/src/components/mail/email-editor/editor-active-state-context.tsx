@@ -1,7 +1,8 @@
 // apps/web/src/components/mail/email-editor/editor-active-state-context.tsx
 'use client'
-import React, { createContext, useContext } from 'react'
-import { useEditorActiveState, type UseEditorActiveStateReturn } from './use-editor-active-state'
+import type React from 'react'
+import { createContext, useContext } from 'react'
+import { type UseEditorActiveStateReturn, useEditorActiveState } from './use-editor-active-state'
 
 const EditorActiveStateContext = createContext<UseEditorActiveStateReturn | null>(null)
 
@@ -29,10 +30,10 @@ export function EditorActiveStateProvider({ children }: EditorActiveStateProvide
  */
 export function useEditorActiveStateContext(): UseEditorActiveStateReturn {
   const context = useContext(EditorActiveStateContext)
-  
+
   if (!context) {
     throw new Error('useEditorActiveStateContext must be used within EditorActiveStateProvider')
   }
-  
+
   return context
 }

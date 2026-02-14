@@ -1,16 +1,16 @@
 // packages/lib/src/resources/merge/merge-service.ts
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import type { FieldType } from '@auxx/database/types'
+import { getFieldId, isFieldPath, toResourceFieldIds } from '@auxx/types/field'
 import { TRPCError } from '@trpc/server'
-import { parseRecordId, toRecordId, type RecordId } from '../resource-id'
-import { FieldValueService } from '../../field-values/field-value-service'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { formatToRawValue } from '../../field-values/client'
+import { FieldValueService } from '../../field-values/field-value-service'
+import { invalidateSnapshots } from '../../snapshot'
+import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
 import { mergeFieldValue } from './merge'
 import type { MergeEntitiesInput, MergeEntitiesResult } from './types'
-import type { FieldType } from '@auxx/database/types'
-import { invalidateSnapshots } from '../../snapshot'
-import { toResourceFieldIds, getFieldId, isFieldPath } from '@auxx/types/field'
 
 /**
  * Service for merging multiple entity instances into a single target.
@@ -42,12 +42,7 @@ export class EntityMergeService {
       const fields = await this.getFieldDefinitions(tx, entityDefinitionId)
 
       // 2. Load all field values (with explicit conversion to raw format)
-      const allValues = await this.loadAllFieldValues(
-        tx,
-        targetRecordId,
-        sourceRecordIds,
-        fields
-      )
+      const allValues = await this.loadAllFieldValues(tx, targetRecordId, sourceRecordIds, fields)
 
       // 3. Merge each field
       const mergedValues: Array<{ fieldId: string; value: unknown }> = []
@@ -267,7 +262,9 @@ export class EntityMergeService {
       }
 
       // Extract fieldId from fieldRef (handles both direct and path references)
-      const fieldId = isFieldPath(v.fieldRef) ? getFieldId(v.fieldRef[v.fieldRef.length - 1]) : getFieldId(v.fieldRef)
+      const fieldId = isFieldPath(v.fieldRef)
+        ? getFieldId(v.fieldRef[v.fieldRef.length - 1])
+        : getFieldId(v.fieldRef)
 
       // EXPLICIT CONVERSION: TypedFieldValue → raw value
       const field = fields.find((f) => f.id === fieldId)

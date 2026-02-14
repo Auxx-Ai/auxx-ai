@@ -1,24 +1,24 @@
 // src/app/(protected)/app/kb/_components/kb-tab-articles.tsx
-import React, { useCallback, useMemo, useState, useEffect } from 'react'
-import { usePathname } from 'next/navigation'
-import Link from 'next/link'
-import { Loader2, Plus, Settings } from 'lucide-react'
+
+import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { Button } from '@auxx/ui/components/button'
-import { Article } from './kb-sidebar'
+import { closestCorners, DndContext, DragOverlay } from '@dnd-kit/core'
+import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { Loader2, Plus, Settings } from 'lucide-react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import type React from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import ArticleTreeSection from './article-tree-section'
 import { useKnowledgeBase } from './kb-context'
+import type { Article } from './kb-sidebar'
 import { useArticleMove } from './use-article-move'
-
-import { DndContext, DragOverlay, closestCorners } from '@dnd-kit/core'
-import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
-
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 
 interface KBTabArticlesProps {
   knowledgeBaseId: string
@@ -176,20 +176,20 @@ const KBTabArticles: React.FC<KBTabArticlesProps> = ({ knowledgeBaseId }) => {
 
   if (isLoadingArticles) {
     return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className='flex items-center justify-center py-8'>
+        <Loader2 className='h-6 w-6 animate-spin text-muted-foreground' />
       </div>
     )
   }
 
   if (articles?.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 text-center">
-        <p className="mb-4 text-muted-foreground">No articles yet.</p>
+      <div className='flex flex-col items-center justify-center p-8 text-center'>
+        <p className='mb-4 text-muted-foreground'>No articles yet.</p>
         <Button
-          variant="default"
-          size="sm"
-          className="gap-1"
+          variant='default'
+          size='sm'
+          className='gap-1'
           onClick={() => addArticle(null, 'root')}
           loading={isAddingArticle}>
           <Plus />
@@ -200,32 +200,32 @@ const KBTabArticles: React.FC<KBTabArticlesProps> = ({ knowledgeBaseId }) => {
   }
 
   return (
-    <div className="relative space-y-1 p-1">
-      <div className="mb-1 flex items-center justify-between px-2">
-        <h3 className="text-xs font-medium uppercase text-muted-foreground">Articles</h3>
+    <div className='relative space-y-1 p-1'>
+      <div className='mb-1 flex items-center justify-between px-2'>
+        <h3 className='text-xs font-medium uppercase text-muted-foreground'>Articles</h3>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" className="h-6 w-6" disabled={isAddingArticle}>
+            <Button variant='ghost' size='icon-sm' className='h-6 w-6' disabled={isAddingArticle}>
               <Plus />
-              <span className="sr-only">Add Page or Settings</span>
+              <span className='sr-only'>Add Page or Settings</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align='end'>
             <DropdownMenuItem disabled={isAddingArticle} onClick={() => addArticle(null, 'root')}>
               {isAddingArticle ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
                   Creating...
                 </>
               ) : (
                 <>
-                  <Plus className="mr-2 h-4 w-4" /> Add Page
+                  <Plus className='mr-2 h-4 w-4' /> Add Page
                 </>
               )}
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link href={`${basePath}/settings`}>
-                <Settings className="mr-2 h-4 w-4" />
+                <Settings className='mr-2 h-4 w-4' />
                 KB Settings
               </Link>
             </DropdownMenuItem>
@@ -264,13 +264,13 @@ const KBTabArticles: React.FC<KBTabArticlesProps> = ({ knowledgeBaseId }) => {
           style={{ cursor: 'grabbing' }}>
           {activeArticle ? (
             <div
-              className="pointer-events-none rounded-md border bg-background px-3 py-2 opacity-80 shadow-md"
+              className='pointer-events-none rounded-md border bg-background px-3 py-2 opacity-80 shadow-md'
               style={{ maxWidth: '280px' }}>
-              <div className="flex items-center space-x-2">
-                <span className="shrink-0 text-muted-foreground">
+              <div className='flex items-center space-x-2'>
+                <span className='shrink-0 text-muted-foreground'>
                   {activeArticle.isCategory ? '📁' : '📄'}
                 </span>
-                <span className="truncate font-medium">
+                <span className='truncate font-medium'>
                   {activeArticle.emoji
                     ? `${activeArticle.emoji} ${activeArticle.title}`
                     : activeArticle.title || 'Untitled'}
@@ -281,21 +281,21 @@ const KBTabArticles: React.FC<KBTabArticlesProps> = ({ knowledgeBaseId }) => {
         </DragOverlay>
       </DndContext>
 
-      <div className="mt-2 px-2">
+      <div className='mt-2 px-2'>
         <Button
-          className="w-full justify-start text-muted-foreground"
-          variant="ghost"
-          size="sm"
+          className='w-full justify-start text-muted-foreground'
+          variant='ghost'
+          size='sm'
           disabled={isAddingArticle}
           onClick={() => addArticle(null, 'root')}>
           {isAddingArticle ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className='mr-2 h-4 w-4 animate-spin' />
               Creating...
             </>
           ) : (
             <>
-              <Plus className="mr-2 h-4 w-4" /> Add Page
+              <Plus className='mr-2 h-4 w-4' /> Add Page
             </>
           )}
         </Button>

@@ -1,25 +1,22 @@
 // apps/web/src/components/resources/ui/record-badge.tsx
 'use client'
 
-// External libraries
-import { cva, type VariantProps } from 'class-variance-authority'
-import Link from 'next/link'
-import { cn } from '@auxx/ui/lib/utils'
-
 // Type imports
 import type { RecordId } from '@auxx/lib/resources/client'
-
 // Utility imports
 import { getDefinitionId } from '@auxx/lib/resources/client'
-
 // UI component imports
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { cn } from '@auxx/ui/lib/utils'
+// External libraries
+import { cva, type VariantProps } from 'class-variance-authority'
+import Link from 'next/link'
 
 // Hook imports
 import { useRecord, useResource } from '~/components/resources'
-import { useRecordLink, type GetRecordLinkOptions } from '../utils/get-record-link'
+import { type GetRecordLinkOptions, useRecordLink } from '../utils/get-record-link'
 
 /**
  * Variants for the RecordBadge component
@@ -123,33 +120,33 @@ export function RecordBadge({
 
   return (
     <Comp
-      data-slot="record-badge"
+      data-slot='record-badge'
       aria-busy={isLoading}
       {...(link && href ? { href } : {})}
       className={cn(recordBadgeVariants({ variant: effectiveVariant }), className)}
       {...props}>
       {isLoading ? (
         <>
-          {showIcon && <Skeleton className="size-4 rounded-full" />}
-          <Skeleton className="h-4 w-20 rounded-full" />
+          {showIcon && <Skeleton className='size-4 rounded-full' />}
+          <Skeleton className='h-4 w-20 rounded-full' />
         </>
       ) : (
         <>
           {/* Show Avatar if avatarUrl exists, else show EntityIcon if showIcon=true */}
           {record?.avatarUrl ? (
-            <Avatar className="size-4" data-slot="record-icon">
+            <Avatar className='size-4' data-slot='record-icon'>
               <AvatarImage src={record.avatarUrl} />
-              <AvatarFallback className="text-[10px]">{displayName?.[0]}</AvatarFallback>
+              <AvatarFallback className='text-[10px]'>{displayName?.[0]}</AvatarFallback>
             </Avatar>
           ) : showIcon ? (
             <EntityIcon
-              data-slot="record-icon"
+              data-slot='record-icon'
               iconId={resource?.icon || 'circle'}
               color={resource?.color || 'gray'}
-              size="xs"
+              size='xs'
             />
           ) : null}
-          <span data-slot="record-display">{displayName}</span>
+          <span data-slot='record-display'>{displayName}</span>
         </>
       )}
     </Comp>

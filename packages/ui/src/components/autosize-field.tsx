@@ -1,9 +1,9 @@
 // packages/ui/src/components/autosize-field.tsx
 'use client'
 
-import * as React from 'react'
-import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
+import * as React from 'react'
 
 /** Variants for the AutosizeField component */
 const autosizeFieldVariants = cva(
@@ -472,7 +472,7 @@ export const AutosizeField = React.forwardRef<HTMLTextAreaElement, AutosizeField
       <>
         <textarea
           {...props}
-          data-slot="autosize"
+          data-slot='autosize'
           ref={combinedRef}
           value={value}
           onChange={handleChange}
@@ -481,7 +481,7 @@ export const AutosizeField = React.forwardRef<HTMLTextAreaElement, AutosizeField
         />
         {/* Hidden sizer for width measurement (only rendered when autoWidth is enabled) */}
         {autoWidth && (
-          <div ref={widthSizerRef} style={WIDTH_SIZER_STYLE} aria-hidden="true">
+          <div ref={widthSizerRef} style={WIDTH_SIZER_STYLE} aria-hidden='true'>
             {sizerValue || 'x'}
           </div>
         )}

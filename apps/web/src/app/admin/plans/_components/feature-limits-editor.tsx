@@ -4,11 +4,11 @@
  */
 'use client'
 
-import { useState } from 'react'
+import type { FeatureLimit } from '@auxx/billing'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import { Plus, X } from 'lucide-react'
-import type { FeatureLimit } from '@auxx/billing'
+import { useState } from 'react'
 
 /**
  * Feature limits editor props
@@ -73,29 +73,29 @@ export function FeatureLimitsEditor({ limits, onChange }: FeatureLimitsEditorPro
   }
 
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       {/* Predefined limits */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className='grid grid-cols-2 gap-4'>
         {LIMIT_KEYS.map(({ key, label }) => (
-          <div key={key} className="space-y-2">
-            <label className="text-sm font-medium">{label}</label>
-            <div className="flex items-center gap-2">
+          <div key={key} className='space-y-2'>
+            <label className='text-sm font-medium'>{label}</label>
+            <div className='flex items-center gap-2'>
               <Input
-                type="number"
+                type='number'
                 value={getLimitValue(key)}
                 onChange={(e) => updateLimit(key, parseInt(e.target.value) || 0)}
-                placeholder="0"
+                placeholder='0'
               />
               <Button
-                type="button"
-                variant="ghost"
-                size="sm"
+                type='button'
+                variant='ghost'
+                size='sm'
                 onClick={() => removeLimit(key)}
                 disabled={!limits.find((l) => l.key === key)}>
                 <X />
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">-1 = unlimited</p>
+            <p className='text-xs text-muted-foreground'>-1 = unlimited</p>
           </div>
         ))}
       </div>
@@ -104,38 +104,38 @@ export function FeatureLimitsEditor({ limits, onChange }: FeatureLimitsEditorPro
       {limits
         .filter((l) => !LIMIT_KEYS.find((k) => k.key === l.key))
         .map((limit) => (
-          <div key={limit.key} className="flex items-center gap-2 p-2 bg-muted rounded-md">
-            <span className="flex-1 text-sm font-medium">{limit.key}</span>
+          <div key={limit.key} className='flex items-center gap-2 p-2 bg-muted rounded-md'>
+            <span className='flex-1 text-sm font-medium'>{limit.key}</span>
             <Input
-              type="number"
+              type='number'
               value={limit.limit}
               onChange={(e) => updateLimit(limit.key, parseInt(e.target.value) || 0)}
-              className="w-24"
+              className='w-24'
             />
-            <Button type="button" variant="ghost" size="sm" onClick={() => removeLimit(limit.key)}>
+            <Button type='button' variant='ghost' size='sm' onClick={() => removeLimit(limit.key)}>
               <X />
             </Button>
           </div>
         ))}
 
       {/* Add custom limit */}
-      <div className="pt-4 border-t">
-        <p className="text-sm font-medium mb-2">Add Custom Limit</p>
-        <div className="flex items-center gap-2">
+      <div className='pt-4 border-t'>
+        <p className='text-sm font-medium mb-2'>Add Custom Limit</p>
+        <div className='flex items-center gap-2'>
           <Input
             value={customKey}
             onChange={(e) => setCustomKey(e.target.value.toUpperCase().replace(/\s/g, '_'))}
-            placeholder="CUSTOM_KEY"
-            className="flex-1"
+            placeholder='CUSTOM_KEY'
+            className='flex-1'
           />
           <Input
-            type="number"
+            type='number'
             value={customLimit}
             onChange={(e) => setCustomLimit(parseInt(e.target.value) || 0)}
-            placeholder="0"
-            className="w-24"
+            placeholder='0'
+            className='w-24'
           />
-          <Button type="button" onClick={addCustomLimit} size="sm">
+          <Button type='button' onClick={addCustomLimit} size='sm'>
             <Plus />
             Add
           </Button>

@@ -1,17 +1,22 @@
 // packages/lib/src/mail-query/client.ts
 
-export { SearchOperator, IsOperatorValue, parseSearchQuery, type SearchToken } from './search-query-parser'
-import { getInstanceId, isRecordId, type RecordId } from '@auxx/types/resource'
+export {
+  IsOperatorValue,
+  parseSearchQuery,
+  SearchOperator,
+  type SearchToken,
+} from './search-query-parser'
 
-// Search condition types
-export { type FilterRef, type SearchCondition } from './search-filters'
+import { getInstanceId, isRecordId, type RecordId } from '@auxx/types/resource'
 
 // Context to conditions converter
 export {
-  buildContextConditions,
   buildConditionGroups,
+  buildContextConditions,
   type ContextConditionParams,
 } from './context-to-conditions'
+// Search condition types
+export type { FilterRef, SearchCondition } from './search-filters'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Thread Client Filter Types and Utilities
@@ -270,6 +275,9 @@ export function threadMatchesFilter(thread: FilterableThread, filter: ThreadClie
  * @param filter - Filter criteria
  * @returns Filtered array of threads
  */
-export function filterThreads<T extends FilterableThread>(threads: T[], filter: ThreadClientFilter): T[] {
+export function filterThreads<T extends FilterableThread>(
+  threads: T[],
+  filter: ThreadClientFilter
+): T[] {
   return threads.filter((thread) => threadMatchesFilter(thread, filter))
 }

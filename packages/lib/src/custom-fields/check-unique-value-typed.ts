@@ -1,9 +1,9 @@
 // packages/lib/src/custom-fields/check-unique-value-typed.ts
 
-import { database, schema, type Database } from '@auxx/database'
-import { and, eq, ne, sql } from 'drizzle-orm'
-import type { TypedFieldValueInput } from '@auxx/types'
 import type { ModelType } from '@auxx/database'
+import { type Database, database, schema } from '@auxx/database'
+import type { TypedFieldValueInput } from '@auxx/types'
+import { and, eq, ne, sql } from 'drizzle-orm'
 
 /**
  * Input for checking if a value is unique for a field

@@ -1,14 +1,14 @@
 // packages/lib/src/workflow-engine/testing/enhanced-variable-system.test.ts
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { ExecutionContextManager } from '../core/execution-context'
-import { BaseNodeProcessor } from '../nodes/base-node'
 import {
+  type NodeExecutionResult,
+  type ValidationResult,
   WorkflowNode,
   WorkflowNodeType,
-  NodeExecutionResult,
-  ValidationResult,
 } from '../core/types'
+import { BaseNodeProcessor } from '../nodes/base-node'
 
 // Mock node processor for testing
 class TestNodeProcessor extends BaseNodeProcessor {

@@ -1,8 +1,8 @@
 // packages/lib/src/datasets/extractors/extractor-registry.ts
 
 import { createScopedLogger } from '@auxx/logger'
+import type { ExtractorCapabilities, ExtractorInfo } from '../types/extractor.types'
 import type { BaseExtractor } from './base-extractor'
-import type { ExtractorInfo, ExtractorCapabilities } from '../types/extractor.types'
 
 const logger = createScopedLogger('extractor-registry')
 
@@ -19,26 +19,26 @@ export class ExtractorRegistry {
     const name = tempInstance.getName()
     const capabilities = tempInstance.getSupportedTypes()
 
-    this.extractors.set(name, extractorClass)
+    ExtractorRegistry.extractors.set(name, extractorClass)
   }
 
   /**
    * Get all registered extractors
    */
   static getAll(): Map<string, typeof BaseExtractor> {
-    this.ensureInitialized()
-    return new Map(this.extractors)
+    ExtractorRegistry.ensureInitialized()
+    return new Map(ExtractorRegistry.extractors)
   }
 
   /**
    * Get extractors compatible with a file type
    */
   static getCompatibleExtractors(mimeType: string, extension: string): ExtractorInfo[] {
-    this.ensureInitialized()
+    ExtractorRegistry.ensureInitialized()
 
     const compatible: ExtractorInfo[] = []
 
-    for (const [name, ExtractorClass] of this.extractors.entries()) {
+    for (const [name, ExtractorClass] of ExtractorRegistry.extractors.entries()) {
       try {
         // Create temporary instance to check compatibility
         const tempInstance = new (ExtractorClass as any)('temp', undefined, undefined)
@@ -51,7 +51,7 @@ export class ExtractorRegistry {
             name,
             priority,
             capabilities,
-            isAvailable: this.isExtractorAvailable(name),
+            isAvailable: ExtractorRegistry.isExtractorAvailable(name),
           })
         }
       } catch (error) {
@@ -77,7 +77,7 @@ export class ExtractorRegistry {
    * Get the best extractor for a file type
    */
   static getBestExtractor(mimeType: string, extension: string): typeof BaseExtractor | null {
-    const compatible = this.getCompatibleExtractors(mimeType, extension)
+    const compatible = ExtractorRegistry.getCompatibleExtractors(mimeType, extension)
 
     if (compatible.length === 0) {
       logger.warn('No compatible extractors found', { mimeType, extension })
@@ -89,22 +89,22 @@ export class ExtractorRegistry {
       return null
     }
 
-    return this.extractors.get(best!.name) || null
+    return ExtractorRegistry.extractors.get(best!.name) || null
   }
 
   /**
    * Get extractor by name
    */
   static getExtractor(name: string): typeof BaseExtractor | null {
-    this.ensureInitialized()
-    return this.extractors.get(name) || null
+    ExtractorRegistry.ensureInitialized()
+    return ExtractorRegistry.extractors.get(name) || null
   }
 
   /**
    * Check if an extractor is available (dependencies installed, etc.)
    */
   static isExtractorAvailable(name: string): boolean {
-    const ExtractorClass = this.extractors.get(name)
+    const ExtractorClass = ExtractorRegistry.extractors.get(name)
     if (!ExtractorClass) return false
 
     try {
@@ -129,13 +129,13 @@ export class ExtractorRegistry {
     supportedMimeTypes: string[]
     supportedExtensions: string[]
   } {
-    this.ensureInitialized()
+    ExtractorRegistry.ensureInitialized()
 
     const allMimeTypes = new Set<string>()
     const allExtensions = new Set<string>()
     let availableCount = 0
 
-    for (const [name, ExtractorClass] of this.extractors.entries()) {
+    for (const [name, ExtractorClass] of ExtractorRegistry.extractors.entries()) {
       try {
         const tempInstance = new (ExtractorClass as any)('temp', undefined, undefined)
         const capabilities = tempInstance.getSupportedTypes()
@@ -143,7 +143,7 @@ export class ExtractorRegistry {
         capabilities.mimeTypes.forEach((type: string) => allMimeTypes.add(type))
         capabilities.extensions.forEach((ext: string) => allExtensions.add(ext))
 
-        if (this.isExtractorAvailable(name)) {
+        if (ExtractorRegistry.isExtractorAvailable(name)) {
           availableCount++
         }
       } catch (error) {
@@ -152,7 +152,7 @@ export class ExtractorRegistry {
     }
 
     return {
-      totalExtractors: this.extractors.size,
+      totalExtractors: ExtractorRegistry.extractors.size,
       availableExtractors: availableCount,
       supportedMimeTypes: Array.from(allMimeTypes).sort(),
       supportedExtensions: Array.from(allExtensions).sort(),
@@ -163,14 +163,14 @@ export class ExtractorRegistry {
    * Initialize registry with all available extractors
    */
   private static ensureInitialized(): void {
-    if (this.initialized) return
+    if (ExtractorRegistry.initialized) return
 
     try {
       // Auto-register all available extractors
-      this.autoRegisterExtractors()
-      this.initialized = true
+      ExtractorRegistry.autoRegisterExtractors()
+      ExtractorRegistry.initialized = true
 
-      const stats = this.getStats()
+      const stats = ExtractorRegistry.getStats()
       logger.info('Extractor registry initialized', {
         totalExtractors: stats.totalExtractors,
         availableExtractors: stats.availableExtractors,
@@ -181,7 +181,7 @@ export class ExtractorRegistry {
       logger.error('Failed to initialize extractor registry', {
         error: error instanceof Error ? error.message : error,
       })
-      this.initialized = true // Prevent infinite retry
+      ExtractorRegistry.initialized = true // Prevent infinite retry
     }
   }
 
@@ -201,8 +201,8 @@ export class ExtractorRegistry {
    * Clear registry (useful for testing)
    */
   static clear(): void {
-    this.extractors.clear()
-    this.initialized = false
+    ExtractorRegistry.extractors.clear()
+    ExtractorRegistry.initialized = false
     logger.debug('Extractor registry cleared')
   }
 
@@ -210,7 +210,7 @@ export class ExtractorRegistry {
    * List all registered extractor names
    */
   static listExtractors(): string[] {
-    this.ensureInitialized()
-    return Array.from(this.extractors.keys()).sort()
+    ExtractorRegistry.ensureInitialized()
+    return Array.from(ExtractorRegistry.extractors.keys()).sort()
   }
 }

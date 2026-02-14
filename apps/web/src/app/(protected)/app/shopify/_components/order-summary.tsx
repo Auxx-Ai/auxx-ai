@@ -1,11 +1,11 @@
-import React from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Badge } from '@auxx/ui/components/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { format } from 'date-fns'
-import { formatMoney } from '~/utils/strings'
+import React from 'react'
 import { useOrder } from '~/components/orders/order-context'
+import { formatMoney } from '~/utils/strings'
 
 // Helper function to format currency
 // function formatCurrency(amount: number) {
@@ -58,49 +58,49 @@ export default function OrderSummary({ order: orderProp }: { order?: any } = {})
           <CardTitle>Order Information</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex h-40 items-center justify-center">
-            <p className="text-muted-foreground">No order information available</p>
+          <div className='flex h-40 items-center justify-center'>
+            <p className='text-muted-foreground'>No order information available</p>
           </div>
         </CardContent>
       </Card>
     )
   }
   return (
-    <div className="grid gap-6 md:grid-cols-2">
+    <div className='grid gap-6 md:grid-cols-2'>
       <Card>
         <CardHeader>
           <CardTitle>Order Information</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Order Number</span>
-              <span className="font-medium">{order.name}</span>
+          <div className='space-y-4'>
+            <div className='flex justify-between'>
+              <span className='text-muted-foreground'>Order Number</span>
+              <span className='font-medium'>{order.name}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Date</span>
-              <span className="font-medium">{formatDate(order.createdAt)}</span>
+            <div className='flex justify-between'>
+              <span className='text-muted-foreground'>Date</span>
+              <span className='font-medium'>{formatDate(order.createdAt)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Status</span>
+            <div className='flex justify-between'>
+              <span className='text-muted-foreground'>Status</span>
               {getStatusBadge(order.fulfillmentStatus)}
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Payment Status</span>
+            <div className='flex justify-between'>
+              <span className='text-muted-foreground'>Payment Status</span>
               {getStatusBadge(order.financialStatus)}
             </div>
             {order.discountCode && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Discount Code</span>
-                <span className="font-medium">{order.discountCode}</span>
+              <div className='flex justify-between'>
+                <span className='text-muted-foreground'>Discount Code</span>
+                <span className='font-medium'>{order.discountCode}</span>
               </div>
             )}
             {order.tags && order.tags.length > 0 && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Tags</span>
-                <div className="flex flex-wrap justify-end gap-1">
+              <div className='flex justify-between'>
+                <span className='text-muted-foreground'>Tags</span>
+                <div className='flex flex-wrap justify-end gap-1'>
                   {order.tags.map((tag: string, index: number) => (
-                    <Badge key={index} variant="outline">
+                    <Badge key={index} variant='outline'>
                       {tag}
                     </Badge>
                   ))}
@@ -116,36 +116,36 @@ export default function OrderSummary({ order: orderProp }: { order?: any } = {})
           <CardTitle>Financial Summary</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span className="font-medium">{formatMoney(order.subtotalPrice)}</span>
+          <div className='space-y-4'>
+            <div className='flex justify-between'>
+              <span className='text-muted-foreground'>Subtotal</span>
+              <span className='font-medium'>{formatMoney(order.subtotalPrice)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Shipping</span>
-              <span className="font-medium">{formatMoney(order.totalShippingPrice)}</span>
+            <div className='flex justify-between'>
+              <span className='text-muted-foreground'>Shipping</span>
+              <span className='font-medium'>{formatMoney(order.totalShippingPrice)}</span>
             </div>
             {order.totalDiscounts > 0 && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Discounts</span>
-                <span className="font-medium text-red-500">
+              <div className='flex justify-between'>
+                <span className='text-muted-foreground'>Discounts</span>
+                <span className='font-medium text-red-500'>
                   -{formatMoney(order.totalDiscounts)}
                 </span>
               </div>
             )}
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Tax</span>
-              <span className="font-medium">{formatMoney(order.totalTax)}</span>
+            <div className='flex justify-between'>
+              <span className='text-muted-foreground'>Tax</span>
+              <span className='font-medium'>{formatMoney(order.totalTax)}</span>
             </div>
             <Separator />
-            <div className="flex justify-between font-bold">
+            <div className='flex justify-between font-bold'>
               <span>Total</span>
               <span>{formatMoney(order.totalPrice)}</span>
             </div>
             {order.totalRefunded > 0 && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Refunded</span>
-                <span className="font-medium text-red-500">
+              <div className='flex justify-between'>
+                <span className='text-muted-foreground'>Refunded</span>
+                <span className='font-medium text-red-500'>
                   -{formatMoney(order.totalRefunded)}
                 </span>
               </div>
@@ -154,16 +154,16 @@ export default function OrderSummary({ order: orderProp }: { order?: any } = {})
         </CardContent>
       </Card>
 
-      <Card className="md:col-span-2">
+      <Card className='md:col-span-2'>
         <CardHeader>
           <CardTitle>Shipping & Billing</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className='grid gap-6 md:grid-cols-2'>
             <div>
-              <h3 className="mb-2 font-semibold">Shipping Address</h3>
+              <h3 className='mb-2 font-semibold'>Shipping Address</h3>
               {order.shippingAddress ? (
-                <div className="space-y-1">
+                <div className='space-y-1'>
                   <p>{order.shippingAddress.name}</p>
                   <p>{order.shippingAddress.address1}</p>
                   {order.shippingAddress.address2 && <p>{order.shippingAddress.address2}</p>}
@@ -175,13 +175,13 @@ export default function OrderSummary({ order: orderProp }: { order?: any } = {})
                   {order.shippingAddress.phone && <p>{order.shippingAddress.phone}</p>}
                 </div>
               ) : (
-                <p className="text-muted-foreground">No shipping address provided</p>
+                <p className='text-muted-foreground'>No shipping address provided</p>
               )}
             </div>
             <div>
-              <h3 className="mb-2 font-semibold">Billing Address</h3>
+              <h3 className='mb-2 font-semibold'>Billing Address</h3>
               {order.billingAddress ? (
-                <div className="space-y-1">
+                <div className='space-y-1'>
                   <p>{order.billingAddress.name}</p>
                   <p>{order.billingAddress.address1}</p>
                   {order.billingAddress.address2 && <p>{order.billingAddress.address2}</p>}
@@ -193,7 +193,7 @@ export default function OrderSummary({ order: orderProp }: { order?: any } = {})
                   {order.billingAddress.phone && <p>{order.billingAddress.phone}</p>}
                 </div>
               ) : (
-                <p className="text-muted-foreground">Same as shipping address</p>
+                <p className='text-muted-foreground'>Same as shipping address</p>
               )}
             </div>
           </div>
@@ -206,28 +206,28 @@ export default function OrderSummary({ order: orderProp }: { order?: any } = {})
 // Skeleton component for loading state
 function OrderSummarySkeleton() {
   return (
-    <div className="grid gap-6 md:grid-cols-2">
+    <div className='grid gap-6 md:grid-cols-2'>
       <Card>
         <CardHeader>
           <CardTitle>Order Information</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Order Number</span>
-              <Skeleton className="h-4 w-20" />
+          <div className='space-y-4'>
+            <div className='flex justify-between'>
+              <span className='text-muted-foreground'>Order Number</span>
+              <Skeleton className='h-4 w-20' />
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Date</span>
-              <Skeleton className="h-4 w-24" />
+            <div className='flex justify-between'>
+              <span className='text-muted-foreground'>Date</span>
+              <Skeleton className='h-4 w-24' />
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Status</span>
-              <Skeleton className="h-6 w-16" />
+            <div className='flex justify-between'>
+              <span className='text-muted-foreground'>Status</span>
+              <Skeleton className='h-6 w-16' />
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Payment Status</span>
-              <Skeleton className="h-6 w-16" />
+            <div className='flex justify-between'>
+              <span className='text-muted-foreground'>Payment Status</span>
+              <Skeleton className='h-6 w-16' />
             </div>
           </div>
         </CardContent>
@@ -238,50 +238,50 @@ function OrderSummarySkeleton() {
           <CardTitle>Financial Summary</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Subtotal</span>
-              <Skeleton className="h-4 w-16" />
+          <div className='space-y-4'>
+            <div className='flex justify-between'>
+              <span className='text-muted-foreground'>Subtotal</span>
+              <Skeleton className='h-4 w-16' />
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Shipping</span>
-              <Skeleton className="h-4 w-16" />
+            <div className='flex justify-between'>
+              <span className='text-muted-foreground'>Shipping</span>
+              <Skeleton className='h-4 w-16' />
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Tax</span>
-              <Skeleton className="h-4 w-16" />
+            <div className='flex justify-between'>
+              <span className='text-muted-foreground'>Tax</span>
+              <Skeleton className='h-4 w-16' />
             </div>
             <Separator />
-            <div className="flex justify-between font-bold">
+            <div className='flex justify-between font-bold'>
               <span>Total</span>
-              <Skeleton className="h-4 w-20" />
+              <Skeleton className='h-4 w-20' />
             </div>
           </div>
         </CardContent>
       </Card>
 
-      <Card className="md:col-span-2">
+      <Card className='md:col-span-2'>
         <CardHeader>
           <CardTitle>Shipping & Billing</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className='grid gap-6 md:grid-cols-2'>
             <div>
-              <h3 className="mb-2 font-semibold">Shipping Address</h3>
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-4 w-40" />
-                <Skeleton className="h-4 w-28" />
-                <Skeleton className="h-4 w-24" />
+              <h3 className='mb-2 font-semibold'>Shipping Address</h3>
+              <div className='space-y-2'>
+                <Skeleton className='h-4 w-32' />
+                <Skeleton className='h-4 w-40' />
+                <Skeleton className='h-4 w-28' />
+                <Skeleton className='h-4 w-24' />
               </div>
             </div>
             <div>
-              <h3 className="mb-2 font-semibold">Billing Address</h3>
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-4 w-40" />
-                <Skeleton className="h-4 w-28" />
-                <Skeleton className="h-4 w-24" />
+              <h3 className='mb-2 font-semibold'>Billing Address</h3>
+              <div className='space-y-2'>
+                <Skeleton className='h-4 w-32' />
+                <Skeleton className='h-4 w-40' />
+                <Skeleton className='h-4 w-28' />
+                <Skeleton className='h-4 w-24' />
               </div>
             </div>
           </div>

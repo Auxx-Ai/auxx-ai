@@ -2,9 +2,9 @@
 
 'use client'
 
-import { Badge, type Variant } from '@auxx/ui/components/badge'
-import { Plus, RefreshCw, Ban } from 'lucide-react'
 import type { StrategyType } from '@auxx/lib/import'
+import { Badge, type Variant } from '@auxx/ui/components/badge'
+import { Ban, Plus, RefreshCw } from 'lucide-react'
 
 /** Config for each strategy type */
 const STRATEGY_CONFIG: Record<
@@ -30,7 +30,7 @@ export function StrategyCell({ strategy, errors = [] }: StrategyCellProps) {
   const errorText = errors.join(', ')
 
   return (
-    <div className="flex items-center gap-2 px-3">
+    <div className='flex items-center gap-2 px-3'>
       <Badge
         variant={variant}
         title={strategy === 'skip' && errors.length > 0 ? errorText : undefined}>
@@ -38,7 +38,7 @@ export function StrategyCell({ strategy, errors = [] }: StrategyCellProps) {
         {label}
       </Badge>
       {strategy === 'skip' && errors.length > 0 && (
-        <span className="text-xs text-muted-foreground truncate max-w-[200px]" title={errorText}>
+        <span className='text-xs text-muted-foreground truncate max-w-[200px]' title={errorText}>
           {errors[0]}
         </span>
       )}

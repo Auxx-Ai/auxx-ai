@@ -1,8 +1,8 @@
 // apps/web/src/app/(protected)/app/settings/webhooks/_components/use-webhook.ts
 'use client'
-import { api } from '~/trpc/react'
-import { useState } from 'react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { useState } from 'react'
+import { api } from '~/trpc/react'
 export function useWebhook() {
   const [isDestroying, setIsDestroying] = useState<string | null>(null)
   const [isUpdating, setIsUpdating] = useState<string | null>(null)

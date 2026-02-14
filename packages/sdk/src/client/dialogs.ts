@@ -1,7 +1,7 @@
 // packages/sdk/src/client/dialogs.ts
 
-import { SURFACES } from '../runtime/index.js'
 import { Host } from '../runtime/host.js'
+import { SURFACES } from '../runtime/index.js'
 import type { DialogComponent } from './types.js'
 
 const DIALOG_PREFIX = 'DIALOG'

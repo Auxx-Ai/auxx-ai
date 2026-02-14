@@ -1,15 +1,16 @@
 // apps/web/src/app/(protected)/app/settings/aiModels/_components/model-row.tsx
 
 'use client'
-import React, { useState } from 'react'
 import { Button } from '@auxx/ui/components/button'
-import { Plus, Settings } from 'lucide-react'
-import ModelIcon from '~/components/workflow/ui/model-parameter/model-icon'
-import { FeatureBadges } from './feature-badges'
-import { ModelToggle } from '~/components/ai/ui/model-toggle'
-import { CredentialConfigurationDialog } from './credential-configuration-dialog'
-import { type ModelData, type ProviderConfiguration, FetchFrom } from './utils'
 import { cn } from '@auxx/ui/lib/utils'
+import { Plus, Settings } from 'lucide-react'
+import type React from 'react'
+import { useState } from 'react'
+import { ModelToggle } from '~/components/ai/ui/model-toggle'
+import ModelIcon from '~/components/workflow/ui/model-parameter/model-icon'
+import { CredentialConfigurationDialog } from './credential-configuration-dialog'
+import { FeatureBadges } from './feature-badges'
+import { FetchFrom, type ModelData, type ProviderConfiguration } from './utils'
 
 interface ModelRowProps {
   model: ModelData // Now using the clean ModelData type from ProviderManager
@@ -49,21 +50,21 @@ export const ModelRow: React.FC<ModelRowProps> = ({
         className
       )}>
       {/* Model info section */}
-      <div className="flex items-center gap-3 flex-1 min-w-0">
+      <div className='flex items-center gap-3 flex-1 min-w-0'>
         {/* Model icon */}
         <ModelIcon
           provider={model.provider}
           modelName={model.modelId}
-          size="sm"
+          size='sm'
           theme={theme}
-          className="flex-shrink-0"
+          className='flex-shrink-0'
         />
 
         {/* Model name and features */}
-        <div className="flex-1 min-w-0 flex items-center gap-1">
-          <span className="text-sm truncate">{model.displayName}</span>
+        <div className='flex-1 min-w-0 flex items-center gap-1'>
+          <span className='text-sm truncate'>{model.displayName}</span>
           {model.fetchFrom == FetchFrom.CUSTOMIZABLE_MODEL && (
-            <span className="bg-primary-150 size-4 text-xs ring-1 ring-primary-300 flex items-center justify-center rounded-md">
+            <span className='bg-primary-150 size-4 text-xs ring-1 ring-primary-300 flex items-center justify-center rounded-md'>
               C
             </span>
           )}
@@ -72,29 +73,29 @@ export const ModelRow: React.FC<ModelRowProps> = ({
             features={model.features}
             contextLength={model.contextLength}
             maxVisible={4}
-            className="gap-1 hidden @lg:flex"
+            className='gap-1 hidden @lg:flex'
           />
         </div>
       </div>
 
       {/* Status and actions section */}
-      <div className="flex items-center gap-3">
+      <div className='flex items-center gap-3'>
         {/* Model Toggle - only show for configured providers */}
 
         {/* Action buttons */}
-        <div className="flex items-center gap-2">
+        <div className='flex items-center gap-2'>
           {/* Configure button - only show for custom models */}
           {model.fetchFrom === FetchFrom.CUSTOMIZABLE_MODEL && (
             <Button
-              variant="outline"
-              size="xs"
+              variant='outline'
+              size='xs'
               onClick={() => {
                 setShouldRenderDialog(true)
                 setConfigureDialogOpen(true)
               }}
               disabled={isProcessing}
-              className="duration-100 transition-all opacity-0 group-hover/model:opacity-100"
-              title="Configure custom model">
+              className='duration-100 transition-all opacity-0 group-hover/model:opacity-100'
+              title='Configure custom model'>
               <Settings />
               Configure
             </Button>
@@ -121,7 +122,7 @@ export const ModelRow: React.FC<ModelRowProps> = ({
             onToggle={(enabled) => {
               // Handle toggle - refresh UI is handled by ModelToggle component
             }}
-            className="shrink-0"
+            className='shrink-0'
           />
           {/* )} */}
         </div>
@@ -130,10 +131,10 @@ export const ModelRow: React.FC<ModelRowProps> = ({
       {/* Credential Configuration Dialog for custom models - only render when needed */}
       {shouldRenderDialog && (
         <CredentialConfigurationDialog
-          mode="custom-model"
+          mode='custom-model'
           provider={model.provider}
           modelId={model.modelId}
-          operation="edit"
+          operation='edit'
           open={configureDialogOpen}
           onOpenChange={setConfigureDialogOpen}
           providers={providers}

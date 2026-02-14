@@ -1,7 +1,7 @@
 // packages/lib/src/tags/__tests__/universal-tag-service.test.ts
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { IntegrationProviderType } from '@auxx/database/enums'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { UniversalTagService } from '../universal-tag-service'
 
 // Mock the database

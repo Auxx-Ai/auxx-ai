@@ -1,18 +1,17 @@
 // packages/lib/src/utils/rate-limiter/config-manager.ts
 
-import type { IntegrationProviderType } from '@auxx/database/types'
-import { IntegrationProviderType as IntegrationProviderTypeEnum } from '@auxx/database/enums'
-
 import { env } from '@auxx/config/server'
+import { IntegrationProviderType as IntegrationProviderTypeEnum } from '@auxx/database/enums'
+import type { IntegrationProviderType } from '@auxx/database/types'
 import { createScopedLogger } from '../../logger'
-import type { RateLimiterConfig, EnhancedRateLimits, ThrottlerConfig } from './types'
 import {
-  ENHANCED_PROVIDER_LIMITS,
   DEFAULT_RETRY_CONFIG,
-  getMergedProviderLimits,
+  ENHANCED_PROVIDER_LIMITS,
   getContextLimits,
   getDefaultRateLimits,
+  getMergedProviderLimits,
 } from './provider-configs'
+import type { EnhancedRateLimits, RateLimiterConfig, ThrottlerConfig } from './types'
 
 /**
  * Configuration manager for rate limiting

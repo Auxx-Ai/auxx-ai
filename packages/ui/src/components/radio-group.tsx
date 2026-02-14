@@ -1,11 +1,10 @@
 'use client'
 
-import * as React from 'react'
-import { RadioGroup as RadioGroupPrimitive } from 'radix-ui'
-import { Circle } from 'lucide-react'
-import { cva, type VariantProps } from 'class-variance-authority'
-
 import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { Circle } from 'lucide-react'
+import { RadioGroup as RadioGroupPrimitive } from 'radix-ui'
+import type * as React from 'react'
 
 const radioGroupVariants = cva(
   'aspect-square shrink-0 rounded-full shadow-sm focus:outline-hidden focus-visible:ring-[1px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-colors',
@@ -70,11 +69,12 @@ function RadioGroupItem({
     <RadioGroupPrimitive.Item
       className={cn(radioGroupVariants({ variant, size, className }))}
       {...props}>
-      <RadioGroupPrimitive.Indicator className="flex items-center justify-center">
+      <RadioGroupPrimitive.Indicator className='flex items-center justify-center'>
         <Circle className={cn(indicatorSize, indicatorClassName)} />
       </RadioGroupPrimitive.Indicator>
     </RadioGroupPrimitive.Item>
   )
 }
+
 export { RadioGroupItemCard } from './radio-group-item'
 export { RadioGroup, RadioGroupItem, radioGroupVariants }

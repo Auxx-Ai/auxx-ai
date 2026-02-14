@@ -1,22 +1,22 @@
 // apps/web/src/app/(protected)/app/settings/snippets/_components/snippet-folders.tsx
 'use client'
-import React, { useEffect } from 'react'
-import {
-  FolderIcon,
-  PlusIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  PencilIcon,
-  TrashIcon,
-} from 'lucide-react'
-import { useQueryState } from 'nuqs'
 import { Button } from '@auxx/ui/components/button'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { cn } from '@auxx/ui/lib/utils'
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  FolderIcon,
+  PencilIcon,
+  PlusIcon,
+  TrashIcon,
+} from 'lucide-react'
+import { useQueryState } from 'nuqs'
+import React, { useEffect } from 'react'
 import { useSnippetContext } from '~/contexts/snippet-context'
 import type { SnippetFolder } from '~/contexts/snippet-types'
 import { useConfirm } from '~/hooks/use-confirm'
-import { FolderFormPopover, type FolderFormData } from './folder-form-popover'
+import { type FolderFormData, FolderFormPopover } from './folder-form-popover'
 
 interface SnippetFoldersProps {
   selectedFolderId?: string | null
@@ -178,7 +178,7 @@ export function SnippetFolders({ selectedFolderId, onSelectFolder }: SnippetFold
       const isExpanded = expandedFolders.has(folder.id)
 
       return (
-        <div key={folder.id} className="flex flex-col space-y-0.5">
+        <div key={folder.id} className='flex flex-col space-y-0.5'>
           <div
             data-active={selectedFolderId === folder.id}
             className={cn(
@@ -194,22 +194,22 @@ export function SnippetFolders({ selectedFolderId, onSelectFolder }: SnippetFold
             //   selectedFolderId === folder.id ? 'bg-gray-100 dark:bg-gray-800' : ''
             // )}
             onClick={() => onSelectFolder(folder.id)}>
-            <div className="flex flex-1 items-center overflow-hidden">
+            <div className='flex flex-1 items-center overflow-hidden'>
               {hasSubfolders ? (
                 <button
                   onClick={(e) => toggleFolderExpansion(folder.id, e)}
-                  className="mr-1 focus:outline-hidden shrink-0">
+                  className='mr-1 focus:outline-hidden shrink-0'>
                   {isExpanded ? <ChevronDownIcon size={16} /> : <ChevronRightIcon size={16} />}
                 </button>
               ) : (
-                <span className="mr-1 w-2"></span>
+                <span className='mr-1 w-2'></span>
               )}
-              <FolderIcon size={16} className="mr-2 shrink-0" />
-              <span className="truncate cursor-default">{folder.name}</span>
-              <span className="ml-2 text-xs text-gray-500">{folder._count?.snippets || 0}</span>
+              <FolderIcon size={16} className='mr-2 shrink-0' />
+              <span className='truncate cursor-default'>{folder.name}</span>
+              <span className='ml-2 text-xs text-gray-500'>{folder._count?.snippets || 0}</span>
             </div>
 
-            <div className="flex items-center">
+            <div className='flex items-center'>
               <FolderFormPopover
                 folder={folder}
                 allFolders={folders}
@@ -217,28 +217,28 @@ export function SnippetFolders({ selectedFolderId, onSelectFolder }: SnippetFold
                 isLoading={isUpdatingFolder}
                 trigger={
                   <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className="bg-transparent size-5 opacity-0 transition-opacity group-hover:opacity-100"
+                    variant='ghost'
+                    size='icon-xs'
+                    className='bg-transparent size-5 opacity-0 transition-opacity group-hover:opacity-100'
                     onClick={(e) => e.stopPropagation()}
-                    title="Edit folder">
-                    <PencilIcon className="size-3!" />
+                    title='Edit folder'>
+                    <PencilIcon className='size-3!' />
                   </Button>
                 }
               />
               <Button
-                variant="destructive-hover"
-                size="icon"
-                className="bg-transparent size-5 opacity-0 transition-opacity group-hover:opacity-100"
+                variant='destructive-hover'
+                size='icon'
+                className='bg-transparent size-5 opacity-0 transition-opacity group-hover:opacity-100'
                 onClick={(e) => openDeleteDialog(folder, e)}
-                title="Delete folder">
-                <TrashIcon className="size-3!" />
+                title='Delete folder'>
+                <TrashIcon className='size-3!' />
               </Button>
             </div>
           </div>
 
           {hasSubfolders && isExpanded && folder.subfolders && (
-            <div className="mt-1">{renderFolderTree(folder.subfolders, level + 1)}</div>
+            <div className='mt-1'>{renderFolderTree(folder.subfolders, level + 1)}</div>
           )}
         </div>
       )
@@ -246,10 +246,10 @@ export function SnippetFolders({ selectedFolderId, onSelectFolder }: SnippetFold
   }
 
   return (
-    <div className="flex h-full flex-col border-r">
-      <div className="border-b p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="font-medium">Folders</h3>
+    <div className='flex h-full flex-col border-r'>
+      <div className='border-b p-3'>
+        <div className='mb-2 flex items-center justify-between'>
+          <h3 className='font-medium'>Folders</h3>
 
           {/* Create Folder Popover */}
           <FolderFormPopover
@@ -257,20 +257,20 @@ export function SnippetFolders({ selectedFolderId, onSelectFolder }: SnippetFold
             onSubmit={handleCreateFolder}
             isLoading={isCreatingFolder}
             trigger={
-              <Button variant="ghost" size="icon-xs" className="rounded-md">
+              <Button variant='ghost' size='icon-xs' className='rounded-md'>
                 <PlusIcon />
               </Button>
             }
           />
         </div>
         <InputSearch
-          placeholder="Search folders..."
+          placeholder='Search folders...'
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
       </div>
 
-      <div className="flex-1 overflow-auto p-2 space-y-0.5 cursor-default">
+      <div className='flex-1 overflow-auto p-2 space-y-0.5 cursor-default'>
         <div
           data-active={!selectedFolderId}
           className={cn(
@@ -282,8 +282,8 @@ export function SnippetFolders({ selectedFolderId, onSelectFolder }: SnippetFold
             // !selectedFolderId ? 'bg-gray-100 dark:bg-gray-800' : ''
           )}
           onClick={() => onSelectFolder(null)}>
-          <FolderIcon size={16} className="mr-2 shrink-0" />
-          <span className="">All Snippets</span>
+          <FolderIcon size={16} className='mr-2 shrink-0' />
+          <span className=''>All Snippets</span>
         </div>
 
         {rootFolders.length > 0 ? renderFolderTree(rootFolders) : null}

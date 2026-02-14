@@ -1,8 +1,8 @@
 // apps/api/src/routes/app-runtime.ts
 
-import { Hono } from 'hono'
-import { serveStatic } from '@hono/node-server/serve-static'
 import { createScopedLogger } from '@auxx/logger'
+import { serveStatic } from '@hono/node-server/serve-static'
+import { Hono } from 'hono'
 
 const log = createScopedLogger('app-runtime')
 

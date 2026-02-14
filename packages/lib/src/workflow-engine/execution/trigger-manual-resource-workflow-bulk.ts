@@ -1,16 +1,16 @@
 // packages/lib/src/workflow-engine/execution/trigger-manual-resource-workflow-bulk.ts
 
-import { err, ok, Result } from 'neverthrow'
-import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
-import { RedisWorkflowExecutionReporter } from '../execution-reporter'
+import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getWorkflowApp } from '@auxx/services/workflows'
-import { database as db, schema } from '@auxx/database'
-import { executeResourceQuery, fetchResourceById } from '../../resources/resource-fetcher'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
+import { inArray } from 'drizzle-orm'
+import { err, ok, type Result } from 'neverthrow'
 import { isCustomResourceId } from '../../resources/client'
 import { ResourceRegistryService } from '../../resources/registry'
-import { inArray } from 'drizzle-orm'
-import { parseRecordId, toRecordId, type RecordId } from '@auxx/types/resource'
+import { executeResourceQuery, fetchResourceById } from '../../resources/resource-fetcher'
+import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
+import { RedisWorkflowExecutionReporter } from '../execution-reporter'
 
 const logger = createScopedLogger('trigger-manual-workflow-bulk')
 
@@ -90,7 +90,7 @@ export async function triggerManualResourceWorkflowBulk(params: {
   const parsedResources = recordIds.map(parseRecordId)
 
   // Validate all have same entityDefinitionId (workflows are entity-specific)
-  const entityDefinitionIds = [...new Set(parsedResources.map(r => r.entityDefinitionId))]
+  const entityDefinitionIds = [...new Set(parsedResources.map((r) => r.entityDefinitionId))]
   if (entityDefinitionIds.length > 1) {
     return err({
       code: 'WORKFLOW_TYPE_MISMATCH',
@@ -105,7 +105,7 @@ export async function triggerManualResourceWorkflowBulk(params: {
   }
 
   const entityDefinitionId = entityDefinitionIds[0]!
-  const entityInstanceIds = parsedResources.map(r => r.entityInstanceId)
+  const entityInstanceIds = parsedResources.map((r) => r.entityInstanceId)
 
   logger.info('Bulk manual trigger started', {
     workflowAppId,
@@ -164,74 +164,76 @@ export async function triggerManualResourceWorkflowBulk(params: {
   const results: ResourceTriggerResult[] = []
 
   // Use Promise.allSettled to handle partial failures
-  const executions = entityInstanceIds.map(async (entityInstanceId, index): Promise<ResourceTriggerResult> => {
-    const recordId = toRecordId(entityDefinitionId, entityInstanceId)
-    try {
-      // Check if resource exists
-      const resourceData = resourcesMap.get(entityInstanceId)
-      if (!resourceData) {
+  const executions = entityInstanceIds.map(
+    async (entityInstanceId, index): Promise<ResourceTriggerResult> => {
+      const recordId = toRecordId(entityDefinitionId, entityInstanceId)
+      try {
+        // Check if resource exists
+        const resourceData = resourcesMap.get(entityInstanceId)
+        if (!resourceData) {
+          return {
+            recordId,
+            success: false,
+            error: {
+              code: 'RESOURCE_NOT_FOUND',
+              message: `Resource ${entityInstanceId} not found or does not belong to organization`,
+            },
+          }
+        }
+
+        // Create workflow run
+        const workflowRun = await executionService.createRun({
+          workflowId: publishedWorkflow.id,
+          inputs: {
+            trigger_type: 'manual',
+            entity_definition_id: entityDefinitionId,
+            resource_id: entityInstanceId,
+            triggered_at: new Date().toISOString(),
+            [entityDefinitionId]: resourceData, // Store resource data under entity-specific key
+            createdBy,
+          },
+          mode: 'production',
+          userId: createdBy,
+          organizationId,
+        })
+
+        // Execute workflow asynchronously with reporter for node execution persistence
+        const reporter = new RedisWorkflowExecutionReporter(workflowRun.id)
+        executionService.executeWorkflowAsync(workflowRun, reporter).catch((error) => {
+          logger.error('Async workflow execution failed', {
+            workflowRunId: workflowRun.id,
+            entityInstanceId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        })
+
+        logger.debug('Workflow run created', {
+          entityInstanceId,
+          workflowRunId: workflowRun.id,
+        })
+
+        return {
+          recordId,
+          success: true,
+          workflowRunId: workflowRun.id,
+        }
+      } catch (error) {
+        logger.error('Failed to create workflow run', {
+          entityInstanceId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+
         return {
           recordId,
           success: false,
           error: {
-            code: 'RESOURCE_NOT_FOUND',
-            message: `Resource ${entityInstanceId} not found or does not belong to organization`,
+            code: 'WORKFLOW_EXECUTION_FAILED',
+            message: error instanceof Error ? error.message : 'Workflow execution failed',
           },
         }
       }
-
-      // Create workflow run
-      const workflowRun = await executionService.createRun({
-        workflowId: publishedWorkflow.id,
-        inputs: {
-          trigger_type: 'manual',
-          entity_definition_id: entityDefinitionId,
-          resource_id: entityInstanceId,
-          triggered_at: new Date().toISOString(),
-          [entityDefinitionId]: resourceData, // Store resource data under entity-specific key
-          createdBy,
-        },
-        mode: 'production',
-        userId: createdBy,
-        organizationId,
-      })
-
-      // Execute workflow asynchronously with reporter for node execution persistence
-      const reporter = new RedisWorkflowExecutionReporter(workflowRun.id)
-      executionService.executeWorkflowAsync(workflowRun, reporter).catch((error) => {
-        logger.error('Async workflow execution failed', {
-          workflowRunId: workflowRun.id,
-          entityInstanceId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      })
-
-      logger.debug('Workflow run created', {
-        entityInstanceId,
-        workflowRunId: workflowRun.id,
-      })
-
-      return {
-        recordId,
-        success: true,
-        workflowRunId: workflowRun.id,
-      }
-    } catch (error) {
-      logger.error('Failed to create workflow run', {
-        entityInstanceId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-
-      return {
-        recordId,
-        success: false,
-        error: {
-          code: 'WORKFLOW_EXECUTION_FAILED',
-          message: error instanceof Error ? error.message : 'Workflow execution failed',
-        },
-      }
     }
-  })
+  )
 
   // Wait for all executions to complete
   const settled = await Promise.allSettled(executions)
@@ -290,7 +292,7 @@ async function fetchResourcesByIds(
   const parsedResources = recordIds.map(parseRecordId)
 
   // Validate all have same entityDefinitionId
-  const entityDefinitionIds = [...new Set(parsedResources.map(r => r.entityDefinitionId))]
+  const entityDefinitionIds = [...new Set(parsedResources.map((r) => r.entityDefinitionId))]
   if (entityDefinitionIds.length > 1) {
     logger.error('Mixed entity types in batch fetch', { entityDefinitionIds })
     return resourcesMap
@@ -301,7 +303,7 @@ async function fetchResourcesByIds(
 
   const entityDefinitionId = entityDefinitionIds[0]!
   const resourceType = entityDefinitionId
-  const entityInstanceIds = parsedResources.map(r => r.entityInstanceId)
+  const entityInstanceIds = parsedResources.map((r) => r.entityInstanceId)
 
   // Handle custom entities (UUID/CUID format)
   if (isCustomResourceId(resourceType)) {

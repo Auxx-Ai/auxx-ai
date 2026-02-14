@@ -1,10 +1,10 @@
 // apps/web/src/components/conditions/utils.ts
 
+import { getOperatorsForType } from '@auxx/lib/workflow-engine/client'
+import { BaseType } from '@auxx/lib/workflow-engine/types'
+import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import type { Condition, ConditionGroup, FieldDefinition, OperatorDefinition } from './types'
 import { STANDARD_OPERATORS } from './types'
-import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
-import { BaseType } from '@auxx/lib/workflow-engine/types'
-import { getOperatorsForType } from '@auxx/lib/workflow-engine/client'
 
 /**
  * Convert UnifiedVariable to FieldDefinition for variable-based systems
@@ -107,12 +107,13 @@ export const validateCondition = (
           errors.push('Value must be a number')
         }
         break
-      case 'boolean':
+      case 'boolean': {
         const boolValue = condition.value?.toString().toLowerCase()
         if (boolValue !== 'true' && boolValue !== 'false') {
           errors.push('Value must be true or false')
         }
         break
+      }
       case 'date':
       case 'datetime':
         if (typeof condition.value === 'string' && isNaN(Date.parse(condition.value))) {

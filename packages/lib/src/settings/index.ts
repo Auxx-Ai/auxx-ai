@@ -1,11 +1,12 @@
 import { database as db, schema } from '@auxx/database'
-import { DEFAULT_USER_SETTINGS, UserSettings, UserSettingsPath } from './types'
 import { eq } from 'drizzle-orm'
+import { DEFAULT_USER_SETTINGS, type UserSettings, type UserSettingsPath } from './types'
+
 // import { UserSettings, DEFAULT_USER_SETTINGS } from './settings.types'
 
-export * from './types'
 export * from './settings-initializer'
 export * from './settings-service'
+export * from './types'
 
 export function getNestedValue<T>(obj: T, path: string): any {
   return path.split('.').reduce((prev, curr) => {
@@ -21,7 +22,8 @@ export class UserSettingsService {
     userId: string,
     key?: K
   ): Promise<K extends UserSettingsPath ? any : UserSettings> {
-    const [user] = await db.select({ settings: schema.User.settings })
+    const [user] = await db
+      .select({ settings: schema.User.settings })
       .from(schema.User)
       .where(eq(schema.User.id, userId))
       .limit(1)
@@ -42,13 +44,14 @@ export class UserSettingsService {
    */
   static async update(userId: string, newSettings: Partial<UserSettings>): Promise<UserSettings> {
     // First get current settings
-    const currentSettings = await this.get(userId)
+    const currentSettings = await UserSettingsService.get(userId)
 
     // Deep merge current settings with new settings
-    const updatedSettings = this.deepMerge(currentSettings, newSettings)
+    const updatedSettings = UserSettingsService.deepMerge(currentSettings, newSettings)
 
     // Save to database
-    const [user] = await db.update(schema.User)
+    const [user] = await db
+      .update(schema.User)
       .set({ settings: updatedSettings })
       .where(eq(schema.User.id, userId))
       .returning({ settings: schema.User.settings })
@@ -60,7 +63,8 @@ export class UserSettingsService {
    * Reset user settings to defaults
    */
   static async reset(userId: string): Promise<UserSettings> {
-    const [user] = await db.update(schema.User)
+    const [user] = await db
+      .update(schema.User)
       .set({ settings: DEFAULT_USER_SETTINGS })
       .where(eq(schema.User.id, userId))
       .returning({ settings: schema.User.settings })
@@ -73,7 +77,7 @@ export class UserSettingsService {
    * Example: updateOne(userId, 'notifications.email', false)
    */
   static async set(userId: string, path: string, value: any): Promise<UserSettings> {
-    const currentSettings = await this.get(userId)
+    const currentSettings = await UserSettingsService.get(userId)
 
     // Split the path into parts
     const pathParts = path.split('.')
@@ -84,10 +88,10 @@ export class UserSettingsService {
     }, value)
 
     // Merge with current settings
-    const mergedSettings = this.deepMerge(currentSettings, newSettings)
+    const mergedSettings = UserSettingsService.deepMerge(currentSettings, newSettings)
 
     // Update settings in database
-    return this.update(userId, mergedSettings)
+    return UserSettingsService.update(userId, mergedSettings)
   }
 
   /**
@@ -96,13 +100,13 @@ export class UserSettingsService {
   private static deepMerge(target: any, source: any): any {
     const output = { ...target }
 
-    if (this.isObject(target) && this.isObject(source)) {
+    if (UserSettingsService.isObject(target) && UserSettingsService.isObject(source)) {
       Object.keys(source).forEach((key) => {
-        if (this.isObject(source[key])) {
+        if (UserSettingsService.isObject(source[key])) {
           if (!(key in target)) {
             Object.assign(output, { [key]: source[key] })
           } else {
-            output[key] = this.deepMerge(target[key], source[key])
+            output[key] = UserSettingsService.deepMerge(target[key], source[key])
           }
         } else {
           Object.assign(output, { [key]: source[key] })

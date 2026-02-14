@@ -5,8 +5,8 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
 
 const logger = createScopedLogger('plan-admin-service')
 
@@ -234,10 +234,7 @@ export class PlanAdminService {
   async hasActiveSubscriptions(planId: string): Promise<boolean> {
     const subscriptions = await this.db.query.PlanSubscription.findMany({
       where: (subs, { eq, and, inArray }) =>
-        and(
-          eq(subs.planId, planId),
-          inArray(subs.status, ['active', 'trialing', 'past_due'])
-        ),
+        and(eq(subs.planId, planId), inArray(subs.status, ['active', 'trialing', 'past_due'])),
       limit: 1,
     })
 

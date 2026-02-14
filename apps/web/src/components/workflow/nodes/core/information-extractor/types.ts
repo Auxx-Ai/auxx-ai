@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/nodes/core/information-extractor/types.ts
 
 import type { BaseNodeData, SpecificNode } from '~/components/workflow/types'
-import type { UnifiedVariable } from '../if-else'
 import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
+import type { UnifiedVariable } from '../if-else'
 
 /**
  * Structured output configuration

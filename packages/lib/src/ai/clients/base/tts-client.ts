@@ -1,11 +1,7 @@
 // packages/lib/src/ai/clients/base/tts-client.ts
 
 import { BaseSpecializedClient } from './base-specialized-client'
-import type {
-  ClientConfig,
-  TTSParams,
-  TTSResponse,
-} from './types'
+import type { ClientConfig, TTSParams, TTSResponse } from './types'
 
 /**
  * Abstract base class for text-to-speech clients
@@ -61,7 +57,7 @@ export abstract class TTSClient extends BaseSpecializedClient {
 
     // Remove whitespace and special characters for better estimation
     const effectiveText = text.replace(/[^\w]/g, '')
-    
+
     return Math.max(1, Math.ceil(effectiveText.length / charactersPerSecond))
   }
 
@@ -77,7 +73,7 @@ export abstract class TTSClient extends BaseSpecializedClient {
    */
   protected validateVoice(voice: string): boolean {
     const supportedVoices = this.getSupportedVoices()
-    
+
     if (supportedVoices.length === 0) {
       // If no supported voices defined, assume all are valid
       return true
@@ -119,7 +115,7 @@ export abstract class TTSClient extends BaseSpecializedClient {
         sanitized.lastIndexOf('!'),
         sanitized.lastIndexOf('?')
       )
-      
+
       if (lastSentenceEnd > 3000) {
         sanitized = sanitized.substring(0, lastSentenceEnd + 1)
       }
@@ -153,7 +149,7 @@ export abstract class TTSClient extends BaseSpecializedClient {
           // Single sentence is too long, split by words
           const words = sentence.split(/\s+/)
           let wordChunk = ''
-          
+
           for (const word of words) {
             if (wordChunk.length + word.length <= maxChunkSize) {
               wordChunk += (wordChunk ? ' ' : '') + word
@@ -167,7 +163,7 @@ export abstract class TTSClient extends BaseSpecializedClient {
               }
             }
           }
-          
+
           if (wordChunk) {
             currentChunk = wordChunk
           }
@@ -179,7 +175,7 @@ export abstract class TTSClient extends BaseSpecializedClient {
       chunks.push(currentChunk.trim())
     }
 
-    return chunks.filter(chunk => chunk.length > 0)
+    return chunks.filter((chunk) => chunk.length > 0)
   }
 
   /**
@@ -189,7 +185,7 @@ export abstract class TTSClient extends BaseSpecializedClient {
     if (buffers.length === 0) {
       return Buffer.alloc(0)
     }
-    
+
     if (buffers.length === 1) {
       return buffers[0]
     }
@@ -200,10 +196,14 @@ export abstract class TTSClient extends BaseSpecializedClient {
   /**
    * Calculate estimated usage tokens for TTS
    */
-  protected calculateTTSUsage(text: string): { prompt_tokens: number; completion_tokens: number; total_tokens: number } {
+  protected calculateTTSUsage(text: string): {
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+  } {
     // TTS typically charges based on characters or tokens in input text
     const inputTokens = Math.ceil(text.length / 4) // Rough approximation
-    
+
     return {
       prompt_tokens: inputTokens,
       completion_tokens: 0, // TTS doesn't produce text tokens

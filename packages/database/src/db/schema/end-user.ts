@@ -1,11 +1,10 @@
 // packages/database/src/db/schema/end-user.ts
 // Drizzle table: EndUser
 
-import { pgTable, index, text, timestamp, integer, jsonb, type AnyPgColumn } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
-
-import { WorkflowApp } from './workflow-app'
+import { type AnyPgColumn, index, integer, jsonb, pgTable, text, timestamp } from './_shared'
 import { User } from './user'
+import { WorkflowApp } from './workflow-app'
 
 /**
  * End users who access shared workflows

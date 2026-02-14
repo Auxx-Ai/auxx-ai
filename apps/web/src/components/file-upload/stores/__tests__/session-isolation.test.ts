@@ -1,8 +1,8 @@
 // apps/web/src/components/file-upload/stores/__tests__/session-isolation.test.ts
 
-import { describe, it, expect, beforeEach } from 'vitest'
-import { createUploadStore } from '../upload-store'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { UploadStore } from '../types'
+import { createUploadStore } from '../upload-store'
 
 describe('Session Isolation', () => {
   let store: UploadStore
@@ -81,7 +81,9 @@ describe('Session Isolation', () => {
 
       // Create test files
       const validFile = new File(['test'], 'avatar.jpg', { type: 'image/jpeg' })
-      const oversizedFile = new File(['x'.repeat(2 * 1024 * 1024)], 'large.jpg', { type: 'image/jpeg' })
+      const oversizedFile = new File(['x'.repeat(2 * 1024 * 1024)], 'large.jpg', {
+        type: 'image/jpeg',
+      })
       const wrongTypeFile = new File(['test'], 'document.pdf', { type: 'application/pdf' })
 
       // Test validation
@@ -191,11 +193,9 @@ describe('Session Isolation', () => {
     it('should require explicit session creation', async () => {
       // Add files without session
       const file = new File(['test'], 'test.txt')
-      
+
       // This should fail without a session
-      await expect(
-        store.addFilesWithValidation([file])
-      ).rejects.toThrow('No session available')
+      await expect(store.addFilesWithValidation([file])).rejects.toThrow('No session available')
     })
   })
 
@@ -219,12 +219,10 @@ describe('Session Isolation', () => {
 
       // Add files to each session
       const avatarFile = new File(['avatar'], 'avatar.jpg')
-      const messageFiles = [
-        new File(['msg1'], 'msg1.txt'),
-        new File(['msg2'], 'msg2.txt'),
-      ]
-      const generalFiles = Array.from({ length: 5 }, (_, i) => 
-        new File([`file${i}`], `file${i}.txt`)
+      const messageFiles = [new File(['msg1'], 'msg1.txt'), new File(['msg2'], 'msg2.txt')]
+      const generalFiles = Array.from(
+        { length: 5 },
+        (_, i) => new File([`file${i}`], `file${i}.txt`)
       )
 
       await store.addFilesWithValidation([avatarFile], avatarSession)
@@ -238,7 +236,7 @@ describe('Session Isolation', () => {
 
       // Verify file counts don't interfere
       const avatarFiles = store.sessions[avatarSession].fileIds
-        .map(id => store.files[id])
+        .map((id) => store.files[id])
         .filter(Boolean)
       expect(avatarFiles).toHaveLength(1)
       expect(avatarFiles[0].entityType).toBe('AVATAR')

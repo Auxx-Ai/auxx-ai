@@ -1,11 +1,11 @@
 // apps/web/src/components/file-upload/utils/sse-connection.ts
 
 import type {
-  FileUploadEvent,
   ConnectionState,
   ConnectionStatus,
-  SSEConfig,
   EventHandlers,
+  FileUploadEvent,
+  SSEConfig,
 } from '@auxx/lib/files/types'
 
 /**
@@ -215,8 +215,7 @@ export class SSEConnectionManager {
     this.setConnectionState('reconnecting')
     this.connectionStatus.reconnectAttempts++
 
-    const delay =
-      this.config.reconnectDelay * Math.pow(2, this.connectionStatus.reconnectAttempts - 1)
+    const delay = this.config.reconnectDelay * 2 ** (this.connectionStatus.reconnectAttempts - 1)
 
     this.reconnectTimeout = setTimeout(() => {
       this.connect()

@@ -1,5 +1,10 @@
-import { KeyboardShortcutCommand, mergeAttributes, Node, wrappingInputRule } from '@tiptap/core'
-import { Node as ProseMirrorNode } from '@tiptap/pm/model'
+import {
+  type KeyboardShortcutCommand,
+  mergeAttributes,
+  Node,
+  wrappingInputRule,
+} from '@tiptap/core'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 
 export interface TaskItemOptions {
   /**

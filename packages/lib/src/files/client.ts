@@ -6,15 +6,15 @@
  */
 
 export {
-  IMAGE_EXTENSIONS,
-  VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
-  DOCUMENT_EXTENSIONS,
-  FILE_TYPE_CATEGORIES,
   CATEGORY_EXTENSIONS,
   CATEGORY_MIME_PATTERNS,
+  DOCUMENT_EXTENSIONS,
+  FILE_TYPE_CATEGORIES,
+  type FileTypeCategory,
   getExtensionsForCategories,
   getMimePatternsForCategories,
+  IMAGE_EXTENSIONS,
   isExtensionAllowed,
-  type FileTypeCategory,
+  VIDEO_EXTENSIONS,
 } from './file-type-constants'

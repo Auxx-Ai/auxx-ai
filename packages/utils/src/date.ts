@@ -100,4 +100,8 @@ export function getEndOfWeek(date: Date): Date {
 }
 
 // Re-export timezone utilities for convenience
-export { formatInTimezone, formatRelativeTimeWithTimezone, getCurrentTimeInTimezone } from './timezone'
+export {
+  formatInTimezone,
+  formatRelativeTimeWithTimezone,
+  getCurrentTimeInTimezone,
+} from './timezone'

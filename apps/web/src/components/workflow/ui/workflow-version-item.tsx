@@ -2,19 +2,19 @@
 
 'use client'
 
-import React from 'react'
-import { ArchiveRestore, Eye, MoreHorizontal, TextCursorInput, Trash2 } from 'lucide-react'
-import { CommandItem } from '@auxx/ui/components/command'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { CommandItem } from '@auxx/ui/components/command'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { Button } from '@auxx/ui/components/button'
-import { cn } from '@auxx/ui/lib/utils'
 import { Input } from '@auxx/ui/components/input'
+import { cn } from '@auxx/ui/lib/utils'
+import { ArchiveRestore, Eye, MoreHorizontal, TextCursorInput, Trash2 } from 'lucide-react'
+import React from 'react'
 
 interface WorkflowVersionItemProps {
   version: {
@@ -81,15 +81,15 @@ export const WorkflowVersionItem = React.memo<WorkflowVersionItemProps>(
           'hover:bg-secondary/50 hover:ring-1 hover:ring-blue-500',
           'data-[selected=true]:bg-secondary/50 data-[selected=true]:ring-1 data-[selected=true]:ring-blue-500'
         )}>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center">
-            <div className="w-6">
-              {isSelected && <Eye className="w-3 h-3 text-muted-foreground" />}
+        <div className='flex-1 min-w-0'>
+          <div className='flex items-center'>
+            <div className='w-6'>
+              {isSelected && <Eye className='w-3 h-3 text-muted-foreground' />}
             </div>
 
             {isRenaming ? (
               <Input
-                type="text"
+                type='text'
                 value={renameTitle}
                 onChange={(e) => setRenameTitle(e.target.value)}
                 onKeyDown={(e) => {
@@ -101,49 +101,49 @@ export const WorkflowVersionItem = React.memo<WorkflowVersionItemProps>(
                   }
                 }}
                 onBlur={handleSubmitRename}
-                className="w-full px-1 py-0.5 text-sm border rounded"
+                className='w-full px-1 py-0.5 text-sm border rounded'
                 autoFocus
                 onClick={(e) => e.stopPropagation()}
               />
             ) : (
-              <div className="flex flex-col">
-                <div className="flex flex-row gap-1">
-                  <span className="font-medium text-sm truncate">
+              <div className='flex flex-col'>
+                <div className='flex flex-row gap-1'>
+                  <span className='font-medium text-sm truncate'>
                     {version.isDraft
                       ? 'Current Draft'
                       : version.title || `Version ${version.version}`}
                   </span>
                   {version.isPublished && (
-                    <Badge variant="blue" size="xs">
+                    <Badge variant='blue' size='xs'>
                       Published
                     </Badge>
                   )}
                   {version.isDraft && isDirty && (
-                    <Badge variant="secondary" size="xs">
+                    <Badge variant='secondary' size='xs'>
                       Unsaved
                     </Badge>
                   )}
                 </div>
-                <div className="text-sm text-muted-foreground">
+                <div className='text-sm text-muted-foreground'>
                   {version.isDraft ? workflowName : formatDate(version.createdAt)}
                 </div>
               </div>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className='flex items-center gap-2'>
           {!isRenaming && !version.isDraft && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 invisible group-hover:visible group-data-[selected=true]:visible group-data-[selected=true]:bg-primary-100"
+                  variant='ghost'
+                  size='sm'
+                  className='h-6 w-6 p-0 invisible group-hover:visible group-data-[selected=true]:visible group-data-[selected=true]:bg-primary-100'
                   onClick={(e) => e.stopPropagation()}>
                   <MoreHorizontal />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align='end'>
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation()
@@ -165,7 +165,7 @@ export const WorkflowVersionItem = React.memo<WorkflowVersionItemProps>(
                     e.stopPropagation()
                     onDelete(version.id, version.title || `Version ${version.version}`)
                   }}
-                  variant="destructive">
+                  variant='destructive'>
                   <Trash2 />
                   Delete
                 </DropdownMenuItem>

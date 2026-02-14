@@ -1,10 +1,10 @@
 // packages/database/src/db/schema/entity-instance.ts
 // Drizzle table for EntityInstance
 
-import { pgTable, index, text, timestamp, jsonb, type AnyPgColumn } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
-import { Organization } from './organization'
+import { type AnyPgColumn, index, jsonb, pgTable, text, timestamp } from './_shared'
 import { EntityDefinition } from './entity-definition'
+import { Organization } from './organization'
 import { User } from './user'
 
 /**

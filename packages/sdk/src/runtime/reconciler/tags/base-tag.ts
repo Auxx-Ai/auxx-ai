@@ -128,9 +128,9 @@
  * @see packages/sdk/src/runtime/event-broker.ts - EventBroker implementation
  */
 
+import { EventBroker } from '../../event-broker.js'
 import { generateInstanceId } from '../instance-id.js'
 import type { SanitizedInstance } from '../types.js'
-import { EventBroker } from '../../event-broker.js'
 
 /**
  * Abstract base class for all custom component tags.

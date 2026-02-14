@@ -1,23 +1,23 @@
 // apps/web/src/components/datasets/documents/document-management.tsx
 'use client'
-import { useCallback, useMemo, useState } from 'react'
+import type { DocumentEntity as Document } from '@auxx/database/models'
 import { Button } from '@auxx/ui/components/button'
-import { DynamicTable } from '~/components/dynamic-table'
-import { EmptyState } from '~/components/global/empty-state'
-import { FileText, Plus, Trash2, CircleDot, CircleSlash } from 'lucide-react'
+import { toastError, toastInfo, toastSuccess } from '@auxx/ui/components/toast'
+import { CircleDot, CircleSlash, FileText, Plus, Trash2 } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 import { useDatasetDetail } from '~/app/(protected)/app/datasets/[datasetId]/_components/dataset-detail-provider'
-import { DocumentUploadDialog } from './document-upload-dialog'
-import { DocumentDetailDrawer } from './document-detail-drawer'
+import { DynamicTable } from '~/components/dynamic-table'
+import { useFileUpload } from '~/components/file-upload/hooks/use-file-upload'
+import { FileDropZone } from '~/components/files/file-drop-zone'
+import { EmptyState } from '~/components/global/empty-state'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
+import { useDocumentProcessing } from '../hooks/use-document-processing'
 import { createDocumentColumns } from './document-columns'
+import { DocumentDetailDrawer } from './document-detail-drawer'
 import { DocumentFilterBar } from './document-filter-bar'
 import { DocumentProcessingToast } from './document-processing-toast'
-import { FileDropZone } from '~/components/files/file-drop-zone'
-import { useFileUpload } from '~/components/file-upload/hooks/use-file-upload'
-import { useDocumentProcessing } from '../hooks/use-document-processing'
-import { useConfirm } from '~/hooks/use-confirm'
-import { toastError, toastInfo, toastSuccess } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
-import type { DocumentEntity as Document } from '@auxx/database/models'
+import { DocumentUploadDialog } from './document-upload-dialog'
 
 interface DocumentManagementProps {
   datasetId: string
@@ -132,16 +132,19 @@ export function DocumentManagement({ datasetId, onDocumentSelect }: DocumentMana
     [addFiles, startUpload]
   )
   // Handle document view details
-  const handleViewDetails = useCallback((document: Document) => {
-    if (onDocumentSelect) {
-      // External drawer management
-      onDocumentSelect(document)
-    } else {
-      // Internal drawer management
-      setSelectedDocument(document)
-      setDetailDrawerOpen(true)
-    }
-  }, [onDocumentSelect])
+  const handleViewDetails = useCallback(
+    (document: Document) => {
+      if (onDocumentSelect) {
+        // External drawer management
+        onDocumentSelect(document)
+      } else {
+        // Internal drawer management
+        setSelectedDocument(document)
+        setDetailDrawerOpen(true)
+      }
+    },
+    [onDocumentSelect]
+  )
   // Handle document download
   const handleDownload = useCallback((document: Document) => {
     // TODO: Implement actual download
@@ -325,9 +328,9 @@ export function DocumentManagement({ datasetId, onDocumentSelect }: DocumentMana
       disabled={isDocumentsLoading || isUploading || isUploadActive}>
       {/* Dynamic Table */}
       <DynamicTable<Document>
-        tableId="dataset-documents"
-        className="h-full"
-        entityLabel="Document"
+        tableId='dataset-documents'
+        className='h-full'
+        entityLabel='Document'
         columns={columns}
         data={documents}
         isLoading={isDocumentsLoading}
@@ -337,7 +340,7 @@ export function DocumentManagement({ datasetId, onDocumentSelect }: DocumentMana
         onExport={handleExport}
         enableSearch
         onRefresh={refetch}
-        searchPlaceholder="Search documents..."
+        searchPlaceholder='Search documents...'
         searchKeys={['filename', 'title', 'mimeType']}
         onAddNew={() => setUploadDialogOpen(true)}
         customFilter={
@@ -359,7 +362,7 @@ export function DocumentManagement({ datasetId, onDocumentSelect }: DocumentMana
             }
             button={
               documentFilter === 'all' ? (
-                <Button onClick={() => setUploadDialogOpen(true)} variant="outline">
+                <Button onClick={() => setUploadDialogOpen(true)} variant='outline'>
                   <Plus />
                   Upload Documents
                 </Button>

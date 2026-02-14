@@ -1,7 +1,7 @@
 // 'use client'
 import React from 'react'
-import { api } from '~/trpc/server'
 import { AiModelsList } from '~/components/ai/ui/ai-model-list'
+import { api } from '~/trpc/server'
 
 type Props = {}
 

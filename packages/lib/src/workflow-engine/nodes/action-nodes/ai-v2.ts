@@ -1,27 +1,27 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/ai-v2.ts
 
-import { BaseAiNodeProcessor, type BaseAiModelConfig } from '../base-ai-node'
+import type { Message, Tool } from '../../../ai/clients/base/types'
+import type { ExecutionContextManager } from '../../core/execution-context'
+import { ToolExecutionManager } from '../../core/tool-execution-manager'
+import { ToolRegistry } from '../../core/tool-registry'
 import type {
-  WorkflowNode,
   NodeExecutionResult,
   ValidationResult,
   Workflow,
+  WorkflowNode,
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
-import { ToolRegistry } from '../../core/tool-registry'
-import { ToolExecutionManager } from '../../core/tool-execution-manager'
-import { AIV2ToolExecutor } from './ai-v2-tool-executor'
-import type { Message, Tool } from '../../../ai/clients/base/types'
+import { type BaseAiModelConfig, BaseAiNodeProcessor } from '../base-ai-node'
 import type {
-  StructuredOutputConfig,
   InvokeOrchestratorResponse,
+  StructuredOutputConfig,
 } from '../utils/ai-invocation-utils'
 import {
   convertToolsToOrchestratorFormat,
   logUnresolvedVariables,
   type PromptTemplate,
 } from '../utils/ai-node-utils'
+import { AIV2ToolExecutor } from './ai-v2-tool-executor'
 
 interface AiModelConfig extends BaseAiModelConfig {
   completion_params?: {
@@ -99,7 +99,7 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
   protected async buildMessages(
     node: WorkflowNode,
     data: any,
-    contextManager: ExecutionContextManager,
+    contextManager: ExecutionContextManager
   ): Promise<Message[]> {
     const config = data as AiNodeConfig
     const messages: Message[] = []
@@ -129,7 +129,7 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
           this.interpolateVariables(config.systemPrompt, contextManager).then((content) => ({
             role: 'system' as const,
             content,
-          })),
+          }))
         )
       }
 
@@ -137,7 +137,7 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
         this.interpolateVariables(config.prompt, contextManager).then((content) => ({
           role: 'user' as const,
           content,
-        })),
+        }))
       )
 
       messages.push(...(await Promise.all(promptPromises)))

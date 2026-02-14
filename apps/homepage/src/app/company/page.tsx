@@ -1,10 +1,10 @@
 // apps/homepage/src/app/company/page.tsx
 import type { Metadata } from 'next'
+import { config } from '~/lib/config'
 import FooterSection from '../_components/main/footer-section'
 import Header from '../_components/main/header'
 import { ImageIllustration } from '../_components/sections/image-illustration'
 import HowCanWeHelp from './_components/how-can-we-help'
-import { config } from '~/lib/config'
 
 export const metadata: Metadata = {
   title: `About ${config.shortName} | AI Customer Support Innovators`,
@@ -14,9 +14,9 @@ export const metadata: Metadata = {
 // Renders the Auxx.ai company page by composing storytelling-focused sections.
 export default function FeaturesPage() {
   return (
-    <div id="root" className="relative h-screen overflow-y-auto bg-background">
+    <div id='root' className='relative h-screen overflow-y-auto bg-background'>
       <Header />
-      <main className="">
+      <main className=''>
         <ImageIllustration />
         <HowCanWeHelp />
       </main>

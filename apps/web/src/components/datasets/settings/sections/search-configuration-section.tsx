@@ -1,21 +1,21 @@
 // apps/web/src/components/datasets/settings/sections/search-configuration-section.tsx
 'use client'
-import { useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import { z } from 'zod'
+import type { DatasetEntity as Dataset } from '@auxx/database/models'
+import { BaseType } from '@auxx/lib/workflow-engine/types'
 import { Button } from '@auxx/ui/components/button'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@auxx/ui/components/form'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
-import { Search, Zap, FileText, Lightbulb, Sparkles } from 'lucide-react'
-import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { FileText, Lightbulb, Search, Sparkles, Zap } from 'lucide-react'
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
-import { BaseType } from '@auxx/lib/workflow-engine/types'
-import type { DatasetEntity as Dataset } from '@auxx/database/models'
+import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { api } from '~/trpc/react'
+
 interface SearchConfigurationSectionProps {
   dataset: Dataset
   onUpdate?: (dataset: Dataset) => void
@@ -190,38 +190,38 @@ export function SearchConfigurationSection({
     switch (selectedSearchType) {
       case 'vector':
         return (
-          <VarEditorField className="p-0 [&_[data-slot=field-row-label]]:w-50">
+          <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-50'>
             <VarEditorFieldRow
-              title="Similarity Threshold"
-              description="Minimum similarity score (0.0 - 1.0)"
+              title='Similarity Threshold'
+              description='Minimum similarity score (0.0 - 1.0)'
               type={BaseType.NUMBER}
               showIcon={true}>
               <ConstantInputAdapter
                 value={form.watch('similarityThreshold') ?? ''}
                 onChange={(_, val) => form.setValue('similarityThreshold', val)}
                 varType={BaseType.NUMBER}
-                placeholder="0.7"
+                placeholder='0.7'
                 disabled={readOnly}
               />
             </VarEditorFieldRow>
 
             <VarEditorFieldRow
-              title="Maximum Results"
-              description="Maximum number of results to return"
+              title='Maximum Results'
+              description='Maximum number of results to return'
               type={BaseType.NUMBER}
               showIcon={true}>
               <ConstantInputAdapter
                 value={form.watch('maxResults') ?? ''}
                 onChange={(_, val) => form.setValue('maxResults', val)}
                 varType={BaseType.NUMBER}
-                placeholder="20"
+                placeholder='20'
                 disabled={readOnly}
               />
             </VarEditorFieldRow>
 
             <VarEditorFieldRow
-              title="Include Metadata"
-              description="Include document metadata in results"
+              title='Include Metadata'
+              description='Include document metadata in results'
               type={BaseType.BOOLEAN}
               showIcon={true}>
               <ConstantInputAdapter
@@ -234,8 +234,8 @@ export function SearchConfigurationSection({
             </VarEditorFieldRow>
 
             <VarEditorFieldRow
-              title="Search Mode"
-              description="Algorithm for selecting and ranking results"
+              title='Search Mode'
+              description='Algorithm for selecting and ranking results'
               type={BaseType.ENUM}
               showIcon={true}>
               <ConstantInputAdapter
@@ -249,7 +249,7 @@ export function SearchConfigurationSection({
                     { label: 'Score Threshold', value: 'similarity_score_threshold' },
                   ],
                 }}
-                placeholder="Select search mode"
+                placeholder='Select search mode'
                 disabled={readOnly}
               />
             </VarEditorFieldRow>
@@ -257,10 +257,10 @@ export function SearchConfigurationSection({
         )
       case 'text':
         return (
-          <VarEditorField className="p-0 [&_[data-slot=field-row-label]]:w-50">
+          <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-50'>
             <VarEditorFieldRow
-              title="Fuzzy Search"
-              description="Enable fuzzy matching for typos and variations"
+              title='Fuzzy Search'
+              description='Enable fuzzy matching for typos and variations'
               type={BaseType.BOOLEAN}
               showIcon={true}>
               <ConstantInputAdapter
@@ -273,8 +273,8 @@ export function SearchConfigurationSection({
             </VarEditorFieldRow>
 
             <VarEditorFieldRow
-              title="Phrase Search"
-              description="Enable exact phrase matching with quotes"
+              title='Phrase Search'
+              description='Enable exact phrase matching with quotes'
               type={BaseType.BOOLEAN}
               showIcon={true}>
               <ConstantInputAdapter
@@ -287,8 +287,8 @@ export function SearchConfigurationSection({
             </VarEditorFieldRow>
 
             <VarEditorFieldRow
-              title="Boolean Mode"
-              description="Support AND, OR, NOT operators in queries"
+              title='Boolean Mode'
+              description='Support AND, OR, NOT operators in queries'
               type={BaseType.BOOLEAN}
               showIcon={true}>
               <ConstantInputAdapter
@@ -301,8 +301,8 @@ export function SearchConfigurationSection({
             </VarEditorFieldRow>
 
             <VarEditorFieldRow
-              title="Ranking Algorithm"
-              description="Algorithm for scoring and ranking text matches"
+              title='Ranking Algorithm'
+              description='Algorithm for scoring and ranking text matches'
               type={BaseType.ENUM}
               showIcon={true}>
               <ConstantInputAdapter
@@ -315,21 +315,21 @@ export function SearchConfigurationSection({
                     { label: 'TF-IDF', value: 'tfidf' },
                   ],
                 }}
-                placeholder="Select ranking algorithm"
+                placeholder='Select ranking algorithm'
                 disabled={readOnly}
               />
             </VarEditorFieldRow>
 
             <VarEditorFieldRow
-              title="Minimum Score"
-              description="Minimum relevance score to include results"
+              title='Minimum Score'
+              description='Minimum relevance score to include results'
               type={BaseType.NUMBER}
               showIcon={true}>
               <ConstantInputAdapter
                 value={form.watch('minScore') ?? ''}
                 onChange={(_, val) => form.setValue('minScore', val)}
                 varType={BaseType.NUMBER}
-                placeholder="0.1"
+                placeholder='0.1'
                 disabled={readOnly}
               />
             </VarEditorFieldRow>
@@ -337,38 +337,38 @@ export function SearchConfigurationSection({
         )
       case 'hybrid':
         return (
-          <VarEditorField className="p-0 [&_[data-slot=field-row-label]]:w-50">
+          <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-50'>
             <VarEditorFieldRow
-              title="Vector Weight"
-              description="Weight for vector search results (0.0 - 1.0)"
+              title='Vector Weight'
+              description='Weight for vector search results (0.0 - 1.0)'
               type={BaseType.NUMBER}
               showIcon={true}>
               <ConstantInputAdapter
                 value={form.watch('vectorWeight') ?? ''}
                 onChange={(_, val) => form.setValue('vectorWeight', val)}
                 varType={BaseType.NUMBER}
-                placeholder="0.6"
+                placeholder='0.6'
                 disabled={readOnly}
               />
             </VarEditorFieldRow>
 
             <VarEditorFieldRow
-              title="Text Weight"
-              description="Weight for text search results (0.0 - 1.0)"
+              title='Text Weight'
+              description='Weight for text search results (0.0 - 1.0)'
               type={BaseType.NUMBER}
               showIcon={true}>
               <ConstantInputAdapter
                 value={form.watch('textWeight') ?? ''}
                 onChange={(_, val) => form.setValue('textWeight', val)}
                 varType={BaseType.NUMBER}
-                placeholder="0.4"
+                placeholder='0.4'
                 disabled={readOnly}
               />
             </VarEditorFieldRow>
 
             <VarEditorFieldRow
-              title="Combination Method"
-              description="Method for combining vector and text results"
+              title='Combination Method'
+              description='Method for combining vector and text results'
               type={BaseType.ENUM}
               showIcon={true}>
               <ConstantInputAdapter
@@ -382,7 +382,7 @@ export function SearchConfigurationSection({
                     { label: 'Linear Combination', value: 'linear_combination' },
                   ],
                 }}
-                placeholder="Select combination method"
+                placeholder='Select combination method'
                 disabled={readOnly}
               />
             </VarEditorFieldRow>
@@ -398,21 +398,21 @@ export function SearchConfigurationSection({
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
         {/* Two Column Layout */}
-        <div className="flex flex-col lg:flex-row">
+        <div className='flex flex-col lg:flex-row'>
           {/* Left Column - Search Type Selection */}
-          <div className="lg:max-w-[400px] p-6 lg:pr-6">
-            <div className="space-y-1 mb-6">
-              <div className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
-                <Search className="size-4" /> Search Type
+          <div className='lg:max-w-[400px] p-6 lg:pr-6'>
+            <div className='space-y-1 mb-6'>
+              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
+                <Search className='size-4' /> Search Type
               </div>
-              <p className="text-sm text-muted-foreground">
+              <p className='text-sm text-muted-foreground'>
                 Choose how your dataset will be searched.
               </p>
             </div>
 
             <FormField
               control={form.control}
-              name="searchType"
+              name='searchType'
               render={({ field }) => (
                 <FormItem>
                   <FormControl>
@@ -442,12 +442,12 @@ export function SearchConfigurationSection({
           </div>
 
           {/* Right Column - Search Type Specific Options */}
-          <div className="flex-1 border-t lg:border-t-0 lg:border-l p-6 lg:pl-6">
-            <div className="space-y-1 mb-6">
-              <div className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
-                <CurrentIcon className="size-4" /> {currentTypeInfo?.label} Options
+          <div className='flex-1 border-t lg:border-t-0 lg:border-l p-6 lg:pl-6'>
+            <div className='space-y-1 mb-6'>
+              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
+                <CurrentIcon className='size-4' /> {currentTypeInfo?.label} Options
               </div>
-              <p className="text-sm text-muted-foreground">
+              <p className='text-sm text-muted-foreground'>
                 Configure settings specific to {currentTypeInfo?.label?.toLowerCase()}.
               </p>
             </div>
@@ -456,33 +456,33 @@ export function SearchConfigurationSection({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-between border-t px-4 py-4">
+        <div className='flex items-center justify-between border-t px-4 py-4'>
           <Button
-            type="button"
-            variant="ghost"
-            size="sm"
+            type='button'
+            variant='ghost'
+            size='sm'
             onClick={handleApplyRecommendations}
             loading={getRecommendedConfig.isFetching}
-            loadingText="Getting recommendations...">
+            loadingText='Getting recommendations...'>
             <Lightbulb />
             Apply Recommendations
           </Button>
 
-          <div className="flex gap-2">
+          <div className='flex gap-2'>
             <Button
-              type="button"
-              variant="ghost"
-              size="sm"
+              type='button'
+              variant='ghost'
+              size='sm'
               onClick={() => form.reset(currentSearchConfig)}
               disabled={readOnly}>
               Reset
             </Button>
             <Button
-              type="submit"
-              size="sm"
-              variant="outline"
+              type='submit'
+              size='sm'
+              variant='outline'
               loading={updateDataset.isPending}
-              loadingText="Saving..."
+              loadingText='Saving...'
               disabled={readOnly}>
               Save Configuration
             </Button>

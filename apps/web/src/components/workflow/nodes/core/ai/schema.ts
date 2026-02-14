@@ -1,18 +1,19 @@
 // apps/web/src/components/workflow/nodes/core/ai/schema.ts
 
+import { AI_NODE_CONSTANTS } from '@auxx/lib/workflow-engine/constants'
 import { z } from 'zod'
 import {
-  type NodeDefinition,
+  BaseType,
   NodeCategory,
+  type NodeDefinition,
+  type UnifiedVariable,
   type ValidationResult,
 } from '~/components/workflow/types'
-import { type AiNodeData, PromptRole, AiModelMode } from './types'
-import { AiPanel } from './panel'
 import { NodeType } from '~/components/workflow/types/node-types'
-import { type UnifiedVariable, BaseType } from '~/components/workflow/types'
-import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
-import { AI_NODE_CONSTANTS } from '@auxx/lib/workflow-engine/constants'
+import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
+import { AiPanel } from './panel'
+import { AiModelMode, type AiNodeData, PromptRole } from './types'
 
 /**
  * Zod schema for AI model completion parameters

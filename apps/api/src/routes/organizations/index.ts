@@ -3,10 +3,10 @@
 import { Hono } from 'hono'
 import { authMiddleware } from '../../middleware/auth'
 import { organizationMiddleware } from '../../middleware/organization'
+import type { AppContext } from '../../types/context'
 import apps from './apps'
 import bundles from './bundles'
 import executeServerFunction from './execute-server-function'
-import type { AppContext } from '../../types/context'
 
 const organizations = new Hono<AppContext>()
 

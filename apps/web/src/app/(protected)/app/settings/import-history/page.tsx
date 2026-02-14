@@ -1,8 +1,8 @@
 // apps/web/src/app/(protected)/app/settings/import-history/page.tsx
 
+import { Import } from 'lucide-react'
 import React from 'react'
 import SettingsPage from '~/components/global/settings-page'
-import { Import } from 'lucide-react'
 import { ImportHistoryOverview } from './_components/import-history-overview'
 
 /**
@@ -13,8 +13,8 @@ export default function ImportHistoryPage() {
   return (
     <SettingsPage
       icon={<Import />}
-      title="Import History"
-      description="View and manage your data imports"
+      title='Import History'
+      description='View and manage your data imports'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Import History' }]}>
       <ImportHistoryOverview />
     </SettingsPage>

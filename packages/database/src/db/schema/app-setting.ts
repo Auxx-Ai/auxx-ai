@@ -1,16 +1,8 @@
 // packages/database/src/db/schema/app-setting.ts
 // Drizzle table for app settings
 
-import {
-  pgTable,
-  text,
-  timestamp,
-  jsonb,
-  index,
-  uniqueIndex,
-  type AnyPgColumn,
-} from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, index, jsonb, pgTable, text, timestamp, uniqueIndex } from './_shared'
 import { AppInstallation } from './app-installation'
 import { AppVersion } from './app-version'
 

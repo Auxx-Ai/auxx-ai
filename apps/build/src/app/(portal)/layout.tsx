@@ -1,9 +1,9 @@
 // apps/build/src/app/(portal)/layout.tsx
 
 import { redirect } from 'next/navigation'
-import { getSession, getLoginUrl } from '~/lib/auth'
-import { BuildDehydrationService } from '~/lib/dehydration'
 import { BuildDehydratedStateProvider } from '~/components/providers/dehydrated-state-provider'
+import { getLoginUrl, getSession } from '~/lib/auth'
+import { BuildDehydrationService } from '~/lib/dehydration'
 
 /**
  * Portal layout - wraps all authenticated developer portal pages

@@ -110,7 +110,7 @@ IMPORTANT INSTRUCTIONS:
 - Do NOT include any email signature or sign-offs
 - Keep only the essential information while maintaining clarity
 - Preserve list structures but condense list items if needed
-${HTML_FORMATTING_INSTRUCTIONS}`
+${HTML_FORMATTING_INSTRUCTIONS}`,
 }
 
 /**
@@ -129,10 +129,10 @@ export function getUserPrompt(
   }
 ): string {
   // Always remind about HTML formatting when content is provided
-  const htmlReminder = content 
+  const htmlReminder = content
     ? '\n\nThe content provided is in HTML format. Analyze its structure and ensure your response maintains proper HTML formatting with appropriate tags.'
     : ''
-  
+
   switch (operation) {
     case AI_OPERATION.COMPOSE:
       if (options?.context?.previousMessages) {
@@ -146,32 +146,32 @@ Original Subject: ${options.context.subject || 'Email Response'}
 Generate a professional response. Remember to return ONLY the email body content without any subject line or signature. Use proper HTML formatting with <p> tags for paragraphs and <ul>/<ol> with <li> tags for any lists.${htmlReminder}`
       }
       return `Compose a professional email body about: ${options?.context?.subject || 'the topic'}. Return ONLY the body content without subject or signature. Use proper HTML formatting.${htmlReminder}`
-      
+
     case AI_OPERATION.TONE:
       return `Rewrite this email to be ${options?.tone?.toLowerCase()}. Return ONLY the body content without adding any signature. The following content is in HTML format - preserve and maintain all HTML structure including lists:
       
 ${content}${htmlReminder}`
-      
+
     case AI_OPERATION.TRANSLATE:
       return `Translate this email to ${options?.language}. Return ONLY the translated body content without adding any signature. The following content is in HTML format - preserve all HTML structure including lists:
       
 ${content}${htmlReminder}`
-      
+
     case AI_OPERATION.FIX_GRAMMAR:
       return `Fix grammar and spelling in this email. Return ONLY the corrected body content without modifying any existing signature. The following content is in HTML format - preserve all HTML structure including lists:
       
 ${content}${htmlReminder}`
-      
+
     case AI_OPERATION.EXPAND:
       return `Expand this email with more detail. Return ONLY the expanded body content without adding any signature. The following content is in HTML format - preserve and expand any lists using proper HTML formatting:
       
 ${content}${htmlReminder}`
-      
+
     case AI_OPERATION.SHORTEN:
       return `Make this email more concise. Return ONLY the shortened body content without adding any signature. The following content is in HTML format - preserve list structures using proper HTML formatting:
       
 ${content}${htmlReminder}`
-      
+
     default:
       return content
   }
@@ -190,14 +190,16 @@ export function formatThreadContext(
   maxMessages: number = 5
 ): string {
   const recentMessages = messages.slice(-maxMessages)
-  
-  return recentMessages.map(msg => {
-    const direction = msg.type === 'sent' ? 'You' : msg.sender
-    const time = msg.timestamp.toLocaleString()
-    return `[${direction} - ${time}]:
+
+  return recentMessages
+    .map((msg) => {
+      const direction = msg.type === 'sent' ? 'You' : msg.sender
+      const time = msg.timestamp.toLocaleString()
+      return `[${direction} - ${time}]:
 ${msg.content}
 ---`
-  }).join('\n\n')
+    })
+    .join('\n\n')
 }
 
 /**
@@ -217,6 +219,6 @@ export function getPrompt(
 ): { system: string; user: string } {
   return {
     system: SYSTEM_PROMPTS[operation],
-    user: getUserPrompt(operation, content, options)
+    user: getUserPrompt(operation, content, options),
   }
 }

@@ -1,5 +1,5 @@
 import { Container, Heading, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -24,11 +24,11 @@ export async function ResetPasswordEmail({
           password:
         </Text>
 
-        <EmailButton href={resetLink} label="Reset Password" />
+        <EmailButton href={resetLink} label='Reset Password' />
 
-        <Text className="font-bold">This link is valid for 24 hours.</Text>
+        <Text className='font-bold'>This link is valid for 24 hours.</Text>
 
-        <Text className="mb-0">
+        <Text className='mb-0'>
           If you didn't request a password reset, you can safely ignore this email.
         </Text>
 

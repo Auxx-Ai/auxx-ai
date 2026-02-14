@@ -1,10 +1,10 @@
 'use client'
 
-import * as React from 'react'
-import { RadioGroup as RadioGroupPrimitive } from 'radix-ui'
-import { RadioGroupItem as BaseRadioGroupItem } from '@auxx/ui/components/radio-group'
 import { Label } from '@auxx/ui/components/label'
+import { RadioGroupItem as BaseRadioGroupItem } from '@auxx/ui/components/radio-group'
 import { cn } from '@auxx/ui/lib/utils'
+import type { RadioGroup as RadioGroupPrimitive } from 'radix-ui'
+import type * as React from 'react'
 
 interface RadioGroupItemCardProps extends React.ComponentProps<typeof RadioGroupPrimitive.Item> {
   /** Icon component to display */
@@ -45,29 +45,29 @@ function RadioGroupItemCard({
       <BaseRadioGroupItem
         value={value}
         id={itemId}
-        variant="accent"
-        size="lg"
+        variant='accent'
+        size='lg'
         aria-describedby={description ? descriptionId : undefined}
-        className="order-1 after:absolute after:inset-0"
+        className='order-1 after:absolute after:inset-0'
         {...props}
       />
-      <div className="flex grow items-start gap-3">
-        <div className="flex items-center gap-3">
-          <div className="size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0 relative [&_svg]:size-4">
+      <div className='flex grow items-start gap-3'>
+        <div className='flex items-center gap-3'>
+          <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0 relative [&_svg]:size-4'>
             {icon && icon}
           </div>
-          <div className="grid grow gap-0.5">
-            <Label htmlFor={itemId} className="font-normal ">
+          <div className='grid grow gap-0.5'>
+            <Label htmlFor={itemId} className='font-normal '>
               {label}
               {sublabel && (
-                <span className="text-muted-foreground text-xs leading-[inherit] font-normal">
+                <span className='text-muted-foreground text-xs leading-[inherit] font-normal'>
                   {' '}
                   ({sublabel})
                 </span>
               )}
             </Label>
             {description && (
-              <p id={descriptionId} className="text-muted-foreground text-xs">
+              <p id={descriptionId} className='text-muted-foreground text-xs'>
                 {description}
               </p>
             )}

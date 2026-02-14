@@ -116,10 +116,10 @@ export type ViewType = ViewConfig['viewType']
 
 // Re-export field view config types
 export {
-  fieldViewConfigSchema,
-  viewContextTypeSchema,
-  viewContextTypes,
   createDefaultFieldViewConfig,
   type FieldViewConfig,
+  fieldViewConfigSchema,
   type ViewContextType,
+  viewContextTypeSchema,
+  viewContextTypes,
 } from './field-view-config'

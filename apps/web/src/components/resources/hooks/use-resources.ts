@@ -1,7 +1,7 @@
 // apps/web/src/components/resources/hooks/use-resources.ts
 
+import type { CustomResource, Resource } from '@auxx/lib/resources/client'
 import { useResourceStore } from '../store/resource-store'
-import type { Resource, CustomResource } from '@auxx/lib/resources/client'
 
 interface UseResourcesResult {
   /** All resources (system + custom) */

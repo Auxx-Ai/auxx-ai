@@ -1,10 +1,10 @@
 // packages/lib/src/seed/entity-seeder/link-display-fields.ts
 
 import { type Database, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
-import type { EntityDefMap, FieldMap } from './types'
+import { eq } from 'drizzle-orm'
 import { DISPLAY_FIELD_CONFIG } from './constants'
+import type { EntityDefMap, FieldMap } from './types'
 
 const logger = createScopedLogger('entity-seeder:link-display-fields')
 

@@ -1,12 +1,12 @@
 // apps/api/src/middleware/auth.ts
 
-import { createMiddleware } from 'hono/factory'
 import { database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
+import { createMiddleware } from 'hono/factory'
+import { DEV_USER_ID, isDevelopment } from '../config'
 import { extractBearerToken, validateBetterAuthToken } from '../lib/jwt-validator'
 import { errorResponse } from '../lib/response'
 import type { AppContext } from '../types/context'
-import { isDevelopment, DEV_USER_ID } from '../config'
 
 /**
  * Development mode authentication bypass

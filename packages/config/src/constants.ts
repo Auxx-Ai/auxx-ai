@@ -1,5 +1,5 @@
 // Application constants used across the monorepo
-import { WEBAPP_URL, HOMEPAGE_URL } from './url'
+import { HOMEPAGE_URL, WEBAPP_URL } from './url'
 
 export const constants = {
   app: { name: 'Auxx.ai', description: 'AI-powered email support ticket answer service' },

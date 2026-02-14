@@ -1,8 +1,8 @@
 // packages/lib/src/resources/registry/index.ts
 
-import { RESOURCE_FIELD_REGISTRY, type TableId, isValidTableId } from './field-registry'
+import { isValidTableId, RESOURCE_FIELD_REGISTRY, type TableId } from './field-registry'
 import type { ResourceField } from './field-types'
-import { getFieldOptions, isValidOptionValue, getOptionLabel, hasOptions } from './option-helpers'
+import { getFieldOptions, getOptionLabel, hasOptions, isValidOptionValue } from './option-helpers'
 
 // Re-export for easy access
 export { isValidTableId }
@@ -160,79 +160,33 @@ export function isFieldSortable(resourceType: TableId, fieldKey: string): boolea
 
 // Re-export types and registries
 export {
-  RESOURCE_FIELD_REGISTRY,
-  RESOURCE_TABLE_REGISTRY,
-  RESOURCE_TABLE_MAP,
   EXCLUDED_RESOURCE_TYPES,
+  RESOURCE_FIELD_REGISTRY,
+  RESOURCE_TABLE_MAP,
+  RESOURCE_TABLE_REGISTRY,
 } from './field-registry'
 export type {
-  ResourceField,
   FieldCapabilities,
   FieldValidation,
+  ResourceField,
   ResourceFieldRegistry,
   ResourceTableDefinition,
 } from './field-types'
 
 // Re-export option helpers
 export {
-  getFieldOptions,
-  isValidOptionValue,
-  getOptionLabel,
-  labelToValue,
-  hasOptions,
   type FieldOptionItem,
+  getFieldOptions,
+  getOptionLabel,
+  hasOptions,
+  isValidOptionValue,
+  labelToValue,
 } from './option-helpers'
+
 // export * from './enum-values'
-
-// Re-export field utility functions
-export {
-  getFieldOperators,
-  isValidOperatorForField,
-  setResourceVariables,
-  setEntityVariables,
-  isSystemField,
-  isComputedField,
-  sortFieldsForDisplay,
-  getDisplayFields,
-} from './field-utils'
-
-// Re-export display configuration
-export { RESOURCE_DISPLAY_CONFIG } from './display-config'
-export type { ResourceDisplayConfig, OrgScopingStrategy, JoinScopingConfig } from './display-config'
-
-// Re-export resource registry service and types
-export { ResourceRegistryService } from './resource-registry-service'
-
-// Re-export entity type constants (client-safe)
-export { NEW_SYSTEM_ENTITY_TYPES, type NewSystemEntityType } from './entity-types'
-
-// Re-export entity definition resolver (server-side only)
-export { resolveNewSystemEntityDefId } from './entity-def-resolver'
-
-// Re-export entity instance system fields
-export { ENTITY_INSTANCE_FIELDS, getEntityInstanceFields } from './entity-instance-fields'
 
 // Re-export common fields (shared across all entity types)
 export { CREATED_BY_FIELD } from './common-fields'
-export { isSystemResource, isCustomResource, isSystemResourceId, isCustomResourceId } from './types'
-export type {
-  Resource,
-  SystemResource,
-  CustomResource,
-  DisplayFieldConfig,
-  ResourceId,
-  CustomResourceId,
-} from './types'
-
-// Re-export drawer configuration
-export { DRAWER_CONFIG_REGISTRY, getEntityDrawerConfig, hasDrawerConfig } from './drawer-config'
-export type {
-  DrawerConfig,
-  DrawerTabDefinition,
-  DrawerActions,
-  DrawerConfigRegistry,
-} from './drawer-config-types'
-
 // Re-export detail view configuration
 export {
   DETAIL_VIEW_CONFIG_REGISTRY,
@@ -240,10 +194,49 @@ export {
   hasDetailViewConfig,
 } from './detail-view-config'
 export type {
+  DetailViewActions,
   DetailViewConfig,
-  DetailViewEntityType,
   DetailViewConfigRegistry,
+  DetailViewEntityType,
   MainTabDefinition,
   SidebarTabDefinition,
-  DetailViewActions,
 } from './detail-view-config-types'
+export type { JoinScopingConfig, OrgScopingStrategy, ResourceDisplayConfig } from './display-config'
+// Re-export display configuration
+export { RESOURCE_DISPLAY_CONFIG } from './display-config'
+// Re-export drawer configuration
+export { DRAWER_CONFIG_REGISTRY, getEntityDrawerConfig, hasDrawerConfig } from './drawer-config'
+export type {
+  DrawerActions,
+  DrawerConfig,
+  DrawerConfigRegistry,
+  DrawerTabDefinition,
+} from './drawer-config-types'
+// Re-export entity definition resolver (server-side only)
+export { resolveNewSystemEntityDefId } from './entity-def-resolver'
+// Re-export entity instance system fields
+export { ENTITY_INSTANCE_FIELDS, getEntityInstanceFields } from './entity-instance-fields'
+// Re-export entity type constants (client-safe)
+export { NEW_SYSTEM_ENTITY_TYPES, type NewSystemEntityType } from './entity-types'
+// Re-export field utility functions
+export {
+  getDisplayFields,
+  getFieldOperators,
+  isComputedField,
+  isSystemField,
+  isValidOperatorForField,
+  setEntityVariables,
+  setResourceVariables,
+  sortFieldsForDisplay,
+} from './field-utils'
+// Re-export resource registry service and types
+export { ResourceRegistryService } from './resource-registry-service'
+export type {
+  CustomResource,
+  CustomResourceId,
+  DisplayFieldConfig,
+  Resource,
+  ResourceId,
+  SystemResource,
+} from './types'
+export { isCustomResource, isCustomResourceId, isSystemResource, isSystemResourceId } from './types'

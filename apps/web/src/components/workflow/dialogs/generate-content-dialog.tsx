@@ -1,35 +1,35 @@
 // apps/web/src/components/workflow/dialogs/generate-content-dialog.tsx
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Button } from '@auxx/ui/components/button'
-import { Textarea } from '@auxx/ui/components/textarea'
-import { Label } from '@auxx/ui/components/label'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from '@auxx/ui/components/dialog'
 import {
   Empty,
+  EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-  EmptyDescription,
 } from '@auxx/ui/components/empty'
+import { Label } from '@auxx/ui/components/label'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Loader2, Copy, Check, Sparkles } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
-import { api } from '~/trpc/react'
+import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
+import { Check, Copy, Loader2, Sparkles } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
 import { AiModelPicker } from '~/components/pickers/ai-model-picker'
 import { Editor } from '~/components/workflow/ui/prompt-editor'
 import { useConfirm } from '~/hooks/use-confirm'
-import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
-import { Tooltip } from '~/components/global/tooltip'
+import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
+import { api } from '~/trpc/react'
 
 /** Generation type determines what kind of content to generate */
 type GenerationType = 'prompt' | 'code'
@@ -101,10 +101,7 @@ export function GenerateContentDialog({
   const [confirm, ConfirmDialog] = useConfirm()
 
   // Track dirty state for unsaved changes warning
-  const formValues = useMemo(
-    () => ({ instructions, idealOutput }),
-    [instructions, idealOutput]
-  )
+  const formValues = useMemo(() => ({ instructions, idealOutput }), [instructions, idealOutput])
   const { isDirty, setInitial } = useDirtyCheck(formValues)
 
   // Reset baseline when dialog opens
@@ -124,7 +121,11 @@ export function GenerateContentDialog({
   }, [onOpenChange])
 
   // Guard against accidental close when dirty
-  const { guardProps, guardedClose, ConfirmDialog: UnsavedConfirmDialog } = useUnsavedChangesGuard({
+  const {
+    guardProps,
+    guardedClose,
+    ConfirmDialog: UnsavedConfirmDialog,
+  } = useUnsavedChangesGuard({
     isDirty,
     onConfirmedClose: handleConfirmedClose,
   })
@@ -224,42 +225,47 @@ export function GenerateContentDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="h-[600px]" innerClassName="p-0" position="tc" size="3xl" {...guardProps}>
-          <div className="flex flex-col flex-1 min-h-0">
+        <DialogContent
+          className='h-[600px]'
+          innerClassName='p-0'
+          position='tc'
+          size='3xl'
+          {...guardProps}>
+          <div className='flex flex-col flex-1 min-h-0'>
             {/* Header */}
-            <DialogHeader className="border-b px-3 h-10 flex flex-row items-center justify-start mb-0">
-              <div className="flex items-center gap-2">
-                <Sparkles className="size-4" />
-                <Button variant="ghost" size="sm">
+            <DialogHeader className='border-b px-3 h-10 flex flex-row items-center justify-start mb-0'>
+              <div className='flex items-center gap-2'>
+                <Sparkles className='size-4' />
+                <Button variant='ghost' size='sm'>
                   {dialogTitle}
                 </Button>
-                <DialogTitle className="sr-only">{dialogTitle}</DialogTitle>
-                <DialogDescription className="sr-only">
+                <DialogTitle className='sr-only'>{dialogTitle}</DialogTitle>
+                <DialogDescription className='sr-only'>
                   Generate {contentLabel.toLowerCase()} using AI
                 </DialogDescription>
               </div>
             </DialogHeader>
 
             {/* Main Content: Two equal columns */}
-            <div className="flex flex-1 min-h-0">
+            <div className='flex flex-1 min-h-0'>
               {/* Left Column: Inputs */}
-              <div className="flex-1 border-r flex flex-col">
-                <ScrollArea className="flex-1">
-                  <div className="p-4 space-y-4">
+              <div className='flex-1 border-r flex flex-col'>
+                <ScrollArea className='flex-1'>
+                  <div className='p-4 space-y-4'>
                     {/* AI Model Picker */}
-                    <div className="space-y-2">
+                    <div className='space-y-2'>
                       <Label>AI Model</Label>
                       <AiModelPicker
                         value={selectedModel}
                         onChange={(model) => setSelectedModel(model?.id ?? null)}
-                        triggerClassName="w-full"
+                        triggerClassName='w-full'
                       />
                     </div>
 
                     {/* Instructions */}
-                    <div className="space-y-2">
+                    <div className='space-y-2'>
                       <Label>
-                        Instructions <span className="text-destructive">*</span>
+                        Instructions <span className='text-destructive'>*</span>
                       </Label>
                       {isCodeGeneration ? (
                         <Textarea
@@ -269,10 +275,10 @@ export function GenerateContentDialog({
                           rows={6}
                         />
                       ) : (
-                        <div className="">
+                        <div className=''>
                           <Editor
                             value={instructions}
-                            title="Instructions"
+                            title='Instructions'
                             onChange={setInstructions}
                             placeholder={instructionsPlaceholder}
                             nodeId={nodeId}
@@ -284,7 +290,7 @@ export function GenerateContentDialog({
                     </div>
 
                     {/* Ideal Output (Optional) */}
-                    <div className="space-y-2">
+                    <div className='space-y-2'>
                       <Label>Ideal Output (optional)</Label>
                       <Textarea
                         value={idealOutput}
@@ -297,12 +303,12 @@ export function GenerateContentDialog({
                 </ScrollArea>
 
                 {/* Generate Button */}
-                <div className="border-t p-3">
+                <div className='border-t p-3'>
                   <Button
-                    className="w-full"
+                    className='w-full'
                     onClick={handleGenerate}
                     loading={generateContent.isPending}
-                    loadingText="Generating...">
+                    loadingText='Generating...'>
                     <Sparkles />
                     {generateButtonText}
                   </Button>
@@ -310,20 +316,20 @@ export function GenerateContentDialog({
               </div>
 
               {/* Right Column: Generated Result */}
-              <div className="flex-1 flex flex-col bg-muted/30">
+              <div className='flex-1 flex flex-col bg-muted/30'>
                 {/* Sticky Header */}
-                <div className="sticky top-0 z-10 bg-muted/30 border-b px-4 py-2 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-muted-foreground">
+                <div className='sticky top-0 z-10 bg-muted/30 border-b px-4 py-2 flex items-center justify-between'>
+                  <span className='text-sm font-semibold text-muted-foreground'>
                     {generatedTitle}
                   </span>
                   {generatedContent && (
-                    <div className="flex items-center gap-2">
+                    <div className='flex items-center gap-2'>
                       <Tooltip content={isCopied ? 'Copied!' : 'Copy'}>
-                        <Button variant="ghost" size="sm" onClick={handleCopy}>
-                          {isCopied ? <Check className="size-4" /> : <Copy className="size-4" />}
+                        <Button variant='ghost' size='sm' onClick={handleCopy}>
+                          {isCopied ? <Check className='size-4' /> : <Copy className='size-4' />}
                         </Button>
                       </Tooltip>
-                      <Button size="sm" onClick={handleApply}>
+                      <Button size='sm' onClick={handleApply}>
                         Apply
                       </Button>
                     </div>
@@ -333,18 +339,18 @@ export function GenerateContentDialog({
                 {/* Body */}
 
                 {generateContent.isPending ? (
-                  <Empty className="flex-1 min-h-0 flex ">
+                  <Empty className='flex-1 min-h-0 flex '>
                     <EmptyHeader>
-                      <EmptyMedia variant="icon">
-                        <Loader2 className="animate-spin" />
+                      <EmptyMedia variant='icon'>
+                        <Loader2 className='animate-spin' />
                       </EmptyMedia>
                       <EmptyTitle>Generating {contentLabel.toLowerCase()}...</EmptyTitle>
                       <EmptyDescription>This may take a few moments</EmptyDescription>
                     </EmptyHeader>
                   </Empty>
                 ) : generatedContent ? (
-                  <ScrollArea className="flex-1">
-                    <div className="p-4">
+                  <ScrollArea className='flex-1'>
+                    <div className='p-4'>
                       <pre
                         className={cn(
                           'whitespace-pre-wrap text-sm font-mono bg-background rounded-lg border p-4',
@@ -355,9 +361,9 @@ export function GenerateContentDialog({
                     </div>
                   </ScrollArea>
                 ) : (
-                  <Empty className="flex-1 min-h-0 flex rounded-2xl">
-                    <EmptyHeader className="-mt-15">
-                      <EmptyMedia variant="icon">
+                  <Empty className='flex-1 min-h-0 flex rounded-2xl'>
+                    <EmptyHeader className='-mt-15'>
+                      <EmptyMedia variant='icon'>
                         <Sparkles />
                       </EmptyMedia>
                       <EmptyTitle>No {contentLabel.toLowerCase()} generated</EmptyTitle>

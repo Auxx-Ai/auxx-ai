@@ -1,15 +1,8 @@
 // packages/database/src/db/schema/developer-account-invite.ts
 // Drizzle table for developer account invite
 
-import {
-  pgTable,
-  text,
-  timestamp,
-  boolean,
-  index,
-  type AnyPgColumn,
-} from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, boolean, index, pgTable, text, timestamp } from './_shared'
 import { DeveloperAccount } from './developer-account'
 
 /** Drizzle table for DeveloperAccountInvite */
@@ -22,7 +15,10 @@ export const DeveloperAccountInvite = pgTable(
       .notNull(),
     developerAccountId: text()
       .notNull()
-      .references((): AnyPgColumn => DeveloperAccount.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
+      .references((): AnyPgColumn => DeveloperAccount.id, {
+        onUpdate: 'cascade',
+        onDelete: 'cascade',
+      }),
 
     emailAddress: text().notNull(),
     accessLevel: text().notNull().default('member'),

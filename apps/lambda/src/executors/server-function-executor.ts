@@ -11,16 +11,16 @@
  * - Memory limit enforcement (via Lambda config)
  */
 
-import type { ExecutionResult, RuntimeContext } from '../types.ts'
-import type { FunctionExecutionEvent } from '../validator.ts'
 import {
-  injectServerRuntimeHelpers,
-  cleanupServerRuntimeHelpers,
-  getRegisteredSettingsSchema,
-  getCapturedLogs,
   type ConsoleLog,
+  cleanupServerRuntimeHelpers,
+  getCapturedLogs,
+  getRegisteredSettingsSchema,
+  injectServerRuntimeHelpers,
 } from '../runtime-helpers/index.ts'
+import type { ExecutionResult, RuntimeContext } from '../types.ts'
 import { parseError } from '../utils.ts'
+import type { FunctionExecutionEvent } from '../validator.ts'
 
 /**
  * Execute server function in Deno sandbox
@@ -37,8 +37,8 @@ export async function executeServerFunction(
     functionIdentifier,
     functionArgs,
     context,
-    timeout,        // Default provided by Zod schema
-    memoryLimit     // Default provided by Zod schema
+    timeout, // Default provided by Zod schema
+    memoryLimit, // Default provided by Zod schema
   } = options
 
   console.log('[Executor] Starting execution:', { functionIdentifier })

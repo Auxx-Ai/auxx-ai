@@ -1,10 +1,10 @@
 // apps/homepage/src/app/platform/manufacturing/page.tsx
 import type { Metadata } from 'next'
-import Header from '../../_components/main/header'
-import FooterSection from '../../_components/main/footer-section'
-import ManufacturingHero from './_components/manufacturing-hero'
-import ManufacturingFeature from './_components/manufacturing-feature'
 import { config } from '~/lib/config'
+import FooterSection from '../../_components/main/footer-section'
+import Header from '../../_components/main/header'
+import ManufacturingFeature from './_components/manufacturing-feature'
+import ManufacturingHero from './_components/manufacturing-hero'
 
 export const metadata: Metadata = {
   title: `Manufacturing Support | ${config.shortName}`,
@@ -13,9 +13,9 @@ export const metadata: Metadata = {
 
 export default function MessagingPage() {
   return (
-    <div id="root" className="relative h-screen overflow-y-auto bg-background">
+    <div id='root' className='relative h-screen overflow-y-auto bg-background'>
       <Header />
-      <main className="">
+      <main className=''>
         <ManufacturingHero />
         <ManufacturingFeature />
       </main>

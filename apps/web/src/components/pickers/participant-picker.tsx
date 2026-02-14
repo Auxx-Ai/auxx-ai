@@ -1,10 +1,6 @@
 // src/components/pickers/participant-picker.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Check, Search, User } from 'lucide-react'
-import { api } from '~/trpc/react'
-import { cn } from '@auxx/ui/lib/utils'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -16,7 +12,11 @@ import {
   CommandList,
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { cn } from '@auxx/ui/lib/utils'
+import { Check, Search, User } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useDebouncedValue } from '~/hooks/use-debounced-value'
+import { api } from '~/trpc/react'
 
 export interface Participant {
   id: string
@@ -135,16 +135,16 @@ export function ParticipantPicker({
 
   const triggerElement = (
     <Button
-      variant="input"
-      role="combobox"
+      variant='input'
+      role='combobox'
       size={size}
       aria-expanded={isOpen}
       disabled={disabled}
       className={cn('justify-between', className)}>
       {selectedIdentifiers.length > 0 ? (
-        <span className="truncate">{getSelectedDisplay()}</span>
+        <span className='truncate'>{getSelectedDisplay()}</span>
       ) : (
-        <span className="text-muted-foreground">{placeholder}</span>
+        <span className='text-muted-foreground'>{placeholder}</span>
       )}
     </Button>
   )
@@ -152,23 +152,23 @@ export function ParticipantPicker({
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>{triggerElement}</PopoverTrigger>
-      <PopoverContent className="w-[400px] p-0" {...props}>
+      <PopoverContent className='w-[400px] p-0' {...props}>
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder="Search by name or email..."
+            placeholder='Search by name or email...'
             value={searchValue}
             onValueChange={setSearchValue}
-            className="h-9"
+            className='h-9'
             icon={Search}
           />
 
           <CommandList>
             {isLoading ? (
-              <div className="py-6 text-center text-sm text-muted-foreground">Searching...</div>
+              <div className='py-6 text-center text-sm text-muted-foreground'>Searching...</div>
             ) : participants.length === 0 && searchValue ? (
               <CommandEmpty>No participants found.</CommandEmpty>
             ) : searchValue ? (
-              <CommandGroup heading="Search Results">
+              <CommandGroup heading='Search Results'>
                 {participants.map((participant) => {
                   const isSelected = selectedIdentifiers.includes(participant.identifier)
 
@@ -177,31 +177,31 @@ export function ParticipantPicker({
                       key={participant.id}
                       value={participant.identifier}
                       onSelect={() => handleSelect(participant)}
-                      className="flex items-center">
-                      <Avatar className="mr-2 h-6 w-6">
+                      className='flex items-center'>
+                      <Avatar className='mr-2 h-6 w-6'>
                         <AvatarFallback>
                           {participant.displayName ? (
                             getInitials(participant.displayName)
                           ) : (
-                            <User className="h-3 w-3" />
+                            <User className='h-3 w-3' />
                           )}
                         </AvatarFallback>
                       </Avatar>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate">{participant.displayName}</div>
-                        <div className="text-xs text-muted-foreground truncate">
+                      <div className='flex-1 min-w-0'>
+                        <div className='font-medium truncate'>{participant.displayName}</div>
+                        <div className='text-xs text-muted-foreground truncate'>
                           {participant.identifier}
                         </div>
                       </div>
 
-                      {isSelected && <Check className="ml-2 h-4 w-4" />}
+                      {isSelected && <Check className='ml-2 h-4 w-4' />}
                     </CommandItem>
                   )
                 })}
               </CommandGroup>
             ) : (
-              <div className="py-6 text-center text-sm text-muted-foreground">
+              <div className='py-6 text-center text-sm text-muted-foreground'>
                 Type to search participants
               </div>
             )}

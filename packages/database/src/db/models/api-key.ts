@@ -44,7 +44,10 @@ export class ApiKeyModel extends BaseModel<
   }
 
   /** Find API key by name for a user (if named) */
-  async findByNameForUser(userId: string, name?: string | null): Promise<TypedResult<ApiKeyEntity | null, Error>> {
+  async findByNameForUser(
+    userId: string,
+    name?: string | null
+  ): Promise<TypedResult<ApiKeyEntity | null, Error>> {
     try {
       if (!name) return Result.ok(null)
       const whereParts: SQL<unknown>[] = [eq(ApiKey.userId, userId), eq(ApiKey.name, name as any)]

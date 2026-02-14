@@ -1,7 +1,12 @@
 // packages/lib/src/resources/hooks/index.ts
 
-export { getSystemHooks, getHooksForAttribute, hasSystemHooks, getCommonHooks } from './system-hooks'
+export { autoSetCreatedBy, COMMON_HOOKS } from './common-hooks'
 export { CONTACT_HOOKS } from './contact-hooks'
+export {
+  getCommonHooks,
+  getHooksForAttribute,
+  getSystemHooks,
+  hasSystemHooks,
+} from './system-hooks'
 export { TICKET_HOOKS } from './ticket-hooks'
-export { COMMON_HOOKS, autoSetCreatedBy } from './common-hooks'
 export type { SystemHook, SystemHookContext, SystemHookRegistry } from './types'

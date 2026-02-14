@@ -1,22 +1,22 @@
 // apps/web/src/server/api/routers/ticket.ts
 
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { TicketPriority, TicketStatus, TicketType } from '@auxx/database/enums'
 import { schema } from '@auxx/database'
-import { and, count, eq, inArray } from 'drizzle-orm'
+import { TicketPriority, TicketStatus, TicketType } from '@auxx/database/enums'
+import { publisher } from '@auxx/lib/events'
 import {
-  createTicketDashboardService,
-  ticketService,
-  updateMultipleStatus,
-  updateMultiplePriority,
-  updateMultipleAssignments,
-  deleteMultipleTickets,
   addRelation,
+  createTicketDashboardService,
+  deleteMultipleTickets,
   removeRelation,
   ticketMergeService,
+  ticketService,
+  updateMultipleAssignments,
+  updateMultiplePriority,
+  updateMultipleStatus,
 } from '@auxx/lib/tickets'
-import { publisher } from '@auxx/lib/events'
+import { and, count, eq, inArray } from 'drizzle-orm'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 /**
  * Simplified input schema for tickets with JSON-based type data

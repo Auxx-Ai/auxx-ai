@@ -102,10 +102,7 @@ export class MetricsCollector {
    * @param context - Context/provider name
    * @param state - Circuit breaker state
    */
-  recordCircuitBreakerState(
-    context: string,
-    state: 'open' | 'closed' | 'half-open'
-  ): void {
+  recordCircuitBreakerState(context: string, state: 'open' | 'closed' | 'half-open'): void {
     if (!this.enabled) return
 
     // Map state to numeric value for metrics
@@ -274,7 +271,8 @@ export class MetricsCollector {
       retriedRequests: this.counters.get(`${prefix}.retried`) || 0,
       failedRequests: this.counters.get(`${prefix}.failure`) || 0,
 
-      averageWaitTime: latencies.length > 0 ? latencies.reduce((a, b) => a + b, 0) / latencies.length : 0,
+      averageWaitTime:
+        latencies.length > 0 ? latencies.reduce((a, b) => a + b, 0) / latencies.length : 0,
       p50Latency: this.calculatePercentile(latencies, 50),
       p95Latency: this.calculatePercentile(latencies, 95),
       p99Latency: this.calculatePercentile(latencies, 99),
@@ -343,7 +341,7 @@ export class MetricsCollector {
         failedRequests: metrics.failedRequests,
       })
     }
-    
+
     // Here you would send to your monitoring service
     // await sendToDatadog(metrics);
     // await sendToCloudWatch(metrics);

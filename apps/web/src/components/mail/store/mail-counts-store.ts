@@ -1,9 +1,9 @@
 // apps/web/src/components/mail/store/mail-counts-store.ts
 'use client'
 
+import type { FullCountsResponse } from '@auxx/lib/threads/types'
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
-import type { FullCountsResponse } from '@auxx/lib/threads/types'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES

@@ -1,14 +1,14 @@
 // apps/web/src/components/workflow/nodes/shared/node-inputs/number-input.tsx
 
-import React from 'react'
+import { InputGroup, InputGroupAddon } from '@auxx/ui/components/input-group'
 import {
   NumberInputDecrement,
   NumberInputField,
+  NumberInputIncrement,
   NumberInput as NumberInputUi,
 } from '@auxx/ui/components/input-number'
+import React from 'react'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
-import { NumberInputIncrement } from '@auxx/ui/components/input-number'
-import { InputGroup, InputGroupAddon } from '@auxx/ui/components/input-group'
 
 interface NumberInputProps extends NodeInputProps {
   /** Field name */
@@ -95,14 +95,14 @@ export const NumberInput = createNodeInput<NumberInputProps>(
         min={min}
         step={step}
         disabled={isLoading}>
-        <div className="flex flex-col items-start w-full">
-          <InputGroup className="bg-transparent! min-h-8 shadow-none ring-0 border-0 has-[[data-slot=input-group-control]:focus-visible]:ring-[0px]">
+        <div className='flex flex-col items-start w-full'>
+          <InputGroup className='bg-transparent! min-h-8 shadow-none ring-0 border-0 has-[[data-slot=input-group-control]:focus-visible]:ring-[0px]'>
             <NumberInputField
               id={inputId}
               placeholder={placeholder}
-              className="text-start ps-0 placeholder:text-primary-400"
+              className='text-start ps-0 placeholder:text-primary-400'
             />
-            <InputGroupAddon align="inline-end" className="gap-1 pe-1.5">
+            <InputGroupAddon align='inline-end' className='gap-1 pe-1.5'>
               <NumberInputDecrement />
               <NumberInputIncrement />
             </InputGroupAddon>

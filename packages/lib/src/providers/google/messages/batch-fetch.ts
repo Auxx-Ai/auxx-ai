@@ -1,12 +1,13 @@
 // packages/lib/src/providers/google/messages/batch-fetch.ts
-import { gmail_v1 } from 'googleapis'
-import parse from 'gmail-api-parse-message'
-import { UniversalThrottler, getGmailQuotaCost } from '../../../utils/rate-limiter'
-import { executeWithThrottle } from '../shared/utils'
-import { generateMimeBoundary } from '@auxx/utils'
-import { handleGmailError } from '../shared/error-handler'
+
 import { createScopedLogger } from '@auxx/logger'
-import type { ParsedGmailMessage, GmailMessageWithPayload } from '../types'
+import { generateMimeBoundary } from '@auxx/utils'
+import parse from 'gmail-api-parse-message'
+import { gmail_v1 } from 'googleapis'
+import { getGmailQuotaCost, type UniversalThrottler } from '../../../utils/rate-limiter'
+import { handleGmailError } from '../shared/error-handler'
+import { executeWithThrottle } from '../shared/utils'
+import type { GmailMessageWithPayload, ParsedGmailMessage } from '../types'
 
 const logger = createScopedLogger('google-batch-fetch')
 

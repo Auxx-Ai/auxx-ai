@@ -1,6 +1,5 @@
 'use client'
 
-import React, { useImperativeHandle } from 'react'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import {
   Command,
@@ -9,7 +8,8 @@ import {
   CommandItem,
   CommandList,
 } from '@auxx/ui/components/command'
-import { type TeamMember } from './mention-extension'
+import React, { useImperativeHandle } from 'react'
+import type { TeamMember } from './mention-extension'
 
 /**
  * Props for the MentionPopover component
@@ -71,20 +71,20 @@ export const MentionPopover: React.FC<Props> = ({
   }))
 
   return (
-    <div ref={divRef} className="w-60 rounded-lg border bg-popover shadow-lg">
+    <div ref={divRef} className='w-60 rounded-lg border bg-popover shadow-lg'>
       <Command>
-        <CommandList className="max-h-48">
+        <CommandList className='max-h-48'>
           <CommandEmpty>No team members found</CommandEmpty>
-          <CommandGroup heading="Team Members">
+          <CommandGroup heading='Team Members'>
             {filteredMembers.map((member) => (
               <CommandItem
                 key={member.id}
                 value={member.name || ''}
                 onSelect={() => handleSelect(member)}
-                className="flex items-center gap-3 px-3 py-2">
-                <Avatar className="h-6 w-6">
+                className='flex items-center gap-3 px-3 py-2'>
+                <Avatar className='h-6 w-6'>
                   <AvatarImage src={member.image || undefined} alt={member.name || ''} />
-                  <AvatarFallback className="text-xs">
+                  <AvatarFallback className='text-xs'>
                     {member.name
                       ?.split(' ')
                       .map((n) => n[0])
@@ -92,10 +92,10 @@ export const MentionPopover: React.FC<Props> = ({
                       .toUpperCase() || '?'}
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{member.name || 'Unknown User'}</div>
+                <div className='flex-1 min-w-0'>
+                  <div className='font-medium truncate'>{member.name || 'Unknown User'}</div>
                   {member.email && (
-                    <div className="text-xs text-muted-foreground truncate">{member.email}</div>
+                    <div className='text-xs text-muted-foreground truncate'>{member.email}</div>
                   )}
                 </div>
               </CommandItem>

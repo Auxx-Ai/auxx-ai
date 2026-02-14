@@ -1,10 +1,5 @@
 'use client'
-// ~/app/(protected)/app/settings/integrations/_components/integration-settings.tsx
-import React, { useState } from 'react'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
+import { Button } from '@auxx/ui/components/button'
 import {
   Card,
   CardContent,
@@ -22,12 +17,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
-import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
-import { Switch } from '@auxx/ui/components/switch'
-import { useIntegration } from '~/hooks/use-integration'
-import { Mail, User, Clock, MailCheck, RefreshCw } from 'lucide-react'
-import { Separator } from '@auxx/ui/components/separator'
 import {
   Select,
   SelectContent,
@@ -35,6 +25,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { Separator } from '@auxx/ui/components/separator'
+import { Switch } from '@auxx/ui/components/switch'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { Clock, Mail, MailCheck, RefreshCw, User } from 'lucide-react'
+// ~/app/(protected)/app/settings/integrations/_components/integration-settings.tsx
+import React, { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
+import { useIntegration } from '~/hooks/use-integration'
 
 interface IntegrationSettingsProps {
   integration: any // Replace with stronger typing when available
@@ -124,7 +123,7 @@ export default function IntegrationSettings({ integration }: IntegrationSettings
   }
 
   return (
-    <div className="space-y-6">
+    <div className='space-y-6'>
       {/* Sync card - visible for all integration types */}
       <Card>
         <CardHeader>
@@ -132,29 +131,29 @@ export default function IntegrationSettings({ integration }: IntegrationSettings
           <CardDescription>Manually sync messages from this integration</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
+          <div className='space-y-4'>
+            <p className='text-sm text-muted-foreground'>
               By default, new messages are synced automatically. You can manually trigger a sync to
               retrieve older messages.
             </p>
 
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <div className='flex flex-col gap-2 sm:flex-row'>
               <Button
-                variant="outline"
+                variant='outline'
                 onClick={() => handleSync(7)}
                 disabled={isSyncing || syncMessages.isPending}>
                 <RefreshCw />
                 Last 7 days
               </Button>
               <Button
-                variant="outline"
+                variant='outline'
                 onClick={() => handleSync(30)}
                 disabled={isSyncing || syncMessages.isPending}>
                 <RefreshCw />
                 Last 30 days
               </Button>
               <Button
-                variant="outline"
+                variant='outline'
                 onClick={() => handleSync(90)}
                 disabled={isSyncing || syncMessages.isPending}>
                 <RefreshCw />
@@ -163,7 +162,7 @@ export default function IntegrationSettings({ integration }: IntegrationSettings
             </div>
 
             {integration.lastSyncedAt && (
-              <p className="text-xs text-muted-foreground">
+              <p className='text-xs text-muted-foreground'>
                 Last synced: {new Date(integration.lastSyncedAt).toLocaleString()}
               </p>
             )}
@@ -180,17 +179,17 @@ export default function IntegrationSettings({ integration }: IntegrationSettings
                 <CardTitle>Email Settings</CardTitle>
                 <CardDescription>Configure your email preferences</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className='space-y-6'>
                 <FormField
                   control={emailForm.control}
-                  name="displayName"
+                  name='displayName'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Display Name</FormLabel>
                       <FormControl>
-                        <div className="flex items-center space-x-2">
-                          <User className="h-4 w-4 text-muted-foreground" />
-                          <Input placeholder="Your Name" {...field} />
+                        <div className='flex items-center space-x-2'>
+                          <User className='h-4 w-4 text-muted-foreground' />
+                          <Input placeholder='Your Name' {...field} />
                         </div>
                       </FormControl>
                       <FormDescription>This name will be shown as the sender</FormDescription>
@@ -201,14 +200,14 @@ export default function IntegrationSettings({ integration }: IntegrationSettings
 
                 <FormField
                   control={emailForm.control}
-                  name="signature"
+                  name='signature'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Email Signature</FormLabel>
                       <FormControl>
-                        <div className="flex items-center space-x-2">
-                          <Mail className="h-4 w-4 text-muted-foreground" />
-                          <Input placeholder="Signature text" {...field} />
+                        <div className='flex items-center space-x-2'>
+                          <Mail className='h-4 w-4 text-muted-foreground' />
+                          <Input placeholder='Signature text' {...field} />
                         </div>
                       </FormControl>
                       <FormDescription>
@@ -221,14 +220,14 @@ export default function IntegrationSettings({ integration }: IntegrationSettings
 
                 <FormField
                   control={emailForm.control}
-                  name="autoBcc"
+                  name='autoBcc'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Auto BCC</FormLabel>
                       <FormControl>
-                        <div className="flex items-center space-x-2">
-                          <MailCheck className="h-4 w-4 text-muted-foreground" />
-                          <Input type="email" placeholder="email@example.com" {...field} />
+                        <div className='flex items-center space-x-2'>
+                          <MailCheck className='h-4 w-4 text-muted-foreground' />
+                          <Input type='email' placeholder='email@example.com' {...field} />
                         </div>
                       </FormControl>
                       <FormDescription>
@@ -241,25 +240,25 @@ export default function IntegrationSettings({ integration }: IntegrationSettings
 
                 <FormField
                   control={emailForm.control}
-                  name="undoSendTime"
+                  name='undoSendTime'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Undo Send Time</FormLabel>
                       <FormControl>
-                        <div className="flex items-center space-x-2">
-                          <Clock className="h-4 w-4 text-muted-foreground" />
+                        <div className='flex items-center space-x-2'>
+                          <Clock className='h-4 w-4 text-muted-foreground' />
                           <Select
                             value={field.value.toString()}
                             onValueChange={(value) => field.onChange(parseInt(value))}>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select time" />
+                            <SelectTrigger className='w-full'>
+                              <SelectValue placeholder='Select time' />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="0">No delay</SelectItem>
-                              <SelectItem value="5">5 seconds</SelectItem>
-                              <SelectItem value="10">10 seconds</SelectItem>
-                              <SelectItem value="20">20 seconds</SelectItem>
-                              <SelectItem value="30">30 seconds</SelectItem>
+                              <SelectItem value='0'>No delay</SelectItem>
+                              <SelectItem value='5'>5 seconds</SelectItem>
+                              <SelectItem value='10'>10 seconds</SelectItem>
+                              <SelectItem value='20'>20 seconds</SelectItem>
+                              <SelectItem value='30'>30 seconds</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -271,7 +270,7 @@ export default function IntegrationSettings({ integration }: IntegrationSettings
                 />
               </CardContent>
               <CardFooter>
-                <Button type="submit">Save Settings</Button>
+                <Button type='submit'>Save Settings</Button>
               </CardFooter>
             </Card>
           </form>
@@ -287,17 +286,17 @@ export default function IntegrationSettings({ integration }: IntegrationSettings
                 <CardTitle>Phone Settings</CardTitle>
                 <CardDescription>Configure your phone preferences</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className='space-y-6'>
                 <FormField
                   control={phoneForm.control}
-                  name="displayName"
+                  name='displayName'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Display Name</FormLabel>
                       <FormControl>
-                        <div className="flex items-center space-x-2">
-                          <User className="h-4 w-4 text-muted-foreground" />
-                          <Input placeholder="Your Name" {...field} />
+                        <div className='flex items-center space-x-2'>
+                          <User className='h-4 w-4 text-muted-foreground' />
+                          <Input placeholder='Your Name' {...field} />
                         </div>
                       </FormControl>
                       <FormDescription>This name will be shown to recipients</FormDescription>
@@ -308,12 +307,12 @@ export default function IntegrationSettings({ integration }: IntegrationSettings
 
                 <FormField
                   control={phoneForm.control}
-                  name="signatureText"
+                  name='signatureText'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Message Signature</FormLabel>
                       <FormControl>
-                        <Input placeholder="Signature text" {...field} />
+                        <Input placeholder='Signature text' {...field} />
                       </FormControl>
                       <FormDescription>Text to append to outgoing messages</FormDescription>
                       <FormMessage />
@@ -325,11 +324,11 @@ export default function IntegrationSettings({ integration }: IntegrationSettings
 
                 <FormField
                   control={phoneForm.control}
-                  name="autoReply"
+                  name='autoReply'
                   render={({ field }) => (
-                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                      <div className="space-y-0.5">
-                        <FormLabel className="text-base">Auto-Reply</FormLabel>
+                    <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                      <div className='space-y-0.5'>
+                        <FormLabel className='text-base'>Auto-Reply</FormLabel>
                         <FormDescription>
                           Automatically respond to incoming messages
                         </FormDescription>
@@ -344,7 +343,7 @@ export default function IntegrationSettings({ integration }: IntegrationSettings
                 {phoneForm.watch('autoReply') && (
                   <FormField
                     control={phoneForm.control}
-                    name="autoReplyMessage"
+                    name='autoReplyMessage'
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Auto-Reply Message</FormLabel>
@@ -362,7 +361,7 @@ export default function IntegrationSettings({ integration }: IntegrationSettings
                 )}
               </CardContent>
               <CardFooter>
-                <Button type="submit">Save Settings</Button>
+                <Button type='submit'>Save Settings</Button>
               </CardFooter>
             </Card>
           </form>
@@ -379,7 +378,7 @@ export default function IntegrationSettings({ integration }: IntegrationSettings
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">
+            <p className='text-sm text-muted-foreground'>
               Advanced settings for this integration are configured through the{' '}
               {integration.provider} platform.
             </p>

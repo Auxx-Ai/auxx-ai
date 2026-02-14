@@ -2,7 +2,8 @@
 
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -12,11 +13,10 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
-import { Textarea } from '@auxx/ui/components/textarea'
 import { Label } from '@auxx/ui/components/label'
-import { Badge } from '@auxx/ui/components/badge'
+import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
+import { useEffect, useMemo, useState } from 'react'
 
 interface SegmentEditorDialogProps {
   segment: {
@@ -43,7 +43,7 @@ export function SegmentEditorDialog({
 }: SegmentEditorDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className='max-w-2xl'>
         <SegmentEditorDialogContent
           segment={segment}
           open={open}
@@ -145,16 +145,15 @@ function SegmentEditorDialogContent({
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-2">
+      <div className='space-y-2'>
         {/* Position and Token Info */}
-        <div className="flex items-center gap-4">
-          <Badge variant="outline">Position {segment.position}</Badge>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">Tokens:</span>
-            <span className="font-medium">{estimatedTokenCount}</span>
+        <div className='flex items-center gap-4'>
+          <Badge variant='outline'>Position {segment.position}</Badge>
+          <div className='flex items-center gap-2 text-sm'>
+            <span className='text-muted-foreground'>Tokens:</span>
+            <span className='font-medium'>{estimatedTokenCount}</span>
             {tokenCountChange.change !== 0 && (
-              <span
-                className={tokenCountChange.change > 0 ? 'text-orange-600' : 'text-green-600'}>
+              <span className={tokenCountChange.change > 0 ? 'text-orange-600' : 'text-green-600'}>
                 ({tokenCountChange.change > 0 ? '+' : ''}
                 {tokenCountChange.change}, {tokenCountChange.percentChange.toFixed(1)}%)
               </span>
@@ -163,23 +162,23 @@ function SegmentEditorDialogContent({
         </div>
 
         {/* Content Editor */}
-        <div className="space-y-2">
-          <Label htmlFor="content">Content</Label>
+        <div className='space-y-2'>
+          <Label htmlFor='content'>Content</Label>
           <Textarea
-            id="content"
+            id='content'
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="Enter segment content..."
-            className="min-h-[300px] font-mono text-sm"
+            placeholder='Enter segment content...'
+            className='min-h-[300px] font-mono text-sm'
             disabled={isPending || isSaving}
           />
-          <p className="text-xs text-muted-foreground">{content.length} characters</p>
+          <p className='text-xs text-muted-foreground'>{content.length} characters</p>
         </div>
 
         {/* Warning for significant changes */}
         {Math.abs(tokenCountChange.percentChange) > 50 && (
-          <div className="rounded-md bg-yellow-50 dark:bg-yellow-900/10 p-3">
-            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+          <div className='rounded-md bg-yellow-50 dark:bg-yellow-900/10 p-3'>
+            <p className='text-sm text-yellow-800 dark:text-yellow-200'>
               Warning: Significant token count change detected (
               {tokenCountChange.percentChange > 0 ? '+' : ''}
               {tokenCountChange.percentChange.toFixed(1)}%). This may affect search results and
@@ -190,18 +189,18 @@ function SegmentEditorDialogContent({
       </div>
 
       <DialogFooter>
-        <Button size="sm" variant="ghost" onClick={handleCancel} disabled={isPending || isSaving}>
-          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+        <Button size='sm' variant='ghost' onClick={handleCancel} disabled={isPending || isSaving}>
+          Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
         </Button>
         <Button
           onClick={handleSave}
-          size="sm"
-          variant="outline"
+          size='sm'
+          variant='outline'
           loading={isPending || isSaving}
-          loadingText="Saving..."
+          loadingText='Saving...'
           disabled={!content.trim() || content.trim() === segment.content}
           data-dialog-submit>
-          Save Changes <KbdSubmit variant="outline" size="sm" />
+          Save Changes <KbdSubmit variant='outline' size='sm' />
         </Button>
       </DialogFooter>
     </>

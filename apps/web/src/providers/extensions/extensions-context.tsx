@@ -1,10 +1,9 @@
 // apps/web/src/providers/extensions/extensions-context.tsx
 'use client'
 
-import { createContext, useContext, type ReactNode } from 'react'
-
-import type { RouterOutputs } from '~/trpc/react'
+import { createContext, type ReactNode, useContext } from 'react'
 import type { Expand } from '~/lib/types'
+import type { RouterOutputs } from '~/trpc/react'
 
 export type AppInstallation = Expand<
   NonNullable<RouterOutputs['apps']['listInstalled']['installations']>[number]

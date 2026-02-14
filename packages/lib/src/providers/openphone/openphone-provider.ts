@@ -1,31 +1,33 @@
 // packages/lib/src/providers/openphone/openphone-provider.ts
-import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
-import { type ProviderCapabilities, getProviderCapabilities } from '../provider-capabilities'
-import {
-  type IntegrationProvider,
-  type SendMessageOptions,
-  MessageStatus, // Note: Most statuses don't map directly to OpenPhone
-} from '../integration-provider.interface' // Adjust path
+
 import { database as db, schema } from '@auxx/database'
+import { IntegrationProviderType } from '@auxx/database/enums'
+import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import {
-  MessageStorageService,
-  type MessageData,
-  IntegrationType,
-  MessageType,
   EmailLabel, // Keep for MessageData structure
+  IntegrationType,
+  type MessageData,
+  MessageStorageService,
+  MessageType,
 } from '../../email/email-storage' // Adjust path
-import { createScopedLogger } from '@auxx/logger'
-import {
-  type OpenPhoneIntegrationMetadata,
-  type OpenPhoneSendMessagePayload,
-  type OpenPhoneConversation,
-  type OpenPhoneMessage,
-  type OpenPhoneAttachment,
-  type OpenPhoneWebhookPayload,
-  type OpenPhoneWebhookResponse,
+import type {
+  IntegrationProvider,
+  MessageStatus, // Note: Most statuses don't map directly to OpenPhone
+  SendMessageOptions,
+} from '../integration-provider.interface' // Adjust path
+import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
+import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
+import type {
+  OpenPhoneAttachment,
+  OpenPhoneConversation,
+  OpenPhoneIntegrationMetadata,
+  OpenPhoneMessage,
+  OpenPhoneSendMessagePayload,
+  OpenPhoneWebhookPayload,
+  OpenPhoneWebhookResponse,
 } from './types' // Import types
-import { IntegrationProviderType } from '@auxx/database/enums'
+
 const logger = createScopedLogger('openphone-provider')
 const OPENPHONE_API_BASE = 'https://api.openphone.co/v3' // Use v3
 export class OpenPhoneProvider
@@ -331,7 +333,7 @@ export class OpenPhoneProvider
       integrationId: this.integrationId,
     })
     try {
-      let pageToken: string | undefined = undefined
+      let pageToken: string | undefined
       let hasMore = true
       let totalMessagesProcessed = 0
       // OpenPhone Conversation API returns latest message. We might need full history per convo.

@@ -1,9 +1,9 @@
 // apps/web/src/components/workflow/store/history-manager.ts
 
-import type { HistoryEntry } from './types'
-import { storeEventBus } from './event-bus'
 // import { nanoid } from 'nanoid'
 import { v4 as uuidv4 } from 'uuid'
+import { storeEventBus } from './event-bus'
+import type { HistoryEntry } from './types'
 
 interface HistoryManagerOptions {
   maxHistorySize?: number
@@ -455,4 +455,4 @@ export class HistoryManager {
 export const historyManager = new HistoryManager()
 
 // Export for testing
-export { type HistoryManagerOptions }
+export type { HistoryManagerOptions }

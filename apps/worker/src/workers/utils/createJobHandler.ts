@@ -1,8 +1,8 @@
 // apps/worker/src/workers/utils/createJobHandler.ts
 
-import { Job, UnrecoverableError } from 'bullmq'
 import type { JobContext, JobHandler, LegacyJobHandler } from '@auxx/lib/jobs'
 import { createScopedLogger } from '@auxx/logger'
+import { type Job, UnrecoverableError } from 'bullmq'
 
 const logger = createScopedLogger('job-handler')
 

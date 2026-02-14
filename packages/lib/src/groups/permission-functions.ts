@@ -1,14 +1,10 @@
 // packages/lib/src/groups/permission-functions.ts
 
-import { ResourcePermission, ResourceGranteeType } from '@auxx/database/enums'
-import {
-  grantInstanceAccess,
-  revokeInstanceAccess,
-  getInstanceAccess,
-} from '../resource-access'
-import { ResourceRegistryService } from '../resources/registry'
+import { type ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import type { GrantPermissionInput, GroupContext, GroupPermissionInfo } from '@auxx/types/groups'
 import { toRecordId } from '@auxx/types/resource'
-import type { GroupContext, GrantPermissionInput, GroupPermissionInfo } from '@auxx/types/groups'
+import { getInstanceAccess, grantInstanceAccess, revokeInstanceAccess } from '../resource-access'
+import { ResourceRegistryService } from '../resources/registry'
 import { requireGroupPermission } from './permissions'
 
 /**
@@ -52,9 +48,7 @@ export async function grantPermission(
     toRecordId(entityDefinitionId, groupId)
   )
 
-  const grant = grants.find(
-    (g) => g.granteeType === granteeType && g.granteeId === granteeId
-  )
+  const grant = grants.find((g) => g.granteeType === granteeType && g.granteeId === granteeId)
 
   if (!grant) {
     throw new Error('Failed to grant permission')

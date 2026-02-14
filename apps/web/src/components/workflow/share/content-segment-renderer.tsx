@@ -2,8 +2,8 @@
 'use client'
 
 import type { ContentSegment } from '@auxx/lib/workflow-engine/types/content-segment'
-import { InlineFileRenderer, InlineFileArrayRenderer } from './inline-file-renderer'
 import { cn } from '@auxx/ui/lib/utils'
+import { InlineFileArrayRenderer, InlineFileRenderer } from './inline-file-renderer'
 
 /**
  * Props for ContentSegmentRenderer
@@ -29,7 +29,7 @@ export function ContentSegmentRenderer({ segments, className }: ContentSegmentRe
           case 'text':
             // Render text with whitespace preserved
             return segment.value ? (
-              <span key={index} className="whitespace-pre-wrap">
+              <span key={index} className='whitespace-pre-wrap'>
                 {segment.value}
               </span>
             ) : null
@@ -37,7 +37,7 @@ export function ContentSegmentRenderer({ segments, className }: ContentSegmentRe
           case 'file':
             // Render single file (image preview or download card)
             return (
-              <div key={index} className="my-2">
+              <div key={index} className='my-2'>
                 <InlineFileRenderer file={segment.value} />
               </div>
             )
@@ -45,7 +45,7 @@ export function ContentSegmentRenderer({ segments, className }: ContentSegmentRe
           case 'file-array':
             // Render multiple files in a grid
             return (
-              <div key={index} className="my-2">
+              <div key={index} className='my-2'>
                 <InlineFileArrayRenderer files={segment.value} />
               </div>
             )

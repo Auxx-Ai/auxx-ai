@@ -2,7 +2,6 @@
 
 'use client'
 
-import { useCallback, useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -10,10 +9,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { toastError, toastInfo, toastSuccess } from '@auxx/ui/components/toast'
+import { useCallback, useState } from 'react'
 import { FileSelect } from '~/components/file-select'
-import { toastSuccess, toastError, toastInfo } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
 import type { FileSelectItem } from '~/components/file-select/types'
+import { api } from '~/trpc/react'
 
 interface DocumentUploadDialogProps {
   open: boolean
@@ -127,7 +127,7 @@ export function DocumentUploadDialog({ open, onOpenChange, datasetId }: Document
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+      <DialogContent className='max-w-3xl max-h-[80vh] overflow-hidden flex flex-col'>
         <DialogHeader>
           <DialogTitle>Add Documents to Dataset</DialogTitle>
           <DialogDescription>
@@ -136,9 +136,9 @@ export function DocumentUploadDialog({ open, onOpenChange, datasetId }: Document
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className='flex-1 overflow-y-auto p-4'>
           <FileSelect
-            entityType="DATASET"
+            entityType='DATASET'
             entityId={datasetId}
             allowMultiple={true}
             maxFiles={20}
@@ -166,7 +166,7 @@ export function DocumentUploadDialog({ open, onOpenChange, datasetId }: Document
               })
             }}
             disabled={isProcessing}
-            placeholder="Drag & drop files here or browse from your library"
+            placeholder='Drag & drop files here or browse from your library'
           />
         </div>
       </DialogContent>

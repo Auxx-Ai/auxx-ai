@@ -1,14 +1,15 @@
 // src/server/api/routers/integration.ts
+
+import { schema } from '@auxx/database'
+import { ChatWidgetService } from '@auxx/lib/chat'
+import { getUserOrganizationId, requireAdminAccess } from '@auxx/lib/email'
+import { SyncMessages } from '@auxx/lib/messages'
+import { IntegrationService } from '@auxx/lib/providers'
+import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
+import { createScopedLogger } from '@auxx/logger'
+import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { schema } from '@auxx/database'
-import { eq, and, asc } from 'drizzle-orm'
-import { requireAdminAccess, getUserOrganizationId } from '@auxx/lib/email'
-import { createScopedLogger } from '@auxx/logger'
-import { IntegrationService } from '@auxx/lib/providers'
-import { ChatWidgetService } from '@auxx/lib/chat'
-import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
-import { SyncMessages } from '@auxx/lib/messages'
 
 const logger = createScopedLogger('integrations-router')
 
@@ -300,22 +301,25 @@ export const integrationRouter = createTRPCRouter({
     .query(async ({ input, ctx }) => {
       const { userId, organizationId } = ctx.session
 
-      const [syncJob] = await ctx.db.select({
-        id: schema.SyncJob.id,
-        status: schema.SyncJob.status,
-        startTime: schema.SyncJob.startTime,
-        endTime: schema.SyncJob.endTime,
-        error: schema.SyncJob.error,
-        organizationId: schema.SyncJob.organizationId,
-        totalRecords: schema.SyncJob.totalRecords,
-        processedRecords: schema.SyncJob.processedRecords,
-        failedRecords: schema.SyncJob.failedRecords,
-      })
+      const [syncJob] = await ctx.db
+        .select({
+          id: schema.SyncJob.id,
+          status: schema.SyncJob.status,
+          startTime: schema.SyncJob.startTime,
+          endTime: schema.SyncJob.endTime,
+          error: schema.SyncJob.error,
+          organizationId: schema.SyncJob.organizationId,
+          totalRecords: schema.SyncJob.totalRecords,
+          processedRecords: schema.SyncJob.processedRecords,
+          failedRecords: schema.SyncJob.failedRecords,
+        })
         .from(schema.SyncJob)
-        .where(and(
-          eq(schema.SyncJob.id, input.syncJobId),
-          eq(schema.SyncJob.organizationId, organizationId)
-        ))
+        .where(
+          and(
+            eq(schema.SyncJob.id, input.syncJobId),
+            eq(schema.SyncJob.organizationId, organizationId)
+          )
+        )
         .limit(1)
 
       if (!syncJob) {

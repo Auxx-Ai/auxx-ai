@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/crud/use-crud-validation.ts
 
-import { useState, useCallback, useMemo, useEffect } from 'react'
-import { CrudNodeData, ValidationResult } from './types'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { CrudNodeData, ValidationResult } from './types'
 import { validateCrudNodeConfig } from './validation'
 
 /**

@@ -1,12 +1,12 @@
 // apps/web/src/components/dynamic-table/hooks/use-view-store-persistence.ts
 'use client'
 
-import { useCallback, useEffect, useRef } from 'react'
-import { api } from '~/trpc/react'
-import { useDynamicTableStore } from '../stores/dynamic-table-store'
-import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { toastError } from '@auxx/ui/components/toast'
+import { useCallback, useEffect, useRef } from 'react'
+import { useDebouncedCallback } from '~/hooks/use-debounced-value'
+import { api } from '~/trpc/react'
 import { DYNAMIC_TABLE_CONFIG } from '../config/table-config'
+import { useDynamicTableStore } from '../stores/dynamic-table-store'
 
 /**
  * Hook that manages persistence between the unified store and API.

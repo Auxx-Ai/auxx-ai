@@ -1,10 +1,10 @@
 // packages/services/src/field-values/get-field-with-definition.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
+import { and, eq } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { GetFieldWithDefinitionInput, FieldWithDefinition, FieldNotFoundError } from './types'
+import type { FieldNotFoundError, FieldWithDefinition, GetFieldWithDefinitionInput } from './types'
 
 /**
  * Get a CustomField by ID with its associated EntityDefinition.

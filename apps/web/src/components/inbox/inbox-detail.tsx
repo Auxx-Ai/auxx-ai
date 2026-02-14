@@ -1,19 +1,19 @@
 // apps/web/src/components/inbox/inbox-detail.tsx
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { api } from '~/trpc/react'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { InboxIntegrationsTab } from './inbox-integrations-tab'
-import { InboxDialog } from './inbox-dialog'
-import { PencilIcon, X } from 'lucide-react'
-import SettingsPage from '~/components/global/settings-page'
-import { EmptyState } from '~/components/global/empty-state'
 import { Table, TableBody, TableCell, TableHeader, TableRow } from '@auxx/ui/components/table'
+import { PencilIcon, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { EmptyState } from '~/components/global/empty-state'
+import SettingsPage from '~/components/global/settings-page'
+import { api } from '~/trpc/react'
 import { toRecordId, useResource } from '../resources'
 import { useInbox } from '../threads/hooks'
+import { InboxDialog } from './inbox-dialog'
+import { InboxIntegrationsTab } from './inbox-integrations-tab'
 
 /** Component for displaying inbox details with integrations */
 export function InboxDetail({ inboxId }: { inboxId: string }) {
@@ -56,46 +56,46 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
     <>
       <SettingsPage
         title={`Inbox - ${inbox?.name ?? 'Loading...'}`}
-        description="Manage your inbox integrations."
+        description='Manage your inbox integrations.'
         breadcrumbs={[
           { title: 'Settings', href: '/app/settings' },
           { title: 'Inboxes', href: '/app/settings/inbox' },
           { title: inbox?.name ?? 'Loading...' },
         ]}
         button={
-          <Button variant="outline" size="sm" onClick={handleEditInbox}>
+          <Button variant='outline' size='sm' onClick={handleEditInbox}>
             <PencilIcon />
             Edit Inbox
           </Button>
         }>
         <div>
           {isLoading ? (
-            <Table className="w-full">
+            <Table className='w-full'>
               {/* Loading skeleton */}
               <TableHeader>
                 <TableRow>
                   <TableCell>
-                    <Skeleton className="h-4 w-full max-w-md" />
+                    <Skeleton className='h-4 w-full max-w-md' />
                   </TableCell>
                   <TableCell>
-                    <Skeleton className="h-4 w-full max-w-sm" />
+                    <Skeleton className='h-4 w-full max-w-sm' />
                   </TableCell>
-                  <TableCell className="w-[80px]">
-                    <Skeleton className="h-4 w-full max-w-xs" />
+                  <TableCell className='w-[80px]'>
+                    <Skeleton className='h-4 w-full max-w-xs' />
                   </TableCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {Array.from({ length: 3 }).map((_, index) => (
-                  <TableRow key={`skeleton-row-${index}`} className="h-[53px]">
+                  <TableRow key={`skeleton-row-${index}`} className='h-[53px]'>
                     <TableCell>
-                      <Skeleton className="h-4 w-full max-w-md" />
+                      <Skeleton className='h-4 w-full max-w-md' />
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-4 w-full max-w-sm" />
+                      <Skeleton className='h-4 w-full max-w-sm' />
                     </TableCell>
-                    <TableCell className="w-[80px]">
-                      <Skeleton className="h-4 w-full max-w-xs" />
+                    <TableCell className='w-[80px]'>
+                      <Skeleton className='h-4 w-full max-w-xs' />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -106,10 +106,10 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
           ) : (
             <EmptyState
               icon={X}
-              title="Inbox not found"
+              title='Inbox not found'
               description={<>Inbox doesn't exist...</>}
               button={
-                <Button onClick={handleBack} className="mt-4" variant="outline">
+                <Button onClick={handleBack} className='mt-4' variant='outline'>
                   Go Back
                 </Button>
               }

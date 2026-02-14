@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/ui/add-node-trigger.tsx
 
-import { useState, useCallback, cloneElement, isValidElement, type ReactElement } from 'react'
+import { toastError } from '@auxx/ui/components/toast'
 import { useReactFlow } from '@xyflow/react'
-import { BlockSelector } from './block-selector'
+import { cloneElement, isValidElement, type ReactElement, useCallback, useState } from 'react'
 import { useNodeAddition } from '../hooks/use-node-addition'
 import { useReadOnly } from '../hooks/use-read-only'
-import { toastError } from '@auxx/ui/components/toast'
+import { BlockSelector } from './block-selector'
 
 export interface AddNodeTriggerProps {
   // Required: The trigger element

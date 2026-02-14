@@ -1,24 +1,23 @@
 // apps/web/src/components/fields/property-provider.tsx
-import {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  type ReactNode,
-  type RefObject,
-  useEffect,
-  useRef,
-} from 'react'
 
-import { useFieldValue } from '~/components/resources/hooks/use-field-values'
-import type { StoredFieldValue } from '~/components/resources/store/field-value-store'
-
-import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
-
+import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
+import type { FieldType } from '@auxx/database/types'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/lib/resources/client'
-import type { FieldType } from '@auxx/database/types'
-import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
+import {
+  createContext,
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
+import { useFieldValue } from '~/components/resources/hooks/use-field-values'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+import type { StoredFieldValue } from '~/components/resources/store/field-value-store'
+
 /**
  * property-provider.tsx
  * Context provider for a single contact property row with helper methods

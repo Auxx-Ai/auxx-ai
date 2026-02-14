@@ -1,41 +1,9 @@
 // apps/web/src/app/admin/workflows/page.tsx
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { api } from '~/trpc/react'
-import { Input } from '@auxx/ui/components/input'
-import { Button } from '@auxx/ui/components/button'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@auxx/ui/components/table'
 import { Badge } from '@auxx/ui/components/badge'
-import {
-  Search,
-  Plus,
-  Eye,
-  EyeOff,
-  Copy,
-  Trash2,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { formatDistanceToNow } from 'date-fns'
-import { useConfirm } from '~/hooks/use-confirm'
-import { toastError } from '@auxx/ui/components/toast'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
+import { Button } from '@auxx/ui/components/button'
+import { Input } from '@auxx/ui/components/input'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -44,6 +12,29 @@ import {
   MainPageHeader,
   MainPageSubheader,
 } from '@auxx/ui/components/main-page'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@auxx/ui/components/table'
+import { toastError } from '@auxx/ui/components/toast'
+import { formatDistanceToNow } from 'date-fns'
+import { ChevronLeft, ChevronRight, Copy, Eye, EyeOff, Plus, Search, Trash2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 const PAGE_SIZE = 50
 
@@ -166,43 +157,43 @@ export default function WorkflowTemplatesPage() {
       <MainPage>
         <MainPageHeader
           action={
-            <Button size="sm" onClick={() => router.push('/admin/workflows/new')}>
+            <Button size='sm' onClick={() => router.push('/admin/workflows/new')}>
               <Plus />
               Create Template
             </Button>
           }>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title="Admin" href="/admin" />
-            <MainPageBreadcrumbItem title="Workflow Templates" href="/admin/workflows" last />
+            <MainPageBreadcrumbItem title='Admin' href='/admin' />
+            <MainPageBreadcrumbItem title='Workflow Templates' href='/admin/workflows' last />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
           {/* Filters */}
           <MainPageSubheader>
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-2 top-1.5 h-4 w-4 text-muted-foreground" />
+            <div className='relative flex-1 max-w-sm'>
+              <Search className='absolute left-2 top-1.5 h-4 w-4 text-muted-foreground' />
               <Input
-                placeholder="Search templates..."
+                placeholder='Search templates...'
                 value={search}
-                size="sm"
+                size='sm'
                 onChange={(e) => handleSearch(e.target.value)}
-                className="pl-8"
+                className='pl-8'
               />
             </div>
             <Select value={statusFilter} onValueChange={handleStatusFilter}>
-              <SelectTrigger className="w-[150px]" size="sm">
-                <SelectValue placeholder="All Status" />
+              <SelectTrigger className='w-[150px]' size='sm'>
+                <SelectValue placeholder='All Status' />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="public">Public</SelectItem>
-                <SelectItem value="private">Private</SelectItem>
+                <SelectItem value='all'>All Status</SelectItem>
+                <SelectItem value='public'>Public</SelectItem>
+                <SelectItem value='private'>Private</SelectItem>
               </SelectContent>
             </Select>
           </MainPageSubheader>
 
           {/* Table */}
-          <div className="flex-1 overflow-auto">
+          <div className='flex-1 overflow-auto'>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -212,7 +203,7 @@ export default function WorkflowTemplatesPage() {
                   <TableHead>Popularity</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Updated</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className='text-right'>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -221,95 +212,93 @@ export default function WorkflowTemplatesPage() {
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
                       <TableCell>
-                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className='h-4 w-32' />
                       </TableCell>
                       <TableCell>
-                        <Skeleton className="h-4 w-48" />
+                        <Skeleton className='h-4 w-48' />
                       </TableCell>
                       <TableCell>
-                        <Skeleton className="h-4 w-8" />
+                        <Skeleton className='h-4 w-8' />
                       </TableCell>
                       <TableCell>
-                        <Skeleton className="h-4 w-16" />
+                        <Skeleton className='h-4 w-16' />
                       </TableCell>
                       <TableCell>
-                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className='h-4 w-24' />
                       </TableCell>
                       <TableCell>
-                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className='h-4 w-24' />
                       </TableCell>
                       <TableCell>
-                        <Skeleton className="h-8 w-24 ml-auto" />
+                        <Skeleton className='h-8 w-24 ml-auto' />
                       </TableCell>
                     </TableRow>
                   ))
                 ) : templates && templates.length > 0 ? (
                   templates.map((template) => (
-                    <TableRow key={template.id} className="hover:bg-muted/50">
+                    <TableRow key={template.id} className='hover:bg-muted/50'>
                       <TableCell
-                        className="font-medium cursor-pointer"
+                        className='font-medium cursor-pointer'
                         onClick={() => handleRowClick(template.id)}>
                         {template.name}
                       </TableCell>
                       <TableCell
-                        className="text-sm text-muted-foreground max-w-xs truncate cursor-pointer"
+                        className='text-sm text-muted-foreground max-w-xs truncate cursor-pointer'
                         onClick={() => handleRowClick(template.id)}>
                         {template.description}
                       </TableCell>
                       <TableCell
-                        className="cursor-pointer"
+                        className='cursor-pointer'
                         onClick={() => handleRowClick(template.id)}>
-                        <div className="flex gap-1 flex-wrap">
+                        <div className='flex gap-1 flex-wrap'>
                           {(template.categories as string[])?.slice(0, 2).map((cat) => (
-                            <Badge key={cat} variant="outline" className="text-xs">
+                            <Badge key={cat} variant='outline' className='text-xs'>
                               {cat}
                             </Badge>
                           ))}
                           {(template.categories as string[])?.length > 2 && (
-                            <Badge variant="outline" className="text-xs">
+                            <Badge variant='outline' className='text-xs'>
                               +{(template.categories as string[]).length - 2}
                             </Badge>
                           )}
                         </div>
                       </TableCell>
                       <TableCell
-                        className="cursor-pointer"
+                        className='cursor-pointer'
                         onClick={() => handleRowClick(template.id)}>
                         {template.popularity}
                       </TableCell>
                       <TableCell
-                        className="cursor-pointer"
+                        className='cursor-pointer'
                         onClick={() => handleRowClick(template.id)}>
                         <Badge variant={template.status === 'public' ? 'default' : 'secondary'}>
                           {template.status}
                         </Badge>
                       </TableCell>
                       <TableCell
-                        className="text-sm text-muted-foreground cursor-pointer"
+                        className='text-sm text-muted-foreground cursor-pointer'
                         onClick={() => handleRowClick(template.id)}>
                         {formatDistanceToNow(template.updatedAt, { addSuffix: true })}
                       </TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex gap-1 justify-end">
+                      <TableCell className='text-right' onClick={(e) => e.stopPropagation()}>
+                        <div className='flex gap-1 justify-end'>
                           <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              handleToggleVisibility(template.id, template.status)
-                            }
+                            variant='ghost'
+                            size='sm'
+                            onClick={() => handleToggleVisibility(template.id, template.status)}
                             loading={updateTemplate.isPending}>
                             {template.status === 'public' ? <EyeOff /> : <Eye />}
                           </Button>
                           <Button
-                            variant="ghost"
-                            size="sm"
+                            variant='ghost'
+                            size='sm'
                             onClick={() => handleDuplicate(template.id)}
                             loading={duplicateTemplate.isPending}>
                             <Copy />
                           </Button>
                           <Button
-                            variant="ghost"
-                            size="sm"
+                            variant='ghost'
+                            size='sm'
                             onClick={() => handleDelete(template.id, template.name)}
                             loading={deleteTemplate.isPending}>
                             <Trash2 />
@@ -320,7 +309,7 @@ export default function WorkflowTemplatesPage() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className='text-center text-muted-foreground py-8'>
                       {search || statusFilter !== 'all'
                         ? 'No templates found matching your filters'
                         : 'No templates'}
@@ -332,8 +321,8 @@ export default function WorkflowTemplatesPage() {
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between px-2 py-1 border-t">
-            <div className="text-sm text-muted-foreground">
+          <div className='flex items-center justify-between px-2 py-1 border-t'>
+            <div className='text-sm text-muted-foreground'>
               {templates && templates.length > 0 ? (
                 <>
                   Showing {page * PAGE_SIZE + 1} to {page * PAGE_SIZE + templates.length}
@@ -342,18 +331,18 @@ export default function WorkflowTemplatesPage() {
                 'No results'
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className='flex items-center gap-2'>
               <Button
-                variant="outline"
-                size="sm"
+                variant='outline'
+                size='sm'
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={page === 0 || isLoading}>
                 <ChevronLeft />
                 Previous
               </Button>
               <Button
-                variant="outline"
-                size="sm"
+                variant='outline'
+                size='sm'
                 onClick={() => setPage((p) => p + 1)}
                 disabled={!hasMore || isLoading}>
                 Next

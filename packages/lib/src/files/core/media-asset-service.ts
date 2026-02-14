@@ -1,41 +1,40 @@
 // packages/lib/src/files/core/media-asset-service.ts
 
+import { type Database, database as db, schema } from '@auxx/database'
 import type {
   MediaAssetEntity as MediaAsset,
   MediaAssetVersionEntity as MediaAssetVersion,
 } from '@auxx/database/models'
-import { schema } from '@auxx/database'
 import {
-  eq,
   and,
-  or,
-  gt,
-  gte,
-  lt,
-  lte,
-  ilike,
-  inArray,
   asc,
   desc,
-  sql,
+  eq,
+  gt,
+  gte,
+  ilike,
+  inArray,
   isNull,
+  lt,
+  lte,
+  or,
   type SQL,
+  sql,
 } from 'drizzle-orm'
-import type {
-  CreateAssetRequest,
-  UpdateAssetRequest,
-  AssetKind,
-  SearchOptions,
-  AssetSearchResult,
-  AssetDownloadInfo,
-  MediaAssetWithRelations,
-} from './types'
-import { VALID_ASSET_KINDS } from './types'
+import type { DownloadRef } from '../adapters/base-adapter'
 import { BaseService, type DatabaseClient } from './base-service'
 import type { ContentAccessible } from './mixins/content-accessible'
 import type { Versioned } from './mixins/versioned'
-import type { DownloadRef } from '../adapters/base-adapter'
-import { type Database, database as db } from '@auxx/database'
+import type {
+  AssetDownloadInfo,
+  AssetKind,
+  AssetSearchResult,
+  CreateAssetRequest,
+  MediaAssetWithRelations,
+  SearchOptions,
+  UpdateAssetRequest,
+} from './types'
+import { VALID_ASSET_KINDS } from './types'
 
 /**
  * Enhanced service for managing MediaAsset operations

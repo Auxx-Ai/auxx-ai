@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/operators/type-operator-map.ts
 
-import { BaseType } from '../core/types'
 import { OPERATOR_DEFINITIONS, type Operator } from '../../conditions/operator-definitions'
+import { BaseType } from '../core/types'
 
 /**
  * Defines valid operators for each BaseType.

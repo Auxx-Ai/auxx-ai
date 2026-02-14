@@ -1,16 +1,16 @@
 // apps/web/src/components/workflow/hooks/use-workflow-organize.ts
 
-import { useCallback, useMemo } from 'react'
 import { useReactFlow, useStoreApi } from '@xyflow/react'
-import { useHistoryManager } from '../store/workflow-store-provider'
+import { useCallback, useMemo } from 'react'
+import type { FlowNode } from '../store/types'
 import { useWorkflowStore } from '../store/workflow-store'
+import { useHistoryManager } from '../store/workflow-store-provider'
 import {
+  calculateContainerSize,
   getLayoutByDagre,
   getLayoutForChildNodes,
-  calculateContainerSize,
 } from '../utils/layout-algorithms'
 import { LAYOUT_ANIMATION, NODE_CLASSIFICATIONS } from '../utils/layout-constants'
-import type { FlowNode } from '../store/types'
 
 /**
  * Hook for organizing workflow layout automatically

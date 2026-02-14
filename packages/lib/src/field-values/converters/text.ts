@@ -1,6 +1,6 @@
 // packages/lib/src/field-values/converters/text.ts
 
-import type { TypedFieldValueInput, TypedFieldValue, TextFieldValue } from '@auxx/types/field-value'
+import type { TextFieldValue, TypedFieldValue, TypedFieldValueInput } from '@auxx/types/field-value'
 import type { FieldValueConverter, TextFieldOptions } from './index'
 
 /**

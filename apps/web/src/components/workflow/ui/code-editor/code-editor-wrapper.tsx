@@ -2,14 +2,14 @@
 
 'use client'
 
-import React, { useRef } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
-import { useCodeEditorContext } from './code-editor-context'
-import { CodeLanguage } from './types'
-import CodeEditorHeader from './code-editor-header'
-import CodeEditorContent from './code-editor-content'
 import { Dialog, DialogContent, DialogTitle } from '@auxx/ui/components/dialog'
 import { VisuallyHidden } from '@auxx/ui/components/visually-hidden'
+import { cn } from '@auxx/ui/lib/utils'
+import React, { useRef } from 'react'
+import CodeEditorContent from './code-editor-content'
+import { useCodeEditorContext } from './code-editor-context'
+import CodeEditorHeader from './code-editor-header'
+import { CodeLanguage } from './types'
 
 /**
  * CodeEditor Wrapper Component
@@ -63,16 +63,16 @@ const CodeEditorWrapper: React.FC = () => {
 
       {/* Expanded dialog view */}
       <Dialog open={isExpanded} onOpenChange={setIsExpanded}>
-        <DialogContent size="3xl" innerClassName="h-[80vh] flex flex-col p-0" showClose={false}>
+        <DialogContent size='3xl' innerClassName='h-[80vh] flex flex-col p-0' showClose={false}>
           <VisuallyHidden>
             <DialogTitle>{title || 'Code Editor'}</DialogTitle>
           </VisuallyHidden>
 
-          <div className="shrink-0 border-b">
+          <div className='shrink-0 border-b'>
             <CodeEditorHeader />
           </div>
 
-          <div className="flex-1 min-h-0 overflow-hidden">
+          <div className='flex-1 min-h-0 overflow-hidden'>
             <CodeEditorContent />
           </div>
         </DialogContent>

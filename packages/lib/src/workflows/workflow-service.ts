@@ -1,21 +1,21 @@
 // packages/lib/src/workflows/workflow-service.ts
 
-import { type Database, type Transaction, schema } from '@auxx/database'
-import { and, eq, or, ilike, desc, count, inArray, type SQL } from 'drizzle-orm'
-import { createScopedLogger } from '@auxx/logger'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { WorkflowEngine } from '@auxx/lib/workflow-engine'
+import { createScopedLogger } from '@auxx/logger'
+import { and, count, desc, eq, ilike, inArray, or, type SQL } from 'drizzle-orm'
+import { getQueue, Queues } from '../jobs/queues'
+import { ScheduledTriggerService } from './scheduled-trigger-service'
 import {
-  WorkflowTriggerType,
-  type WorkflowFilter,
-  type WorkflowCreateInput,
-  type WorkflowUpdateInput,
-  type WorkflowTestInput,
   type TestResult,
+  type WorkflowCreateInput,
+  type WorkflowFilter,
   type WorkflowListResult,
+  type WorkflowTestInput,
+  WorkflowTriggerType,
+  type WorkflowUpdateInput,
   type WorkflowWithDetails,
 } from './types'
-import { ScheduledTriggerService } from './scheduled-trigger-service'
-import { getQueue, Queues } from '../jobs/queues'
 
 const logger = createScopedLogger('workflow-service')
 
@@ -560,10 +560,7 @@ export class WorkflowService {
    * Cancel all scheduled/delayed jobs for a workflow being deleted.
    * Fire-and-forget: jobs are idempotent and will no-op if DB records don't exist.
    */
-  private async cancelWorkflowJobs(
-    workflowAppId: string,
-    workflowRunIds: string[]
-  ): Promise<void> {
+  private async cancelWorkflowJobs(workflowAppId: string, workflowRunIds: string[]): Promise<void> {
     if (workflowRunIds.length === 0) return
 
     try {

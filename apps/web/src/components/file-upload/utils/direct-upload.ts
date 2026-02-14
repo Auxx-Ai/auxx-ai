@@ -62,11 +62,12 @@ export function directUpload({
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           const etag = xhr.getResponseHeader('etag')?.replace(/"/g, '')
-          resolve({ 
+          resolve({
             etag,
-            storageKey: config.uploadType === 'POST' && config.presignedFields 
-              ? config.presignedFields.key 
-              : undefined
+            storageKey:
+              config.uploadType === 'POST' && config.presignedFields
+                ? config.presignedFields.key
+                : undefined,
           })
         } else {
           reject(new Error(`Upload failed with status ${xhr.status}`))
@@ -85,7 +86,7 @@ export function directUpload({
           formData.append(key, value)
         })
         formData.append('file', file)
-        
+
         xhr.open('POST', config.presignedUrl)
         xhr.send(formData)
       } else {

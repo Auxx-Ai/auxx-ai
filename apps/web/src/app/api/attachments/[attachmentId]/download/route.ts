@@ -1,10 +1,11 @@
 // apps/web/src/app/api/attachments/[attachmentId]/download/route.ts
 
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 export const runtime = 'nodejs'
-import { auth } from '~/auth/server'
+
 import { createScopedLogger } from '@auxx/logger'
 import { headers } from 'next/headers'
+import { auth } from '~/auth/server'
 
 const logger = createScopedLogger('api-attachments-download')
 

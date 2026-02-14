@@ -1,8 +1,8 @@
 // packages/lib/src/workflow-engine/utils/field-type-mapper.ts
 
-import { BaseType } from '../types'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
+import { BaseType } from '../types'
 
 /**
  * Map database FieldType to BaseType for workflow operations

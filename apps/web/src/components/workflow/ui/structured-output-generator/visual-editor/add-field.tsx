@@ -1,9 +1,10 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/visual-editor/add-field.tsx
-import React, { useCallback } from 'react'
+
 import { Button } from '@auxx/ui/components/button'
 import { PlusCircle } from 'lucide-react'
-import { useVisualEditorStore } from './store'
+import React, { useCallback } from 'react'
 import { useEventEmitter } from './context'
+import { useVisualEditorStore } from './store'
 
 const AddField = () => {
   const setIsAddingNewField = useVisualEditorStore((state) => state.setIsAddingNewField)
@@ -15,9 +16,9 @@ const AddField = () => {
   }, [setIsAddingNewField, emit])
 
   return (
-    <div className="py-2 pl-5">
-      <Button size="sm" variant="outline" onClick={handleAddField}>
-        <PlusCircle className="size-3.5" />
+    <div className='py-2 pl-5'>
+      <Button size='sm' variant='outline' onClick={handleAddField}>
+        <PlusCircle className='size-3.5' />
         Add field
       </Button>
     </div>

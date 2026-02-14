@@ -1,7 +1,7 @@
 import type { Events } from '../events'
 import type { WebhookEventType } from './events'
 
-export { WEBHOOK_EVENT_TYPES, eventTypesList } from './events'
+export { eventTypesList, WEBHOOK_EVENT_TYPES } from './events'
 
 export type WebhookDelivery = Record<string, unknown>
 export type WebhookDeliveryParams = {

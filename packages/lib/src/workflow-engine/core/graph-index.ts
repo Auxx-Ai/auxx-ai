@@ -2,13 +2,13 @@
 
 // Export graph types
 export type {
-  WorkflowGraph,
   GraphNode,
-  OutputHandleInfo,
+  LoopNodeInfo,
   NodeRouteInfo,
+  OutputHandleInfo,
   RouteInfo,
   TargetNodeInfo,
-  LoopNodeInfo,
+  WorkflowGraph,
 } from './workflow-graph-builder'
 
 // Export builder and helper

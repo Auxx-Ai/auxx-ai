@@ -1,15 +1,16 @@
 // apps/web/src/app/(protected)/app/workflows/_components/executions/workflow-executions.tsx
 'use client'
-import { useMemo, useState, useCallback } from 'react'
-import { StopCircle, Play, Trash2 } from 'lucide-react'
-import { DynamicTable } from '~/components/dynamic-table'
-import { WorkflowRunsProvider, useWorkflowRuns } from './workflow-runs-provider'
-import { WorkflowRunsFilterBar } from './workflow-runs-filter-bar'
-import { createWorkflowRunsColumns } from './workflow-runs-columns'
-import { EmptyState } from '~/components/global/empty-state'
-import { WorkflowExecutionDetailDrawer } from './workflow-execution-detail-drawer'
-import type { WorkflowExecutionsProps } from './types'
 import type { WorkflowRunEntity as WorkflowRun } from '@auxx/database/models'
+import { Play, StopCircle, Trash2 } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { DynamicTable } from '~/components/dynamic-table'
+import { EmptyState } from '~/components/global/empty-state'
+import type { WorkflowExecutionsProps } from './types'
+import { WorkflowExecutionDetailDrawer } from './workflow-execution-detail-drawer'
+import { createWorkflowRunsColumns } from './workflow-runs-columns'
+import { WorkflowRunsFilterBar } from './workflow-runs-filter-bar'
+import { useWorkflowRuns, WorkflowRunsProvider } from './workflow-runs-provider'
+
 /**
  * Content component that uses the workflow runs context
  */
@@ -80,8 +81,8 @@ function WorkflowExecutionsContent({ workflowId }: { workflowId: string }) {
   return (
     <>
       <DynamicTable<WorkflowRun>
-        tableId="workflow-runs"
-        className="h-full"
+        tableId='workflow-runs'
+        className='h-full'
         columns={columns}
         data={items}
         isLoading={isLoading}
@@ -93,8 +94,8 @@ function WorkflowExecutionsContent({ workflowId }: { workflowId: string }) {
         emptyState={
           <EmptyState
             icon={Play}
-            title="No workflow executions"
-            description="Workflow runs will appear here when your workflows are executed."
+            title='No workflow executions'
+            description='Workflow runs will appear here when your workflows are executed.'
           />
         }
       />

@@ -1,16 +1,16 @@
 // apps/web/src/components/resources/hooks/use-field-value-syncer.ts
 
-import { useEffect, useMemo, useRef, useCallback } from 'react'
-import {
-  useFieldValueStore,
-  buildFieldValueKey,
-  type StoredFieldValue,
-  type FieldReference,
-} from '~/components/resources/store/field-value-store'
-import { fieldValueFetchQueue } from '~/components/resources/store/field-value-fetch-queue'
-import { type RecordId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 import type { VisibilityState } from '@tanstack/react-table'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { decodeColumnId } from '~/components/dynamic-table/utils/column-id'
+import { fieldValueFetchQueue } from '~/components/resources/store/field-value-fetch-queue'
+import {
+  buildFieldValueKey,
+  type FieldReference,
+  type StoredFieldValue,
+  useFieldValueStore,
+} from '~/components/resources/store/field-value-store'
 
 interface UseFieldValueSyncerOptions {
   /** RecordIds for the entities being displayed */
@@ -59,7 +59,13 @@ interface SyncerResult {
  * ```
  */
 export function useFieldValueSyncer(options: UseFieldValueSyncerOptions): SyncerResult {
-  const { recordIds, columnVisibility, resourceFieldIds, enabled = true, debounceMs = 150 } = options
+  const {
+    recordIds,
+    columnVisibility,
+    resourceFieldIds,
+    enabled = true,
+    debounceMs = 150,
+  } = options
 
   const pendingRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 

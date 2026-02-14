@@ -14,7 +14,7 @@ const Line = ({ list }: LineProps) => {
   const svgHeight = processedList[processedListLength - 1] + (processedListLength - 1) * 8
 
   return (
-    <svg className="w-6 shrink-0" style={{ height: svgHeight }}>
+    <svg className='w-6 shrink-0' style={{ height: svgHeight }}>
       {processedList.map((item, index) => {
         const prevItem = index > 0 ? processedList[index - 1] : 0
         const space = prevItem + index * 8 + 16
@@ -22,19 +22,19 @@ const Line = ({ list }: LineProps) => {
           <g key={index}>
             {index === 0 && (
               <>
-                <path d="M0,18 L24,18" strokeWidth={1} fill="none" className="stroke-primary-200" />
-                <rect x={0} y={16} width={1} height={4} className="fill-primary-400" />
+                <path d='M0,18 L24,18' strokeWidth={1} fill='none' className='stroke-primary-200' />
+                <rect x={0} y={16} width={1} height={4} className='fill-primary-400' />
               </>
             )}
             {index > 0 && (
               <path
                 d={`M0,18 Q12,18 12,28 L12,${space - 10 + 2} Q12,${space + 2} 24,${space + 2}`}
                 strokeWidth={1}
-                fill="none"
-                className="stroke-primary-200"
+                fill='none'
+                className='stroke-primary-200'
               />
             )}
-            <rect x={23} y={space} width={1} height={4} className="fill-primary-400" />
+            <rect x={23} y={space} width={1} height={4} className='fill-primary-400' />
           </g>
         )
       })}

@@ -2,29 +2,28 @@
 
 'use client'
 
-import React, { useMemo, useCallback, useEffect } from 'react'
-import {
-  ReactFlow,
-  Background,
-  MiniMap,
-  BackgroundVariant,
-  useReactFlow,
-  Panel,
-  useNodesState,
-  useEdgesState,
-  type Viewport,
-  type NodeChange,
-  type EdgeChange,
-} from '@xyflow/react'
-import { cn } from '@auxx/ui/lib/utils'
 import { Badge } from '@auxx/ui/components/badge'
+import { cn } from '@auxx/ui/lib/utils'
+import {
+  Background,
+  BackgroundVariant,
+  type EdgeChange,
+  MiniMap,
+  type NodeChange,
+  Panel,
+  ReactFlow,
+  useEdgesState,
+  useNodesState,
+  useReactFlow,
+  type Viewport,
+} from '@xyflow/react'
 import { Eye } from 'lucide-react'
-
-import { FLOW_NODE_TYPES } from '~/components/workflow/nodes'
+import React, { useCallback, useEffect, useMemo } from 'react'
 import CustomEdge from '~/components/workflow/edges/custom-edge'
-import type { FlowNode, FlowEdge } from '~/components/workflow/types'
-import { WorkflowViewerOperators } from './workflow-viewer-operators'
+import { FLOW_NODE_TYPES } from '~/components/workflow/nodes'
+import type { FlowEdge, FlowNode } from '~/components/workflow/types'
 import type { WorkflowViewerOptions } from './workflow-viewer'
+import { WorkflowViewerOperators } from './workflow-viewer-operators'
 
 const edgeTypes = { default: CustomEdge }
 
@@ -145,7 +144,7 @@ export const WorkflowViewerCanvas = React.memo<WorkflowViewerCanvasProps>(
           fitView
           fitViewOptions={{ padding: 0.3, maxZoom: 0.8 }}
           // Styling
-          className="bg-primary-50! dark:bg-primary-100!">
+          className='bg-primary-50! dark:bg-primary-100!'>
           {/* Background dots */}
           <Background
             variant={BackgroundVariant.Dots}
@@ -174,16 +173,16 @@ export const WorkflowViewerCanvas = React.memo<WorkflowViewerCanvasProps>(
           )}
 
           {/* Top panel - Read-only badge */}
-          <Panel position="top-left" className="space-y-2">
-            <Badge variant="zinc">
-              <Eye className="size-3 mr-1.5" />
+          <Panel position='top-left' className='space-y-2'>
+            <Badge variant='zinc'>
+              <Eye className='size-3 mr-1.5' />
               View Only
             </Badge>
           </Panel>
 
           {/* Bottom panel - Operators */}
           {options.showNavigation && (
-            <Panel position="bottom-left">
+            <Panel position='bottom-left'>
               <WorkflowViewerOperators
                 onZoomIn={handleZoomIn}
                 onZoomOut={handleZoomOut}
@@ -194,12 +193,12 @@ export const WorkflowViewerCanvas = React.memo<WorkflowViewerCanvasProps>(
 
           {/* Branding badge */}
           {options.showBranding && (
-            <Panel position="bottom-right">
+            <Panel position='bottom-right'>
               <a
-                href="https://auxx.ai"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                href='https://auxx.ai'
+                target='_blank'
+                rel='noopener noreferrer'
+                className='text-xs text-muted-foreground hover:text-foreground transition-colors'>
                 Built with Auxx.ai
               </a>
             </Panel>

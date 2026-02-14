@@ -1,6 +1,6 @@
-import DisplayWrapper from './display-wrapper'
-import { useFieldContext } from './display-field'
 import { format } from 'date-fns'
+import { useFieldContext } from './display-field'
+import DisplayWrapper from './display-wrapper'
 
 /**
  * DisplayReadOnlyDate component

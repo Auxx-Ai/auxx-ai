@@ -1,7 +1,7 @@
 // packages/lib/src/utils/rate-limiter/provider-configs.ts
 
-import type { IntegrationProviderType } from '@auxx/database/types'
 import { IntegrationProviderType as IntegrationProviderTypeEnum } from '@auxx/database/enums'
+import type { IntegrationProviderType } from '@auxx/database/types'
 import { getProviderCapabilities } from '../../providers/provider-capabilities'
 import type { EnhancedRateLimits, RetryConfig } from './types'
 

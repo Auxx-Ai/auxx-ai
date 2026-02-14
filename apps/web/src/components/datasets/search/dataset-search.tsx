@@ -2,11 +2,9 @@
 
 'use client'
 
-import { useState, useCallback } from 'react'
-import { EmptyState } from '~/components/global/empty-state'
+import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Button } from '@auxx/ui/components/button'
 import { Label } from '@auxx/ui/components/label'
-
 import {
   Select,
   SelectContent,
@@ -14,21 +12,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { Separator } from '@auxx/ui/components/separator'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import {
-  Search,
-  TestTubeDiagonal,
-  Loader2,
-  FileSearch,
-  XIcon,
   Command,
   CornerDownLeft,
+  FileSearch,
+  Loader2,
+  Search,
+  TestTubeDiagonal,
+  XIcon,
 } from 'lucide-react'
-import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
+import { useCallback, useState } from 'react'
+import { EmptyState } from '~/components/global/empty-state'
 import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { SearchResultItem } from './search-result-item'
-import { Separator } from '@auxx/ui/components/separator'
 import { AdvancedSearchOptions, type SearchConfiguration } from './advanced-search-options'
+import { SearchResultItem } from './search-result-item'
 
 /**
  * Search result structure matching backend response
@@ -204,30 +203,30 @@ export function DatasetSearch({ datasetIds }: DatasetSearchProps) {
   const hasError = !!state.searchError
 
   return (
-    <div className="flex flex-col min-h-0 flex-1 overflow-hidden bg-background">
-      <div className="grid grid-cols-1 md:grid-cols-2 h-full flex-1 overflow-y-auto">
+    <div className='flex flex-col min-h-0 flex-1 overflow-hidden bg-background'>
+      <div className='grid grid-cols-1 md:grid-cols-2 h-full flex-1 overflow-y-auto'>
         {/* Left Panel - Search Input */}
-        <div className="border-r-0 md:border-r md:overflow-y-auto">
-          <div className="h-full relative flex flex-col">
-            <div className="flex flex-col p-4 space-y-4">
+        <div className='border-r-0 md:border-r md:overflow-y-auto'>
+          <div className='h-full relative flex flex-col'>
+            <div className='flex flex-col p-4 space-y-4'>
               <div>
-                <div className="flex items-center text-sm font-semibold">Testing Search</div>
-                <div className="text-sm text-muted-foreground">
+                <div className='flex items-center text-sm font-semibold'>Testing Search</div>
+                <div className='text-sm text-muted-foreground'>
                   Test the hitting effect of the Knowledge based on the given query text.
                 </div>
               </div>
 
               {/* Dataset Selector */}
               {datasetIds.length > 1 && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Dataset</label>
+                <div className='space-y-2'>
+                  <label className='text-sm font-medium'>Dataset</label>
                   <Select
                     value={state.selectedDatasetId || ''}
                     onValueChange={(value) =>
                       setState((prev) => ({ ...prev, selectedDatasetId: value }))
                     }>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select dataset" />
+                      <SelectValue placeholder='Select dataset' />
                     </SelectTrigger>
                     <SelectContent>
                       {datasetIds.map((id) => (
@@ -241,33 +240,33 @@ export function DatasetSearch({ datasetIds }: DatasetSearchProps) {
               )}
 
               {/* Search Query Input */}
-              <div className="space-y-2">
+              <div className='space-y-2'>
                 <Label>Search Query</Label>
-                <div className="relative">
+                <div className='relative'>
                   <AutosizeTextarea
-                    placeholder="Enter your search query..."
+                    placeholder='Enter your search query...'
                     value={state.searchQuery}
                     onChange={(e) => setState((prev) => ({ ...prev, searchQuery: e.target.value }))}
                     onKeyDown={handleKeyDown}
                     minHeight={120}
-                    className="resize-none pe-10 rounded-xl"
+                    className='resize-none pe-10 rounded-xl'
                   />
                   <Button
                     onClick={handleSearch}
-                    size="xs"
+                    size='xs'
                     disabled={!canSearch}
                     loading={state.isSearching}
-                    loadingText="Searching..."
-                    className="absolute bottom-2 right-2 gap-0">
+                    loadingText='Searching...'
+                    className='absolute bottom-2 right-2 gap-0'>
                     Search
-                    <Separator orientation="vertical" className="mx-1.5 h-3 opacity-50" />
-                    <Command className="size-3! opacity-80" />
-                    <CornerDownLeft className="size-3! opacity-80" />
+                    <Separator orientation='vertical' className='mx-1.5 h-3 opacity-50' />
+                    <Command className='size-3! opacity-80' />
+                    <CornerDownLeft className='size-3! opacity-80' />
                   </Button>
                   <Button
-                    variant="outline"
-                    size="icon-xs"
-                    className="absolute top-1 right-1 rounded-full"
+                    variant='outline'
+                    size='icon-xs'
+                    className='absolute top-1 right-1 rounded-full'
                     onClick={handleClear}
                     disabled={!state.searchQuery && !hasResults}>
                     <XIcon />
@@ -292,34 +291,34 @@ export function DatasetSearch({ datasetIds }: DatasetSearchProps) {
               />
 
               {/* Action Buttons */}
-              <div className="flex gap-2"></div>
+              <div className='flex gap-2'></div>
             </div>
           </div>
         </div>
 
         {/* Right Panel - Results */}
-        <div className="flex h-full flex-1  md:overflow-y-auto border-t md:border-t-0">
+        <div className='flex h-full flex-1  md:overflow-y-auto border-t md:border-t-0'>
           {state.isSearching ? (
             <EmptyState
               icon={Loader2}
-              iconClassName="animate-spin"
-              title="Searching..."
-              description="Finding relevant results in your dataset"
+              iconClassName='animate-spin'
+              title='Searching...'
+              description='Finding relevant results in your dataset'
             />
           ) : hasError ? (
             <EmptyState
               icon={TestTubeDiagonal}
-              title="Search Error"
+              title='Search Error'
               description={state.searchError || 'An error occurred during search'}
             />
           ) : hasResults ? (
-            <div className="w-full p-4 space-y-4">
+            <div className='w-full p-4 space-y-4'>
               {/* Search Metrics */}
               {state.searchMetrics && (
-                <div className=" rounded-lg border p-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium">{state.searchMetrics.totalResults} results</span>
-                    <span className="text-muted-foreground">
+                <div className=' rounded-lg border p-3'>
+                  <div className='flex items-center justify-between text-sm'>
+                    <span className='font-medium'>{state.searchMetrics.totalResults} results</span>
+                    <span className='text-muted-foreground'>
                       {state.searchMetrics.responseTime}ms • {state.searchMetrics.searchType}
                       {state.searchConfig.searchType === 'hybrid' &&
                         ` • ${state.searchConfig.semanticWeight}% semantic`}
@@ -329,7 +328,7 @@ export function DatasetSearch({ datasetIds }: DatasetSearchProps) {
               )}
 
               {/* Search Results */}
-              <div className="space-y-3 pb-4">
+              <div className='space-y-3 pb-4'>
                 {state.searchResults.map((result, index) => (
                   <SearchResultItem
                     key={result.segment?.id || index}
@@ -343,8 +342,8 @@ export function DatasetSearch({ datasetIds }: DatasetSearchProps) {
           ) : (
             <EmptyState
               icon={FileSearch}
-              title="Ready to Search"
-              description="Enter a search query and click Search to test your dataset"
+              title='Ready to Search'
+              description='Enter a search query and click Search to test your dataset'
             />
           )}
         </div>

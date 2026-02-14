@@ -2,7 +2,7 @@
 
 import type { FlowNode } from '~/components/workflow/types'
 import { NODE_ADDITION_CONFIG } from '../layout-constants'
-import { CollisionDetector, type Point, type Size, type NodeBounds } from './collision-detector'
+import { CollisionDetector, type NodeBounds, type Point, type Size } from './collision-detector'
 
 export type Direction = 'right' | 'left' | 'down' | 'up'
 
@@ -27,11 +27,11 @@ export class NodeMover {
     const movedNodeIds: string[] = []
 
     const updatedNodes = nodes.map((node) => {
-      const shouldMove = this.shouldMoveNode(node, direction, startingFrom)
+      const shouldMove = NodeMover.shouldMoveNode(node, direction, startingFrom)
 
       if (shouldMove) {
         movedNodeIds.push(node.id)
-        const newPosition = this.calculateShiftedPosition(node.position, direction, amount)
+        const newPosition = NodeMover.calculateShiftedPosition(node.position, direction, amount)
         return { ...node, position: newPosition }
       }
 
@@ -63,7 +63,7 @@ export class NodeMover {
     }
 
     // Determine shift direction and amount
-    const { direction, amount } = this.calculateOptimalShift(
+    const { direction, amount } = NodeMover.calculateOptimalShift(
       position,
       nodeSize,
       collidingNodes,
@@ -71,7 +71,7 @@ export class NodeMover {
     )
 
     // Shift nodes to make space
-    return this.shiftNodes(existingNodes, direction, amount, position)
+    return NodeMover.shiftNodes(existingNodes, direction, amount, position)
   }
 
   /**
@@ -104,7 +104,7 @@ export class NodeMover {
       if (actualGap < requiredSpace) {
         // Need to shift nodes to the right
         const moveDistance = requiredSpace - actualGap
-        return this.shiftNodes(nodes, 'right', moveDistance, targetNode.position)
+        return NodeMover.shiftNodes(nodes, 'right', moveDistance, targetNode.position)
       }
     } else {
       // Vertical flow
@@ -117,7 +117,7 @@ export class NodeMover {
       if (actualGap < requiredSpace) {
         // Need to shift nodes down
         const moveDistance = requiredSpace - actualGap
-        return this.shiftNodes(nodes, 'down', moveDistance, targetNode.position)
+        return NodeMover.shiftNodes(nodes, 'down', moveDistance, targetNode.position)
       }
     }
 

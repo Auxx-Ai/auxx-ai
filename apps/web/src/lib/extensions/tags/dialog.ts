@@ -40,10 +40,10 @@ export function createDialogTag(props: any): DialogInstance {
     instance_id: generateInstanceId(),
     attributes: {
       title: props.title,
-      size: props.size || 'medium'
+      size: props.size || 'medium',
     },
     props,
     children: [],
-    hidden: false
+    hidden: false,
   }
 }

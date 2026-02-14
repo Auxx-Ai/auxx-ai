@@ -1,9 +1,9 @@
 // apps/web/src/components/mail/store/index.ts
 
 export {
-  useMailCountsStore,
-  selectSharedInboxesTotal,
-  selectSharedInboxCount,
-  selectViewCount,
   type CountUpdates,
+  selectSharedInboxCount,
+  selectSharedInboxesTotal,
+  selectViewCount,
+  useMailCountsStore,
 } from './mail-counts-store'

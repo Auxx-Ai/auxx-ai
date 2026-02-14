@@ -2,9 +2,9 @@
 
 import { database } from '@auxx/database'
 import { ok } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
-import { getAppConnectionDefinition } from '../app-connections'
 import type { ConnectionDefinitionSummary } from '../app-connections'
+import { getAppConnectionDefinition } from '../app-connections'
+import { fromDatabase } from '../shared/utils'
 
 /**
  * Input parameters for getInstalledApps

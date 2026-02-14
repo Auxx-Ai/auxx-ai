@@ -2,35 +2,35 @@
 
 'use client'
 
-import { useCallback, useMemo, useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@auxx/ui/components/button'
+import { toastError } from '@auxx/ui/components/toast'
+import type { VisibilityState } from '@tanstack/react-table'
+import { CircleDot, Flag, Play, Plus, Ticket as TicketIcon, Trash2, Users } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import {
+  createCustomFieldColumns,
   DynamicTable,
   DynamicTableFooter,
-  createCustomFieldColumns,
   useCombinedFilters,
 } from '~/components/dynamic-table'
 import { useActiveViewConfig } from '~/components/dynamic-table/stores/store-selectors'
-import type { ExtendedColumnDef } from '~/components/dynamic-table'
-import type { VisibilityState } from '@tanstack/react-table'
 import { EmptyState } from '~/components/global/empty-state'
-import { Ticket as TicketIcon, Plus, Trash2, Users, CircleDot, Flag, Play } from 'lucide-react'
-import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
-import { useRecordList, useResources, toRecordId } from '~/components/resources'
+import { toRecordId, useRecordList, useResources } from '~/components/resources'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
-import { TicketDetailDrawer } from './ticket-detail-drawer'
-import { createTicketColumns } from './ticket-columns'
-import { useTicketMutations } from './use-ticket-mutations'
-import type { Ticket } from './ticket-types'
-import { useConfirm } from '~/hooks/use-confirm'
-import { toastError } from '@auxx/ui/components/toast'
-import TicketFormDialog from './ticket-form-dialog'
-import { MassAssignDialog } from './dialog-mass-assign'
-import { MassStatusDialog } from './dialog-mass-status'
-import { MassPriorityDialog } from './dialog-mass-priority'
-import { MassDeleteDialog } from './dialog-mass-deleting'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
+import { useConfirm } from '~/hooks/use-confirm'
+import { MassAssignDialog } from './dialog-mass-assign'
+import { MassDeleteDialog } from './dialog-mass-deleting'
+import { MassPriorityDialog } from './dialog-mass-priority'
+import { MassStatusDialog } from './dialog-mass-status'
+import { createTicketColumns } from './ticket-columns'
+import { TicketDetailDrawer } from './ticket-detail-drawer'
+import TicketFormDialog from './ticket-form-dialog'
+import type { Ticket } from './ticket-types'
+import { useTicketMutations } from './use-ticket-mutations'
 
 const PAGE_SIZE = 100
 
@@ -324,29 +324,29 @@ export function TicketManagement({
     <>
       <DynamicTable<Ticket>
         tableId={TABLE_ID}
-        resourceType="ticket"
-        className="h-full"
-        entityLabel="Ticket"
+        resourceType='ticket'
+        className='h-full'
+        entityLabel='Ticket'
         columns={columns}
         data={tickets}
         isLoading={isTicketsLoading}
         bulkActions={bulkActions}
         onRowSelectionChange={() => {}}
-        importHref="/app/tickets/import"
+        importHref='/app/tickets/import'
         enableSearch
         enableFiltering
         onRefresh={refetchTickets}
-        searchPlaceholder="Search tickets..."
+        searchPlaceholder='Search tickets...'
         onColumnVisibilityChange={setColumnVisibility}
         onAddNew={() => setCreateDialogOpen(true)}
         onScrollToBottom={handleScrollToBottom}
         emptyState={
           <EmptyState
             icon={TicketIcon}
-            title="No tickets found"
-            description="Create your first ticket to get started."
+            title='No tickets found'
+            description='Create your first ticket to get started.'
             button={
-              <Button onClick={() => setCreateDialogOpen(true)} variant="outline">
+              <Button onClick={() => setCreateDialogOpen(true)} variant='outline'>
                 <Plus />
                 Create Ticket
               </Button>
@@ -355,14 +355,14 @@ export function TicketManagement({
         }>
         {/* Custom footer to show loading state */}
         <DynamicTableFooter>
-          <div className="flex items-center justify-between px-4 py-2 text-sm">
+          <div className='flex items-center justify-between px-4 py-2 text-sm'>
             <div>
               {tickets.length} tickets loaded
-              {hasNextPage && <span className="ml-2">(more available)</span>}
+              {hasNextPage && <span className='ml-2'>(more available)</span>}
             </div>
             {isFetchingNextPage && (
-              <div className="flex items-center gap-2">
-                <div className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <div className='flex items-center gap-2'>
+                <div className='h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent' />
                 <span>Loading more...</span>
               </div>
             )}

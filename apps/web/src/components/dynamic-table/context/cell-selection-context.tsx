@@ -1,10 +1,10 @@
 // apps/web/src/components/dynamic-table/context/cell-selection-context.tsx
 'use client'
 
-import { createContext, useContext, useCallback, useMemo, type ReactNode } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useMemo } from 'react'
 import { useSelectionStore } from '../stores/selection-store'
+import type { CellSelectionConfig, CellSelectionState } from '../types'
 import { useTableConfig } from './table-config-context'
-import type { CellSelectionState, CellSelectionConfig } from '../types'
 
 // ============================================================================
 // TYPES

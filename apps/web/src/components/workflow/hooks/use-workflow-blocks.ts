@@ -1,13 +1,13 @@
 // apps/web/src/components/workflow/hooks/use-workflow-blocks.ts
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from '~/lib/extensions/use-app-store'
-import { useDehydratedOrganizationId } from '~/providers/dehydrated-state-provider'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
+import { AppWorkflowNode } from '~/lib/workflow/components/app-workflow-node'
 import { WorkflowBlockLoader } from '~/lib/workflow/workflow-block-loader'
 import { WorkflowBlockRegistry } from '~/lib/workflow/workflow-block-registry'
+import { useDehydratedOrganizationId } from '~/providers/dehydrated-state-provider'
+import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
-import { AppWorkflowNode } from '~/lib/workflow/components/app-workflow-node'
 
 /**
  * Hook to load and register workflow blocks from installed apps
@@ -55,7 +55,10 @@ export function useWorkflowBlocks() {
 
       // Check cache and register cached blocks immediately
       for (const installation of appInstallations) {
-        const cachedBlocks = registry.getCachedBlocks(installation.app.id, installation.installationId)
+        const cachedBlocks = registry.getCachedBlocks(
+          installation.app.id,
+          installation.installationId
+        )
 
         if (cachedBlocks) {
           const nodeDefinitions = registry.registerBlocks(

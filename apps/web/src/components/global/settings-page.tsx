@@ -1,6 +1,5 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
 import {
   BreadcrumbItem,
   BreadcrumbLink,
@@ -12,6 +11,7 @@ import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import Link from 'next/link'
+import React, { useEffect, useRef, useState } from 'react'
 
 interface IBradcrumbItem {
   title: string
@@ -70,33 +70,33 @@ export default function SettingsPage({
   }, [])
 
   return (
-    <div data-slot="settings-page" className="relative h-full w-full overflow-auto flex flex-col">
+    <div data-slot='settings-page' className='relative h-full w-full overflow-auto flex flex-col'>
       {breadcrumbs.length > 0 && (
-        <header className="w-full flex-none border-b overflow-hidden">
-          <div className="flex items-center gap-2 px-3 py-1.5 no-scrollbar overflow-x-auto">
-            <BreadcrumbList className="gap-1 sm:gap-1 flex-nowrap">
+        <header className='w-full flex-none border-b overflow-hidden'>
+          <div className='flex items-center gap-2 px-3 py-1.5 no-scrollbar overflow-x-auto'>
+            <BreadcrumbList className='gap-1 sm:gap-1 flex-nowrap'>
               {breadcrumbs?.map((breadcrumb, i) => (
                 <React.Fragment key={i}>
-                  <BreadcrumbItem className="flex-none inline-flex">
+                  <BreadcrumbItem className='flex-none inline-flex'>
                     {breadcrumb.loading ? (
-                      <div className="px-2">
+                      <div className='px-2'>
                         <Skeleton
-                          className="h-4"
+                          className='h-4'
                           style={{ width: `${breadcrumb.loadingWidth || 100}px` }}
                         />
                       </div>
                     ) : breadcrumb.href ? (
                       <BreadcrumbLink asChild>
-                        <Link href={breadcrumb.href} className=" rounded p-1 px-2 hover:bg-muted">
+                        <Link href={breadcrumb.href} className=' rounded p-1 px-2 hover:bg-muted'>
                           {breadcrumb.title}
                         </Link>
                       </BreadcrumbLink>
                     ) : (
-                      <BreadcrumbPage className="px-2">{breadcrumb.title}</BreadcrumbPage>
+                      <BreadcrumbPage className='px-2'>{breadcrumb.title}</BreadcrumbPage>
                     )}
                   </BreadcrumbItem>
                   {i + 1 < breadcrumbs.length && (
-                    <BreadcrumbSeparator className="block" key={i + 0.5} />
+                    <BreadcrumbSeparator className='block' key={i + 0.5} />
                   )}
                 </React.Fragment>
               ))}
@@ -105,18 +105,18 @@ export default function SettingsPage({
         </header>
       )}
 
-      <div className="sticky top-0 z-10 backdrop-blur-sm">
+      <div className='sticky top-0 z-10 backdrop-blur-sm'>
         <div className={cn('flex items-center flex-row bg-muted/50 px-5 py-3', { 'ps-2': !!icon })}>
-          <div className="flex items-center gap-2">
-            {icon && <div className="flex h-10 w-10 items-center justify-center">{icon}</div>}
-            <div className="me-3">
-              <div className="h3 text-md font-medium">{title}</div>
-              {description && <div className="text-sm text-muted-foreground">{description}</div>}
+          <div className='flex items-center gap-2'>
+            {icon && <div className='flex h-10 w-10 items-center justify-center'>{icon}</div>}
+            <div className='me-3'>
+              <div className='h3 text-md font-medium'>{title}</div>
+              {description && <div className='text-sm text-muted-foreground'>{description}</div>}
             </div>
           </div>
-          <div className="ml-auto shrink-0">{button && button}</div>
+          <div className='ml-auto shrink-0'>{button && button}</div>
         </div>
-        <Separator className="bg-background" />
+        <Separator className='bg-background' />
         <Separator />
         {/* Shadow that appears on scroll with edge flare */}
         <div
@@ -130,7 +130,7 @@ export default function SettingsPage({
         />
       </div>
       {/* Sentinel element for Intersection Observer */}
-      <div ref={sentinelRef} className="h-px shrink-0" aria-hidden="true" />
+      <div ref={sentinelRef} className='h-px shrink-0' aria-hidden='true' />
       {children}
     </div>
   )

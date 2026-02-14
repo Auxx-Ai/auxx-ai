@@ -1,6 +1,7 @@
 // ~/components/global/editor/editor-context.tsx
-import React, { createContext, useState, useContext, ReactNode, useCallback } from 'react'
-import { Editor } from '@tiptap/react'
+
+import type { Editor } from '@tiptap/react'
+import React, { createContext, type ReactNode, useCallback, useContext, useState } from 'react'
 
 interface EditorContextProps {
   editor: Editor | null

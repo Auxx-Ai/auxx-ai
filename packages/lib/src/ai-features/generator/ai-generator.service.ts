@@ -1,17 +1,17 @@
 // packages/lib/src/ai-features/generator/ai-generator.service.ts
 
 import type { Database } from '@auxx/database'
-import { createScopedLogger } from '../../logger'
-import { LLMOrchestrator } from '../../ai/orchestrator/llm-orchestrator'
-import { UsageTrackingService } from '../../ai/usage/usage-tracking-service'
-import type { LLMInvocationRequest } from '../../ai/orchestrator/types'
 import type { Message } from '../../ai/clients/base/types'
+import { LLMOrchestrator } from '../../ai/orchestrator/llm-orchestrator'
+import type { LLMInvocationRequest } from '../../ai/orchestrator/types'
+import { UsageTrackingService } from '../../ai/usage/usage-tracking-service'
+import { createScopedLogger } from '../../logger'
 import type {
-  GenerationType,
   AIGeneratorRequest,
   AIGeneratorResponse,
   CodeGeneratorInput,
   CodeGeneratorOutput,
+  GenerationType,
 } from './types'
 
 const logger = createScopedLogger('ai-generator-service')
@@ -235,7 +235,10 @@ ${inputDocs}
     }
 
     const outputDocs = outputs
-      .map((output) => `  - \`${output.name}\` (${output.type}): ${output.description || 'Output value'}`)
+      .map(
+        (output) =>
+          `  - \`${output.name}\` (${output.type}): ${output.description || 'Output value'}`
+      )
       .join('\n')
 
     return `<output_variables>
@@ -288,7 +291,7 @@ ${request.idealOutput}
       : ''
 
     // Select and populate template based on generation type
-    let template = isCodeGeneration ? CODE_GENERATE_TEMPLATE : PROMPT_GENERATE_TEMPLATE
+    const template = isCodeGeneration ? CODE_GENERATE_TEMPLATE : PROMPT_GENERATE_TEMPLATE
 
     // For code generation, build the input/output sections
     let userPrompt: string

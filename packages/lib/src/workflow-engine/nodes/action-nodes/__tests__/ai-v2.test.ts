@@ -1,9 +1,9 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/__tests__/ai-v2.test.ts
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { AIProcessorV2 } from '../ai-v2'
-import { WorkflowNodeType } from '../../../core/types'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkflowNode } from '../../../core/types'
+import { WorkflowNodeType } from '../../../core/types'
+import { AIProcessorV2 } from '../ai-v2'
 
 /**
  * Test suite for AIProcessorV2
@@ -76,11 +76,7 @@ describe('AIProcessorV2', () => {
         },
       }
 
-      const messages = await (processor as any).buildMessages(
-        node,
-        node.data,
-        mockContextManager
-      )
+      const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
 
       expect(messages).toHaveLength(2)
       expect(messages[0]).toEqual({ role: 'system', content: 'You are a helpful assistant' })
@@ -102,11 +98,7 @@ describe('AIProcessorV2', () => {
         },
       }
 
-      const messages = await (processor as any).buildMessages(
-        node,
-        node.data,
-        mockContextManager
-      )
+      const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
 
       expect(messages[1].content).toBe('Email: test@example.com, Subject: Test Subject')
     })
@@ -125,11 +117,7 @@ describe('AIProcessorV2', () => {
         },
       }
 
-      const messages = await (processor as any).buildMessages(
-        node,
-        node.data,
-        mockContextManager
-      )
+      const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
 
       expect(messages).toHaveLength(1)
       expect(messages[0]).toEqual({ role: 'user', content: 'Write me a poem' })
@@ -148,11 +136,7 @@ describe('AIProcessorV2', () => {
         },
       }
 
-      const messages = await (processor as any).buildMessages(
-        node,
-        node.data,
-        mockContextManager
-      )
+      const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
 
       expect(messages).toHaveLength(2)
       expect(messages[0]).toEqual({ role: 'system', content: 'You are a poet' })
@@ -561,9 +545,7 @@ describe('AIProcessorV2', () => {
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(false)
-      expect(result.errors).toContain(
-        'Tools mode must be one of: workflow_nodes, built_in, both'
-      )
+      expect(result.errors).toContain('Tools mode must be one of: workflow_nodes, built_in, both')
     })
   })
 })

@@ -1,116 +1,106 @@
 // packages/lib/src/resources/index.ts
 
+// Field capability utilities
+export {
+  canCreateField,
+  canFilterField,
+  canSortField,
+  canUpdateField,
+} from './capabilities/field-capabilities'
+export type {
+  BulkResult,
+  CreateEntityResult,
+  CreateRecordOptions,
+  CrudContext,
+  CrudOptions,
+  CrudResult,
+  CrudResultFailure,
+  CrudResultSuccess,
+  FieldChange,
+  FindByFieldOptions,
+  TransformedData,
+  UpdateRecordOptions,
+} from './crud'
+// CRUD service and handlers
+export {
+  fromDbResult,
+  hasChanges,
+  isNotFound,
+  parseTags,
+  setCustomFields,
+  trackChanges,
+  UnifiedCrudHandler,
+} from './crud'
+export { listAll } from './crud/unified-handler-queries'
+export type { MergeEntitiesInput, MergeEntitiesResult } from './merge'
+// Merge service (server-side)
+export { EntityMergeService } from './merge'
+export type {
+  GetResourceByIdInput,
+  GetResourcesInput,
+  PaginatedResourcesResult,
+  RecordPickerItem,
+} from './picker'
+// Record picker service (server-side)
+export { RecordPickerService } from './picker'
+// Type exports
+export type {
+  CustomResource,
+  CustomResourceId,
+  DisplayFieldConfig,
+  FieldCapabilities,
+  FieldValidation,
+  JoinScopingConfig,
+  NewSystemEntityType,
+  OrgScopingStrategy,
+  Resource,
+  ResourceDisplayConfig,
+  ResourceField,
+  ResourceFieldRegistry,
+  ResourceId, // Note: This is registry's ResourceId (TableId | CustomResourceId), different from RecordId
+  ResourceTableDefinition,
+  SystemResource,
+  TableId,
+} from './registry'
+// Registry exports
+// Resource types (system + custom)
+export {
+  getAllFields,
+  getCreatableFields,
+  getField,
+  getFieldOperators,
+  getFilterableFields,
+  getReadOnlyFields,
+  getRequiredFields,
+  getSortableFields,
+  getUpdatableFields,
+  isCustomResource,
+  isCustomResourceId,
+  isFieldCreatable,
+  isFieldFilterable,
+  isFieldRequired,
+  isFieldSortable,
+  isFieldUpdatable,
+  isSystemResource,
+  isSystemResourceId,
+  isValidOperatorForField,
+  isValidTableId,
+  NEW_SYSTEM_ENTITY_TYPES,
+  RESOURCE_DISPLAY_CONFIG,
+  RESOURCE_FIELD_REGISTRY,
+  RESOURCE_TABLE_MAP,
+  RESOURCE_TABLE_REGISTRY,
+  setEntityVariables,
+  setResourceVariables,
+} from './registry'
+// Resource registry service (server-side)
+export { ResourceRegistryService } from './registry/resource-registry-service'
 // Resource fetcher exports
 export {
   enrichResource,
   enrichResources,
   executeResourceQuery,
   fetchResourceById,
-  getResourceTypeFromEvent,
   getRecordIdField,
+  getResourceTypeFromEvent,
 } from './resource-fetcher'
-
-// Record picker service (server-side)
-export { RecordPickerService } from './picker'
-export type {
-  GetResourcesInput,
-  RecordPickerItem,
-  PaginatedResourcesResult,
-  GetResourceByIdInput,
-} from './picker'
-
-// Resource registry service (server-side)
-export { ResourceRegistryService } from './registry/resource-registry-service'
-
-// Registry exports
-export {
-  RESOURCE_FIELD_REGISTRY,
-  RESOURCE_TABLE_REGISTRY,
-  RESOURCE_TABLE_MAP,
-  RESOURCE_DISPLAY_CONFIG,
-  isValidTableId,
-  getAllFields,
-  getField,
-  getFilterableFields,
-  getSortableFields,
-  getCreatableFields,
-  getUpdatableFields,
-  getRequiredFields,
-  getReadOnlyFields,
-  isFieldRequired,
-  isFieldCreatable,
-  isFieldUpdatable,
-  isFieldFilterable,
-  isFieldSortable,
-  getFieldOperators,
-  isValidOperatorForField,
-  setResourceVariables,
-  setEntityVariables,
-  NEW_SYSTEM_ENTITY_TYPES,
-} from './registry'
-export type { NewSystemEntityType } from './registry'
-
-// Type exports
-export type { TableId } from './registry'
-export type {
-  ResourceField,
-  FieldCapabilities,
-  FieldValidation,
-  ResourceFieldRegistry,
-  ResourceTableDefinition,
-} from './registry'
-export type { ResourceDisplayConfig, OrgScopingStrategy, JoinScopingConfig } from './registry'
-export { listAll } from './crud/unified-handler-queries'
-
-// Field capability utilities
-export {
-  canUpdateField,
-  canSortField,
-  canFilterField,
-  canCreateField,
-} from './capabilities/field-capabilities'
-
-// Resource types (system + custom)
-export {
-  isSystemResource,
-  isCustomResource,
-  isSystemResourceId,
-  isCustomResourceId,
-} from './registry'
-export type {
-  Resource,
-  SystemResource,
-  CustomResource,
-  DisplayFieldConfig,
-  ResourceId, // Note: This is registry's ResourceId (TableId | CustomResourceId), different from RecordId
-  CustomResourceId,
-} from './registry'
-
-// CRUD service and handlers
-export {
-  UnifiedCrudHandler,
-  trackChanges,
-  hasChanges,
-  setCustomFields,
-  fromDbResult,
-  isNotFound,
-  parseTags,
-} from './crud'
-export type {
-  CrudOptions,
-  CrudResult,
-  CrudResultSuccess,
-  CrudResultFailure,
-  CrudContext,
-  TransformedData,
-  BulkResult,
-  CreateRecordOptions,
-  UpdateRecordOptions,
-  FindByFieldOptions,
-  FieldChange,
-  CreateEntityResult,
-} from './crud'
-
-// Merge service (server-side)
-export { EntityMergeService } from './merge'
-export type { MergeEntitiesInput, MergeEntitiesResult } from './merge'

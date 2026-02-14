@@ -1,6 +1,6 @@
 // packages/email/src/templates/billing/trial-expired-email.tsx
 import { Container, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -44,7 +44,7 @@ export async function TrialExpiredEmail({
 
         <Text>Ready to continue? Upgrade now to unlock all premium features:</Text>
 
-        <EmailButton href={upgradeUrl} label="Upgrade to {planName}" />
+        <EmailButton href={upgradeUrl} label='Upgrade to {planName}' />
 
         <Text>
           If you have any questions or need help choosing the right plan, our team is here to assist

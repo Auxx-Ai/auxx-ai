@@ -1,15 +1,21 @@
 // apps/web/src/components/groups/ui/groups-list.tsx
 'use client'
 
-import { useState } from 'react'
 import type { EntityInstanceEntity } from '@auxx/database'
 import { Button } from '@auxx/ui/components/button'
-import { Skeleton } from '@auxx/ui/components/skeleton'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@auxx/ui/components/empty'
 import { InputSearch } from '@auxx/ui/components/input-search'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { PlusCircle, Users } from 'lucide-react'
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@auxx/ui/components/empty'
-import { GroupItem } from './group-item'
+import { useState } from 'react'
 import { getGroupMetadata } from '../utils'
+import { GroupItem } from './group-item'
 
 /** Props for GroupsList component */
 interface GroupsListProps {
@@ -46,50 +52,50 @@ export function GroupsList({
     : groups
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center">
-        <div className="relative flex-1">
+    <div className='space-y-4'>
+      <div className='flex items-center'>
+        <div className='relative flex-1'>
           <InputSearch
-            placeholder="Search groups..."
+            placeholder='Search groups...'
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <div className="max-width-[200px] ml-4">
-          <Button variant="outline" size="sm" onClick={onCreate}>
+        <div className='max-width-[200px] ml-4'>
+          <Button variant='outline' size='sm' onClick={onCreate}>
             <PlusCircle />
             Create Group
           </Button>
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className='space-y-3'>
         {isLoading ? (
           // Loading skeletons
           Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="flex items-center justify-between rounded-2xl border py-2 px-3">
-              <div className="flex flex-row items-center gap-3">
-                <Skeleton className="size-8 rounded-lg shrink-0" />
-                <div className="flex flex-col gap-1">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-3 w-16" />
+            <div key={i} className='flex items-center justify-between rounded-2xl border py-2 px-3'>
+              <div className='flex flex-row items-center gap-3'>
+                <Skeleton className='size-8 rounded-lg shrink-0' />
+                <div className='flex flex-col gap-1'>
+                  <Skeleton className='h-4 w-28' />
+                  <Skeleton className='h-3 w-16' />
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="flex -space-x-2">
+              <div className='flex items-center gap-2'>
+                <div className='flex -space-x-2'>
                   {Array.from({ length: 3 }).map((_, j) => (
-                    <Skeleton key={j} className="h-8 w-8 rounded-full border-2 border-background" />
+                    <Skeleton key={j} className='h-8 w-8 rounded-full border-2 border-background' />
                   ))}
                 </div>
-                <Skeleton className="h-7 w-7 rounded" />
+                <Skeleton className='h-7 w-7 rounded' />
               </div>
             </div>
           ))
         ) : filteredGroups.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8">
+          <div className='flex flex-col items-center justify-center py-8'>
             <Empty>
               <EmptyHeader>
-                <EmptyMedia variant="icon">
+                <EmptyMedia variant='icon'>
                   <Users />
                 </EmptyMedia>
                 <EmptyTitle>No groups found</EmptyTitle>

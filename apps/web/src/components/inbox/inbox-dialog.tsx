@@ -1,35 +1,35 @@
 // apps/web/src/components/inbox/inbox-dialog.tsx
 'use client'
 
-import { useEffect, useCallback, useMemo, useRef } from 'react'
+import type { InboxVisibility } from '@auxx/lib/inboxes'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Field, FieldLabel, FieldGroup } from '@auxx/ui/components/field'
+import { Field, FieldGroup, FieldLabel } from '@auxx/ui/components/field'
+import { Form } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
-import { Button } from '@auxx/ui/components/button'
-import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
-import { api } from '~/trpc/react'
+import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
+import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
-import { useConfirm } from '~/hooks/use-confirm'
 import { Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useForm } from 'react-hook-form'
 import { FormColorTagPicker } from '~/components/pickers/color-tag-picker'
 import { MemberGroupFormField } from '~/components/pickers/member-group-form-picker'
-import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
+import { useSaveSystemValues, useSystemValues } from '~/components/resources/hooks'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
-import { useForm } from 'react-hook-form'
-import { Form } from '@auxx/ui/components/form'
-import type { InboxVisibility } from '@auxx/lib/inboxes'
-import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
-import { useSystemValues, useSaveSystemValues } from '~/components/resources/hooks'
+import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
+import { api } from '~/trpc/react'
 
 /** Props for InboxDialog */
 interface InboxDialogProps {
@@ -260,7 +260,7 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent size="sm" position="tc" {...guardProps}>
+        <DialogContent size='sm' position='tc' {...guardProps}>
           <DialogHeader>
             <DialogTitle>{isEditing ? 'Edit Inbox' : 'Create Inbox'}</DialogTitle>
             <DialogDescription>
@@ -272,16 +272,16 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleSubmit)}>
-              <FieldGroup className="gap-4">
+              <FieldGroup className='gap-4'>
                 {/* Name field */}
                 <Field>
                   <FieldLabel>Name</FieldLabel>
                   <Input
                     {...form.register('name', { required: 'Name is required' })}
-                    placeholder="Enter inbox name"
+                    placeholder='Enter inbox name'
                   />
                   {form.formState.errors.name && (
-                    <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
+                    <p className='text-sm text-destructive'>{form.formState.errors.name.message}</p>
                   )}
                 </Field>
 
@@ -290,7 +290,7 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
                   <FieldLabel>Description</FieldLabel>
                   <Textarea
                     {...form.register('description')}
-                    placeholder="Optional description"
+                    placeholder='Optional description'
                     rows={3}
                   />
                 </Field>
@@ -309,16 +309,16 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
                     onValueChange={(value) =>
                       form.setValue('accessType', value as 'anyone' | 'restricted')
                     }
-                    className="mt-2 flex flex-col space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="anyone" id="anyone" />
-                      <Label htmlFor="anyone" className="cursor-pointer">
+                    className='mt-2 flex flex-col space-y-2'>
+                    <div className='flex items-center space-x-2'>
+                      <RadioGroupItem value='anyone' id='anyone' />
+                      <Label htmlFor='anyone' className='cursor-pointer'>
                         Anyone in the organization
                       </Label>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="restricted" id="restricted" />
-                      <Label htmlFor="restricted" className="cursor-pointer">
+                    <div className='flex items-center space-x-2'>
+                      <RadioGroupItem value='restricted' id='restricted' />
+                      <Label htmlFor='restricted' className='cursor-pointer'>
                         Restricted
                       </Label>
                     </div>
@@ -326,50 +326,50 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
                 </Field>
 
                 {accessType === 'restricted' && (
-                  <div className="pl-6">
+                  <div className='pl-6'>
                     <MemberGroupFormField
-                      name="memberGroupSelection"
+                      name='memberGroupSelection'
                       control={form.control}
-                      label="Select members or groups with access"
-                      description="Only selected members and groups will have access to this inbox"
+                      label='Select members or groups with access'
+                      description='Only selected members and groups will have access to this inbox'
                       disabled={isPending}
                     />
                   </div>
                 )}
               </FieldGroup>
 
-              <DialogFooter className="flex sm:justify-between!">
+              <DialogFooter className='flex sm:justify-between!'>
                 {isEditing ? (
                   <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
+                    type='button'
+                    size='sm'
+                    variant='ghost'
                     onClick={handleDelete}
                     disabled={isPending}
-                    className="text-destructive hover:text-destructive">
+                    className='text-destructive hover:text-destructive'>
                     <Trash2 /> Delete
                   </Button>
                 ) : (
                   <div />
                 )}
-                <div className="flex gap-2">
+                <div className='flex gap-2'>
                   <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
+                    type='button'
+                    size='sm'
+                    variant='ghost'
                     onClick={guardedClose}
                     disabled={isPending}>
-                    Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+                    Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
                   </Button>
                   <Button
-                    variant="outline"
-                    size="sm"
-                    type="submit"
+                    variant='outline'
+                    size='sm'
+                    type='submit'
                     loading={isPending}
-                    loadingText="Saving..."
+                    loadingText='Saving...'
                     disabled={!isValid || isPending}>
                     {isEditing ? 'Update Inbox' : 'Create Inbox'}{' '}
-                    <KbdSubmit variant="outline" size="sm" />
+                    <KbdSubmit variant='outline' size='sm' />
                   </Button>
                 </div>
               </DialogFooter>

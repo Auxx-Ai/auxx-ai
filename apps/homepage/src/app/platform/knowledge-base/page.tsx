@@ -1,11 +1,11 @@
 // apps/homepage/src/app/platform/knowledge-base/page.tsx
 import type { Metadata } from 'next'
-import Header from '../../_components/main/header'
+import { config } from '~/lib/config'
 import FooterSection from '../../_components/main/footer-section'
+import Header from '../../_components/main/header'
+import KBCenterSection from './_components/kb-center-section'
 import KBHero from './_components/kb-hero'
 import PublishArticle from './_components/publish-article'
-import { config } from '~/lib/config'
-import KBCenterSection from './_components/kb-center-section'
 
 export const metadata: Metadata = {
   title: `Knowledge Base Builder | ${config.shortName}`,
@@ -14,9 +14,9 @@ export const metadata: Metadata = {
 
 export default function MessagingPage() {
   return (
-    <div id="root" className="relative h-screen overflow-y-auto bg-background">
+    <div id='root' className='relative h-screen overflow-y-auto bg-background'>
       <Header />
-      <main className="">
+      <main className=''>
         <KBHero />
         <PublishArticle />
         <KBCenterSection />

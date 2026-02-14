@@ -1,10 +1,10 @@
 // apps/web/src/components/ui/picker-trigger.tsx
 'use client'
 
-import type { Ref, ReactNode } from 'react'
 import { Button, type ButtonProps } from '@auxx/ui/components/button'
-import { ChevronDown, X } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
+import { ChevronDown, X } from 'lucide-react'
+import type { ReactNode, Ref } from 'react'
 
 /**
  * Props that can be passed to customize picker triggers.
@@ -106,7 +106,7 @@ export function PickerTrigger({
   asCombobox = false,
   ...props
 }: PickerTriggerProps) {
-  const defaultIcon = <ChevronDown className="size-4 opacity-50" />
+  const defaultIcon = <ChevronDown className='size-4 opacity-50' />
   const displayIcon = hideIcon ? null : (icon ?? defaultIcon)
 
   /** Handle clear button click */
@@ -133,11 +133,11 @@ export function PickerTrigger({
       {iconPosition === 'start' && displayIcon}
 
       {/* Value or placeholder */}
-      <div className="flex-1 min-w-0 flex items-center gap-2">
+      <div className='flex-1 min-w-0 flex items-center gap-2'>
         {hasValue ? (
           children
         ) : (
-          <span className="text-primary-400 text-sm font-normal pointer-events-none truncate">
+          <span className='text-primary-400 text-sm font-normal pointer-events-none truncate'>
             {placeholder}
           </span>
         )}
@@ -145,12 +145,12 @@ export function PickerTrigger({
 
       {/* Trailing area: clear button + icon */}
       {iconPosition === 'end' && (displayIcon || showClear) && (
-        <div className="flex items-center gap-1 ml-2 shrink-0">
+        <div className='flex items-center gap-1 ml-2 shrink-0'>
           {showClear && hasValue && (
             <div
-              className="size-4 flex items-center justify-center rounded-full bg-primary-500/30 text-primary-100 transition-colors hover:bg-bad-100 hover:text-bad-500"
+              className='size-4 flex items-center justify-center rounded-full bg-primary-500/30 text-primary-100 transition-colors hover:bg-bad-100 hover:text-bad-500'
               onClick={handleClearClick}>
-              <X className="size-3!" />
+              <X className='size-3!' />
             </div>
           )}
           {displayIcon}

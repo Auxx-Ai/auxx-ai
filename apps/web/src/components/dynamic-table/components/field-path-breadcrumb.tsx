@@ -2,9 +2,9 @@
 
 'use client'
 
-import { useMemo } from 'react'
-import { SmartBreadcrumb } from '@auxx/ui/components/smart-breadcrumb'
 import type { BreadcrumbSegment } from '@auxx/ui/components/smart-breadcrumb'
+import { SmartBreadcrumb } from '@auxx/ui/components/smart-breadcrumb'
+import { useMemo } from 'react'
 // import { useColumnMetadataStore } from '../store/column-metadata-store'
 import { getIconForFieldType } from '../custom-field-column-factory'
 
@@ -51,8 +51,8 @@ export function FieldPathBreadcrumb({ tableId, columnId }: FieldPathBreadcrumbPr
 
   // Show error state if metadata failed to load
   if (metadata?.loadError) {
-    return <span className="text-destructive text-xs">{metadata.loadError}</span>
+    return <span className='text-destructive text-xs'>{metadata.loadError}</span>
   }
 
-  return <SmartBreadcrumb segments={segments} mode="display" size="sm" />
+  return <SmartBreadcrumb segments={segments} mode='display' size='sm' />
 }

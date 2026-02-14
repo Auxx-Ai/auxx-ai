@@ -1,7 +1,7 @@
 // apps/web/src/lib/extensions/components/workflow/workflow-node-context.tsx
 
-import { createContext, useContext } from 'react'
 import type { Node } from '@xyflow/react'
+import { createContext, useContext } from 'react'
 
 /** Context value for WorkflowNode providing node data to child components */
 interface WorkflowNodeContextValue {

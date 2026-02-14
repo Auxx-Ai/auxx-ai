@@ -1,9 +1,9 @@
 // apps/web/src/components/resources/hooks/use-system-values.ts
 
-import { useMemo } from 'react'
+import { formatToRawValue } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
-import { formatToRawValue } from '@auxx/lib/field-values/client'
+import { useMemo } from 'react'
 import { useResourceStore } from '../store/resource-store'
 import { useFieldValues } from './use-field-values'
 

@@ -1,12 +1,12 @@
 'use client'
 
-// packages/ui/src/components/combobox.tsx
-import * as React from 'react'
+import type { VariantProps } from 'class-variance-authority'
 import { CommandLoading } from 'cmdk'
 import { Check, ChevronsUpDown, Loader2, Plus } from 'lucide-react'
-import { type VariantProps } from 'class-variance-authority'
-
-import { Button, buttonVariants } from './button'
+// packages/ui/src/components/combobox.tsx
+import * as React from 'react'
+import { cn } from '../lib/utils'
+import { Button, type buttonVariants } from './button'
 import {
   Command,
   CommandEmpty,
@@ -16,7 +16,6 @@ import {
   CommandList,
 } from './command'
 import { Popover, PopoverContent, PopoverTrigger } from './popover'
-import { cn } from '../lib/utils'
 
 /** Button variant props extracted for type safety */
 type ButtonVariantProps = VariantProps<typeof buttonVariants>
@@ -88,14 +87,14 @@ export function Combobox(props: ComboboxProps) {
     <Button
       variant={variant}
       size={size}
-      role="combobox"
+      role='combobox'
       aria-expanded={open}
       disabled={disabled}
       className={cn('justify-between', className)}>
       {(value && props.options.find((option) => option.value === value)?.label) ||
         value ||
         placeholder}
-      <ChevronsUpDown className="shrink-0 opacity-50" />
+      <ChevronsUpDown className='shrink-0 opacity-50' />
     </Button>
   )
 
@@ -111,15 +110,15 @@ export function Combobox(props: ComboboxProps) {
         {...popoverContentProps}>
         <Command>
           <CommandInput
-            placeholder="Search..."
+            placeholder='Search...'
             value={props.onSearch ? props.search : undefined}
             onValueChange={props.onSearch}
           />
           <CommandList>
             {loading && (
               <CommandLoading>
-                <div className="flex items-center justify-center">
-                  <Loader2 className="m-4 size-4 animate-spin" />
+                <div className='flex items-center justify-center'>
+                  <Loader2 className='m-4 size-4 animate-spin' />
                 </div>
               </CommandLoading>
             )}
@@ -143,12 +142,12 @@ export function Combobox(props: ComboboxProps) {
             {addAction && (
               <CommandGroup>
                 <CommandItem
-                  value="__combobox_add_new__"
+                  value='__combobox_add_new__'
                   onSelect={() => {
                     addAction.onAdd()
                     setOpen(false)
                   }}>
-                  {addAction.icon ?? <Plus className="text-muted-foreground" />}
+                  {addAction.icon ?? <Plus className='text-muted-foreground' />}
                   {addAction.label}
                 </CommandItem>
               </CommandGroup>

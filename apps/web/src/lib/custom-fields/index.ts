@@ -1,8 +1,8 @@
 // apps/web/src/lib/custom-fields/index.ts
 
 export {
-  mapFieldTypeToBaseType,
-  fieldTypeNeedsEnumOptions,
-  fieldTypeIsRelationship,
   extractEnumOptions,
+  fieldTypeIsRelationship,
+  fieldTypeNeedsEnumOptions,
+  mapFieldTypeToBaseType,
 } from './field-type-utils'

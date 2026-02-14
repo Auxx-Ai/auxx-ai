@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/scheduled-trigger/types.ts
 
-import { BaseNodeData } from '~/components/workflow/types/node-base'
+import type { BaseNodeData } from '~/components/workflow/types/node-base'
 
 /**
  * Frontend-facing interface that matches user requirements

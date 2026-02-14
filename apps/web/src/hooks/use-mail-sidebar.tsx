@@ -1,10 +1,10 @@
 // hooks/use-mail-sidebar.ts
-import { useState, useMemo, useCallback, useRef } from 'react'
-import { api } from '~/trpc/react'
-import { useSettings } from '~/hooks/use-settings'
-import { PersonalMenuItem } from '~/components/global/sidebar/personal-mail-group'
-import { Inbox } from '~/components/global/sidebar/shared-inbox-group'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import type { PersonalMenuItem } from '~/components/global/sidebar/personal-mail-group'
+import type { Inbox } from '~/components/global/sidebar/shared-inbox-group'
 import { useInboxes } from '~/components/threads/hooks'
+import { useSettings } from '~/hooks/use-settings'
+import { api } from '~/trpc/react'
 
 export interface UseMailSidebarOptions {
   scope?: string
@@ -36,11 +36,7 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
   const { getSetting, updateUserSetting, isLoading: settingsLoading } = useSettings({ scope })
 
   // Fetch inboxes data using useInboxes hook (reactive to Zustand store updates)
-  const {
-    inboxes: rawInboxes,
-    isLoading: inboxesLoading,
-    refresh: refetchInboxes,
-  } = useInboxes()
+  const { inboxes: rawInboxes, isLoading: inboxesLoading, refresh: refetchInboxes } = useInboxes()
 
   const {
     data: mailViews,

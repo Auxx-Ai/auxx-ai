@@ -1,8 +1,7 @@
 // packages/lib/src/shopify/sync-orders.ts
 
-import { extractShopifyId } from './utils'
-
-import type { AdminApiClient, ResponseWithType } from '@shopify/admin-api-client'
+import { type Database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import {
   convertToCents,
   formatComplexName,
@@ -11,18 +10,18 @@ import {
   parseEmailString,
   withRetry,
 } from '@auxx/utils'
-import { schema, type Database } from '@auxx/database'
+import type { AdminApiClient, ResponseWithType } from '@shopify/admin-api-client'
 import {
   type FulfillmentTracking,
-  type Order,
   ORDER_ADDRESS_TYPE,
+  type Order,
   type OrderFulfillment,
   type OrderLineItem,
   type OrderRefund,
 } from './shopify-types'
+import type { ShopifyAdminClient } from './shopify-webhooks'
 import { processAddress, upsertAddress, upsertCustomer } from './sync-customers'
-import { createScopedLogger } from '@auxx/logger'
-import { type ShopifyAdminClient } from './shopify-webhooks'
+import { extractShopifyId } from './utils'
 
 type SyncOptions = { limit: number; pageInfo?: string | null }
 const logger = createScopedLogger('shopify-sync-orders')
@@ -138,8 +137,8 @@ export const upsertOrder = async (
 ) => {
   try {
     logger.info(`Upserting Order ${index + 1} with id ${order.id}`)
-    let shippingAddressId = undefined
-    let billingAddressId = undefined
+    let shippingAddressId
+    let billingAddressId
 
     if (order.customer) {
       logger.info(`Upserting Customer ${order.customer.id} for Order ${order.id}`)

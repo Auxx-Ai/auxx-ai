@@ -1,6 +1,6 @@
-import { createShopifyAdminClient, ProductSync, SyncManager } from '@auxx/lib/shopify'
 import { database as db } from '@auxx/database'
 import { ShopifyIntegrationModel } from '@auxx/database/models'
+import { createShopifyAdminClient, ProductSync, SyncManager } from '@auxx/lib/shopify'
 import type { Job } from 'bullmq'
 
 export type SyncProductsJobProps = { syncId: string; organizationId: string; integrationId: string }

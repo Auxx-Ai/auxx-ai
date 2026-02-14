@@ -1,6 +1,7 @@
 // packages/ui/src/components/emojis.ts
-import { Smile, TreePine, Coffee, Gamepad2, MapPin, Package, Hash, Flag } from 'lucide-react'
+
 import type { LucideIcon } from 'lucide-react'
+import { Coffee, Flag, Gamepad2, Hash, MapPin, Package, Smile, TreePine } from 'lucide-react'
 
 /** Emoji item definition */
 export interface EmojiItem {
@@ -378,10 +379,20 @@ export const EMOJI_DATA: Record<string, EmojiItem[]> = {
     { id: ':person_red_hair:', label: 'Person: red hair', emoji: '🧑‍🦰', supportsSkinTone: true },
     { id: ':man_red_hair:', label: 'Man: red hair', emoji: '👨‍🦰', supportsSkinTone: true },
     { id: ':woman_red_hair:', label: 'Woman: red hair', emoji: '👩‍🦰', supportsSkinTone: true },
-    { id: ':person_curly_hair:', label: 'Person: curly hair', emoji: '🧑‍🦱', supportsSkinTone: true },
+    {
+      id: ':person_curly_hair:',
+      label: 'Person: curly hair',
+      emoji: '🧑‍🦱',
+      supportsSkinTone: true,
+    },
     { id: ':man_curly_hair:', label: 'Man: curly hair', emoji: '👨‍🦱', supportsSkinTone: true },
     { id: ':woman_curly_hair:', label: 'Woman: curly hair', emoji: '👩‍🦱', supportsSkinTone: true },
-    { id: ':person_white_hair:', label: 'Person: white hair', emoji: '🧑‍🦳', supportsSkinTone: true },
+    {
+      id: ':person_white_hair:',
+      label: 'Person: white hair',
+      emoji: '🧑‍🦳',
+      supportsSkinTone: true,
+    },
     { id: ':man_white_hair:', label: 'Man: white hair', emoji: '👨‍🦳', supportsSkinTone: true },
     { id: ':woman_white_hair:', label: 'Woman: white hair', emoji: '👩‍🦳', supportsSkinTone: true },
     { id: ':person_bald:', label: 'Person: bald', emoji: '🧑‍🦲', supportsSkinTone: true },
@@ -431,7 +442,12 @@ export const EMOJI_DATA: Record<string, EmojiItem[]> = {
       supportsSkinTone: true,
     },
     { id: ':office_worker:', label: 'Office worker', emoji: '🧑‍💼', supportsSkinTone: true },
-    { id: ':man_office_worker:', label: 'Man office worker', emoji: '👨‍💼', supportsSkinTone: true },
+    {
+      id: ':man_office_worker:',
+      label: 'Man office worker',
+      emoji: '👨‍💼',
+      supportsSkinTone: true,
+    },
     {
       id: ':woman_office_worker:',
       label: 'Woman office worker',
@@ -463,7 +479,12 @@ export const EMOJI_DATA: Record<string, EmojiItem[]> = {
     { id: ':woman_astronaut:', label: 'Woman astronaut', emoji: '👩‍🚀', supportsSkinTone: true },
     { id: ':firefighter:', label: 'Firefighter', emoji: '🧑‍🚒', supportsSkinTone: true },
     { id: ':man_firefighter:', label: 'Man firefighter', emoji: '👨‍🚒', supportsSkinTone: true },
-    { id: ':woman_firefighter:', label: 'Woman firefighter', emoji: '👩‍🚒', supportsSkinTone: true },
+    {
+      id: ':woman_firefighter:',
+      label: 'Woman firefighter',
+      emoji: '👩‍🚒',
+      supportsSkinTone: true,
+    },
     { id: ':police_officer:', label: 'Police officer', emoji: '👮', supportsSkinTone: true },
     {
       id: ':man_police_officer:',
@@ -791,9 +812,17 @@ export const EMOJI_DATA: Record<string, EmojiItem[]> = {
     { id: ':family:', label: 'Family', emoji: '👪' },
     { id: ':family_man_woman_boy:', label: 'Family: man, woman, boy', emoji: '👨‍👩‍👦' },
     { id: ':family_man_woman_girl:', label: 'Family: man, woman, girl', emoji: '👨‍👩‍👧' },
-    { id: ':family_man_woman_girl_boy:', label: 'Family: man, woman, girl, boy', emoji: '👨‍👩‍👧‍👦' },
+    {
+      id: ':family_man_woman_girl_boy:',
+      label: 'Family: man, woman, girl, boy',
+      emoji: '👨‍👩‍👧‍👦',
+    },
     { id: ':family_man_woman_boy_boy:', label: 'Family: man, woman, boy, boy', emoji: '👨‍👩‍👦‍👦' },
-    { id: ':family_man_woman_girl_girl:', label: 'Family: man, woman, girl, girl', emoji: '👨‍👩‍👧‍👧' },
+    {
+      id: ':family_man_woman_girl_girl:',
+      label: 'Family: man, woman, girl, girl',
+      emoji: '👨‍👩‍👧‍👧',
+    },
     { id: ':family_man_man_boy:', label: 'Family: man, man, boy', emoji: '👨‍👨‍👦' },
     { id: ':family_man_man_girl:', label: 'Family: man, man, girl', emoji: '👨‍👨‍👧' },
     { id: ':family_woman_woman_boy:', label: 'Family: woman, woman, boy', emoji: '👩‍👩‍👦' },

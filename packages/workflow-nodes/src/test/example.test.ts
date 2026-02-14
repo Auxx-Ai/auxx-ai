@@ -1,5 +1,5 @@
 // packages/workflow-nodes/src/test/example.test.ts
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 describe('Example Workflow Nodes Test', () => {
   it('should perform basic assertions', () => {
@@ -10,7 +10,7 @@ describe('Example Workflow Nodes Test', () => {
 
   it('should handle arrays', () => {
     const nodes = ['trigger', 'action', 'condition']
-    
+
     expect(nodes).toHaveLength(3)
     expect(nodes).toContain('trigger')
     expect(nodes[0]).toBe('trigger')

@@ -1,7 +1,7 @@
 // apps/web/src/hooks/use-credential-test.ts
 
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 
 /**
  * Hook for testing credentials and credential data

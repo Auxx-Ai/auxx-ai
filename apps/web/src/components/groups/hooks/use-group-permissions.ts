@@ -1,9 +1,9 @@
 // apps/web/src/components/groups/hooks/use-group-permissions.ts
 'use client'
 
+import { useEffect } from 'react'
 import { api } from '~/trpc/react'
 import { useGroupsStore } from '../store'
-import { useEffect } from 'react'
 
 /** Options for the useGroupPermissions hook */
 interface UseGroupPermissionsOptions {

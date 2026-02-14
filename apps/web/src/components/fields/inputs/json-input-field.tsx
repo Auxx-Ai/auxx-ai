@@ -8,5 +8,5 @@ import { Badge } from '@auxx/ui/components/badge'
  * JSON fields are system-managed and not user-editable.
  */
 export function JsonInputField() {
-  return <Badge variant="secondary">JSON</Badge>
+  return <Badge variant='secondary'>JSON</Badge>
 }

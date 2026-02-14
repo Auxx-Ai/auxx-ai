@@ -1,6 +1,7 @@
 // apps/web/src/lib/extensions/components/workflow/inputs/select-input.tsx
 
-import React, { useState, useEffect } from 'react'
+import { Field, FieldContent, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
+import { Label } from '@auxx/ui/components/label'
 import {
   Select,
   SelectContent,
@@ -8,8 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Label } from '@auxx/ui/components/label'
-import { Field, FieldContent, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
+import React, { useEffect, useState } from 'react'
 
 /**
  * SelectInput component.
@@ -55,10 +55,10 @@ export const SelectInput = ({
   }
 
   return (
-    <Field data-invalid={false} className="" orientation={orientation}>
+    <Field data-invalid={false} className='' orientation={orientation}>
       <FieldContent>{label && <FieldLabel htmlFor={name}>{label}</FieldLabel>}</FieldContent>
       <Select value={localValue} onValueChange={handleValueChange} disabled={disabled}>
-        <SelectTrigger className="w-auto">
+        <SelectTrigger className='w-auto'>
           <SelectValue placeholder={placeholder || 'Select...'} />
         </SelectTrigger>
         <SelectContent>

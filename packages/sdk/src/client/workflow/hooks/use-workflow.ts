@@ -2,34 +2,21 @@
 
 'use client'
 
-import { useCallback, useMemo, useRef, useEffect, createElement, type ReactElement } from 'react'
-import type { WorkflowSchema, InferWorkflowInput } from '../../../root/workflow/types.js'
-import type { PathToField } from '../types/path-helpers.js'
-import { useWorkflowContext } from './use-workflow-context.js'
-
+import { createElement, type ReactElement, useCallback, useEffect, useMemo, useRef } from 'react'
+import type { InferWorkflowInput, WorkflowSchema } from '../../../root/workflow/types.js'
+import { BooleanInput, type BooleanInputProps } from '../components/inputs/boolean-input.js'
+import { NumberInput, type NumberInputProps } from '../components/inputs/number-input.js'
+import { SelectInput, type SelectInputProps } from '../components/inputs/select-input.js'
 // Import JSX components (these create custom elements)
-import {
-  StringInput,
-  type StringInputProps,
-} from '../components/inputs/string-input.js'
-import {
-  NumberInput,
-  type NumberInputProps,
-} from '../components/inputs/number-input.js'
-import {
-  BooleanInput,
-  type BooleanInputProps,
-} from '../components/inputs/boolean-input.js'
-import {
-  SelectInput,
-  type SelectInputProps,
-} from '../components/inputs/select-input.js'
-import { Section, type SectionProps } from '../components/layout/section.js'
+import { StringInput, type StringInputProps } from '../components/inputs/string-input.js'
 import { InputGroup, type InputGroupProps } from '../components/layout/input-group.js'
+import { Section, type SectionProps } from '../components/layout/section.js'
 import {
   ConditionalRenderInternal,
   type ConditionalRenderProps,
 } from '../components/utility/conditional-render.js'
+import type { PathToField } from '../types/path-helpers.js'
+import { useWorkflowContext } from './use-workflow-context.js'
 
 /**
  * Helper to get nested value from object using dot notation
@@ -250,7 +237,7 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
         name: props.name,
         metadata,
         currentValue: get(data, props.name as string),
-        allData: data
+        allData: data,
       })
 
       // Create element using JSX component (which creates custom element)

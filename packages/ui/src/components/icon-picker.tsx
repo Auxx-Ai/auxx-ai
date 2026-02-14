@@ -1,21 +1,21 @@
 // packages/ui/src/components/icon-picker.tsx
 'use client'
 
-import React, { useState, useRef, useCallback, useMemo } from 'react'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { Input } from '@auxx/ui/components/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { Input } from '@auxx/ui/components/input'
-import { Badge } from '@auxx/ui/components/badge'
-import { Search, X, Circle } from 'lucide-react'
+import { Circle, Search, X } from 'lucide-react'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 import {
-  ICON_DATA,
-  ICON_COLORS,
   DEFAULT_COLOR,
-  getIconColor,
   getIcon,
-  type IconItem,
+  getIconColor,
+  ICON_COLORS,
+  ICON_DATA,
   type IconColor,
+  type IconItem,
 } from './icons'
 
 /** Memoized icon button component - uses CSS custom properties for color */
@@ -26,10 +26,10 @@ const IconButton = React.memo<{
   const Icon = item.icon
   return (
     <button
-      className="flex size-8 cursor-pointer items-center justify-center rounded-md transition-colors bg-[var(--icon-bg)] hover:bg-[var(--icon-bg-hover)] text-[var(--icon-color)]"
+      className='flex size-8 cursor-pointer items-center justify-center rounded-md transition-colors bg-[var(--icon-bg)] hover:bg-[var(--icon-bg-hover)] text-[var(--icon-color)]'
       onClick={() => onSelect(item.id)}
       data-icon-id={item.id}>
-      <Icon className="size-4" />
+      <Icon className='size-4' />
     </button>
   )
 })
@@ -182,16 +182,16 @@ export function IconPicker({
   // Default trigger if none provided
   const defaultTrigger = (
     <Button
-      variant="outline"
-      size="icon"
+      variant='outline'
+      size='icon'
       className={cn('h-10 w-10', className)}
       disabled={disabled}>
       {currentIcon ? (
         <div className={cn('flex items-center justify-center', currentColor.iconColor)}>
-          <currentIcon.icon className="size-5" />
+          <currentIcon.icon className='size-5' />
         </div>
       ) : (
-        <Circle className="size-5 text-muted-foreground" />
+        <Circle className='size-5 text-muted-foreground' />
       )}
     </Button>
   )
@@ -199,27 +199,27 @@ export function IconPicker({
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange} modal={modal}>
       <PopoverTrigger asChild>{children || defaultTrigger}</PopoverTrigger>
-      <PopoverContent className="w-90 p-0" align={align}>
+      <PopoverContent className='w-90 p-0' align={align}>
         {/* Search input */}
-        <div className="flex items-center border-b px-3 py-0.5">
-          <Search className="mr-2 size-4 shrink-0 opacity-50" />
+        <div className='flex items-center border-b px-3 py-0.5'>
+          <Search className='mr-2 size-4 shrink-0 opacity-50' />
           <Input
-            placeholder="Search icons..."
+            placeholder='Search icons...'
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-7 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
+            className='h-7 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0'
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full bg-primary-100 hover:bg-bad-100 hover:text-bad-500">
-              <X className="size-3" />
+              className='flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full bg-primary-100 hover:bg-bad-100 hover:text-bad-500'>
+              <X className='size-3' />
             </button>
           )}
         </div>
         {/* Color selector bar */}
-        <div className="border-b p-2">
-          <div className="flex justify-start gap-2">
+        <div className='border-b p-2'>
+          <div className='flex justify-start gap-2'>
             {ICON_COLORS.map((color) => (
               <ColorButton
                 key={color.id}
@@ -232,7 +232,7 @@ export function IconPicker({
         </div>
         {/* Icon grid */}
         <div
-          className="relative h-64 overflow-y-auto p-2 pb-8"
+          className='relative h-64 overflow-y-auto p-2 pb-8'
           ref={scrollContainerRef}
           onWheel={(e) => e.stopPropagation()}
           onMouseOver={handleGridMouseOver}
@@ -244,7 +244,7 @@ export function IconPicker({
               ))}
             </div>
           ) : (
-            <div className="flex h-full items-center justify-center text-muted-foreground">
+            <div className='flex h-full items-center justify-center text-muted-foreground'>
               No icons found
             </div>
           )}
@@ -252,7 +252,7 @@ export function IconPicker({
           {/* Hovered icon label */}
         </div>
         {hoveredIcon && (
-          <Badge variant="zinc" size="sm" className="pointer-events-none absolute bottom-2 left-2 ">
+          <Badge variant='zinc' size='sm' className='pointer-events-none absolute bottom-2 left-2 '>
             {hoveredIcon.label}
           </Badge>
         )}

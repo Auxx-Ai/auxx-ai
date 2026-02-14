@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/email-editor/types.ts
+
+import type { IdentifierType } from '@auxx/database/types'
 import type { RouterOutputs } from '~/trpc/react'
-import { type IdentifierType } from '@auxx/database/types'
 
 /** Message type with all fields needed for display */
 export interface MessageType {

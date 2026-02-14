@@ -1,11 +1,11 @@
 // packages/database/lambda/deploy.ts
 
-import { Resource } from 'sst'
-import { migrate } from 'drizzle-orm/node-postgres/migrator'
-import { drizzle } from 'drizzle-orm/node-postgres'
-import { Pool } from 'pg'
-import path from 'node:path'
 import fs from 'node:fs/promises'
+import path from 'node:path'
+import { drizzle } from 'drizzle-orm/node-postgres'
+import { migrate } from 'drizzle-orm/node-postgres/migrator'
+import { Pool } from 'pg'
+import { Resource } from 'sst'
 
 /** Global headers reused across Lambda responses. */
 const DEFAULT_HEADERS: Record<string, string> = {

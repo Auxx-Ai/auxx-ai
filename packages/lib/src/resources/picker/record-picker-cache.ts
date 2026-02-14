@@ -1,7 +1,7 @@
 // packages/lib/src/resources/picker/record-picker-cache.ts
 
 import { BaseCacheService } from '@auxx/lib/cache'
-import type { RecordPickerItem, PaginatedResourcesResult } from './types'
+import type { PaginatedResourcesResult, RecordPickerItem } from './types'
 
 /**
  * Cache service for record picker data
@@ -21,7 +21,7 @@ export class RecordPickerCacheService extends BaseCacheService {
       cursor?: string | null
       search?: string
       filters?: Record<string, any>
-    },
+    }
   ): string {
     const params = new URLSearchParams()
     if (options.cursor) params.set('cursor', options.cursor)
@@ -42,7 +42,7 @@ export class RecordPickerCacheService extends BaseCacheService {
       cursor?: string | null
       search?: string
       filters?: Record<string, any>
-    },
+    }
   ): Promise<void> {
     const key = this.buildListKey(orgId, entityDefinitionId, options)
     await this.set(key, result, {
@@ -61,7 +61,7 @@ export class RecordPickerCacheService extends BaseCacheService {
       cursor?: string | null
       search?: string
       filters?: Record<string, any>
-    },
+    }
   ): Promise<PaginatedResourcesResult | null> {
     const key = this.buildListKey(orgId, entityDefinitionId, options)
     return this.get<PaginatedResourcesResult>(key)
@@ -73,7 +73,7 @@ export class RecordPickerCacheService extends BaseCacheService {
   async cacheSingleResource(
     orgId: string,
     entityDefinitionId: string,
-    item: RecordPickerItem,
+    item: RecordPickerItem
   ): Promise<void> {
     const key = this.buildKey('item', orgId, entityDefinitionId, item.id)
     await this.set(key, item, {
@@ -88,7 +88,7 @@ export class RecordPickerCacheService extends BaseCacheService {
   async getCachedSingleResource(
     orgId: string,
     entityDefinitionId: string,
-    id: string,
+    id: string
   ): Promise<RecordPickerItem | null> {
     const key = this.buildKey('item', orgId, entityDefinitionId, id)
     return this.get<RecordPickerItem>(key)

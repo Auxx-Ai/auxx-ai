@@ -10,13 +10,13 @@ interface WorkflowSettingsProps {
 
 export function WorkflowSettings({ workflow }: WorkflowSettingsProps) {
   return (
-    <div className="p-6">
-      <Card className="p-8 text-center">
-        <h3 className="text-lg font-semibold mb-2">Workflow Settings</h3>
-        <p className="text-muted-foreground mb-4">
+    <div className='p-6'>
+      <Card className='p-8 text-center'>
+        <h3 className='text-lg font-semibold mb-2'>Workflow Settings</h3>
+        <p className='text-muted-foreground mb-4'>
           Configure workflow settings, permissions, and advanced options.
         </p>
-        <Badge variant="secondary">Coming Soon</Badge>
+        <Badge variant='secondary'>Coming Soon</Badge>
       </Card>
     </div>
   )

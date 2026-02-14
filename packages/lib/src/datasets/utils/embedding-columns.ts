@@ -106,7 +106,9 @@ export function getModelDimensionOptions(
  * @param modelDefinition - The model definition object
  * @returns Help text or default description
  */
-export function getModelDimensionHelp(modelDefinition: ModelDefinitionWithRules | undefined): string {
+export function getModelDimensionHelp(
+  modelDefinition: ModelDefinitionWithRules | undefined
+): string {
   if (!modelDefinition?.parameterRules) {
     return 'Smaller dimensions use less storage but may reduce accuracy.'
   }

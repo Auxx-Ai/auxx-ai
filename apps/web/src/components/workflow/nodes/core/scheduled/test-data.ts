@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/scheduled/test-data.ts
 
-import { ScheduledTriggerNodeData } from './types'
+import type { ScheduledTriggerNodeData } from './types'
 
 /**
  * Generate mock data for scheduled trigger testing

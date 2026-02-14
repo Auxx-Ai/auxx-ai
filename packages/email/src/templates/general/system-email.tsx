@@ -1,5 +1,5 @@
 import { Container, Heading, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
 import { EmailHeading } from '../../components/email-text'
@@ -32,7 +32,7 @@ export async function SystemEmail({
           <Text style={{ margin: '0' }} dangerouslySetInnerHTML={{ __html: message }} />
         </div>
 
-        <Text className="mb-0">
+        <Text className='mb-0'>
           If you have any questions about this notification, please contact our support team.
         </Text>
 

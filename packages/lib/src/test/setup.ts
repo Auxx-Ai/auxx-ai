@@ -1,6 +1,7 @@
 // packages/lib/src/test/setup.ts
-import { beforeAll, afterEach, afterAll, vi } from 'vitest'
+
 import { loadEnv } from 'vite'
+import { afterAll, afterEach, beforeAll, vi } from 'vitest'
 
 // Load test environment variables
 const env = loadEnv('test', process.cwd(), '')

@@ -1,22 +1,21 @@
 // apps/worker/src/server.ts
+
+import { stripeClient } from '@auxx/billing'
+import { closeAllQueues, closeFlowProducer, getQueue, Queues } from '@auxx/lib/queues'
+import { createBullBoard } from '@bull-board/api'
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter'
+import { HonoAdapter } from '@bull-board/hono'
 import { serve } from '@hono/node-server'
+import { serveStatic } from '@hono/node-server/serve-static'
+import type { Worker } from 'bullmq'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { serveStatic } from '@hono/node-server/serve-static'
-
-import { getQueue, Queues, closeFlowProducer } from '@auxx/lib/queues'
-import { closeAllQueues } from '@auxx/lib/queues'
-import { stripeClient } from '@auxx/billing'
 /**
  * The apps/worker directory is responsible for running the worker processes.
  * It is responsible for processing jobs from the queues defined in the packages/lib/src/queues directory.
  *
  */
-import { startWorkers, setupSchedules } from './workers'
-import { createBullBoard } from '@bull-board/api'
-import { BullMQAdapter } from '@bull-board/api/bullMQAdapter'
-import { HonoAdapter } from '@bull-board/hono'
-import { Worker } from 'bullmq'
+import { setupSchedules, startWorkers } from './workers'
 
 // --- Declare variables needed outside the async function ---
 let server: ReturnType<typeof serve> // Hono server type

@@ -1,19 +1,19 @@
 'use client'
 
-import { useEffect, useCallback, useMemo } from 'react'
-import { SharedInboxesGroup } from '~/components/global/sidebar/shared-inbox-group'
-import { PersonalMailGroup } from '~/components/global/sidebar/personal-mail-group'
-import { useMailSidebar } from '~/hooks/use-mail-sidebar'
 import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
 import {
   SidebarGroup,
   SidebarMenu,
-  SidebarMenuItem,
   SidebarMenuButton,
+  SidebarMenuItem,
 } from '@auxx/ui/components/sidebar'
-import { ViewsGroup } from './views-group'
 import { Settings2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo } from 'react'
+import { PersonalMailGroup } from '~/components/global/sidebar/personal-mail-group'
+import { SharedInboxesGroup } from '~/components/global/sidebar/shared-inbox-group'
+import { useMailSidebar } from '~/hooks/use-mail-sidebar'
+import { ViewsGroup } from './views-group'
 
 export function MailSidebar() {
   // Use the hook to get all state and functions
@@ -66,24 +66,21 @@ export function MailSidebar() {
   }, [isEditMode, toggleEditMode])
 
   return (
-    <div className="flex flex-col">
-      <div className="">
+    <div className='flex flex-col'>
+      <div className=''>
         {/* Empty state when all groups are hidden */}
         {allGroupsHidden && !isEditMode && (
-          <SidebarGroup className="group">
-            <SidebarMenu className="gap-0">
+          <SidebarGroup className='group'>
+            <SidebarMenu className='gap-0'>
               <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  className="h-7 py-0 pe-[3px]"
-                  tooltip="Edit Sidebar">
+                <SidebarMenuButton asChild className='h-7 py-0 pe-[3px]' tooltip='Edit Sidebar'>
                   <button
                     onClick={toggleEditMode}
-                    className="group/item flex h-7 w-full items-center">
-                    <span className="[&_svg]:size-4 mr-2">
+                    className='group/item flex h-7 w-full items-center'>
+                    <span className='[&_svg]:size-4 mr-2'>
                       <Settings2 />
                     </span>
-                    <span className="group-data-[collapsible=icon]:hidden">Edit Sidebar</span>
+                    <span className='group-data-[collapsible=icon]:hidden'>Edit Sidebar</span>
                   </button>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -128,13 +125,13 @@ export function MailSidebar() {
 
       {/* Footer section for Done button */}
       {isEditMode && (
-        <div className="flex shrink-0 items-center justify-end gap-2 border-t p-2">
-          <Button className="w-full rounded-md" size="sm" onClick={toggleEditMode}>
+        <div className='flex shrink-0 items-center justify-end gap-2 border-t p-2'>
+          <Button className='w-full rounded-md' size='sm' onClick={toggleEditMode}>
             Done
           </Button>
         </div>
       )}
-      <Separator className="mt-1 mb-2" />
+      <Separator className='mt-1 mb-2' />
     </div>
   )
 }

@@ -1,11 +1,10 @@
 // server/api/routers/labels.ts
-import { z } from 'zod'
-import { TRPCError } from '@trpc/server'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { getUserOrganizationId } from '@auxx/lib/email'
+
+import { getUserOrganizationId, LabelService, ReauthenticationRequiredError } from '@auxx/lib/email'
 import { createScopedLogger } from '@auxx/logger'
-import { LabelService } from '@auxx/lib/email'
-import { ReauthenticationRequiredError } from '@auxx/lib/email'
+import { TRPCError } from '@trpc/server'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('labels-router')
 

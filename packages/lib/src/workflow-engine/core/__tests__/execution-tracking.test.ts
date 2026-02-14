@@ -1,6 +1,6 @@
 // packages/lib/src/workflow-engine/core/__tests__/execution-tracking.test.ts
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { ExecutionTrackingManager } from '../execution-tracking'
 
 describe('ExecutionTrackingManager', () => {

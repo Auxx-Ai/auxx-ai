@@ -12,7 +12,10 @@ export const PERMISSION_HIERARCHY: ResourcePermission[] = [
 /**
  * Check if actual permission satisfies required permission
  */
-export function satisfiesPermission(actual: ResourcePermission, required: ResourcePermission): boolean {
+export function satisfiesPermission(
+  actual: ResourcePermission,
+  required: ResourcePermission
+): boolean {
   const actualIndex = PERMISSION_HIERARCHY.indexOf(actual)
   const requiredIndex = PERMISSION_HIERARCHY.indexOf(required)
   return actualIndex >= requiredIndex

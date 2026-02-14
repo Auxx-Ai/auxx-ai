@@ -1,8 +1,9 @@
 // packages/lib/src/email/nodemailer-service.ts
+
+import { env } from '@auxx/config/server'
+import { createScopedLogger } from '@auxx/logger'
 import type nodemailer from 'nodemailer'
 import { TransportFactory } from '../transports/factory'
-import { createScopedLogger } from '@auxx/logger'
-import { env } from '@auxx/config/server'
 import type { EmailOptions, EmailResult } from '../types'
 
 const logger = createScopedLogger('nodemailer-service')

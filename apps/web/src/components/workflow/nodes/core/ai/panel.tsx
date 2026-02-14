@@ -1,8 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/ai/panel.tsx
 
-import React, { useState, useEffect, memo } from 'react'
-import type { AiNodeData, PromptTemplate } from './types'
-import { BasePanel } from '../../shared/base/base-panel'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import { Label } from '@auxx/ui/components/label'
 import {
   Select,
@@ -12,29 +11,31 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { Switch } from '@auxx/ui/components/switch'
-import { Button } from '@auxx/ui/components/button'
-import { Badge } from '@auxx/ui/components/badge'
-import { Pencil, Plus, Wrench, X, AlertTriangle } from 'lucide-react'
-import { PROMPT_ROLES } from './constants'
-import { PromptRole, AiModelMode } from './types'
-import ModelParameterModal from '../../../ui/model-parameter'
-import Section from '../../../ui/section'
-import { Editor } from '~/components/workflow/ui/prompt-editor'
 import { cn } from '@auxx/ui/lib/utils'
+import { produce } from 'immer'
+import { AlertTriangle, Pencil, Plus, Wrench, X } from 'lucide-react'
+import type React from 'react'
+import { memo, useEffect, useState } from 'react'
+import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
+import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import { Editor } from '~/components/workflow/ui/prompt-editor'
 import StructuredOutputGenerator, {
   type SchemaRoot,
 } from '~/components/workflow/ui/structured-output-generator'
-import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import ModelParameterModal from '../../../ui/model-parameter'
+import Section from '../../../ui/section'
+import { BasePanel } from '../../shared/base/base-panel'
+import { PROMPT_ROLES } from './constants'
 import { aiDefinition } from './schema'
-import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
-import { produce } from 'immer'
-import { ToolsSelectionDialog } from './tools-selection-dialog'
 import {
+  CredentialStatusBadge,
   getToolCredentialStatus,
   hasCredentialIssue,
-  CredentialStatusBadge,
 } from './tool-credential-status'
+import { ToolsSelectionDialog } from './tools-selection-dialog'
+import type { AiNodeData, PromptTemplate } from './types'
+import { AiModelMode, PromptRole } from './types'
 
 interface AiPanelProps {
   nodeId: string
@@ -203,12 +204,12 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
   }
 
   return (
-    <BasePanel title="AI Configuration" nodeId={nodeId} data={data} showNextStep={true}>
+    <BasePanel title='AI Configuration' nodeId={nodeId} data={data} showNextStep={true}>
       {/* Model Configuration */}
 
       <Section
-        title="Model & Parameters"
-        description="Configure the AI model and its parameters."
+        title='Model & Parameters'
+        description='Configure the AI model and its parameters.'
         isRequired
         initialOpen>
         <ModelParameterModal
@@ -231,15 +232,15 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
         />
       </Section>
       <Section
-        title="Prompt Templates"
-        description="Configure the AI prompt templates."
+        title='Prompt Templates'
+        description='Configure the AI prompt templates.'
         isRequired
         initialOpen
         actions={
           !isReadOnly && (
             <Button
-              variant="ghost"
-              size="sm"
+              variant='ghost'
+              size='sm'
               onClick={addPromptTemplate}
               disabled={(nodeData.prompt_template?.length || 0) >= 5}>
               <Plus />
@@ -247,13 +248,13 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
             </Button>
           )
         }>
-        <div className="space-y-2">
+        <div className='space-y-2'>
           {(nodeData.prompt_template || [{ role: PromptRole.SYSTEM, text: '' }]).map(
             (template: PromptTemplate, index: number) => (
               <Editor
                 title={
                   index === 0 ? (
-                    <span className="text-xs font-semibold text-muted-foreground">System</span>
+                    <span className='text-xs font-semibold text-muted-foreground'>System</span>
                   ) : (
                     <TemplateRoleSelect
                       value={template.role}
@@ -268,7 +269,7 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
                   // Store both the original editor content and the preprocessed text
                   updatePromptTemplate(index, { text: value })
                 }}
-                placeholder="Use { for variables"
+                placeholder='Use { for variables'
                 nodeId={nodeId}
                 includeEnvironment
                 includeSystem
@@ -282,15 +283,15 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
         </div>
       </Section>
       <Section
-        title="Advanced Settings"
-        description="Configure the AI advanced settings."
+        title='Advanced Settings'
+        description='Configure the AI advanced settings.'
         initialOpen={false}>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label className="text-xs">Enable Context</Label>
+        <div className='space-y-4'>
+          <div className='flex items-center justify-between'>
+            <Label className='text-xs'>Enable Context</Label>
             <Switch
               checked={nodeData.context?.enabled || false}
-              size="sm"
+              size='sm'
               disabled={isReadOnly}
               onCheckedChange={(enabled) => {
                 const newData = produce(nodeData, (draft: AiNodeData) => {
@@ -304,10 +305,10 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
             />
           </div>
 
-          <div className="flex items-center justify-between">
-            <Label className="text-xs">Enable Vision</Label>
+          <div className='flex items-center justify-between'>
+            <Label className='text-xs'>Enable Vision</Label>
             <Switch
-              size="sm"
+              size='sm'
               disabled={isReadOnly}
               checked={nodeData.vision?.enabled || false}
               onCheckedChange={(enabled) => {
@@ -325,32 +326,32 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
       </Section>
 
       <Section
-        title="Tools"
-        description="Allow AI to use other nodes and built-in functions as tools"
+        title='Tools'
+        description='Allow AI to use other nodes and built-in functions as tools'
         showEnable
         onEnableChange={(enabled) => updateTools({ enabled })}
         enabled={nodeData.tools?.enabled || false}
         initialOpen={nodeData.tools?.enabled || false}>
-        <div className="space-y-3">
+        <div className='space-y-3'>
           {/* Tools List */}
           {nodeData.tools?.enabled && (
             <>
-              <div className="flex items-center justify-between">
-                <div className="text-xs text-muted-foreground">
+              <div className='flex items-center justify-between'>
+                <div className='text-xs text-muted-foreground'>
                   Available Tools ({getToolsCount()})
                 </div>
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant='outline'
+                  size='sm'
                   onClick={() => setToolsDialogOpen(true)}
                   disabled={isReadOnly}>
-                  <Plus className="h-3 w-3 mr-1" />
+                  <Plus className='h-3 w-3 mr-1' />
                   Add Tools
                 </Button>
               </div>
 
               {/* Tools Display */}
-              <div className="space-y-2">
+              <div className='space-y-2'>
                 {getEnabledTools().map((tool) => (
                   <div
                     key={tool.id}
@@ -358,12 +359,12 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
                       'flex items-center justify-between p-2 bg-muted rounded-md',
                       tool.hasCredentialIssue && 'border border-destructive/50 bg-destructive/5'
                     )}>
-                    <div className="flex items-center gap-2">
-                      <Wrench className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-xs font-medium">{tool.name}</span>
+                    <div className='flex items-center gap-2'>
+                      <Wrench className='h-3 w-3 text-muted-foreground' />
+                      <span className='text-xs font-medium'>{tool.name}</span>
                       <Badge
                         variant={tool.type === 'node' ? 'outline' : 'secondary'}
-                        className="text-xs">
+                        className='text-xs'>
                         {tool.type === 'node' ? 'Workflow' : 'Built-in'}
                       </Badge>
                       {tool.credentialStatus?.statusText && (
@@ -376,21 +377,21 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1">
+                    <div className='flex items-center gap-1'>
                       {tool.hasCredentialIssue && (
                         <Button
-                          variant="ghost"
-                          size="xs"
+                          variant='ghost'
+                          size='xs'
                           onClick={() => setToolsDialogOpen(true)}
-                          className="text-destructive">
-                          <AlertTriangle className="h-3 w-3" />
+                          className='text-destructive'>
+                          <AlertTriangle className='h-3 w-3' />
                         </Button>
                       )}
 
                       {!isReadOnly && (
                         <Button
-                          variant="ghost"
-                          size="xs"
+                          variant='ghost'
+                          size='xs'
                           onClick={() => {
                             if (tool.type === 'node') {
                               const newNodeIds =
@@ -404,7 +405,7 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
                               updateTools({ allowedBuiltInTools: newBuiltInTools })
                             }
                           }}>
-                          <X className="h-3 w-3" />
+                          <X className='h-3 w-3' />
                         </Button>
                       )}
                     </div>
@@ -412,7 +413,7 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
                 ))}
 
                 {getToolsCount() === 0 && (
-                  <div className="text-center py-4 text-xs text-muted-foreground">
+                  <div className='text-center py-4 text-xs text-muted-foreground'>
                     No tools configured. Click "Add Tools" to get started.
                   </div>
                 )}
@@ -423,8 +424,8 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
       </Section>
 
       <Section
-        title="Structured Output"
-        description="Configure the AI structured output settings."
+        title='Structured Output'
+        description='Configure the AI structured output settings.'
         showEnable
         onEnableChange={(enabled) => {
           const newData = produce(nodeData, (draft: AiNodeData) => {
@@ -437,19 +438,19 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
         }}
         enabled={nodeData.structured_output?.enabled || false}
         initialOpen={nodeData.structured_output?.enabled || false}>
-        <div className="space-y-2">
+        <div className='space-y-2'>
           {nodeData.structured_output?.enabled && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs mb-0">Schema Configuration</Label>
+            <div className='space-y-2'>
+              <div className='flex items-center justify-between'>
+                <div className='flex items-center gap-2'>
+                  <Label className='text-xs mb-0'>Schema Configuration</Label>
                   {schema && (
-                    <span className="text-xs text-muted-foreground">
+                    <span className='text-xs text-muted-foreground'>
                       ({Object.keys(schema.properties || {}).length} fields)
                     </span>
                   )}
                 </div>
-                <Button variant="outline" size="xs" onClick={() => setIsOpen(true)}>
+                <Button variant='outline' size='xs' onClick={() => setIsOpen(true)}>
                   <Pencil />
                 </Button>
               </div>
@@ -515,7 +516,7 @@ function TemplateRoleSelect({
 }) {
   return (
     <Select value={value} onValueChange={(v) => onChange(v as PromptRole)} disabled={disabled}>
-      <SelectTrigger className="h-8 border-0 px-0 bg-transparent hover:bg-transparent focus:bg-transparent shadow-none">
+      <SelectTrigger className='h-8 border-0 px-0 bg-transparent hover:bg-transparent focus:bg-transparent shadow-none'>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

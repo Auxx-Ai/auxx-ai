@@ -1,8 +1,8 @@
 // apps/web/src/components/file-upload/stores/slices/ui-slice.ts
 
-import { StateCreator } from 'zustand'
 import { produce } from 'immer'
-import type { UploadStore, UploadError, UploadConfig } from '../types'
+import type { StateCreator } from 'zustand'
+import type { UploadConfig, UploadError, UploadStore } from '../types'
 
 export interface UISlice {
   dragActive: boolean
@@ -79,18 +79,18 @@ export const createUISlice: StateCreator<UploadStore, [], [], UISlice> = (set, g
     const key = `${error.code || ''}|${error.fileId || ''}|${error.sessionId || ''}|${error.message}`
     const now = Date.now()
     const seenAt = get().recentErrorHashes[key]
-    
+
     // Ignore repeats within 60s
     if (seenAt && now - seenAt < 60_000) return
 
     set(
       produce((state) => {
         state.recentErrorHashes[key] = now
-        const newError: UploadError = { 
-          ...error, 
-          id: generateId('error'), 
+        const newError: UploadError = {
+          ...error,
+          id: generateId('error'),
           timestamp: new Date(),
-          recoverable: !!error.recoverable 
+          recoverable: !!error.recoverable,
         }
         state.errors.push(newError)
 
@@ -138,10 +138,10 @@ export const createUISlice: StateCreator<UploadStore, [], [], UISlice> = (set, g
         state.dragActive = false
         state.uploading = false
         state.errors = []
-        
+
         // Keep config but reset error deduplication and SSE connections
         state.recentErrorHashes = {}
-        
+
         // Properly cleanup SSE connections
         Object.values(state.sseConnections).forEach((connection) => {
           connection.manager?.disconnect() // ✅ Use manager, not eventSource

@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/utils/node-layout/collision-detector.ts
 
 import type { FlowNode } from '~/components/workflow/types'
-import { NODE_ADDITION_CONFIG, LAYOUT_SPACING } from '../layout-constants'
+import { LAYOUT_SPACING, NODE_ADDITION_CONFIG } from '../layout-constants'
 
 export interface NodeBounds {
   x: number
@@ -68,8 +68,8 @@ export class CollisionDetector {
 
     return existingNodes.some((node) => {
       if (excludeNodeIds.includes(node.id)) return false
-      const existingBounds = this.getNodeBounds(node)
-      return this.boundsOverlap(newBounds, existingBounds)
+      const existingBounds = CollisionDetector.getNodeBounds(node)
+      return CollisionDetector.boundsOverlap(newBounds, existingBounds)
     })
   }
 
@@ -91,8 +91,8 @@ export class CollisionDetector {
 
     return existingNodes.filter((node) => {
       if (excludeNodeIds.includes(node.id)) return false
-      const existingBounds = this.getNodeBounds(node)
-      return this.boundsOverlap(newBounds, existingBounds)
+      const existingBounds = CollisionDetector.getNodeBounds(node)
+      return CollisionDetector.boundsOverlap(newBounds, existingBounds)
     })
   }
 
@@ -110,7 +110,7 @@ export class CollisionDetector {
     const searchRadius = NODE_ADDITION_CONFIG.COLLISION_SEARCH_RADIUS
 
     // First, check if the preferred position is already empty
-    if (!this.isPositionOccupied(preferredPosition, nodeSize, existingNodes)) {
+    if (!CollisionDetector.isPositionOccupied(preferredPosition, nodeSize, existingNodes)) {
       return preferredPosition
     }
 
@@ -122,7 +122,7 @@ export class CollisionDetector {
           x: preferredPosition.x + i * increment,
           y: preferredPosition.y,
         }
-        if (!this.isPositionOccupied(testPosition, nodeSize, existingNodes)) {
+        if (!CollisionDetector.isPositionOccupied(testPosition, nodeSize, existingNodes)) {
           return testPosition
         }
       }
@@ -133,7 +133,7 @@ export class CollisionDetector {
           x: preferredPosition.x,
           y: preferredPosition.y + i * increment,
         }
-        if (!this.isPositionOccupied(testPosition, nodeSize, existingNodes)) {
+        if (!CollisionDetector.isPositionOccupied(testPosition, nodeSize, existingNodes)) {
           return testPosition
         }
       }
@@ -144,7 +144,7 @@ export class CollisionDetector {
           x: preferredPosition.x,
           y: preferredPosition.y - i * increment,
         }
-        if (!this.isPositionOccupied(testPosition, nodeSize, existingNodes)) {
+        if (!CollisionDetector.isPositionOccupied(testPosition, nodeSize, existingNodes)) {
           return testPosition
         }
       }
@@ -156,7 +156,7 @@ export class CollisionDetector {
           x: preferredPosition.x,
           y: preferredPosition.y + i * increment,
         }
-        if (!this.isPositionOccupied(downPosition, nodeSize, existingNodes)) {
+        if (!CollisionDetector.isPositionOccupied(downPosition, nodeSize, existingNodes)) {
           return downPosition
         }
 
@@ -165,14 +165,17 @@ export class CollisionDetector {
           x: preferredPosition.x,
           y: preferredPosition.y - i * increment,
         }
-        if (!this.isPositionOccupied(upPosition, nodeSize, existingNodes)) {
+        if (!CollisionDetector.isPositionOccupied(upPosition, nodeSize, existingNodes)) {
           return upPosition
         }
       }
     } else {
       // Search in an expanding square pattern
       for (let distance = 1; distance <= maxAttempts; distance++) {
-        const positions = this.getSquarePositions(preferredPosition, distance * increment)
+        const positions = CollisionDetector.getSquarePositions(
+          preferredPosition,
+          distance * increment
+        )
 
         for (const pos of positions) {
           if (
@@ -182,7 +185,7 @@ export class CollisionDetector {
             continue
           }
 
-          if (!this.isPositionOccupied(pos, nodeSize, existingNodes)) {
+          if (!CollisionDetector.isPositionOccupied(pos, nodeSize, existingNodes)) {
             return pos
           }
         }
@@ -237,7 +240,7 @@ export class CollisionDetector {
     let maxY = -Infinity
 
     nodes.forEach((node) => {
-      const bounds = this.getNodeBounds(node)
+      const bounds = CollisionDetector.getNodeBounds(node)
       minX = Math.min(minX, bounds.x)
       minY = Math.min(minY, bounds.y)
       maxX = Math.max(maxX, bounds.x + bounds.width)

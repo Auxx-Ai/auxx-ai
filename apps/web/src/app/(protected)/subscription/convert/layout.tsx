@@ -1,7 +1,7 @@
 // apps/web/src/app/(protected)/subscription/convert/layout.tsx
-import React from 'react'
-import { ConvertProvider } from './_components/convert-provider'
+import type React from 'react'
 import { ConvertProgress } from './_components/convert-progress'
+import { ConvertProvider } from './_components/convert-provider'
 
 type Props = { children: React.ReactNode }
 
@@ -10,7 +10,7 @@ function layout({ children }: Props) {
   return (
     <ConvertProvider>
       <ConvertProgress />
-      <div className="mt-10">{children}</div>
+      <div className='mt-10'>{children}</div>
     </ConvertProvider>
   )
 }

@@ -1,17 +1,17 @@
 // apps/web/src/components/workflow/nodes/base/next-step/operator.tsx
 
-import { useCallback } from 'react'
-import { MoreHorizontal, Trash2, Unlink, Replace } from 'lucide-react'
-import { useReactFlow, useStoreApi } from '@xyflow/react'
-import { produce } from 'immer'
-import {
-  useAvailableBlocks,
-  useNodesInteractions,
-  useEdgeValidation,
-} from '~/components/workflow/hooks'
-import { BlockSelector } from '~/components/workflow/ui/block-selector'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { useReactFlow, useStoreApi } from '@xyflow/react'
+import { produce } from 'immer'
+import { MoreHorizontal, Replace, Trash2, Unlink } from 'lucide-react'
+import { useCallback } from 'react'
+import {
+  useAvailableBlocks,
+  useEdgeValidation,
+  useNodesInteractions,
+} from '~/components/workflow/hooks'
+import { BlockSelector } from '~/components/workflow/ui/block-selector'
 import type { OperatorProps } from './types'
 
 // Utility function to find intersection of two arrays
@@ -79,8 +79,8 @@ const ChangeItem = ({ data, nodeId, sourceHandle, onClose }: ChangeItemProps) =>
 
   const renderTrigger = useCallback(() => {
     return (
-      <button className="flex h-8 w-full cursor-pointer items-center rounded-lg px-2 hover:bg-muted">
-        <Replace className="mr-2 size-3" />
+      <button className='flex h-8 w-full cursor-pointer items-center rounded-lg px-2 hover:bg-muted'>
+        <Replace className='mr-2 size-3' />
         Change node
       </button>
     )
@@ -131,12 +131,12 @@ const Operator = ({ open, onOpenChange, data, nodeId, sourceHandle }: OperatorPr
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" className="size-6 p-0">
+        <Button variant='ghost' className='size-6 p-0'>
           <MoreHorizontal />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-48 p-1" align="end">
-        <div className="space-y-1">
+      <PopoverContent className='w-48 p-1' align='end'>
+        <div className='space-y-1'>
           <ChangeItem
             data={data}
             nodeId={nodeId}
@@ -144,16 +144,16 @@ const Operator = ({ open, onOpenChange, data, nodeId, sourceHandle }: OperatorPr
             onClose={() => onOpenChange(false)}
           />
           <button
-            className="flex h-8 w-full cursor-pointer items-center rounded-lg px-2 hover:bg-muted"
+            className='flex h-8 w-full cursor-pointer items-center rounded-lg px-2 hover:bg-muted'
             onClick={handleNodeDisconnect}>
-            <Unlink className="mr-2 h-3 w-3" />
+            <Unlink className='mr-2 h-3 w-3' />
             Disconnect
           </button>
-          <div className="my-1 h-px bg-border" />
+          <div className='my-1 h-px bg-border' />
           <button
-            className="flex h-8 w-full cursor-pointer items-center rounded-lg px-2 text-destructive hover:bg-destructive/10"
+            className='flex h-8 w-full cursor-pointer items-center rounded-lg px-2 text-destructive hover:bg-destructive/10'
             onClick={handleNodeDelete}>
-            <Trash2 className="mr-2 h-3 w-3" />
+            <Trash2 className='mr-2 h-3 w-3' />
             Delete
           </button>
         </div>

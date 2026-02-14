@@ -28,9 +28,9 @@ import {
   ProductOption,
   ProductVariant,
   ShopifyAuthState,
-  shopify_customers,
   ShopifyIntegration,
   Subscription,
+  shopify_customers,
   Ticket,
   User,
   VendorPart,
@@ -334,23 +334,20 @@ export const planRelations = relations(Plan, ({ many }) => ({
   subscriptions: many(PlanSubscription),
 }))
 
-export const planSubscriptionHistoryRelations = relations(
-  PlanSubscriptionHistory,
-  ({ one }) => ({
-    organization: one(Organization, {
-      fields: [PlanSubscriptionHistory.organizationId],
-      references: [Organization.id],
-    }),
-    subscription: one(PlanSubscription, {
-      fields: [PlanSubscriptionHistory.subscriptionId],
-      references: [PlanSubscription.id],
-    }),
-    user: one(User, {
-      fields: [PlanSubscriptionHistory.userId],
-      references: [User.id],
-    }),
-  })
-)
+export const planSubscriptionHistoryRelations = relations(PlanSubscriptionHistory, ({ one }) => ({
+  organization: one(Organization, {
+    fields: [PlanSubscriptionHistory.organizationId],
+    references: [Organization.id],
+  }),
+  subscription: one(PlanSubscription, {
+    fields: [PlanSubscriptionHistory.subscriptionId],
+    references: [PlanSubscription.id],
+  }),
+  user: one(User, {
+    fields: [PlanSubscriptionHistory.userId],
+    references: [User.id],
+  }),
+}))
 
 export const invoiceRelations = relations(Invoice, ({ one }) => ({
   organization: one(Organization, {
@@ -362,4 +359,3 @@ export const invoiceRelations = relations(Invoice, ({ one }) => ({
     references: [PlanSubscription.id],
   }),
 }))
-

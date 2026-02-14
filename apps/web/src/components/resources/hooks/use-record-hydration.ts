@@ -1,8 +1,8 @@
 // apps/web/src/components/resources/hooks/use-record-hydration.ts
 
+import type { RecordId, Resource } from '@auxx/lib/resources/client'
 import { useEffect, useRef } from 'react'
 import { hydrateFieldValues } from '~/components/resources/store/hydrate-field-values'
-import type { Resource, RecordId } from '@auxx/lib/resources/client'
 
 interface UseRecordHydrationOptions {
   resource: Resource | undefined

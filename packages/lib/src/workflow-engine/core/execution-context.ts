@@ -1,41 +1,40 @@
 // packages/lib/src/workflow-engine/core/execution-context.ts
 
+import { type Database, database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { safeJsonStringify, safeJsonParse } from '../utils/serialization'
-import { joinStateCache } from './join-state-cache'
-import { batchedJoinUpdater } from './batched-join-updater'
+import { toRecordId } from '@auxx/types/resource'
+import { LRUCache } from 'lru-cache'
+import { ResourceRegistryService } from '../../resources/registry/resource-registry-service'
+import {
+  analyzePathForRelationships,
+  fetchResourceWithRelationships,
+} from '../../resources/resource-fetcher'
+import type { FileContextService } from '../services/file-context-service'
+import type { FileContentOptions, FileReference } from '../types/file-reference'
 import {
   createFileVariable,
   createMultipleFilesVariable,
   type WorkflowFileData,
 } from '../types/file-variable'
-import type { FileReference, FileContentOptions } from '../types/file-reference'
-import type { FileContextService } from '../services/file-context-service'
-import type {
-  ExecutionContext,
-  ExecutionLog,
-  WorkflowTriggerEvent,
-  ProcessedMessage,
-  WorkflowExecutionOptions,
-  BranchResult,
-  JoinPointInfo,
-} from './types'
-import { database, type Database } from '@auxx/database'
-
-import { JoinState } from './types'
 import {
   isResourceReference,
-  type ResourceReference,
   type LazyLoadCacheEntry,
   type PathAnalysis,
+  type ResourceReference,
 } from '../types/resource-reference'
-import {
-  fetchResourceWithRelationships,
-  analyzePathForRelationships,
-} from '../../resources/resource-fetcher'
-import { ResourceRegistryService } from '../../resources/registry/resource-registry-service'
-import { LRUCache } from 'lru-cache'
-import { toRecordId } from '@auxx/types/resource'
+import { safeJsonParse, safeJsonStringify } from '../utils/serialization'
+import { batchedJoinUpdater } from './batched-join-updater'
+import { joinStateCache } from './join-state-cache'
+import type {
+  BranchResult,
+  ExecutionContext,
+  ExecutionLog,
+  JoinPointInfo,
+  ProcessedMessage,
+  WorkflowExecutionOptions,
+  WorkflowTriggerEvent,
+} from './types'
+import { JoinState } from './types'
 
 const logger = createScopedLogger('execution-context')
 
@@ -174,7 +173,8 @@ export class ExecutionContextManager {
 
     this.log('DEBUG', undefined, `getVariable: resolved`, {
       key,
-      resultType: result === undefined ? 'undefined' : Array.isArray(result) ? 'array' : typeof result,
+      resultType:
+        result === undefined ? 'undefined' : Array.isArray(result) ? 'array' : typeof result,
       isArray: Array.isArray(result),
       arrayLength: Array.isArray(result) ? result.length : undefined,
     })
@@ -230,7 +230,8 @@ export class ExecutionContextManager {
 
         this.log('DEBUG', undefined, `resolveVariablePath: nested resolution`, {
           remainingPath: analysis.remainingPath,
-          resultType: result === undefined ? 'undefined' : Array.isArray(result) ? 'array' : typeof result,
+          resultType:
+            result === undefined ? 'undefined' : Array.isArray(result) ? 'array' : typeof result,
           isArray: Array.isArray(result),
           arrayLength: Array.isArray(result) ? result.length : undefined,
         })

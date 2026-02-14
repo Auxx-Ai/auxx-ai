@@ -2,13 +2,14 @@
 
 'use client'
 
-import React, { useRef, useCallback, useEffect } from 'react'
-import { EditorContent } from '@tiptap/react'
 import { cn } from '@auxx/ui/lib/utils'
-import { usePromptEditorContext } from './prompt-editor-context'
+import { EditorContent } from '@tiptap/react'
+import type React from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { InlinePickerPopover } from '~/components/editor/inline-picker'
-import { VariableExplorerEnhanced } from '../variables/variable-explorer-enhanced'
 import { useWorkflowVariableEditor } from '../input-editor/hooks/use-workflow-variable-editor'
+import { VariableExplorerEnhanced } from '../variables/variable-explorer-enhanced'
+import { usePromptEditorContext } from './prompt-editor-context'
 import './tiptap-prompt-editor.css'
 
 /**
@@ -107,10 +108,7 @@ const TiptapPromptEditor: React.FC = () => {
   const showReadOnlyOverlay = !editable
 
   return (
-    <div
-      ref={containerRef}
-      className="relative flex-1 min-h-0 flex"
-      onKeyDown={handleKeyDown}>
+    <div ref={containerRef} className='relative flex-1 min-h-0 flex' onKeyDown={handleKeyDown}>
       <EditorContent
         editor={editor}
         className={cn(
@@ -130,13 +128,13 @@ const TiptapPromptEditor: React.FC = () => {
         <VariableExplorerEnhanced
           nodeId={nodeId}
           onVariableSelect={(variable) => insertVariable(variable.id)}
-          className="max-h-[400px]"
-          placeholder="Type in editor to filter..."
+          className='max-h-[400px]'
+          placeholder='Type in editor to filter...'
           onClose={closePicker}
         />
       </InlinePickerPopover>
 
-      {showReadOnlyOverlay && <div className="absolute inset-0 z-10" />}
+      {showReadOnlyOverlay && <div className='absolute inset-0 z-10' />}
     </div>
   )
 }

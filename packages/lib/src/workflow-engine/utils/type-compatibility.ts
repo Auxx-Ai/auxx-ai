@@ -75,46 +75,22 @@ const TYPE_COMPATIBILITY_MAP: Record<BaseType, BaseType[]> = {
   ],
 
   // EMAIL accepts email and string types
-  [BaseType.EMAIL]: [
-    BaseType.ANY,
-    BaseType.EMAIL,
-    BaseType.STRING,
-  ],
+  [BaseType.EMAIL]: [BaseType.ANY, BaseType.EMAIL, BaseType.STRING],
 
   // URL accepts URL and string types
-  [BaseType.URL]: [
-    BaseType.ANY,
-    BaseType.URL,
-    BaseType.STRING,
-  ],
+  [BaseType.URL]: [BaseType.ANY, BaseType.URL, BaseType.STRING],
 
   // PHONE accepts phone and string types
-  [BaseType.PHONE]: [
-    BaseType.ANY,
-    BaseType.PHONE,
-    BaseType.STRING,
-  ],
+  [BaseType.PHONE]: [BaseType.ANY, BaseType.PHONE, BaseType.STRING],
 
   // ENUM accepts enum and string types
-  [BaseType.ENUM]: [
-    BaseType.ANY,
-    BaseType.ENUM,
-    BaseType.STRING,
-  ],
+  [BaseType.ENUM]: [BaseType.ANY, BaseType.ENUM, BaseType.STRING],
 
   // REFERENCE accepts reference and string types (IDs)
-  [BaseType.REFERENCE]: [
-    BaseType.ANY,
-    BaseType.REFERENCE,
-    BaseType.STRING,
-  ],
+  [BaseType.REFERENCE]: [BaseType.ANY, BaseType.REFERENCE, BaseType.STRING],
 
   // FILE accepts file and string types (file paths)
-  [BaseType.FILE]: [
-    BaseType.ANY,
-    BaseType.FILE,
-    BaseType.STRING,
-  ],
+  [BaseType.FILE]: [BaseType.ANY, BaseType.FILE, BaseType.STRING],
 
   // JSON accepts JSON and string types (JSON strings)
   [BaseType.JSON]: [
@@ -141,16 +117,10 @@ const TYPE_COMPATIBILITY_MAP: Record<BaseType, BaseType[]> = {
   ],
 
   // ARRAY is strict - only accepts arrays and ANY
-  [BaseType.ARRAY]: [
-    BaseType.ANY,
-    BaseType.ARRAY,
-  ],
+  [BaseType.ARRAY]: [BaseType.ANY, BaseType.ARRAY],
 
   // NULL accepts only null and ANY
-  [BaseType.NULL]: [
-    BaseType.ANY,
-    BaseType.NULL,
-  ],
+  [BaseType.NULL]: [BaseType.ANY, BaseType.NULL],
 }
 
 /**

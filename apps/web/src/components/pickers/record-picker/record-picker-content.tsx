@@ -2,20 +2,20 @@
 
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
-import { keepPreviousData } from '@tanstack/react-query'
-import { Plus } from 'lucide-react'
+import type { RecordId, RecordPickerItem } from '@auxx/lib/resources/client'
 import {
   Command,
   CommandEmpty,
+  CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
   CommandSeparator,
-  CommandGroup,
 } from '@auxx/ui/components/command'
 import { cn } from '@auxx/ui/lib/utils'
-import { type RecordPickerItem, type RecordId } from '@auxx/lib/resources/client'
+import { keepPreviousData } from '@tanstack/react-query'
+import { Plus } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRelationship, useResourceStore } from '~/components/resources'
 import { api } from '~/trpc/react'
 import { RecordItem } from './record-item'
@@ -259,7 +259,7 @@ export function RecordPickerContent({
 
         {/* Selected Items Section */}
         {hasSelectedSection && (
-          <CommandGroup aria-label="Selected Items">
+          <CommandGroup aria-label='Selected Items'>
             {filteredSelectedItems.map((item) => {
               return (
                 <RecordItem
@@ -280,7 +280,7 @@ export function RecordPickerContent({
 
         {/* Available Items Section */}
         {hasResultsSection && (
-          <CommandGroup aria-label="Available Items">
+          <CommandGroup aria-label='Available Items'>
             {availableItems.map((item) => {
               return (
                 <RecordItem
@@ -300,7 +300,7 @@ export function RecordPickerContent({
         {canCreate && onCreate && (
           <>
             {(hasSelectedSection || hasResultsSection) && <CommandSeparator />}
-            <CommandGroup aria-label="Create">
+            <CommandGroup aria-label='Create'>
               <CommandItem onSelect={onCreate} disabled={disabled}>
                 <Plus />
                 {createLabel || `Create ${relatedResource?.label ?? 'Item'}`}

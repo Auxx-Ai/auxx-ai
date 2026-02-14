@@ -1,24 +1,23 @@
 // apps/web/src/components/workflow/ui/model-parameter/index.tsx
 
-import type { FC } from 'react'
-import { useMemo, useState, useEffect } from 'react'
-import { useWorkflowStore } from '../../store/workflow-store'
-import {
-  ModelParameterModalProps,
-  TriggerProps,
-  ModelParameterRule,
-  ParameterValue,
-  DefaultModel,
-} from './types'
-import { stopParameterRule, PROVIDER_WITH_PRESET_TONE } from './constants'
-import ParameterItem from './parameter-item'
-import Trigger from './trigger'
-import PresetsParameter from './presets-parameter'
-import { cn } from '@auxx/ui/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { cn } from '@auxx/ui/lib/utils'
 import { ArrowLeft } from 'lucide-react'
-import { TONE_LIST } from './constants'
+import type { FC } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AiModelPicker, type ModelPickerItem } from '~/components/pickers/ai-model-picker'
+import { useWorkflowStore } from '../../store/workflow-store'
+import { PROVIDER_WITH_PRESET_TONE, stopParameterRule, TONE_LIST } from './constants'
+import ParameterItem from './parameter-item'
+import PresetsParameter from './presets-parameter'
+import Trigger from './trigger'
+import {
+  type DefaultModel,
+  type ModelParameterModalProps,
+  type ModelParameterRule,
+  type ParameterValue,
+  TriggerProps,
+} from './types'
 
 // Model ID conversion utilities
 const splitModelId = (combinedId: string | null) => {
@@ -175,14 +174,14 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
-      <div className="relative">
+      <div className='relative'>
         <PopoverTrigger
           onClick={() => {
             console.log('ModelParameterModal trigger clicked')
             if (readonly) return
             handleOpenChange(!open)
           }}
-          className="block w-full">
+          className='block w-full'>
           {renderTrigger ? (
             renderTrigger({
               open,
@@ -214,7 +213,7 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
           sideOffset={4}
           onOpenAutoFocus={(e) => e.preventDefault()}>
           <div className={cn(popupClassName)}>
-            <div className="relative">
+            <div className='relative'>
               <div
                 className={cn(
                   'text-sm font-semibold mb-1 flex h-6 items-center text-muted-foreground'
@@ -223,27 +222,27 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
               </div>
 
               {/* Model Selection with AI Model Picker */}
-              <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+              <div className='space-y-2' onClick={(e) => e.stopPropagation()}>
                 <AiModelPicker
                   value={localModelValue}
                   onChange={handleModelSelection}
                   showUnconfigured={false}
-                  className="z-[80]"
-                  triggerClassName="w-full"
+                  className='z-[80]'
+                  triggerClassName='w-full'
                 />
               </div>
             </div>
 
-            {!!parameterRules.length && <div className="my-3 h-[1px] bg-border" />}
+            {!!parameterRules.length && <div className='my-3 h-[1px] bg-border' />}
 
             {isLoading && (
-              <div className="mt-5 text-center text-sm text-muted-foreground">
+              <div className='mt-5 text-center text-sm text-muted-foreground'>
                 Loading parameters...
               </div>
             )}
 
             {!isLoading && !!parameterRules.length && (
-              <div className="mb-2 flex items-center justify-between">
+              <div className='mb-2 flex items-center justify-between'>
                 <div
                   className={cn(
                     'text-sm font-semibold flex h-6 items-center text-muted-foreground'
@@ -257,7 +256,7 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
             )}
 
             {!isLoading && !!parameterRules.length && (
-              <div className="space-y-2">
+              <div className='space-y-2'>
                 {[...parameterRules, ...(isAdvancedMode ? [stopParameterRule] : [])].map(
                   (parameter) => (
                     <ParameterItem
@@ -278,10 +277,10 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
 
             {!hideDebugWithMultipleModel && (
               <div
-                className="bg-muted/50 text-sm flex h-[50px] cursor-pointer items-center justify-between rounded-b-xl border-t border-border px-4 text-foreground hover:bg-muted/70"
+                className='bg-muted/50 text-sm flex h-[50px] cursor-pointer items-center justify-between rounded-b-xl border-t border-border px-4 text-foreground hover:bg-muted/70'
                 onClick={() => onDebugWithMultipleModelChange?.()}>
                 {debugWithMultipleModel ? 'Debug as Single Model' : 'Debug as Multiple Models'}
-                <ArrowLeft className="h-3 w-3 rotate-180" />
+                <ArrowLeft className='h-3 w-3 rotate-180' />
               </div>
             )}
           </div>

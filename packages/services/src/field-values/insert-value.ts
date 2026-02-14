@@ -1,10 +1,10 @@
 // packages/services/src/field-values/insert-value.ts
 
 import { database, schema } from '@auxx/database'
+import { parseRecordId } from '@auxx/types/resource'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import { parseRecordId } from '@auxx/types/resource'
-import type { InsertFieldValueInput, FieldValueRow } from './types'
+import type { FieldValueRow, InsertFieldValueInput } from './types'
 
 /**
  * Insert a single field value row.

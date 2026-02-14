@@ -1,9 +1,9 @@
 // packages/ui/src/components/input-currency.tsx
 'use client'
 
-import * as React from 'react'
 import { cn } from '@auxx/ui/lib/utils'
-import { clampValue, incrementValue, decrementValue } from './input-number-utils'
+import * as React from 'react'
+import { clampValue, decrementValue, incrementValue } from './input-number-utils'
 
 // ============================================================================
 // Types & Interfaces
@@ -403,18 +403,18 @@ const CurrencyInputField = React.forwardRef<HTMLInputElement, CurrencyInputField
     }, [])
 
     return (
-      <div className="relative flex flex-1 flex-row items-center">
+      <div className='relative flex flex-1 flex-row items-center'>
         {showSymbol && (
-          <span className="text-muted-foreground shrink-0 pointer-events-none text-sm pe-1 ps-2">
+          <span className='text-muted-foreground shrink-0 pointer-events-none text-sm pe-1 ps-2'>
             {symbol}
           </span>
         )}
         <input
           ref={ref}
-          type="text"
-          inputMode="decimal"
-          data-slot="input-group-control"
-          role="spinbutton"
+          type='text'
+          inputMode='decimal'
+          data-slot='input-group-control'
+          role='spinbutton'
           aria-valuenow={value}
           aria-valuemin={min}
           aria-valuemax={max}

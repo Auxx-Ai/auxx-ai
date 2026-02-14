@@ -1,8 +1,8 @@
 // packages/services/src/apps/uninstall-app.ts
 
 import { database, schema, type Transaction } from '@auxx/database'
-import { ok, err } from 'neverthrow'
 import { eq, sql } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
 // import type { AppError } from './errors'
 import { fromDatabase } from '../shared/utils'
 

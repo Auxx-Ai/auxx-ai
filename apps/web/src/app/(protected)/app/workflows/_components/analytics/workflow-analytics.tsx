@@ -1,10 +1,13 @@
-import React from 'react'
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { StatCards, type StatCardData } from '@auxx/ui/components/stat-card'
-import { Activity, CalendarIcon, CheckCircle, Clock, Zap } from 'lucide-react'
+import { Button } from '@auxx/ui/components/button'
+import { Calendar } from '@auxx/ui/components/calendar'
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from '@auxx/ui/components/chart'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Progress } from '@auxx/ui/components/progress'
-import { format, startOfMonth, startOfQuarter, startOfYear, subMonths, subWeeks } from 'date-fns'
 import {
   Select,
   SelectContent,
@@ -12,20 +15,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { Button } from '@auxx/ui/components/button'
-import { Calendar } from '@auxx/ui/components/calendar'
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from '@auxx/ui/components/chart'
-import { TooltipExplanation } from '~/components/global/tooltip'
-import { CartesianGrid, LineChart, XAxis, Line, YAxis } from 'recharts'
-import { api } from '~/trpc/react'
-import { keepPreviousData } from '@tanstack/react-query'
+import { type StatCardData, StatCards } from '@auxx/ui/components/stat-card'
 import { cn } from '@auxx/ui/lib/utils'
+import { keepPreviousData } from '@tanstack/react-query'
+import { format, startOfMonth, startOfQuarter, startOfYear, subMonths, subWeeks } from 'date-fns'
+import { Activity, CalendarIcon, CheckCircle, Clock, Zap } from 'lucide-react'
+import React from 'react'
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts'
+import { create } from 'zustand'
+import { subscribeWithSelector } from 'zustand/middleware'
+import { TooltipExplanation } from '~/components/global/tooltip'
+import { api } from '~/trpc/react'
 
 // apps/web/src/app/(protected)/app/workflows/_components/analytics/workflow-analytics.tsx
 
@@ -177,40 +177,40 @@ function WorkflowAnalytics({ workflowId }: WorkflowAnalyticsProps) {
     <>
       <WorkflowAnalyticsOptions />
       <WorkflowAnalyticsHeader detailedStats={detailedStats} loading={isLoading} />
-      <div className="flex-1 overflow-y-auto overflow-hidden rounded-b-lg">
-        <div className="grid grid-cols-1 md:grid-cols-2 border-b">
+      <div className='flex-1 overflow-y-auto overflow-hidden rounded-b-lg'>
+        <div className='grid grid-cols-1 md:grid-cols-2 border-b'>
           <WorkflowAnalyticsChart
-            title="Total Executions"
-            description="Total number of executions in the workflow over time."
-            chartType="executions"
+            title='Total Executions'
+            description='Total number of executions in the workflow over time.'
+            chartType='executions'
             data={detailedStats?.executionsOverTime}
             loading={isLoading}
             error={error?.message}
-            className="border-r sm:border-r-0 sm:border-b md:border-r md:border-b-0"
+            className='border-r sm:border-r-0 sm:border-b md:border-r md:border-b-0'
           />
           <WorkflowAnalyticsChart
-            title="Token Usage"
-            description="Total tokens used per time period in the workflow."
-            chartType="tokens"
+            title='Token Usage'
+            description='Total tokens used per time period in the workflow.'
+            chartType='tokens'
             data={detailedStats?.tokenUsageOverTime}
             loading={isLoading}
             error={error?.message}
           />
         </div>
-        <div className="grid md:grid-cols-2 border-b">
+        <div className='grid md:grid-cols-2 border-b'>
           <WorkflowAnalyticsChart
-            title="Success Rate"
-            description="Percentage of successful executions over time."
-            chartType="successRate"
+            title='Success Rate'
+            description='Percentage of successful executions over time.'
+            chartType='successRate'
             data={detailedStats?.successRateOverTime}
             loading={isLoading}
             error={error?.message}
-            className="border-r sm:border-r-0 sm:border-b md:border-r md:border-b-0"
+            className='border-r sm:border-r-0 sm:border-b md:border-r md:border-b-0'
           />
           <WorkflowAnalyticsChart
-            title="Avg Execution Time"
-            description="Average execution time per time period."
-            chartType="executionTime"
+            title='Avg Execution Time'
+            description='Average execution time per time period.'
+            chartType='executionTime'
             data={detailedStats?.avgExecutionTimeOverTime}
             loading={isLoading}
             error={error?.message}
@@ -228,36 +228,36 @@ function WorkflowAnalyticsOptions() {
   const setDateRange = useAnalyticsStore((state) => state.setDateRange)
 
   return (
-    <div className="flex items-center p-1 bg-primary-150 border-b border-primary-300 rounded-t-lg">
-      <div className="flex items-center gap-2">
+    <div className='flex items-center p-1 bg-primary-150 border-b border-primary-300 rounded-t-lg'>
+      <div className='flex items-center gap-2'>
         <Select value={timeFrame} onValueChange={handleTimeFrameChange}>
-          <SelectTrigger className="w-[140px]" size="sm">
+          <SelectTrigger className='w-[140px]' size='sm'>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="today">Today</SelectItem>
-            <SelectItem value="last7days">Last 7 days</SelectItem>
-            <SelectItem value="last4weeks">Last 4 weeks</SelectItem>
-            <SelectItem value="last3months">Last 3 months</SelectItem>
-            <SelectItem value="last12months">Last 12 months</SelectItem>
-            <SelectItem value="monthToDate">Month to date</SelectItem>
-            <SelectItem value="quarterToDate">Quarter to date</SelectItem>
-            <SelectItem value="yearToDate">Year to date</SelectItem>
-            <SelectItem value="allTime">All time</SelectItem>
-            <SelectItem value="custom">Custom Range</SelectItem>
+            <SelectItem value='today'>Today</SelectItem>
+            <SelectItem value='last7days'>Last 7 days</SelectItem>
+            <SelectItem value='last4weeks'>Last 4 weeks</SelectItem>
+            <SelectItem value='last3months'>Last 3 months</SelectItem>
+            <SelectItem value='last12months'>Last 12 months</SelectItem>
+            <SelectItem value='monthToDate'>Month to date</SelectItem>
+            <SelectItem value='quarterToDate'>Quarter to date</SelectItem>
+            <SelectItem value='yearToDate'>Year to date</SelectItem>
+            <SelectItem value='allTime'>All time</SelectItem>
+            <SelectItem value='custom'>Custom Range</SelectItem>
           </SelectContent>
         </Select>
         {timeFrame === 'custom' && (
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="justify-start text-left font-normal">
-                <CalendarIcon className="mr-2 h-4 w-4" />
+              <Button variant='outline' size='sm' className='justify-start text-left font-normal'>
+                <CalendarIcon className='mr-2 h-4 w-4' />
                 {format(dateRange.from, 'PPP')} - {format(dateRange.to, 'PPP')}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
+            <PopoverContent className='w-auto p-0' align='start'>
               <Calendar
-                mode="range"
+                mode='range'
                 selected={dateRange}
                 onSelect={(range) => range && setDateRange(range as DateRange)}
                 numberOfMonths={2}
@@ -292,12 +292,12 @@ function WorkflowAnalyticsHeader({ detailedStats, loading }: WorkflowAnalyticsHe
       color: 'text-comparison-500',
       className: 'border-b md:border-b-0',
       title: 'Total Executions',
-      icon: <Zap className="size-4" />,
+      icon: <Zap className='size-4' />,
       iconPosition: 'right',
       body: loading ? '--' : summary?.totalExecutions?.toLocaleString() || 0,
       description: (
-        <div className="flex items-center gap-1 text-xs">
-          <Activity className="h-3 w-3 text-primary-400" />
+        <div className='flex items-center gap-1 text-xs'>
+          <Activity className='h-3 w-3 text-primary-400' />
           Workflow runs
         </div>
       ),
@@ -306,12 +306,12 @@ function WorkflowAnalyticsHeader({ detailedStats, loading }: WorkflowAnalyticsHe
       color: 'text-accent-500',
       className: 'border-b md:border-b-0',
       title: 'Total Tokens',
-      icon: <Activity className="size-4" />,
+      icon: <Activity className='size-4' />,
       iconPosition: 'right',
       body: loading ? '--' : summary?.totalTokens?.toLocaleString() || 0,
       description: (
-        <div className="flex items-center gap-1 text-xs">
-          <Activity className="h-3 w-3 text-primary-400" />
+        <div className='flex items-center gap-1 text-xs'>
+          <Activity className='h-3 w-3 text-primary-400' />
           AI tokens used
         </div>
       ),
@@ -319,20 +319,20 @@ function WorkflowAnalyticsHeader({ detailedStats, loading }: WorkflowAnalyticsHe
     {
       title: 'Success Rate',
       color: 'text-fuchsia-500',
-      icon: <CheckCircle className="size-4" />,
+      icon: <CheckCircle className='size-4' />,
       iconPosition: 'right',
       body: loading ? '--' : `${summary?.avgSuccessRate?.toFixed(1) || 0}%`,
-      description: <Progress value={summary?.avgSuccessRate || 0} className="mt-2" />,
+      description: <Progress value={summary?.avgSuccessRate || 0} className='mt-2' />,
     },
     {
       title: 'Avg Execution Time',
       color: 'text-good-500',
-      icon: <Clock className="size-4" />,
+      icon: <Clock className='size-4' />,
       iconPosition: 'right',
       body: loading ? '--' : `${summary?.avgExecutionTime || 0}ms`,
       description: (
-        <div className="flex items-center gap-1 text-xs">
-          <Clock className="h-3 w-3 text-primary-400" />
+        <div className='flex items-center gap-1 text-xs'>
+          <Clock className='h-3 w-3 text-primary-400' />
           Per execution
         </div>
       ),
@@ -344,7 +344,7 @@ function WorkflowAnalyticsHeader({ detailedStats, loading }: WorkflowAnalyticsHe
       cards={cards}
       loading={loading}
       columns={{ default: 'grid-cols-2', md: 'md:grid-cols-4' }}
-      className="border-b bg-primary-50"
+      className='border-b bg-primary-50'
     />
   )
 }
@@ -405,21 +405,21 @@ function WorkflowAnalyticsChart({
           'group bg-background hover:bg-primary-50 transition-colors duration-200 p-3',
           className
         )}>
-        <div className="mb-3">
-          <div className="flex grow items-center">
-            <div className="w-full">
-              <div className="font-semibold gap-1 text-sm uppercase flex flex-row items-center text-primary-400 group-hover:text-primary-500">
-                <div className="min-w-0 overflow-hidden text-ellipsis break-normal">{title}</div>
+        <div className='mb-3'>
+          <div className='flex grow items-center'>
+            <div className='w-full'>
+              <div className='font-semibold gap-1 text-sm uppercase flex flex-row items-center text-primary-400 group-hover:text-primary-500'>
+                <div className='min-w-0 overflow-hidden text-ellipsis break-normal'>{title}</div>
                 {description && (
-                  <TooltipExplanation text={description} className="text-primary-400" />
+                  <TooltipExplanation text={description} className='text-primary-400' />
                 )}
               </div>
-              <div className="text-xs uppercase text-primary-400">{timeFrameLabel}</div>
+              <div className='text-xs uppercase text-primary-400'>{timeFrameLabel}</div>
             </div>
           </div>
         </div>
-        <div className="min-h-[200px] max-h-[300px] w-full flex items-center justify-center">
-          <div className="text-primary-400">Loading...</div>
+        <div className='min-h-[200px] max-h-[300px] w-full flex items-center justify-center'>
+          <div className='text-primary-400'>Loading...</div>
         </div>
       </div>
     )
@@ -454,31 +454,31 @@ function WorkflowAnalyticsChart({
         'group bg-background hover:bg-primary-50 transition-colors duration-200 p-3',
         className
       )}>
-      <div className="mb-3">
-        <div className="flex grow items-center">
-          <div className="w-full">
-            <div className="font-semibold gap-1 text-sm uppercase flex flex-row items-center text-primary-400 group-hover:text-primary-500">
-              <div className="min-w-0 overflow-hidden text-ellipsis break-normal">{title}</div>
+      <div className='mb-3'>
+        <div className='flex grow items-center'>
+          <div className='w-full'>
+            <div className='font-semibold gap-1 text-sm uppercase flex flex-row items-center text-primary-400 group-hover:text-primary-500'>
+              <div className='min-w-0 overflow-hidden text-ellipsis break-normal'>{title}</div>
               {description && (
-                <TooltipExplanation text={description} className="text-primary-400" />
+                <TooltipExplanation text={description} className='text-primary-400' />
               )}
             </div>
-            <div className="text-xs uppercase text-primary-400">{timeFrameLabel}</div>
+            <div className='text-xs uppercase text-primary-400'>{timeFrameLabel}</div>
           </div>
         </div>
       </div>
 
       {chartData.length === 0 ? (
-        <div className="min-h-[200px] max-h-[300px] w-full flex items-center justify-center">
-          <div className="text-primary-400">No data available</div>
+        <div className='min-h-[200px] max-h-[300px] w-full flex items-center justify-center'>
+          <div className='text-primary-400'>No data available</div>
         </div>
       ) : (
-        <ChartContainer config={chartConfig} className="min-h-[200px] max-h-[350px] w-full">
+        <ChartContainer config={chartConfig} className='min-h-[200px] max-h-[350px] w-full'>
           <LineChart accessibilityLayer data={chartData} margin={{ left: 10, right: 10 }}>
             <CartesianGrid vertical={false} />
             <YAxis tickLine={false} axisLine={false} tickMargin={8} tickFormatter={formatValue} />
             <XAxis
-              dataKey="date"
+              dataKey='date'
               tickLine={false}
               axisLine={false}
               tickMargin={8}
@@ -494,8 +494,8 @@ function WorkflowAnalyticsChart({
               }
             />
             <Line
-              dataKey="data"
-              type="natural"
+              dataKey='data'
+              type='natural'
               stroke={chartConfig.data.color}
               strokeWidth={2}
               dot={{ fill: chartConfig.data.color }}

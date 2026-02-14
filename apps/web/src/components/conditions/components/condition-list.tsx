@@ -2,12 +2,12 @@
 
 'use client'
 
+import { cn } from '@auxx/ui/lib/utils'
 import { RefreshCw } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
 import { useConditionContext } from '../condition-context'
-import ConditionItem from './condition-item'
 import type { Condition } from '../types'
+import ConditionItem from './condition-item'
 
 type ConditionListProps = {
   conditions: Condition[]
@@ -77,12 +77,7 @@ const ConditionList = ({
   }
 
   return (
-    <div
-      className={cn(
-        'relative',
-        isInGroup ? 'pl-[70px]' : 'pl-[30px]',
-        className
-      )}>
+    <div className={cn('relative', isInGroup ? 'pl-[70px]' : 'pl-[30px]', className)}>
       {conditions.length > 1 && config.showLogicalOperators && (
         <div
           className={cn(
@@ -98,14 +93,14 @@ const ConditionList = ({
             )}></div>
           {!readOnly && (
             <div
-              className="absolute right-1 top-1/2 flex h-[21px] -translate-y-1/2 cursor-pointer select-none items-center rounded-md border-[0.5px] border-border bg-secondary px-1 text-[10px] font-semibold text-secondary-foreground shadow-xs"
+              className='absolute right-1 top-1/2 flex h-[21px] -translate-y-1/2 cursor-pointer select-none items-center rounded-md border-[0.5px] border-border bg-secondary px-1 text-[10px] font-semibold text-secondary-foreground shadow-xs'
               onClick={toggleLogicalOperator}>
               {logicalOperator.toUpperCase()}
-              <RefreshCw className="ml-0.5 h-3 w-3" />
+              <RefreshCw className='ml-0.5 h-3 w-3' />
             </div>
           )}
           {readOnly && (
-            <div className="absolute right-1 top-1/2 flex h-[21px] -translate-y-1/2 select-none items-center rounded-md border-[0.5px] bg-secondary px-1 text-[10px] font-semibold text-secondary-foreground shadow-xs">
+            <div className='absolute right-1 top-1/2 flex h-[21px] -translate-y-1/2 select-none items-center rounded-md border-[0.5px] bg-secondary px-1 text-[10px] font-semibold text-secondary-foreground shadow-xs'>
               {logicalOperator.toUpperCase()}
             </div>
           )}

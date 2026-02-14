@@ -1,6 +1,6 @@
 // apps/web/src/app/(protected)/app/workflows/_components/credentials/validation-utils.ts
 
-import { INodeProperty, INodePropertyValidation } from '@auxx/workflow-nodes/types'
+import type { INodeProperty, INodePropertyValidation } from '@auxx/workflow-nodes/types'
 
 export interface ValidationResult {
   isValid: boolean

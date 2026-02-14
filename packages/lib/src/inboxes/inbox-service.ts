@@ -1,24 +1,24 @@
 // packages/lib/src/inboxes/inbox-service.ts
 
+import { type Database, database as defaultDb, schema } from '@auxx/database'
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
-import { database as defaultDb, schema, type Database } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
 import {
   checkAccess,
   getUserAccessibleInstances,
-  setInstanceAccess,
   type ResourceAccessContext,
+  setInstanceAccess,
 } from '@auxx/lib/resource-access'
-import { toRecordId, parseRecordId, type RecordId } from '@auxx/types/resource'
 import { createScopedLogger } from '@auxx/logger'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
+import { and, eq } from 'drizzle-orm'
 import { UnifiedCrudHandler } from '../resources/crud'
 import type {
   CreateInboxInput,
-  InboxAccessInput,
   Inbox,
+  InboxAccessInput,
+  InboxVisibility,
   InboxWithIntegrations,
   UpdateInboxInput,
-  InboxVisibility,
 } from './types'
 
 const logger = createScopedLogger('inbox-service')
@@ -140,15 +140,19 @@ export class InboxService {
     // Delete related records first
     await this.db.transaction(async (tx) => {
       // Delete inbox integrations
-      await tx.delete(schema.InboxIntegration).where(eq(schema.InboxIntegration.inboxId, instanceId))
+      await tx
+        .delete(schema.InboxIntegration)
+        .where(eq(schema.InboxIntegration.inboxId, instanceId))
 
       // Delete resource access records
-      await tx.delete(schema.ResourceAccess).where(
-        and(
-          eq(schema.ResourceAccess.organizationId, this.organizationId),
-          eq(schema.ResourceAccess.entityInstanceId, instanceId)
+      await tx
+        .delete(schema.ResourceAccess)
+        .where(
+          and(
+            eq(schema.ResourceAccess.organizationId, this.organizationId),
+            eq(schema.ResourceAccess.entityInstanceId, instanceId)
+          )
         )
-      )
     })
 
     // Delete the entity instance
@@ -238,7 +242,10 @@ export class InboxService {
   /**
    * Set role-based access based on visibility setting
    */
-  private async setVisibilityAccess(recordId: RecordId, visibility: InboxVisibility): Promise<void> {
+  private async setVisibilityAccess(
+    recordId: RecordId,
+    visibility: InboxVisibility
+  ): Promise<void> {
     const grants =
       visibility === 'org_members'
         ? [{ granteeId: 'org_member', permission: ResourcePermission.view }]
@@ -401,7 +408,8 @@ export class InboxService {
       description: (getValue('inbox_description') as string) ?? null,
       color: (getValue('inbox_color') as string) ?? '#4F46E5',
       status: ((getValue('inbox_status') as string) ?? 'ACTIVE') as Inbox['status'],
-      visibility: ((getValue('inbox_visibility') as string) ?? 'org_members') as Inbox['visibility'],
+      visibility: ((getValue('inbox_visibility') as string) ??
+        'org_members') as Inbox['visibility'],
       settings: (getValue('inbox_settings') as Record<string, unknown>) ?? {},
       organizationId: instance.organizationId,
       createdAt: instance.createdAt,

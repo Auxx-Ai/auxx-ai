@@ -2,8 +2,8 @@
 // WorkflowApp model built on BaseModel (org-scoped)
 
 import { and, eq, type SQL } from 'drizzle-orm'
-import { WorkflowApp } from '../schema/workflow-app'
 import { Workflow } from '../schema/workflow'
+import { WorkflowApp } from '../schema/workflow-app'
 import { BaseModel } from '../utils/base-model'
 import { Result, type TypedResult } from '../utils/result'
 
@@ -32,7 +32,12 @@ export class WorkflowAppModel extends BaseModel<
   /** Find a workflow app by id with its draftWorkflow joined (if any) */
   async findWithDraftById(
     id: string
-  ): Promise<TypedResult<{ app: WorkflowAppEntity; draftWorkflow: typeof Workflow.$inferSelect | null }, Error>> {
+  ): Promise<
+    TypedResult<
+      { app: WorkflowAppEntity; draftWorkflow: typeof Workflow.$inferSelect | null },
+      Error
+    >
+  > {
     try {
       this.requireOrgIfScoped()
       const whereParts: SQL<unknown>[] = [eq(WorkflowApp.id, id)]
@@ -52,7 +57,10 @@ export class WorkflowAppModel extends BaseModel<
       const rows = (await q) as any[]
       const row = rows?.[0]
       if (!row) return Result.ok({ app: undefined as any, draftWorkflow: null })
-      return Result.ok({ app: row.app as WorkflowAppEntity, draftWorkflow: (row.draft as any) ?? null })
+      return Result.ok({
+        app: row.app as WorkflowAppEntity,
+        draftWorkflow: (row.draft as any) ?? null,
+      })
     } catch (error: any) {
       return Result.error(error)
     }

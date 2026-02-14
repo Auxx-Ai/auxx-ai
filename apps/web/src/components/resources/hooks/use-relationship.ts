@@ -1,9 +1,9 @@
 // apps/web/src/components/resources/hooks/use-relationship.ts
 
-import { useEffect, useMemo } from 'react'
-import { useHydratedItems, useIsLoadingRelationships, getRelationshipStoreState } from '../store'
 import type { RecordPickerItem } from '@auxx/lib/resources/client'
 import { getInstanceId, type RecordId } from '@auxx/lib/resources/client'
+import { useEffect, useMemo } from 'react'
+import { getRelationshipStoreState, useHydratedItems, useIsLoadingRelationships } from '../store'
 
 interface UseRelationshipResult {
   /** Hydrated items indexed by position (matches input recordIds order) */
@@ -27,7 +27,6 @@ interface UseRelationshipResult {
  * const { items, isLoading } = useRelationship(recordIds)
  */
 export function useRelationship(recordIds: RecordId[]): UseRelationshipResult {
-
   // Create stable key for effect dependency
   const recordIdsKey = useMemo(() => recordIds.join('|'), [recordIds])
 

@@ -1,11 +1,11 @@
 // apps/api/src/services/app-version-bundles/generate-bundle-download-urls.ts
 
+import { database } from '@auxx/database'
 import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { database } from '@auxx/database'
-import { type Result, ok, err } from 'neverthrow'
-import { s3Client, S3_BUCKET_NAME } from './s3'
+import { err, ok, type Result } from 'neverthrow'
 import type { AppVersionBundleError } from './errors'
+import { S3_BUCKET_NAME, s3Client } from './s3'
 import { fromDatabase, fromS3 } from './utils'
 
 /**

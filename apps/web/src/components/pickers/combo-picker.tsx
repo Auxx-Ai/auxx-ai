@@ -1,5 +1,4 @@
-import React, { useState, useMemo, useRef, useCallback } from 'react'
-import { Check, ChevronsUpDown } from 'lucide-react'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   Command,
@@ -10,10 +9,11 @@ import {
   CommandList,
   CommandSeparator,
 } from '@auxx/ui/components/command'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { Badge } from '@auxx/ui/components/badge'
-import { cn } from '@auxx/ui/lib/utils'
 import { EntityIcon } from '@auxx/ui/components/icons'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { cn } from '@auxx/ui/lib/utils'
+import { Check, ChevronsUpDown } from 'lucide-react'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 
 /**
  * Custom CommandItem that doesn't close the popover on selection in multi-select mode
@@ -207,7 +207,7 @@ export function ComboPicker({
         className={cn('flex items-center', selected ? 'font-medium' : '')}
         disabled={disabled}>
         {opt.iconId ? (
-          <EntityIcon iconId={opt.iconId} color={opt.color || 'gray'} size="sm" className="me-1" />
+          <EntityIcon iconId={opt.iconId} color={opt.color || 'gray'} size='sm' className='me-1' />
         ) : null}
         <span>{opt.label}</span>
         <Check className={cn('ml-auto h-4 w-4', selected ? 'opacity-100' : 'opacity-0')} />

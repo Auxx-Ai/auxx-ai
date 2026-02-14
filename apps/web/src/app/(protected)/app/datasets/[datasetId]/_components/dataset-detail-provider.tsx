@@ -1,12 +1,13 @@
 // apps/web/src/app/(protected)/app/datasets/[datasetId]/_components/dataset-detail-provider.tsx
 'use client'
-import { createContext, useContext, useState, useMemo, useCallback } from 'react'
-import { useQueryState } from 'nuqs'
-import { api } from '~/trpc/react'
-import { useDebounce } from '~/hooks/use-debounced-value'
-import type { DocumentStatus } from '@auxx/database/types'
 import type { DatasetEntity as Dataset, DocumentEntity as Document } from '@auxx/database/models'
+import type { DocumentStatus } from '@auxx/database/types'
 import { keepPreviousData } from '@tanstack/react-query'
+import { useQueryState } from 'nuqs'
+import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { useDebounce } from '~/hooks/use-debounced-value'
+import { api } from '~/trpc/react'
+
 interface DatasetDetailContextValue {
   // Dataset data
   dataset: Dataset | null

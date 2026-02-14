@@ -1,37 +1,37 @@
 // apps/web/src/app/(protected)/app/workflows/_components/credentials/edit-credential-dialog.tsx
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { useForm } from 'react-hook-form'
-import { Loader2 } from 'lucide-react'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
 import {
   Form,
+  FormControl,
   FormField,
   FormItem,
   FormLabel,
-  FormControl,
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import { Badge } from '@auxx/ui/components/badge'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Separator } from '@auxx/ui/components/separator'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { Loader2 } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { api } from '~/trpc/react'
-import { useCredentials } from './credentials-provider'
+import { filterCredentialDataForEdit, hasSensitiveFieldChanges } from './credential-data-utils'
 import { CredentialFormBuilder } from './credential-form-builder'
 import { getCredentialType } from './credential-registry'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
+import { useCredentials } from './credentials-provider'
 import { validateCredentialData } from './validation-utils'
-import { filterCredentialDataForEdit, hasSensitiveFieldChanges } from './credential-data-utils'
 
 interface EditCredentialDialogProps {
   open: boolean
@@ -175,11 +175,10 @@ export function EditCredentialDialog({
 
   const credentialType = credentialData ? getCredentialType(credentialData.info.type) : null
 
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
-        <DialogHeader className="mb-0 pb-0">
+      <DialogContent className='max-h-[90vh] overflow-y-auto'>
+        <DialogHeader className='mb-0 pb-0'>
           <DialogTitle>Edit Credential</DialogTitle>
           <DialogDescription>
             Update your credential settings. Sensitive fields must be re-entered for security.
@@ -187,27 +186,27 @@ export function EditCredentialDialog({
 
           {credentialData && credentialType && (
             <>
-              <div className="flex items-center gap-3 mt-3 mb-4">
-                <credentialType.icon className="size-5" />
-                <span className="text-sm">{credentialType.displayName}</span>
+              <div className='flex items-center gap-3 mt-3 mb-4'>
+                <credentialType.icon className='size-5' />
+                <span className='text-sm'>{credentialType.displayName}</span>
               </div>
             </>
           )}
         </DialogHeader>
 
-        <div className="flex-1 p-1">
+        <div className='flex-1 p-1'>
           {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin mr-2" />
+            <div className='flex items-center justify-center py-8'>
+              <Loader2 className='h-6 w-6 animate-spin mr-2' />
               <span>Loading credential data...</span>
             </div>
           ) : credentialData && credentialType ? (
             <Form {...form}>
-              <div className="space-y-6">
+              <div className='space-y-6'>
                 {/* Credential Name Field */}
                 <FormField
                   control={form.control}
-                  name="name"
+                  name='name'
                   rules={{ required: 'Credential name is required' }}
                   render={({ field }) => (
                     <FormItem>
@@ -217,7 +216,7 @@ export function EditCredentialDialog({
                       <FormControl>
                         <Input
                           {...field}
-                          placeholder="Enter a name for this credential"
+                          placeholder='Enter a name for this credential'
                           value={field.value || ''}
                         />
                       </FormControl>
@@ -240,18 +239,18 @@ export function EditCredentialDialog({
           ) : null}
         </div>
 
-        <DialogFooter className="border-t pt-4">
-          <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)} disabled={isSaving}>
-            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+        <DialogFooter className='border-t pt-4'>
+          <Button size='sm' variant='ghost' onClick={() => onOpenChange(false)} disabled={isSaving}>
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
           <Button
-            size="sm"
+            size='sm'
             onClick={handleSave}
             disabled={!form.formState.isValid || isSaving || isLoading}
             loading={isSaving}
-            loadingText="Saving..."
+            loadingText='Saving...'
             data-dialog-submit>
-            Save Changes <KbdSubmit variant="default" size="sm" />
+            Save Changes <KbdSubmit variant='default' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

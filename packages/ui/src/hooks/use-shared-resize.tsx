@@ -3,12 +3,12 @@
 
 import {
   createContext,
+  type ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useRef,
   useState,
-  useCallback,
-  type ReactNode,
 } from 'react'
 
 /** Context value for shared resize state */
@@ -62,7 +62,10 @@ export function SharedResizeProvider({ children, className }: SharedResizeProvid
         clearTimeout(timeoutRef.current)
       }
       timeoutRef.current = setTimeout(() => {
-        console.log('[SharedResizeProvider] resize ended, committing width:', currentWidthRef.current)
+        console.log(
+          '[SharedResizeProvider] resize ended, committing width:',
+          currentWidthRef.current
+        )
         setStableWidth(currentWidthRef.current)
       }, 150)
     })

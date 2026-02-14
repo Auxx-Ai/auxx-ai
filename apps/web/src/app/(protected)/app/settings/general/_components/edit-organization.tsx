@@ -1,14 +1,5 @@
 'use client'
 
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import { useFieldArray, useForm } from 'react-hook-form'
-import { z } from 'zod'
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { UAParser } from 'ua-parser-js'
-import { Laptop, Smartphone, AlertCircle, Edit } from 'lucide-react'
-
 import { Button } from '@auxx/ui/components/button'
 import {
   Form,
@@ -20,15 +11,22 @@ import {
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import { client } from '~/auth/auth-client'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { useUser } from '~/hooks/use-user'
-import { ListPasskeys } from './list-passkeys'
-import { ChangePassword } from './change-password'
-import { TwoFactorDialog } from './two-factor-dialog'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { AlertCircle, Edit, Laptop, Smartphone } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useFieldArray, useForm } from 'react-hook-form'
+import { UAParser } from 'ua-parser-js'
+import { z } from 'zod'
+import { client } from '~/auth/auth-client'
 import { UserRegistrationInfo } from '~/components/auth/user-registration-info'
 import { AvatarUpload } from '~/components/file-upload/ui/avatar-upload'
+import { useUser } from '~/hooks/use-user'
+import { ChangePassword } from './change-password'
 import { EditEmailDialog } from './edit-email-dialog'
+import { ListPasskeys } from './list-passkeys'
+import { TwoFactorDialog } from './two-factor-dialog'
 import { UserPreferencesSection } from './user-preferences-section'
 
 const profileFormSchema = z.object({
@@ -115,23 +113,23 @@ export function EditOrganizationForm(): JSX.Element {
 
   const canEditEmail = (user?.providers?.length ?? 0) === 0
   return (
-    <div className="max-w-xl">
+    <div className='max-w-xl'>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-          <div className="space-y-2">
-            <h2 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+        <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-8'>
+          <div className='space-y-2'>
+            <h2 className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'>
               Photo
             </h2>
             <AvatarUpload
               currentAvatarUrl={currentAvatarUrl}
               onUploadComplete={handleAvatarUpload}
-              size="sm"
+              size='sm'
             />
           </div>
 
           <FormField
             control={form.control}
-            name="username"
+            name='username'
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Name</FormLabel>
@@ -140,33 +138,33 @@ export function EditOrganizationForm(): JSX.Element {
                 </FormDescription>
 
                 <FormControl>
-                  <Input placeholder="Your name" {...field} />
+                  <Input placeholder='Your name' {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
-          <div className="space-y-2">
+          <div className='space-y-2'>
             <FormLabel>Email</FormLabel>
             <FormDescription>
               {canEditEmail
                 ? 'The email associated with your account'
                 : 'Email is managed by your OAuth provider'}
             </FormDescription>
-            <div className="relative">
+            <div className='relative'>
               <Input
                 value={user?.email || ''}
                 readOnly
-                className="bg-muted flex-1"
-                placeholder="Your email address"
+                className='bg-muted flex-1'
+                placeholder='Your email address'
               />
               {canEditEmail && (
                 <Button
-                  type="button"
-                  variant="outline"
-                  size="xs"
+                  type='button'
+                  variant='outline'
+                  size='xs'
                   onClick={() => setEmailDialogOpen(true)}
-                  className="absolute right-1 top-1/2 -translate-y-1/2">
+                  className='absolute right-1 top-1/2 -translate-y-1/2'>
                   <Edit />
                   Edit
                 </Button>
@@ -174,8 +172,8 @@ export function EditOrganizationForm(): JSX.Element {
             </div>
             {/* Show pending verification status */}
             {user && !user.emailVerified && user.email && canEditEmail && (
-              <div className="flex items-center gap-2 mt-2 text-sm text-amber-600 dark:text-amber-500">
-                <AlertCircle className="size-4" />
+              <div className='flex items-center gap-2 mt-2 text-sm text-amber-600 dark:text-amber-500'>
+                <AlertCircle className='size-4' />
                 <span>Pending verification - check your email</span>
               </div>
             )}
@@ -185,40 +183,40 @@ export function EditOrganizationForm(): JSX.Element {
 
           <UserRegistrationInfo />
 
-          <div className="space-y-2">
-            <h2 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+          <div className='space-y-2'>
+            <h2 className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'>
               Change Password
             </h2>
-            <p className="text-[0.8rem] text-muted-foreground">
+            <p className='text-[0.8rem] text-muted-foreground'>
               Change or add a password to your account. This can be used to sign in to your account.
             </p>
             <ChangePassword />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <h2 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+            <div className='space-y-2'>
+              <h2 className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'>
                 Passkeys
               </h2>
-              <p className="text-[0.8rem] text-muted-foreground">Passwordless login.</p>
+              <p className='text-[0.8rem] text-muted-foreground'>Passwordless login.</p>
               <ListPasskeys />
             </div>
 
-            <div className="space-y-2">
-              <h2 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+            <div className='space-y-2'>
+              <h2 className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'>
                 Two Factor
               </h2>
               {user?.hasPassword ? (
                 <>
-                  <p className="text-[0.8rem] text-muted-foreground">
+                  <p className='text-[0.8rem] text-muted-foreground'>
                     Adds an extra layer of security.
                   </p>
 
                   <TwoFactorDialog />
                 </>
               ) : (
-                <div className="space-y-2">
-                  <p className="text-[0.8rem] text-muted-foreground">
+                <div className='space-y-2'>
+                  <p className='text-[0.8rem] text-muted-foreground'>
                     Two-factor authentication requires a password to be set up first.
                   </p>
                 </div>
@@ -228,7 +226,7 @@ export function EditOrganizationForm(): JSX.Element {
 
           {session && (
             <div>
-              <div className="flex items-center gap-2 text-sm  text-black font-medium dark:text-white">
+              <div className='flex items-center gap-2 text-sm  text-black font-medium dark:text-white'>
                 {new UAParser(session.userAgent || '').getDevice().type === 'mobile' ? (
                   <Smartphone />
                 ) : (
@@ -237,7 +235,7 @@ export function EditOrganizationForm(): JSX.Element {
                 {new UAParser(session.userAgent || '').getOS().name},{' '}
                 {new UAParser(session.userAgent || '').getBrowser().name}
                 <button
-                  className="text-red-500 opacity-80 cursor-pointer text-xs underline"
+                  className='text-red-500 opacity-80 cursor-pointer text-xs underline'
                   onClick={handleSignOut}>
                   Sign Out
                 </button>
@@ -245,7 +243,7 @@ export function EditOrganizationForm(): JSX.Element {
             </div>
           )}
 
-          <Button type="submit" variant="outline" loading={isSubmitting} loadingText="Updating...">
+          <Button type='submit' variant='outline' loading={isSubmitting} loadingText='Updating...'>
             Update profile
           </Button>
         </form>

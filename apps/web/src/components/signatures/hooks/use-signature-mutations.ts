@@ -1,8 +1,8 @@
 // apps/web/src/components/signatures/hooks/use-signature-mutations.ts
 
-import { api } from '~/trpc/react'
-import { toastError } from '@auxx/ui/components/toast'
 import type { SignatureVisibility } from '@auxx/types/signature'
+import { toastError } from '@auxx/ui/components/toast'
+import { api } from '~/trpc/react'
 
 /**
  * Input for creating a signature

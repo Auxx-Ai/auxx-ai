@@ -1,11 +1,11 @@
 // apps/web/src/app/(public)/workflows/run/[shareToken]/page.tsx
 
+import { API_URL } from '@auxx/config/urls'
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { API_URL } from '@auxx/config/urls'
 import {
-  WorkflowShareProvider,
   ShareGate,
+  WorkflowShareProvider,
   WorkflowTriggerInterface,
 } from '~/components/workflow/share'
 
@@ -75,7 +75,7 @@ export default async function PublicWorkflowRunPage({ params }: PageProps) {
   }
 
   return (
-    <div className="h-screen w-screen overflow-hidden">
+    <div className='h-screen w-screen overflow-hidden'>
       <WorkflowShareProvider>
         <ShareGate shareToken={shareToken}>
           <WorkflowTriggerInterface />

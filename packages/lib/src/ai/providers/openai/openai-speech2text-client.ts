@@ -1,6 +1,7 @@
 // packages/lib/src/ai/providers/openai/openai-speech2text-client.ts
 
-import OpenAI from 'openai'
+import type OpenAI from 'openai'
+import { createScopedLogger, type Logger } from '../../../logger'
 import { Speech2TextClient } from '../../clients/base/speech2text-client'
 import type {
   ClientConfig,
@@ -9,7 +10,6 @@ import type {
   TranscriptSegment,
   UsageMetrics,
 } from '../../clients/base/types'
-import { createScopedLogger, Logger } from '../../../logger'
 
 /**
  * OpenAI specialized speech-to-text client
@@ -26,9 +26,9 @@ export class OpenAISpeech2TextClient extends Speech2TextClient {
   async invoke(params: TranscribeParams): Promise<TranscribeResponse> {
     this.validateTranscribeParams(params)
     this.validateAudioFile(params.audio)
-    
+
     const startTime = this.getTimestamp()
-    
+
     this.logOperationStart('Speech2Text invoke', {
       model: params.model,
       audioType: typeof params.audio,
@@ -37,37 +37,40 @@ export class OpenAISpeech2TextClient extends Speech2TextClient {
     })
 
     try {
-      return await this.withRetryAndCircuitBreaker(async () => {
-        const requestParams: any = {
+      return await this.withRetryAndCircuitBreaker(
+        async () => {
+          const requestParams: any = {
+            model: params.model,
+            file: this.prepareAudioFile(params.audio),
+          }
+
+          if (params.language) {
+            requestParams.language = params.language
+          }
+
+          if (params.temperature !== undefined) {
+            requestParams.temperature = params.temperature
+          }
+
+          if (params.response_format) {
+            requestParams.response_format = params.response_format
+          } else if (params.format) {
+            requestParams.response_format = params.format
+          }
+
+          if (params.user) {
+            requestParams.user = params.user
+          }
+
+          const response = await this.apiClient.audio.transcriptions.create(requestParams)
+
+          return this.processTranscriptionResponse(response, params)
+        },
+        {
+          operation: 'speech2text_invoke',
           model: params.model,
-          file: this.prepareAudioFile(params.audio),
         }
-
-        if (params.language) {
-          requestParams.language = params.language
-        }
-
-        if (params.temperature !== undefined) {
-          requestParams.temperature = params.temperature
-        }
-
-        if (params.response_format) {
-          requestParams.response_format = params.response_format
-        } else if (params.format) {
-          requestParams.response_format = params.format
-        }
-
-        if (params.user) {
-          requestParams.user = params.user
-        }
-
-        const response = await this.apiClient.audio.transcriptions.create(requestParams)
-
-        return this.processTranscriptionResponse(response, params)
-      }, {
-        operation: 'speech2text_invoke',
-        model: params.model,
-      })
+      )
     } catch (error) {
       this.handleApiError(error, 'invoke')
     } finally {
@@ -87,9 +90,12 @@ export class OpenAISpeech2TextClient extends Speech2TextClient {
     }
   }
 
-  private processTranscriptionResponse(response: any, params: TranscribeParams): TranscribeResponse {
+  private processTranscriptionResponse(
+    response: any,
+    params: TranscribeParams
+  ): TranscribeResponse {
     const format = params.response_format || params.format || 'json'
-    
+
     if (format === 'json') {
       return {
         text: response.text,
@@ -117,7 +123,7 @@ export class OpenAISpeech2TextClient extends Speech2TextClient {
 
   private processSegments(segments?: any[]): TranscriptSegment[] | undefined {
     if (!segments) return undefined
-    
+
     return segments.map((segment, index) => ({
       id: segment.id || index,
       start: segment.start,
@@ -132,7 +138,7 @@ export class OpenAISpeech2TextClient extends Speech2TextClient {
     // This is an estimation - actual usage would come from response headers or separate API call
     const duration = this.estimateAudioDurationFromResponse(response)
     const audioMinutes = Math.ceil(duration / 60)
-    
+
     return {
       prompt_tokens: audioMinutes, // Using minutes as "tokens" for audio
       completion_tokens: 0,
@@ -146,12 +152,12 @@ export class OpenAISpeech2TextClient extends Speech2TextClient {
       const lastSegment = response.segments[response.segments.length - 1]
       return lastSegment.end || 30 // Default to 30 seconds if no timing info
     }
-    
+
     // Estimate based on text length (rough: 150 words per minute, 5 chars per word)
     const textLength = response.text?.length || 0
     const estimatedWords = textLength / 5
     const estimatedMinutes = estimatedWords / 150
-    
+
     return Math.max(estimatedMinutes * 60, 1) // At least 1 second
   }
 
@@ -167,11 +173,63 @@ export class OpenAISpeech2TextClient extends Speech2TextClient {
    */
   getSupportedLanguages(): string[] {
     return [
-      'af', 'ar', 'hy', 'az', 'be', 'bs', 'bg', 'ca', 'zh', 'hr', 'cs', 'da', 'nl',
-      'en', 'et', 'fi', 'fr', 'gl', 'de', 'el', 'he', 'hi', 'hu', 'is', 'id', 'it',
-      'ja', 'kn', 'kk', 'ko', 'lv', 'lt', 'mk', 'ms', 'mr', 'mi', 'ne', 'no', 'fa',
-      'pl', 'pt', 'ro', 'ru', 'sr', 'sk', 'sl', 'es', 'sw', 'sv', 'tl', 'ta', 'th',
-      'tr', 'uk', 'ur', 'vi', 'cy',
+      'af',
+      'ar',
+      'hy',
+      'az',
+      'be',
+      'bs',
+      'bg',
+      'ca',
+      'zh',
+      'hr',
+      'cs',
+      'da',
+      'nl',
+      'en',
+      'et',
+      'fi',
+      'fr',
+      'gl',
+      'de',
+      'el',
+      'he',
+      'hi',
+      'hu',
+      'is',
+      'id',
+      'it',
+      'ja',
+      'kn',
+      'kk',
+      'ko',
+      'lv',
+      'lt',
+      'mk',
+      'ms',
+      'mr',
+      'mi',
+      'ne',
+      'no',
+      'fa',
+      'pl',
+      'pt',
+      'ro',
+      'ru',
+      'sr',
+      'sk',
+      'sl',
+      'es',
+      'sw',
+      'sv',
+      'tl',
+      'ta',
+      'th',
+      'tr',
+      'uk',
+      'ur',
+      'vi',
+      'cy',
     ]
   }
 
@@ -194,7 +252,7 @@ export class OpenAISpeech2TextClient extends Speech2TextClient {
    */
   protected validateTranscribeParams(params: TranscribeParams): void {
     super.validateTranscribeParams(params)
-    
+
     if (!this.getSupportedModels().includes(params.model)) {
       throw new Error(`Unsupported speech-to-text model: ${params.model}`)
     }
@@ -203,7 +261,10 @@ export class OpenAISpeech2TextClient extends Speech2TextClient {
       throw new Error(`Unsupported language: ${params.language}`)
     }
 
-    if (params.response_format && !['json', 'text', 'srt', 'vtt', 'verbose_json'].includes(params.response_format)) {
+    if (
+      params.response_format &&
+      !['json', 'text', 'srt', 'vtt', 'verbose_json'].includes(params.response_format)
+    ) {
       throw new Error(`Unsupported response format: ${params.response_format}`)
     }
   }
@@ -213,7 +274,7 @@ export class OpenAISpeech2TextClient extends Speech2TextClient {
    */
   protected validateAudioFile(audio: Buffer | string): void {
     super.validateAudioFile(audio)
-    
+
     if (Buffer.isBuffer(audio)) {
       const maxSize = this.getMaxFileSize()
       if (audio.length > maxSize) {

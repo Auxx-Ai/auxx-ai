@@ -1,14 +1,14 @@
 // packages/lib/src/entity-definitions/entity-definition-service.ts
 
-import type { Result } from 'neverthrow'
 import {
-  getEntityDefinition,
-  listEntityDefinitions,
-  getEntityDefinitionBySlug,
   createEntityDefinition,
-  updateEntityDefinition,
   deleteEntityDefinition,
+  getEntityDefinition,
+  getEntityDefinitionBySlug,
+  listEntityDefinitions,
+  updateEntityDefinition,
 } from '@auxx/services/entity-definitions'
+import type { Result } from 'neverthrow'
 import { DisplayFieldService, type DisplayFieldType } from '../field-values'
 import type { CreateEntityDefinitionInput, UpdateEntityDefinitionInput } from './types'
 
@@ -132,10 +132,16 @@ export class EntityDefinitionService {
     // 3. Check which display fields changed
     const changedDisplayFields: DisplayFieldType[] = []
 
-    if ('primaryDisplayFieldId' in input && input.primaryDisplayFieldId !== existing.primaryDisplayFieldId) {
+    if (
+      'primaryDisplayFieldId' in input &&
+      input.primaryDisplayFieldId !== existing.primaryDisplayFieldId
+    ) {
       changedDisplayFields.push('primary')
     }
-    if ('secondaryDisplayFieldId' in input && input.secondaryDisplayFieldId !== existing.secondaryDisplayFieldId) {
+    if (
+      'secondaryDisplayFieldId' in input &&
+      input.secondaryDisplayFieldId !== existing.secondaryDisplayFieldId
+    ) {
       changedDisplayFields.push('secondary')
     }
     if ('avatarFieldId' in input && input.avatarFieldId !== existing.avatarFieldId) {

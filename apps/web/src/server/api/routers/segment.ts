@@ -1,9 +1,10 @@
 // apps/web/src/server/api/routers/segment.ts
+
+import { IndexStatus } from '@auxx/database/enums'
+import { SegmentService } from '@auxx/lib/datasets'
+import { createScopedLogger } from '@auxx/logger'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { createScopedLogger } from '@auxx/logger'
-import { SegmentService } from '@auxx/lib/datasets'
-import { IndexStatus } from '@auxx/database/enums'
 
 const logger = createScopedLogger('api/segment')
 export const segmentRouter = createTRPCRouter({

@@ -1,39 +1,39 @@
 // packages/lib/src/field-values/field-value-queries.ts
 
 import { schema } from '@auxx/database'
-import { type FieldType } from '@auxx/database/types'
-import { and, eq, inArray, asc } from 'drizzle-orm'
-import { type TypedFieldValue, isArrayReturnFieldType } from '@auxx/types'
+import type { FieldType } from '@auxx/database/types'
 import type { FieldWithDefinition } from '@auxx/services'
-import { parseRecordId, toRecordId } from '../resources/resource-id'
-import type { RecordId } from '@auxx/types/resource'
-import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
+import { isArrayReturnFieldType, type TypedFieldValue } from '@auxx/types'
 import {
   type FieldPath,
   type FieldReference,
-  type ResourceFieldId,
   isFieldPath,
   parseResourceFieldId,
+  type ResourceFieldId,
 } from '@auxx/types/field'
-import type {
-  GetValueInput,
-  GetValuesInput,
-  BatchGetValuesInput,
-  TypedFieldValueResult,
-  BatchFieldValueResult,
-  FieldValueRow,
-} from './types'
+import type { RecordId } from '@auxx/types/resource'
+import { and, asc, eq, inArray } from 'drizzle-orm'
+import type { ResourceRegistryService } from '../resources/registry/resource-registry-service'
+import { parseRecordId, toRecordId } from '../resources/resource-id'
 import {
   type FieldValueContext,
   getField,
-  rowToTypedValue,
-  rowsToTypedValues,
-  isValidTypedValue,
-  validateRowReferences,
-  getFieldTypeMapByDefinition,
-  validateFieldReferences,
   getFieldTypeFromRegistry,
+  getFieldTypeMapByDefinition,
+  isValidTypedValue,
+  rowsToTypedValues,
+  rowToTypedValue,
+  validateFieldReferences,
+  validateRowReferences,
 } from './field-value-helpers'
+import type {
+  BatchFieldValueResult,
+  BatchGetValuesInput,
+  FieldValueRow,
+  GetValueInput,
+  GetValuesInput,
+  TypedFieldValueResult,
+} from './types'
 
 // =============================================================================
 // READ OPERATIONS
@@ -459,7 +459,7 @@ function mapResultsToSources(
       results.push({
         recordId: sourceRecordId,
         fieldRef,
-        value: shouldBeArray ? values : values[0] ?? null,
+        value: shouldBeArray ? values : (values[0] ?? null),
       })
     }
   }

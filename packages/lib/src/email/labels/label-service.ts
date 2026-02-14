@@ -1,10 +1,11 @@
-import { createScopedLogger } from '@auxx/logger'
-import { LabelRepo } from './label-repo'
-import { LabelProviderFactory } from './label-provider-factory'
 import { database as db, schema } from '@auxx/database'
+import { LabelType } from '@auxx/database/enums'
+import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { ReauthenticationRequiredError } from '../errors-handlers'
-import { LabelType } from '@auxx/database/enums'
+import { LabelProviderFactory } from './label-provider-factory'
+import { LabelRepo } from './label-repo'
+
 const logger = createScopedLogger('label-service')
 export class LabelService {
   private repository: LabelRepo

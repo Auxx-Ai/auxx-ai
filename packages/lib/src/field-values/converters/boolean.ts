@@ -1,8 +1,12 @@
 // packages/lib/src/field-values/converters/boolean.ts
 
-import type { TypedFieldValueInput, TypedFieldValue, BooleanFieldValue } from '@auxx/types/field-value'
-import type { FieldValueConverter, FieldOptions } from './index'
+import type {
+  BooleanFieldValue,
+  TypedFieldValue,
+  TypedFieldValueInput,
+} from '@auxx/types/field-value'
 import { DEFAULT_BOOLEAN_OPTIONS } from '../../custom-fields/defaults'
+import type { FieldOptions, FieldValueConverter } from './index'
 
 /**
  * Converter for CHECKBOX field type.

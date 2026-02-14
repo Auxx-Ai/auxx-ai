@@ -1,12 +1,12 @@
 // apps/web/src/components/workflow/nodes/core/list/schema.ts
 
 import { z } from 'zod'
-import { ListPanel } from './panel'
-import { type ListNodeData, type ListOperation } from './types'
-import { NodeType, type NodeDefinition, NodeCategory } from '~/components/workflow/types'
+import { NodeCategory, type NodeDefinition, NodeType } from '~/components/workflow/types'
 import type { ValidationResult } from '../../../types'
-import { computeListOutputVariables } from './output-variables'
 import { extractListVariables } from './extract-variables'
+import { computeListOutputVariables } from './output-variables'
+import { ListPanel } from './panel'
+import type { ListNodeData, ListOperation } from './types'
 
 /**
  * Zod schema for Condition (modern ConditionProvider format)

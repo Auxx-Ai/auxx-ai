@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/note/panel.tsx
 
-import React from 'react'
+import type React from 'react'
 
 interface NotePanelProps {
   nodeId: string
@@ -11,7 +11,7 @@ interface NotePanelProps {
  */
 export const NotePanel: React.FC<NotePanelProps> = ({ nodeId }) => {
   return (
-    <div className="p-4 text-center text-sm text-muted-foreground">
+    <div className='p-4 text-center text-sm text-muted-foreground'>
       Click on the note to edit it directly in the canvas.
     </div>
   )

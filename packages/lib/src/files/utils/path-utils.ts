@@ -8,11 +8,13 @@
  * Normalize a path string to use forward slashes and remove redundant separators
  */
 export function normalizePath(path: string): string {
-  return path
-    .replace(/\\/g, '/') // Convert backslashes to forward slashes
-    .replace(/\/+/g, '/') // Remove duplicate slashes
-    .replace(/\/$/, '') // Remove trailing slash
-    || '/' // Default to root if empty
+  return (
+    path
+      .replace(/\\/g, '/') // Convert backslashes to forward slashes
+      .replace(/\/+/g, '/') // Remove duplicate slashes
+      .replace(/\/$/, '') || // Remove trailing slash
+    '/'
+  ) // Default to root if empty
 }
 
 /**
@@ -21,15 +23,15 @@ export function normalizePath(path: string): string {
 export function joinPaths(...segments: (string | null | undefined)[]): string {
   const validSegments = segments
     .filter((segment): segment is string => segment != null)
-    .map(segment => segment.trim())
-    .filter(segment => segment.length > 0)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0)
 
   if (validSegments.length === 0) {
     return '/'
   }
 
   let result = validSegments.join('/')
-  
+
   // Ensure it starts with /
   if (!result.startsWith('/')) {
     result = '/' + result
@@ -77,7 +79,7 @@ export function splitPath(path: string): string[] {
     return []
   }
 
-  return normalized.split('/').filter(segment => segment.length > 0)
+  return normalized.split('/').filter((segment) => segment.length > 0)
 }
 
 /**
@@ -123,7 +125,7 @@ export function getRelativePath(fromPath: string, toPath: string): string {
   // Find common prefix
   let commonLength = 0
   const minLength = Math.min(fromSegments.length, toSegments.length)
-  
+
   for (let i = 0; i < minLength; i++) {
     if (fromSegments[i] === toSegments[i]) {
       commonLength++
@@ -137,12 +139,12 @@ export function getRelativePath(fromPath: string, toPath: string): string {
   const downSteps = toSegments.slice(commonLength)
 
   const relativeParts: string[] = []
-  
+
   // Add .. for each level up
   for (let i = 0; i < upSteps; i++) {
     relativeParts.push('..')
   }
-  
+
   // Add down path segments
   relativeParts.push(...downSteps)
 
@@ -161,15 +163,15 @@ export function getCommonAncestorPath(paths: string[]): string {
     return getParentPath(paths[0])
   }
 
-  const segmentArrays = paths.map(path => splitPath(path))
-  const minLength = Math.min(...segmentArrays.map(segments => segments.length))
+  const segmentArrays = paths.map((path) => splitPath(path))
+  const minLength = Math.min(...segmentArrays.map((segments) => segments.length))
 
-  let commonSegments: string[] = []
+  const commonSegments: string[] = []
 
   for (let i = 0; i < minLength; i++) {
     const segment = segmentArrays[0][i]
-    const allMatch = segmentArrays.every(segments => segments[i] === segment)
-    
+    const allMatch = segmentArrays.every((segments) => segments[i] === segment)
+
     if (allMatch) {
       commonSegments.push(segment)
     } else {
@@ -207,7 +209,7 @@ export function generateUniquePath(
     const parentPath = getParentPath(basePath)
     const name = getPathName(basePath)
     const lastDotIndex = name.lastIndexOf('.')
-    
+
     if (lastDotIndex > 0) {
       // Has extension
       const nameWithoutExt = name.substring(0, lastDotIndex)
@@ -217,7 +219,7 @@ export function generateUniquePath(
       // No extension
       path = joinPaths(parentPath, `${name} (${counter})`)
     }
-    
+
     counter++
   }
 
@@ -256,7 +258,7 @@ export function validateSafePath(path: string): { isValid: boolean; errors: stri
 
   return {
     isValid: errors.length === 0,
-    errors
+    errors,
   }
 }
 
@@ -290,19 +292,23 @@ export function matchesGlob(path: string, pattern: string): boolean {
 /**
  * Get all paths that would be affected by moving a folder
  */
-export function getAffectedPaths(oldPath: string, newPath: string, allPaths: string[]): {
+export function getAffectedPaths(
+  oldPath: string,
+  newPath: string,
+  allPaths: string[]
+): {
   updated: Array<{ old: string; new: string }>
   conflicts: string[]
 } {
   const normalizedOldPath = normalizePath(oldPath)
   const normalizedNewPath = normalizePath(newPath)
-  
+
   const updated: Array<{ old: string; new: string }> = []
   const conflicts: string[] = []
 
   for (const path of allPaths) {
     const normalizedPath = normalizePath(path)
-    
+
     if (normalizedPath === normalizedOldPath) {
       // This is the path being moved
       updated.push({ old: normalizedPath, new: normalizedNewPath })
@@ -315,10 +321,10 @@ export function getAffectedPaths(oldPath: string, newPath: string, allPaths: str
   }
 
   // Check for conflicts
-  const newPaths = new Set(updated.map(u => u.new))
+  const newPaths = new Set(updated.map((u) => u.new))
   for (const path of allPaths) {
     const normalizedPath = normalizePath(path)
-    if (newPaths.has(normalizedPath) && !updated.some(u => u.old === normalizedPath)) {
+    if (newPaths.has(normalizedPath) && !updated.some((u) => u.old === normalizedPath)) {
       conflicts.push(normalizedPath)
     }
   }

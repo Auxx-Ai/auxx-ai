@@ -1,8 +1,8 @@
 // apps/web/src/components/resources/hooks/use-record.ts
 
-import { useEffect, useLayoutEffect, useRef, useCallback } from 'react'
-import { useRecordStore, type RecordMeta } from '../store/record-store'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { type RecordMeta, useRecordStore } from '../store/record-store'
 
 /**
  * Options for useRecord hook.
@@ -58,7 +58,8 @@ export function useRecord<T extends RecordMeta = RecordMeta>({
   // Subscribe to loading state
   const isLoading = useRecordStore(
     useCallback(
-      (state) => (recordId ? state.loadingIds.has(recordId) || state.pendingFetchIds.has(recordId) : false),
+      (state) =>
+        recordId ? state.loadingIds.has(recordId) || state.pendingFetchIds.has(recordId) : false,
       [recordId]
     )
   )
@@ -114,16 +115,12 @@ export function useIsRecordLoading(recordId: RecordId): boolean {
  * Check if a record is pending fetch (queued but not started).
  */
 export function useIsRecordPending(recordId: RecordId): boolean {
-  return useRecordStore(
-    useCallback((state) => state.pendingFetchIds.has(recordId), [recordId])
-  )
+  return useRecordStore(useCallback((state) => state.pendingFetchIds.has(recordId), [recordId]))
 }
 
 /**
  * Check if a record was not found (deleted/invalid).
  */
 export function useIsRecordNotFound(recordId: RecordId): boolean {
-  return useRecordStore(
-    useCallback((state) => state.notFoundIds.has(recordId), [recordId])
-  )
+  return useRecordStore(useCallback((state) => state.notFoundIds.has(recordId), [recordId]))
 }

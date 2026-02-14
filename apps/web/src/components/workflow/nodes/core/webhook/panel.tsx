@@ -2,9 +2,14 @@
 
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { type WebhookNodeData } from './types'
-import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
+import { Button } from '@auxx/ui/components/button'
+import { Input } from '@auxx/ui/components/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@auxx/ui/components/input-group'
 import {
   Select,
   SelectContent,
@@ -12,27 +17,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Button } from '@auxx/ui/components/button'
-import { Copy, FileJson, Trash2 } from 'lucide-react'
-import Section from '~/components/workflow/ui/section'
-import { useNodeCrud, useWebhookTestListener, useReadOnly } from '~/components/workflow/hooks'
-import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
 import { toastSuccess } from '@auxx/ui/components/toast'
-import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
-import { webhookDefinition } from './schema'
-import { Input } from '@auxx/ui/components/input'
-import {
-  InputGroup,
-  InputGroupInput,
-  InputGroupAddon,
-  InputGroupButton,
-} from '@auxx/ui/components/input-group'
 import { cn } from '@auxx/ui/lib/utils'
-import { WebhookTestEvents } from './webhook-test-events'
-import StructuredOutputGenerator from '~/components/workflow/ui/structured-output-generator'
-import { jsonToSchema } from '~/components/workflow/utils/schema-to-variable'
-import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
 import { produce } from 'immer'
+import { Copy, FileJson, Trash2 } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { useNodeCrud, useReadOnly, useWebhookTestListener } from '~/components/workflow/hooks'
+import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
+import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
+import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import Section from '~/components/workflow/ui/section'
+import StructuredOutputGenerator from '~/components/workflow/ui/structured-output-generator'
+import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
+import { jsonToSchema } from '~/components/workflow/utils/schema-to-variable'
+import { webhookDefinition } from './schema'
+import type { WebhookNodeData } from './types'
+import { WebhookTestEvents } from './webhook-test-events'
 
 interface WebhookPanelProps {
   nodeId: string
@@ -123,65 +123,76 @@ const WebhookPanelComponent: React.FC<WebhookPanelProps> = ({ nodeId, data }) =>
     <BasePanel nodeId={nodeId} data={data}>
       {/* Webhook URL Section */}
       <Section
-        title="Webhook URL"
-        description="Use this URL to trigger your workflow."
+        title='Webhook URL'
+        description='Use this URL to trigger your workflow.'
         isRequired
         actions={
           <Select
             value={urlType}
             onValueChange={(value: 'test' | 'production') => setUrlType(value)}>
-            <SelectTrigger className="w-25" size="sm">
+            <SelectTrigger className='w-25' size='sm'>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="test">Test</SelectItem>
-              <SelectItem value="production">Production</SelectItem>
+              <SelectItem value='test'>Test</SelectItem>
+              <SelectItem value='production'>Production</SelectItem>
             </SelectContent>
           </Select>
         }>
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <InputGroup className="flex-1">
-              <InputGroupAddon align="inline-start">
+        <div className='space-y-3'>
+          <div className='flex items-center gap-2'>
+            <InputGroup className='flex-1'>
+              <InputGroupAddon align='inline-start'>
                 <Select
                   value={nodeData.method || 'POST'}
                   onValueChange={handleMethodChange}
                   disabled={isReadOnly}>
-                  <SelectTrigger id="method" variant="transparent" className="w-20 h-auto border-0 shadow-none">
+                  <SelectTrigger
+                    id='method'
+                    variant='transparent'
+                    className='w-20 h-auto border-0 shadow-none'>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="GET">GET</SelectItem>
-                    <SelectItem value="POST">POST</SelectItem>
+                    <SelectItem value='GET'>GET</SelectItem>
+                    <SelectItem value='POST'>POST</SelectItem>
                   </SelectContent>
                 </Select>
               </InputGroupAddon>
 
-              <InputGroupInput type="text" value={currentUrl} readOnly className="font-mono text-xs" />
-              <InputGroupAddon align="inline-end">
-                <InputGroupButton size="icon-xs" onClick={copyWebhookUrl} aria-label="Copy webhook URL">
+              <InputGroupInput
+                type='text'
+                value={currentUrl}
+                readOnly
+                className='font-mono text-xs'
+              />
+              <InputGroupAddon align='inline-end'>
+                <InputGroupButton
+                  size='icon-xs'
+                  onClick={copyWebhookUrl}
+                  aria-label='Copy webhook URL'>
                   <Copy />
                 </InputGroupButton>
               </InputGroupAddon>
             </InputGroup>
           </div>
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">
+          <div className='flex items-center justify-between'>
+            <p className='text-xs text-muted-foreground'>
               {urlType === 'test'
                 ? 'Test mode uses the draft version of your workflow'
                 : 'Production mode uses the published version of your workflow'}
             </p>
             {urlType === 'test' && (
               <Button
-                variant="outline"
-                size="sm"
+                variant='outline'
+                size='sm'
                 className={cn(
                   'ms-2 border w-25',
                   isListening &&
                     'bg-bad-200 hover:bg-bad-200 text-bad-500 hover:text-bad-500 border-bad-300'
                 )}
                 loading={isListening}
-                loadingText="Listening..."
+                loadingText='Listening...'
                 disabled={isReadOnly}
                 onClick={() => (isListening ? stopListening() : startListening())}>
                 {isListening ? 'Stop Listening' : 'Test Webhook'}
@@ -230,44 +241,44 @@ const WebhookPanelComponent: React.FC<WebhookPanelProps> = ({ nodeId, data }) =>
       {/* Body Schema Configuration (for POST) */}
       {nodeData.method === 'POST' && (
         <Section
-          title="Request Body Schema"
-          description="Define the expected body structure for validation and output variables."
+          title='Request Body Schema'
+          description='Define the expected body structure for validation and output variables.'
           initialOpen={nodeData.bodySchema?.enabled}
           actions={
             nodeData.bodySchema?.enabled && (
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={handleEditSchema} disabled={isReadOnly}>
-                  <FileJson className="h-4 w-4" />
+              <div className='flex items-center gap-2'>
+                <Button variant='ghost' size='sm' onClick={handleEditSchema} disabled={isReadOnly}>
+                  <FileJson className='h-4 w-4' />
                   Edit
                 </Button>
                 <Button
-                  variant="ghost"
-                  size="sm"
+                  variant='ghost'
+                  size='sm'
                   onClick={handleRemoveSchema}
                   disabled={isReadOnly}>
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className='h-4 w-4' />
                   Remove
                 </Button>
               </div>
             )
           }>
-          <div className="space-y-4">
+          <div className='space-y-4'>
             {nodeData.bodySchema?.enabled && nodeData.bodySchema?.schema ? (
-              <div className="space-y-3">
-                <div className="text-sm text-muted-foreground">
+              <div className='space-y-3'>
+                <div className='text-sm text-muted-foreground'>
                   <p>
                     Schema is configured. The webhook will validate incoming requests against this
                     schema.
                   </p>
                 </div>
-                <div className="bg-muted p-3 rounded-md">
-                  <pre className="text-xs overflow-x-auto">
+                <div className='bg-muted p-3 rounded-md'>
+                  <pre className='text-xs overflow-x-auto'>
                     {JSON.stringify(nodeData.bodySchema.schema, null, 2)}
                   </pre>
                 </div>
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground">
+              <div className='text-sm text-muted-foreground'>
                 <p>
                   No body schema configured. Send a test webhook with a JSON body, then click "Use
                   as Schema Template" to generate a schema.

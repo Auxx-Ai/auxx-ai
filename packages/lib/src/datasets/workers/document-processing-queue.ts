@@ -1,12 +1,12 @@
 // packages/lib/src/datasets/workers/document-processing-queue.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
-import { createScopedLogger } from '@auxx/logger'
 import type {
+  BatchOperationJobData,
   DocumentProcessingJobData,
   EmbeddingGenerationJobData,
-  BatchOperationJobData,
 } from '../types/worker.types'
 
 const logger = createScopedLogger('document-processing-queue')
@@ -21,17 +21,17 @@ export class DocumentProcessingQueue {
   private static _embeddingQueue: ReturnType<typeof getQueue> | null = null
 
   private static get documentProcessingQueue() {
-    if (!this._documentProcessingQueue) {
-      this._documentProcessingQueue = getQueue(Queues.documentProcessingQueue)
+    if (!DocumentProcessingQueue._documentProcessingQueue) {
+      DocumentProcessingQueue._documentProcessingQueue = getQueue(Queues.documentProcessingQueue)
     }
-    return this._documentProcessingQueue
+    return DocumentProcessingQueue._documentProcessingQueue
   }
 
   private static get embeddingQueue() {
-    if (!this._embeddingQueue) {
-      this._embeddingQueue = getQueue(Queues.embeddingQueue)
+    if (!DocumentProcessingQueue._embeddingQueue) {
+      DocumentProcessingQueue._embeddingQueue = getQueue(Queues.embeddingQueue)
     }
-    return this._embeddingQueue
+    return DocumentProcessingQueue._embeddingQueue
   }
 
   /**
@@ -70,15 +70,19 @@ export class DocumentProcessingQueue {
         metadata: { queuedAt: new Date().toISOString(), priority: options?.priority || 0 },
       }
 
-      const job = await this.documentProcessingQueue.add('process-document', jobData, {
-        priority: options?.priority || 0,
-        delay: options?.delay || 0,
-        jobId: `process-doc-${documentId}-${Date.now()}`,
-        removeOnComplete: 50,
-        removeOnFail: 100,
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
-      })
+      const job = await DocumentProcessingQueue.documentProcessingQueue.add(
+        'process-document',
+        jobData,
+        {
+          priority: options?.priority || 0,
+          delay: options?.delay || 0,
+          jobId: `process-doc-${documentId}-${Date.now()}`,
+          removeOnComplete: 50,
+          removeOnFail: 100,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+        }
+      )
 
       logger.info('Document processing job queued', {
         documentId,
@@ -111,7 +115,7 @@ export class DocumentProcessingQueue {
       datasetId: string
       organizationId: string
     }>,
-    options?: { 
+    options?: {
       modelProvider?: string
       modelName?: string
       priority?: number
@@ -147,14 +151,18 @@ export class DocumentProcessingQueue {
           },
         }
 
-        const job = await this.embeddingQueue.add('generate-batch-embeddings', jobData, {
-          priority: options?.priority || 0,
-          jobId: `embed-batch-${batch[0].datasetId}-${i}-${Date.now()}`,
-          removeOnComplete: 100,
-          removeOnFail: 50,
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 2000 },
-        })
+        const job = await DocumentProcessingQueue.embeddingQueue.add(
+          'generate-batch-embeddings',
+          jobData,
+          {
+            priority: options?.priority || 0,
+            jobId: `embed-batch-${batch[0].datasetId}-${i}-${Date.now()}`,
+            removeOnComplete: 100,
+            removeOnFail: 50,
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 2000 },
+          }
+        )
 
         jobs.push(job)
       }
@@ -203,14 +211,18 @@ export class DocumentProcessingQueue {
         },
       }
 
-      const job = await this.documentProcessingQueue.add('batch-operation', jobData, {
-        priority: 0, // Lower priority for batch operations
-        jobId: `batch-${operation}-${datasetId}-${Date.now()}`,
-        removeOnComplete: 20,
-        removeOnFail: 50,
-        attempts: 2,
-        backoff: { type: 'exponential', delay: 10000 },
-      })
+      const job = await DocumentProcessingQueue.documentProcessingQueue.add(
+        'batch-operation',
+        jobData,
+        {
+          priority: 0, // Lower priority for batch operations
+          jobId: `batch-${operation}-${datasetId}-${Date.now()}`,
+          removeOnComplete: 20,
+          removeOnFail: 50,
+          attempts: 2,
+          backoff: { type: 'exponential', delay: 10000 },
+        }
+      )
 
       logger.info('Batch operation job queued', {
         operation,
@@ -240,8 +252,18 @@ export class DocumentProcessingQueue {
   static async getProcessingStatus(datasetId: string) {
     try {
       const [processingJobs, embeddingJobs] = await Promise.all([
-        this.documentProcessingQueue.getJobs(['waiting', 'active', 'completed', 'failed']),
-        this.embeddingQueue.getJobs(['waiting', 'active', 'completed', 'failed']),
+        DocumentProcessingQueue.documentProcessingQueue.getJobs([
+          'waiting',
+          'active',
+          'completed',
+          'failed',
+        ]),
+        DocumentProcessingQueue.embeddingQueue.getJobs([
+          'waiting',
+          'active',
+          'completed',
+          'failed',
+        ]),
       ])
 
       const datasetProcessingJobs = processingJobs.filter(
@@ -293,8 +315,8 @@ export class DocumentProcessingQueue {
   static async cancelDatasetJobs(datasetId: string) {
     try {
       const [processingJobs, embeddingJobs] = await Promise.all([
-        this.documentProcessingQueue.getJobs(['waiting', 'active']),
-        this.embeddingQueue.getJobs(['waiting', 'active']),
+        DocumentProcessingQueue.documentProcessingQueue.getJobs(['waiting', 'active']),
+        DocumentProcessingQueue.embeddingQueue.getJobs(['waiting', 'active']),
       ])
 
       const jobsToCancel = [
@@ -328,8 +350,8 @@ export class DocumentProcessingQueue {
   static async retryFailedJobs(datasetId: string) {
     try {
       const [processingJobs, embeddingJobs] = await Promise.all([
-        this.documentProcessingQueue.getJobs(['failed']),
-        this.embeddingQueue.getJobs(['failed']),
+        DocumentProcessingQueue.documentProcessingQueue.getJobs(['failed']),
+        DocumentProcessingQueue.embeddingQueue.getJobs(['failed']),
       ])
 
       const failedJobs = [

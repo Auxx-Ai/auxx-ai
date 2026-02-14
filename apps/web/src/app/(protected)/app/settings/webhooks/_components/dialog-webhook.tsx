@@ -1,6 +1,7 @@
 // apps/web/src/app/(protected)/app/settings/webhooks/_components/dialog-webhook.tsx
 'use client'
-import { useState } from 'react'
+import type { WebhookEntity as Webhook } from '@auxx/database/models'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -8,23 +9,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from '@auxx/ui/components/input-group'
-import { Switch } from '@auxx/ui/components/switch'
-import { Label } from '@auxx/ui/components/label'
-import { useForm } from 'react-hook-form'
-import { useWebhook } from './use-webhook'
-import { EventTypePicker } from './event-type-picker'
-import { z } from 'zod'
-
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import {
   Form,
   FormControl,
@@ -33,7 +17,23 @@ import {
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
-import type { WebhookEntity as Webhook } from '@auxx/database/models'
+import { Input } from '@auxx/ui/components/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@auxx/ui/components/input-group'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { Label } from '@auxx/ui/components/label'
+import { Switch } from '@auxx/ui/components/switch'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
+import { EventTypePicker } from './event-type-picker'
+import { useWebhook } from './use-webhook'
+
 // Import event types from library
 interface DialogWebhookProps {
   open: boolean
@@ -88,21 +88,21 @@ export function DialogWebhook({ open, onClose, webhook, onSuccess }: DialogWebho
 
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent size="sm" position="tc">
+      <DialogContent size='sm' position='tc'>
         <DialogHeader>
           <DialogTitle>{webhook ? 'Edit Webhook' : 'Create Webhook'}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="">
-            <div className="space-y-4">
-              <div className="space-y-2 mt-3">
+          <form onSubmit={form.handleSubmit(onSubmit)} className=''>
+            <div className='space-y-4'>
+              <div className='space-y-2 mt-3'>
                 <FormField
                   control={form.control}
-                  name="name"
+                  name='name'
                   render={({ field }) => (
                     <FormItem>
                       <FormControl>
-                        <Input id="name" placeholder="My Webhook" {...field} />
+                        <Input id='name' placeholder='My Webhook' {...field} />
                       </FormControl>
 
                       <FormMessage />
@@ -113,27 +113,27 @@ export function DialogWebhook({ open, onClose, webhook, onSuccess }: DialogWebho
 
               <FormField
                 control={form.control}
-                name="url"
+                name='url'
                 render={({ field }) => (
                   <FormItem>
-                    <Label htmlFor="url">URL</Label>
+                    <Label htmlFor='url'>URL</Label>
                     <FormControl>
                       <InputGroup>
                         <InputGroupInput
-                          id="url"
-                          placeholder="https://example.com/webhook"
+                          id='url'
+                          placeholder='https://example.com/webhook'
                           {...field}
                         />
-                        <InputGroupAddon align="inline-end" className="">
+                        <InputGroupAddon align='inline-end' className=''>
                           <Button
-                            type="button"
-                            variant="outline"
-                            className="mr-0.5"
-                            size="xs"
+                            type='button'
+                            variant='outline'
+                            className='mr-0.5'
+                            size='xs'
                             onClick={handleTestWebhook}
                             disabled={testWebhook.isPending || !currentUrl}
                             loading={testWebhook.isPending}
-                            loadingText="Testing...">
+                            loadingText='Testing...'>
                             Test
                           </Button>
                         </InputGroupAddon>
@@ -144,26 +144,26 @@ export function DialogWebhook({ open, onClose, webhook, onSuccess }: DialogWebho
                 )}
               />
 
-              <div className="space-y-2">
+              <div className='space-y-2'>
                 {/* Replace the old eventTypes selector with the new EventTypePicker */}
                 <EventTypePicker
                   selectedEventTypes={selectedEventTypes}
                   onChange={setSelectedEventTypes}
-                  placeholder="Select event types..."
+                  placeholder='Select event types...'
                 />
               </div>
 
-              <div className="flex items-center space-x-2">
+              <div className='flex items-center space-x-2'>
                 <FormField
                   control={form.control}
-                  name="isActive"
+                  name='isActive'
                   render={({ field }) => (
-                    <FormItem className="flex flex-row items-center justify-between rounded-lg shadow-none  gap-2 space-y-0">
+                    <FormItem className='flex flex-row items-center justify-between rounded-lg shadow-none  gap-2 space-y-0'>
                       <FormControl>
                         <Switch checked={field.value} onCheckedChange={field.onChange} />
                       </FormControl>
-                      <div className="">
-                        <FormLabel className="mt-0 pt-0">Active</FormLabel>
+                      <div className=''>
+                        <FormLabel className='mt-0 pt-0'>Active</FormLabel>
                       </div>
                     </FormItem>
                   )}
@@ -173,20 +173,20 @@ export function DialogWebhook({ open, onClose, webhook, onSuccess }: DialogWebho
 
             <DialogFooter>
               <Button
-                variant="ghost"
-                size="sm"
+                variant='ghost'
+                size='sm'
                 onClick={onClose}
-                type="button"
+                type='button'
                 disabled={create.isPending || update.isPending}>
-                Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+                Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
               </Button>
               <Button
-                type="submit"
-                size="sm"
-                variant="outline"
+                type='submit'
+                size='sm'
+                variant='outline'
                 loading={create.isPending || update.isPending}
-                loadingText="Saving...">
-                {webhook ? 'Update' : 'Create'} <KbdSubmit variant="outline" size="sm" />
+                loadingText='Saving...'>
+                {webhook ? 'Update' : 'Create'} <KbdSubmit variant='outline' size='sm' />
               </Button>
             </DialogFooter>
           </form>

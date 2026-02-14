@@ -1,7 +1,7 @@
 // packages/sdk/src/client/forms/types/boolean.ts
 
 import { FormValue } from '../base.js'
-import type { SerializedFormValue, FormBooleanMetadata } from '../types.js'
+import type { FormBooleanMetadata, SerializedFormValue } from '../types.js'
 
 /**
  * Boolean field builder (renders as checkbox).

@@ -1,7 +1,7 @@
 // packages/services/src/developer-accounts/get-developer-account.ts
 
 import { database } from '@auxx/database'
-import { ok, err } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 // import type { DeveloperAccountError } from './errors'
 

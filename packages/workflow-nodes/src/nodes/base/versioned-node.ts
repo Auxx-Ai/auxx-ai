@@ -1,4 +1,4 @@
-import type { IVersionedNodeType, INodeTypeBaseDescription, INodeType } from '../../types'
+import type { INodeType, INodeTypeBaseDescription, IVersionedNodeType } from '../../types'
 
 export class VersionedNodeType implements IVersionedNodeType {
   currentVersion: number

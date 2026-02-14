@@ -1,14 +1,14 @@
 // apps/web/src/components/workflow/nodes/core/list/output-variables.ts
 
-import { type ListNodeData, type ListOperation } from './types'
-import { BaseType } from '~/components/workflow/types'
-import type { UnifiedVariable } from '~/components/workflow/types'
 import type { TableId } from '@auxx/lib/workflow-engine/client'
-import { inferPluckOutputType } from '~/components/workflow/utils/variable-utils'
+import type { UnifiedVariable } from '~/components/workflow/types'
+import { BaseType } from '~/components/workflow/types'
 import {
-  cloneAndRewriteVariableIds,
   assignVariableIds,
+  cloneAndRewriteVariableIds,
 } from '~/components/workflow/utils/variable-cloning'
+import { inferPluckOutputType } from '~/components/workflow/utils/variable-utils'
+import type { ListNodeData, ListOperation } from './types'
 
 /**
  * Validate that the input variable is an array type

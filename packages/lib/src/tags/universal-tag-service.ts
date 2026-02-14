@@ -1,11 +1,11 @@
 // packages/lib/src/tags/universal-tag-service.ts
 
+import { type Database, database, schema } from '@auxx/database'
+import type { IntegrationProviderType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { database, type Database, schema } from '@auxx/database'
-import { type IntegrationProviderType } from '@auxx/database/types'
-import { and, eq, isNull, inArray, isNotNull } from 'drizzle-orm'
-import { randomUUID } from 'crypto'
 import { generateId } from '@auxx/utils'
+import { randomUUID } from 'crypto'
+import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 
 const logger = createScopedLogger('universal-tag-service')
 

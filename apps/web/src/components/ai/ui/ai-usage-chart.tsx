@@ -2,14 +2,14 @@
 
 'use client'
 
-import { useMemo } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 import {
+  type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  type ChartConfig,
 } from '@auxx/ui/components/chart'
+import { useMemo } from 'react'
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 
 /** Entry shape from the API */
 interface UsageDayEntry {
@@ -122,18 +122,18 @@ export function AiUsageChart({
 
   if (loading) {
     return (
-      <div className="h-[300px] flex items-center justify-center text-primary-400">
+      <div className='h-[300px] flex items-center justify-center text-primary-400'>
         Loading chart...
       </div>
     )
   }
 
   return (
-    <ChartContainer config={chartConfig} className="h-[300px] w-full">
+    <ChartContainer config={chartConfig} className='h-[300px] w-full'>
       <BarChart data={chartData} margin={{ left: 10, right: 10 }}>
         <CartesianGrid vertical={false} />
         <XAxis
-          dataKey="date"
+          dataKey='date'
           tickLine={false}
           axisLine={false}
           tickMargin={8}
@@ -154,12 +154,12 @@ export function AiUsageChart({
             return value.toString()
           }}
         />
-        <ChartTooltip content={<ChartTooltipContent indicator="dot" className="min-w-50" />} />
+        <ChartTooltip content={<ChartTooltipContent indicator='dot' className='min-w-50' />} />
         {stackKeys.map((key) => (
           <Bar
             key={key}
             dataKey={key}
-            stackId="tokens"
+            stackId='tokens'
             radius={8}
             fill={chartConfig[key]?.color || CHART_COLORS[0]}
           />

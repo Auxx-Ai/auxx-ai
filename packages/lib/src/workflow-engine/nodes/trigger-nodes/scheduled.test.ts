@@ -1,10 +1,10 @@
 // packages/lib/src/workflow-engine/nodes/trigger-nodes/scheduled.test.ts
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { ScheduledTriggerProcessor } from './scheduled'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ExecutionContextManager } from '../../core/execution-context'
-import { WorkflowNodeType, NodeRunningStatus } from '../../core/types'
 import type { WorkflowNode } from '../../core/types'
+import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { ScheduledTriggerProcessor } from './scheduled'
 
 // Mock the logger
 vi.mock('@auxx/logger', () => ({

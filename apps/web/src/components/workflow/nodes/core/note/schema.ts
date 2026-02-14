@@ -1,12 +1,12 @@
 // apps/web/src/components/workflow/nodes/core/note/schema.ts
 
 import { z } from 'zod'
-import { NodeDefinition, NodeCategory, ValidationResult } from '../../../types'
-import { NoteNodeData, NoteTheme } from './types'
-import { NotePanel } from './panel'
-import { NodeType } from '../../../types/node-types'
-import { DEFAULT_NOTE_WIDTH, DEFAULT_NOTE_HEIGHT } from './constants'
 import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
+import { NodeCategory, type NodeDefinition, type ValidationResult } from '../../../types'
+import { NodeType } from '../../../types/node-types'
+import { DEFAULT_NOTE_HEIGHT, DEFAULT_NOTE_WIDTH } from './constants'
+import { NotePanel } from './panel'
+import type { NoteNodeData, NoteTheme } from './types'
 
 /**
  * Zod schema for note node data (flattened structure)

@@ -1,11 +1,11 @@
 // apps/web/src/components/manufacturing/parts/vendor-part-fields.tsx
 'use client'
 
-import { VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
-import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
-import { BaseType } from '~/components/workflow/types'
+import { getInstanceId, type RecordId, toRecordId } from '@auxx/lib/field-values/client'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { toRecordId, getInstanceId, type RecordId } from '@auxx/lib/field-values/client'
+import { BaseType } from '~/components/workflow/types'
+import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
+import { VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 
 /**
  * Default values for vendor part form fields
@@ -58,15 +58,17 @@ export function VendorPartFields({
       {/* Contact Selection */}
       {showContactField && (
         <VarEditorFieldRow
-          title="Vendor"
+          title='Vendor'
           isRequired
           validationError={errors?.contactId}
-          validationType="error">
+          validationType='error'>
           <MultiRelationInput
-            entityDefinitionId="contact"
+            entityDefinitionId='contact'
             value={values.contactId ? [toRecordId('contact', values.contactId)] : []}
-            onChange={(recordIds: RecordId[]) => onChange('contactId', recordIds[0] ? getInstanceId(recordIds[0]) : '')}
-            placeholder="Select contact..."
+            onChange={(recordIds: RecordId[]) =>
+              onChange('contactId', recordIds[0] ? getInstanceId(recordIds[0]) : '')
+            }
+            placeholder='Select contact...'
             disabled={disabled || disableContactEdit}
             multi={false}
           />
@@ -75,13 +77,13 @@ export function VendorPartFields({
 
       {/* Vendor SKU */}
       <VarEditorFieldRow
-        title="Supplier SKU"
-        description="The SKU or part number used by this supplier"
+        title='Supplier SKU'
+        description='The SKU or part number used by this supplier'
         type={BaseType.STRING}
         showIcon
         isRequired
         validationError={errors?.vendorSku}
-        validationType="error">
+        validationType='error'>
         <ConstantInputAdapter
           value={values.vendorSku}
           onChange={(_, val) => onChange('vendorSku', val)}
@@ -92,12 +94,12 @@ export function VendorPartFields({
       </VarEditorFieldRow>
 
       {/* Unit Price */}
-      <VarEditorFieldRow title="Unit Price" type={BaseType.CURRENCY} showIcon>
+      <VarEditorFieldRow title='Unit Price' type={BaseType.CURRENCY} showIcon>
         <ConstantInputAdapter
           value={values.unitPrice}
           onChange={(_, val) => onChange('unitPrice', val)}
           varType={BaseType.CURRENCY}
-          placeholder="0.00"
+          placeholder='0.00'
           disabled={disabled}
           fieldOptions={{ currency: { currencyCode: 'USD' } }}
         />
@@ -105,38 +107,38 @@ export function VendorPartFields({
 
       {/* Lead Time */}
       <VarEditorFieldRow
-        title="Lead Time"
-        description="Days to receive order"
+        title='Lead Time'
+        description='Days to receive order'
         type={BaseType.NUMBER}
         showIcon>
         <ConstantInputAdapter
           value={values.leadTime}
           onChange={(_, val) => onChange('leadTime', val)}
           varType={BaseType.NUMBER}
-          placeholder="Days"
+          placeholder='Days'
           disabled={disabled}
         />
       </VarEditorFieldRow>
 
       {/* Min Order Qty */}
       <VarEditorFieldRow
-        title="Min Order"
-        description="Minimum order quantity"
+        title='Min Order'
+        description='Minimum order quantity'
         type={BaseType.NUMBER}
         showIcon>
         <ConstantInputAdapter
           value={values.minOrderQty}
           onChange={(_, val) => onChange('minOrderQty', val)}
           varType={BaseType.NUMBER}
-          placeholder="Qty"
+          placeholder='Qty'
           disabled={disabled}
         />
       </VarEditorFieldRow>
 
       {/* Is Preferred */}
       <VarEditorFieldRow
-        title="Preferred"
-        description="Mark as preferred supplier for this part"
+        title='Preferred'
+        description='Mark as preferred supplier for this part'
         type={BaseType.BOOLEAN}
         showIcon>
         <ConstantInputAdapter

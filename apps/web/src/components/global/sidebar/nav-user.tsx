@@ -1,5 +1,29 @@
 'use client'
 
+import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from '@auxx/ui/components/sidebar'
+import { getInitialsFromName } from '@auxx/utils'
 import {
   BadgeCheck,
   Bell,
@@ -13,40 +37,15 @@ import {
   Sun,
   SunMoon,
 } from 'lucide-react'
-
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuPortal,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-} from '@auxx/ui/components/dropdown-menu'
-import {
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  useSidebar,
-} from '@auxx/ui/components/sidebar'
 // import { auth, signOut } from "~/server/auth";
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useTheme } from 'next-themes'
+import { useEffect, useState } from 'react'
 // import { signOut } from 'next-auth/react'
 import { client } from '~/auth/auth-client' // Use the correct import for your auth library
 import { useUser } from '~/hooks/use-user'
 import { CreateOrganizationDialog } from '../create-org-dialog'
-import { useEffect, useState } from 'react'
-import { getInitialsFromName } from '@auxx/utils'
-import { useRouter } from 'next/navigation'
-import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { useTheme } from 'next-themes'
 
 type Prop = {
   user: {
@@ -101,41 +100,41 @@ export function NavUser({ user }: Prop) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <SidebarMenuButton
-                size="lg"
-                className="ps-1 pe-1.5  h-10 rounded-2xl ring-1 ring-ring/20  data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
-                <Avatar className="size-7 rounded-full ring-1 ring-ring/20">
+                size='lg'
+                className='ps-1 pe-1.5  h-10 rounded-2xl ring-1 ring-ring/20  data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground'>
+                <Avatar className='size-7 rounded-full ring-1 ring-ring/20'>
                   <AvatarImage src={user.image!} alt={user.name} />
-                  <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+                  <AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
                 </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">{user.name}</span>
-                  <span className="truncate text-xs">{user.email}</span>
+                <div className='grid flex-1 text-left text-sm leading-tight'>
+                  <span className='truncate font-semibold'>{user.name}</span>
+                  <span className='truncate text-xs'>{user.email}</span>
                 </div>
-                <ChevronsUpDown className="ml-auto size-4" />
+                <ChevronsUpDown className='ml-auto size-4' />
               </SidebarMenuButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent
-              className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+              className='w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg'
               // side={isMobile ? 'bottom' : 'right'}
-              align="start"
+              align='start'
               sideOffset={-42}>
-              <DropdownMenuLabel className="p-0 font-normal">
-                <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                  <Avatar className="size-7 rounded-full ring-1 ring-ring/20">
+              <DropdownMenuLabel className='p-0 font-normal'>
+                <div className='flex items-center gap-2 px-1 py-1.5 text-left text-sm'>
+                  <Avatar className='size-7 rounded-full ring-1 ring-ring/20'>
                     <AvatarImage src={user.image!} alt={user.name} />
-                    <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+                    <AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
                   </Avatar>
-                  <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">{user.name}</span>
-                    <span className="truncate text-xs">{user.email}</span>
+                  <div className='grid flex-1 text-left text-sm leading-tight'>
+                    <span className='truncate font-semibold'>{user.name}</span>
+                    <span className='truncate text-xs'>{user.email}</span>
                   </div>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuItem asChild>
-                  <Link href="/app/settings/plans">
-                    <Sparkles className="text-comparison-500" />
+                  <Link href='/app/settings/plans'>
+                    <Sparkles className='text-comparison-500' />
                     Upgrade to Pro
                   </Link>
                 </DropdownMenuItem>
@@ -148,8 +147,8 @@ export function NavUser({ user }: Prop) {
                     Switch Organization
                   </DropdownMenuSubTrigger>
                   <DropdownMenuPortal>
-                    <DropdownMenuSubContent className="min-w-56">
-                      <DropdownMenuLabel className="text-xs text-muted-foreground">
+                    <DropdownMenuSubContent className='min-w-56'>
+                      <DropdownMenuLabel className='text-xs text-muted-foreground'>
                         Organizations
                       </DropdownMenuLabel>
 
@@ -162,29 +161,29 @@ export function NavUser({ user }: Prop) {
                               <DropdownMenuRadioItem
                                 value={membership.organization.id}
                                 key={membership.organization.id}
-                                className="gap-2 p-1 pr-3">
-                                <div className="flex size-5 items-center justify-center rounded-full border">
-                                  <Building2 className="size-3 shrink-0" />
+                                className='gap-2 p-1 pr-3'>
+                                <div className='flex size-5 items-center justify-center rounded-full border'>
+                                  <Building2 className='size-3 shrink-0' />
                                 </div>
                                 {membership.organization.name}
                               </DropdownMenuRadioItem>
                             ))}
                       </DropdownMenuRadioGroup>
                       <DropdownMenuSeparator />
-                      <Link href="/app/settings/organization">
+                      <Link href='/app/settings/organization'>
                         <DropdownMenuItem>
-                          <div className="flex size-5 -ml-1 items-center justify-center rounded-full border bg-background">
-                            <Building2 className="size-3" />
+                          <div className='flex size-5 -ml-1 items-center justify-center rounded-full border bg-background'>
+                            <Building2 className='size-3' />
                           </div>
-                          <div className="">View all</div>
+                          <div className=''>View all</div>
                         </DropdownMenuItem>
                       </Link>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => setShowNewOrgDialog(true)}>
-                        <div className="flex size-5 -ml-1 items-center justify-center rounded-full border bg-background">
-                          <Plus className="size-3" />
+                        <div className='flex size-5 -ml-1 items-center justify-center rounded-full border bg-background'>
+                          <Plus className='size-3' />
                         </div>
-                        <div className="font-medium text-muted-foreground">Add Organization</div>
+                        <div className='font-medium text-muted-foreground'>Add Organization</div>
                       </DropdownMenuItem>
                     </DropdownMenuSubContent>
                   </DropdownMenuPortal>
@@ -193,14 +192,14 @@ export function NavUser({ user }: Prop) {
               <DropdownMenuSeparator />
 
               <DropdownMenuGroup>
-                <Link href="/app/settings/general">
+                <Link href='/app/settings/general'>
                   <DropdownMenuItem>
                     <BadgeCheck />
                     Account
                   </DropdownMenuItem>
                 </Link>
                 <DropdownMenuItem asChild>
-                  <Link href="/app/settings/plans">
+                  <Link href='/app/settings/plans'>
                     <CreditCard />
                     Billing
                   </Link>
@@ -211,13 +210,13 @@ export function NavUser({ user }: Prop) {
                   <RadioTab
                     value={theme}
                     onValueChange={setTheme}
-                    size="sm"
-                    radioGroupClassName="grid w-16"
-                    className="border h-6 border-primary-200 flex ml-auto ">
-                    <RadioTabItem value="light" size="sm" className="">
+                    size='sm'
+                    radioGroupClassName='grid w-16'
+                    className='border h-6 border-primary-200 flex ml-auto '>
+                    <RadioTabItem value='light' size='sm' className=''>
                       <Sun />
                     </RadioTabItem>
-                    <RadioTabItem value="dark" size="sm" className="">
+                    <RadioTabItem value='dark' size='sm' className=''>
                       <Moon />
                     </RadioTabItem>
                   </RadioTab>

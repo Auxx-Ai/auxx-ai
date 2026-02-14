@@ -1,18 +1,20 @@
 // src/lib/providers/outlook/outlook-oauth.ts
+
+import { env, WEBAPP_URL } from '@auxx/config/server'
+import { database as db, schema } from '@auxx/database'
+import type { MessageType } from '@auxx/database/enums'
+import type { IntegrationEntity } from '@auxx/database/models'
+import { InboxService } from '@auxx/lib/inboxes'
+import { createScopedLogger } from '@auxx/logger'
 import {
-  ConfidentialClientApplication,
   // AuthenticationResult,
-  AccountInfo,
+  type AccountInfo,
+  ConfidentialClientApplication,
   LogLevel,
 } from '@azure/msal-node'
 import { Client } from '@microsoft/microsoft-graph-client'
-import { env, WEBAPP_URL } from '@auxx/config/server'
-import { database as db, schema } from '@auxx/database'
-import type { IntegrationEntity } from '@auxx/database/models'
-import { createScopedLogger } from '@auxx/logger'
-import { InboxService } from '@auxx/lib/inboxes'
 import { eq } from 'drizzle-orm'
-import { MessageType } from '@auxx/database/enums'
+
 const logger = createScopedLogger('outlook-oauth')
 // Interface describing the data stored in Integration.metadata for Outlook
 export interface OutlookIntegrationMetadata {

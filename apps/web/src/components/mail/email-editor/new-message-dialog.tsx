@@ -1,6 +1,5 @@
 // src/components/mail/new-message-dialog/index.tsx
 'use client'
-import React from 'react'
 import {
   Dialog,
   DialogContent,
@@ -9,9 +8,10 @@ import {
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
 import { Loader2 } from 'lucide-react'
+import React from 'react'
 import ReplyComposeEditor from '~/components/mail/email-editor'
-import { useDraft } from './hooks/use-draft'
 import type { EditorPresetValues } from '~/components/mail/email-editor/types'
+import { useDraft } from './hooks/use-draft'
 
 interface NewMessageDialogProps {
   /** Trigger element for uncontrolled mode */
@@ -86,19 +86,19 @@ const NewMessageDialog: React.FC<NewMessageDialogProps> = ({
     <Dialog open={open} onOpenChange={setOpen}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent
-        position="tc"
-        size="xxl"
+        position='tc'
+        size='xxl'
         showClose={false}
-        className="border-none shadow-none bg-transparent p-0"
-        innerClassName="p-0 ">
-        <DialogHeader className="sr-only">
-          <DialogTitle className="text-2xl font-bold">
+        className='border-none shadow-none bg-transparent p-0'
+        innerClassName='p-0 '>
+        <DialogHeader className='sr-only'>
+          <DialogTitle className='text-2xl font-bold'>
             {mode === 'draft' ? 'Edit Draft' : 'Compose'}
           </DialogTitle>
         </DialogHeader>
         {showLoading ? (
-          <div className="flex items-center justify-center p-8 bg-background rounded-[20px]">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          <div className='flex items-center justify-center p-8 bg-background rounded-[20px]'>
+            <Loader2 className='size-6 animate-spin text-muted-foreground' />
           </div>
         ) : (
           <ReplyComposeEditor

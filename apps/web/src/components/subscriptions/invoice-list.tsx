@@ -1,8 +1,8 @@
 // app/(protected)/app/settings/plans/_components/invoice-list.tsx
 'use client'
 
-import { useState } from 'react'
-import { api } from '~/trpc/react'
+import { Button } from '@auxx/ui/components/button'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
   Table,
   TableBody,
@@ -11,20 +11,20 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import { Button } from '@auxx/ui/components/button'
-import { Skeleton } from '@auxx/ui/components/skeleton'
+import { format, isFuture } from 'date-fns'
 import {
-  CheckCircle,
-  Download,
-  FileText,
   AlertCircle,
   AlertTriangle,
+  CheckCircle,
   ChevronRight,
+  Download,
+  FileText,
   Loader2,
 } from 'lucide-react'
-import { format, isFuture } from 'date-fns'
 import Link from 'next/link'
+import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
+import { api } from '~/trpc/react'
 
 export function InvoiceList() {
   const [cursor, setCursor] = useState<string | undefined>(undefined)
@@ -42,31 +42,31 @@ export function InvoiceList() {
     switch (status) {
       case 'PAID':
         return (
-          <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-800 dark:text-green-100">
-            <CheckCircle className="mr-1 h-3 w-3" /> Paid
+          <span className='inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-800 dark:text-green-100'>
+            <CheckCircle className='mr-1 h-3 w-3' /> Paid
           </span>
         )
       case 'PENDING':
         return (
-          <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-800 dark:text-amber-100">
+          <span className='inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-800 dark:text-amber-100'>
             Pending
           </span>
         )
       case 'VOID':
         return (
-          <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+          <span className='inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800 dark:bg-gray-700 dark:text-gray-300'>
             Void
           </span>
         )
       case 'UNCOLLECTIBLE':
         return (
-          <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800 dark:bg-red-800 dark:text-red-100">
-            <AlertTriangle className="mr-1 h-3 w-3" /> Failed
+          <span className='inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800 dark:bg-red-800 dark:text-red-100'>
+            <AlertTriangle className='mr-1 h-3 w-3' /> Failed
           </span>
         )
       default:
         return (
-          <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+          <span className='inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800 dark:bg-gray-700 dark:text-gray-300'>
             {status}
           </span>
         )
@@ -87,29 +87,29 @@ export function InvoiceList() {
   if (isLoading) {
     return (
       <div>
-        <div className="flex flex-col space-y-1.5 p-3">
-          <Skeleton className="mb-2 h-7 w-64" />
-          <Skeleton className="h-4 w-96" />
+        <div className='flex flex-col space-y-1.5 p-3'>
+          <Skeleton className='mb-2 h-7 w-64' />
+          <Skeleton className='h-4 w-96' />
         </div>
-        <div className="p-0 pt-0">
-          <div className="overflow-x-auto">
+        <div className='p-0 pt-0'>
+          <div className='overflow-x-auto'>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>
-                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className='h-4 w-32' />
                   </TableHead>
                   <TableHead>
-                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className='h-4 w-24' />
                   </TableHead>
                   <TableHead>
-                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className='h-4 w-24' />
                   </TableHead>
                   <TableHead>
-                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className='h-4 w-20' />
                   </TableHead>
-                  <TableHead className="text-right">
-                    <Skeleton className="ml-auto h-4 w-16" />
+                  <TableHead className='text-right'>
+                    <Skeleton className='ml-auto h-4 w-16' />
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -117,19 +117,19 @@ export function InvoiceList() {
                 {[1, 2, 3, 4].map((i) => (
                   <TableRow key={i}>
                     <TableCell>
-                      <Skeleton className="h-4 w-28" />
+                      <Skeleton className='h-4 w-28' />
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className='h-4 w-24' />
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-4 w-20" />
+                      <Skeleton className='h-4 w-20' />
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-5 w-16" />
+                      <Skeleton className='h-5 w-16' />
                     </TableCell>
-                    <TableCell className="text-right">
-                      <Skeleton className="ml-auto h-9 w-9" />
+                    <TableCell className='text-right'>
+                      <Skeleton className='ml-auto h-9 w-9' />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -144,14 +144,14 @@ export function InvoiceList() {
   // If no subscription
   if (!subscription) {
     return (
-      <div className="flex-1 h-full  items-center flex justify-center">
+      <div className='flex-1 h-full  items-center flex justify-center'>
         <EmptyState
           icon={AlertCircle}
-          title="No Subscriptions"
+          title='No Subscriptions'
           description={<>You don't have any subscriptions yet</>}
           button={
-            <Button size="sm" variant="outline" asChild>
-              <Link href="/app/settings/plans">View Plans</Link>
+            <Button size='sm' variant='outline' asChild>
+              <Link href='/app/settings/plans'>View Plans</Link>
             </Button>
           }
         />
@@ -160,11 +160,11 @@ export function InvoiceList() {
   }
 
   return (
-    <div className="flex-1 h-full flex flex-col">
+    <div className='flex-1 h-full flex flex-col'>
       {invoices.length === 0 ? (
         <EmptyState
           icon={FileText}
-          title="No invoices yet"
+          title='No invoices yet'
           description={<>Your billing history will appear here once you have been billed.</>}
         />
       ) : (
@@ -176,7 +176,7 @@ export function InvoiceList() {
         //   </p>
         // </div>
         <>
-          <div className="p-0 overflow-x-auto">
+          <div className='p-0 overflow-x-auto'>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -184,38 +184,38 @@ export function InvoiceList() {
                   <TableHead>Date</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Download</TableHead>
+                  <TableHead className='text-right'>Download</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {invoices.map((invoice) => (
                   <TableRow key={invoice.id}>
-                    <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
+                    <TableCell className='font-medium'>{invoice.invoiceNumber}</TableCell>
                     <TableCell>{format(new Date(invoice.invoiceDate), 'MMM d, yyyy')}</TableCell>
                     <TableCell>{formatCurrency(invoice.amount)}</TableCell>
                     <TableCell>
                       {invoice.status === 'PENDING' && isFuture(new Date(invoice.dueDate)) ? (
-                        <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-800 dark:text-blue-100">
+                        <span className='inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-800 dark:text-blue-100'>
                           Upcoming
                         </span>
                       ) : (
                         getStatusBadge(invoice.status)
                       )}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className='text-right'>
                       {invoice.pdfUrl ? (
-                        <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0">
+                        <Button variant='ghost' size='sm' asChild className='h-8 w-8 p-0'>
                           <a
                             href={invoice.pdfUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            aria-label="Download invoice">
-                            <Download className="h-4 w-4" />
+                            target='_blank'
+                            rel='noopener noreferrer'
+                            aria-label='Download invoice'>
+                            <Download className='h-4 w-4' />
                           </a>
                         </Button>
                       ) : (
-                        <Button variant="ghost" size="sm" disabled className="h-8 w-8 p-0">
-                          <Download className="h-4 w-4 text-muted-foreground" />
+                        <Button variant='ghost' size='sm' disabled className='h-8 w-8 p-0'>
+                          <Download className='h-4 w-4 text-muted-foreground' />
                         </Button>
                       )}
                     </TableCell>
@@ -226,22 +226,22 @@ export function InvoiceList() {
           </div>
 
           {hasNextPage && (
-            <div className="mt-4 flex justify-center">
+            <div className='mt-4 flex justify-center'>
               <Button
-                variant="outline"
-                size="sm"
+                variant='outline'
+                size='sm'
                 onClick={() => fetchNextPage()}
                 disabled={isFetching}
-                className="gap-1">
+                className='gap-1'>
                 {isFetching ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className='h-4 w-4 animate-spin' />
                     Loading...
                   </>
                 ) : (
                   <>
                     Load more
-                    <ChevronRight className="h-4 w-4" />
+                    <ChevronRight className='h-4 w-4' />
                   </>
                 )}
               </Button>

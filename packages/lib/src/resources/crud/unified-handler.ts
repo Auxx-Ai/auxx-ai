@@ -2,50 +2,51 @@
 
 import type { Database } from '@auxx/database'
 import { database as defaultDatabase, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import { getEntityInstance, listEntityInstances } from '@auxx/services/entity-instances'
-import { getEntityDefinition } from '@auxx/services/entity-definitions'
 import { checkUniqueValue } from '@auxx/services/custom-fields'
+import { getEntityDefinition } from '@auxx/services/entity-definitions'
+import { getEntityInstance, listEntityInstances } from '@auxx/services/entity-instances'
 import { ModelTypes } from '@auxx/types/custom-field'
-import { FieldValueService } from '../../field-values'
-import { publisher } from '../../events/publisher'
-import { invalidateSnapshots, getOrCreateSnapshot, getSnapshotChunk } from '../../snapshot'
-import { toRecordId, parseRecordId, type RecordId } from '../resource-id'
-import { NEW_SYSTEM_ENTITY_TYPES } from '../registry/entity-types'
-import { getSystemHooks, getCommonHooks } from '../hooks'
-import { RecordPickerService } from '../picker'
-import type { MergeEntitiesResult } from '../merge'
+import { and, eq } from 'drizzle-orm'
 import type { ConditionGroup } from '../../conditions'
-import {
-  queryEntityInstanceIds,
-  querySystemResourceIds,
-  isSystemResource,
-  resolveEntityId,
-  listAll as listAllQuery,
-  type ListFilteredResult,
-  type ListAllInput,
-  type ListAllResult,
-} from './unified-handler-queries'
-import {
-  createEntity,
-  updateEntity,
-  archiveEntity,
-  restoreEntity,
-  deleteEntity,
-  bulkCreateEntities,
-  bulkUpdateEntities,
-  bulkArchiveEntities,
-  bulkDeleteEntities,
-  bulkSetFieldValue,
-  mergeEntities,
-  createWithValues as createWithValuesImpl,
-  updateValues as updateValuesImpl,
-  type CrudOptions,
-  type MutationContext,
-  type CreateEntityResult,
-} from './unified-handler-mutations'
+import { publisher } from '../../events/publisher'
+import { FieldValueService } from '../../field-values'
+import { getOrCreateSnapshot, getSnapshotChunk, invalidateSnapshots } from '../../snapshot'
+import { getCommonHooks, getSystemHooks } from '../hooks'
+import type { MergeEntitiesResult } from '../merge'
+import { RecordPickerService } from '../picker'
+import { NEW_SYSTEM_ENTITY_TYPES } from '../registry/entity-types'
 import { SYSTEM_FIELD_KEYS, type TableId } from '../registry/field-registry'
 import { ResourceRegistryService } from '../registry/resource-registry-service'
+import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
+import {
+  archiveEntity,
+  bulkArchiveEntities,
+  bulkCreateEntities,
+  bulkDeleteEntities,
+  bulkSetFieldValue,
+  bulkUpdateEntities,
+  type CreateEntityResult,
+  type CrudOptions,
+  createEntity,
+  createWithValues as createWithValuesImpl,
+  deleteEntity,
+  type MutationContext,
+  mergeEntities,
+  restoreEntity,
+  updateEntity,
+  updateValues as updateValuesImpl,
+} from './unified-handler-mutations'
+import {
+  isSystemResource,
+  type ListAllInput,
+  type ListAllResult,
+  type ListFilteredResult,
+  listAll as listAllQuery,
+  queryEntityInstanceIds,
+  querySystemResourceIds,
+  resolveEntityId,
+} from './unified-handler-queries'
+
 // import type { EntityDefinitionEntity } from '@auxx/database/schema/entity-definition'
 // import type { EntityInstanceEntity } from '@auxx/database/schema/entity-instance'
 
@@ -418,7 +419,10 @@ export class UnifiedCrudHandler {
    *
    * @param params - Must provide either entityDefinitionId or apiSlug
    */
-  async resolveEntityId(params: { entityDefinitionId?: string; apiSlug?: string }): Promise<string> {
+  async resolveEntityId(params: {
+    entityDefinitionId?: string
+    apiSlug?: string
+  }): Promise<string> {
     return resolveEntityId(this.registryService, params)
   }
 
@@ -687,7 +691,11 @@ export class UnifiedCrudHandler {
     let entityDef: EntityDefinitionEntity
 
     // System types map to entityType column - query by entityType
-    if (NEW_SYSTEM_ENTITY_TYPES.includes(entityDefinitionId as (typeof NEW_SYSTEM_ENTITY_TYPES)[number])) {
+    if (
+      NEW_SYSTEM_ENTITY_TYPES.includes(
+        entityDefinitionId as (typeof NEW_SYSTEM_ENTITY_TYPES)[number]
+      )
+    ) {
       const rows = await this.db
         .select()
         .from(schema.EntityDefinition)

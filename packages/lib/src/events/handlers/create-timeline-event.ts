@@ -1,38 +1,38 @@
 // packages/lib/src/events/handlers/create-timeline-event.ts
 
-import { TimelineService } from '../../timeline/timeline-service'
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { type RecordId, toRecordId } from '@auxx/types/resource'
+import {
+  ContactEventType,
+  EntityInstanceEventType,
+  TicketEventType,
+  TimelineActorType,
+} from '../../timeline/event-types'
+import { TimelineService } from '../../timeline/timeline-service'
+import type { CreateTimelineEventInput } from '../../timeline/types'
 import type {
   AuxxEvent,
-  TicketCreatedEvent,
-  TicketUpdatedEvent,
-  TicketDeletedEvent,
-  TicketStatusChangedEvent,
-  MessageReceivedEvent,
-  MessageSentEvent,
+  CommentCreatedEvent,
+  CommentDeletedEvent,
+  CommentRepliedEvent,
+  CommentUpdatedEvent,
   ContactCreatedEvent,
-  ContactUpdatedEvent,
-  ContactMergedEvent,
   ContactFieldUpdatedEvent,
   ContactGroupAddedEvent,
   ContactGroupRemovedEvent,
-  CommentCreatedEvent,
-  CommentUpdatedEvent,
-  CommentDeletedEvent,
-  CommentRepliedEvent,
+  ContactMergedEvent,
+  ContactUpdatedEvent,
   EntityInstanceCreatedEvent,
-  EntityInstanceUpdatedEvent,
   EntityInstanceDeletedEvent,
+  EntityInstanceUpdatedEvent,
+  MessageReceivedEvent,
+  MessageSentEvent,
+  TicketCreatedEvent,
+  TicketDeletedEvent,
+  TicketStatusChangedEvent,
+  TicketUpdatedEvent,
 } from '../types'
-import {
-  ContactEventType,
-  TicketEventType,
-  TimelineActorType,
-  EntityInstanceEventType,
-} from '../../timeline/event-types'
-import type { CreateTimelineEventInput } from '../../timeline/types'
-import { toRecordId, type RecordId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('handler:create-timeline-event')
 
@@ -476,7 +476,9 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
 
       // Use RESTORED if this was a restore operation
       const isRestored = data.eventData?.restored === true
-      const eventType = isRestored ? EntityInstanceEventType.RESTORED : EntityInstanceEventType.UPDATED
+      const eventType = isRestored
+        ? EntityInstanceEventType.RESTORED
+        : EntityInstanceEventType.UPDATED
 
       return [
         {
@@ -500,7 +502,9 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
 
       // Use ARCHIVED for soft delete, DELETED for hard delete
       const isHardDelete = data.eventData?.hardDelete === true
-      const eventType = isHardDelete ? EntityInstanceEventType.DELETED : EntityInstanceEventType.ARCHIVED
+      const eventType = isHardDelete
+        ? EntityInstanceEventType.DELETED
+        : EntityInstanceEventType.ARCHIVED
 
       return [
         {

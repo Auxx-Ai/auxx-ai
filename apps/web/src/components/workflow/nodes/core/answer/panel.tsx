@@ -2,17 +2,8 @@
 
 'use client'
 
-import React, { useCallback, memo, useMemo, useState } from 'react'
-import { BasePanel } from '../../shared/base/base-panel'
-import Section from '~/components/workflow/ui/section'
-import {
-  VarEditor,
-  VarEditorField,
-  VarEditorFieldRow,
-} from '~/components/workflow/ui/input-editor/var-editor'
-import { VarEditorArray } from '~/components/workflow/ui/input-editor/var-editor-array'
-import { Editor } from '~/components/workflow/ui/prompt-editor'
-import { IntegrationPicker } from '~/components/pickers/integration-picker'
+import { Button } from '@auxx/ui/components/button'
+import { Label } from '@auxx/ui/components/label'
 import {
   Select,
   SelectContent,
@@ -20,15 +11,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Label } from '@auxx/ui/components/label'
-import { useReadOnly, useNodeCrud, useAvailableVariables } from '~/components/workflow/hooks'
-import { type AnswerNodeData } from './types'
-import { BaseType, VAR_MODE } from '~/components/workflow/types'
-import { validateAnswerConfig } from './schema'
-import { Button } from '@auxx/ui/components/button'
-import { api } from '~/trpc/react'
+import type React from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { getIntegrationIcon } from '~/components/mail/mail-status-config'
+import { IntegrationPicker } from '~/components/pickers/integration-picker'
+import { useAvailableVariables, useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import Field from '~/components/workflow/ui/field'
+import {
+  VarEditor,
+  VarEditorField,
+  VarEditorFieldRow,
+} from '~/components/workflow/ui/input-editor/var-editor'
+import { VarEditorArray } from '~/components/workflow/ui/input-editor/var-editor-array'
+import { Editor } from '~/components/workflow/ui/prompt-editor'
+import Section from '~/components/workflow/ui/section'
+import { api } from '~/trpc/react'
+import { BasePanel } from '../../shared/base/base-panel'
+import { validateAnswerConfig } from './schema'
+import type { AnswerNodeData } from './types'
 
 interface AnswerPanelProps {
   nodeId: string
@@ -119,33 +120,33 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
   )
 
   return (
-    <BasePanel title="Answer Configuration" nodeId={nodeId} data={data} showNextStep={false}>
+    <BasePanel title='Answer Configuration' nodeId={nodeId} data={data} showNextStep={false}>
       {/* Section 1: General Configuration */}
       <Section
-        title="General"
-        description="Configure message type and recipients"
+        title='General'
+        description='Configure message type and recipients'
         isRequired
         actions={
           <Select
             value={nodeData.messageType || 'reply'}
             onValueChange={handleMessageTypeChange}
             disabled={isReadOnly}>
-            <SelectTrigger className="w-32" size="xs" variant="ghost">
+            <SelectTrigger className='w-32' size='xs' variant='ghost'>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="new">New Message</SelectItem>
-              <SelectItem value="reply">Reply</SelectItem>
+              <SelectItem value='new'>New Message</SelectItem>
+              <SelectItem value='reply'>Reply</SelectItem>
             </SelectContent>
           </Select>
         }>
         {/* Email Fields and conditional fields */}
-        <VarEditorField className="p-0">
+        <VarEditorField className='p-0'>
           {nodeData.messageType !== 'reply' && (
             <VarEditorFieldRow
-              className=""
-              title="Integration"
-              description="Email integration to send from"
+              className=''
+              title='Integration'
+              description='Email integration to send from'
               type={BaseType.STRING}
               isRequired
               validationError={showValidation ? getFieldErrorMessage('integrationId') : undefined}
@@ -157,7 +158,7 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
                   if (!showValidation) setShowValidation(true)
                 }}
                 allowMultiple={false}>
-                <Button variant="outline" size="xs">
+                <Button variant='outline' size='xs'>
                   {selectedIntegration ? (
                     <>
                       {getIntegrationIcon(selectedIntegration.provider)}
@@ -173,9 +174,9 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
 
           {nodeData.messageType === 'reply' && (
             <VarEditorFieldRow
-              className=""
-              title="Reply To"
-              description="Select Thread or Message to reply to"
+              className=''
+              title='Reply To'
+              description='Select Thread or Message to reply to'
               type={BaseType.RELATION}
               isRequired
               validationError={showValidation ? getFieldErrorMessage('resourceId') : undefined}
@@ -197,12 +198,12 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
                 varType={BaseType.RELATION}
                 allowedTypes={[BaseType.RELATION, BaseType.STRING]}
                 mode={VAR_MODE.PICKER}
-                placeholder="Select Thread or Message"
+                placeholder='Select Thread or Message'
                 allowConstant={false}
               />
               {/* Show detected resource type for user feedback */}
               {nodeData.resourceType && (
-                <div className="mt-1 text-xs text-muted-foreground">
+                <div className='mt-1 text-xs text-muted-foreground'>
                   Replying to: {nodeData.resourceType === 'thread' ? 'Thread' : 'Message'}
                 </div>
               )}
@@ -210,7 +211,7 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
           )}
 
           <VarEditorFieldRow
-            title="Subject"
+            title='Subject'
             description={
               nodeData.messageType === 'new'
                 ? 'Email subject line (required)'
@@ -230,15 +231,15 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
               varType={BaseType.STRING}
               allowedTypes={[BaseType.STRING]}
               mode={VAR_MODE.RICH}
-              placeholder="Enter subject or use variables"
+              placeholder='Enter subject or use variables'
               allowConstant={true}
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
-            className=""
-            title="To"
-            description="Email recipients"
+            className=''
+            title='To'
+            description='Email recipients'
             type={BaseType.EMAIL}
             isRequired
             validationError={showValidation ? getFieldErrorMessage('to') : undefined}
@@ -254,15 +255,15 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
               nodeId={nodeId}
               disabled={isReadOnly}
               allowConstant={true}
-              placeholder="Enter email or select variable"
-              placeholderConstant="Enter email address"
+              placeholder='Enter email or select variable'
+              placeholderConstant='Enter email address'
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
-            className=""
-            title="CC"
-            description="Carbon copy recipients"
+            className=''
+            title='CC'
+            description='Carbon copy recipients'
             type={BaseType.EMAIL}>
             <VarEditorArray
               value={nodeData.cc || []}
@@ -272,14 +273,14 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
               nodeId={nodeId}
               disabled={isReadOnly}
               allowConstant={true}
-              placeholder="Enter email or select variable"
-              placeholderConstant="Enter email address"
+              placeholder='Enter email or select variable'
+              placeholderConstant='Enter email address'
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
-            title="BCC"
-            description="Blind carbon copy recipients"
+            title='BCC'
+            description='Blind carbon copy recipients'
             type={BaseType.EMAIL}>
             <VarEditorArray
               value={nodeData.bcc || []}
@@ -291,26 +292,26 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
               nodeId={nodeId}
               disabled={isReadOnly}
               allowConstant={true}
-              placeholder="Enter email or select variable"
-              placeholderConstant="Enter email address"
+              placeholder='Enter email or select variable'
+              placeholderConstant='Enter email address'
             />
           </VarEditorFieldRow>
         </VarEditorField>
       </Section>
 
       {/* Section 2: Message Content */}
-      <Section title="Message" description="Compose your message" isRequired>
+      <Section title='Message' description='Compose your message' isRequired>
         <Editor
-          title={<Label className="text-sm font-medium">Message</Label>}
+          title={<Label className='text-sm font-medium'>Message</Label>}
           value={nodeData.text || ''}
           onChange={handleTextChange}
           nodeId={nodeId}
-          placeholder="Enter message content"
+          placeholder='Enter message content'
           readOnly={isReadOnly}
           minHeight={200}
         />
-        <Field title="Attachments" className="pt-2">
-          <VarEditorField className="rounded-lg min-h-9">
+        <Field title='Attachments' className='pt-2'>
+          <VarEditorField className='rounded-lg min-h-9'>
             <VarEditor
               value={nodeData.attachmentFiles || []}
               onChange={(values, modes) =>
@@ -321,8 +322,8 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
               nodeId={nodeId}
               disabled={isReadOnly}
               allowConstant={true}
-              placeholder="Select files or use variable"
-              placeholderConstant="Select files..."
+              placeholder='Select files or use variable'
+              placeholderConstant='Select files...'
             />
           </VarEditorField>
         </Field>

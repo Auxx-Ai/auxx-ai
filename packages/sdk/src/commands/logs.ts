@@ -3,6 +3,7 @@ import chalk from 'chalk'
 import { Command, Option } from 'commander'
 import { z } from 'zod'
 import { authenticator } from '../auth/auth.js'
+import { isErrored } from '../errors.js'
 import {
   printDetermineOrganizationError,
   printFetcherError,
@@ -14,7 +15,6 @@ import { getAppInfo } from '../spinners/get-app-info.spinner.js'
 import { getAppSlugFromPackageJson } from '../spinners/get-app-slug-from-package-json.js'
 import { spinnerify } from '../util/spinner.js'
 import { subscribeToLogs } from './logs/subscribe-to-logs.js'
-import { isErrored } from '../errors.js'
 
 export const optionsSchema = z.object({
   organization: z.string().optional(),

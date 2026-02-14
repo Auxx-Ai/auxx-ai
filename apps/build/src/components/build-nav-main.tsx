@@ -1,20 +1,20 @@
 // apps/build/src/components/build-nav-main.tsx
 'use client'
 
-import { usePathname } from 'next/navigation'
-import { Building2, NotebookText, Package, Plus, Users } from 'lucide-react'
 import {
   SidebarGroup,
-  SidebarGroupLabel,
   SidebarGroupAction,
+  SidebarGroupLabel,
   SidebarMenu,
-  SidebarMenuItem,
   SidebarMenuButton,
+  SidebarMenuItem,
 } from '@auxx/ui/components/sidebar'
-import { SidebarItem } from './sidebar/sidebar-item'
-import { useDeveloperAccount, useAccountApps } from './providers/dehydrated-state-provider'
-import { CreateAppDialog } from './apps/create-app-dialog'
+import { Building2, NotebookText, Package, Plus, Users } from 'lucide-react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { CreateAppDialog } from './apps/create-app-dialog'
+import { useAccountApps, useDeveloperAccount } from './providers/dehydrated-state-provider'
+import { SidebarItem } from './sidebar/sidebar-item'
 
 interface Props {
   accountSlug: string
@@ -37,10 +37,10 @@ export function BuildNavMain({ accountSlug }: Props) {
     <>
       <SidebarGroup>
         <SidebarGroupLabel>Apps</SidebarGroupLabel>
-        <SidebarMenu className="">
+        <SidebarMenu className=''>
           {apps.length === 0 ? (
             <SidebarMenuItem>
-              <div className="px-2 py-1.5 text-xs text-muted-foreground">No apps yet</div>
+              <div className='px-2 py-1.5 text-xs text-muted-foreground'>No apps yet</div>
             </SidebarMenuItem>
           ) : (
             apps.map((app) => (
@@ -60,7 +60,7 @@ export function BuildNavMain({ accountSlug }: Props) {
               <CreateAppDialog
                 accountSlug={accountSlug}
                 trigger={
-                  <SidebarMenuButton className="text-muted-foreground">
+                  <SidebarMenuButton className='text-muted-foreground'>
                     <Plus />
                     <span>New app</span>
                   </SidebarMenuButton>
@@ -74,14 +74,14 @@ export function BuildNavMain({ accountSlug }: Props) {
         <SidebarGroupLabel>Organization Settings</SidebarGroupLabel>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton className="text-muted-foreground" asChild>
+            <SidebarMenuButton className='text-muted-foreground' asChild>
               <Link href={`/${accountSlug}/settings/general`}>
                 <Building2 /> General
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton className="text-muted-foreground" asChild>
+            <SidebarMenuButton className='text-muted-foreground' asChild>
               <Link href={`/${accountSlug}/settings/members`}>
                 <Users /> Members
               </Link>
@@ -93,7 +93,7 @@ export function BuildNavMain({ accountSlug }: Props) {
         <SidebarGroupLabel>Resources</SidebarGroupLabel>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton className="text-muted-foreground">
+            <SidebarMenuButton className='text-muted-foreground'>
               <NotebookText /> Documentation
             </SidebarMenuButton>
           </SidebarMenuItem>

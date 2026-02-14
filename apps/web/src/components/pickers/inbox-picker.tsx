@@ -1,14 +1,14 @@
 // apps/web/src/components/pickers/inbox-picker.tsx
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { Button } from '@auxx/ui/components/button'
-import { useInboxes, type InboxItem } from '~/components/threads/hooks'
-import { cn } from '@auxx/ui/lib/utils'
-import { MultiSelectPicker } from './multi-select-picker'
-import { InboxDialog } from '~/components/inbox/inbox-dialog'
 import type { SelectOption } from '@auxx/types/custom-field'
+import { Button } from '@auxx/ui/components/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { cn } from '@auxx/ui/lib/utils'
+import { useCallback, useMemo, useState } from 'react'
+import { InboxDialog } from '~/components/inbox/inbox-dialog'
+import { type InboxItem, useInboxes } from '~/components/threads/hooks'
+import { MultiSelectPicker } from './multi-select-picker'
 
 /** Props for InboxPicker component */
 interface InboxPickerProps {
@@ -128,7 +128,7 @@ export function InboxPicker({
     <>
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
-          {children || <Button variant="outline">Select Inbox{allowMultiple ? 'es' : ''}</Button>}
+          {children || <Button variant='outline'>Select Inbox{allowMultiple ? 'es' : ''}</Button>}
         </PopoverTrigger>
         <PopoverContent
           className={cn('w-[300px] p-0 backdrop-blur-sm bg-popover/60', className)}
@@ -138,12 +138,12 @@ export function InboxPicker({
             value={selected}
             onChange={handleChange}
             onSelectSingle={allowMultiple ? undefined : handleSelectSingle}
-            placeholder="Search inboxes..."
+            placeholder='Search inboxes...'
             canManage={false}
             canAdd={false}
             multi={allowMultiple}
             onCreate={handleCreate}
-            createLabel="Create inbox"
+            createLabel='Create inbox'
           />
         </PopoverContent>
       </Popover>

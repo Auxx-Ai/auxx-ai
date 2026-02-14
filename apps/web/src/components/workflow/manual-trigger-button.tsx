@@ -2,8 +2,7 @@
 
 // apps/web/src/components/workflow/manual-trigger-button.tsx
 
-import { useMemo, useRef, type ReactNode } from 'react'
-import { Play } from 'lucide-react'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -12,11 +11,12 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { toastError } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
-import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
-import { showWorkflowProgressToast } from './workflow-progress-toast'
+import { Play } from 'lucide-react'
+import { type ReactNode, useMemo, useRef } from 'react'
 import { createWorkflowInvalidator } from '~/lib/workflow'
-import { type RecordId, parseRecordId } from '@auxx/types/resource'
+import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
+import { api } from '~/trpc/react'
+import { showWorkflowProgressToast } from './workflow-progress-toast'
 
 /**
  * ManualTriggerButton: Trigger workflows manually for a resource
@@ -156,7 +156,7 @@ export function ManualTriggerButton({
       <DropdownMenuTrigger asChild>{children ?? defaultTrigger}</DropdownMenuTrigger>
       {/* </Tooltip> */}
 
-      <DropdownMenuContent align="end" className="w-48">
+      <DropdownMenuContent align='end' className='w-48'>
         {workflows?.map((workflow) => (
           <DropdownMenuItem key={workflow.id} onClick={() => handleTriggerWorkflow(workflow)}>
             <Play />

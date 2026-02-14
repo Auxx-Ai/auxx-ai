@@ -1,9 +1,9 @@
 // apps/web/src/components/workflow/utils/form-input-utils.ts
 
-import type { FlowNode, FlowEdge } from '../types'
 import type { FormInputNodeData } from '../nodes/inputs/form-input/types'
-import type { FormInputConfig } from '../ui/form-input-field'
+import type { FlowEdge, FlowNode } from '../types'
 import { BaseType } from '../types'
+import type { FormInputConfig } from '../ui/form-input-field'
 
 /**
  * Workflow graph structure for extraction

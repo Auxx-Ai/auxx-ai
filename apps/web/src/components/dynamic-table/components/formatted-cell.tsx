@@ -2,15 +2,15 @@
 
 'use client'
 
-import { memo } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
+import type { CurrencyDisplayOptions } from '@auxx/utils'
+import { memo } from 'react'
+import { ItemsCellView } from '~/components/ui/items-list-view'
 import { useTableConfig } from '../context/table-config-context'
 import { useColumnFormatting } from '../stores/store-selectors'
+import type { ColumnFormatting } from '../types'
 import { renderCellValue } from '../utils/cell-renderers'
 import { ExpandableCell } from './expandable-cell'
-import { ItemsCellView } from '~/components/ui/items-list-view'
-import type { ColumnFormatting } from '../types'
-import type { CurrencyDisplayOptions } from '@auxx/utils'
 
 /**
  * Field types that already handle array values internally.

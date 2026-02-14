@@ -1,7 +1,8 @@
 // apps/web/src/components/fields/displays/display-number.tsx
-import DisplayWrapper from './display-wrapper'
-import { useFieldContext } from './display-field'
+
 import { converters, type NumberFieldOptions } from '@auxx/lib/field-values/client'
+import { useFieldContext } from './display-field'
+import DisplayWrapper from './display-wrapper'
 
 /**
  * DisplayNumber component

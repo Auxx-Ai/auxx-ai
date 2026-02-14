@@ -1,16 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import { useForm } from 'react-hook-form'
-import * as z from 'zod'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { ArrowLeft, Package, MapPin, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react'
-
 // import { api } from '@auxx/lib/api/trpc' // Import your tRPC API
 import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   Form,
   FormControl,
@@ -21,8 +13,14 @@ import {
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Separator } from '@auxx/ui/components/separator'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { AlertTriangle, ArrowLeft, Loader2, MapPin, Package, RefreshCw } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import * as z from 'zod'
 import { api } from '~/trpc/react'
 
 // Define the form schema
@@ -147,11 +145,11 @@ export function InventoryForm({
   const isPageLoading = isLoadingPart || (isEditing && isLoadingInventory && !initialData)
 
   return (
-    <Card className="w-full max-w-3xl">
+    <Card className='w-full max-w-3xl'>
       <CardHeader>
-        <div className="mb-2 flex items-center">
-          <Button variant="ghost" size="icon" className="mr-2" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
+        <div className='mb-2 flex items-center'>
+          <Button variant='ghost' size='icon' className='mr-2' onClick={() => router.back()}>
+            <ArrowLeft className='h-4 w-4' />
           </Button>
           <CardTitle>{isEditing ? 'Edit Inventory' : 'Add Inventory'}</CardTitle>
         </div>
@@ -163,27 +161,27 @@ export function InventoryForm({
       </CardHeader>
       <CardContent>
         {isPageLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="mr-2 h-8 w-8 animate-spin" />
+          <div className='flex items-center justify-center py-8'>
+            <Loader2 className='mr-2 h-8 w-8 animate-spin' />
             <span>Loading...</span>
           </div>
         ) : (
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6'>
               {/* Current Quantity */}
               <FormField
                 control={form.control}
-                name="quantity"
+                name='quantity'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>
-                      <div className="flex items-center">
-                        <Package className="mr-2 h-4 w-4" />
+                      <div className='flex items-center'>
+                        <Package className='mr-2 h-4 w-4' />
                         Current Quantity
                       </div>
                     </FormLabel>
                     <FormControl>
-                      <Input type="number" min="0" {...field} />
+                      <Input type='number' min='0' {...field} />
                     </FormControl>
                     <FormDescription>The current number of units in stock</FormDescription>
                     <FormMessage />
@@ -194,18 +192,18 @@ export function InventoryForm({
               {/* Location */}
               <FormField
                 control={form.control}
-                name="location"
+                name='location'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>
-                      <div className="flex items-center">
-                        <MapPin className="mr-2 h-4 w-4" />
+                      <div className='flex items-center'>
+                        <MapPin className='mr-2 h-4 w-4' />
                         Storage Location
                       </div>
                     </FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="e.g., Warehouse A, Shelf B3"
+                        placeholder='e.g., Warehouse A, Shelf B3'
                         {...field}
                         value={field.value || ''}
                       />
@@ -218,26 +216,26 @@ export function InventoryForm({
 
               <Separator />
 
-              <div className="mb-4 flex flex-col gap-1">
-                <h3 className="text-md font-medium">Reordering Settings</h3>
-                <p className="text-sm text-muted-foreground">
+              <div className='mb-4 flex flex-col gap-1'>
+                <h3 className='text-md font-medium'>Reordering Settings</h3>
+                <p className='text-sm text-muted-foreground'>
                   Configure when and how much to reorder
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
                 {/* Reorder Point */}
                 <FormField
                   control={form.control}
-                  name="reorderPoint"
+                  name='reorderPoint'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Reorder Point</FormLabel>
                       <FormControl>
                         <Input
-                          type="number"
-                          min="0"
-                          placeholder="Optional"
+                          type='number'
+                          min='0'
+                          placeholder='Optional'
                           {...field}
                           value={field.value === null ? '' : field.value}
                           onChange={(e) => {
@@ -255,15 +253,15 @@ export function InventoryForm({
                 {/* Reorder Quantity */}
                 <FormField
                   control={form.control}
-                  name="reorderQty"
+                  name='reorderQty'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Reorder Quantity</FormLabel>
                       <FormControl>
                         <Input
-                          type="number"
-                          min="1"
-                          placeholder="Optional"
+                          type='number'
+                          min='1'
+                          placeholder='Optional'
                           {...field}
                           value={field.value === null ? '' : field.value}
                           onChange={(e) => {
@@ -281,14 +279,14 @@ export function InventoryForm({
 
               {/* Low stock warning */}
               {showLowStockWarning && (
-                <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4">
-                  <div className="flex">
-                    <div className="shrink-0">
-                      <AlertTriangle className="h-5 w-5 text-yellow-400" aria-hidden="true" />
+                <div className='rounded-md border border-yellow-200 bg-yellow-50 p-4'>
+                  <div className='flex'>
+                    <div className='shrink-0'>
+                      <AlertTriangle className='h-5 w-5 text-yellow-400' aria-hidden='true' />
                     </div>
-                    <div className="ml-3">
-                      <h3 className="text-sm font-medium text-yellow-800">Low Stock Alert</h3>
-                      <div className="mt-2 text-sm text-yellow-700">
+                    <div className='ml-3'>
+                      <h3 className='text-sm font-medium text-yellow-800'>Low Stock Alert</h3>
+                      <div className='mt-2 text-sm text-yellow-700'>
                         <p>
                           Current quantity ({currentQuantity}) is at or below the reorder point (
                           {reorderPoint}). You may want to restock this item.
@@ -299,23 +297,23 @@ export function InventoryForm({
                 </div>
               )}
 
-              <div className="flex justify-end gap-4 pt-2">
+              <div className='flex justify-end gap-4 pt-2'>
                 <Button
-                  type="button"
-                  variant="outline"
+                  type='button'
+                  variant='outline'
                   onClick={() => router.back()}
                   disabled={isLoading}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isLoading}>
+                <Button type='submit' disabled={isLoading}>
                   {isLoading ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Loader2 className='mr-2 h-4 w-4 animate-spin' />
                       {isEditing ? 'Updating...' : 'Creating...'}
                     </>
                   ) : (
                     <>
-                      <RefreshCw className="mr-2 h-4 w-4" />
+                      <RefreshCw className='mr-2 h-4 w-4' />
                       {isEditing ? 'Update Inventory' : 'Create Inventory'}
                     </>
                   )}

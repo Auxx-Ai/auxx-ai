@@ -1,12 +1,12 @@
 // apps/web/src/components/mail/searchbar/search-filter-input.tsx
 'use client'
 
-import { useRef, useCallback } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
 import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { useSearchStore, type SearchCondition } from './store'
+import { cn } from '@auxx/ui/lib/utils'
+import { useCallback, useRef } from 'react'
 import { ConditionBadge } from '~/components/conditions/components/condition-badge'
+import { type SearchCondition, useSearchStore } from './store'
 
 /**
  * Props for SearchFilterInput component
@@ -96,13 +96,13 @@ export function SearchFilterInput({
 
   return (
     <ScrollArea
-      orientation="horizontal"
-      scrollbarClassName="h-1.5!"
+      orientation='horizontal'
+      scrollbarClassName='h-1.5!'
       className={cn('flex-1', className)}>
       <div
         ref={containerRef}
         onClick={handleContainerClick}
-        className="flex items-center gap-1 h-8 cursor-text pt-0.5 pb-1">
+        className='flex items-center gap-1 h-8 cursor-text pt-0.5 pb-1'>
         {/* Condition badges - full editable badges with field/operator/value/remove */}
         {conditions.map((condition, index) => (
           <ConditionBadge
@@ -127,7 +127,7 @@ export function SearchFilterInput({
           onFocus={onFocus}
           placeholder={conditions.length === 0 ? placeholder : ''}
           minWidth={100}
-          inputClassName="bg-transparent outline-none text-sm"
+          inputClassName='bg-transparent outline-none text-sm'
         />
       </div>
     </ScrollArea>

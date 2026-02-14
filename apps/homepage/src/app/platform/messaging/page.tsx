@@ -1,14 +1,14 @@
 // apps/homepage/src/app/platform/messaging/page.tsx
 import type { Metadata } from 'next'
-import Header from '../../_components/main/header'
+import { config } from '~/lib/config'
 import FooterSection from '../../_components/main/footer-section'
+import Header from '../../_components/main/header'
+import Features3Cols from './_components/features-3-cols'
+import MessagingFeatures from './_components/messaging-features'
 import MessagingHero from './_components/messaging-hero'
 import MultiChannelSection from './_components/multi-channel-section'
 import NoMissedMessages from './_components/no-missed-messages'
 import ProviderIntegrationsSection from './_components/provider-integration'
-import MessagingFeatures from './_components/messaging-features'
-import Features3Cols from './_components/features-3-cols'
-import { config } from '~/lib/config'
 
 export const metadata: Metadata = {
   title: `Omnichannel Messaging | ${config.shortName}`,
@@ -17,9 +17,9 @@ export const metadata: Metadata = {
 
 export default function MessagingPage() {
   return (
-    <div id="root" className="relative h-screen overflow-y-auto bg-background">
+    <div id='root' className='relative h-screen overflow-y-auto bg-background'>
       <Header />
-      <main className="">
+      <main className=''>
         <MessagingHero />
         <MessagingFeatures />
         <Features3Cols />

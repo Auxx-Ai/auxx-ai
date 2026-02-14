@@ -1,8 +1,12 @@
 // apps/web/src/components/detail-view/types.ts
 
+import type {
+  DetailViewConfig,
+  MainTabDefinition,
+  SidebarTabDefinition,
+} from '@auxx/lib/resources/client'
 import type { ComponentType } from 'react'
 import type { RecordId } from '~/components/resources'
-import type { DetailViewConfig, MainTabDefinition, SidebarTabDefinition } from '@auxx/lib/resources/client'
 
 /**
  * Props passed to detail view tab components

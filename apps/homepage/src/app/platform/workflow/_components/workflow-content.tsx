@@ -7,39 +7,39 @@ import Image from 'next/image'
  */
 export default function WorkflowContent() {
   return (
-    <section className="relative bg-background border-foreground/10 border-b">
-      <div className="relative z-10 mx-auto max-w-6xl border-x px-3">
-        <div className="border-x">
-          <div className="bg-muted/25 py-16 md:py-24">
-            <div className="mx-auto max-w-4xl space-y-12 px-6">
-              <h2 className="text-muted-foreground text-balance text-4xl font-semibold md:w-2/3">
+    <section className='relative bg-background border-foreground/10 border-b'>
+      <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
+        <div className='border-x'>
+          <div className='bg-muted/25 py-16 md:py-24'>
+            <div className='mx-auto max-w-4xl space-y-12 px-6'>
+              <h2 className='text-muted-foreground text-balance text-4xl font-semibold md:w-2/3'>
                 Intelligent routing for{' '}
-                <strong className="text-foreground font-semibold">
+                <strong className='text-foreground font-semibold'>
                   automated customer support
                 </strong>
               </h2>
-              <div className="bg-background ring-foreground/5 overflow-hidden rounded-xl border border-transparent shadow ring-1">
+              <div className='bg-background ring-foreground/5 overflow-hidden rounded-xl border border-transparent shadow ring-1'>
                 <Image
-                  src="/images/platform/workflow/workflow-routing.png"
+                  src='/images/platform/workflow/workflow-routing.png'
                   width={3070}
                   height={1994}
-                  alt="Workflow routing diagram showing automated customer support flow"
-                  className="h-full w-full object-cover"
+                  alt='Workflow routing diagram showing automated customer support flow'
+                  className='h-full w-full object-cover'
                 />
               </div>
-              <div className="grid gap-6 md:grid-cols-2 md:gap-12">
-                <p className="text-muted-foreground">
+              <div className='grid gap-6 md:grid-cols-2 md:gap-12'>
+                <p className='text-muted-foreground'>
                   Build{' '}
-                  <strong className="text-foreground font-semibold">
+                  <strong className='text-foreground font-semibold'>
                     sophisticated conditional logic
                   </strong>{' '}
                   that routes tickets based on sentiment, urgency, product type, and customer
                   history—ensuring every inquiry gets the right response at the right time.
                 </p>
 
-                <p className="text-muted-foreground">
+                <p className='text-muted-foreground'>
                   Connect your workflows to{' '}
-                  <strong className="text-foreground font-semibold">
+                  <strong className='text-foreground font-semibold'>
                     Shopify, email providers, and AI models
                   </strong>{' '}
                   seamlessly. Trigger actions like refunds, order tracking, or product

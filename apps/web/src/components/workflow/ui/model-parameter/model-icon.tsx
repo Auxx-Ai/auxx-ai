@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/ui/model-parameter/model-icon.tsx
 
-import { PROVIDER_ICONS } from '~/constants/icons'
-import { PROVIDER_THEMES, PROVIDER_ICON_LETTERS } from '@auxx/lib/constants/provider-icons'
+import type { ModelData, ProviderData } from '@auxx/lib/ai/providers/types'
+import { PROVIDER_ICON_LETTERS, PROVIDER_THEMES } from '@auxx/lib/constants/provider-icons'
 import { cn } from '@auxx/ui/lib/utils'
 import { Bot } from 'lucide-react'
-import type { ModelData, ProviderData } from '@auxx/lib/ai/providers/types'
+import { PROVIDER_ICONS } from '~/constants/icons'
 
 type ModelIconProps = {
   provider?: string | { provider: string } | ProviderData
@@ -30,7 +30,7 @@ const ModelIcon = ({
   const providerName = typeof provider === 'string' ? provider : provider?.provider
 
   if (!providerName) {
-    return <Bot className="h-3 w-3 text-muted-foreground" />
+    return <Bot className='h-3 w-3 text-muted-foreground' />
   }
 
   const providerTheme = PROVIDER_THEMES[providerName]

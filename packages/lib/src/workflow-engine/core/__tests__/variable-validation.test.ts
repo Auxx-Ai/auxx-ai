@@ -1,16 +1,16 @@
 // packages/lib/src/workflow-engine/core/__tests__/variable-validation.test.ts
 
-import { describe, it, expect, beforeEach } from 'vitest'
-import { ExecutionContextManager } from '../execution-context'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { BaseNodeProcessor } from '../../nodes/base-node'
-import {
-  WorkflowNode,
-  WorkflowNodeType,
-  NodeExecutionResult,
-  ValidationResult,
-  NodeRunningStatus,
-} from '../types'
 import { WorkflowNodeValidationError } from '../errors'
+import { ExecutionContextManager } from '../execution-context'
+import {
+  type NodeExecutionResult,
+  NodeRunningStatus,
+  type ValidationResult,
+  type WorkflowNode,
+  WorkflowNodeType,
+} from '../types'
 
 /**
  * Mock node processor that extracts variables from its config
@@ -298,7 +298,8 @@ describe('Variable Validation - Integration Tests', () => {
           id: 'ai1',
           type: 'ai',
           title: 'Test AI',
-          prompt: 'Email: {{webhook1.body.email}}, Ticket: {{find1.ticket.id}}, Status: {{find1.ticket.status}}',
+          prompt:
+            'Email: {{webhook1.body.email}}, Ticket: {{find1.ticket.id}}, Status: {{find1.ticket.status}}',
         },
       }
 
@@ -314,7 +315,10 @@ describe('Variable Validation - Integration Tests', () => {
         expect(errorMessage).toContain('webhook1.body.email')
         // Check that it's in the right section (not in Missing variables)
         const lines = errorMessage.split('\n')
-        const missingSection = lines.slice(lines.findIndex(l => l.includes('Missing variables')), lines.findIndex(l => l.includes('Available variables')))
+        const missingSection = lines.slice(
+          lines.findIndex((l) => l.includes('Missing variables')),
+          lines.findIndex((l) => l.includes('Available variables'))
+        )
         const missingText = missingSection.join('\n')
         expect(missingText).not.toContain('webhook1.body.email')
       }

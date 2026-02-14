@@ -1,18 +1,7 @@
 // src/components/organization-switcher.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
-import {
-  InputGroup,
-  InputGroupInput,
-  InputGroupAddon,
-  InputGroupText,
-} from '@auxx/ui/components/input-group'
 import {
   Dialog,
   DialogContent,
@@ -21,7 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
   FormControl,
@@ -31,12 +19,24 @@ import {
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
-import { api } from '~/trpc/react'
+import { Input } from '@auxx/ui/components/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from '@auxx/ui/components/input-group'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
-import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
-import { clearResourceCaches } from '~/components/resources'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { Check, Loader2, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { client as authClient } from '~/auth/auth-client'
-import { Check, X, Loader2 } from 'lucide-react'
+import { clearResourceCaches } from '~/components/resources'
+import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
+import { api } from '~/trpc/react'
 
 const formSchema = z.object({
   name: z.string().min(1, { error: 'Organization name is required' }),
@@ -189,7 +189,7 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className='sm:max-w-[425px]'>
         <DialogHeader>
           <DialogTitle>Create organization</DialogTitle>
           <DialogDescription>
@@ -198,16 +198,16 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
             {/* Organization Name */}
             <FormField
               control={form.control}
-              name="name"
+              name='name'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Organization Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="Acme Corp" {...field} />
+                    <Input placeholder='Acme Corp' {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -217,18 +217,18 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
             {/* Organization Handle */}
             <FormField
               control={form.control}
-              name="handle"
+              name='handle'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Organization Handle</FormLabel>
                   <FormControl>
-                    <div className="relative">
+                    <div className='relative'>
                       <InputGroup>
-                        <InputGroupAddon align="inline-start">
+                        <InputGroupAddon align='inline-start'>
                           <InputGroupText>auxx.ai /</InputGroupText>
                         </InputGroupAddon>
                         <InputGroupInput
-                          placeholder="acme-corp"
+                          placeholder='acme-corp'
                           {...field}
                           onFocus={() => {
                             if (watchHandle) {
@@ -239,17 +239,17 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
                             setHandleManuallyEdited(true)
                             field.onChange(e)
                           }}
-                          className="pr-10"
+                          className='pr-10'
                         />
                       </InputGroup>
                       {watchHandle && watchHandle.length >= 4 && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className='absolute right-3 top-1/2 -translate-y-1/2'>
                           {isCheckingAvailability ? (
-                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                            <Loader2 className='h-4 w-4 animate-spin text-muted-foreground' />
                           ) : handleAvailable === true ? (
-                            <Check className="h-4 w-4 text-green-500" />
+                            <Check className='h-4 w-4 text-green-500' />
                           ) : handleAvailable === false ? (
-                            <X className="h-4 w-4 text-destructive" />
+                            <X className='h-4 w-4 text-destructive' />
                           ) : null}
                         </div>
                       )}
@@ -264,12 +264,12 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
             {/* Website */}
             <FormField
               control={form.control}
-              name="website"
+              name='website'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Website (optional)</FormLabel>
                   <FormControl>
-                    <Input placeholder="https://example.com" {...field} />
+                    <Input placeholder='https://example.com' {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -279,16 +279,16 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
             <DialogFooter>
               <Button
                 onClick={() => onOpenChange(false)}
-                variant="ghost"
-                size="sm"
-                type="button"
+                variant='ghost'
+                size='sm'
+                type='button'
                 disabled={createOrganization.isPending}>
-                Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+                Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
               </Button>
               <Button
-                type="submit"
-                variant="outline"
-                size="sm"
+                type='submit'
+                variant='outline'
+                size='sm'
                 disabled={
                   !form.formState.isValid ||
                   isCheckingAvailability ||
@@ -296,8 +296,8 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
                   createOrganization.isPending
                 }
                 loading={createOrganization.isPending}
-                loadingText="Creating...">
-                Create <KbdSubmit variant="outline" size="sm" />
+                loadingText='Creating...'>
+                Create <KbdSubmit variant='outline' size='sm' />
               </Button>
             </DialogFooter>
           </form>

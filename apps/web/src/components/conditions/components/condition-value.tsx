@@ -3,10 +3,10 @@
 'use client'
 
 import { memo, useMemo } from 'react'
+import type { TiptapJSON } from '~/components/workflow/ui/input-editor'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
 import { useConditionContext } from '../condition-context'
-import { STANDARD_OPERATORS, type Operator } from '../types'
-import type { TiptapJSON } from '~/components/workflow/ui/input-editor'
+import { type Operator, STANDARD_OPERATORS } from '../types'
 
 type ConditionValueProps = {
   fieldId?: string
@@ -58,17 +58,17 @@ const ConditionValue = ({ fieldId, operator, value, nodeId, className }: Conditi
         <VariableTag variableId={fieldId} nodeId={nodeId} isShort />
       )}
       {fieldId && config.mode === 'resource' && fieldDef && (
-        <div className="shrink-0 text-xs font-medium text-primary-500" title={fieldDef.label}>
+        <div className='shrink-0 text-xs font-medium text-primary-500' title={fieldDef.label}>
           {fieldDef.label}
         </div>
       )}
 
-      <div className="shrink-0 text-xs font-medium text-primary-500" title={operatorName}>
+      <div className='shrink-0 text-xs font-medium text-primary-500' title={operatorName}>
         {operatorName}
       </div>
 
       {!notHasValue && (
-        <div className="shrink-[3] truncate text-xs text-primary-500" title={formatValue}>
+        <div className='shrink-[3] truncate text-xs text-primary-500' title={formatValue}>
           {formatValue}
         </div>
       )}

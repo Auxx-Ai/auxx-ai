@@ -1,8 +1,7 @@
 // packages/credentials/src/types/provider-auth.ts
 
+import type { ICredentialType, NodeData, OAuth2Config } from '@auxx/workflow-nodes/types'
 import type { ProviderAuth } from './index'
-import type { NodeData, ICredentialType } from '@auxx/workflow-nodes/types'
-import type { OAuth2Config } from '@auxx/workflow-nodes/types'
 
 /**
  * Utility functions for transforming credentials to ProviderAuth format

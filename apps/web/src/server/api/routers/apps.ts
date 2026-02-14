@@ -1,33 +1,28 @@
 // apps/web/src/server/api/routers/apps.ts
 
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure, adminProcedure } from '~/server/api/trpc'
-import { TRPCError } from '@trpc/server'
 import { createScopedLogger } from '@auxx/logger'
 import {
-  getAvailableApps,
-  getAppWithInstallationStatus,
-  getAppVersions,
-  installApp,
-  uninstallApp,
-  installAppRequestSchema,
-  listAppsQuerySchema,
-  listVersionsQuerySchema,
-  listInstalledAppsQuerySchema,
-  uninstallAppRequestSchema,
-} from '@auxx/services/apps'
-
-import { getInstalledApps } from '@auxx/services/app-installations'
-import {
-  listAppConnections,
   deleteAppConnection,
+  listAppConnections,
   saveAppConnection,
 } from '@auxx/services/app-connections'
+import { getInstalledApps } from '@auxx/services/app-installations'
+import { getAppSettings, saveAppSettings, schemaToZod } from '@auxx/services/app-settings'
 import {
-  getAppSettings,
-  saveAppSettings,
-  schemaToZod,
-} from '@auxx/services/app-settings'
+  getAppVersions,
+  getAppWithInstallationStatus,
+  getAvailableApps,
+  installApp,
+  installAppRequestSchema,
+  listAppsQuerySchema,
+  listInstalledAppsQuerySchema,
+  listVersionsQuerySchema,
+  uninstallApp,
+  uninstallAppRequestSchema,
+} from '@auxx/services/apps'
+import { TRPCError } from '@trpc/server'
+import { z } from 'zod'
+import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('trpc-apps')
 
@@ -458,7 +453,7 @@ export const appsRouter = createTRPCRouter({
       }
 
       // Load schema from app version for default merging
-      let schema = undefined
+      let schema
       if (app.installation.currentVersionId) {
         const version = await ctx.db.query.AppVersion.findFirst({
           where: (ver, { eq }) => eq(ver.id, app.installation.currentVersionId!),
@@ -545,7 +540,7 @@ export const appsRouter = createTRPCRouter({
       }
 
       // Load schema for server-side validation
-      let schema = undefined
+      let schema
       if (app.installation.currentVersionId) {
         const version = await ctx.db.query.AppVersion.findFirst({
           where: (ver, { eq }) => eq(ver.id, app.installation.currentVersionId!),

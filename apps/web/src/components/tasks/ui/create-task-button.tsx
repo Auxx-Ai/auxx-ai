@@ -2,9 +2,9 @@
 
 'use client'
 
-import { useState } from 'react'
 import { Button } from '@auxx/ui/components/button'
 import { Plus } from 'lucide-react'
+import { useState } from 'react'
 import { TaskDialog } from './task-dialog'
 
 interface CreateTaskButtonProps {
@@ -19,11 +19,11 @@ export function CreateTaskButton({ variant = 'default' }: CreateTaskButtonProps)
 
   return (
     <>
-      <Button variant={variant} size="sm" onClick={() => setOpen(true)}>
+      <Button variant={variant} size='sm' onClick={() => setOpen(true)}>
         <Plus />
         Create Task
       </Button>
-      {open && <TaskDialog open={open} onOpenChange={setOpen} mode="create" />}
+      {open && <TaskDialog open={open} onOpenChange={setOpen} mode='create' />}
     </>
   )
 }

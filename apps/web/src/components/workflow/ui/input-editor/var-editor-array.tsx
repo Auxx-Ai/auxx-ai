@@ -2,29 +2,30 @@
 
 'use client'
 
-import React, { useCallback, useMemo } from 'react'
+import { Button } from '@auxx/ui/components/button'
+import { cn } from '@auxx/ui/lib/utils'
 import {
-  DndContext,
   closestCenter,
+  DndContext,
+  type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
 } from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import {
   SortableContext,
   sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
   useSortable,
+  verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { CSS } from '@dnd-kit/utilities'
-import { Button } from '@auxx/ui/components/button'
-import { Plus, Trash2, GripVertical } from 'lucide-react'
+import { GripVertical, Plus, Trash2 } from 'lucide-react'
+import type React from 'react'
+import { useCallback, useMemo } from 'react'
+import type { BaseType } from '~/components/workflow/types/unified-types'
 import { VarEditor } from '~/components/workflow/ui/input-editor/var-editor'
-import { BaseType } from '~/components/workflow/types/unified-types'
-import { cn } from '@auxx/ui/lib/utils'
 
 /**
  * Props for VarEditorArray component
@@ -108,13 +109,13 @@ function SortableArrayItem({
         <button
           {...attributes}
           {...listeners}
-          className="mt-2 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+          className='mt-2 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity'
           disabled={disabled}>
-          <GripVertical className="size-3" />
+          <GripVertical className='size-3' />
         </button>
       )}
 
-      <div className="flex-1">
+      <div className='flex-1'>
         <VarEditor
           value={value}
           onChange={onChange}
@@ -129,11 +130,11 @@ function SortableArrayItem({
       </div>
 
       <Button
-        size="icon-xs"
-        variant="destructive-hover"
+        size='icon-xs'
+        variant='destructive-hover'
         onClick={onRemove}
         disabled={disabled}
-        className="mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        className='mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity'>
         <Trash2 />
       </Button>
     </div>
@@ -239,7 +240,7 @@ export const VarEditorArray: React.FC<VarEditorArrayProps> = ({
   }, [value, modes, onChange])
 
   return (
-    <div className="space-y-0 flex-1">
+    <div className='space-y-0 flex-1'>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -268,7 +269,7 @@ export const VarEditorArray: React.FC<VarEditorArrayProps> = ({
         </SortableContext>
       </DndContext>
 
-      <Button className="" size="xs" variant="outline" onClick={handleAddItem} disabled={disabled}>
+      <Button className='' size='xs' variant='outline' onClick={handleAddItem} disabled={disabled}>
         <Plus />
         Add Item
       </Button>

@@ -1,26 +1,26 @@
 // packages/lib/src/timeline/timeline-service.ts
 
-import { type Database } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import {
   createTimelineEvent,
-  getTimelineEvents,
-  getRelatedTimelineEvents,
   deleteTimelineEvents,
+  getRelatedTimelineEvents,
+  getTimelineEvents,
   type TimelineCursor as ServiceTimelineCursor,
 } from '@auxx/services/timeline'
+import type { RecordId } from '@auxx/types/resource'
+import type { TimelineEventType } from './event-types'
 import type {
-  TimelineQueryInput,
-  TimelineQueryResult,
   CreateTimelineEventInput,
+  GroupedTimelineEvent,
+  SingleTimelineEvent,
+  TimelineCursor,
   TimelineEventBase,
   TimelineItem,
-  SingleTimelineEvent,
-  GroupedTimelineEvent,
-  TimelineCursor,
+  TimelineQueryInput,
+  TimelineQueryResult,
 } from './types'
-import type { TimelineEventType } from './event-types'
-import type { RecordId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('timeline-service')
 
@@ -178,10 +178,7 @@ export class TimelineService {
   /**
    * Delete timeline events for an entity (e.g., when entity is deleted)
    */
-  async deleteEventsForEntity(
-    organizationId: string,
-    recordId: RecordId
-  ): Promise<void> {
+  async deleteEventsForEntity(organizationId: string, recordId: RecordId): Promise<void> {
     const result = await deleteTimelineEvents({
       organizationId,
       recordId,

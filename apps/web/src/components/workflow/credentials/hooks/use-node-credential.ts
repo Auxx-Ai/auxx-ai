@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/credentials/hooks/use-node-credential.ts
 
 import { useMemo } from 'react'
-import { api } from '~/trpc/react'
 import { useNodeCrud } from '~/components/workflow/hooks'
-import { getCredentialType } from '../credential-registry'
 import type { BaseNodeData } from '~/components/workflow/types'
+import { api } from '~/trpc/react'
+import { getCredentialType } from '../credential-registry'
 
 interface UseNodeCredentialOptions {
   /** Node ID */

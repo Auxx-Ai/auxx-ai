@@ -1,26 +1,26 @@
 // ~/components/global/reauth-banner.tsx
 'use client'
 
-import React, { useState } from 'react'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
-import { Button } from '@auxx/ui/components/button'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
 import {
   AlertTriangle,
-  RefreshCw,
   ChevronDown,
-  ChevronUp,
-  ExternalLink,
-  Clock,
-  X,
   ChevronRight,
+  ChevronUp,
+  Clock,
+  ExternalLink,
+  RefreshCw,
+  X,
 } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
 import { useRouter } from 'next/navigation'
-import { api } from '~/trpc/react'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import React, { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useIsSmallScreen } from '~/hooks/use-small-screen'
+import { api } from '~/trpc/react'
 
 interface ReauthBannerProps {
   integration: {
@@ -103,7 +103,7 @@ export function ReauthBanner({ integration, onDismiss, className }: ReauthBanner
   return (
     <>
       <Alert
-        variant="destructive"
+        variant='destructive'
         className={cn(
           'relative border-red-200 bg-red-50 dark:bg-red-950/30 rounded-none border-x-0 border-t-0',
           // Mobile optimizations
@@ -111,7 +111,7 @@ export function ReauthBanner({ integration, onDismiss, className }: ReauthBanner
           isSmallScreen && 'rounded-none p-3',
           className
         )}>
-        <div className="flex items-start gap-3">
+        <div className='flex items-start gap-3'>
           <AlertTriangle
             className={cn(
               'text-red-600 dark:text-red-400 flex-shrink-0 size-4',
@@ -119,16 +119,16 @@ export function ReauthBanner({ integration, onDismiss, className }: ReauthBanner
             )}
           />
 
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-col gap-2">
+          <div className='flex-1 min-w-0'>
+            <div className='flex flex-col gap-2'>
               {/* Header Row */}
               <div
                 className={cn(
                   'flex items-start justify-between gap-2',
                   isSmallScreen && 'flex-col gap-1'
                 )}>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">Authentication Required</div>
+                <div className='flex-1 min-w-0'>
+                  <div className='flex items-center gap-2 flex-wrap'>Authentication Required</div>
                 </div>
               </div>
 
@@ -149,16 +149,16 @@ export function ReauthBanner({ integration, onDismiss, className }: ReauthBanner
                   isSmallScreen ? 'flex-col' : 'flex-row items-center'
                 )}>
                 <Button
-                  variant="outline"
+                  variant='outline'
                   onClick={handleReauthenticate}
                   disabled={isReauthenticating || reauthMutation.isPending}
                   loading={isReauthenticating}
-                  size="sm">
+                  size='sm'>
                   <ExternalLink />
                   Re-authenticate Now
                 </Button>
 
-                <Button variant="outline" size="sm" onClick={() => setIsExpanded(!isExpanded)}>
+                <Button variant='outline' size='sm' onClick={() => setIsExpanded(!isExpanded)}>
                   {isExpanded ? (
                     <>
                       Less Details <ChevronDown />
@@ -178,10 +178,10 @@ export function ReauthBanner({ integration, onDismiss, className }: ReauthBanner
                     'mt-3 p-3 bg-red-100 dark:bg-red-900/50 rounded-md border border-red-200 dark:border-red-800',
                     isSmallScreen && 'text-xs'
                   )}>
-                  <h4 className="font-medium text-red-800 dark:text-red-200 mb-1">
+                  <h4 className='font-medium text-red-800 dark:text-red-200 mb-1'>
                     Technical Details:
                   </h4>
-                  <code className="text-red-700 dark:text-red-300 break-all">
+                  <code className='text-red-700 dark:text-red-300 break-all'>
                     {integration.lastAuthError}
                   </code>
                 </div>

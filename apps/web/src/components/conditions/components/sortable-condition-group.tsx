@@ -4,8 +4,8 @@
 
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import ConditionGroup from './condition-group'
 import type { ConditionGroup as ConditionGroupType } from '../types'
+import ConditionGroup from './condition-group'
 
 interface SortableConditionGroupProps {
   group: ConditionGroupType
@@ -36,7 +36,7 @@ const SortableConditionGroup = ({
   }
 
   return (
-    <div data-field="group-condition" ref={setNodeRef} style={style}>
+    <div data-field='group-condition' ref={setNodeRef} style={style}>
       <ConditionGroup
         group={group}
         showDragHandle={!disabled}

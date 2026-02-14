@@ -1,29 +1,30 @@
 // packages/sdk/src/api/api.ts
 
-import { Fetcher } from './fetcher.js'
-import type { Result } from '../types/result.js'
 import { complete, errored, type FetcherError } from '../errors.js'
+import type { Result } from '../types/result.js'
+import { Fetcher } from './fetcher.js'
+
 // import { complete, errored, isErrored } from '../errors.js'
 
+import type { DotenvParseOutput } from 'dotenv'
+import { AUTH_API } from '../env.js'
 import {
-  tokenResponseSchema,
-  whoamiSchema,
-  oidcUserInfoSchema,
-  listDevOrganizationsResponseSchema,
-  // developerAccountSchema,
-  listAppsResponseSchema,
   appInfoSchema,
-  createDevVersionSchema,
   completeBundleUploadSchema,
-  versionsSchema,
-  installationSchema,
+  createDevVersionSchema,
   createVersionSchema,
   fetchAppLogsResponseSchema,
+  installationSchema,
+  // developerAccountSchema,
+  listAppsResponseSchema,
+  listDevOrganizationsResponseSchema,
+  oidcUserInfoSchema,
   TEST_APP_INFO,
   TEST_ORGANIZATIONS,
+  tokenResponseSchema,
+  versionsSchema,
+  whoamiSchema,
 } from './schemas.js'
-import { AUTH_API } from '../env.js'
-import { DotenvParseOutput } from 'dotenv'
 
 export type ApiError =
   | { code: 'WHOAMI_ERROR'; error: FetcherError }

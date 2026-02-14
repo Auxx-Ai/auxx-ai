@@ -2,35 +2,35 @@
 
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
-import { Plus } from 'lucide-react'
-import {
-  Command,
-  CommandInput,
-  CommandList,
-  CommandGroup,
-  CommandItem,
-  CommandEmpty,
-  CommandSeparator,
-  CommandNavigation,
-  CommandBreadcrumb,
-  useCommandNavigation,
-  CommandGroupLabel,
-} from '@auxx/ui/components/command'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import { FieldTypeValues } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
-import { useResourceFields, useResourceProperty } from '~/components/resources'
-import { toFieldPath, parseResourceFieldId, isFieldPath } from '@auxx/types/field'
-import type { ResourceFieldId, FieldReference } from '@auxx/types/field'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import type { FieldReference, ResourceFieldId } from '@auxx/types/field'
+import { isFieldPath, parseResourceFieldId, toFieldPath } from '@auxx/types/field'
+import {
+  Command,
+  CommandBreadcrumb,
+  CommandEmpty,
+  CommandGroup,
+  CommandGroupLabel,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandNavigation,
+  CommandSeparator,
+  useCommandNavigation,
+} from '@auxx/ui/components/command'
+import { EntityIcon } from '@auxx/ui/components/icons'
+import { Plus } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { useResourceFields, useResourceProperty } from '~/components/resources'
 import { FieldItem } from './field-item'
 import type {
+  ExcludeFilter,
   ResourcePickerContentProps,
   ResourcePickerInnerContentProps,
   ResourcePickerNavigationItem,
-  ExcludeFilter,
 } from './types'
 
 /**
@@ -227,7 +227,7 @@ export function ResourcePickerInnerContent({
           <>
             <CommandGroup>
               <CommandItem onSelect={handleSelectCurrentRelationship}>
-                <EntityIcon iconId={entityProps.icon} color={entityProps.color} size="xs" />
+                <EntityIcon iconId={entityProps.icon} color={entityProps.color} size='xs' />
                 <span>{entityProps.label}</span>
               </CommandItem>
             </CommandGroup>
@@ -258,7 +258,7 @@ export function ResourcePickerInnerContent({
             {filteredFields.length > 0 && <CommandSeparator />}
             <CommandGroup>
               <CommandItem onSelect={onCreateField}>
-                <Plus className="size-4" />
+                <Plus className='size-4' />
                 <span>Create field</span>
               </CommandItem>
             </CommandGroup>
@@ -279,7 +279,7 @@ export function ResourcePickerInnerContent({
   // Standalone usage: wrap with Command and breadcrumb
   return (
     <Command shouldFilter={false}>
-      {showBreadcrumb && <CommandBreadcrumb rootLabel="Fields" />}
+      {showBreadcrumb && <CommandBreadcrumb rootLabel='Fields' />}
       {content}
     </Command>
   )

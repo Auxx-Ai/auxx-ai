@@ -1,40 +1,39 @@
 // ~/components/global/sidebar/shared-inbox-group.tsx
 'use client'
 
-import { useCallback, useState } from 'react'
-import { usePathname } from 'next/navigation'
-
+import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { SidebarGroup, SidebarMenu, SidebarMenuSubItem } from '@auxx/ui/components/sidebar'
-import { CollapsibleSidebarSection } from '~/components/global/sidebar/collapsible-sidebar-section'
-import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
-import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
-import { EditableSidebarItem } from '~/components/global/sidebar/editable-sidebar-item'
-import { Inbox, Mail } from 'lucide-react'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { useSidebarStateContext } from './sidebar-state-context'
+import { cn } from '@auxx/ui/lib/utils'
 import {
-  DndContext,
   closestCenter,
+  DndContext,
+  type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
-  DragEndEvent,
-  useDroppable,
 } from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-import { cn } from '@auxx/ui/lib/utils'
-import { useDndState } from '~/app/context/dnd-state-context'
-import { useMailCountsStore, selectSharedInboxesTotal } from '~/components/mail/store'
-import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
+import { Inbox, Mail } from 'lucide-react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { useCallback, useState } from 'react'
+import { useDndState } from '~/app/context/dnd-state-context'
+import { CollapsibleSidebarSection } from '~/components/global/sidebar/collapsible-sidebar-section'
+import { EditableSidebarItem } from '~/components/global/sidebar/editable-sidebar-item'
+import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
+import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
 import { InboxDialog } from '~/components/inbox/inbox-dialog'
+import { selectSharedInboxesTotal, useMailCountsStore } from '~/components/mail/store'
+import { useSidebarStateContext } from './sidebar-state-context'
 
 // import { useDndState } from '~/context/dnd-state-context'; // <-- IMPORT NEW HOOK
 
@@ -204,9 +203,9 @@ export function SharedInboxesGroup({
         .fill(0)
         .map((_, i) => (
           <SidebarMenuSubItem key={`skeleton-${i}`}>
-            <div className="flex items-center space-x-2 px-2 py-1.5">
-              <Skeleton className="h-4 w-4 rounded-full" />
-              <Skeleton className="h-4 w-24" />
+            <div className='flex items-center space-x-2 px-2 py-1.5'>
+              <Skeleton className='h-4 w-4 rounded-full' />
+              <Skeleton className='h-4 w-24' />
             </div>
           </SidebarMenuSubItem>
         ))
@@ -235,7 +234,7 @@ export function SharedInboxesGroup({
         })
       ) : (
         <SidebarMenuSubItem>
-          <div className="px-2 py-1.5 text-sm text-muted-foreground">No visible shared inboxes</div>
+          <div className='px-2 py-1.5 text-sm text-muted-foreground'>No visible shared inboxes</div>
         </SidebarMenuSubItem>
       )
     } else {
@@ -253,7 +252,7 @@ export function SharedInboxesGroup({
               // Use SidebarMenuSubItem to maintain visual structure if needed,
               // or directly render EditableSidebarItem if SubItem adds unwanted padding/styles in edit mode.
               // Let's keep SubItem for now for consistency.
-              <SidebarMenuSubItem key={inbox.id} className="p-0">
+              <SidebarMenuSubItem key={inbox.id} className='p-0'>
                 <EditableSidebarItem
                   id={inbox.id}
                   name={inbox.name}
@@ -271,7 +270,7 @@ export function SharedInboxesGroup({
         </DndContext>
       ) : (
         <SidebarMenuSubItem>
-          <div className="px-2 py-1.5 text-sm text-muted-foreground">No shared inboxes to edit</div>
+          <div className='px-2 py-1.5 text-sm text-muted-foreground'>No shared inboxes to edit</div>
         </SidebarMenuSubItem>
       )
     }
@@ -301,9 +300,9 @@ export function SharedInboxesGroup({
 
   return (
     <>
-      <SidebarGroup className="group">
+      <SidebarGroup className='group'>
         <SidebarGroupHeader
-          title="Shared"
+          title='Shared'
           isEditMode={isEditMode}
           onToggleEditMode={onToggleEditMode}
           additionalOptions={additionalOptions}
@@ -313,15 +312,15 @@ export function SharedInboxesGroup({
           onToggleGroupVisibility={onToggleGroupVisibility}
         />
         {(isEditMode || isOpen) && (
-          <SidebarMenu className="gap-0">
+          <SidebarMenu className='gap-0'>
             <CollapsibleSidebarSection
-              title="Shared Inboxes"
+              title='Shared Inboxes'
               avatar={
-                <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-info">
-                  <Mail className="size-3 text-white/80" />
+                <div className='flex size-5 shrink-0 items-center justify-center rounded-md bg-info'>
+                  <Mail className='size-3 text-white/80' />
                 </div>
               }
-              href="/app/mail/inboxes/all/unassigned"
+              href='/app/mail/inboxes/all/unassigned'
               isEditMode={isEditMode}
               defaultOpen // Keep open by default
               alwaysShowChildren // Content needs to be mounted for dnd-kit even if visually collapsed

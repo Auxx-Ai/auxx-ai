@@ -1,23 +1,23 @@
 // app/(protected)/app/settings/plans/_components/plan-change-summary.tsx
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { api } from '~/trpc/react'
-import { loadStripe } from '@stripe/stripe-js'
-import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
-import { Badge } from '@auxx/ui/components/badge'
-import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
-import { PlanComparison, type Plan } from './plan-comparison'
-import { Users, Building2 } from 'lucide-react'
+import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js'
+import { loadStripe } from '@stripe/stripe-js'
+import { Building2, Users } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { api } from '~/trpc/react'
+import { type Plan, PlanComparison } from './plan-comparison'
 
 /** Initialize Stripe */
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
@@ -92,12 +92,12 @@ export function PlanChangeSummary({ open, onOpenChange, initialPlan }: PlanChang
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="3xl" className="max-h-screen overflow-y-auto">
+      <DialogContent size='3xl' className='max-h-screen overflow-y-auto'>
         <DialogHeader>
           <DialogTitle>
-            <div className="flex flex-row gap-1 items-center">
+            <div className='flex flex-row gap-1 items-center'>
               {view === 'plan-selection' && (
-                <Button variant="ghost" size="sm" onClick={() => setView('summary')} className="">
+                <Button variant='ghost' size='sm' onClick={() => setView('summary')} className=''>
                   Back
                 </Button>
               )}
@@ -277,7 +277,7 @@ function PlanChangeSummaryContent({
       })
 
       let paymentMethodId = defaultPaymentMethod?.id as string | undefined
-      let previousPaymentMethodId = defaultPaymentMethod?.id as string | undefined
+      const previousPaymentMethodId = defaultPaymentMethod?.id as string | undefined
 
       if (shouldCollectNewPaymentMethod) {
         const { clientSecret } = await createSetupIntent.mutateAsync()
@@ -343,7 +343,7 @@ function PlanChangeSummaryContent({
 
   if (!selectedPlan) {
     return (
-      <div className="text-center py-8 text-muted-foreground">Please select a plan to continue</div>
+      <div className='text-center py-8 text-muted-foreground'>Please select a plan to continue</div>
     )
   }
 
@@ -384,30 +384,30 @@ function PlanChangeSummaryContent({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
-      <div className="grid grid-cols-3 gap-6">
+      <div className='grid grid-cols-3 gap-6'>
         {/* Column 1: Main Content (2/3 width) */}
-        <div className="col-span-2 space-y-4">
+        <div className='col-span-2 space-y-4'>
           {/* Plan Selection Card */}
-          <div className="group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200">
-            <div className="flex flex-row items-center gap-2">
-              <div className="size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0">
-                <Building2 className="size-4" />
+          <div className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200'>
+            <div className='flex flex-row items-center gap-2'>
+              <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0'>
+                <Building2 className='size-4' />
               </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">{actionTitle}</span>
-                <span className="text-xs text-muted-foreground">{selectedPlan.description}</span>
+              <div className='flex flex-col'>
+                <span className='text-sm font-medium'>{actionTitle}</span>
+                <span className='text-xs text-muted-foreground'>{selectedPlan.description}</span>
               </div>
             </div>
-            <Button type="button" variant="link" size="sm" onClick={onChangePlan}>
+            <Button type='button' variant='link' size='sm' onClick={onChangePlan}>
               Change plan
             </Button>
           </div>
 
           {/* Current subscription info */}
           {currentSubscription && (
-            <Alert className="p-3" variant="default">
-              <AlertDescription className="text-xs">
-                <div className="space-y-1">
+            <Alert className='p-3' variant='default'>
+              <AlertDescription className='text-xs'>
+                <div className='space-y-1'>
                   <div>
                     Current: {currentSubscription.seats} seat(s) on{' '}
                     {currentSubscription.plan?.name || 'N/A'}
@@ -424,22 +424,22 @@ function PlanChangeSummaryContent({
           )}
 
           {/* Billing Period */}
-          <div className="space-y-2">
+          <div className='space-y-2'>
             <Label>Billing period</Label>
-            <div className="relative w-full">
+            <div className='relative w-full'>
               <RadioTab
-                className="w-full"
-                radioGroupClassName="w-full "
+                className='w-full'
+                radioGroupClassName='w-full '
                 value={billingCycle}
                 onValueChange={(v) => setBillingCycle(v as any)}>
-                <RadioTabItem value="MONTHLY">
+                <RadioTabItem value='MONTHLY'>
                   Monthly (${monthlyPricePerMonth.toFixed(0)} / user / month)
                 </RadioTabItem>
-                <RadioTabItem value="ANNUAL">
-                  <div className="flex items-center gap-2">
+                <RadioTabItem value='ANNUAL'>
+                  <div className='flex items-center gap-2'>
                     Annually (${annualPricePerMonth.toFixed(0)} / user / month)
                     {savingsPercentage > 0 && (
-                      <Badge size="xs" variant="blue" className="absolute -right-4 -top-4">
+                      <Badge size='xs' variant='blue' className='absolute -right-4 -top-4'>
                         {savingsPercentage}% off
                       </Badge>
                     )}
@@ -450,107 +450,107 @@ function PlanChangeSummaryContent({
           </div>
 
           {/* Seats Card */}
-          <div className="group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200">
-            <div className="flex flex-row items-center gap-2">
-              <div className="size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0">
-                <Users className="size-4" />
+          <div className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200'>
+            <div className='flex flex-row items-center gap-2'>
+              <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0'>
+                <Users className='size-4' />
               </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">Seats</span>
-                <span className="text-xs text-muted-foreground">
+              <div className='flex flex-col'>
+                <span className='text-sm font-medium'>Seats</span>
+                <span className='text-xs text-muted-foreground'>
                   Purchase additional seats to add more users
                 </span>
               </div>
             </div>
             <Input
-              type="number"
+              type='number'
               min={selectedPlan.minSeats}
               max={selectedPlan.maxSeats}
               value={seats}
               onChange={(e) => setSeats(Math.max(1, parseInt(e.target.value) || 1))}
-              className="w-20"
+              className='w-20'
             />
           </div>
 
           {/* Billing Information */}
-          <div className="space-y-3">
+          <div className='space-y-3'>
             <Label>Billing information</Label>
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+            <div className='space-y-3'>
+              <div className='grid grid-cols-2 gap-3'>
                 <div>
                   <Input
                     {...register('email', { required: 'Email is required' })}
-                    placeholder="Email"
-                    type="email"
+                    placeholder='Email'
+                    type='email'
                   />
                   {errors.email && (
-                    <p className="text-xs text-destructive mt-1">{errors.email.message}</p>
+                    <p className='text-xs text-destructive mt-1'>{errors.email.message}</p>
                   )}
                 </div>
                 <div>
-                  <Input {...register('companyName')} placeholder="Company" />
+                  <Input {...register('companyName')} placeholder='Company' />
                 </div>
               </div>
 
               <Input
                 {...register('line1', { required: 'Address is required' })}
-                placeholder="Address Line 1"
+                placeholder='Address Line 1'
               />
               {errors.line1 && (
-                <p className="text-xs text-destructive mt-1">{errors.line1.message}</p>
+                <p className='text-xs text-destructive mt-1'>{errors.line1.message}</p>
               )}
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className='grid grid-cols-3 gap-3'>
                 <div>
                   <Input
                     {...register('city', { required: 'City is required' })}
-                    placeholder="City"
+                    placeholder='City'
                   />
                   {errors.city && (
-                    <p className="text-xs text-destructive mt-1">{errors.city.message}</p>
+                    <p className='text-xs text-destructive mt-1'>{errors.city.message}</p>
                   )}
                 </div>
                 <div>
-                  <Input {...register('state')} placeholder="State" />
+                  <Input {...register('state')} placeholder='State' />
                 </div>
                 <div>
                   <Input
                     {...register('postalCode', { required: 'Postal code is required' })}
-                    placeholder="Postal Code"
+                    placeholder='Postal Code'
                   />
                   {errors.postalCode && (
-                    <p className="text-xs text-destructive mt-1">{errors.postalCode.message}</p>
+                    <p className='text-xs text-destructive mt-1'>{errors.postalCode.message}</p>
                   )}
                 </div>
               </div>
 
               <Input
                 {...register('country', { required: 'Country is required' })}
-                placeholder="Country"
+                placeholder='Country'
               />
               {errors.country && (
-                <p className="text-xs text-destructive mt-1">{errors.country.message}</p>
+                <p className='text-xs text-destructive mt-1'>{errors.country.message}</p>
               )}
             </div>
           </div>
 
           {/* Payment Information */}
-          <div className="space-y-3">
+          <div className='space-y-3'>
             <Label>Payment information</Label>
             {defaultPaymentMethod ? (
-              <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className='flex items-center justify-between rounded-lg border p-3'>
                 <div>
-                  <p className="text-sm font-medium">
+                  <p className='text-sm font-medium'>
                     {defaultPaymentMethod.brand} •••• {defaultPaymentMethod.last4}
                   </p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className='text-xs text-muted-foreground'>
                     Expires {defaultPaymentMethod.expMonth}/{defaultPaymentMethod.expYear}
                   </p>
                 </div>
                 <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
+                  type='button'
+                  variant='ghost'
+                  size='sm'
                   onClick={() => {
                     hasManuallySelectedPayment.current = true
                     setUseExistingPaymentMethod((prev) => !prev)
@@ -561,7 +561,7 @@ function PlanChangeSummaryContent({
             ) : null}
 
             {shouldCollectNewPaymentMethod ? (
-              <div className="p-3 border rounded-lg">
+              <div className='p-3 border rounded-lg'>
                 <CardElement
                   options={{
                     style: {
@@ -584,12 +584,12 @@ function PlanChangeSummaryContent({
         </div>
 
         {/* Column 2: Summary Card (1/3 width) */}
-        <div className="col-span-1">
-          <div className="rounded-2xl border p-4 space-y-4 sticky top-4">
-            <div className="space-y-2 text-sm">
+        <div className='col-span-1'>
+          <div className='rounded-2xl border p-4 space-y-4 sticky top-4'>
+            <div className='space-y-2 text-sm'>
               {/* Seat change indicator */}
               {currentSubscription && seats !== currentSubscription.seats && (
-                <div className="flex justify-between text-xs text-muted-foreground">
+                <div className='flex justify-between text-xs text-muted-foreground'>
                   <span>Seat change</span>
                   <span>
                     {currentSubscription.seats} → {seats} (
@@ -600,10 +600,10 @@ function PlanChangeSummaryContent({
               )}
 
               {/* Line item */}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">
+              <div className='flex justify-between'>
+                <span className='text-muted-foreground'>
                   {isLoadingPreview ? (
-                    <Skeleton className="h-[20px] w-32" />
+                    <Skeleton className='h-[20px] w-32' />
                   ) : (
                     <>
                       {seats} seat × {selectedPlan.name}
@@ -611,14 +611,14 @@ function PlanChangeSummaryContent({
                   )}
                 </span>
                 {isLoadingPreview ? (
-                  <Skeleton className="h-[20px] w-16" />
+                  <Skeleton className='h-[20px] w-16' />
                 ) : (
-                  <span className="font-medium">${subtotal.toFixed(2)}</span>
+                  <span className='font-medium'>${subtotal.toFixed(2)}</span>
                 )}
               </div>
-              <div className="text-xs text-muted-foreground">
+              <div className='text-xs text-muted-foreground'>
                 {isLoadingPreview ? (
-                  <Skeleton className="h-[16px] w-24" />
+                  <Skeleton className='h-[16px] w-24' />
                 ) : (
                   <>
                     at ${(selectedPrice / 100).toFixed(2)} /{' '}
@@ -628,38 +628,38 @@ function PlanChangeSummaryContent({
               </div>
 
               {/* Subtotal */}
-              <div className="border-t pt-2 flex justify-between">
-                <span className="text-muted-foreground">Subtotal</span>
+              <div className='border-t pt-2 flex justify-between'>
+                <span className='text-muted-foreground'>Subtotal</span>
                 {isLoadingPreview ? (
-                  <Skeleton className="h-[20px] w-16" />
+                  <Skeleton className='h-[20px] w-16' />
                 ) : (
-                  <span className="font-medium">${subtotal.toFixed(2)}</span>
+                  <span className='font-medium'>${subtotal.toFixed(2)}</span>
                 )}
               </div>
 
               {/* Tax */}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Tax</span>
+              <div className='flex justify-between'>
+                <span className='text-muted-foreground'>Tax</span>
                 {isLoadingPreview ? (
-                  <Skeleton className="h-[20px] w-16" />
+                  <Skeleton className='h-[20px] w-16' />
                 ) : (
-                  <span className="font-medium">${tax.toFixed(2)}</span>
+                  <span className='font-medium'>${tax.toFixed(2)}</span>
                 )}
               </div>
 
               {/* Total at renewal */}
-              <div className="border-t pt-2 flex justify-between font-semibold">
+              <div className='border-t pt-2 flex justify-between font-semibold'>
                 <span>Total at renewal</span>
                 {isLoadingPreview ? (
-                  <Skeleton className="h-[20px] w-16" />
+                  <Skeleton className='h-[20px] w-16' />
                 ) : (
                   <span>${total.toFixed(2)}</span>
                 )}
               </div>
 
               {/* Adjustment due today */}
-              <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">
+              <div className='flex justify-between text-xs'>
+                <span className='text-muted-foreground'>
                   {preview?.transition === 'seat_addition' && 'Prorated seat addition'}
                   {preview?.transition === 'seat_reduction' && 'Prorated seat reduction'}
                   {preview?.transition === 'trial_to_paid' && 'Due after trial'}
@@ -668,7 +668,7 @@ function PlanChangeSummaryContent({
                     'Adjustment due today'}
                 </span>
                 {isLoadingPreview ? (
-                  <Skeleton className="h-[16px] w-12" />
+                  <Skeleton className='h-[16px] w-12' />
                 ) : (
                   <span>${adjustmentDueToday.toFixed(2)}</span>
                 )}
@@ -678,7 +678,7 @@ function PlanChangeSummaryContent({
               {preview?.transition === 'seat_addition' &&
                 adjustmentDueToday > 0 &&
                 currentSubscription && (
-                  <div className="text-[10px] text-muted-foreground">
+                  <div className='text-[10px] text-muted-foreground'>
                     Adding {seats - currentSubscription.seats} seat(s) prorated for remaining
                     billing period
                   </div>
@@ -686,14 +686,14 @@ function PlanChangeSummaryContent({
 
               {/* Add note for trial subscriptions */}
               {preview?.transition === 'trial_to_paid' && preview?.proration?.note && (
-                <div className="text-[10px] text-muted-foreground">{preview.proration.note}</div>
+                <div className='text-[10px] text-muted-foreground'>{preview.proration.note}</div>
               )}
             </div>
 
             {/* Action-specific messaging */}
             {actionType === 'downgrade' && preview?.renewal?.date && (
-              <Alert className="p-2" variant="comparison">
-                <AlertDescription className="text-xs">
+              <Alert className='p-2' variant='comparison'>
+                <AlertDescription className='text-xs'>
                   Your plan will downgrade to {selectedPlan.name} on{' '}
                   {new Date(preview.renewal.date).toLocaleDateString()}. You'll retain your current
                   plan access until then. You can cancel this change anytime.
@@ -704,8 +704,8 @@ function PlanChangeSummaryContent({
             {actionType === 'upgrade' &&
               currentSubscription?.billingCycle === 'MONTHLY' &&
               billingCycle === 'ANNUAL' && (
-                <Alert className="p-2" variant="comparison">
-                  <AlertDescription className="text-xs">
+                <Alert className='p-2' variant='comparison'>
+                  <AlertDescription className='text-xs'>
                     Switching to annual billing will credit your unused monthly payment toward the
                     annual plan.{' '}
                     {currentSubscription?.status !== 'trialing' &&
@@ -715,21 +715,21 @@ function PlanChangeSummaryContent({
               )}
 
             <Button
-              type="submit"
-              className="w-full"
+              type='submit'
+              className='w-full'
               loading={
                 updateSubscriptionDirect.isPending ||
                 updateBillingAddress.isPending ||
                 (shouldCollectNewPaymentMethod ? createSetupIntent.isPending : false)
               }
-              loadingText="Processing..."
+              loadingText='Processing...'
               disabled={isLoadingPreview}>
               Confirm
             </Button>
 
             {currentSubscription?.status === 'trialing' && (
-              <Alert className="p-2" variant="comparison">
-                <AlertDescription className="text-xs">
+              <Alert className='p-2' variant='comparison'>
+                <AlertDescription className='text-xs'>
                   Your card will not be charged until the end of your trial on{' '}
                   {new Date(currentSubscription.trialEnd).toLocaleDateString()}
                 </AlertDescription>

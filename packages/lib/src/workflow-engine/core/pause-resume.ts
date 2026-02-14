@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/core/pause-resume.ts
 
-import { WorkflowGraphHelper, type WorkflowGraph } from './workflow-graph-builder'
-import { WorkflowNodeType, type WorkflowNode, type PauseReason } from './types'
+import { type PauseReason, type WorkflowNode, WorkflowNodeType } from './types'
+import { type WorkflowGraph, WorkflowGraphHelper } from './workflow-graph-builder'
 
 /**
  * Determine if a pause should terminate the entire workflow vs just the branch
@@ -113,9 +113,10 @@ export function determineNextNodesForResume(
       return getWaitNodeNextNodes(node, nodeOutput, graph)
     case WorkflowNodeType.IF_ELSE:
       return getConditionalNextNodes(node, nodeOutput, graph)
-    default:
+    default: {
       // Standard output handle resolution
       const outputHandle = nodeOutput?.outputHandle || 'source'
       return WorkflowGraphHelper.getNextNodes(graph, node.nodeId, outputHandle).map((n) => n.nodeId)
+    }
   }
 }

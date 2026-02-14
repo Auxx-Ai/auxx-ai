@@ -55,8 +55,8 @@ export class AiDomain {
       )
     }
     const userIds = new Set<string>()
-    context.auth.testUsers.forEach(user => userIds.add(user.id))
-    context.auth.randomUsers.forEach(user => userIds.add(user.id))
+    context.auth.testUsers.forEach((user) => userIds.add(user.id))
+    context.auth.randomUsers.forEach((user) => userIds.add(user.id))
     this.users = Array.from(userIds)
     if (this.users.length === 0) {
       throw new Error('AiDomain requires user references from the seeding context')
@@ -121,7 +121,9 @@ export class AiDomain {
 
     if (usageRows.length > 0) {
       console.log(`📝 AI usage rows to insert: ${usageRows.length} records`)
-      console.log(`  Sample: model=${usageRows[0]?.model}, tokens=${usageRows[0]?.totalTokens}, cost=$${usageRows[0]?.cost}`)
+      console.log(
+        `  Sample: model=${usageRows[0]?.model}, tokens=${usageRows[0]?.totalTokens}, cost=$${usageRows[0]?.cost}`
+      )
 
       await db
         .insert(schema.AiUsage)
@@ -308,7 +310,7 @@ export class AiDomain {
       '/v1/completions',
       '/v1/embeddings',
       '/v1/messages',
-      '/openai/deployments/gpt-4/chat/completions'
+      '/openai/deployments/gpt-4/chat/completions',
     ]
     const result: string[] = []
     const count = this.calculateAiUsageCount()
@@ -353,8 +355,9 @@ export class AiDomain {
 
   private generateUsageTimestamps(): Date[] {
     const base = this.getSeededStartDate().getTime()
-    return Array.from({ length: this.calculateAiUsageCount() }, (_, index) =>
-      new Date(base + index * 3600 * 1000)
+    return Array.from(
+      { length: this.calculateAiUsageCount() },
+      (_, index) => new Date(base + index * 3600 * 1000)
     )
   }
 

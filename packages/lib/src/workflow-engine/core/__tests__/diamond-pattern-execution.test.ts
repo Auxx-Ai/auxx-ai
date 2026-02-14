@@ -1,20 +1,20 @@
 // packages/lib/src/workflow-engine/core/__tests__/diamond-pattern-execution.test.ts
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { WorkflowEngine } from '../workflow-engine'
-import { ExecutionContextManager } from '../execution-context'
-import { NodeProcessorRegistry } from '../node-processor-registry'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BaseNodeProcessor } from '../../nodes/base-node'
+import type { ExecutionContextManager } from '../execution-context'
+import { NodeProcessorRegistry } from '../node-processor-registry'
 import type {
-  Workflow,
-  WorkflowNode,
-  WorkflowNodeType,
+  ExecutionContext,
   NodeExecutionResult,
   NodeRunningStatus,
+  Workflow,
   WorkflowExecutionOptions,
+  WorkflowNode,
+  WorkflowNodeType,
   WorkflowTriggerType,
-  ExecutionContext,
 } from '../types'
+import { WorkflowEngine } from '../workflow-engine'
 
 // Mock processors for testing
 class MockTriggerProcessor extends BaseNodeProcessor {

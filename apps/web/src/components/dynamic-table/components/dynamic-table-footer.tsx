@@ -1,9 +1,9 @@
 // apps/web/src/components/dynamic-table/components/dynamic-table-footer.tsx
 'use client'
 
+import { cn } from '@auxx/ui/lib/utils'
 import type { ReactNode } from 'react'
 import { useTableInstance } from '../context/table-instance-context'
-import { cn } from '@auxx/ui/lib/utils'
 
 interface DynamicTableFooterProps {
   children: ReactNode
@@ -40,8 +40,8 @@ export function DefaultFooterContent() {
   const { table } = useTableInstance()
 
   return (
-    <div className="flex items-center justify-between px-2 py-2">
-      <div className="text-sm text-muted-foreground">
+    <div className='flex items-center justify-between px-2 py-2'>
+      <div className='text-sm text-muted-foreground'>
         {table.getFilteredRowModel().rows.length} of {table.getCoreRowModel().rows.length} row(s)
       </div>
     </div>

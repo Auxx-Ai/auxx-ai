@@ -1,21 +1,16 @@
 // apps/web/src/app/(protected)/app/workflows/_components/credentials/credential-form-builder.tsx
 'use client'
 
-import React from 'react'
-import { UseFormReturn } from 'react-hook-form'
-import { INodeProperty, NodeValue, hasOAuth2Config } from '@auxx/workflow-nodes/types'
-import { generateFormValidationRules } from './validation-utils'
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import {
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
-  FormDescription,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
-import { Switch } from '@auxx/ui/components/switch'
 import {
   Select,
   SelectContent,
@@ -23,10 +18,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Alert, AlertDescription } from '@auxx/ui/components/alert'
-import { Info } from 'lucide-react'
-import { OAuth2Button } from './oauth2-button'
+import { Switch } from '@auxx/ui/components/switch'
+import { Textarea } from '@auxx/ui/components/textarea'
 import type { ICredentialType } from '@auxx/workflow-nodes/types'
+import { hasOAuth2Config, type INodeProperty, type NodeValue } from '@auxx/workflow-nodes/types'
+import { Info } from 'lucide-react'
+import React from 'react'
+import type { UseFormReturn } from 'react-hook-form'
+import { OAuth2Button } from './oauth2-button'
+import { generateFormValidationRules } from './validation-utils'
 
 interface CredentialFormBuilderProps {
   properties: INodeProperty[]
@@ -128,7 +128,7 @@ function renderFormField(
           <FormControl>
             {(() => {
               switch (type) {
-                case 'string':
+                case 'string': {
                   const isStringPassword = typeOptions?.password || isSensitive
                   const effectivePlaceholder =
                     editMode && isStringPassword
@@ -144,14 +144,15 @@ function renderFormField(
                         value={field.value || ''}
                       />
                       {editMode && isStringPassword && (
-                        <FormDescription className="text-blue-600 text-sm mt-1">
+                        <FormDescription className='text-blue-600 text-sm mt-1'>
                           💡 Leave empty to keep existing value, or enter new value to update
                         </FormDescription>
                       )}
                     </div>
                   )
+                }
 
-                case 'password':
+                case 'password': {
                   const passwordPlaceholder = editMode
                     ? 'Enter new value (required)'
                     : placeholder || `Enter ${displayName.toLowerCase()}`
@@ -160,42 +161,44 @@ function renderFormField(
                     <div>
                       <Input
                         {...field}
-                        type="password"
+                        type='password'
                         placeholder={passwordPlaceholder}
                         value={field.value || ''}
                       />
                       {editMode && (
-                        <FormDescription className="text-blue-600 text-sm mt-1">
+                        <FormDescription className='text-blue-600 text-sm mt-1'>
                           💡 Leave empty to keep existing value, or enter new value to update
                         </FormDescription>
                       )}
                     </div>
                   )
+                }
 
-                case 'number':
+                case 'number': {
                   const numberPlaceholder = placeholder || `Enter ${displayName.toLowerCase()}`
 
                   return (
                     <Input
                       {...field}
-                      type="number"
+                      type='number'
                       placeholder={numberPlaceholder}
                       value={field.value || ''}
                       onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : '')}
                     />
                   )
+                }
 
                 case 'boolean':
                   return (
-                    <div className="flex items-center space-x-2">
+                    <div className='flex items-center space-x-2'>
                       <Switch checked={field.value || false} onCheckedChange={field.onChange} />
-                      <span className="text-sm text-muted-foreground">
+                      <span className='text-sm text-muted-foreground'>
                         {field.value ? 'Enabled' : 'Disabled'}
                       </span>
                     </div>
                   )
 
-                case 'options':
+                case 'options': {
                   const selectPlaceholder = placeholder || `Select ${displayName.toLowerCase()}`
 
                   return (
@@ -212,8 +215,9 @@ function renderFormField(
                       </SelectContent>
                     </Select>
                   )
+                }
 
-                case 'json':
+                case 'json': {
                   const jsonPlaceholder = placeholder || 'Enter JSON data'
 
                   return (
@@ -224,23 +228,25 @@ function renderFormField(
                       value={field.value || ''}
                     />
                   )
+                }
 
                 case 'notice':
                   return (
-                    <Alert variant="warning" className="mt-2">
-                      <Info className="size-4" />
+                    <Alert variant='warning' className='mt-2'>
+                      <Info className='size-4' />
                       <AlertDescription>{displayName}</AlertDescription>
                     </Alert>
                   )
 
                 case 'hidden':
-                  return <Input {...field} type="hidden" value={field.value || ''} />
+                  return <Input {...field} type='hidden' value={field.value || ''} />
 
-                default:
+                default: {
                   const defaultPlaceholder = placeholder || `Enter ${displayName.toLowerCase()}`
                   return (
                     <Input {...field} placeholder={defaultPlaceholder} value={field.value || ''} />
                   )
+                }
               }
             })()}
           </FormControl>
@@ -293,7 +299,7 @@ export function CredentialFormBuilder({
     }
 
     return (
-      <div className="space-y-6">
+      <div className='space-y-6'>
         <OAuth2Button
           credentialType={credentialType}
           credentialName={credentialName}
@@ -304,7 +310,7 @@ export function CredentialFormBuilder({
 
         {!credentialName.trim() && (
           <Alert>
-            <Info className="size-4" />
+            <Info className='size-4' />
             <AlertDescription>
               Please enter a credential name above to enable authentication.
             </AlertDescription>
@@ -325,10 +331,10 @@ export function CredentialFormBuilder({
   const hiddenFields = visibleProperties.filter((p) => p.type === 'hidden')
 
   return (
-    <div className="space-y-6">
+    <div className='space-y-6'>
       {/* Notice fields at the top */}
       {noticeFields.length > 0 && (
-        <div className="space-y-2">
+        <div className='space-y-2'>
           {noticeFields.map((property) =>
             renderFormField(property, form, editMode, nonSensitiveValues)
           )}
@@ -337,7 +343,7 @@ export function CredentialFormBuilder({
 
       {/* Regular form fields */}
       {regularFields.length > 0 && (
-        <div className="space-y-4">
+        <div className='space-y-4'>
           {regularFields.map((property) =>
             renderFormField(property, form, editMode, nonSensitiveValues)
           )}

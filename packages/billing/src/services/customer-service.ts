@@ -5,9 +5,9 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { stripeClient } from './stripe-client'
-import { createScopedLogger } from '@auxx/logger'
 
 /**
  * Scoped logger leveraged for recording lifecycle events while resolving Stripe customers.

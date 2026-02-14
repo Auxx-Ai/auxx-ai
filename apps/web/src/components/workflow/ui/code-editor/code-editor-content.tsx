@@ -2,25 +2,25 @@
 
 'use client'
 
-import React, { useCallback, useState, useEffect, useRef } from 'react'
-import Editor from '@monaco-editor/react'
 import { cn } from '@auxx/ui/lib/utils'
-import { useCodeEditorContext } from './code-editor-context'
+import Editor from '@monaco-editor/react'
+import { useReactFlow } from '@xyflow/react'
+import type { IDisposable } from 'monaco-editor'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useVarStore } from '~/components/workflow/store/use-var-store'
 import EditorHeightResizeWrap from '../editor-height-resize-wrap'
+import { useCodeEditorContext } from './code-editor-context'
 import {
   CODE_EDITOR_LINE_HEIGHT,
-  DEFAULT_EDITOR_OPTIONS,
   COMPLETION_EDITOR_OPTIONS,
+  DEFAULT_EDITOR_OPTIONS,
 } from './constants'
-import { languageMap, CodeLanguage } from './types'
 import { createWorkflowCompletionProvider } from './monaco-workflow-completions'
-import { useReactFlow } from '@xyflow/react'
-import { useVarStore } from '~/components/workflow/store/use-var-store'
-import type { IDisposable } from 'monaco-editor'
 import {
   createOverflowWidgetContainer,
   releaseOverflowWidgetContainer,
 } from './overflow-widget-manager'
+import { CodeLanguage, languageMap } from './types'
 
 /**
  * CodeEditor Content Component
@@ -176,20 +176,20 @@ const CodeEditorContent: React.FC = () => {
   if (isExpanded) {
     return (
       <>
-        {tip && <div className="px-1 py-0.5">{tip}</div>}
-        <div className="h-full pb-4 px-2 flex-1 min-h-0 flex">
-          <div className="relative h-full flex-1 pt-1">
+        {tip && <div className='px-1 py-0.5'>{tip}</div>}
+        <div className='h-full pb-4 px-2 flex-1 min-h-0 flex'>
+          <div className='relative h-full flex-1 pt-1'>
             <Editor
               language={languageMap[language]}
               theme={isMounted ? theme : 'vs'}
               value={value}
-              loading={<span className="">Loading...</span>}
+              loading={<span className=''>Loading...</span>}
               onChange={handleEditorChange}
               options={editorOptions}
               onMount={handleEditorDidMount}
             />
             {!value && !isFocused && placeholder && (
-              <div className="pointer-events-none absolute left-[34px] top-0 text-[13px] font-normal leading-[18px] text-gray-300">
+              <div className='pointer-events-none absolute left-[34px] top-0 text-[13px] font-normal leading-[18px] text-gray-300'>
                 {placeholder}
               </div>
             )}
@@ -203,7 +203,7 @@ const CodeEditorContent: React.FC = () => {
   return (
     <>
       {/* Tip section */}
-      {tip && <div className="px-1 py-0.5">{tip}</div>}
+      {tip && <div className='px-1 py-0.5'>{tip}</div>}
 
       {/* Editor with resize wrapper */}
       <EditorHeightResizeWrap
@@ -211,20 +211,20 @@ const CodeEditorContent: React.FC = () => {
         minHeight={editorContentMinHeight}
         onHeightChange={setContentHeight}
         hideResize={false}>
-        <div className="h-full pb-4 px-2 flex-1 min-h-0 flex">
-          <div className="relative h-full flex-1">
+        <div className='h-full pb-4 px-2 flex-1 min-h-0 flex'>
+          <div className='relative h-full flex-1'>
             <Editor
               language={languageMap[language]}
               theme={isMounted ? theme : 'vs'}
               value={value}
-              loading={<span className="">Loading...</span>}
+              loading={<span className=''>Loading...</span>}
               onChange={handleEditorChange}
               options={editorOptions}
               onMount={handleEditorDidMount}
             />
             {/* Placeholder overlay */}
             {!value && !isFocused && placeholder && (
-              <div className="pointer-events-none absolute left-[34px] top-0 text-[13px] font-normal leading-[18px] text-gray-300">
+              <div className='pointer-events-none absolute left-[34px] top-0 text-[13px] font-normal leading-[18px] text-gray-300'>
                 {placeholder}
               </div>
             )}

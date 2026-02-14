@@ -1,6 +1,6 @@
 // apps/web/src/app/(protected)/app/workflows/_components/credentials/credential-data-utils.ts
 
-import { INodeProperty } from '@auxx/workflow-nodes/types'
+import type { INodeProperty } from '@auxx/workflow-nodes/types'
 
 /**
  * Check if a field contains sensitive data

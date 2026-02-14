@@ -3,20 +3,18 @@
 // Base class and types
 export {
   BaseConditionBuilder,
-  type GenericCondition,
   type ConditionGroup,
+  type GenericCondition,
   type ValidationResult,
 } from './base-condition-builder'
-
-// System resource builder
-export { SystemConditionBuilder, systemConditionBuilder } from './system-condition-builder'
+// Backward compatibility (deprecated)
+export { ConditionQueryBuilder } from './condition-query-builder'
 
 // Entity instance builder
 export {
   EntityConditionBuilder,
-  entityConditionBuilder,
   type EntityQueryContext,
+  entityConditionBuilder,
 } from './entity-condition-builder'
-
-// Backward compatibility (deprecated)
-export { ConditionQueryBuilder } from './condition-query-builder'
+// System resource builder
+export { SystemConditionBuilder, systemConditionBuilder } from './system-condition-builder'

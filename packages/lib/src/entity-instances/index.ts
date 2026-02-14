@@ -3,10 +3,10 @@
 // Note: EntityInstanceService has been deprecated and replaced by UnifiedCrudHandler
 // Import from '@auxx/lib/resources/crud' instead
 
-export {
-  type TicketMetadata,
-  type ContactMetadata,
-  type PartMetadata,
-  type EntityMetadata,
-  type MetadataByEntityType,
+export type {
+  ContactMetadata,
+  EntityMetadata,
+  MetadataByEntityType,
+  PartMetadata,
+  TicketMetadata,
 } from './metadata-types'

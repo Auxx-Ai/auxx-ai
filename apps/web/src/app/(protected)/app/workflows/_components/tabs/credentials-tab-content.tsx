@@ -1,15 +1,15 @@
 // apps/web/src/app/(protected)/app/workflows/_components/tabs/credentials-tab-content.tsx
 'use client'
 
-import { useEffect } from 'react'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useSearchParams } from 'next/navigation'
+import { useEffect } from 'react'
 import { useCredentials } from '~/components/workflow/credentials/credentials-provider'
 import { CredentialsFilterBar } from '../filters/credentials-filter-bar'
+import { CredentialsEmptyState } from '../states/credentials-empty-state'
 import { CredentialsGridView } from '../views/credentials-grid-view'
 import { CredentialsTableView } from '../views/credentials-table-view'
-import { CredentialsEmptyState } from '../states/credentials-empty-state'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 
 /**
  * Credentials tab content component
@@ -96,22 +96,22 @@ export function CredentialsTabContent() {
       <CredentialsFilterBar />
 
       {/* Credentials Content */}
-      <div className="p-3 flex-1 overflow-y-auto min-h-0">
+      <div className='p-3 flex-1 overflow-y-auto min-h-0'>
         {isLoading ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
             {[...Array(8)].map((_, i) => (
-              <div key={i} className="border rounded-lg p-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <Skeleton className="h-12 w-12 rounded-lg" />
-                  <div className="flex-1">
-                    <Skeleton className="h-4 w-3/4 mb-1" />
-                    <Skeleton className="h-3 w-1/2" />
+              <div key={i} className='border rounded-lg p-4'>
+                <div className='flex items-center gap-3 mb-3'>
+                  <Skeleton className='h-12 w-12 rounded-lg' />
+                  <div className='flex-1'>
+                    <Skeleton className='h-4 w-3/4 mb-1' />
+                    <Skeleton className='h-3 w-1/2' />
                   </div>
                 </div>
-                <Skeleton className="h-16 w-full mb-3" />
-                <div className="flex items-center justify-between">
-                  <Skeleton className="h-6 w-20" />
-                  <Skeleton className="h-3 w-24" />
+                <Skeleton className='h-16 w-full mb-3' />
+                <div className='flex items-center justify-between'>
+                  <Skeleton className='h-6 w-20' />
+                  <Skeleton className='h-3 w-24' />
                 </div>
               </div>
             ))}

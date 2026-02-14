@@ -2,8 +2,8 @@
 
 // Re-export from shared lib location
 export {
-  mapFieldTypeToBaseType,
-  fieldTypeNeedsEnumOptions,
-  fieldTypeIsRelationship,
   extractEnumOptions,
+  fieldTypeIsRelationship,
+  fieldTypeNeedsEnumOptions,
+  mapFieldTypeToBaseType,
 } from '@auxx/lib/workflow-engine/client'

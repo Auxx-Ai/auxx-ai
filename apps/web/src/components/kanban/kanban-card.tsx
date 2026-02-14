@@ -1,19 +1,19 @@
 // apps/web/src/components/kanban/kanban-card.tsx
 'use client'
 
-import { memo } from 'react'
-import { useDraggable } from '@dnd-kit/core'
-import { cn } from '@auxx/ui/lib/utils'
+import { formatToRawValue } from '@auxx/lib/field-values/client'
+import type { FieldReference } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
-import { MessageSquare, CheckSquare, StickyNote, Box } from 'lucide-react'
+import { cn } from '@auxx/ui/lib/utils'
 import { formatRelativeTime } from '@auxx/utils/date'
-import { formatToRawValue } from '@auxx/lib/field-values/client'
+import { useDraggable } from '@dnd-kit/core'
+import { Box, CheckSquare, MessageSquare, StickyNote } from 'lucide-react'
+import { memo } from 'react'
 import type { CustomField } from '~/components/dynamic-table/types'
-import { KanbanCardField } from './kanban-card-field'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
-import { toRecordId, type RecordId } from '~/components/resources/store/field-value-store'
-import type { FieldReference } from '@auxx/types/field'
+import { type RecordId, toRecordId } from '~/components/resources/store/field-value-store'
+import { KanbanCardField } from './kanban-card-field'
 
 /** Props for KanbanCard component */
 interface KanbanCardProps {
@@ -119,10 +119,10 @@ export const KanbanCard = memo(function KanbanCard({
       {/* Drag placeholder overlay */}
       <div className={cn('p-2.5', showAsPlaceholder && 'invisible')}>
         {/* Header row: checkbox/box icon + title */}
-        <div className="flex items-start gap-1.5">
+        <div className='flex items-start gap-1.5'>
           {/* Box icon - becomes checkbox on card hover or when selected */}
           <div
-            className="mt-0.5 shrink-0 relative size-3.5"
+            className='mt-0.5 shrink-0 relative size-3.5'
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
@@ -147,7 +147,7 @@ export const KanbanCard = memo(function KanbanCard({
           </div>
 
           {/* Title - clickable to open drawer (or toggle selection in mass select mode) */}
-          <div className="flex-1 min-w-0">
+          <div className='flex-1 min-w-0'>
             <h4
               className={cn(
                 'font-medium text-sm leading-snug truncate',
@@ -160,9 +160,9 @@ export const KanbanCard = memo(function KanbanCard({
 
         {/* Field values - uses KanbanCardField for consistent rendering and inline editing */}
         {fields.length > 0 && (
-          <div className="mt-2  space-y-0.5">
+          <div className='mt-2  space-y-0.5'>
             {fields.map((field) => (
-              <div key={field.id} className="text-xs text-muted-foreground truncate">
+              <div key={field.id} className='text-xs text-muted-foreground truncate'>
                 <KanbanCardField
                   entityDefinitionId={entityDefinitionId}
                   rowId={id}
@@ -175,43 +175,43 @@ export const KanbanCard = memo(function KanbanCard({
         )}
 
         {/* Footer: quick actions + last activity */}
-        <div className="mt-2 pl-5 flex items-center justify-between">
+        <div className='mt-2 pl-5 flex items-center justify-between'>
           {/* Quick actions (on hover) */}
-          <div className="flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity">
+          <div className='flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity'>
             {onNotesClick && (
               <Button
-                variant="ghost"
-                size="icon-xs"
-                className="size-6"
+                variant='ghost'
+                size='icon-xs'
+                className='size-6'
                 onClick={(e) => {
                   e.stopPropagation()
                   onNotesClick()
                 }}>
-                <StickyNote className="size-3.5" />
+                <StickyNote className='size-3.5' />
               </Button>
             )}
             {onTasksClick && (
               <Button
-                variant="ghost"
-                size="icon-xs"
-                className="size-6"
+                variant='ghost'
+                size='icon-xs'
+                className='size-6'
                 onClick={(e) => {
                   e.stopPropagation()
                   onTasksClick()
                 }}>
-                <CheckSquare className="size-3.5" />
+                <CheckSquare className='size-3.5' />
               </Button>
             )}
             {onCommentsClick && (
               <Button
-                variant="ghost"
-                size="icon-xs"
-                className="size-6"
+                variant='ghost'
+                size='icon-xs'
+                className='size-6'
                 onClick={(e) => {
                   e.stopPropagation()
                   onCommentsClick()
                 }}>
-                <MessageSquare className="size-3.5" />
+                <MessageSquare className='size-3.5' />
               </Button>
             )}
           </div>

@@ -15,10 +15,10 @@ export { useFileSelect } from './hooks/use-file-select'
 
 // Types
 export type {
+  FileSelectActions,
   FileSelectItem,
   FileSelectProps,
   FileSelectState,
-  FileSelectActions,
   UseFileSelectOptions,
   UseFileSelectReturn,
 } from './types'

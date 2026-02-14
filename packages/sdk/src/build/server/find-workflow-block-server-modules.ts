@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import { parse } from '@typescript-eslint/parser'
-import { analyze } from '@typescript-eslint/scope-manager'
 import type { Scope } from '@typescript-eslint/scope-manager'
+import { analyze } from '@typescript-eslint/scope-manager'
 import { walk } from 'zimmerframe'
 import { complete, errored } from '../../errors.js'
 import { getAppEntryPoint } from '../../util/get-app-entry-point.js'

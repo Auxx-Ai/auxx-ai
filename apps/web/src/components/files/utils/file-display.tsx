@@ -1,10 +1,10 @@
 // apps/web/src/components/files/utils/file-display.tsx
 
-import * as React from 'react'
+import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
+import type * as React from 'react'
 import { getFileIcon } from './file-icon'
 import { getStandardFileType } from './file-type'
-import { cn } from '@auxx/ui/lib/utils'
 
 const fileDisplayVariants = cva('flex items-center', {
   variants: {
@@ -96,7 +96,7 @@ export const FileDisplay: React.FC<FileDisplayWithRefProps> = ({
         return (
           <>
             {getFileIcon(mimeType, ext, finalIconClassName)}
-            <div className="flex flex-col min-w-0">
+            <div className='flex flex-col min-w-0'>
               <span className={currentSize.primaryText}>{fileType}</span>
               {mimeType && (
                 <span className={cn(currentSize.secondaryText, 'truncate')}>{mimeType}</span>

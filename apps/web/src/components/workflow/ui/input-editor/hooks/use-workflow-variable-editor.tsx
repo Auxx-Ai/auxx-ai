@@ -2,23 +2,23 @@
 
 'use client'
 
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { useEditor, type Editor } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
+import type { TableId } from '@auxx/lib/workflow-engine/client'
 import Placeholder from '@tiptap/extension-placeholder'
+import { type Editor, useEditor } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { VariableNode } from '~/components/editor/extensions/variable-node'
 import {
   createInlinePickerExtension,
   type InlinePickerState,
 } from '~/components/editor/inline-picker'
+import type { BaseType } from '~/components/workflow/types'
 import {
-  tiptapToString,
-  stringToTiptap,
   extractVarIds,
+  stringToTiptap,
+  tiptapToString,
   validateTagPattern,
 } from '../tiptap-converters'
-import type { BaseType } from '~/components/workflow/types'
-import type { TableId } from '@auxx/lib/workflow-engine/client'
 
 /** Initial closed state for picker */
 const initialPickerState: InlinePickerState = {

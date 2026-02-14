@@ -1,10 +1,10 @@
 'use client'
+import type { RecordId } from '@auxx/lib/field-values/client'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 // hooks/useComments.ts
 import { useState } from 'react'
-import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { formatCommentContent } from '~/lib/sanitize'
-import type { RecordId } from '@auxx/lib/field-values/client'
+import { api } from '~/trpc/react'
 
 // System entity types
 export const SYSTEM_ENTITY_TYPES = ['Ticket', 'Thread', 'Contact'] as const

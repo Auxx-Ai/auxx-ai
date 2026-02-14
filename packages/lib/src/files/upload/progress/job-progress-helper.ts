@@ -1,9 +1,9 @@
 // packages/lib/src/files/utils/job-progress-helper.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { fileUploadEventPublisher } from './sse-publisher'
 import { SessionManager } from '../session-index'
 import type { JobUpdateData } from './event-types'
+import { fileUploadEventPublisher } from './sse-publisher'
 
 const logger = createScopedLogger('job-progress-helper')
 

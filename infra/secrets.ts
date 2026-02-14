@@ -1,9 +1,9 @@
 // infra/secrets.ts
 /// <reference path="../.sst/platform/config.d.ts" />
 
-import { getEnvVars, type AppType } from './env-config'
-import { DATABASE_URL, REDIS_URL, REDIS_HOST, REDIS_PORT, REDIS_PASSWORD } from './db'
+import { DATABASE_URL, REDIS_HOST, REDIS_PASSWORD, REDIS_PORT, REDIS_URL } from './db'
 import { getAppDomain } from './dns'
+import { type AppType, getEnvVars } from './env-config'
 
 /**
  * Centralized secrets configuration

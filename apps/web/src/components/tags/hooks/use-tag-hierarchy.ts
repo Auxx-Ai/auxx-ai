@@ -1,9 +1,9 @@
 // apps/web/src/components/tags/hooks/use-tag-hierarchy.ts
 
+import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { useMemo } from 'react'
 import { useAllRecords } from '~/components/resources/hooks/use-all-records'
-import { toRecordId, type RecordId } from '@auxx/lib/resources/client'
-import type { TagRecord, TagNode, UseTagHierarchyResult } from '../types'
+import type { TagNode, TagRecord, UseTagHierarchyResult } from '../types'
 
 /**
  * Hook to fetch all tags and build hierarchical tree structure.
@@ -23,16 +23,10 @@ import type { TagRecord, TagNode, UseTagHierarchyResult } from '../types'
  * ```
  */
 export function useTagHierarchy(): UseTagHierarchyResult {
-  const {
-    records,
-    entityDefinitionId,
-    fields,
-    isLoading,
-    error,
-    refresh,
-  } = useAllRecords<TagRecord>({
-    entityDefinitionId: 'tag',
-  })
+  const { records, entityDefinitionId, fields, isLoading, error, refresh } =
+    useAllRecords<TagRecord>({
+      entityDefinitionId: 'tag',
+    })
 
   // Build hierarchy from flat records
   const { hierarchy, flatTags, tagMap } = useMemo(() => {
@@ -44,9 +38,8 @@ export function useTagHierarchy(): UseTagHierarchyResult {
     const nodes: TagNode[] = records.map((record) => {
       // Extract parent ID from relationship field (RecordId[] format)
       const parentRecordIds = record.fieldValues.tag_parent ?? []
-      const parentId = parentRecordIds.length > 0
-        ? parentRecordIds[0].split(':')[1] ?? null
-        : null
+      const parentId =
+        parentRecordIds.length > 0 ? (parentRecordIds[0].split(':')[1] ?? null) : null
 
       return {
         id: record.id,

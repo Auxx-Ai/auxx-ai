@@ -1,7 +1,7 @@
 // packages/services/src/workflows/get-workflow-apps-by-trigger.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 

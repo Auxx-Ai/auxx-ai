@@ -43,7 +43,10 @@ export class TicketSequenceModel extends BaseModel<
 
   /** Increment and return formatted ticket number with current sequence number */
   async nextNumber(): Promise<
-    TypedResult<{ ticketNumber: string; sequenceNumber: number; sequence: TicketSequenceEntity }, Error>
+    TypedResult<
+      { ticketNumber: string; sequenceNumber: number; sequence: TicketSequenceEntity },
+      Error
+    >
   > {
     const seqRes = await this.ensureForOrg()
     if (!seqRes.ok) return Result.error(seqRes.error!)

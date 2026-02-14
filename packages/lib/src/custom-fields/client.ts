@@ -3,33 +3,33 @@
 
 // Re-export types from @auxx/types for client components
 export {
-  // Color constants
-  SELECT_OPTION_COLORS,
-  DEFAULT_SELECT_OPTION_COLOR,
-  type SelectOptionColor,
-  // Select Option
-  selectOptionSchema,
-  type SelectOption,
-  // Target Time
-  targetTimeInStatusSchema,
-  type TargetTimeInStatus,
-  // Currency
-  currencyOptionsSchema,
-  decimalPlacesValues,
-  currencyDisplayTypeValues,
-  currencyGroupsValues,
-  type CurrencyOptions,
-  type DecimalPlaces,
   type CurrencyDisplayType,
   type CurrencyGroups,
-  // File
-  fileOptionsSchema,
+  type CurrencyOptions,
+  currencyDisplayTypeValues,
+  currencyGroupsValues,
+  // Currency
+  currencyOptionsSchema,
+  DEFAULT_SELECT_OPTION_COLOR,
+  type DecimalPlaces,
+  decimalPlacesValues,
   type FileOptions,
   // Union
   fieldOptionsUnionSchema,
+  // File
+  fileOptionsSchema,
+  // Color constants
+  SELECT_OPTION_COLORS,
+  type SelectOption,
+  type SelectOptionColor,
+  // Select Option
+  selectOptionSchema,
+  type TargetTimeInStatus,
+  // Target Time
+  targetTimeInStatusSchema,
 } from '@auxx/types/custom-field'
 
-export { type CalcOptions, type NameFieldOptions } from './field-options'
+export type { CalcOptions, NameFieldOptions } from './field-options'
 export { PRIMARY_DISPLAY_ELIGIBLE_TYPES } from './types'
 
 import type { SelectOptionColor } from '@auxx/types/custom-field'

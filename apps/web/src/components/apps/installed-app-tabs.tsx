@@ -1,9 +1,9 @@
 'use client'
-// apps/web/src/components/apps/installed-app-tabs.tsx
-import React from 'react'
-import { useSelectedLayoutSegment } from 'next/navigation'
-import Link from 'next/link'
 import { cn } from '@auxx/ui/lib/utils'
+import Link from 'next/link'
+import { useSelectedLayoutSegment } from 'next/navigation'
+// apps/web/src/components/apps/installed-app-tabs.tsx
+import type React from 'react'
 
 /**
  * Props for InstalledAppTabs component
@@ -37,10 +37,10 @@ export function InstalledAppTabs({ slug, children }: Props) {
   const activeTab = segment || 'about'
 
   return (
-    <div className="flex flex-col flex-1">
+    <div className='flex flex-col flex-1'>
       {/* Tab Navigation */}
-      <div className="border-b px-6 py-1 sticky top-0">
-        <div className="flex gap-1">
+      <div className='border-b px-6 py-1 sticky top-0'>
+        <div className='flex gap-1'>
           {tabs.map((tab) => (
             <Link key={tab.value} href={tab.href}>
               <button

@@ -1,6 +1,6 @@
 // apps/web/src/components/pickers/date-time-picker/presets.ts
 
-import { startOfWeek, startOfMonth, subDays, subWeeks, subMonths } from 'date-fns'
+import { startOfMonth, startOfWeek, subDays, subMonths, subWeeks } from 'date-fns'
 import type { RelativeDatePreset } from './types'
 import { startOfDay } from './utils'
 

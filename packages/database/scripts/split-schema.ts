@@ -51,8 +51,8 @@ function splitSchema(source: string) {
   const lines = source.split(/\r?\n/)
 
   // Capture top-level imports to replicate shared exports
-  const importLine = lines.find(l => l.includes('from "drizzle-orm/pg-core"')) || ''
-  const importSqlLine = lines.find(l => l.includes('from "drizzle-orm"')) || ''
+  const importLine = lines.find((l) => l.includes('from "drizzle-orm/pg-core"')) || ''
+  const importSqlLine = lines.find((l) => l.includes('from "drizzle-orm"')) || ''
 
   // Gather all pgEnum declarations
   const enumBlocks: string[] = []
@@ -78,9 +78,9 @@ function splitSchema(source: string) {
   let match: RegExpExecArray | null
   while ((match = tableStartRegex.exec(source)) !== null) {
     const name = match[1]
-    let start = match.index
+    const start = match.index
     // Move idx to after 'pgTable('
-    let idx = source.indexOf('pgTable(', start) + 'pgTable('.length
+    const idx = source.indexOf('pgTable(', start) + 'pgTable('.length
     let depth = 1 // already inside one '('
     let i = idx
     // Find the matching closing ')', then expect a semicolon
@@ -101,7 +101,10 @@ function splitSchema(source: string) {
 
 /** Remove foreignKey(...) constraint entries from the table definition array */
 // Convert foreignKey blocks to column-level lazy references where possible
-function transformToColumnRefs(code: string, selfName: string): { code: string; referenced: string[] } {
+function transformToColumnRefs(
+  code: string,
+  selfName: string
+): { code: string; referenced: string[] } {
   const referenced = new Set<string>()
 
   // Locate columns object: pgTable("Name", { ...columns... }, (table) => [ ... ])
@@ -139,9 +142,16 @@ function transformToColumnRefs(code: string, selfName: string): { code: string; 
   const arrContent = code.slice(arrStart, arrEnd)
 
   // Parse foreignKey entries
-  type FK = { column: string; targetTable: string; onUpdate?: string; onDelete?: string; raw: string }
+  type FK = {
+    column: string
+    targetTable: string
+    onUpdate?: string
+    onDelete?: string
+    raw: string
+  }
   const fks: FK[] = []
-  const fkRegex = /foreignKey\(\{[\s\S]*?columns:\s*\[\s*table\.([A-Za-z_][A-Za-z0-9_]*)\s*\][\s\S]*?foreignColumns:\s*\[\s*([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\][\s\S]*?\}\)(?:\.onUpdate\("([a-zA-Z_]+)"\))?(?:\.onDelete\("([a-zA-Z_]+)"\))?/g
+  const fkRegex =
+    /foreignKey\(\{[\s\S]*?columns:\s*\[\s*table\.([A-Za-z_][A-Za-z0-9_]*)\s*\][\s\S]*?foreignColumns:\s*\[\s*([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\][\s\S]*?\}\)(?:\.onUpdate\("([a-zA-Z_]+)"\))?(?:\.onDelete\("([a-zA-Z_]+)"\))?/g
   let m: RegExpExecArray | null
   while ((m = fkRegex.exec(arrContent)) !== null) {
     const [raw, col, targetTable, targetCol, onUpdate, onDelete] = m
@@ -156,14 +166,22 @@ function transformToColumnRefs(code: string, selfName: string): { code: string; 
   if (fks.length === 0) return { code, referenced: [] }
 
   // Update columns object definitions by appending .references(() => target.id, { ... })
-  function injectRefIntoProp(obj: string, column: string, targetTable: string, onUpdate?: string, onDelete?: string) {
+  function injectRefIntoProp(
+    obj: string,
+    column: string,
+    targetTable: string,
+    onUpdate?: string,
+    onDelete?: string
+  ) {
     const key = new RegExp(`\\b${column}\\s*:`)
     const m = obj.match(key)
     if (!m) return obj
     const start = (m.index || 0) + m[0].length
     // scan to find end comma for this property
     let idx = start
-    let p = 0, b = 0, s = 0
+    let p = 0,
+      b = 0,
+      s = 0
     while (idx < obj.length) {
       const ch = obj[idx]
       if (ch === '(') p++
@@ -197,13 +215,16 @@ function transformToColumnRefs(code: string, selfName: string): { code: string; 
   for (const fk of fks) {
     // remove the exact raw snippet plus optional trailing comma and newline
     const escaped = fk.raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const removeRegex = new RegExp(`\\s*${escaped}\s*,?`)
+    const removeRegex = new RegExp(`\\s*${escaped}s*,?`)
     newArrContent = newArrContent.replace(removeRegex, '')
   }
   // Remove any remaining single-column FK entries just in case
-  newArrContent = newArrContent.replace(/\s*foreignKey\(\{[\s\S]*?columns:\s*\[\s*table\.[A-Za-z_][A-Za-z0-9_]*\s*\][\s\S]*?foreignColumns:\s*\[\s*[A-Za-z_][A-Za-z0-9_]*\.id\s*\][\s\S]*?\}\)(?:\.[a-zA-Z]+\(\"[^\"]*\"\))*\s*,?/g, '')
+  newArrContent = newArrContent.replace(
+    /\s*foreignKey\(\{[\s\S]*?columns:\s*\[\s*table\.[A-Za-z_][A-Za-z0-9_]*\s*\][\s\S]*?foreignColumns:\s*\[\s*[A-Za-z_][A-Za-z0-9_]*\.id\s*\][\s\S]*?\}\)(?:\.[a-zA-Z]+\("[^"]*"\))*\s*,?/g,
+    ''
+  )
   // Remove any stray .onUpdate/.onDelete left behind
-  newArrContent = newArrContent.replace(/\s*\.(?:onUpdate|onDelete)\(\"[^\"]*\"\)\s*,?/g, '')
+  newArrContent = newArrContent.replace(/\s*\.(?:onUpdate|onDelete)\("[^"]*"\)\s*,?/g, '')
   // Squash extra commas and blank lines
   newArrContent = newArrContent.replace(/,\s*,/g, ',').replace(/\n\s*\n/g, '\n')
 
@@ -224,16 +245,23 @@ function run() {
   if (sanitizedSource !== source) {
     fs.writeFileSync(DRIZZLE_SCHEMA, sanitizedSource)
   }
-  const { importLine, importSqlLine, enumBlocks, enumNames, tableBlocks, nameMap } = splitSchema(sanitizedSource)
+  const { importLine, importSqlLine, enumBlocks, enumNames, tableBlocks, nameMap } =
+    splitSchema(sanitizedSource)
 
   // Build _shared.ts with base exports and enums
   const sharedPath = path.join(TARGET_DIR, '_shared.ts')
-  const sharedHeader = `// packages/database/src/db/schema/_shared.ts\n` +
+  const sharedHeader =
+    `// packages/database/src/db/schema/_shared.ts\n` +
     `// Shared Drizzle exports and enums (generated by scripts/split-schema.ts)\n\n`
 
   // Normalize import list to only the identifiers (between { ... })
   const importMatch = importLine.match(/\{([\s\S]*?)\}/)
-  const imports = importMatch ? importMatch[1].split(',').map(s => s.trim()).filter(Boolean) : []
+  const imports = importMatch
+    ? importMatch[1]
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : []
   const uniqueImports = Array.from(new Set(imports))
   // Ensure uncommon builders used by introspection are available
   if (!uniqueImports.includes('pgEnum')) uniqueImports.push('pgEnum')
@@ -248,7 +276,7 @@ function run() {
     `import { sql } from 'drizzle-orm'\n`,
     '\n',
     '// ---- Enums ----\n',
-    ...enumBlocks.map(b => b + '\n'),
+    ...enumBlocks.map((b) => b + '\n'),
     '\n',
     '// Re-export builders and sql for consumers\n',
     `export { ${uniqueImports.join(', ')} } from 'drizzle-orm/pg-core'\n`,
@@ -260,7 +288,23 @@ function run() {
   const indexExports: string[] = []
   // Helper: detect which identifiers are used in a table block
   const builderIdents = new Set<string>([
-    'pgTable','uniqueIndex','index','text','bigint','boolean','timestamp','integer','jsonb','varchar','vector','doublePrecision','bigserial','date','primaryKey','unknown','AnyPgColumn'
+    'pgTable',
+    'uniqueIndex',
+    'index',
+    'text',
+    'bigint',
+    'boolean',
+    'timestamp',
+    'integer',
+    'jsonb',
+    'varchar',
+    'vector',
+    'doublePrecision',
+    'bigserial',
+    'date',
+    'primaryKey',
+    'unknown',
+    'AnyPgColumn',
   ])
   function detectUsedIdents(code: string) {
     const used = new Set<string>()
@@ -303,7 +347,8 @@ function run() {
     const outName = nameMap.get(name) || name
     const kebab = toKebab(outName)
     const filePath = path.join(TARGET_DIR, `${kebab}.ts`)
-    const header = `// packages/database/src/db/schema/${kebab}.ts\n` +
+    const header =
+      `// packages/database/src/db/schema/${kebab}.ts\n` +
       `// Drizzle table: ${name} (generated by scripts/split-schema.ts)\n\n`
 
     // Convert FK blocks to column-level lazy references
@@ -313,37 +358,46 @@ function run() {
     codeWithRefs = sanitizeOperatorClasses(codeWithRefs)
 
     // Replace default(sql`CURRENT_TIMESTAMP`) with defaultNow()
-    codeWithRefs = codeWithRefs.replace(/\.default\s*\(\s*sql`CURRENT_TIMESTAMP`\s*\)/g, '.defaultNow()')
+    codeWithRefs = codeWithRefs.replace(
+      /\.default\s*\(\s*sql`CURRENT_TIMESTAMP`\s*\)/g,
+      '.defaultNow()'
+    )
     // Remove mode: 'string' from timestamp field definitions
-    codeWithRefs = codeWithRefs.replace(/timestamp\(\s*\{([^}]*)\}\s*\)/g, (match, optionsContent) => {
-      // Remove mode: 'string' from the options object content
-      let cleanOptionsContent = optionsContent
-        .replace(/,\s*mode:\s*['"]string['"]/, '') // Remove ", mode: 'string'"
-        .replace(/mode:\s*['"]string['"]\s*,/, '') // Remove "mode: 'string',"
-        .replace(/mode:\s*['"]string['"]/, '') // Remove "mode: 'string'" when it's the only property
-        .trim()
+    codeWithRefs = codeWithRefs.replace(
+      /timestamp\(\s*\{([^}]*)\}\s*\)/g,
+      (match, optionsContent) => {
+        // Remove mode: 'string' from the options object content
+        const cleanOptionsContent = optionsContent
+          .replace(/,\s*mode:\s*['"]string['"]/, '') // Remove ", mode: 'string'"
+          .replace(/mode:\s*['"]string['"]\s*,/, '') // Remove "mode: 'string',"
+          .replace(/mode:\s*['"]string['"]/, '') // Remove "mode: 'string'" when it's the only property
+          .trim()
 
-      // If options content becomes empty, remove options entirely
-      if (cleanOptionsContent === '') {
-        return 'timestamp()'
+        // If options content becomes empty, remove options entirely
+        if (cleanOptionsContent === '') {
+          return 'timestamp()'
+        }
+        return `timestamp({ ${cleanOptionsContent} })`
       }
-      return `timestamp({ ${cleanOptionsContent} })`
-    })
+    )
     // Handle named timestamp fields like timestamp("field_name", { ... })
-    codeWithRefs = codeWithRefs.replace(/timestamp\(\s*['"]([^'"]+)['"]\s*,\s*\{([^}]*)\}\s*\)/g, (match, fieldName, optionsContent) => {
-      // Remove mode: 'string' from the options object content
-      let cleanOptionsContent = optionsContent
-        .replace(/,\s*mode:\s*['"]string['"]/, '') // Remove ", mode: 'string'"
-        .replace(/mode:\s*['"]string['"]\s*,/, '') // Remove "mode: 'string',"
-        .replace(/mode:\s*['"]string['"]/, '') // Remove "mode: 'string'" when it's the only property
-        .trim()
+    codeWithRefs = codeWithRefs.replace(
+      /timestamp\(\s*['"]([^'"]+)['"]\s*,\s*\{([^}]*)\}\s*\)/g,
+      (match, fieldName, optionsContent) => {
+        // Remove mode: 'string' from the options object content
+        const cleanOptionsContent = optionsContent
+          .replace(/,\s*mode:\s*['"]string['"]/, '') // Remove ", mode: 'string'"
+          .replace(/mode:\s*['"]string['"]\s*,/, '') // Remove "mode: 'string',"
+          .replace(/mode:\s*['"]string['"]/, '') // Remove "mode: 'string'" when it's the only property
+          .trim()
 
-      // If options content becomes empty, remove options entirely
-      if (cleanOptionsContent === '') {
-        return `timestamp('${fieldName}')`
+        // If options content becomes empty, remove options entirely
+        if (cleanOptionsContent === '') {
+          return `timestamp('${fieldName}')`
+        }
+        return `timestamp('${fieldName}', { ${cleanOptionsContent} })`
       }
-      return `timestamp('${fieldName}', { ${cleanOptionsContent} })`
-    })
+    )
     // Replace unknown('<name>') with text('<name>') to avoid runtime missing builder
     codeWithRefs = codeWithRefs.replace(/\bunknown\(\s*(["'])[^"']+\1\s*\)/g, (m) => {
       const name = m.match(/unknown\(\s*(["'])([^"']+)\1\s*\)/)
@@ -351,9 +405,15 @@ function run() {
     })
     // Inject runtime cuid default for text primary keys named "id"
     let needsCreateId = false
-    if (/\bid:\s*text\(\)/.test(codeWithRefs) && /\bid:\s*text\(\)[^\n]*?\.primaryKey\(\)/.test(codeWithRefs)) {
+    if (
+      /\bid:\s*text\(\)/.test(codeWithRefs) &&
+      /\bid:\s*text\(\)[^\n]*?\.primaryKey\(\)/.test(codeWithRefs)
+    ) {
       if (!/\bid:\s*text\(\)[^\n]*?\$defaultFn\(/.test(codeWithRefs)) {
-        codeWithRefs = codeWithRefs.replace(/\bid:\s*text\(\)/, 'id: text().$defaultFn(() => createId())')
+        codeWithRefs = codeWithRefs.replace(
+          /\bid:\s*text\(\)/,
+          'id: text().$defaultFn(() => createId())'
+        )
         needsCreateId = true
       }
     }
@@ -376,16 +436,20 @@ function run() {
     }
 
     const usedBuilders = detectUsedIdents(codeWithRefs)
-    const usedEnums = enumNames.filter(en => codeWithRefs.includes(en + '()'))
+    const usedEnums = enumNames.filter((en) => codeWithRefs.includes(en + '()'))
     const importIdents = Array.from(new Set([...usedBuilders, ...usedEnums]))
     const importFromShared = `import { ${importIdents.join(', ')} } from './_shared'\n`
     const extraImport = needsCreateId ? `import { createId } from '@paralleldrive/cuid2'\n` : ''
     const refImports = Array.from(new Set(refs.map((r) => nameMap.get(r) || r)))
       .map((exported) => `import { ${exported} } from './${toKebab(exported)}'`)
       .join('\n')
-    const importsBlock = importFromShared + extraImport + (refImports ? `\n${refImports}\n\n` : '\n')
+    const importsBlock =
+      importFromShared + extraImport + (refImports ? `\n${refImports}\n\n` : '\n')
     const doc = `/** Drizzle table for ${name} */\n`
-    const renamed = codeWithRefs.replace(new RegExp(`export\\s+const\\s+${name}\\s*=`), `export const ${outName} =`)
+    const renamed = codeWithRefs.replace(
+      new RegExp(`export\\s+const\\s+${name}\\s*=`),
+      `export const ${outName} =`
+    )
     const body = renamed + '\n'
 
     fs.writeFileSync(filePath, header + importsBlock + doc + body)
@@ -394,12 +458,13 @@ function run() {
 
   // Create index.ts barrel
   const indexPath = path.join(TARGET_DIR, 'index.ts')
-  const indexHeader = `// packages/database/src/db/schema/index.ts\n` +
+  const indexHeader =
+    `// packages/database/src/db/schema/index.ts\n` +
     `// Barrel exports for schema tables and shared enums\n\n`
   const indexContent = [
     indexHeader,
     `export * from './_shared'\n`,
-    ...indexExports.map(l => l + '\n'),
+    ...indexExports.map((l) => l + '\n'),
   ].join('')
   fs.writeFileSync(indexPath, indexContent)
 

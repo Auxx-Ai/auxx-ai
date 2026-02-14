@@ -1,7 +1,7 @@
 // apps/web/src/components/tags/ui/color-tag-picker.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 /** Props for ColorTagPicker component */
 interface ColorPickerProps {
@@ -44,27 +44,27 @@ function ColorTagPicker({ onChange, value }: ColorPickerProps) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className='flex flex-wrap items-center gap-2'>
       {colors.map((color, index) => (
         <button
           key={index}
           className={`flex h-6 w-6 items-center justify-center rounded-full transition-all hover:scale-110 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${selectedColor === color ? 'ring-2 ring-blue-500 ring-offset-2' : ''}`}
           style={{ backgroundColor: color }}
           onClick={() => handleColorSelect(color)}
-          type="button"
+          type='button'
           aria-label={`Select color ${index + 1}`}>
           {selectedColor === color && (
             <svg
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              stroke="currentColor"
-              strokeWidth="3"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+              viewBox='0 0 24 24'
+              width='16'
+              height='16'
+              stroke='currentColor'
+              strokeWidth='3'
+              fill='none'
+              strokeLinecap='round'
+              strokeLinejoin='round'
               className={color === '#8D8D8D' ? 'text-white' : 'text-gray-800'}>
-              <polyline points="20 6 9 17 4 12"></polyline>
+              <polyline points='20 6 9 17 4 12'></polyline>
             </svg>
           )}
         </button>

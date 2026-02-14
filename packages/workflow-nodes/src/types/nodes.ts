@@ -52,7 +52,16 @@ export interface ICredentialType {
     iconColor?: string // Tailwind color class
     backgroundColor?: string // Tailwind gradient classes
     borderColor?: string // Tailwind border color
-    category?: 'ai' | 'database' | 'data' | 'email' | 'auth' | 'social' | 'ecommerce' | 'storage' | 'other'
+    category?:
+      | 'ai'
+      | 'database'
+      | 'data'
+      | 'email'
+      | 'auth'
+      | 'social'
+      | 'ecommerce'
+      | 'storage'
+      | 'other'
     brandColor?: string // Hex color for custom styling
   }
 }
@@ -204,6 +213,6 @@ export interface IRequestOptions {
   json?: boolean
   encoding?: string | null
 }
-export interface INodeType {}
+export type INodeType = {}
 
 export type IHttpRequestMethods = 'DELETE' | 'GET' | 'HEAD' | 'PATCH' | 'POST' | 'PUT'

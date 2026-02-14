@@ -1,7 +1,7 @@
 // apps/web/src/components/groups/providers/groups-provider.tsx
 'use client'
 
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, type ReactNode, useContext } from 'react'
 import { useGroups } from '../hooks'
 
 /** Groups context value */

@@ -1,8 +1,9 @@
 // ~/server/api/routers/contact.ts
+
+import { ContactService } from '@auxx/lib/contacts'
+import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { TRPCError } from '@trpc/server'
-import { ContactService } from '@auxx/lib/contacts'
 
 export const contactRouter = createTRPCRouter({
   // Get all contacts with filtering

@@ -2,7 +2,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { Undo, Redo, Loader2 } from 'lucide-react'
+import { Loader2, Redo, Undo } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import type { AIToolsState } from './hooks/use-ai-tools-state'
 
@@ -25,12 +25,12 @@ export function AIStatus({ state, canUndo, canRedo, onUndo, onRedo }: AIStatusPr
   }
 
   return (
-    <div className="flex items-center gap-1">
+    <div className='flex items-center gap-1'>
       {/* Loading Indicator */}
       {state.isProcessing && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          <span className="text-xs">
+        <div className='flex items-center gap-2 text-sm text-muted-foreground'>
+          <Loader2 className='h-3.5 w-3.5 animate-spin' />
+          <span className='text-xs'>
             {state.currentOperation
               ? `Processing ${state.currentOperation.toLowerCase()}...`
               : 'Processing...'}
@@ -39,24 +39,24 @@ export function AIStatus({ state, canUndo, canRedo, onUndo, onRedo }: AIStatusPr
       )}
       {/* Undo/Redo Controls */}
       {(canUndo || canRedo) && (
-        <div className="flex items-center gap-1">
-          <Tooltip content="Undo AI change" side="bottom">
+        <div className='flex items-center gap-1'>
+          <Tooltip content='Undo AI change' side='bottom'>
             <Button
-              variant="ghost"
-              size="icon-sm"
+              variant='ghost'
+              size='icon-sm'
               onClick={onUndo}
               disabled={!canUndo || state.isProcessing}
-              className="rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700">
+              className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'>
               <Undo />
             </Button>
           </Tooltip>
-          <Tooltip content="Redo AI change" side="bottom">
+          <Tooltip content='Redo AI change' side='bottom'>
             <Button
-              variant="ghost"
-              size="icon-sm"
+              variant='ghost'
+              size='icon-sm'
               onClick={onRedo}
               disabled={!canRedo || state.isProcessing}
-              className="rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700">
+              className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'>
               <Redo />
             </Button>
           </Tooltip>
@@ -65,7 +65,7 @@ export function AIStatus({ state, canUndo, canRedo, onUndo, onRedo }: AIStatusPr
 
       {/* Error indicator if present */}
       {state.error && !state.isProcessing && (
-        <div className="text-xs text-destructive">AI operation failed</div>
+        <div className='text-xs text-destructive'>AI operation failed</div>
       )}
     </div>
   )

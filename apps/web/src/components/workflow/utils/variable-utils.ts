@@ -1,19 +1,19 @@
 // apps/web/src/components/workflow/utils/variable-utils.ts
 
-import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
-import type { FieldDefinition } from '~/components/conditions'
+import { getOperatorsForFieldType } from '@auxx/lib/conditions/client'
 import {
-  RESOURCE_FIELD_REGISTRY,
-  RESOURCE_TABLE_MAP,
-  type TableId,
-  type ResourceField,
   BaseType,
   isTypeCompatible as isBaseTypeCompatible,
+  RESOURCE_FIELD_REGISTRY,
+  RESOURCE_TABLE_MAP,
+  type ResourceField,
+  type TableId,
 } from '@auxx/lib/workflow-engine/client'
-import { getOperatorsForFieldType } from '@auxx/lib/conditions/client'
-import { useResourceStore } from '~/components/resources/store/resource-store'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
-import { parseResourceFieldId, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import type { FieldDefinition } from '~/components/conditions'
+import { useResourceStore } from '~/components/resources/store/resource-store'
+import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 
 /**
  * Regular expression pattern for matching workflow variables in the format {{variable-name}}

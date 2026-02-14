@@ -1,13 +1,8 @@
 // apps/web/src/components/workflow/nodes/core/human/panel.tsx
 
-import { memo, useCallback } from 'react'
-import { produce } from 'immer'
-import Section from '~/components/workflow/ui/section'
-import Field from '~/components/workflow/ui/field'
-import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
-import { Editor } from '~/components/workflow/ui/prompt-editor'
-import { MemberGroupPicker } from '~/components/pickers/member-group-picker'
-import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { Button } from '@auxx/ui/components/button'
+import { Label } from '@auxx/ui/components/label'
 import {
   Select,
   SelectContent,
@@ -15,15 +10,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Label } from '@auxx/ui/components/label'
 import { Switch } from '@auxx/ui/components/switch'
-import { Button } from '@auxx/ui/components/button'
-import { Alert, AlertTitle, AlertDescription } from '@auxx/ui/components/alert'
-import { useEdgeInteractions, useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import { type HumanConfirmationNodeData } from './types'
-import { BaseType } from '~/components/workflow/types'
-import type { TargetBranch } from '~/components/workflow/types'
 import { useUpdateNodeInternals } from '@xyflow/react'
+import { produce } from 'immer'
+import { memo, useCallback } from 'react'
+import { MemberGroupPicker } from '~/components/pickers/member-group-picker'
+import { useEdgeInteractions, useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
+import type { TargetBranch } from '~/components/workflow/types'
+import { BaseType } from '~/components/workflow/types'
+import Field from '~/components/workflow/ui/field'
+import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import { Editor } from '~/components/workflow/ui/prompt-editor'
+import Section from '~/components/workflow/ui/section'
+import type { HumanConfirmationNodeData } from './types'
 
 interface HumanConfirmationNodePanelProps {
   nodeId: string
@@ -107,11 +107,11 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
     return (
       <BasePanel nodeId={nodeId} data={data!}>
         {/* Message Section */}
-        <Section title="General">
-          <div className="space-y-4">
-            <Field title="Message" description="Message shown to reviewers">
+        <Section title='General'>
+          <div className='space-y-4'>
+            <Field title='Message' description='Message shown to reviewers'>
               <Editor
-                title="Message"
+                title='Message'
                 value={inputs.message || ''}
                 onChange={useCallback(
                   (content) =>
@@ -122,13 +122,13 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
                 )}
                 readOnly={isReadOnly}
                 nodeId={nodeId}
-                placeholder="Enter message for reviewers..."
+                placeholder='Enter message for reviewers...'
               />
             </Field>
             {/* Assignees Section */}
 
-            <Field title="Approver" description="Who can approve or deny" isRequired>
-              <div className="space-y-1 flex flex-row gap-2 items-center">
+            <Field title='Approver' description='Who can approve or deny' isRequired>
+              <div className='space-y-1 flex flex-row gap-2 items-center'>
                 {/* Member/Group picker */}
                 <MemberGroupPicker
                   selectedMembers={inputs.assignees?.userIds || []}
@@ -146,20 +146,20 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
                     [updateInputs]
                   )}
                   disabled={isReadOnly}>
-                  <Button variant="outline" size="sm">
+                  <Button variant='outline' size='sm'>
                     Select Users/Groups
                   </Button>
                 </MemberGroupPicker>
               </div>
             </Field>
             {/* Notification Methods */}
-            <Field title="Notification Methods" description="How to notify assignees">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="in-app">In-app notification</Label>
+            <Field title='Notification Methods' description='How to notify assignees'>
+              <div className='space-y-2'>
+                <div className='flex items-center justify-between'>
+                  <Label htmlFor='in-app'>In-app notification</Label>
                   <Switch
-                    id="in-app"
-                    size="sm"
+                    id='in-app'
+                    size='sm'
                     checked={inputs.notification_methods?.in_app ?? true}
                     onCheckedChange={useCallback(
                       (checked) =>
@@ -174,11 +174,11 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
                     disabled={isReadOnly}
                   />
                 </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="email">Email notification</Label>
+                <div className='flex items-center justify-between'>
+                  <Label htmlFor='email'>Email notification</Label>
                   <Switch
-                    id="email"
-                    size="sm"
+                    id='email'
+                    size='sm'
                     checked={inputs.notification_methods?.email ?? true}
                     onCheckedChange={useCallback(
                       (checked) =>
@@ -198,14 +198,14 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
           </div>
         </Section>
         <Section
-          title="Timeout Settings"
-          description="How long to wait for confirmation"
+          title='Timeout Settings'
+          description='How long to wait for confirmation'
           enabled={inputs.timeout?.enabled !== false}
           onEnableChange={handleTimeoutEnable}
           showEnable>
-          <Field title="Timeout Duration">
-            <VarEditorField className="pe-1">
-              <div className="flex flex-row gap-1">
+          <Field title='Timeout Duration'>
+            <VarEditorField className='pe-1'>
+              <div className='flex flex-row gap-1'>
                 <VarEditor
                   value={
                     typeof inputs.timeout?.duration === 'number'
@@ -226,12 +226,12 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
                     [updateInputs]
                   )}
                   varType={BaseType.NUMBER}
-                  placeholder="Select variable..."
-                  placeholderConstant="Enter duration..."
+                  placeholder='Select variable...'
+                  placeholderConstant='Enter duration...'
                   allowConstant
                   disabled={isReadOnly}
                 />
-                <div className="">
+                <div className=''>
                   <Select
                     value={inputs.timeout?.unit || 'hours'}
                     onValueChange={useCallback(
@@ -245,13 +245,13 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
                       [updateInputs]
                     )}
                     disabled={isReadOnly}>
-                    <SelectTrigger className="w-32 rounded-xl" size="sm">
+                    <SelectTrigger className='w-32 rounded-xl' size='sm'>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="minutes">Minutes</SelectItem>
-                      <SelectItem value="hours">Hours</SelectItem>
-                      <SelectItem value="days">Days</SelectItem>
+                      <SelectItem value='minutes'>Minutes</SelectItem>
+                      <SelectItem value='hours'>Hours</SelectItem>
+                      <SelectItem value='days'>Days</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -262,16 +262,16 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
 
         {/* Advanced Settings */}
         <Section
-          title="Advanced Settings"
-          description="Additional configuration options"
+          title='Advanced Settings'
+          description='Additional configuration options'
           initialOpen={false}>
-          <div className="space-y-2">
+          <div className='space-y-2'>
             <Field
-              title="Login to approve"
+              title='Login to approve'
               actions={
                 <Switch
-                  id="require-login"
-                  size="sm"
+                  id='require-login'
+                  size='sm'
                   checked={inputs.require_login ?? true}
                   onCheckedChange={useCallback(
                     (checked) =>
@@ -283,17 +283,17 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
                   disabled={isReadOnly}
                 />
               }>
-              <p className="text-sm text-muted-foreground -mt-2">
+              <p className='text-sm text-muted-foreground -mt-2'>
                 Require users to log in before approving
               </p>
             </Field>
 
             <Field
-              title="Include workflow context"
+              title='Include workflow context'
               actions={
                 <Switch
-                  id="include-context"
-                  size="sm"
+                  id='include-context'
+                  size='sm'
                   checked={inputs.include_workflow_context ?? true}
                   onCheckedChange={useCallback(
                     (checked) =>
@@ -305,7 +305,7 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
                   disabled={isReadOnly}
                 />
               }>
-              <p className="text-sm text-muted-foreground -mt-2">
+              <p className='text-sm text-muted-foreground -mt-2'>
                 Include full context of the workflow execution in the approval request
               </p>
             </Field>
@@ -314,8 +314,8 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
 
         {/* Test Mode */}
         <Section
-          title="Test Mode"
-          description="Behavior during workflow testing"
+          title='Test Mode'
+          description='Behavior during workflow testing'
           initialOpen={false}
           open={inputs.test_behavior === 'live'}
           collapsible={inputs.test_behavior === 'live'}
@@ -330,19 +330,19 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
                 [updateInputs]
               )}
               disabled={isReadOnly}>
-              <SelectTrigger size="sm">
+              <SelectTrigger size='sm'>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="always_approve">Always Approve</SelectItem>
-                <SelectItem value="always_deny">Always Deny</SelectItem>
-                <SelectItem value="random">Random</SelectItem>
-                <SelectItem value="live">Live Mode (Real Approvals)</SelectItem>
+                <SelectItem value='always_approve'>Always Approve</SelectItem>
+                <SelectItem value='always_deny'>Always Deny</SelectItem>
+                <SelectItem value='random'>Random</SelectItem>
+                <SelectItem value='live'>Live Mode (Real Approvals)</SelectItem>
               </SelectContent>
             </Select>
           }>
           {inputs.test_behavior === 'live' && (
-            <Alert variant="blue">
+            <Alert variant='blue'>
               <AlertTitle>Live Test Mode</AlertTitle>
               <AlertDescription>
                 This will create real approval requests and send notifications, but will be marked

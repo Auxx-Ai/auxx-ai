@@ -1,11 +1,11 @@
 // packages/services/src/custom-fields/verify-entity.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
+import { and, eq } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import { ModelTypes, type ModelType } from './types'
 import type { EntityNotFoundError } from './errors'
+import { type ModelType, ModelTypes } from './types'
 
 /**
  * Input for entity verification
@@ -89,9 +89,7 @@ export async function verifyEntityExistsQuery(input: VerifyEntityInput) {
         database
           .select({ id: schema.Part.id })
           .from(schema.Part)
-          .where(
-            and(eq(schema.Part.id, entityId), eq(schema.Part.organizationId, organizationId))
-          )
+          .where(and(eq(schema.Part.id, entityId), eq(schema.Part.organizationId, organizationId)))
           .limit(1),
         'verify-part'
       )

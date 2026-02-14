@@ -15,15 +15,15 @@ const FileNodeView = ({ node, updateAttributes }: any) => {
   }
 
   return (
-    <NodeViewWrapper as="div" className="file-node rounded-md border p-2">
+    <NodeViewWrapper as='div' className='file-node rounded-md border p-2'>
       {src ? (
-        <div className="flex items-center gap-2">
-          <img src={src} alt={filename} className="h-5 w-5 object-cover" />
+        <div className='flex items-center gap-2'>
+          <img src={src} alt={filename} className='h-5 w-5 object-cover' />
           <span>{filename}</span>
         </div>
       ) : (
         <button
-          className="rounded-md bg-blue-500 px-3 py-1 text-white"
+          className='rounded-md bg-blue-500 px-3 py-1 text-white'
           onClick={handleUpload}
           disabled={isLoading}>
           {isLoading ? 'Uploading...' : 'Upload'}

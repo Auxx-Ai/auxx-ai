@@ -5,24 +5,24 @@
  * Executes workflow blocks in a sandboxed environment with the Workflow SDK
  */
 
+import {
+  cleanupServerRuntimeHelpers,
+  getCapturedLogs,
+  injectServerRuntimeHelpers,
+} from '../runtime-helpers/index.ts'
+import {
+  cleanupWorkflowSDK,
+  createWorkflowExecutionContext,
+  injectWorkflowSDK,
+} from '../runtime-helpers/workflow-sdk.ts'
 import type {
   // WorkflowExecutionInput,
   // WorkflowExecutionOutput,
   WorkflowExecutionContext,
 } from '../types/workflow.ts'
 import type { ExecutionResult } from '../types.ts'
-import type { WorkflowBlockExecutionEvent } from '../validator.ts'
-import {
-  injectWorkflowSDK,
-  cleanupWorkflowSDK,
-  createWorkflowExecutionContext,
-} from '../runtime-helpers/workflow-sdk.ts'
-import {
-  getCapturedLogs,
-  injectServerRuntimeHelpers,
-  cleanupServerRuntimeHelpers,
-} from '../runtime-helpers/index.ts'
 import { parseError } from '../utils.ts'
+import type { WorkflowBlockExecutionEvent } from '../validator.ts'
 
 /**
  * Execute a workflow block
@@ -40,7 +40,7 @@ export async function executeWorkflowBlock(
     workflowContext,
     workflowInput,
     context,
-    timeout  // Default provided by Zod schema
+    timeout, // Default provided by Zod schema
   } = options
 
   console.log('[WorkflowBlockExecutor] Starting execution:', { blockId })

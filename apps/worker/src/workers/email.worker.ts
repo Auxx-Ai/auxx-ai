@@ -1,7 +1,9 @@
 import dotenv from 'dotenv'
+
 dotenv.config()
 
-import { Worker, Job } from 'bullmq'
+import { type Job, Worker } from 'bullmq'
+
 // import { Job } from 'bullmq'
 
 // const redisOptions = { connection: { host: 'localhost', port: 6379 } }

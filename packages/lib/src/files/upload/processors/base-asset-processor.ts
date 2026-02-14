@@ -1,19 +1,15 @@
 // packages/lib/src/files/upload/processors/base-asset-processor.ts
 
+import type { AssetKind, CreateAssetRequest, CreateFileRequest } from '../../core/types'
+import type { ProcessorConfigResult, UploadInitConfig } from '../init-types'
+import type { PresignedUploadSession } from '../session-types'
 import { BaseProcessor } from './base-processor'
 import type {
-  ProcessorMetadata,
   CreateSessionRequest,
+  ProcessorMetadata,
   ProcessorResult,
   SessionMetadata,
 } from './types'
-import type { PresignedUploadSession } from '../session-types'
-import type { UploadInitConfig, ProcessorConfigResult } from '../init-types'
-import type {
-  CreateFileRequest,
-  CreateAssetRequest,
-  AssetKind,
-} from '../../core/types'
 
 /**
  * Base asset processor with entity-specific configuration
@@ -39,7 +35,11 @@ export abstract class BaseAssetProcessor extends BaseProcessor {
     }
   }
 
-  protected async executeProcess(session: PresignedUploadSession, storageLocationId: string, tx?: any): Promise<ProcessorResult> {
+  protected async executeProcess(
+    session: PresignedUploadSession,
+    storageLocationId: string,
+    tx?: any
+  ): Promise<ProcessorResult> {
     // Only create asset - no attachments
     const assetId = await this.createAsset(session, storageLocationId, tx)
 
@@ -112,7 +112,10 @@ export abstract class BaseAssetProcessor extends BaseProcessor {
   /**
    * Override validation hook for attachment-specific checks
    */
-  async validateCompletedUpload(session: PresignedUploadSession, head: { size: number; mimeType?: string }) {
+  async validateCompletedUpload(
+    session: PresignedUploadSession,
+    head: { size: number; mimeType?: string }
+  ) {
     await super.validateCompletedUpload(session, head)
 
     if (head.size > this.maxFileSize) {
@@ -143,7 +146,11 @@ export abstract class BaseAssetProcessor extends BaseProcessor {
   /**
    * Create a MediaAsset record using MediaAssetService
    */
-  protected async createAsset(session: PresignedUploadSession, storageLocationId: string, tx?: any): Promise<string> {
+  protected async createAsset(
+    session: PresignedUploadSession,
+    storageLocationId: string,
+    tx?: any
+  ): Promise<string> {
     try {
       const assetData: CreateAssetRequest = {
         kind: this.getAssetKind(session),
@@ -176,7 +183,6 @@ export abstract class BaseAssetProcessor extends BaseProcessor {
       )
     }
   }
-
 
   // ============= Hooks for Subclasses =============
 

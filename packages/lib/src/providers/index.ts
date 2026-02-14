@@ -1,34 +1,31 @@
-export { IntegrationService } from './integration-service'
-export { WebhookManagerService } from './webhook-manager-service'
+export type { FacebookIntegrationMetadata } from './facebook/facebook-oauth'
+export { FacebookOAuthService } from './facebook/facebook-oauth'
 
 export { GoogleOAuthService } from './google/google-oauth'
-export { OutlookOAuthService } from './outlook/outlook-oauth'
-export { FacebookOAuthService } from './facebook/facebook-oauth'
-export { InstagramOAuthService } from './instagram/instagram-oauth'
 export type { InstagramIntegrationMetadata } from './instagram/instagram-oauth'
-export type { FacebookIntegrationMetadata } from './facebook/facebook-oauth'
+export { InstagramOAuthService } from './instagram/instagram-oauth'
+// Integration cache - cached provider lookup for batch operations
+export { getOrgProviderMap, invalidateOrgProviderMap } from './integration-cache'
+export { IntegrationService } from './integration-service'
+export { OutlookOAuthService } from './outlook/outlook-oauth'
 export { ProviderRegistryService } from './provider-registry-service'
-
+// Query helpers - replace removed integrationType/messageType columns
+export {
+  getEmailProviders,
+  getSmsProviders,
+  getSocialProviders,
+  whereMessageMessageType,
+  whereMessageProvider,
+  whereThreadMessageType,
+  whereThreadProvider,
+} from './query-helpers'
 // Type utilities - single source of truth for provider/message type derivation
 export {
   getMessageTypeFromProvider,
-  integrationTypeToProvider,
   getProviderForMessage,
   getProviderForThread,
   getProvidersForMessages,
   getProvidersForThreads,
+  integrationTypeToProvider,
 } from './type-utils'
-
-// Query helpers - replace removed integrationType/messageType columns
-export {
-  whereThreadProvider,
-  whereMessageProvider,
-  whereThreadMessageType,
-  whereMessageMessageType,
-  getEmailProviders,
-  getSocialProviders,
-  getSmsProviders,
-} from './query-helpers'
-
-// Integration cache - cached provider lookup for batch operations
-export { getOrgProviderMap, invalidateOrgProviderMap } from './integration-cache'
+export { WebhookManagerService } from './webhook-manager-service'

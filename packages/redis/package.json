@@ -8,8 +8,6 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . --max-warnings 100",
-    "lint:fix": "eslint . --fix --max-warnings 100",
     "clean": "rm -rf node_modules .turbo *.tsbuildinfo"
   },
   "dependencies": {
@@ -19,7 +17,6 @@
     "ioredis": "catalog:"
   },
   "devDependencies": {
-    "@auxx/eslint-config": "workspace:*",
     "@auxx/typescript-config": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:"

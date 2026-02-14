@@ -3,13 +3,13 @@
 
 import { relations } from 'drizzle-orm/relations'
 import {
+  EntityDefinition,
+  EntityInstance,
+  Organization,
   Task,
   TaskAssignment,
   TaskReference,
-  Organization,
   User,
-  EntityInstance,
-  EntityDefinition,
 } from '../schema'
 
 /**

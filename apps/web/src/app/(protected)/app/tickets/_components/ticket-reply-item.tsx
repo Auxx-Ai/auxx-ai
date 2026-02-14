@@ -2,9 +2,9 @@
 
 'use client'
 
-import { formatDistanceToNowStrict } from 'date-fns'
 import { cn } from '@auxx/ui/lib/utils'
 import { getInitialsFromName } from '@auxx/utils'
+import { formatDistanceToNowStrict } from 'date-fns'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import { sanitizeHtml } from '~/lib/sanitize'
 
@@ -66,27 +66,27 @@ export function TicketReplyItem({ reply, isLast = false }: TicketReplyItemProps)
             'group-hover:bg-secondary transition-colors overflow-hidden',
             iconColor
           )}>
-          <span className="text-xs font-semibold">{initials}</span>
+          <span className='text-xs font-semibold'>{initials}</span>
         </div>
 
         {/* Content */}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-4">
+        <div className='min-w-0 flex-1'>
+          <div className='flex items-start justify-between gap-4'>
             {/* Event Description */}
-            <div className="text-[14px] text-primary-400 dark:text-primary-500">
+            <div className='text-[14px] text-primary-400 dark:text-primary-500'>
               {/* Email metadata */}
-              <div className="flex items-center gap-2 mb-1">
-                <span className="font-medium">
+              <div className='flex items-center gap-2 mb-1'>
+                <span className='font-medium'>
                   {reply.isFromCustomer
                     ? reply.senderEmail
                     : reply.createdBy?.name || reply.createdBy?.email}
                 </span>
-                <span className="text-xs text-muted-foreground">→</span>
-                <span className="text-xs text-muted-foreground">{reply.recipientEmail}</span>
+                <span className='text-xs text-muted-foreground'>→</span>
+                <span className='text-xs text-muted-foreground'>{reply.recipientEmail}</span>
                 {reply.ccEmails && reply.ccEmails.length > 0 && (
                   <>
-                    <span className="text-xs text-muted-foreground">•</span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className='text-xs text-muted-foreground'>•</span>
+                    <span className='text-xs text-muted-foreground'>
                       Cc: {reply.ccEmails.join(', ')}
                     </span>
                   </>
@@ -95,14 +95,14 @@ export function TicketReplyItem({ reply, isLast = false }: TicketReplyItemProps)
 
               {/* Reply content */}
               <div
-                className="prose prose-sm dark:prose-invert max-w-none mt-2"
+                className='prose prose-sm dark:prose-invert max-w-none mt-2'
                 dangerouslySetInnerHTML={{ __html: sanitizeHtml(reply.content) }}
               />
             </div>
 
             {/* Timestamp */}
-            <div className="pt-1 shrink-0">
-              <div className="shrink-0 whitespace-nowrap text-xs text-primary-muted">
+            <div className='pt-1 shrink-0'>
+              <div className='shrink-0 whitespace-nowrap text-xs text-primary-muted'>
                 {formatDistanceToNowStrict(timestamp, { addSuffix: true })}
               </div>
             </div>

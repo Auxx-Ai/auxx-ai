@@ -1,8 +1,8 @@
 // packages/database/src/db/schema/system-model-default.ts
 // Drizzle table: SystemModelDefault
 
-import { pgTable, uniqueIndex, index, text, timestamp, type AnyPgColumn } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, index, pgTable, text, timestamp, uniqueIndex } from './_shared'
 
 import { Organization } from './organization'
 

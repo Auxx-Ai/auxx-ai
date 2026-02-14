@@ -3,9 +3,9 @@
 import { env } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { IntegrationProviderType } from '../email/message-service'
-import { ProviderRegistryService } from './provider-registry-service'
 import { and, eq } from 'drizzle-orm'
+import type { IntegrationProviderType } from '../email/message-service'
+import type { ProviderRegistryService } from './provider-registry-service'
 
 const logger = createScopedLogger('webhook-manager-service')
 

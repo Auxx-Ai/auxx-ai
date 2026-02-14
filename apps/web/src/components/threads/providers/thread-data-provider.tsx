@@ -1,11 +1,12 @@
 // apps/web/src/components/threads/providers/thread-data-provider.tsx
 'use client'
 
-import React, { useEffect } from 'react'
-import { api } from '~/trpc/react'
-import { useThreadStore, useMessageStore, useParticipantStore } from '../store'
-import { useThreadRealtime } from '../realtime'
+import type React from 'react'
+import { useEffect } from 'react'
 import { useMailCountsStore } from '~/components/mail/store'
+import { api } from '~/trpc/react'
+import { useThreadRealtime } from '../realtime'
+import { useMessageStore, useParticipantStore, useThreadStore } from '../store'
 
 interface ThreadDataProviderProps {
   children: React.ReactNode

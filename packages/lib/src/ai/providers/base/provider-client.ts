@@ -1,21 +1,21 @@
 // packages/lib/src/ai/providers/base/provider-client.ts
 
+import type { Database } from '@auxx/database'
 import { createScopedLogger, type Logger } from '@auxx/logger'
+import type { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
 import {
-  type ValidationResult,
-  type SchemaValidationResult,
-  type ConnectionTestResult,
-  type ProviderCredentials,
+  type CredentialFormField,
+  type ModelCapabilities,
+  ModelType,
+  type ProviderCapabilities,
+} from '../types'
+import type {
+  ConnectionTestResult,
+  ProviderCredentials,
+  SchemaValidationResult,
+  ValidationResult,
 } from './types'
 import { ValidationUtils } from './validation'
-import {
-  type ModelCapabilities,
-  type ProviderCapabilities,
-  type CredentialFormField,
-  ModelType,
-} from '../types'
-import { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
-import type { Database } from '@auxx/database'
 
 /**
  * Abstract base class for all AI provider clients

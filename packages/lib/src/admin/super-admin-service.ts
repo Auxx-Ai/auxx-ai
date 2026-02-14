@@ -1,8 +1,8 @@
 // packages/lib/src/admin/super-admin-service.ts
 
-import { schema, type Database, database as defaultDb } from '@auxx/database'
-import { eq } from 'drizzle-orm'
+import { type Database, database as defaultDb, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
 
 const logger = createScopedLogger('super-admin-service')
 

@@ -1,19 +1,22 @@
 // packages/lib/src/jobs/maintenance/generate-thumbnail-job.ts
 
-import { z } from 'zod'
 import { database as db, schema } from '@auxx/database'
-import { eq, and, isNull } from 'drizzle-orm'
-import { createScopedLogger } from '../../logger'
-import { createStorageManager } from '../../files/storage/storage-manager'
-import { MediaAssetService } from '../../files/core/media-asset-service'
 import { getRedisClient } from '@auxx/redis'
-import type { GenerateThumbnailPayload, ThumbnailMetadata } from '../../files/core/thumbnail-types'
-import type { PresetKey } from '../../files/core/thumbnail-types'
+import { and, eq, isNull } from 'drizzle-orm'
+import { z } from 'zod'
+import { MediaAssetService } from '../../files/core/media-asset-service'
 import {
-  validateSource,
-  processImage,
   getMimeTypeForFormat,
+  processImage,
+  validateSource,
 } from '../../files/core/thumbnail-processor.worker'
+import type {
+  GenerateThumbnailPayload,
+  PresetKey,
+  ThumbnailMetadata,
+} from '../../files/core/thumbnail-types'
+import { createStorageManager } from '../../files/storage/storage-manager'
+import { createScopedLogger } from '../../logger'
 
 /**
  * Schema for thumbnail generation job payload

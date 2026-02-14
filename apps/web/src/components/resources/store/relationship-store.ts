@@ -1,9 +1,9 @@
 // apps/web/src/components/resources/store/relationship-store.ts
 
+import type { RecordPickerItem } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { useMemo } from 'react'
 import { createHydrationStore, type HydrationStore } from '~/stores'
-import type { RecordPickerItem } from '@auxx/lib/resources/client'
-import { toRecordId, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 
 /**
  * Zustand store for relationship field hydration

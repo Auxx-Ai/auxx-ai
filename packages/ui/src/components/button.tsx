@@ -1,9 +1,8 @@
-import * as React from 'react'
-import { Slot as SlotPrimitive } from 'radix-ui'
-import { cva, type VariantProps } from 'class-variance-authority'
-
 import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
 import { Loader2 } from 'lucide-react'
+import { Slot as SlotPrimitive } from 'radix-ui'
+import type * as React from 'react'
 
 const buttonVariants = cva(
   `inline-flex items-center shrink-0 justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1
@@ -83,7 +82,7 @@ function Button({
         children
       ) : (
         <>
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className='h-4 w-4 animate-spin' />
           {!hideLoadingText.includes(size) && loadingText}
         </>
       )}

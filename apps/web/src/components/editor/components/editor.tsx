@@ -1,11 +1,11 @@
-import { EditorProvider } from '@tiptap/react'
 import type { EditorProviderProps, JSONContent } from '@tiptap/react'
+import { EditorProvider } from '@tiptap/react'
 import { Provider } from 'jotai'
-import { useRef } from 'react'
 import type { FC, ReactNode } from 'react'
-import { EditorCommandTunnelContext } from './editor-command'
-import tunnel from '../utils/tunnel'
+import { useRef } from 'react'
 import { auxxEditorStore } from '../utils/store'
+import tunnel from '../utils/tunnel'
+import { EditorCommandTunnelContext } from './editor-command'
 
 export interface EditorProps {
   readonly children: ReactNode
@@ -34,7 +34,12 @@ export type EditorContentProps = Omit<EditorProviderProps, 'content'> & {
 }
 
 // React 19: forwardRef is deprecated; accept no ref and render directly
-export function EditorContent({ className, children, initialContent, ...rest }: EditorContentProps) {
+export function EditorContent({
+  className,
+  children,
+  initialContent,
+  ...rest
+}: EditorContentProps) {
   return (
     <div className={className}>
       <EditorProvider {...rest} content={initialContent}>

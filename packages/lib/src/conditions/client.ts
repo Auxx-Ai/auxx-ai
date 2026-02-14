@@ -3,52 +3,45 @@
 // Client-side entry point - re-exports everything
 // This allows tree-shaking and separate bundling if needed
 
-export type { Condition, ConditionGroup, ConditionValidationResult } from './types'
-export { conditionSchema, conditionGroupSchema, conditionGroupsSchema } from './schema'
-
 // Condition evaluation (pure TypeScript, safe for client)
 export { evaluateConditions, type FieldResolver } from './evaluate'
-
+export type { FieldInputConfig } from './field-input-modes'
+// Field input modes for resource-based conditions
+export { FieldInputMode, resolveFieldInputConfig } from './field-input-modes'
+export type { Operator, OperatorDefinition } from './operator-definitions'
 // Operator definitions - SINGLE SOURCE OF TRUTH for operators
 export {
-  OPERATOR_DEFINITIONS,
   ALL_OPERATOR_KEYS,
-  operatorRequiresValue,
   getOperatorDefinition,
-  getOperatorsForBaseType,
   getOperatorsByCategory,
+  getOperatorsForBaseType,
   getOperatorsForFieldType,
   isOperatorValidForFieldType,
   mapFieldTypeToBaseType,
+  OPERATOR_DEFINITIONS,
+  operatorRequiresValue,
 } from './operator-definitions'
-
-export type { OperatorDefinition, Operator } from './operator-definitions'
-
-// Field input modes for resource-based conditions
-export { FieldInputMode, resolveFieldInputConfig } from './field-input-modes'
-
-export type { FieldInputConfig } from './field-input-modes'
-
-// View config schemas and types
-export {
-  viewConfigSchema,
-  kanbanConfigSchema,
-  kanbanColumnSettingsSchema,
-  columnFormattingSchema,
-  currencyFormattingSchema,
-  dateFormattingSchema,
-  numberFormattingSchema,
-  phoneFormattingSchema,
-} from './view-config'
-
+export { conditionGroupSchema, conditionGroupsSchema, conditionSchema } from './schema'
+export type { Condition, ConditionGroup, ConditionValidationResult } from './types'
 export type {
-  ViewConfig,
-  ViewType,
-  KanbanViewConfig,
-  KanbanColumnSettings,
   ColumnFormatting,
   CurrencyColumnFormatting,
   DateColumnFormatting,
+  KanbanColumnSettings,
+  KanbanViewConfig,
   NumberColumnFormatting,
   PhoneColumnFormatting,
+  ViewConfig,
+  ViewType,
+} from './view-config'
+// View config schemas and types
+export {
+  columnFormattingSchema,
+  currencyFormattingSchema,
+  dateFormattingSchema,
+  kanbanColumnSettingsSchema,
+  kanbanConfigSchema,
+  numberFormattingSchema,
+  phoneFormattingSchema,
+  viewConfigSchema,
 } from './view-config'

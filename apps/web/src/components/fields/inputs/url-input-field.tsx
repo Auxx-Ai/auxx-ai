@@ -1,6 +1,7 @@
 // apps/web/src/components/fields/inputs/url-input-field.tsx
+
+import { useEffect, useRef, useState } from 'react'
 import { usePropertyContext } from '../property-provider'
-import { useRef, useEffect, useState } from 'react'
 
 /**
  * UrlInputField
@@ -65,7 +66,7 @@ export function UrlInputField() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      e.stopPropagation()  // Prevent parent from reopening
+      e.stopPropagation() // Prevent parent from reopening
       // Format URL before saving
       const formattedUrl = formatUrl(inputValue)
       if (formattedUrl !== inputValue) {
@@ -78,7 +79,7 @@ export function UrlInputField() {
   return (
     <input
       ref={inputRef}
-      type="url"
+      type='url'
       className={`w-full rounded px-2 py-1 text-sm outline-none focus:ring-0 border-none
                 ${isSaving ? 'opacity-70' : ''}`}
       value={inputValue}

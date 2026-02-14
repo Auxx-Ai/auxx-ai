@@ -1,7 +1,7 @@
 // packages/credentials/src/service/credential-validator.ts
 
-import type { INodeProperty, INodePropertyValidation, NodeData } from '@auxx/workflow-nodes/types'
 import { createScopedLogger } from '@auxx/logger'
+import type { INodeProperty, INodePropertyValidation, NodeData } from '@auxx/workflow-nodes/types'
 
 const logger = createScopedLogger('credential-validator')
 
@@ -37,7 +37,7 @@ export class CredentialValidator {
 
       const fieldName = property.name
       const value = data[fieldName]
-      const error = this.validateField(value, property, editMode)
+      const error = CredentialValidator.validateField(value, property, editMode)
 
       if (error) {
         errors.push({ field: fieldName, message: error })
@@ -66,7 +66,7 @@ export class CredentialValidator {
     const { required, displayName, validation } = property
 
     // For sensitive fields in edit mode, allow empty values (existing encrypted data will be preserved)
-    const isSensitiveField = this.isSensitiveField(property)
+    const isSensitiveField = CredentialValidator.isSensitiveField(property)
     const allowEmpty = editMode && isSensitiveField
 
     // Check required field - in edit mode, sensitive fields can be empty (keeping existing value)
@@ -81,7 +81,7 @@ export class CredentialValidator {
 
     // Apply validation rules only if the field has a value
     if (validation) {
-      return this.validateWithRules(value, validation, displayName)
+      return CredentialValidator.validateWithRules(value, validation, displayName)
     }
 
     return null

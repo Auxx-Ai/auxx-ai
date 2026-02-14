@@ -36,7 +36,6 @@
     "nanoid": "^5.1.5"
   },
   "devDependencies": {
-    "@auxx/eslint-config": "workspace:*",
     "@auxx/typescript-config": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:",

@@ -1,11 +1,16 @@
 // apps/web/src/components/resources/store/calc-value-computer.ts
 
-import { evaluateCalcExpression } from '@auxx/utils/calc-expression'
-import { formatToTypedInput } from '@auxx/lib/field-values/client'
-import type { FieldType } from '@auxx/database/types'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
+import type { FieldType } from '@auxx/database/types'
+import { formatToTypedInput } from '@auxx/lib/field-values/client'
+import { evaluateCalcExpression } from '@auxx/utils/calc-expression'
 import { computedFieldRegistry } from './computed-field-registry'
-import { buildFieldValueKey, parseFieldValueKey, type FieldValueKey, type StoredFieldValue } from './field-value-store'
+import {
+  buildFieldValueKey,
+  type FieldValueKey,
+  parseFieldValueKey,
+  type StoredFieldValue,
+} from './field-value-store'
 
 /**
  * Wrap a computed value in TypedFieldValue format using existing formatter.

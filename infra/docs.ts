@@ -1,7 +1,8 @@
 // infra/docs.ts
+
+import { subdomain } from './dns'
 import { router, vpc } from './router-vpc'
 import { getSelectedEnvVars } from './secrets'
-import { subdomain } from './dns'
 
 export const docs = new sst.aws.Nextjs('AuxxAiDocs', {
   vpc,

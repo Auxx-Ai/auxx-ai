@@ -1,11 +1,11 @@
 // packages/lib/src/files/core/base-service.ts
 
-import { database as db, type Database, type Transaction, schema } from '@auxx/database'
+import { type Database, database as db, schema, type Transaction } from '@auxx/database'
 import { and, eq, isNull, type SQL } from 'drizzle-orm'
 import type {
-  SearchOptions,
   BulkOperationOptions,
   BulkOperationResult,
+  SearchOptions,
   ServiceResult,
   ValidationResult,
 } from './types'

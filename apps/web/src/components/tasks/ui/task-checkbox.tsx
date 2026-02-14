@@ -2,8 +2,8 @@
 
 'use client'
 
-import { cn } from '@auxx/ui/lib/utils'
 import { Checkbox } from '@auxx/ui/components/checkbox'
+import { cn } from '@auxx/ui/lib/utils'
 
 /**
  * Props for TaskCheckbox component
@@ -30,13 +30,12 @@ export function TaskCheckbox({ checked, onCheckedChange, disabled }: TaskCheckbo
         'transition-colors overflow-hidden shrink-0',
         checked && 'bg-good-100 text-good-600',
         disabled && 'opacity-50'
-      )}
-    >
+      )}>
       <Checkbox
         checked={checked}
         onCheckedChange={onCheckedChange}
         disabled={disabled}
-        className="size-4 border-0 bg-transparent"
+        className='size-4 border-0 bg-transparent'
       />
     </div>
   )

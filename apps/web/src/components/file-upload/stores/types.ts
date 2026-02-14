@@ -1,12 +1,12 @@
 // apps/web/src/components/file-upload/stores/types.ts
 
 import type {
-  EntityType,
-  SessionStatus,
-  FileUploadEvent,
-  UploadProgress,
   BatchUploadResult,
+  EntityType,
+  FileUploadEvent,
   ProcessingStage,
+  SessionStatus,
+  UploadProgress,
 } from '@auxx/lib/files/types'
 
 /**

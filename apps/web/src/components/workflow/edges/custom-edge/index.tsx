@@ -1,23 +1,23 @@
 // apps/web/src/components/workflow/edges/custom-edge/index.tsx
 
-import React, { memo, useCallback, useMemo, useState } from 'react'
-import { type EdgeProps, BaseEdge, EdgeLabelRenderer, useReactFlow } from '@xyflow/react'
 import { cn } from '@auxx/ui/lib/utils'
-import { AddNodeTrigger } from '~/components/workflow/ui/add-node-trigger'
+import { BaseEdge, EdgeLabelRenderer, type EdgeProps, useReactFlow } from '@xyflow/react'
+import { Plus, Trash2 } from 'lucide-react'
+import React, { memo, useCallback, useMemo, useState } from 'react'
 import { useAvailableBlocks, useEdgeInteractions } from '~/components/workflow/hooks'
-import { CustomEdgeLinearGradient } from './linear-gradient'
-import { getEdgeColor, shouldShowGradient } from './utils'
-import { getAdaptiveEdgePath } from './path-utils'
+import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registry'
 import type { EdgeData } from '~/components/workflow/types'
 import { NodeRunningStatus } from '~/components/workflow/types'
-import { Plus, Trash2 } from 'lucide-react'
+import { AddNodeTrigger } from '~/components/workflow/ui/add-node-trigger'
 import {
+  EDGE_ROUTING,
   EDGE_STROKE_WIDTH,
   EDGE_STROKE_WIDTH_HOVER,
   EDGE_STROKE_WIDTH_SELECTED,
-  EDGE_ROUTING,
 } from '../constants'
-import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registry'
+import { CustomEdgeLinearGradient } from './linear-gradient'
+import { getAdaptiveEdgePath } from './path-utils'
+import { getEdgeColor, shouldShowGradient } from './utils'
 
 /**
  * Custom edge component with visual status indicators and node insertion capability
@@ -80,7 +80,11 @@ const CustomEdge = memo<EdgeProps>(
     const isInput = unifiedNodeRegistry.isInputNode(sourceType)
 
     // Calculate adaptive edge path - uses n8n-style routing for backward edges
-    const { path: edgePath, labelX, labelY } = useMemo(() => {
+    const {
+      path: edgePath,
+      labelX,
+      labelY,
+    } = useMemo(() => {
       return getAdaptiveEdgePath({
         sourceX: sourceX - 8,
         sourceY,
@@ -231,13 +235,13 @@ const CustomEdge = memo<EdgeProps>(
           />
         )}
 
-        <g className="cursor-pointer group">
+        <g className='cursor-pointer group'>
           <BaseEdge
             id={id}
             path={edgePath}
             style={baseEdgeStyle}
             interactionWidth={60}
-            className="hover:shadow-lg hover:shadow-blue-500 "
+            className='hover:shadow-lg hover:shadow-blue-500 '
           />
         </g>
 
@@ -258,7 +262,7 @@ const CustomEdge = memo<EdgeProps>(
                 // zIndex handled by parent edge's zIndex
               }}>
               <AddNodeTrigger
-                position="between"
+                position='between'
                 anchorNode={
                   sourceNode
                     ? {
@@ -286,7 +290,7 @@ const CustomEdge = memo<EdgeProps>(
                     'hover:scale-110',
                     triggerOpen && 'rotate-45 scale-110'
                   )}>
-                  <Plus className="size-4" />
+                  <Plus className='size-4' />
                 </button>
               </AddNodeTrigger>
             </div>
@@ -315,7 +319,7 @@ const CustomEdge = memo<EdgeProps>(
                   'transition-all duration-200',
                   'hover:scale-110'
                 )}>
-                <Trash2 className="size-3" />
+                <Trash2 className='size-3' />
               </button>
             </div>
           </EdgeLabelRenderer>

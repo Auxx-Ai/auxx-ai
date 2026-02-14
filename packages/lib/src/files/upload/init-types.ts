@@ -5,7 +5,7 @@
  * These types establish the single source of truth for upload configuration
  */
 
-import { ProviderId } from '../adapters/base-adapter'
+import type { ProviderId } from '../adapters/base-adapter'
 import type { EntityType } from '../types/entities'
 
 /**

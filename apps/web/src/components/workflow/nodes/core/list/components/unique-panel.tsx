@@ -2,8 +2,8 @@
 
 'use client'
 
-import React from 'react'
-import { type ListNodeConfig } from '../types'
+import type React from 'react'
+import type { ListNodeConfig } from '../types'
 
 interface UniquePanelProps {
   config: ListNodeConfig
@@ -15,10 +15,15 @@ interface UniquePanelProps {
 /**
  * Unique operation configuration panel
  */
-export const UniquePanel: React.FC<UniquePanelProps> = ({ config, onChange, isReadOnly, nodeId }) => {
+export const UniquePanel: React.FC<UniquePanelProps> = ({
+  config,
+  onChange,
+  isReadOnly,
+  nodeId,
+}) => {
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">Unique configuration coming soon...</p>
+    <div className='space-y-4'>
+      <p className='text-sm text-muted-foreground'>Unique configuration coming soon...</p>
     </div>
   )
 }

@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/base/next-step/types.ts
 
 import type { FlowNode } from '~/components/workflow/store/types'
-import { BranchType } from '../../types'
+import type { BranchType } from '../../types'
 
 export interface NextStepBranch {
   id: string

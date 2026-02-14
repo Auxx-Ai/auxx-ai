@@ -1,9 +1,10 @@
 // infra/web.ts
+
+import { rds, redis } from './db'
+import { getAppDomain } from './dns'
 import { router, vpc } from './router-vpc'
 import { getAllSecretsForLinking, getSelectedEnvVars } from './secrets'
-import { getAppDomain } from './dns'
-import { rds, redis } from './db'
-import { publicBucket, privateBucket } from './storage'
+import { privateBucket, publicBucket } from './storage'
 
 export const web = new sst.aws.Nextjs('AuxxAiWeb', {
   vpc,

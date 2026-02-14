@@ -145,8 +145,7 @@ export const useSelectionCount = () => useThreadSelectionStore((s) => s.selected
  * Returns whether any threads are selected.
  * Only re-renders when selection goes from empty ↔ non-empty.
  */
-export const useHasSelection = () =>
-  useThreadSelectionStore((s) => s.selectedThreadIds.length > 0)
+export const useHasSelection = () => useThreadSelectionStore((s) => s.selectedThreadIds.length > 0)
 
 /**
  * Returns whether multiple threads are selected (>1).

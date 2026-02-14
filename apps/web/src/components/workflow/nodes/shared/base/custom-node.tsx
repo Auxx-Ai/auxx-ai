@@ -2,10 +2,10 @@
 
 import type { NodeProps } from '@xyflow/react'
 import { useMemo } from 'react'
-import { unifiedNodeRegistry } from '../../unified-registry'
-import { AppWorkflowNode } from '~/lib/workflow/components/app-workflow-node'
 import { useRegistryVersion } from '~/components/workflow/hooks'
+import { AppWorkflowNode } from '~/lib/workflow/components/app-workflow-node'
 import { NoteNode } from '../../core/note'
+import { unifiedNodeRegistry } from '../../unified-registry'
 
 const StandardNode = (props: NodeProps) => {
   const nodeData = props.data
@@ -30,9 +30,9 @@ const StandardNode = (props: NodeProps) => {
 
   if (!NodeComponent) {
     return (
-      <div className="p-4 border-2 border-red-500 rounded-lg bg-red-50">
-        <p className="text-sm font-medium text-red-600">Unknown node type</p>
-        <p className="text-xs text-red-500 mt-1">{nodeType}</p>
+      <div className='p-4 border-2 border-red-500 rounded-lg bg-red-50'>
+        <p className='text-sm font-medium text-red-600'>Unknown node type</p>
+        <p className='text-xs text-red-500 mt-1'>{nodeType}</p>
       </div>
     )
   }

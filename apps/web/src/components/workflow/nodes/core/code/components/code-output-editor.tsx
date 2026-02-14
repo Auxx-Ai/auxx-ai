@@ -1,24 +1,20 @@
 // apps/web/src/components/workflow/nodes/core/code/components/code-output-editor.tsx
 
-import React, { useEffect, useState } from 'react'
 import { Button } from '@auxx/ui/components/button'
-import { Plus, Trash2 } from 'lucide-react'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
 import { cn } from '@auxx/ui/lib/utils'
-import { produce } from 'immer'
-import type { CodeNodeOutput } from '../types'
-import { BaseType } from '~/components/workflow/types/unified-types'
 import { cloneDeep, debounce } from '@auxx/utils'
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from '@auxx/ui/components/input-group'
+import { produce } from 'immer'
+import { Plus, Trash2 } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { BaseType } from '~/components/workflow/types/unified-types'
 import Section from '~/components/workflow/ui/section'
 import {
-  VariableTypePicker,
-  parseTypeString,
   formatTypeString,
+  parseTypeString,
+  VariableTypePicker,
 } from '~/components/workflow/ui/variable-type-picker'
+import type { CodeNodeOutput } from '../types'
 
 interface CodeOutputEditorProps {
   outputs: CodeNodeOutput[]
@@ -115,20 +111,20 @@ export const CodeOutputEditor: React.FC<CodeOutputEditorProps> = ({
 
   return (
     <Section
-      title="Output Variables"
-      description="Define the variables that will be output from your code execution."
+      title='Output Variables'
+      description='Define the variables that will be output from your code execution.'
       open={isOpen}
       onOpenChange={setIsOpen}
       actions={
         !isReadOnly && (
-          <Button variant="ghost" size="xs" onClick={handleAdd}>
+          <Button variant='ghost' size='xs' onClick={handleAdd}>
             <Plus /> Add
           </Button>
         )
       }>
-      <div className="space-y-4">
+      <div className='space-y-4'>
         {outputs.length > 0 && (
-          <div className="space-y-2">
+          <div className='space-y-2'>
             {outputs.map((output, index) => {
               const error = getNameError(output.name, index)
 
@@ -143,9 +139,9 @@ export const CodeOutputEditor: React.FC<CodeOutputEditorProps> = ({
                       disabled={isReadOnly}
                       value={output.name}
                       onChange={(e) => handleNameChange(index, e.target.value)}
-                      placeholder="Variable name"
+                      placeholder='Variable name'
                     />
-                    <InputGroupAddon align="inline-end">
+                    <InputGroupAddon align='inline-end'>
                       <VariableTypePicker
                         value={typeValue}
                         onChange={(newValue) => handleTypeChange(index, formatTypeString(newValue))}
@@ -153,21 +149,21 @@ export const CodeOutputEditor: React.FC<CodeOutputEditorProps> = ({
                         compact
                         popoverWidth={320}
                         popoverHeight={500}
-                        align="end"
+                        align='end'
                       />
                     </InputGroupAddon>
                     {!isReadOnly && (
-                      <InputGroupAddon align="inline-end">
+                      <InputGroupAddon align='inline-end'>
                         <Button
-                          size="icon-xs"
-                          variant="destructive-hover"
+                          size='icon-xs'
+                          variant='destructive-hover'
                           onClick={() => handleRemove(index)}>
                           <Trash2 />
                         </Button>
                       </InputGroupAddon>
                     )}
                   </InputGroup>
-                  {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+                  {error && <p className='text-xs text-red-500 mt-1'>{error}</p>}
                 </div>
               )
             })}
@@ -175,7 +171,7 @@ export const CodeOutputEditor: React.FC<CodeOutputEditorProps> = ({
         )}
 
         {outputs.length === 0 && (
-          <div className="text-sm text-muted-foreground text-center py-4">
+          <div className='text-sm text-muted-foreground text-center py-4'>
             No output variables defined. Click the + button to define outputs from your code.
           </div>
         )}

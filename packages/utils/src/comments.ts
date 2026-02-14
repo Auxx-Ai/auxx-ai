@@ -72,7 +72,10 @@ export function groupConsecutiveComments(comments: Comment[]): CommentGroup[] {
  * @param groupLength - Total number of comments in the group
  * @returns Position type: 'single', 'first', 'middle', or 'last'
  */
-export function getGroupPosition(index: number, groupLength: number): 'single' | 'first' | 'middle' | 'last' {
+export function getGroupPosition(
+  index: number,
+  groupLength: number
+): 'single' | 'first' | 'middle' | 'last' {
   if (groupLength === 1) return 'single'
   if (index === 0) return 'first'
   if (index === groupLength - 1) return 'last'

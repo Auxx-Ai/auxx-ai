@@ -1,11 +1,11 @@
 // packages/lib/src/workflow-engine/resources/registry/resources/ticket-fields.ts
 
 import { FieldType } from '@auxx/database/enums'
+import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
-import { toFieldId, type ResourceFieldId } from '@auxx/types/field'
-import type { ResourceField } from '../field-types'
-import { TicketType, TicketStatus, TicketPriority } from '../enum-values'
 import { CREATED_BY_FIELD } from '../common-fields'
+import { TicketPriority, TicketStatus, TicketType } from '../enum-values'
+import type { ResourceField } from '../field-types'
 
 /**
  * Field definitions for the Ticket resource

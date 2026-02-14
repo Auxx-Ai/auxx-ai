@@ -1,7 +1,7 @@
 // packages/sdk/src/runtime/reconciler/tags/workflow-node-handle-tag.ts
 
-import { BaseTag } from './base-tag.js'
 import { registerEventHandler } from '../../register-event-handler.js'
+import { BaseTag } from './base-tag.js'
 
 /**
  * Tag for WorkflowNodeHandle component.

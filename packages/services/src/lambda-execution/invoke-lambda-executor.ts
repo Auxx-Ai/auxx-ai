@@ -1,8 +1,8 @@
 // packages/services/src/lambda-execution/invoke-lambda-executor.ts
 
-import { err, ok } from 'neverthrow'
 import { SERVER_FUNCTION_EXECUTOR_URL } from '@auxx/config/server'
 import type { Result } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 
 /**
  * Console log entry from Lambda execution

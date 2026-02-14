@@ -1,14 +1,14 @@
 // apps/web/src/app/(website)/platform/workflow/_components/workflow-hero.tsx
 'use client'
 import { motion } from 'motion/react'
-import { Button } from '~/components/ui/button'
 import Link from 'next/link'
-import { ImageIllustration } from './workflow-image-illustration'
+import { Button } from '~/components/ui/button'
 import { config } from '~/lib/config'
+import { ImageIllustration } from './workflow-image-illustration'
 
 const AnimatedGroup = ({ children, variants }: { children: React.ReactNode; variants: any }) => {
   return (
-    <motion.div initial="hidden" animate="visible" variants={variants}>
+    <motion.div initial='hidden' animate='visible' variants={variants}>
       {children}
     </motion.div>
   )
@@ -16,10 +16,10 @@ const AnimatedGroup = ({ children, variants }: { children: React.ReactNode; vari
 
 export default function WorkflowHero() {
   return (
-    <main role="main" className="overflow-hidden">
-      <section className="bg-muted relative [--color-foreground:var(--color-indigo-950)]">
-        <div className="bg-linear-to-b from-background to-indigo-500/6 pb-20 pt-24 md:pt-32 lg:pb-72 lg:pt-36">
-          <div className="perspective-near relative z-10 mx-auto max-w-5xl px-6 text-center">
+    <main role='main' className='overflow-hidden'>
+      <section className='bg-muted relative [--color-foreground:var(--color-indigo-950)]'>
+        <div className='bg-linear-to-b from-background to-indigo-500/6 pb-20 pt-24 md:pt-32 lg:pb-72 lg:pt-36'>
+          <div className='perspective-near relative z-10 mx-auto max-w-5xl px-6 text-center'>
             <ImageIllustration />
             <AnimatedGroup
               variants={{
@@ -52,21 +52,21 @@ export default function WorkflowHero() {
               }}>
               <h1
                 key={1}
-                className="text-foreground mx-auto mt-16 text-balance text-5xl font-semibold">
+                className='text-foreground mx-auto mt-16 text-balance text-5xl font-semibold'>
                 The{' '}
-                <span className="bg-linear-to-b from-purple-400 to-indigo-500 bg-clip-text text-transparent">
+                <span className='bg-linear-to-b from-purple-400 to-indigo-500 bg-clip-text text-transparent'>
                   Workflow Engine
                 </span>{' '}
                 powering automation on your platform
               </h1>
 
-              <div key={2} className="mx-auto mt-4 max-w-md">
-                <p className="text-muted-foreground mb-6 text-balance text-lg">
+              <div key={2} className='mx-auto mt-4 max-w-md'>
+                <p className='text-muted-foreground mb-6 text-balance text-lg'>
                   Build powerful workflows that run your business while you sleep. Set up in
                   minutes.
                 </p>
 
-                <Button asChild className="rounded-full">
+                <Button asChild className='rounded-full'>
                   <Link href={config.urls.signup}>Get Started for free</Link>
                 </Button>
               </div>

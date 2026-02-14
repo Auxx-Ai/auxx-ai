@@ -1,9 +1,13 @@
 // packages/lib/src/seed/entity-seeder/create-field-views.ts
 
 import { type Database, schema } from '@auxx/database'
+import {
+  createDefaultFieldViewConfig,
+  type FieldViewConfig,
+  type ViewContextType,
+} from '@auxx/lib/conditions'
 import { createScopedLogger } from '@auxx/logger'
-import { toResourceFieldId, toFieldId } from '@auxx/types/field'
-import { createDefaultFieldViewConfig, type ViewContextType, type FieldViewConfig } from '@auxx/lib/conditions'
+import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import type { EntityDefMap, FieldMap } from './types'
 
 const logger = createScopedLogger('entity-seeder:create-field-views')
@@ -35,7 +39,15 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     entityType: 'contact',
     contextType: 'panel',
     name: 'Default Panel View',
-    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id', 'first_name', 'last_name', 'contact_tickets'],
+    excludeFields: [
+      'id',
+      'created_at',
+      'updated_at',
+      'created_by_id',
+      'first_name',
+      'last_name',
+      'contact_tickets',
+    ],
   },
 
   // Contact create dialog - minimal fields for quick creation
@@ -51,7 +63,14 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     entityType: 'contact',
     contextType: 'dialog_edit',
     name: 'Default Edit Dialog',
-    excludeFields: ['id', 'created_at', 'first_name', 'last_name', 'contact_tickets', 'customer_groups'],
+    excludeFields: [
+      'id',
+      'created_at',
+      'first_name',
+      'last_name',
+      'contact_tickets',
+      'customer_groups',
+    ],
   },
 
   // ============================================================================
@@ -63,7 +82,14 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     entityType: 'ticket',
     contextType: 'panel',
     name: 'Default Panel View',
-    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id', 'parent_ticket_id', 'ticket_child_tickets'],
+    excludeFields: [
+      'id',
+      'created_at',
+      'updated_at',
+      'created_by_id',
+      'parent_ticket_id',
+      'ticket_child_tickets',
+    ],
   },
 
   // Ticket create dialog - essential fields for ticket creation
@@ -71,7 +97,13 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     entityType: 'ticket',
     contextType: 'dialog_create',
     name: 'Default Create Dialog',
-    includeFields: ['ticket_title', 'ticket_contact', 'ticket_priority', 'assigned_to_id', 'ticket_description'],
+    includeFields: [
+      'ticket_title',
+      'ticket_contact',
+      'ticket_priority',
+      'assigned_to_id',
+      'ticket_description',
+    ],
   },
 
   // Ticket edit dialog - editable fields (excludes auto-generated)
@@ -79,7 +111,14 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     entityType: 'ticket',
     contextType: 'dialog_edit',
     name: 'Default Edit Dialog',
-    excludeFields: ['id', 'created_at', 'ticket_number', 'ticket_type', 'parent_ticket_id', 'ticket_child_tickets'],
+    excludeFields: [
+      'id',
+      'created_at',
+      'ticket_number',
+      'ticket_type',
+      'parent_ticket_id',
+      'ticket_child_tickets',
+    ],
   },
 ]
 
@@ -106,7 +145,13 @@ export async function createFieldViews(
     }
 
     // Build resourceFieldId list from fieldMap
-    const fieldIds = buildFieldIdList(entityType, entityDef.id, fieldMap, includeFields, excludeFields)
+    const fieldIds = buildFieldIdList(
+      entityType,
+      entityDef.id,
+      fieldMap,
+      includeFields,
+      excludeFields
+    )
 
     if (fieldIds.length === 0) {
       logger.warn(`No fields found for ${entityType} ${contextType}, skipping field view creation`)

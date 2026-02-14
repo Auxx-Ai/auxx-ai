@@ -1,8 +1,8 @@
 // apps/web/src/components/signatures/hooks/use-signature.ts
 
-import { useMemo } from 'react'
 import type { SignatureItem, SignatureVisibility } from '@auxx/types/signature'
-import { useAllRecords, type FieldInfo } from '~/components/resources/hooks/use-all-records'
+import { useMemo } from 'react'
+import { type FieldInfo, useAllRecords } from '~/components/resources/hooks/use-all-records'
 import type { RecordMeta } from '~/components/resources/store/record-store'
 
 /**
@@ -61,8 +61,8 @@ export function useSignatures(): UseSignaturesResult {
       // Handle visibility being returned as array from entity system
       const rawVisibility = record.fieldValues?.visibility
       const visibility: SignatureVisibility = Array.isArray(rawVisibility)
-        ? rawVisibility[0] ?? 'private'
-        : rawVisibility ?? 'private'
+        ? (rawVisibility[0] ?? 'private')
+        : (rawVisibility ?? 'private')
 
       return {
         id: record.id,

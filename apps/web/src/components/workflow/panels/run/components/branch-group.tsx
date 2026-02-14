@@ -1,9 +1,10 @@
 // apps/web/src/components/workflow/panels/run/components/branch-group.tsx
 
-import React, { useState } from 'react'
-import { ChevronDown, ChevronRight, GitBranch } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
 import { Badge } from '@auxx/ui/components/badge'
+import { cn } from '@auxx/ui/lib/utils'
+import { ChevronDown, ChevronRight, GitBranch } from 'lucide-react'
+import type React from 'react'
+import { useState } from 'react'
 import { NodeRunningStatus } from '~/components/workflow/types'
 
 /**
@@ -52,7 +53,9 @@ function formatBranchLabel(branchId: string, branchIndex?: number): string {
 /**
  * Get badge variant based on status
  */
-function getStatusVariant(status?: NodeRunningStatus): 'default' | 'secondary' | 'success' | 'destructive' | 'warning' {
+function getStatusVariant(
+  status?: NodeRunningStatus
+): 'default' | 'secondary' | 'success' | 'destructive' | 'warning' {
   switch (status) {
     case NodeRunningStatus.Succeeded:
       return 'success'
@@ -114,8 +117,7 @@ export function BranchGroup({
         borderColor,
         'transition-colors duration-200'
       )}
-      style={{ marginLeft: `${depth * 24}px` }}
-    >
+      style={{ marginLeft: `${depth * 24}px` }}>
       {/* Branch header */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
@@ -123,28 +125,23 @@ export function BranchGroup({
           'flex items-center gap-2 mb-2 text-sm font-medium',
           'hover:text-primary transition-colors',
           'cursor-pointer group'
-        )}
-      >
+        )}>
         {isCollapsed ? (
-          <ChevronRight className="h-3 w-3 text-muted-foreground group-hover:text-primary" />
+          <ChevronRight className='h-3 w-3 text-muted-foreground group-hover:text-primary' />
         ) : (
-          <ChevronDown className="h-3 w-3 text-muted-foreground group-hover:text-primary" />
+          <ChevronDown className='h-3 w-3 text-muted-foreground group-hover:text-primary' />
         )}
-        <GitBranch className="h-3 w-3 text-muted-foreground" />
-        <span className="text-muted-foreground">{displayLabel}</span>
+        <GitBranch className='h-3 w-3 text-muted-foreground' />
+        <span className='text-muted-foreground'>{displayLabel}</span>
         {status && (
-          <Badge variant={statusVariant} className="text-xs px-1.5 py-0">
+          <Badge variant={statusVariant} className='text-xs px-1.5 py-0'>
             {status}
           </Badge>
         )}
       </button>
 
       {/* Branch content */}
-      {!isCollapsed && (
-        <div className="space-y-0.5">
-          {children}
-        </div>
-      )}
+      {!isCollapsed && <div className='space-y-0.5'>{children}</div>}
     </div>
   )
 }

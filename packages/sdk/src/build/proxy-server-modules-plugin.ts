@@ -1,6 +1,7 @@
 // packages/sdk/src/build/proxy-server-modules-plugin.ts
+
+import type { OnLoadArgs, OnLoadResult, OnResolveArgs, Plugin, PluginBuild } from 'esbuild'
 import path from 'path'
-import type { Plugin, PluginBuild, OnResolveArgs, OnLoadArgs, OnLoadResult } from 'esbuild'
 
 /**
  * Builds the proxy module source that forwards calls to `runServerFunction` using the provided hash.
@@ -51,7 +52,7 @@ export function proxyServerModulesPlugin({ srcDir }: { srcDir: string }): Plugin
             contents: getServerModuleProxy(pluginData.moduleHash),
             loader: 'js',
           }
-        },
+        }
       )
     },
   }

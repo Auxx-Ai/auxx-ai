@@ -1,12 +1,12 @@
 // apps/web/src/components/workflow/ui/next-step/add.tsx
 
-import { memo, useMemo } from 'react'
+import { cn } from '@auxx/ui/lib/utils'
 import { useReactFlow } from '@xyflow/react'
-import { useAvailableBlocks, useReadOnly } from '~/components/workflow/hooks'
 import { Plus } from 'lucide-react'
+import { memo, useMemo } from 'react'
+import { useAvailableBlocks, useReadOnly } from '~/components/workflow/hooks'
 import { AddNodeTrigger } from '~/components/workflow/ui/add-node-trigger'
 import type { AddProps } from './types'
-import { cn } from '@auxx/ui/lib/utils'
 
 const Add = ({ nodeId, nodeData, sourceHandle, isParallel, branchType = 'default' }: AddProps) => {
   const { isReadOnly } = useReadOnly()
@@ -55,10 +55,10 @@ const Add = ({ nodeId, nodeData, sourceHandle, isParallel, branchType = 'default
           branchType === 'fail' && 'text-bad-500 bg-bad-50 border-bad-200'
         )}
         disabled={true}>
-        <div className="mr-1.5 flex h-5 w-5 items-center justify-center rounded-[5px] bg-background">
-          <Plus className="h-3 w-3" />
+        <div className='mr-1.5 flex h-5 w-5 items-center justify-center rounded-[5px] bg-background'>
+          <Plus className='h-3 w-3' />
         </div>
-        <div className="flex items-center uppercase">{title}</div>
+        <div className='flex items-center uppercase'>{title}</div>
       </button>
     )
   }
@@ -75,10 +75,10 @@ const Add = ({ nodeId, nodeData, sourceHandle, isParallel, branchType = 'default
           'relative flex h-9 w-full cursor-pointer items-center rounded-lg border border-dashed px-2 text-xs text-primary-400 bg-primary-50 hover:bg-primary-100 transition-colors',
           branchType === 'fail' && 'text-bad-500 bg-bad-50 hover:bg-bad-100 border-bad-200'
         )}>
-        <div className="mr-1.5 flex h-5 w-5 items-center justify-center rounded-[5px] bg-background">
-          <Plus className="h-3 w-3" />
+        <div className='mr-1.5 flex h-5 w-5 items-center justify-center rounded-[5px] bg-background'>
+          <Plus className='h-3 w-3' />
         </div>
-        <div className="flex items-center uppercase">{title}</div>
+        <div className='flex items-center uppercase'>{title}</div>
       </button>
     </AddNodeTrigger>
   )

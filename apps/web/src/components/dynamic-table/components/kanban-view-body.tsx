@@ -1,18 +1,18 @@
 // apps/web/src/components/dynamic-table/components/kanban-view-body.tsx
 'use client'
 
-import { useCallback, useMemo, useState, useEffect } from 'react'
+import { toRecordId } from '@auxx/lib/resources/client'
+import { toResourceFieldId } from '@auxx/types/field'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useResource } from '~/components/resources'
+import { fieldValueFetchQueue } from '~/components/resources/store/field-value-fetch-queue'
 import { KanbanView } from '../../kanban'
 import { useTableConfig } from '../context/table-config-context'
 import { useTableInstance } from '../context/table-instance-context'
 import { useViewMetadata } from '../context/view-metadata-context'
-import { useActiveView, useKanbanConfig } from '../stores/store-selectors'
 import { useUpdateKanbanConfig } from '../stores/store-actions'
+import { useActiveView, useKanbanConfig } from '../stores/store-selectors'
 import type { KanbanRow } from '../types'
-import { useResource } from '~/components/resources'
-import { toResourceFieldId } from '@auxx/types/field'
-import { fieldValueFetchQueue } from '~/components/resources/store/field-value-fetch-queue'
-import { toRecordId } from '@auxx/lib/resources/client'
 /**
  * Kanban view body that integrates with focused contexts.
  * Handles view-level config mutations (column reorder, visibility).
@@ -83,7 +83,7 @@ export function KanbanViewBody<TData extends KanbanRow>() {
   // If no valid kanban config, don't render
   if (!kanbanConfig || !groupByField) {
     return (
-      <div className="flex items-center justify-center h-64 text-muted-foreground">
+      <div className='flex items-center justify-center h-64 text-muted-foreground'>
         Kanban view requires a valid groupBy field configuration.
       </div>
     )

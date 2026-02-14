@@ -2,15 +2,15 @@
 
 'use client'
 
-import React, { memo, useEffect, useState, useMemo, useRef, useCallback } from 'react'
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNodeCrud } from '~/components/workflow/hooks/use-node-data-update'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
 import type { BaseNodeData } from '~/components/workflow/types'
-import { useAppStore } from '~/lib/extensions/use-app-store'
-import { reconstructReactTree } from '~/lib/extensions/reconstruct-react-tree'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
-import { useNodeCrud } from '~/components/workflow/hooks/use-node-data-update'
 import { NodeSourceHandle } from '~/components/workflow/ui/node-handle/source-handle'
 import { NodeTargetHandle } from '~/components/workflow/ui/node-handle/target-handle'
+import { reconstructReactTree } from '~/lib/extensions/reconstruct-react-tree'
+import { useAppStore } from '~/lib/extensions/use-app-store'
+import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 
 /**
  * Node props from ReactFlow
@@ -249,7 +249,7 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
             id={id}
             data={data}
             handleId={handleId}
-            position="left"
+            position='left'
           />
         ))}
 
@@ -260,7 +260,7 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
             id={id}
             data={data}
             handleId={handleId}
-            position="right"
+            position='right'
             showAdd={false}
           />
         ))}
@@ -271,14 +271,14 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
   // Render reconstructed component with error handling
   const renderComponent = () => {
     if (!nodeComponent) {
-      return <div className="text-xs text-muted-foreground">Loading...</div>
+      return <div className='text-xs text-muted-foreground'>Loading...</div>
     }
     if (!nodeComponent.children || !Array.isArray(nodeComponent.children)) {
-      return <div className="text-xs text-destructive">Error: Invalid component structure</div>
+      return <div className='text-xs text-destructive'>Error: Invalid component structure</div>
     }
 
     if (nodeComponent.children.length === 0) {
-      return <div className="text-xs text-muted-foreground">No content to display</div>
+      return <div className='text-xs text-muted-foreground'>No content to display</div>
     }
 
     // Try to reconstruct with error handling
@@ -314,7 +314,7 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
       return reconstructed
     } catch (err) {
       return (
-        <div className="text-xs text-destructive">
+        <div className='text-xs text-destructive'>
           Reconstruction error: {err instanceof Error ? err.message : 'Unknown error'}
         </div>
       )
@@ -326,11 +326,11 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
       {/* Render fallback handles when there's an error */}
       {error && renderFallbackHandles()}
 
-      <div className="space-y-1 pb-2">
+      <div className='space-y-1 pb-2'>
         {isLoading ? (
-          <div className="text-xs text-muted-foreground">Loading extensions...</div>
+          <div className='text-xs text-muted-foreground'>Loading extensions...</div>
         ) : error ? (
-          <div className="text-xs text-destructive">Error: {error}</div>
+          <div className='text-xs text-destructive'>Error: {error}</div>
         ) : (
           renderComponent()
         )}

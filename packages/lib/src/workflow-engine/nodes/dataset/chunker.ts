@@ -1,19 +1,19 @@
 // packages/lib/src/workflow-engine/nodes/dataset/chunker.ts
 
+import type { DocumentChunk } from '@auxx/lib/datasets'
+import { DocumentProcessor, TextChunker } from '@auxx/lib/datasets'
 import { createScopedLogger } from '@auxx/logger'
-import { BaseNodeProcessor } from '../base-node'
+import { interpretEscapeSequences } from '@auxx/utils'
+import { z } from 'zod'
+import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
-  WorkflowNode,
   NodeExecutionResult,
-  ValidationResult,
   PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowActionType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
-import { z } from 'zod'
-import { TextChunker, DocumentProcessor } from '@auxx/lib/datasets'
-import type { DocumentChunk } from '@auxx/lib/datasets'
-import { interpretEscapeSequences } from '@auxx/utils'
+import { BaseNodeProcessor } from '../base-node'
 
 const logger = createScopedLogger('chunker-processor')
 

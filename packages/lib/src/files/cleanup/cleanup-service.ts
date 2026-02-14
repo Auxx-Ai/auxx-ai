@@ -1,8 +1,8 @@
 // packages/lib/src/files/cleanup/cleanup-service.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { createStorageManager } from '../storage/storage-manager'
 import type { ProviderId } from '../adapters/base-adapter'
+import { createStorageManager } from '../storage/storage-manager'
 
 const logger = createScopedLogger('cleanup-service')
 
@@ -56,7 +56,7 @@ export class CleanupService {
       // For now, store in Redis (could be DB table for persistence)
       // In production, use Redis or database storage
       await this.storeCleanupTask(task)
-      
+
       logger.info('Scheduled cleanup task', {
         provider: params.provider,
         storageKey: params.storageKey,
@@ -101,14 +101,14 @@ export class CleanupService {
         failed++
         const errorMessage = error instanceof Error ? error.message : String(error)
         errors.push(`Task ${task.id}: ${errorMessage}`)
-        
+
         logger.error('Cleanup task execution failed', {
           taskId: task.id,
           provider: task.provider,
           storageKey: task.storageKey,
           error: errorMessage,
         })
-        
+
         await this.handleTaskFailure(task)
       }
     }
@@ -135,7 +135,7 @@ export class CleanupService {
     try {
       // Create storage manager with organization ID from task (optional)
       const storageManager = createStorageManager(task.organizationId)
-      
+
       await storageManager.deleteByKey({
         provider: task.provider,
         key: task.storageKey,
@@ -170,7 +170,7 @@ export class CleanupService {
     if (newAttempts >= task.maxAttempts) {
       // Give up after max attempts
       await this.markTaskFailed(task.id, 'Max attempts exceeded')
-      
+
       logger.warn('Cleanup task abandoned after max attempts', {
         taskId: task.id,
         provider: task.provider,
@@ -179,15 +179,12 @@ export class CleanupService {
       })
     } else {
       // Schedule retry with exponential backoff
-      const delayMs = Math.min(
-        this.baseDelayMs * Math.pow(2, newAttempts - 1),
-        this.maxDelayMs
-      )
-      
+      const delayMs = Math.min(this.baseDelayMs * 2 ** (newAttempts - 1), this.maxDelayMs)
+
       const nextAttempt = new Date(Date.now() + delayMs)
-      
+
       await this.updateTaskRetry(task.id, newAttempts, nextAttempt)
-      
+
       logger.info('Cleanup task scheduled for retry', {
         taskId: task.id,
         provider: task.provider,
@@ -240,7 +237,11 @@ export class CleanupService {
     logger.warn('Would mark task failed', { taskId, reason })
   }
 
-  private async updateTaskRetry(taskId: string, attempts: number, nextAttempt: Date): Promise<void> {
+  private async updateTaskRetry(
+    taskId: string,
+    attempts: number,
+    nextAttempt: Date
+  ): Promise<void> {
     // TODO: Implement with Redis or database
     logger.info('Would update task retry', { taskId, attempts, nextAttempt })
   }

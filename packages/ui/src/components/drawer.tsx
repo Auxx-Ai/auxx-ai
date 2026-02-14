@@ -1,10 +1,9 @@
 'use client'
 
+import { cn } from '@auxx/ui/lib/utils'
+import { X } from 'lucide-react'
 import * as React from 'react'
 import { Drawer as DrawerPrimitive } from 'vaul'
-import { X } from 'lucide-react'
-
-import { cn } from '@auxx/ui/lib/utils'
 import { Button } from './button'
 import { Separator } from './separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip'
@@ -213,25 +212,25 @@ const DrawerHeader = ({
       className
     )}
     {...props}>
-    <div className="flex items-center ps-2 pe-1 pt-1.5 pb-1 relative z-10">
+    <div className='flex items-center ps-2 pe-1 pt-1.5 pb-1 relative z-10'>
       {/* Icon */}
-      {icon && <div className="mr-1 shrink-0">{icon}</div>}
+      {icon && <div className='mr-1 shrink-0'>{icon}</div>}
 
       {/* Title area - flexible, supports text or Input */}
-      <div className="relative flex-1 pr-2 min-w-0 w-full text-sm text-primary-500">{title}</div>
+      <div className='relative flex-1 pr-2 min-w-0 w-full text-sm text-primary-500'>{title}</div>
 
       {/* Actions + Separator + Close */}
-      <div className="flex shrink-0 items-center gap-1">
+      <div className='flex shrink-0 items-center gap-1'>
         {actions}
         {onClose && (
           <>
-            <Separator orientation="vertical" className="h-6 mx-1" />
+            <Separator orientation='vertical' className='h-6 mx-1' />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="rounded-full"
+                  variant='ghost'
+                  size='icon-xs'
+                  className='rounded-full'
                   onClick={onClose}
                   tabIndex={-1}>
                   <X />

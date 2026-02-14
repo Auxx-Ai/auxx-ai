@@ -1,7 +1,13 @@
 // apps/web/src/components/dynamic-table/components/edit-column-formatting-dialog.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import type {
+  BooleanFieldOptions,
+  DateFieldOptions,
+  NumberFieldOptions,
+  PhoneFieldOptions,
+} from '@auxx/lib/field-values/client'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -10,9 +16,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { Field, FieldGroup, FieldLabel } from '@auxx/ui/components/field'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
-import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
 import {
   Select,
   SelectContent,
@@ -20,35 +25,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { CurrencyPicker } from '~/components/pickers/currency-picker'
+import { useEffect, useState } from 'react'
 import {
-  NumberFormattingEditor,
+  BooleanFormattingEditor,
   DateFormattingEditor,
   DateTimeFormattingEditor,
-  TimeFormattingEditor,
+  NumberFormattingEditor,
   PhoneFormattingEditor,
-  BooleanFormattingEditor,
+  TimeFormattingEditor,
 } from '~/components/custom-fields/ui/formatting-editors'
+import { CurrencyPicker } from '~/components/pickers/currency-picker'
 import type {
-  NumberFieldOptions,
-  DateFieldOptions,
-  PhoneFieldOptions,
-  BooleanFieldOptions,
-} from '@auxx/lib/field-values/client'
-import type {
+  CheckboxColumnFormatting,
   ColumnFormatting,
   CurrencyColumnFormatting,
   DateColumnFormatting,
+  FormattableFieldType,
   NumberColumnFormatting,
   PhoneColumnFormatting,
-  CheckboxColumnFormatting,
-  FormattableFieldType,
 } from '../types'
 
 /**
  * Convert NumberColumnFormatting to NumberFieldOptions
  */
-function columnToNumberDisplayOptions(formatting: NumberColumnFormatting | null): NumberFieldOptions {
+function columnToNumberDisplayOptions(
+  formatting: NumberColumnFormatting | null
+): NumberFieldOptions {
   return {
     decimals: formatting?.decimalPlaces ?? 2,
     useGrouping: formatting?.useGrouping ?? true,
@@ -86,7 +88,10 @@ function columnToDateDisplayOptions(formatting: DateColumnFormatting | null): Da
 /**
  * Convert DateFieldOptions to DateColumnFormatting
  */
-function dateDisplayOptionsToColumn(opts: DateFieldOptions, includeTime?: boolean): DateColumnFormatting {
+function dateDisplayOptionsToColumn(
+  opts: DateFieldOptions,
+  includeTime?: boolean
+): DateColumnFormatting {
   return {
     type: 'date',
     format: opts.format ?? 'medium',
@@ -116,7 +121,9 @@ function phoneDisplayOptionsToColumn(opts: PhoneFieldOptions): PhoneColumnFormat
 /**
  * Convert CheckboxColumnFormatting to BooleanFieldOptions
  */
-function columnToCheckboxDisplayOptions(formatting: CheckboxColumnFormatting | null): BooleanFieldOptions {
+function columnToCheckboxDisplayOptions(
+  formatting: CheckboxColumnFormatting | null
+): BooleanFieldOptions {
   return {
     checkboxStyle: formatting?.checkboxStyle ?? 'icon-text',
     trueLabel: formatting?.trueLabel ?? 'True',
@@ -187,7 +194,7 @@ export function EditColumnFormattingDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="md" position="tc">
+      <DialogContent size='md' position='tc'>
         <DialogHeader>
           <DialogTitle>Format Column</DialogTitle>
           <DialogDescription>Customize display formatting for "{columnLabel}"</DialogDescription>
@@ -238,24 +245,24 @@ export function EditColumnFormattingDialog({
         )}
 
         <DialogFooter>
-          <div className="flex w-full items-center justify-between">
+          <div className='flex w-full items-center justify-between'>
             <div>
               {currentFormatting && (
                 <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-destructive border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
+                  size='sm'
+                  variant='ghost'
+                  className='text-destructive border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30'
                   onClick={handleClear}>
                   Reset to default
                 </Button>
               )}
             </div>
-            <div className="flex gap-2">
-              <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
-                Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+            <div className='flex gap-2'>
+              <Button size='sm' variant='ghost' onClick={() => onOpenChange(false)}>
+                Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
               </Button>
-              <Button onClick={handleSave} size="sm" variant="outline" data-dialog-submit>
-                Save <KbdSubmit variant="outline" size="sm" />
+              <Button onClick={handleSave} size='sm' variant='outline' data-dialog-submit>
+                Save <KbdSubmit variant='outline' size='sm' />
               </Button>
             </div>
           </div>
@@ -296,8 +303,8 @@ function CurrencyFormattingEditor({
   }
 
   return (
-    <div className="">
-      <FieldGroup className="gap-3">
+    <div className=''>
+      <FieldGroup className='gap-3'>
         <Field>
           <FieldLabel>Currency</FieldLabel>
           <CurrencyPicker
@@ -310,11 +317,11 @@ function CurrencyFormattingEditor({
           <FieldLabel>Decimal Places</FieldLabel>
           <Select value={current.decimalPlaces} onValueChange={(v) => update('decimalPlaces', v)}>
             <SelectTrigger>
-              <SelectValue placeholder="Select decimal format" />
+              <SelectValue placeholder='Select decimal format' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="two-places">Two decimal places (10.99)</SelectItem>
-              <SelectItem value="no-decimal">No decimals (11)</SelectItem>
+              <SelectItem value='two-places'>Two decimal places (10.99)</SelectItem>
+              <SelectItem value='no-decimal'>No decimals (11)</SelectItem>
             </SelectContent>
           </Select>
         </Field>
@@ -323,12 +330,12 @@ function CurrencyFormattingEditor({
           <FieldLabel>Currency Display</FieldLabel>
           <Select value={current.displayType} onValueChange={(v) => update('displayType', v)}>
             <SelectTrigger>
-              <SelectValue placeholder="Select display format" />
+              <SelectValue placeholder='Select display format' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="symbol">Symbol ($10.99)</SelectItem>
-              <SelectItem value="code">Code (USD 10.99)</SelectItem>
-              <SelectItem value="name">Name (10.99 US dollars)</SelectItem>
+              <SelectItem value='symbol'>Symbol ($10.99)</SelectItem>
+              <SelectItem value='code'>Code (USD 10.99)</SelectItem>
+              <SelectItem value='name'>Name (10.99 US dollars)</SelectItem>
             </SelectContent>
           </Select>
         </Field>
@@ -337,11 +344,11 @@ function CurrencyFormattingEditor({
           <FieldLabel>Thousand Separators</FieldLabel>
           <Select value={current.groups} onValueChange={(v) => update('groups', v)}>
             <SelectTrigger>
-              <SelectValue placeholder="Select grouping" />
+              <SelectValue placeholder='Select grouping' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">With separators (1,000.00)</SelectItem>
-              <SelectItem value="no-groups">No separators (1000.00)</SelectItem>
+              <SelectItem value='default'>With separators (1,000.00)</SelectItem>
+              <SelectItem value='no-groups'>No separators (1000.00)</SelectItem>
             </SelectContent>
           </Select>
         </Field>
@@ -349,4 +356,3 @@ function CurrencyFormattingEditor({
     </div>
   )
 }
-

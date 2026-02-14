@@ -1,9 +1,9 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/__tests__/find-thread-message.test.ts
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { FindProcessor } from '../find'
-import { WorkflowNodeType } from '../../../core/types'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkflowNode } from '../../../core/types'
+import { WorkflowNodeType } from '../../../core/types'
+import { FindProcessor } from '../find'
 
 /**
  * Test suite for Find node with thread and message resources

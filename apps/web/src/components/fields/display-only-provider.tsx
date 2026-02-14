@@ -1,6 +1,7 @@
 // apps/web/src/components/fields/display-only-provider.tsx
-import { createContext, useContext, type ReactNode } from 'react'
+
 import type { ResourceField } from '@auxx/lib/resources/client'
+import { createContext, type ReactNode, useContext } from 'react'
 
 /**
  * Minimal context value for display-only field rendering.

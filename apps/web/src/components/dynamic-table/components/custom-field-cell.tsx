@@ -2,14 +2,19 @@
 
 'use client'
 
-import { memo, useMemo } from 'react'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { FormattedCell, CellPadding } from './formatted-cell'
-import { useFieldValue } from '~/components/resources/hooks/use-field-values'
-import { type FieldReference, type FieldPath, type ResourceFieldId, isFieldPath } from '@auxx/types/field'
-import { useField } from '~/components/resources/hooks/use-field'
-import { decodeColumnId } from '../utils/column-id'
 import type { RecordId } from '@auxx/lib/resources/client'
+import {
+  type FieldPath,
+  type FieldReference,
+  isFieldPath,
+  type ResourceFieldId,
+} from '@auxx/types/field'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { memo, useMemo } from 'react'
+import { useField } from '~/components/resources/hooks/use-field'
+import { useFieldValue } from '~/components/resources/hooks/use-field-values'
+import { decodeColumnId } from '../utils/column-id'
+import { CellPadding, FormattedCell } from './formatted-cell'
 
 interface CustomFieldCellProps {
   /** Record ID (entityDefinitionId:rowId) */
@@ -63,7 +68,7 @@ export const CustomFieldCell = memo(function CustomFieldCell({
   if (isLoading && value === undefined) {
     return (
       <CellPadding>
-        <Skeleton className="h-5 w-20" />
+        <Skeleton className='h-5 w-20' />
       </CellPadding>
     )
   }

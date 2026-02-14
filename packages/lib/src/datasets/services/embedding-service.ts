@@ -1,21 +1,22 @@
 // packages/lib/src/datasets/services/embedding-service.ts
 
-import { ProviderRegistry } from '../../ai/providers/provider-registry'
-import { ProviderManager } from '../../ai/providers/provider-manager'
-import {
-  SmartChunkingService,
-  type ChunkingOptions,
-} from '../../ai/services/smart-chunking-service'
-import { ModelType, type CredentialSourceType, type ProviderTypeValue } from '../../ai/providers/types'
-import { TextEmbeddingClient } from '../../ai/clients/base/text-embedding-client'
 import { createScopedLogger } from '@auxx/logger'
+import type { TextEmbeddingClient } from '../../ai/clients/base/text-embedding-client'
+import { QuotaExceededError } from '../../ai/orchestrator/types'
+import { ProviderManager } from '../../ai/providers/provider-manager'
+import { ProviderRegistry } from '../../ai/providers/provider-registry'
+import {
+  type CredentialSourceType,
+  ModelType,
+  type ProviderTypeValue,
+} from '../../ai/providers/types'
+import {
+  type ChunkingOptions,
+  SmartChunkingService,
+} from '../../ai/services/smart-chunking-service'
 import { UsageTrackingService } from '../../ai/usage/usage-tracking-service'
 import { SystemUserService } from '../../users/system-user-service'
-import { QuotaExceededError } from '../../ai/orchestrator/types'
-import {
-  isSupportedDimension,
-  normalizeToSupportedDimension,
-} from '../utils/embedding-columns'
+import { isSupportedDimension, normalizeToSupportedDimension } from '../utils/embedding-columns'
 
 const logger = createScopedLogger('EmbeddingService')
 

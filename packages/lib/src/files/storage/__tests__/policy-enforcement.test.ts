@@ -1,8 +1,8 @@
 // packages/lib/src/files/storage/__tests__/policy-enforcement.test.ts
 
-import { describe, it, expect, beforeEach, vi, MockedFunction } from 'vitest'
-import { StorageManager } from '../storage-manager'
+import { beforeEach, describe, expect, it, MockedFunction, vi } from 'vitest'
 import type { UploadPreparedConfig } from '../../upload/init-types'
+import { StorageManager } from '../storage-manager'
 
 // Mock the credential manager
 vi.mock('@auxx/lib/credentials', () => ({

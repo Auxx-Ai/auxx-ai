@@ -41,7 +41,7 @@
   position: relative;
 
   &:before {
-    content: '';
+    content: "";
     box-sizing: border-box;
     position: absolute;
     top: 50%;
@@ -63,18 +63,18 @@
 
 /* Custom TODO list checkboxes – shoutout to this awesome tutorial: https://moderncss.dev/pure-css-custom-checkbox-style/ */
 
-ul[data-type='taskList'] li > label {
+ul[data-type="taskList"] li > label {
   margin-right: 0.2rem;
   user-select: none;
 }
 
 @media screen and (max-width: 768px) {
-  ul[data-type='taskList'] li > label {
+  ul[data-type="taskList"] li > label {
     margin-right: 0.5rem;
   }
 }
 
-ul[data-type='taskList'] li > label input[type='checkbox'] {
+ul[data-type="taskList"] li > label input[type="checkbox"] {
   -webkit-appearance: none;
   appearance: none;
   background-color: hsl(var(--background));
@@ -98,7 +98,7 @@ ul[data-type='taskList'] li > label input[type='checkbox'] {
   }
 
   &::before {
-    content: '';
+    content: "";
     width: 0.65em;
     height: 0.65em;
     transform: scale(0);
@@ -113,7 +113,7 @@ ul[data-type='taskList'] li > label input[type='checkbox'] {
   }
 }
 
-ul[data-type='taskList'] li[data-checked='true'] > div > p {
+ul[data-type="taskList"] li[data-checked="true"] > div > p {
   color: var(--muted-foreground);
   text-decoration: line-through;
   text-decoration-thickness: 2px;
@@ -300,7 +300,7 @@ mark[style] > strong {
     background: var(--black);
     border-radius: 0.5rem;
     color: var(--white);
-    font-family: 'JetBrainsMono', monospace;
+    font-family: "JetBrainsMono", monospace;
     margin: 1.5rem 0;
     padding: 0.75rem 1rem;
 
@@ -354,7 +354,7 @@ mark[style] > strong {
 
     .selectedCell:after {
       background: var(--gray-2);
-      content: '';
+      content: "";
       left: 0;
       right: 0;
       top: 0;
@@ -389,13 +389,13 @@ mark[style] > strong {
   font-size: 1rem;
   line-height: 1.75;
 }
-.prose-lg :where(ol):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+.prose-lg :where(ol):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
   margin-top: 1.33333em;
   margin-bottom: 1.33333em;
   padding-inline-start: 1.55556em;
 }
 .prose-sm {
-  :where(p):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+  :where(p):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
     margin-top: 0;
     margin-bottom: 0;
   }

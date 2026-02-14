@@ -1,7 +1,7 @@
 // apps/api/src/services/organizations/apps/get-app-with-status.ts
 
 import { database } from '@auxx/database'
-import { type Result, ok, err } from 'neverthrow'
+import { err, ok, type Result } from 'neverthrow'
 // import type { AppError } from './errors'
 import { fromDatabase } from '../shared/utils'
 

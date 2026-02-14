@@ -1,12 +1,11 @@
+import { database as db, schema } from '@auxx/database'
+import { handlePartSubpartChange } from '@auxx/lib/bom'
+import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
+import { and, asc, eq } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { handlePartSubpartChange } from '@auxx/lib/bom'
-
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { createScopedLogger } from '@auxx/logger'
-import { database as db, schema } from '@auxx/database'
-import { eq, and, asc } from 'drizzle-orm'
 
 const logger = createScopedLogger('api-subparts')
 

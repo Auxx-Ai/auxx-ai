@@ -2,20 +2,8 @@
 
 'use client'
 
-import React, { memo, useMemo, useEffect } from 'react'
-import { type ResourceTriggerData } from './types'
-import { BasePanel } from '../../shared/base/base-panel'
-import { useNodeCrud } from '~/components/workflow/hooks'
-import { Info } from 'lucide-react'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
-import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
-import { getResourceTriggerName } from '../../shared/resource-trigger-utils'
-import { getResourceTriggerOutputVariables } from './output-variables'
-import { useWorkflowResources } from '../../../providers'
-import { useResource, useResourceFields } from '~/components/resources'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import Section from '~/components/workflow/ui/section'
-import Field from '~/components/workflow/ui/field'
 import {
   Select,
   SelectContent,
@@ -23,7 +11,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { Info } from 'lucide-react'
+import type React from 'react'
+import { memo, useEffect, useMemo } from 'react'
+import { useResource, useResourceFields } from '~/components/resources'
+import { useNodeCrud } from '~/components/workflow/hooks'
+import Field from '~/components/workflow/ui/field'
 import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import Section from '~/components/workflow/ui/section'
+import { useWorkflowResources } from '../../../providers'
+import { BasePanel } from '../../shared/base/base-panel'
+import { getResourceTriggerName } from '../../shared/resource-trigger-utils'
+import { getResourceTriggerOutputVariables } from './output-variables'
+import type { ResourceTriggerData } from './types'
 
 /** Operations remain static */
 const RESOURCE_OPERATIONS: Record<string, { operation: string; label: string }> = {
@@ -118,8 +119,8 @@ const ResourceTriggerPanelComponent: React.FC<ResourceTriggerPanelProps> = ({ no
   if (isLoadingResources) {
     return (
       <BasePanel nodeId={nodeId} data={nodeData}>
-        <Section title="General">
-          <div className="text-center py-8 text-sm text-muted-foreground">Loading resources...</div>
+        <Section title='General'>
+          <div className='text-center py-8 text-sm text-muted-foreground'>Loading resources...</div>
         </Section>
       </BasePanel>
     )
@@ -128,16 +129,16 @@ const ResourceTriggerPanelComponent: React.FC<ResourceTriggerPanelProps> = ({ no
   return (
     <BasePanel nodeId={nodeId} data={nodeData}>
       {/* Trigger Information */}
-      <Section title="General">
-        <div className="space-y-4">
+      <Section title='General'>
+        <div className='space-y-4'>
           <Field
-            title="Resource"
-            description="Select the operation and type of resource for this trigger">
-            <VarEditorField className="px-0.5">
-              <div className="flex flex-row">
-                <div className="">
+            title='Resource'
+            description='Select the operation and type of resource for this trigger'>
+            <VarEditorField className='px-0.5'>
+              <div className='flex flex-row'>
+                <div className=''>
                   <Select value={operation} onValueChange={handleOperationChange}>
-                    <SelectTrigger variant="outline" size="xs">
+                    <SelectTrigger variant='outline' size='xs'>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -149,20 +150,20 @@ const ResourceTriggerPanelComponent: React.FC<ResourceTriggerPanelProps> = ({ no
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex-1">
+                <div className='flex-1'>
                   <Select value={resourceType} onValueChange={handleResourceTypeChange}>
-                    <SelectTrigger variant="transparent" size="xs">
+                    <SelectTrigger variant='transparent' size='xs'>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {resourceOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value} className="ps-1">
-                          <div className="flex items-center">
+                        <SelectItem key={option.value} value={option.value} className='ps-1'>
+                          <div className='flex items-center'>
                             <EntityIcon
                               iconId={option.icon}
-                              variant="full"
-                              size="sm"
-                              className="mr-1"
+                              variant='full'
+                              size='sm'
+                              className='mr-1'
                             />
                             {option.label}
                           </div>
@@ -188,17 +189,17 @@ const ResourceTriggerPanelComponent: React.FC<ResourceTriggerPanelProps> = ({ no
         initialOpen={false}
       />
 
-      <div className="pt-4 px-4">
+      <div className='pt-4 px-4'>
         <Alert>
-          <Info className="size-4" />
+          <Info className='size-4' />
           <AlertDescription>
-            <div className="space-y-2">
+            <div className='space-y-2'>
               <div>
                 {operation === 'manual'
                   ? `This workflow is triggered manually for a specific ${currentResource?.label?.toLowerCase() || resourceType}. The complete data will be available in the workflow.`
                   : `Triggers when a ${currentResource?.label?.toLowerCase() || resourceType} is ${operation}.`}
               </div>
-              <div className="font-mono text-xs text-muted-foreground">Event: {triggerName}</div>
+              <div className='font-mono text-xs text-muted-foreground'>Event: {triggerName}</div>
             </div>
           </AlertDescription>
         </Alert>

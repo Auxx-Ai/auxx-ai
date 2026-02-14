@@ -1,12 +1,12 @@
 // apps/web/src/server/api/routers/draft.ts
 
-import { z } from 'zod'
-import { TRPCError } from '@trpc/server'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { createScopedLogger } from '@auxx/logger'
-import { DraftService } from '@auxx/lib/drafts'
 import { IdentifierType } from '@auxx/database/enums'
-import type { DraftParticipant, DraftAttachment, DraftContent } from '@auxx/types/draft'
+import { DraftService } from '@auxx/lib/drafts'
+import { createScopedLogger } from '@auxx/logger'
+import type { DraftAttachment, DraftContent, DraftParticipant } from '@auxx/types/draft'
+import { TRPCError } from '@trpc/server'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('draft-router')
 
@@ -124,9 +124,7 @@ export const draftRouter = createTRPCRouter({
 
       // Extract inReplyToMessageId from input or fallback to legacy metadata.sourceMessageId
       const inReplyToMessageId =
-        input.inReplyToMessageId ??
-        (input.metadata?.sourceMessageId as string | undefined) ??
-        null
+        input.inReplyToMessageId ?? (input.metadata?.sourceMessageId as string | undefined) ?? null
 
       const draft = await draftService.upsert({
         draftId: input.draftId,
@@ -268,9 +266,11 @@ function transformDraftForFrontend(draft: import('@auxx/types/draft').Draft) {
     threadId: draft.threadId,
     integrationId: draft.integrationId,
     // Include inReplyToMessageId at top level for frontend
-    inReplyToMessageId: draft.inReplyToMessageId ?? (legacyMetadata.sourceMessageId as string) ?? null,
+    inReplyToMessageId:
+      draft.inReplyToMessageId ?? (legacyMetadata.sourceMessageId as string) ?? null,
     // Include includePreviousMessage at top level (fallback to legacy metadata)
-    includePreviousMessage: content.includePreviousMessage ?? !!legacyMetadata.includePreviousMessage,
+    includePreviousMessage:
+      content.includePreviousMessage ?? !!legacyMetadata.includePreviousMessage,
     subject: content.subject || '',
     textHtml: content.bodyHtml || '',
     textPlain: content.bodyText || '',

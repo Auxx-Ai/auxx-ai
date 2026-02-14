@@ -1,6 +1,6 @@
 // import React from 'react'
 
-import React from 'react'
+import type React from 'react'
 
 const VisuallyHidden = ({ children }: { children: React.ReactNode }) => {
   return (

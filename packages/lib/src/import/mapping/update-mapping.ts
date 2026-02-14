@@ -1,8 +1,8 @@
 // packages/lib/src/import/mapping/update-mapping.ts
 
-import { eq } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { eq } from 'drizzle-orm'
 
 /**
  * Input for updating mapping title.

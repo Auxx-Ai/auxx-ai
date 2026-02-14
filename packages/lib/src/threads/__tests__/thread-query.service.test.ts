@@ -1,14 +1,14 @@
 // packages/lib/src/threads/__tests__/thread-query.service.test.ts
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { ThreadQueryService } from '../thread-query.service'
+import { getRedisClient } from '@auxx/redis'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { InternalFilterContextType } from '../../mail-query/types'
 import { createMockRedis } from '../../test/utils'
-import { getRedisClient } from '@auxx/redis'
+import { ThreadQueryService } from '../thread-query.service'
 
 // Mock dependencies
 vi.mock('@auxx/redis', () => ({
-  getRedisClient: vi.fn()
+  getRedisClient: vi.fn(),
 }))
 
 // No longer need to mock config since feature flag is removed
@@ -19,7 +19,7 @@ vi.mock('@auxx/database', () => ({
     Thread: {
       id: 'id',
       lastMessageAt: 'lastMessageAt',
-      organizationId: 'organizationId'
+      organizationId: 'organizationId',
     },
     Message: {
       threadId: 'threadId',
@@ -30,19 +30,19 @@ vi.mock('@auxx/database', () => ({
       isInbound: 'isInbound',
       fromId: 'fromId',
       createdById: 'createdById',
-      isFirstInThread: 'isFirstInThread'
+      isFirstInThread: 'isFirstInThread',
     },
     ThreadReadStatus: {
       threadId: 'threadId',
-      userId: 'userId'
-    }
-  }
+      userId: 'userId',
+    },
+  },
 }))
 
 vi.mock('../../mail-views/mail-view-service', () => ({
   MailViewService: vi.fn().mockImplementation(() => ({
-    getMailView: vi.fn().mockResolvedValue(null)
-  }))
+    getMailView: vi.fn().mockResolvedValue(null),
+  })),
 }))
 
 vi.mock('@auxx/database/enums', () => ({}))
@@ -57,33 +57,33 @@ const mockDb = {
   limit: vi.fn().mockResolvedValue([]),
   query: {
     Thread: {
-      findMany: vi.fn().mockResolvedValue([])
+      findMany: vi.fn().mockResolvedValue([]),
     },
     Message: {
-      findMany: vi.fn().mockResolvedValue([])
+      findMany: vi.fn().mockResolvedValue([]),
     },
     ThreadReadStatus: {
-      findMany: vi.fn().mockResolvedValue([])
-    }
+      findMany: vi.fn().mockResolvedValue([]),
+    },
   },
   transaction: vi.fn().mockImplementation((callback) =>
     callback({
       execute: vi.fn(),
       query: {
         Thread: {
-          findMany: vi.fn().mockResolvedValue([])
+          findMany: vi.fn().mockResolvedValue([]),
         },
         ThreadReadStatus: {
-          findMany: vi.fn().mockResolvedValue([])
-        }
+          findMany: vi.fn().mockResolvedValue([]),
+        },
       },
       select: vi.fn().mockReturnThis(),
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
       orderBy: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockResolvedValue([])
+      limit: vi.fn().mockResolvedValue([]),
     })
-  )
+  ),
 }
 
 describe('ThreadQueryService', () => {
@@ -107,7 +107,7 @@ describe('ThreadQueryService', () => {
     it('should fetch thread IDs in order', async () => {
       const mockThreadRows = [
         { id: 'thread-1', lastMessageAt: new Date() },
-        { id: 'thread-2', lastMessageAt: new Date() }
+        { id: 'thread-2', lastMessageAt: new Date() },
       ]
 
       mockDb.select.mockReturnThis()
@@ -120,7 +120,7 @@ describe('ThreadQueryService', () => {
         userId: 'user-123',
         context: { type: InternalFilterContextType.ALL_INBOXES },
         statusFilter: undefined,
-        searchQuery: undefined
+        searchQuery: undefined,
       }
       const pagination = { limit: 50, cursor: null }
 
@@ -158,7 +158,7 @@ describe('ThreadQueryService', () => {
         userId: 'user-123',
         context: { type: InternalFilterContextType.ALL_INBOXES },
         statusFilter: undefined,
-        searchQuery: undefined
+        searchQuery: undefined,
       }
       const pagination = { limit: 2, cursor: null }
 
@@ -221,5 +221,4 @@ describe('ThreadQueryService', () => {
       expect(parsed).toBeNull()
     })
   })
-
 })

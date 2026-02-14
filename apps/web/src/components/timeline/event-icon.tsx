@@ -2,26 +2,26 @@
 'use client'
 
 import {
-  Settings,
-  Plus,
-  User,
-  Mail,
-  MessageSquare,
-  Edit,
-  Tag,
-  Users,
-  FileText,
-  Trash2,
-  AlertCircle,
-  Archive,
-  RotateCcw,
-} from 'lucide-react'
+  ContactEventType,
+  EntityInstanceEventType,
+  TicketEventType,
+} from '@auxx/lib/timeline/client'
 import { cn } from '@auxx/ui/lib/utils'
 import {
-  ContactEventType,
-  TicketEventType,
-  EntityInstanceEventType,
-} from '@auxx/lib/timeline/client'
+  AlertCircle,
+  Archive,
+  Edit,
+  FileText,
+  Mail,
+  MessageSquare,
+  Plus,
+  RotateCcw,
+  Settings,
+  Tag,
+  Trash2,
+  User,
+  Users,
+} from 'lucide-react'
 
 /**
  * Props for the EventIcon component
@@ -41,7 +41,7 @@ export function EventIcon({ icon: Icon, color }: EventIconProps) {
         'size-6 border border-black/10 dark:border-white/10 bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors overflow-hidden shrink-0',
         color
       )}>
-      <Icon className="size-3.5" />
+      <Icon className='size-3.5' />
     </div>
   )
 }

@@ -1,13 +1,14 @@
 // server/routers/user.ts
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { TRPCError } from '@trpc/server'
+
 import {
   OrganizationMemberModel,
+  TicketAssignmentModel,
   TicketModel,
   UserModel,
-  TicketAssignmentModel,
 } from '@auxx/database/models'
+import { TRPCError } from '@trpc/server'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 export const ticketAgentRouter = createTRPCRouter({
   // Get all agents for the current organization

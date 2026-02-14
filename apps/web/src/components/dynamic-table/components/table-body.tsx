@@ -1,19 +1,19 @@
 // apps/web/src/components/dynamic-table/components/table-body.tsx
 'use client'
 
-import { useRef, useEffect, useMemo } from 'react'
-import { useTableConfig } from '../context/table-config-context'
-import { useTableInstance } from '../context/table-instance-context'
-import { useCellSelection } from '../context/cell-selection-context'
-import { useViewStoreInitialized } from '../stores/store-selectors'
-import { VirtualTableBody } from './virtual-table-body'
-import { HeaderCellWrapper } from './header-cell-wrapper'
-import { CheckboxHeaderCell } from './checkbox-header-cell'
-import { ColumnDndProvider } from './column-dnd-provider'
-import { RowDndProvider } from './row-dnd-provider'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
+import { useEffect, useMemo, useRef } from 'react'
+import { useCellSelection } from '../context/cell-selection-context'
+import { useTableConfig } from '../context/table-config-context'
+import { useTableInstance } from '../context/table-instance-context'
+import { useViewStoreInitialized } from '../stores/store-selectors'
 import { sanitizeColumnId } from '../utils/sanitize-column-id'
+import { CheckboxHeaderCell } from './checkbox-header-cell'
+import { ColumnDndProvider } from './column-dnd-provider'
+import { HeaderCellWrapper } from './header-cell-wrapper'
+import { RowDndProvider } from './row-dnd-provider'
+import { VirtualTableBody } from './virtual-table-body'
 
 /**
  * Props for TableBody component
@@ -67,14 +67,14 @@ export function TableBody<TData extends object>({
   }, [columnIds])
 
   return (
-    <div className="">
+    <div className=''>
       {/* CSS rules for column widths - generated once per column set */}
       <style>{columnStyleRules}</style>
-      <div className="max-w-full pl-0">
+      <div className='max-w-full pl-0'>
         {/* Container with CSS variables for column widths */}
         <div
           ref={containerRef}
-          className="min-w-full"
+          className='min-w-full'
           style={{ width: `${table.getTotalSize()}px` }}>
           {/* Table Header with Column DndContext */}
           <ColumnDndProvider table={table} visibleColumns={visibleColumns}>
@@ -84,7 +84,7 @@ export function TableBody<TData extends object>({
                 hideToolbar ? 'top-0' : 'top-11'
               )}>
               {table.getHeaderGroups().map((headerGroup) => (
-                <div key={headerGroup.id} className="flex min-w-full items-stretch">
+                <div key={headerGroup.id} className='flex min-w-full items-stretch'>
                   {/* Render left pinned columns */}
                   {headerGroup.headers
                     .filter((header) => header.column.getIsPinned() === 'left')
@@ -98,7 +98,7 @@ export function TableBody<TData extends object>({
                       return (
                         <div
                           key={header.id}
-                          className="sticky shrink-0 z-30 backdrop-blur bg-background/40 dark:bg-transparent"
+                          className='sticky shrink-0 z-30 backdrop-blur bg-background/40 dark:bg-transparent'
                           style={{ left: header.column.getStart('left') }}>
                           <HeaderCellWrapper header={header} />
                         </div>
@@ -120,7 +120,7 @@ export function TableBody<TData extends object>({
 
                   {/* Header Actions (e.g., add column button) - positioned sticky to stay visible on scroll */}
                   {headerActions && (
-                    <div className="sticky right-0 h-10 flex items-center bg-gradient-to-r from-transparent via-white to-white dark:via-transparent dark:to-transparent">
+                    <div className='sticky right-0 h-10 flex items-center bg-gradient-to-r from-transparent via-white to-white dark:via-transparent dark:to-transparent'>
                       {headerActions}
                     </div>
                   )}
@@ -131,19 +131,19 @@ export function TableBody<TData extends object>({
 
           {/* Table Body with Row DndContext */}
           <RowDndProvider>
-            <div className="relative block flex-1 h-full">
+            <div className='relative block flex-1 h-full'>
               {(isLoading && table.getRowModel().rows?.length === 0) || isLoadingViews ? (
                 // Loading state
                 Array.from({ length: 5 }).map((_, index) => (
                   <div
                     key={index}
-                    className="flex min-w-full items-stretch border-b border-primary-200/50">
+                    className='flex min-w-full items-stretch border-b border-primary-200/50'>
                     {table.getAllColumns().map((column) => (
                       <div
                         key={column.id}
-                        className="px-3 py-2 flex items-center"
+                        className='px-3 py-2 flex items-center'
                         style={{ width: column.getSize() }}>
-                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className='h-4 w-full' />
                       </div>
                     ))}
                   </div>
@@ -168,10 +168,10 @@ export function TableBody<TData extends object>({
         !isLoadingViews &&
         table.getRowModel().rows?.length === 0 &&
         (emptyState ? (
-          <div className="inset-0 absolute flex flex-1 min-h-0 flex-col">{emptyState}</div>
+          <div className='inset-0 absolute flex flex-1 min-h-0 flex-col'>{emptyState}</div>
         ) : (
-          <div className="flex min-w-full items-stretch border-b border-primary-200/50">
-            <div className="px-3 py-12 text-center text-muted-foreground" style={{ width: '100%' }}>
+          <div className='flex min-w-full items-stretch border-b border-primary-200/50'>
+            <div className='px-3 py-12 text-center text-muted-foreground' style={{ width: '100%' }}>
               No results.
             </div>
           </div>

@@ -1,8 +1,8 @@
 // packages/lib/src/seed/entity-seeder/types.ts
 
-import type { ResourceField } from '../../resources/registry/field-types'
 import type { FieldType } from '@auxx/database/types'
 import type { FieldOptions } from '../../custom-fields'
+import type { ResourceField } from '../../resources/registry/field-types'
 
 /**
  * EntityDefinition lookup by entityType

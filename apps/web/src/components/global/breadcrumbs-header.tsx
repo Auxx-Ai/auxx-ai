@@ -1,4 +1,3 @@
-import React from 'react'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -7,6 +6,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@auxx/ui/components/breadcrumb'
+import React from 'react'
 
 interface IBradcrumbItem {
   title: string
@@ -30,13 +30,13 @@ export default function BreadcrumbHeader({
 
   return (
     <>
-      <header className="flex h-16 shrink-0 items-center gap-2 border-b">
-        <div className="flex w-full items-center justify-between gap-2 px-3">
+      <header className='flex h-16 shrink-0 items-center gap-2 border-b'>
+        <div className='flex w-full items-center justify-between gap-2 px-3'>
           <Breadcrumb>
             <BreadcrumbList>
               {breadcrumbs?.map((breadcrumb, i) => (
                 <React.Fragment key={i}>
-                  <BreadcrumbItem className="hidden md:block">
+                  <BreadcrumbItem className='hidden md:block'>
                     {breadcrumb.href ? (
                       <BreadcrumbLink href={breadcrumb.href}>{breadcrumb.title}</BreadcrumbLink>
                     ) : (
@@ -44,7 +44,7 @@ export default function BreadcrumbHeader({
                     )}
                   </BreadcrumbItem>
                   {i + 1 < breadcrumbs.length && (
-                    <BreadcrumbSeparator className="hidden md:block" key={i + 0.5} />
+                    <BreadcrumbSeparator className='hidden md:block' key={i + 0.5} />
                   )}
                 </React.Fragment>
               ))}

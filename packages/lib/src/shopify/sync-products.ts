@@ -1,11 +1,10 @@
-import type { Product, ProductMedia, ProductOption, ProductVariant } from './shopify-types'
-import { extractShopifyId } from './utils'
-
-import type { AdminApiClient, ResponseWithType } from '@shopify/admin-api-client'
-import { convertToCents, withRetry } from '@auxx/utils'
-import { database as db, type Database, schema } from '@auxx/database'
+import { type Database, database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { convertToCents, withRetry } from '@auxx/utils'
+import type { AdminApiClient, ResponseWithType } from '@shopify/admin-api-client'
+import type { Product, ProductMedia, ProductOption, ProductVariant } from './shopify-types'
 import type { ShopifyAdminClient } from './shopify-webhooks'
+import { extractShopifyId } from './utils'
 
 export const syncProducts = async () => {
   // shopifyClient

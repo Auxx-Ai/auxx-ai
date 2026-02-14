@@ -2,14 +2,14 @@
 
 'use client'
 
-import { useState } from 'react'
-import { ListTodo, Plus } from 'lucide-react'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
-import type { RecordId } from '@auxx/lib/resources/client'
-import { TasksList } from './tasks-list'
+import { ListTodo, Plus } from 'lucide-react'
+import { useState } from 'react'
 import { TaskDialog } from './task-dialog'
+import { TasksList } from './tasks-list'
 
 /**
  * Props for TasksSection component
@@ -28,20 +28,20 @@ export function TasksSection({ recordId }: TasksSectionProps) {
 
   return (
     <>
-      <ScrollArea className="flex-1">
+      <ScrollArea className='flex-1'>
         <Section
-          title="Tasks"
-          className="flex flex-col flex-1 min-h-0 w-full [&_[data-slot=section]]:flex-1 [&_[data-slot=section]]:border-b-0 [&_[data-slot=section-content]]:flex-1"
+          title='Tasks'
+          className='flex flex-col flex-1 min-h-0 w-full [&_[data-slot=section]]:flex-1 [&_[data-slot=section]]:border-b-0 [&_[data-slot=section-content]]:flex-1'
           collapsible={false}
-          icon={<ListTodo className="size-4 text-muted-foreground/50" />}
+          icon={<ListTodo className='size-4 text-muted-foreground/50' />}
           actions={
-            <Button variant="ghost" size="sm" onClick={() => setDialogOpen(true)}>
+            <Button variant='ghost' size='sm' onClick={() => setDialogOpen(true)}>
               <Plus />
               Create
             </Button>
           }>
           <TasksList
-            viewMode="entity"
+            viewMode='entity'
             recordId={recordId}
             onCreateClick={() => setDialogOpen(true)}
           />
@@ -51,7 +51,7 @@ export function TasksSection({ recordId }: TasksSectionProps) {
       <TaskDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        mode="create"
+        mode='create'
         defaultReferencedEntity={recordId}
       />
     </>

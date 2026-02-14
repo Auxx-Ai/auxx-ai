@@ -1,8 +1,8 @@
-import path from 'path'
 import { glob } from 'glob'
-import { combineAsync, complete, errored, isErrored } from '../../errors.js'
+import path from 'path'
 import { APP_SETTINGS_FILENAME } from '../../constants/settings-files.js'
 import { USE_SETTINGS } from '../../env.js'
+import { combineAsync, complete, errored, isErrored } from '../../errors.js'
 
 /**
  * Workflow block handler data
@@ -365,7 +365,7 @@ export async function generateServerEntry({
                     const schema = (await handlerData.module())[handlerData.export]
 
                     if (!schema) {
-                        throw new Error(\`"\${handler}\" export not found in module \${JSON.stringify(blockId)}\`)
+                        throw new Error(\`"\${handler}" export not found in module \${JSON.stringify(blockId)}\`)
                     }
 
                     return schema
@@ -374,11 +374,11 @@ export async function generateServerEntry({
                 const func = (await handlerData.module())[handlerData.export]
 
                 if (!func) {
-                    throw new Error(\`"\${handler}\" export not found in module \${JSON.stringify(blockId)}\`)
+                    throw new Error(\`"\${handler}" export not found in module \${JSON.stringify(blockId)}\`)
                 }
 
                 if (typeof func !== "function") {
-                   throw new Error(\`"\${handler}\" export in module \${JSON.stringify(blockId)} is not a function\`)
+                   throw new Error(\`"\${handler}" export in module \${JSON.stringify(blockId)} is not a function\`)
                 }
 
                 return args ? func(...args) : func()

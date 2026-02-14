@@ -1,29 +1,28 @@
 // @auxx/lib/chat/chat-service.ts
-import { database, type Database, schema } from '@auxx/database'
-import { and, eq, desc, asc, ne, inArray, gt, isNull } from 'drizzle-orm'
-import { type UserEntity as User } from '@auxx/database/models'
+import { type Database, database, schema } from '@auxx/database'
 import { IntegrationType, MessageType, ThreadStatus } from '@auxx/database/enums'
-import { v4 as uuidv4 } from 'uuid'
+import type { UserEntity as User } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
 import {
-  getRedisClient,
-  setRedisData,
-  getRedisData,
   deleteRedisData,
+  getRedisClient,
+  getRedisData,
   KEYS,
   // MESSAGE_EXPIRATION,
   SESSION_EXPIRATION,
+  setRedisData,
 } from '@auxx/redis'
-
+import { TRPCError } from '@trpc/server'
+import { and, asc, desc, eq, gt, inArray, isNull, ne } from 'drizzle-orm'
+import { v4 as uuidv4 } from 'uuid'
+import type { RealTimeService } from '../realtime/realtime-service'
 import type {
-  ChatUserInfo,
   ChatAttachment,
   ChatMessage,
   ChatSession,
+  ChatUserInfo,
   FrontendChatMessage,
 } from './types'
-import { RealTimeService } from '../realtime/realtime-service'
-import { TRPCError } from '@trpc/server'
 
 const logger = createScopedLogger('chat-service')
 
@@ -514,7 +513,7 @@ export class ChatService {
       // Format the sessions for client consumption
       return dbSessions.map((session: any) => {
         const lastDbMessage = session.thread?.chatMessages[0]
-        let lastMessageSender: 'USER' | 'AGENT' | 'SYSTEM' | undefined = undefined
+        let lastMessageSender: 'USER' | 'AGENT' | 'SYSTEM' | undefined
         if (lastDbMessage) {
           lastMessageSender = lastDbMessage.sender
         }

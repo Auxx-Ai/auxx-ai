@@ -1,20 +1,20 @@
 // apps/web/src/app/api/workflows/[workflowId]/webhook/route.ts
 
-import { NextRequest, NextResponse } from 'next/server'
-import { createScopedLogger } from '@auxx/logger'
 import { database as db, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import { WorkflowEngine } from '@auxx/lib/workflow-engine'
 import {
   WorkflowNodeType,
-  WorkflowTriggerType,
   type WorkflowTriggerEvent,
+  WorkflowTriggerType,
 } from '@auxx/lib/workflow-engine/types'
-import { WorkflowEngine } from '@auxx/lib/workflow-engine'
+import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { filterSensitiveHeaders } from '@auxx/utils/headers'
+import { and, eq } from 'drizzle-orm'
+import { type NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
-import { validateAgainstSchema } from '~/components/workflow/utils/schema-to-variable'
 import type { WebhookTestEvent } from '~/components/workflow/nodes/core/webhook/types'
+import { validateAgainstSchema } from '~/components/workflow/utils/schema-to-variable'
 
 const logger = createScopedLogger('api.webhook')
 

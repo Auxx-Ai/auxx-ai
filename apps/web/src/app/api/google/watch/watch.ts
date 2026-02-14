@@ -1,9 +1,9 @@
-import { gmail_v1 } from 'googleapis'
+import { UserModel } from '@auxx/database/models'
 import { getGmailClient } from '@auxx/lib/google/client'
 import { unwatchGmail, watchGmail } from '@auxx/lib/google/watch'
-import { UserModel } from '@auxx/database/models'
-import { captureException } from '~/utils/error'
 import { createScopedLogger } from '@auxx/logger'
+import type { gmail_v1 } from 'googleapis'
+import { captureException } from '~/utils/error'
 
 const logger = createScopedLogger('google/watch')
 /**

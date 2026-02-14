@@ -1,13 +1,13 @@
 // apps/web/src/app/(protected)/app/settings/groups/page.tsx
 'use client'
 
-import { useState } from 'react'
-import { Folder } from 'lucide-react'
-import SettingsPage from '~/components/global/settings-page'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { Folder } from 'lucide-react'
+import { useState } from 'react'
+import SettingsPage from '~/components/global/settings-page'
+import { GroupDetailDialog, GroupsList, useGroupMutations, useGroups } from '~/components/groups'
 import { useConfirm } from '~/hooks/use-confirm'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { useGroups, useGroupMutations, GroupsList, GroupDetailDialog } from '~/components/groups'
 
 /**
  * Groups settings page
@@ -66,10 +66,10 @@ export default function GroupsPage() {
   return (
     <SettingsPage
       icon={<Folder />}
-      title="Member groups"
-      description="View and edit your workgroup members"
+      title='Member groups'
+      description='View and edit your workgroup members'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Groups' }]}>
-      <div className="p-6">
+      <div className='p-6'>
         <GroupsList
           groups={groups ?? []}
           isLoading={isLoading}
@@ -81,12 +81,12 @@ export default function GroupsPage() {
 
         {/* Create Group Dialog */}
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogContent position="tc" size="md">
+          <DialogContent position='tc' size='md'>
             <DialogHeader>
               <DialogTitle>Create Group</DialogTitle>
             </DialogHeader>
             <GroupDetailDialog
-              mode="create"
+              mode='create'
               onCancel={() => setIsCreateDialogOpen(false)}
               onSuccess={() => setIsCreateDialogOpen(false)}
             />
@@ -95,13 +95,13 @@ export default function GroupsPage() {
 
         {/* Edit Group Dialog */}
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent className="max-h-[90vh] overflow-y-auto" position="tc" size="md">
+          <DialogContent className='max-h-[90vh] overflow-y-auto' position='tc' size='md'>
             <DialogHeader>
               <DialogTitle>Edit Group</DialogTitle>
             </DialogHeader>
             {selectedGroupId && (
               <GroupDetailDialog
-                mode="edit"
+                mode='edit'
                 groupId={selectedGroupId}
                 onCancel={() => setIsEditDialogOpen(false)}
                 onSuccess={() => setIsEditDialogOpen(false)}

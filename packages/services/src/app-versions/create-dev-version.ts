@@ -2,7 +2,7 @@
 
 import { database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 // import type { AppVersionError } from './errors'
 import { fromDatabase } from '../shared/utils'
 

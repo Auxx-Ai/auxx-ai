@@ -1,10 +1,11 @@
 // packages/services/src/table-view/list-views.ts
 
 import { database, schema } from '@auxx/database'
-import { and, eq, or, desc, asc, inArray } from 'drizzle-orm'
+import type { TableViewEntity } from '@auxx/database/models'
+import { and, asc, desc, eq, inArray, or } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { TableViewEntity } from '@auxx/database/models'
+
 /** View context type for table views */
 type ViewContextType = 'table' | 'kanban' | 'panel' | 'dialog_create' | 'dialog_edit'
 
@@ -50,7 +51,10 @@ export async function listViews(input: ListViewsInput) {
           eq(schema.TableView.tableId, tableId),
           or(
             eq(schema.TableView.userId, userId),
-            and(eq(schema.TableView.organizationId, organizationId), eq(schema.TableView.isShared, true))
+            and(
+              eq(schema.TableView.organizationId, organizationId),
+              eq(schema.TableView.isShared, true)
+            )
           ),
           // Filter by context type(s) - defaults to table/kanban
           inArray(schema.TableView.contextType, contextTypes)
@@ -82,7 +86,10 @@ export async function listAllViews(input: ListAllViewsInput) {
         and(
           or(
             eq(schema.TableView.userId, userId),
-            and(eq(schema.TableView.organizationId, organizationId), eq(schema.TableView.isShared, true))
+            and(
+              eq(schema.TableView.organizationId, organizationId),
+              eq(schema.TableView.isShared, true)
+            )
           ),
           inArray(schema.TableView.contextType, contextTypes)
         )

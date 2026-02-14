@@ -23,7 +23,7 @@ export function GroupBadge({ group, className }: GroupBadgeProps) {
 
   return (
     <Badge style={color ? { backgroundColor: color } : undefined} className={className}>
-      <span className="mr-1">{emoji}</span>
+      <span className='mr-1'>{emoji}</span>
       {group.displayName}
     </Badge>
   )

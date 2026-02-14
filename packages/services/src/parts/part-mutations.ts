@@ -1,15 +1,15 @@
 // packages/services/src/parts/part-mutations.ts
 
 import { database, schema, type Transaction } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
+import { and, eq } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type {
-  PartContext,
-  CreatePartInput,
   CreateInventoryInput,
-  UpdatePartInput,
+  CreatePartInput,
+  PartContext,
   UpdateInventoryInput,
+  UpdatePartInput,
 } from './types'
 
 /**
@@ -246,10 +246,7 @@ export async function updateInventoryTx(tx: Transaction, input: UpdateInventoryI
     .update(schema.Inventory)
     .set(updateData)
     .where(
-      and(
-        eq(schema.Inventory.partId, partId),
-        eq(schema.Inventory.organizationId, organizationId)
-      )
+      and(eq(schema.Inventory.partId, partId), eq(schema.Inventory.organizationId, organizationId))
     )
     .returning()
 

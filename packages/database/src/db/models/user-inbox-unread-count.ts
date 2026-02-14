@@ -25,9 +25,18 @@ export class UserInboxUnreadCountModel extends BaseModel<
     return UserInboxUnreadCount
   }
 
-  async getFor(userId: string, inboxId: string): Promise<TypedResult<UserInboxUnreadCountEntity | null, Error>> {
+  async getFor(
+    userId: string,
+    inboxId: string
+  ): Promise<TypedResult<UserInboxUnreadCountEntity | null, Error>> {
     try {
-      const rows = await this.findMany({ where: and(eq(UserInboxUnreadCount.userId, userId), eq(UserInboxUnreadCount.inboxId, inboxId)), limit: 1 })
+      const rows = await this.findMany({
+        where: and(
+          eq(UserInboxUnreadCount.userId, userId),
+          eq(UserInboxUnreadCount.inboxId, inboxId)
+        ),
+        limit: 1,
+      })
       if (!rows.ok) return rows
       return Result.ok(rows.value[0] ?? null)
     } catch (error: any) {
@@ -35,4 +44,3 @@ export class UserInboxUnreadCountModel extends BaseModel<
     }
   }
 }
-

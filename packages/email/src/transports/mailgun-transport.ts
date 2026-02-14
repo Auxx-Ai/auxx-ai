@@ -1,11 +1,12 @@
 // packages/lib/src/email/nodemailer-mailgun-transport/index.ts
-import type Mail from 'nodemailer/lib/mailer'
-import Mailgun from 'mailgun.js'
-import FormData from 'form-data'
-import * as Handlebars from 'handlebars'
-import { readFileSync } from 'fs'
-import { resolve } from 'path'
+
 import { createScopedLogger } from '@auxx/logger'
+import FormData from 'form-data'
+import { readFileSync } from 'fs'
+import * as Handlebars from 'handlebars'
+import Mailgun from 'mailgun.js'
+import type Mail from 'nodemailer/lib/mailer'
+import { resolve } from 'path'
 
 const logger = createScopedLogger('mailgun-transport')
 

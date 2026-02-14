@@ -1,13 +1,13 @@
 // packages/lib/src/jobs/maintenance/getting-started-job.ts
 
-import type { Job } from 'bullmq'
-import { z } from 'zod'
-import { createScopedLogger } from '@auxx/logger'
-import { addHours } from 'date-fns'
-import { database as db, schema } from '@auxx/database'
-import { and, gte, lte, eq } from 'drizzle-orm'
-import { sendGettingStartedEmail } from '@auxx/email'
 import { WEBAPP_URL } from '@auxx/config/server'
+import { database as db, schema } from '@auxx/database'
+import { sendGettingStartedEmail } from '@auxx/email'
+import { createScopedLogger } from '@auxx/logger'
+import type { Job } from 'bullmq'
+import { addHours } from 'date-fns'
+import { and, eq, gte, lte } from 'drizzle-orm'
+import { z } from 'zod'
 
 const payloadSchema = z.object({
   dryRun: z.boolean().default(false),

@@ -1,13 +1,14 @@
 // server/email/email-templates.ts
-import Handlebars from 'handlebars'
+
 import { database as db, schema } from '@auxx/database'
-import { and, asc, eq } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
+import { and, asc, eq } from 'drizzle-orm'
+import Handlebars from 'handlebars'
 
 const logger = createScopedLogger('email-templates')
 
 // Register Handlebars helpers
-Handlebars.registerHelper('formatDate', function (date: Date, format: string) {
+Handlebars.registerHelper('formatDate', (date: Date, format: string) => {
   if (!date) return ''
   const d = new Date(date)
   return d.toLocaleDateString()
@@ -96,7 +97,7 @@ export class EmailTemplateService {
     type: string,
     data: TemplateData
   ): Promise<RenderedTemplate> {
-    const template = await this.getTemplate(organizationId, type)
+    const template = await EmailTemplateService.getTemplate(organizationId, type)
 
     try {
       // Compile templates
@@ -153,7 +154,9 @@ export class EmailTemplateService {
           .limit(1)
 
         if (existingTemplate) {
-          throw new Error(`A template of type "${templateData.type}" already exists. Please edit the existing template instead.`)
+          throw new Error(
+            `A template of type "${templateData.type}" already exists. Please edit the existing template instead.`
+          )
         }
       }
 

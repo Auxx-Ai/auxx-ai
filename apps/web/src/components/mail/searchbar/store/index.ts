@@ -1,32 +1,31 @@
 // apps/web/src/components/mail/searchbar/store/index.ts
 
 export {
-  useSearchStore,
-  selectHasActiveConditions,
-  selectConditionCount,
-  selectDisplayText,
-  selectConditionByFieldId,
-  buildFilterChips,
-  selectFilterChipsRaw,
-  EMPTY_CHIPS,
-  EMPTY_CONDITIONS,
-  // Legacy aliases
-  selectHasActiveFilters,
-  selectActiveFilterCount,
-  // Types
-  type SearchCondition,
-  type EditingCondition,
-  type FilterChip,
-  type FilterRef,
-} from './search-store'
-
-export {
   useFilterChips,
-  useSearchConditions,
-  useSearchActions,
-  useSearchUIState,
-  useSearchStatus,
   useRecentSearches,
+  useSearchActions,
+  useSearchConditions,
   useSearchContext,
   useSearchFilters,
+  useSearchStatus,
+  useSearchUIState,
 } from './search-selectors'
+export {
+  buildFilterChips,
+  type EditingCondition,
+  EMPTY_CHIPS,
+  EMPTY_CONDITIONS,
+  type FilterChip,
+  type FilterRef,
+  // Types
+  type SearchCondition,
+  selectActiveFilterCount,
+  selectConditionByFieldId,
+  selectConditionCount,
+  selectDisplayText,
+  selectFilterChipsRaw,
+  selectHasActiveConditions,
+  // Legacy aliases
+  selectHasActiveFilters,
+  useSearchStore,
+} from './search-store'

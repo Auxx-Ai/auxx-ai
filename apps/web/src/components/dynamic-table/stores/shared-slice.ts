@@ -1,8 +1,8 @@
 // apps/web/src/components/dynamic-table/stores/shared-slice.ts
 
-import type { SliceCreator, SharedSlice, TableUIConfig } from './store-types'
 import type { ViewConfig } from '../types'
-import { EMPTY_VIEWS, EMPTY_FILTERS } from '../utils/constants'
+import { EMPTY_FILTERS, EMPTY_VIEWS } from '../utils/constants'
+import type { SharedSlice, SliceCreator, TableUIConfig } from './store-types'
 
 /** Merge UI config with filters to create ViewConfig */
 function toViewConfig(uiConfig: TableUIConfig, filters: typeof EMPTY_FILTERS): ViewConfig {

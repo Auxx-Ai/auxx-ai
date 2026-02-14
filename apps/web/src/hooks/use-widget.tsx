@@ -1,12 +1,12 @@
 // src/app/(protected)/app/settings/chat/_hooks/use-widget.ts
 'use client'
 
-import { useState } from 'react'
-import { api } from '~/trpc/react'
+import { type WidgetFormValues, widgetSchema } from '@auxx/lib/widgets/types'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 // import { z } from 'zod'
 import { useRouter } from 'next/navigation'
-import { widgetSchema, type WidgetFormValues } from '@auxx/lib/widgets/types'
+import { useState } from 'react'
+import { api } from '~/trpc/react'
 
 // export type WidgetFormValues = z.infer<typeof widgetFormSchema>
 export { widgetSchema, type WidgetFormValues }

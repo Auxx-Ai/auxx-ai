@@ -1,7 +1,7 @@
 // apps/web/src/lib/extensions/components/workflow/workflow-node-row.tsx
 
-import React from 'react'
 import { cn } from '@auxx/ui/lib/utils'
+import type React from 'react'
 
 /** Variant styles for WorkflowNodeRow */
 type RowVariant = 'default' | 'success' | 'error' | 'warning'
@@ -43,7 +43,7 @@ export const WorkflowNodeRow = ({
         className
       )}>
       <span>{label}</span>
-      {children && <div className="ml-2">{children}</div>}
+      {children && <div className='ml-2'>{children}</div>}
     </div>
   )
 }

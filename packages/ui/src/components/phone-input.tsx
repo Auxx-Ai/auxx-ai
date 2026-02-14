@@ -1,12 +1,11 @@
 'use client'
 
+import { cn } from '@auxx/ui/lib/utils'
+import { Check, ChevronDownIcon, PhoneIcon } from 'lucide-react'
 // packages/ui/src/components/phone-input.tsx
 import React, { createContext, useContext, useId, useMemo, useRef, useState } from 'react'
-import { Check, ChevronDownIcon, PhoneIcon } from 'lucide-react'
 import * as RPNInput from 'react-phone-number-input'
 import flags from 'react-phone-number-input/flags'
-
-import { cn } from '@auxx/ui/lib/utils'
 import {
   Command,
   CommandEmpty,
@@ -68,7 +67,7 @@ function PhoneInputWithFlag({
           className={cn('flex rounded-xl shadow-2xs', className)}
           international
           flagComponent={FlagComponent}
-          defaultCountry="US"
+          defaultCountry='US'
           countrySelectComponent={CountrySelect}
           countrySelectProps={{
             className: countryClassName || '',
@@ -109,7 +108,7 @@ function PhoneInput({ className, autoFocus, ...props }: React.ComponentProps<'in
 
   return (
     <input
-      data-slot="phone-input"
+      data-slot='phone-input'
       {...props}
       autoFocus={shouldAutoFocus}
       className={cn('-ms-px text-sm rounded-s-none shadow-none focus-visible:z-10', className)}
@@ -174,26 +173,26 @@ const CountrySelect = ({
     <Popover open={disabled ? false : open} onOpenChange={disabled ? undefined : setOpen}>
       <PopoverTrigger asChild>
         <button
-          type="button"
-          data-slot="country-select"
+          type='button'
+          data-slot='country-select'
           disabled={disabled}
-          aria-label="Select country"
+          aria-label='Select country'
           className={cn(
             'border-input bg-background text-muted-foreground hover:bg-accent hover:text-foreground relative inline-flex items-center self-stretch rounded-s-xl py-2 ps-0.5 pe-2 transition-[color,box-shadow] outline-hidden disabled:pointer-events-none disabled:opacity-50',
             className
           )}>
-          <div className="inline-flex items-center gap-1">
+          <div className='inline-flex items-center gap-1'>
             <FlagComponent country={value} countryName={value} />
             {/* <ChevronDownIcon className="size-3 text-muted-foreground/80" aria-hidden="true" /> */}
           </div>
         </button>
       </PopoverTrigger>
       <PopoverContent
-        align="start"
-        className="p-0"
+        align='start'
+        className='p-0'
         style={popoverWidth ? { width: popoverWidth } : undefined}>
         <Command>
-          <CommandInput placeholder="Search country..." />
+          <CommandInput placeholder='Search country...' />
           <CommandList>
             <CommandEmpty>No country found.</CommandEmpty>
             {/* Selected country at top */}
@@ -208,9 +207,9 @@ const CountrySelect = ({
                         value={`${option.label} ${option.callingCode}`}
                         onSelect={() => handleSelect(option.value)}>
                         <FlagComponent country={option.value} countryName={option.label} />
-                        <span className="flex-1 truncate">{option.label}</span>
-                        <span className="text-muted-foreground text-xs">{option.callingCode}</span>
-                        <Check className="ml-auto size-4" />
+                        <span className='flex-1 truncate'>{option.label}</span>
+                        <span className='text-muted-foreground text-xs'>{option.callingCode}</span>
+                        <Check className='ml-auto size-4' />
                       </CommandItem>
                     ))}
                 </CommandGroup>
@@ -220,7 +219,7 @@ const CountrySelect = ({
             {/* Favorites - show US if not selected */}
             {value !== 'US' && (
               <>
-                <CommandGroup heading="Favorites">
+                <CommandGroup heading='Favorites'>
                   {countryOptions
                     .filter((option) => option.value === 'US')
                     .map((option) => (
@@ -229,8 +228,8 @@ const CountrySelect = ({
                         value={`${option.label} ${option.callingCode}`}
                         onSelect={() => handleSelect(option.value)}>
                         <FlagComponent country={option.value} countryName={option.label} />
-                        <span className="flex-1 truncate">{option.label}</span>
-                        <span className="text-muted-foreground text-xs">{option.callingCode}</span>
+                        <span className='flex-1 truncate'>{option.label}</span>
+                        <span className='text-muted-foreground text-xs'>{option.callingCode}</span>
                       </CommandItem>
                     ))}
                 </CommandGroup>
@@ -238,7 +237,7 @@ const CountrySelect = ({
               </>
             )}
             {/* All other countries */}
-            <CommandGroup heading="Countries">
+            <CommandGroup heading='Countries'>
               {countryOptions
                 .filter((option) => option.value !== value && option.value !== 'US')
                 .map((option) => (
@@ -247,8 +246,8 @@ const CountrySelect = ({
                     value={`${option.label} ${option.callingCode}`}
                     onSelect={() => handleSelect(option.value)}>
                     <FlagComponent country={option.value} countryName={option.label} />
-                    <span className="flex-1 truncate">{option.label}</span>
-                    <span className="text-muted-foreground text-xs">{option.callingCode}</span>
+                    <span className='flex-1 truncate'>{option.label}</span>
+                    <span className='text-muted-foreground text-xs'>{option.callingCode}</span>
                   </CommandItem>
                 ))}
             </CommandGroup>
@@ -263,8 +262,8 @@ const FlagComponent = ({ country, countryName }: RPNInput.FlagProps) => {
   const Flag = flags[country]
 
   return (
-    <span className="w-5 overflow-hidden rounded-sm">
-      {Flag ? <Flag title={countryName} /> : <PhoneIcon size={16} aria-hidden="true" />}
+    <span className='w-5 overflow-hidden rounded-sm'>
+      {Flag ? <Flag title={countryName} /> : <PhoneIcon size={16} aria-hidden='true' />}
     </span>
   )
 }

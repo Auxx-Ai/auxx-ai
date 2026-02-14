@@ -5,8 +5,8 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { UnifiedCrudHandler, listAll } from '../resources/crud'
-import { toRecordId, parseRecordId, type RecordId } from '../resources/resource-id'
+import { listAll, UnifiedCrudHandler } from '../resources/crud'
+import { parseRecordId, type RecordId, toRecordId } from '../resources/resource-id'
 
 const logger = createScopedLogger('tag-service')
 
@@ -94,7 +94,10 @@ export class TagService {
   /**
    * Parse parent RecordId from field value
    */
-  private parseParentRecordId(parentValue: unknown): { parentId: string | null; parentRecordId: RecordId | null } {
+  private parseParentRecordId(parentValue: unknown): {
+    parentId: string | null
+    parentRecordId: RecordId | null
+  } {
     if (!parentValue) {
       return { parentId: null, parentRecordId: null }
     }
@@ -108,7 +111,7 @@ export class TagService {
     const { entityInstanceId } = parseRecordId(parentRecordIdStr as RecordId)
     return {
       parentId: entityInstanceId,
-      parentRecordId: parentRecordIdStr as RecordId
+      parentRecordId: parentRecordIdStr as RecordId,
     }
   }
 
@@ -202,7 +205,10 @@ export class TagService {
    * @param limit - Maximum results to return
    * @returns Promise resolving to matching tags
    */
-  async searchTags(query: string, limit: number = 10): Promise<{ recordId: RecordId; id: string; name: string }[]> {
+  async searchTags(
+    query: string,
+    limit: number = 10
+  ): Promise<{ recordId: RecordId; id: string; name: string }[]> {
     try {
       const allTags = await this.getAllTags()
       const lowerQuery = query.toLowerCase()
@@ -286,7 +292,7 @@ export class TagService {
       await this.handler.update(recordId, values)
 
       // Fetch the updated tag to return accurate data
-      return await this.getTagById(recordId) as TagData
+      return (await this.getTagById(recordId)) as TagData
     } catch (error) {
       logger.error('Error updating tag', { recordId, data, error })
       throw error
@@ -345,7 +351,12 @@ export class TagService {
    */
   async findOrCreateTag(
     name: string,
-    metadata?: { tag_description?: string; tag_color?: string; tag_emoji?: string; parentId?: RecordId }
+    metadata?: {
+      tag_description?: string
+      tag_color?: string
+      tag_emoji?: string
+      parentId?: RecordId
+    }
   ): Promise<TagData> {
     try {
       const existingTag = await this.findTagByName(name)

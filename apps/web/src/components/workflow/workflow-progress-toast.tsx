@@ -2,12 +2,12 @@
 
 'use client'
 
-import { useEffect, useCallback, useState, useMemo } from 'react'
-import { Check, X, Loader2, Pause, ChevronDown, ChevronRight } from 'lucide-react'
-import { toast as sonnerToast } from 'sonner'
 import { Progress } from '@auxx/ui/components/progress'
-import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
+import { Check, ChevronDown, ChevronRight, Loader2, Pause, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { toast as sonnerToast } from 'sonner'
 import { useShallow } from 'zustand/react/shallow'
+import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
 
 /**
  * Shows a unified workflow progress toast
@@ -16,14 +16,11 @@ import { useShallow } from 'zustand/react/shallow'
 export function showWorkflowProgressToast(params: { runId: string } | { batchId: string }) {
   const id = 'runId' in params ? `workflow-run-${params.runId}` : `workflow-batch-${params.batchId}`
 
-  sonnerToast.custom(
-    (toastId) => <WorkflowProgressToastContent toastId={toastId} {...params} />,
-    {
-      id,
-      duration: Infinity,
-      position: 'top-right',
-    }
-  )
+  sonnerToast.custom((toastId) => <WorkflowProgressToastContent toastId={toastId} {...params} />, {
+    id,
+    duration: Infinity,
+    position: 'top-right',
+  })
 }
 
 interface ToastContentProps {
@@ -120,23 +117,23 @@ function WorkflowProgressToastContent({ toastId, runId, batchId }: ToastContentP
     : null
 
   return (
-    <div className="flex rounded-2xl bg-white dark:bg-primary-400 shadow-lg shadow-black/10 ring-1 ring-black/5 w-full md:max-w-[350px] min-w-[300px] items-start ps-2 p-1.5 gap-2">
-      <div className="mt-[2px]">
+    <div className='flex rounded-2xl bg-white dark:bg-primary-400 shadow-lg shadow-black/10 ring-1 ring-black/5 w-full md:max-w-[350px] min-w-[300px] items-start ps-2 p-1.5 gap-2'>
+      <div className='mt-[2px]'>
         <StatusIcon className={`size-5 ${iconClass}`} />
       </div>
-      <div className="flex flex-1 items-start flex-col gap-2">
-        <div className="w-full flex items-center justify-start gap-2 mt-[2px]">
-          <p className="text-[14px] mb-0 font-medium text-primary-600 dark:text-primary-800 truncate">
+      <div className='flex flex-1 items-start flex-col gap-2'>
+        <div className='w-full flex items-center justify-start gap-2 mt-[2px]'>
+          <p className='text-[14px] mb-0 font-medium text-primary-600 dark:text-primary-800 truncate'>
             {progress.workflowName}
           </p>
           {!isSingleRun && (
             <button
               onClick={() => setIsExpanded((prev) => !prev)}
-              className="size-4.5 bg-black/5 rounded-md flex items-center justify-center shrink-0">
+              className='size-4.5 bg-black/5 rounded-md flex items-center justify-center shrink-0'>
               {isExpanded ? (
-                <ChevronDown className="size-4 text-muted-foreground" />
+                <ChevronDown className='size-4 text-muted-foreground' />
               ) : (
-                <ChevronRight className="size-4 text-muted-foreground" />
+                <ChevronRight className='size-4 text-muted-foreground' />
               )}
             </button>
           )}
@@ -144,25 +141,23 @@ function WorkflowProgressToastContent({ toastId, runId, batchId }: ToastContentP
 
         {/* Single run: show status text inline */}
         {isSingleRun && statusText && (
-          <p className="text-xs text-muted-foreground truncate">{statusText}</p>
+          <p className='text-xs text-muted-foreground truncate'>{statusText}</p>
         )}
 
         {/* Batch: show progress bar and counts */}
         {!isSingleRun && isExpanded && (
-          <div className="w-full space-y-2">
-            <Progress value={percentComplete} className="h-1.5" />
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <div className='w-full space-y-2'>
+            <Progress value={percentComplete} className='h-1.5' />
+            <div className='flex items-center justify-between text-xs text-muted-foreground'>
               <span>
                 {completedCount} / {progress.total}
               </span>
-              <div className="flex items-center gap-2">
+              <div className='flex items-center gap-2'>
                 {progress.completed > 0 && (
-                  <span className="text-good-600">{progress.completed}</span>
+                  <span className='text-good-600'>{progress.completed}</span>
                 )}
-                {progress.failed > 0 && <span className="text-red-600">{progress.failed}</span>}
-                {progress.paused > 0 && (
-                  <span className="text-yellow-600">{progress.paused}</span>
-                )}
+                {progress.failed > 0 && <span className='text-red-600'>{progress.failed}</span>}
+                {progress.paused > 0 && <span className='text-yellow-600'>{progress.paused}</span>}
               </div>
             </div>
           </div>
@@ -171,8 +166,8 @@ function WorkflowProgressToastContent({ toastId, runId, batchId }: ToastContentP
       <div>
         <button
           onClick={dismiss}
-          className="shrink-0 flex items-center justify-center size-6 rounded-full hover:bg-black/5 dark:hover:bg-black/10">
-          <X className="size-4" />
+          className='shrink-0 flex items-center justify-center size-6 rounded-full hover:bg-black/5 dark:hover:bg-black/10'>
+          <X className='size-4' />
         </button>
       </div>
     </div>

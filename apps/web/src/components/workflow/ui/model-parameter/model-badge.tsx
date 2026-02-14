@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/ui/model-parameter/model-badge.tsx
 
-import React from 'react'
 import { cn } from '@auxx/ui/lib/utils'
+import type React from 'react'
 
 type ModelBadgeProps = { className?: string; children?: React.ReactElement | string }
 

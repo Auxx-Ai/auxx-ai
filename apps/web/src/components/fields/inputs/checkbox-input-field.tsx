@@ -1,7 +1,7 @@
 // apps/web/src/components/fields/inputs/checkbox-input-field.tsx
-import { Check, X, Loader2 } from 'lucide-react'
+import { Check, Loader2, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { usePropertyContext } from '../property-provider'
-import { useState, useEffect } from 'react'
 
 /**
  * CheckboxInputField
@@ -39,7 +39,7 @@ export function CheckboxInputField() {
       className={`flex items-center h-6.5 justify-center gap-2 text-sm px-2 bg-natural-300 dark:bg-natural-800 rounded-full ${isSaving ? 'opacity-70' : 'cursor-pointer'}`}
       onClick={handleToggle}>
       <Icon className={`size-4 ${isSaving ? 'animate-spin' : ''}`} />
-      <span className="text-muted-foreground">{text}</span>
+      <span className='text-muted-foreground'>{text}</span>
     </div>
   )
 }

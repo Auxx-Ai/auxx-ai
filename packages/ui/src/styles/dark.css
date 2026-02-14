@@ -40,8 +40,8 @@
   --editorGroup-border: #181a1f;
   --editorGroupHeader-tabsBg: #1e2227;
   --editorGutter-addedBg: #109868;
-  --editorGutter-deletedBg: #9A353D;
-  --editorGutter-modifiedBg: #948B60;
+  --editorGutter-deletedBg: #9a353d;
+  --editorGutter-modifiedBg: #948b60;
   --editorHoverWidget-bg: #1e2227;
   --editorHoverWidget-border: #181a1f;
   --editorHoverWidget-highlightFg: #61afef;
@@ -53,8 +53,8 @@
   --editorLineNumber-fg: #495162;
   --editorMarkerNavigation-bg: #1e2227;
   --editorOverviewRuler-addedBg: #109868;
-  --editorOverviewRuler-deletedBg: #9A353D;
-  --editorOverviewRuler-modifiedBg: #948B60;
+  --editorOverviewRuler-deletedBg: #9a353d;
+  --editorOverviewRuler-modifiedBg: #948b60;
   --editorRuler-fg: #abb2bf26;
   --editorSuggestWidget-bg: #1e2227;
   --editorSuggestWidget-border: #181a1f;
@@ -79,8 +79,8 @@
   --menu-fg: #abb2bf;
   --menu-separatorBg: #343a45;
   --minimapGutter-addedBg: #109868;
-  --minimapGutter-deletedBg: #9A353D;
-  --minimapGutter-modifiedBg: #948B60;
+  --minimapGutter-deletedBg: #9a353d;
+  --minimapGutter-modifiedBg: #948b60;
   --multiDiffEditor-headerBg: #21252b;
   --panel-border: #3e4452;
   --panelSectionHeader-bg: #1e2227;

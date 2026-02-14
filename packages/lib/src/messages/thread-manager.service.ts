@@ -1,11 +1,11 @@
 // packages/lib/src/messages/thread-manager.service.ts
 
-import { database, type Database, schema } from '@auxx/database'
+import { type Database, database, schema } from '@auxx/database'
 import { ThreadStatus } from '@auxx/database/enums'
 import type { ThreadEntity as Thread } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { ThreadContext, ThreadState } from './types/message-sending.types'
+import { type ThreadContext, ThreadState } from './types/message-sending.types'
 
 /** Scoped logger instance for thread manager operations */
 const logger = createScopedLogger('thread-manager')

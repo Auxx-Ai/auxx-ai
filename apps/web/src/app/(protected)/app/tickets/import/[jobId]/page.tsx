@@ -14,10 +14,10 @@ export default async function TicketsImportStepPage({ params }: PageProps) {
 
   return (
     <ImportPage
-      entityDefinitionId="ticket"
-      resourceLabel="Tickets"
-      basePath="/app/tickets"
-      importBasePath="/app/tickets/import"
+      entityDefinitionId='ticket'
+      resourceLabel='Tickets'
+      basePath='/app/tickets'
+      importBasePath='/app/tickets/import'
       jobId={jobId}
     />
   )

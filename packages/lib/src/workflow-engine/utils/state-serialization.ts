@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/utils/state-serialization.ts
 
-import type { ExecutionState, NodeExecutionResult } from '../core/types'
 import { createScopedLogger } from '@auxx/logger'
+import type { ExecutionState, NodeExecutionResult } from '../core/types'
 
 const logger = createScopedLogger('state-serialization')
 
@@ -17,9 +17,9 @@ export class StateSerializer {
         status: state.status,
         currentNodeId: state.currentNodeId,
         visitedNodes: Array.from(state.visitedNodes),
-        nodeResults: this.serializeNodeResults(state.nodeResults),
+        nodeResults: StateSerializer.serializeNodeResults(state.nodeResults),
         context: {
-          variables: this.serializeVariables(state.context.variables),
+          variables: StateSerializer.serializeVariables(state.context.variables),
           systemVariables: state.context.systemVariables,
           nodeVariables: state.context.nodeVariables,
           logs: state.context.logs,
@@ -52,7 +52,7 @@ export class StateSerializer {
         status: data.status,
         currentNodeId: data.currentNodeId,
         visitedNodes: new Set(data.visitedNodes || []),
-        nodeResults: this.deserializeNodeResults(data.nodeResults || {}),
+        nodeResults: StateSerializer.deserializeNodeResults(data.nodeResults || {}),
         context: {
           variables: data.context?.variables || {},
           systemVariables: data.context?.systemVariables || {},
@@ -87,9 +87,9 @@ export class StateSerializer {
       try {
         serialized[nodeId] = {
           ...result,
-          output: this.serializeValue(result.output),
-          processData: this.serializeValue(result.processData),
-          metadata: this.serializeValue(result.metadata),
+          output: StateSerializer.serializeValue(result.output),
+          processData: StateSerializer.serializeValue(result.processData),
+          metadata: StateSerializer.serializeValue(result.metadata),
         }
       } catch (error) {
         logger.warn('Failed to serialize node result', {
@@ -121,9 +121,9 @@ export class StateSerializer {
       try {
         deserialized[nodeId] = {
           ...result,
-          output: this.deserializeValue(result.output),
-          processData: this.deserializeValue(result.processData),
-          metadata: this.deserializeValue(result.metadata),
+          output: StateSerializer.deserializeValue(result.output),
+          processData: StateSerializer.deserializeValue(result.processData),
+          metadata: StateSerializer.deserializeValue(result.metadata),
         }
       } catch (error) {
         logger.warn('Failed to deserialize node result', {
@@ -146,7 +146,7 @@ export class StateSerializer {
 
     for (const [key, value] of Object.entries(variables)) {
       try {
-        serialized[key] = this.serializeValue(value)
+        serialized[key] = StateSerializer.serializeValue(value)
       } catch (error) {
         logger.warn('Failed to serialize variable', {
           key,
@@ -194,14 +194,14 @@ export class StateSerializer {
 
     // Handle arrays
     if (Array.isArray(value)) {
-      return value.map((item) => this.serializeValue(item))
+      return value.map((item) => StateSerializer.serializeValue(item))
     }
 
     // Handle objects
     if (typeof value === 'object') {
       const serialized: any = {}
       for (const [k, v] of Object.entries(value)) {
-        serialized[k] = this.serializeValue(v)
+        serialized[k] = StateSerializer.serializeValue(v)
       }
       return serialized
     }
@@ -235,14 +235,14 @@ export class StateSerializer {
 
     // Handle arrays
     if (Array.isArray(value)) {
-      return value.map((item) => this.deserializeValue(item))
+      return value.map((item) => StateSerializer.deserializeValue(item))
     }
 
     // Handle objects
     if (typeof value === 'object') {
       const deserialized: any = {}
       for (const [k, v] of Object.entries(value)) {
-        deserialized[k] = this.deserializeValue(v)
+        deserialized[k] = StateSerializer.deserializeValue(v)
       }
       return deserialized
     }

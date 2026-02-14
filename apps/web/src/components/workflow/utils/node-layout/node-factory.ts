@@ -1,13 +1,13 @@
 // apps/web/src/components/workflow/utils/node-layout/node-factory.ts
 
 import { cloneDeep } from '@auxx/utils'
+import { generateId } from '@auxx/utils/generateId'
 import type { FlowNode } from '~/components/workflow/types'
 import { NodeType } from '~/components/workflow/types'
 import { unifiedNodeRegistry } from '../../nodes/unified-registry'
-import { generateId } from '@auxx/utils/generateId'
-import { generateUniqueTitle } from '../unique-title-generator'
 import { useWorkflowStore } from '../../store/workflow-store'
 import { LAYOUT_SPACING } from '../layout-constants'
+import { generateUniqueTitle } from '../unique-title-generator'
 import type { Point } from './collision-detector'
 
 export interface CreateNodeParams {
@@ -36,7 +36,7 @@ export class NodeFactory {
 
     const nodeId = generateId(nodeType)
     const defaultData = definition.defaultData || {}
-    const mergedData = this.applyNodeDefaults(nodeType, defaultData, data)
+    const mergedData = NodeFactory.applyNodeDefaults(nodeType, defaultData, data)
     const baseTitle = data?.title || mergedData.title || definition.displayName
     const uniqueTitle = generateUniqueTitle(baseTitle, existingNodes)
 
@@ -117,8 +117,8 @@ export class NodeFactory {
       selected: false,
       selectable: true,
       dragging: false,
-      width: this.getNodeWidth(nodeType),
-      height: this.getNodeHeight(nodeType),
+      width: NodeFactory.getNodeWidth(nodeType),
+      height: NodeFactory.getNodeHeight(nodeType),
       // zIndex,
     }
     if (parentId) {
@@ -140,7 +140,7 @@ export class NodeFactory {
     const data = cloneDeep(defaultData)
 
     // Apply model defaults for AI nodes
-    if (this.isModelNode(nodeType)) {
+    if (NodeFactory.isModelNode(nodeType)) {
       const modelData = useWorkflowStore.getState().modelData
       if (modelData?.defaultModel && !userData.model?.provider) {
         data.model = {

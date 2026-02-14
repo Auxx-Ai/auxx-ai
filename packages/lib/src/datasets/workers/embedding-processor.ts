@@ -1,8 +1,8 @@
 // packages/lib/src/datasets/workers/embedding-processor.ts
 
 import { database as db, schema } from '@auxx/database'
-import { eq, and, inArray, or, sql } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
+import { and, eq, inArray, or, sql } from 'drizzle-orm'
 import { EmbeddingService } from '../services/embedding-service'
 import { VectorService } from '../services/vector.service'
 import type { EmbeddingGenerationJobData, WorkerJobResult } from '../types/worker.types'
@@ -23,10 +23,13 @@ export class EmbeddingProcessor {
    */
   private static getEmbeddingService(organizationId: string, userId?: string): EmbeddingService {
     const key = `${organizationId}:${userId || 'system'}`
-    if (!this.embeddingInstances.has(key)) {
-      this.embeddingInstances.set(key, new EmbeddingService(db, organizationId, userId))
+    if (!EmbeddingProcessor.embeddingInstances.has(key)) {
+      EmbeddingProcessor.embeddingInstances.set(
+        key,
+        new EmbeddingService(db, organizationId, userId)
+      )
     }
-    return this.embeddingInstances.get(key)!
+    return EmbeddingProcessor.embeddingInstances.get(key)!
   }
 
   /**
@@ -119,7 +122,7 @@ export class EmbeddingProcessor {
       })
 
       // Generate embeddings using the embedding service
-      const embeddingService = this.getEmbeddingService(organizationId, userId)
+      const embeddingService = EmbeddingProcessor.getEmbeddingService(organizationId, userId)
       const embeddings = await embeddingService.generateBatch(contentToEmbed, {
         modelId: embeddingConfig?.modelId,
         batchSize: 20,
@@ -291,7 +294,7 @@ export class EmbeddingProcessor {
       }
 
       // Generate single embedding
-      const embeddingService = this.getEmbeddingService(organizationId, userId)
+      const embeddingService = EmbeddingProcessor.getEmbeddingService(organizationId, userId)
       const embedding = await embeddingService.generateSingle(segment.content, {
         modelId: embeddingConfig?.modelId,
       })
@@ -481,7 +484,7 @@ export class EmbeddingProcessor {
         },
       }
 
-      return await this.processBatchEmbeddings(jobData)
+      return await EmbeddingProcessor.processBatchEmbeddings(jobData)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Reindexing failed'
       const processingTime = Date.now() - startTime

@@ -1,7 +1,7 @@
 import * as jobs from '@auxx/lib/jobs/definitions'
-import { createWorker } from '../utils/createWorker'
 import { Queues } from '@auxx/lib/queues/types'
 import { createScopedLogger } from '@auxx/logger'
+import { createWorker } from '../utils/createWorker'
 
 const logger = createScopedLogger('worker:message-sync')
 

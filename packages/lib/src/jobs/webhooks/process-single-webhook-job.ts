@@ -1,8 +1,8 @@
-import type { Job } from 'bullmq'
 import { WebhookModel } from '@auxx/database/models'
-import { AuxxEvent, Events } from '../../events/types'
-import { WebhookService } from '../../webhooks/webhook-service'
 import { createScopedLogger } from '@auxx/logger'
+import type { Job } from 'bullmq'
+import type { AuxxEvent, Events } from '../../events/types'
+import { WebhookService } from '../../webhooks/webhook-service'
 
 const logger = createScopedLogger('webhook-jobs')
 

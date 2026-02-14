@@ -1,13 +1,13 @@
 // apps/web/src/components/datasets/settings/dataset-settings.tsx
 'use client'
-import { useQueryState } from 'nuqs'
+import type { Dataset } from '@auxx/database/types'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { Settings, Search, Zap, Layers } from 'lucide-react'
-import { GeneralSettingsSection } from './sections/general-settings-section'
+import { Layers, Search, Settings, Zap } from 'lucide-react'
+import { useQueryState } from 'nuqs'
 import { ChunkingSettingsSection } from './sections/chunking-settings-section'
 import { EmbeddingSettingsSection } from './sections/embedding-settings-section'
+import { GeneralSettingsSection } from './sections/general-settings-section'
 import { SearchConfigurationSection } from './sections/search-configuration-section'
-import type { Dataset } from '@auxx/database/types'
 
 interface DatasetSettingsProps {
   dataset: Dataset
@@ -63,19 +63,19 @@ export function DatasetSettings({ dataset, onUpdate, readOnly = false }: Dataset
     }
   }
   return (
-    <div className="overflowy-y-auto h-full flex-1">
+    <div className='overflowy-y-auto h-full flex-1'>
       {/* Settings Navigation */}
-      <div className="p-3 backdrop-blur-sm sticky top-0 z-10 bg-background/70 border-b border-border">
+      <div className='p-3 backdrop-blur-sm sticky top-0 z-10 bg-background/70 border-b border-border'>
         <RadioTab
           value={activeSection}
           onValueChange={setActiveSection}
-          size="sm"
-          radioGroupClassName="grid w-full grid-cols-4"
-          className="border border-primary-200 flex w-full">
+          size='sm'
+          radioGroupClassName='grid w-full grid-cols-4'
+          className='border border-primary-200 flex w-full'>
           {SETTINGS_SECTIONS.map((section) => {
             const Icon = section.icon
             return (
-              <RadioTabItem key={section.id} value={section.id} size="sm">
+              <RadioTabItem key={section.id} value={section.id} size='sm'>
                 <Icon />
                 {section.label}
               </RadioTabItem>

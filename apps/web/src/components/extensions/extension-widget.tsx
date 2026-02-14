@@ -2,8 +2,8 @@
 'use client'
 
 import { Suspense } from 'react'
-import { useWidget } from '~/lib/extensions/use-widget'
 import { reconstructReactTree } from '~/lib/extensions/reconstruct-react-tree'
+import { useWidget } from '~/lib/extensions/use-widget'
 import { ErrorBoundary } from './error-boundary'
 
 /**
@@ -68,8 +68,8 @@ export function ExtensionWidget(props: ExtensionWidgetProps) {
     <ErrorBoundary>
       <Suspense
         fallback={
-          <div className="flex h-24 items-center justify-center">
-            <div className="text-sm text-muted-foreground">Loading widget...</div>
+          <div className='flex h-24 items-center justify-center'>
+            <div className='text-sm text-muted-foreground'>Loading widget...</div>
           </div>
         }>
         <ExtensionWidgetInner {...props} />

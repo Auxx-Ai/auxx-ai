@@ -1,13 +1,13 @@
 // packages/lib/src/workflow-engine/execution/trigger-manual-resource-workflow.ts
 
-import { err, ok } from 'neverthrow'
-import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
+import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getWorkflowApp } from '@auxx/services/workflows'
-import { database as db } from '@auxx/database'
-import { fetchResourceById } from '../../resources'
-import { RedisWorkflowExecutionReporter } from '../execution-reporter'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
+import { err, ok } from 'neverthrow'
+import { fetchResourceById } from '../../resources'
+import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
+import { RedisWorkflowExecutionReporter } from '../execution-reporter'
 
 const logger = createScopedLogger('trigger-manual-workflow')
 

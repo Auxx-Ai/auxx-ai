@@ -1,17 +1,17 @@
 // packages/lib/src/snapshot/service.ts
 
-import { createHash } from 'crypto'
 import { getRedisClient, type RedisClient } from '@auxx/redis'
 import { generateId } from '@auxx/utils/generateId'
-import type {
-  QuerySnapshot,
-  GetOrCreateSnapshotInput,
-  SnapshotResult,
-  GetSnapshotChunkInput,
-  SnapshotChunkResult,
-  InvalidateSnapshotsInput,
-} from './types'
+import { createHash } from 'crypto'
 import type { ConditionGroup } from '../conditions'
+import type {
+  GetOrCreateSnapshotInput,
+  GetSnapshotChunkInput,
+  InvalidateSnapshotsInput,
+  QuerySnapshot,
+  SnapshotChunkResult,
+  SnapshotResult,
+} from './types'
 
 /** TTL for snapshots in seconds */
 const SNAPSHOT_TTL_SECONDS = 120 // 2 minutes
@@ -53,7 +53,9 @@ function sleep(ms: number): Promise<void> {
  * 3. If found, return cached snapshot
  * 4. If not found, acquire lock, execute query, cache result, return
  */
-export async function getOrCreateSnapshot(input: GetOrCreateSnapshotInput): Promise<SnapshotResult> {
+export async function getOrCreateSnapshot(
+  input: GetOrCreateSnapshotInput
+): Promise<SnapshotResult> {
   const { organizationId, resourceType, filters, sorting, executeQuery } = input
   const client = await getClient()
 

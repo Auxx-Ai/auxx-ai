@@ -1,6 +1,5 @@
 // components/organization/GroupPickerField.tsx
-import { Control, Controller, FieldPath, FieldValues } from 'react-hook-form'
-import { FormGroupPicker } from './group-picker'
+
 import {
   FormControl,
   FormDescription,
@@ -9,6 +8,8 @@ import {
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
+import { type Control, Controller, type FieldPath, type FieldValues } from 'react-hook-form'
+import { FormGroupPicker } from './group-picker'
 
 interface GroupPickerFieldProps<
   TFieldValues extends FieldValues,

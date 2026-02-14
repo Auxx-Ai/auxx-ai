@@ -1,17 +1,17 @@
 // apps/web/src/app/admin/_components/admin-nav-main.tsx
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { SidebarGroup, SidebarMenu, SidebarMenuItem } from '@auxx/ui/components/sidebar'
 import {
   Building2,
-  LayoutDashboard,
-  Users,
   CreditCard,
-  Package,
-  Workflow,
+  LayoutDashboard,
   type LucideIcon,
+  Package,
+  Users,
+  Workflow,
 } from 'lucide-react'
-import { SidebarGroup, SidebarMenu, SidebarMenuItem } from '@auxx/ui/components/sidebar'
+import { usePathname } from 'next/navigation'
 import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
 
 /**

@@ -1,7 +1,6 @@
 // apps/web/src/app/(protected)/app/files/page.tsx
 'use client'
 
-import { useState, useCallback } from 'react'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -9,6 +8,7 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { useCallback, useState } from 'react'
 import { FilesManagement } from '~/components/files'
 import { FileDetailDrawer } from '~/components/files/file-detail-drawer'
 import type { FileItem } from '~/components/files/files-store'
@@ -52,8 +52,8 @@ function FilesPageContent() {
     <MainPage>
       <MainPageHeader>
         <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title="Files" href="/app/files" />
-          <MainPageBreadcrumbItem title="Management" last />
+          <MainPageBreadcrumbItem title='Files' href='/app/files' />
+          <MainPageBreadcrumbItem title='Management' last />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent

@@ -1,8 +1,8 @@
 // packages/services/src/apps/update-app.ts
 
-import { database, App } from '@auxx/database'
+import { App, database } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 // import type { AppError } from './errors'
 

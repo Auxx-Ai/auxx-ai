@@ -1,6 +1,6 @@
 // packages/lib/src/import/planning/calculate-estimates.ts
 
-import type { RowAnalysis, PlanEstimates } from '../types/plan'
+import type { PlanEstimates, RowAnalysis } from '../types/plan'
 
 /**
  * Calculate plan estimates from row analyses.

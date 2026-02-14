@@ -1,8 +1,8 @@
 import { select } from '@inquirer/prompts'
 import { api } from '../api/api.js'
+import { complete, type DetermineOrganizationError, errored, isErrored } from '../errors.js'
 // import type { ApiError } from '../api/api.js'
 import { spinnerify } from '../util/spinner.js'
-import { complete, DetermineOrganizationError, errored, isErrored } from '../errors.js'
 
 export type Organization = {
   id: string

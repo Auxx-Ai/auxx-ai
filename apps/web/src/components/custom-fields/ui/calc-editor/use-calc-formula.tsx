@@ -2,18 +2,18 @@
 
 'use client'
 
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import { useEditor, type Editor } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
+import { validateCalcExpression } from '@auxx/utils/calc-expression'
 import Placeholder from '@tiptap/extension-placeholder'
+import { type Editor, useEditor } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  createInlinePickerExtension,
   createInlineNode,
+  createInlinePickerExtension,
   type InlinePickerState,
 } from '~/components/editor/inline-picker'
-import { formulaToString, stringToFormula, extractFieldIds } from './formula-converters'
-import { validateCalcExpression } from '@auxx/utils/calc-expression'
 import { FieldBadge } from './field-badge'
+import { extractFieldIds, formulaToString, stringToFormula } from './formula-converters'
 
 /** Options for the useCalcFormula hook */
 export interface UseCalcFormulaOptions {

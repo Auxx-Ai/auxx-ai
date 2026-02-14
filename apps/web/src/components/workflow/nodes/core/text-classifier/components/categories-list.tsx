@@ -2,13 +2,14 @@
 
 'use client'
 
-import React, { useState } from 'react'
 import { Button } from '@auxx/ui/components/button'
 import { ListPlus, Plus } from 'lucide-react'
-import { CategoryItem } from './category-item'
-import { useTextClassifierContext } from '../text-classifier-context'
-import { MAX_CATEGORIES } from '../constants'
+import type React from 'react'
+import { useState } from 'react'
 import Section from '~/components/workflow/ui/section'
+import { MAX_CATEGORIES } from '../constants'
+import { useTextClassifierContext } from '../text-classifier-context'
+import { CategoryItem } from './category-item'
 
 /**
  * Categories list component that manages all categories
@@ -35,24 +36,24 @@ export const CategoriesList: React.FC = () => {
 
   return (
     <Section
-      title="Categories"
-      description="Define the categories for classification."
+      title='Categories'
+      description='Define the categories for classification.'
       isRequired
       open={isOpen}
       onOpenChange={setIsOpen}
       actions={
         config.categories.length < MAX_CATEGORIES &&
         !isReadOnly && (
-          <Button variant="ghost" size="xs" onClick={handleAdd}>
+          <Button variant='ghost' size='xs' onClick={handleAdd}>
             <ListPlus />
             Add
           </Button>
         )
       }>
-      <div className="space-y-3">
+      <div className='space-y-3'>
         {/* Category items */}
         {config.categories.length > 0 && (
-          <div className="space-y-2">
+          <div className='space-y-2'>
             {config.categories.map((category) => (
               <CategoryItem
                 key={category.id}
@@ -69,7 +70,7 @@ export const CategoriesList: React.FC = () => {
 
         {/* Helper text */}
         {config.categories.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-4">
+          <p className='text-sm text-muted-foreground text-center py-4'>
             Add at least one category to classify text
           </p>
         )}

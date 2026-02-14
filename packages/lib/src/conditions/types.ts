@@ -1,7 +1,7 @@
 // packages/lib/src/conditions/types.ts
 
-import type { Operator } from './operator-definitions'
 import type { ResourceFieldId } from '@auxx/types/field'
+import type { Operator } from './operator-definitions'
 
 /**
  * Generic condition for filtering/querying resources

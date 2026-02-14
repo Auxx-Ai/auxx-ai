@@ -1,9 +1,7 @@
 // MessageSyncStatus.tsx
-import { useState, useEffect } from 'react'
-import { api } from '~/trpc/react'
+
+import { SYNC_STATUS } from '@auxx/database/enums'
 import { Button } from '@auxx/ui/components/button'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { syncStatusConfig } from './mail-status-config'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,10 +9,14 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { ChevronDownIcon } from 'lucide-react'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { SYNC_STATUS } from '@auxx/database/enums'
+import { ChevronDownIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
+import { syncStatusConfig } from './mail-status-config'
+
 interface MessageSyncStatusProps {
   integrationId: string
 }
@@ -169,10 +171,10 @@ const MessageSyncStatus: React.FC<MessageSyncStatusProps> = ({ integrationId }) 
       return null
     }
     if (isSyncLoading && !syncStatus.data) {
-      return <div className="text-gray-500">Loading sync status...</div>
+      return <div className='text-gray-500'>Loading sync status...</div>
     }
     if (activeSyncJobId && !syncStatus.data && !isSyncLoading) {
-      return <div className="text-red-600">Could not load sync status.</div>
+      return <div className='text-red-600'>Could not load sync status.</div>
     }
     // If we have data, display the status
     if (syncStatus.data) {
@@ -205,7 +207,7 @@ const MessageSyncStatus: React.FC<MessageSyncStatusProps> = ({ integrationId }) 
             </>
           )}
           {isSyncRefetching && (
-            <span className="ml-2 text-xs text-gray-500 animate-pulse">Updating...</span>
+            <span className='ml-2 text-xs text-gray-500 animate-pulse'>Updating...</span>
           )}
         </div>
       )
@@ -226,39 +228,39 @@ const MessageSyncStatus: React.FC<MessageSyncStatusProps> = ({ integrationId }) 
         : undefined
   return (
     <div>
-      <div className="inline-flex items-center gap-2">
-        <div className="inline-flex rounded-md shadow-2xs rtl:space-x-reverse">
+      <div className='inline-flex items-center gap-2'>
+        <div className='inline-flex rounded-md shadow-2xs rtl:space-x-reverse'>
           <Button
             className={cn('shadow-none rounded-s-lg rounded-e-none focus-visible:z-10')}
-            variant="outline"
+            variant='outline'
             onClick={handleStartSync}
             disabled={isSyncInProgress}
-            size="sm">
+            size='sm'>
             {buttonText ?? options[Number(selectedIndex)].label}
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                className=" shadow-none rounded-s-none rounded-e-lg focus-visible:z-10 border-l-0 border-r "
-                size="sm"
-                variant="outline"
-                aria-label="Options">
-                <ChevronDownIcon size={16} aria-hidden="true" />
+                className=' shadow-none rounded-s-none rounded-e-lg focus-visible:z-10 border-l-0 border-r '
+                size='sm'
+                variant='outline'
+                aria-label='Options'>
+                <ChevronDownIcon size={16} aria-hidden='true' />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
-              className="max-w-64 md:max-w-xs"
-              side="bottom"
+              className='max-w-64 md:max-w-xs'
+              side='bottom'
               sideOffset={4}
-              align="end">
+              align='end'>
               <DropdownMenuRadioGroup value={selectedIndex} onValueChange={setSelectedIndex}>
                 {options.map((option, index) => (
                   <DropdownMenuRadioItem
                     key={option.label}
                     value={String(index)}
-                    className="pr-8 pl-2 items-start [&>span]:pt-1.5 ">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-sm font-medium">{option.label}</span>
+                    className='pr-8 pl-2 items-start [&>span]:pt-1.5 '>
+                    <div className='flex flex-col gap-1'>
+                      <span className='text-sm font-medium'>{option.label}</span>
                     </div>
                   </DropdownMenuRadioItem>
                 ))}
@@ -270,12 +272,12 @@ const MessageSyncStatus: React.FC<MessageSyncStatusProps> = ({ integrationId }) 
         {/* Cancel button - shown when sync is in progress */}
         {activeSyncJobId && isSyncInProgress && (
           <Button
-            variant="ghost"
-            size="sm"
+            variant='ghost'
+            size='sm'
             onClick={handleCancelSync}
             disabled={cancelSync.isPending}
             loading={cancelSync.isPending}
-            loadingText="Cancelling...">
+            loadingText='Cancelling...'>
             Cancel
           </Button>
         )}

@@ -2,8 +2,8 @@
 
 // apps/web/src/components/workflow/mass-workflow-trigger-dialog.tsx
 
-import { useState } from 'react'
-import { Play } from 'lucide-react'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Button } from '@auxx/ui/components/button'
 import {
   Select,
   SelectContent,
@@ -21,11 +20,12 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { toastError } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
-import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
-import { showWorkflowProgressToast } from './workflow-progress-toast'
+import { Play } from 'lucide-react'
+import { useState } from 'react'
 import { invalidateBatchResources } from '~/lib/workflow'
-import { type RecordId, parseRecordId } from '@auxx/types/resource'
+import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
+import { api } from '~/trpc/react'
+import { showWorkflowProgressToast } from './workflow-progress-toast'
 
 /**
  * Mass workflow trigger dialog
@@ -53,7 +53,8 @@ export function MassWorkflowTriggerDialog({
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>('')
 
   // Parse first RecordId to get entityDefinitionId for querying workflows
-  const entityDefinitionId = recordIds.length > 0 ? parseRecordId(recordIds[0]!).entityDefinitionId : ''
+  const entityDefinitionId =
+    recordIds.length > 0 ? parseRecordId(recordIds[0]!).entityDefinitionId : ''
 
   // Query available workflows
   const { data: workflows, isLoading: workflowsLoading } = api.workflow.getManualWorkflows.useQuery(
@@ -138,7 +139,7 @@ export function MassWorkflowTriggerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent position="tc" size="sm">
+      <DialogContent position='tc' size='sm'>
         <DialogHeader>
           <DialogTitle>Run Workflow</DialogTitle>
           <DialogDescription>
@@ -149,14 +150,14 @@ export function MassWorkflowTriggerDialog({
 
         {/* Workflow Selection */}
         {workflowsLoading ? (
-          <div className="text-sm text-muted-foreground">Loading workflows...</div>
+          <div className='text-sm text-muted-foreground'>Loading workflows...</div>
         ) : workflows && workflows.length > 0 ? (
           <Select
             value={selectedWorkflowId}
             onValueChange={setSelectedWorkflowId}
             disabled={isLoading}>
             <SelectTrigger>
-              <SelectValue placeholder="Select a workflow..." />
+              <SelectValue placeholder='Select a workflow...' />
             </SelectTrigger>
             <SelectContent>
               {workflows.map((workflow) => (
@@ -167,15 +168,13 @@ export function MassWorkflowTriggerDialog({
             </SelectContent>
           </Select>
         ) : (
-          <div className="text-sm text-muted-foreground">
-            No manual trigger workflows available
-          </div>
+          <div className='text-sm text-muted-foreground'>No manual trigger workflows available</div>
         )}
 
         <DialogFooter>
           <Button
-            variant="ghost"
-            size="sm"
+            variant='ghost'
+            size='sm'
             onClick={() => onOpenChange(false)}
             disabled={isLoading}>
             Cancel
@@ -184,9 +183,9 @@ export function MassWorkflowTriggerDialog({
             onClick={handleTrigger}
             disabled={!selectedWorkflowId || isLoading}
             loading={isLoading}
-            size="sm"
-            variant="outline"
-            loadingText="Triggering...">
+            size='sm'
+            variant='outline'
+            loadingText='Triggering...'>
             <Play />
             Run Workflow
           </Button>

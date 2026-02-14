@@ -1,11 +1,11 @@
 // packages/lib/src/jobs/billing/stripe-subscription-sync-job.ts
 
+import { stripeClient } from '@auxx/billing'
+import { database as db, schema } from '@auxx/database'
 import type { Job } from 'bullmq'
+import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { createScopedLogger } from '../../logger'
-import { database as db, schema } from '@auxx/database'
-import { and, isNotNull, inArray, eq } from 'drizzle-orm'
-import { stripeClient } from '@auxx/billing'
 
 const logger = createScopedLogger('stripe-subscription-sync-job')
 

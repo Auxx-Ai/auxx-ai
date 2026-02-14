@@ -2,9 +2,8 @@
 
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
 import { Badge } from '@auxx/ui/components/badge'
-import { Progress } from '@auxx/ui/components/progress'
+import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,23 +11,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { Progress } from '@auxx/ui/components/progress'
+import { cn } from '@auxx/ui/lib/utils'
 import {
-  MoreVertical,
-  Download,
-  Trash2,
-  FolderIcon,
-  RotateCcw,
-  X,
-  Clock,
   AlertCircle,
   CheckCircle,
+  Clock,
+  Download,
+  FolderIcon,
   Loader2,
+  MoreVertical,
   PanelRight,
   Pencil,
+  RotateCcw,
+  Trash2,
+  X,
 } from 'lucide-react'
-import { getFileIcon } from './utils/file-icon'
 import type { FileItem } from './files-store'
-import { cn } from '@auxx/ui/lib/utils'
+import { getFileIcon } from './utils/file-icon'
 
 /**
  * Props for FileNameCell actions
@@ -60,26 +60,26 @@ interface FileNameCellProps {
 function UploadStatusIcon({ status, progress }: { status: string; progress?: number }) {
   switch (status) {
     case 'pending':
-      return <Clock className="size-4 text-yellow-600" />
+      return <Clock className='size-4 text-yellow-600' />
     case 'uploading':
       return (
-        <div className="relative">
-          <div className="size-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <div className='relative'>
+          <div className='size-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin' />
           {progress !== undefined && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-[8px] font-bold text-blue-600">{Math.round(progress)}</span>
+            <div className='absolute inset-0 flex items-center justify-center'>
+              <span className='text-[8px] font-bold text-blue-600'>{Math.round(progress)}</span>
             </div>
           )}
         </div>
       )
     case 'processing':
-      return <Loader2 className="size-4 text-blue-600 animate-spin" />
+      return <Loader2 className='size-4 text-blue-600 animate-spin' />
     case 'failed':
-      return <AlertCircle className="size-4 text-red-600" />
+      return <AlertCircle className='size-4 text-red-600' />
     case 'cancelled':
-      return <X className="size-4 text-gray-600" />
+      return <X className='size-4 text-gray-600' />
     case 'completed':
-      return <CheckCircle className="size-4 text-green-600" />
+      return <CheckCircle className='size-4 text-green-600' />
     default:
       return null
   }
@@ -111,7 +111,7 @@ export function FileNameCell({ item, depth = 0, isMoving = false, actions }: Fil
 
   return (
     <div
-      className="flex items-center justify-between w-full pr-2 text-sm group/name"
+      className='flex items-center justify-between w-full pr-2 text-sm group/name'
       style={{ paddingLeft: leftPadding }}>
       {/* Left side: Icon + Name + Status */}
       <div
@@ -121,13 +121,13 @@ export function FileNameCell({ item, depth = 0, isMoving = false, actions }: Fil
         {isUploading && item.status ? (
           <UploadStatusIcon status={item.status} progress={item.progress} />
         ) : isFolder ? (
-          <FolderIcon className="size-4 text-blue-600 shrink-0" />
+          <FolderIcon className='size-4 text-blue-600 shrink-0' />
         ) : (
           getFileIcon(item.mimeType, item.ext, 'size-4 shrink-0')
         )}
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+        <div className='min-w-0 flex-1'>
+          <div className='flex items-center gap-2'>
             <p
               className={cn(
                 'font-medium truncate',
@@ -139,15 +139,15 @@ export function FileNameCell({ item, depth = 0, isMoving = false, actions }: Fil
 
             {/* Moving indicator */}
             {isCurrentlyMoving && (
-              <div className="flex items-center gap-1 text-xs text-amber-600 shrink-0">
-                <Loader2 className="size-3 animate-spin" />
+              <div className='flex items-center gap-1 text-xs text-amber-600 shrink-0'>
+                <Loader2 className='size-3 animate-spin' />
                 <span>Moving...</span>
               </div>
             )}
 
             {/* Upload status badge */}
             {isUploading && item.status && (
-              <Badge variant="secondary" className="text-xs capitalize shrink-0">
+              <Badge variant='secondary' className='text-xs capitalize shrink-0'>
                 {item.status}
               </Badge>
             )}
@@ -155,41 +155,41 @@ export function FileNameCell({ item, depth = 0, isMoving = false, actions }: Fil
 
           {/* Upload Progress Bar */}
           {isUploading && item.status === 'uploading' && item.progress !== undefined && (
-            <div className="mt-1">
-              <Progress value={item.progress} className="h-1.5" />
+            <div className='mt-1'>
+              <Progress value={item.progress} className='h-1.5' />
             </div>
           )}
 
           {/* Upload Error */}
           {isUploading && item.error && (
-            <p className="text-red-600 text-xs mt-1 truncate">{item.error}</p>
+            <p className='text-red-600 text-xs mt-1 truncate'>{item.error}</p>
           )}
         </div>
       </div>
 
       {/* Right side: Actions dropdown */}
-      <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+      <div onClick={(e) => e.stopPropagation()} className='shrink-0'>
         {isUploading ? (
           // Upload-specific actions
-          <div className="flex items-center gap-1">
+          <div className='flex items-center gap-1'>
             {item.status === 'failed' && onRetryUpload && (
               <Button
-                variant="ghost"
-                size="sm"
-                className="size-6 p-0"
+                variant='ghost'
+                size='sm'
+                className='size-6 p-0'
                 onClick={() => onRetryUpload(item.tempId!)}
-                title="Retry Upload">
-                <RotateCcw className="size-3" />
+                title='Retry Upload'>
+                <RotateCcw className='size-3' />
               </Button>
             )}
             {['pending', 'uploading'].includes(item.status!) && onCancelUpload && (
               <Button
-                variant="ghost"
-                size="sm"
-                className="size-6 p-0"
+                variant='ghost'
+                size='sm'
+                className='size-6 p-0'
                 onClick={() => onCancelUpload(item.tempId!)}
-                title="Cancel Upload">
-                <X className="size-3" />
+                title='Cancel Upload'>
+                <X className='size-3' />
               </Button>
             )}
           </div>
@@ -198,13 +198,13 @@ export function FileNameCell({ item, depth = 0, isMoving = false, actions }: Fil
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                variant="ghost"
-                size="icon-sm"
-                className="opacity-0 group-hover/name:opacity-100 transition-opacity data-[state=open]:opacity-100! rounded-full">
+                variant='ghost'
+                size='icon-sm'
+                className='opacity-0 group-hover/name:opacity-100 transition-opacity data-[state=open]:opacity-100! rounded-full'>
                 <MoreVertical />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align='end'>
               <DropdownMenuItem onClick={() => onQuickView(item)}>
                 <PanelRight />
                 Quick View
@@ -234,7 +234,7 @@ export function FileNameCell({ item, depth = 0, isMoving = false, actions }: Fil
               <DropdownMenuSeparator />
 
               {onDelete && (
-                <DropdownMenuItem variant="destructive" onClick={() => onDelete(item)}>
+                <DropdownMenuItem variant='destructive' onClick={() => onDelete(item)}>
                   <Trash2 />
                   Delete
                 </DropdownMenuItem>

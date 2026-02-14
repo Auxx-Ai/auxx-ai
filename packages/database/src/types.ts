@@ -1,7 +1,7 @@
 // packages/database/src/types.ts
 // Client-safe enum types generated from Drizzle enums
 
-import * as Enums from './enums'
+import type * as Enums from './enums'
 
 export type ActionType = (typeof Enums.ActionTypeValues)[number]
 
@@ -177,7 +177,7 @@ export type StandardType = (typeof Enums.StandardTypeValues)[number] | null
 
 // ChunkSettings types
 export type {
-  ChunkSettings,
   ChunkPreprocessingOptions,
+  ChunkSettings,
 } from './types/chunk-settings'
 export { DEFAULT_CHUNK_SETTINGS } from './types/chunk-settings'

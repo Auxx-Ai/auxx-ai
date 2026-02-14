@@ -1,16 +1,16 @@
-import * as React from 'react'
+import type { ButtonProps } from '@auxx/ui/components/button'
+import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
+import type * as React from 'react'
 import {
   Children,
-  type ReactElement,
   cloneElement,
-  useState,
+  type ReactElement,
   useCallback,
-  useRef,
   useEffect,
+  useRef,
+  useState,
 } from 'react'
-import { type ButtonProps } from '@auxx/ui/components/button'
-import { cva, type VariantProps } from 'class-variance-authority'
-import { cn } from '@auxx/ui/lib/utils'
 
 const buttonGroupVariants = cva('flex', {
   variants: {
@@ -229,7 +229,7 @@ export function ButtonGroup({
     <div
       ref={groupRef}
       role={isToggleMode ? 'group' : undefined}
-      aria-label="Button group"
+      aria-label='Button group'
       className={cn(buttonGroupVariants({ orientation, size }), className)}
       {...props}>
       {Children.map(children, (child, index) => {

@@ -1,16 +1,16 @@
 // packages/sdk/src/auth/auth.ts
 
-import { createHash, randomBytes } from 'crypto'
 import { serve } from '@hono/node-server'
+import { createHash, randomBytes } from 'crypto'
 import { Hono } from 'hono'
 import open from 'open'
 import { api } from '../api/api.js'
 import { APP_URL, SDK_CLIENT_ID } from '../env.js'
-import { findAvailablePort } from '../util/find-available-port.js'
-import { getKeychain, type KeychainToken } from './keychain.js'
+import { isErrored } from '../errors.js'
 import type { Result } from '../types/result.js'
 import { isError } from '../types/result.js'
-import { isErrored } from '../errors.js'
+import { findAvailablePort } from '../util/find-available-port.js'
+import { getKeychain, type KeychainToken } from './keychain.js'
 
 /** OAuth token response from API */
 interface TokenResponse {

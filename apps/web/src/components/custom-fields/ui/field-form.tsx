@@ -5,15 +5,11 @@
  * @description: A form component for creating or editing contact fields.
  * @usage: This component is used in the contact fields management section in apps/settings/
  */
-import { z } from 'zod'
-import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 
+import { FieldType } from '@auxx/database/enums'
+import { getFieldOptionsSchema } from '@auxx/lib/custom-fields/types'
+import { canFieldBeUnique } from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
-import { Switch } from '@auxx/ui/components/switch'
 import {
   Form,
   FormControl,
@@ -23,12 +19,17 @@ import {
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
+import { Input } from '@auxx/ui/components/input'
+import { Switch } from '@auxx/ui/components/switch'
+import { Textarea } from '@auxx/ui/components/textarea'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
+import { AddressComponentsEditor } from './address-component-editor'
 import { FieldTypeSelect } from './field-type-select'
 import { OptionsEditor } from './options-editor'
-import { AddressComponentsEditor } from './address-component-editor'
-import { getFieldOptionsSchema } from '@auxx/lib/custom-fields/types'
-import { canFieldBeUnique } from '@auxx/types/custom-field'
-import { FieldType } from '@auxx/database/enums'
+
 // import { getFieldOptionsSchema } from './field-options-schema'
 // Form schema (now includes icon, isCustom, options)
 const formSchema = z.object({
@@ -149,17 +150,17 @@ export function FieldForm({
     }
   }
   return (
-    <div className="pt-4">
+    <div className='pt-4'>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(handleSubmit)} className='space-y-4'>
           <FormField
             control={form.control}
-            name="name"
+            name='name'
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Field Name</FormLabel>
                 <FormControl>
-                  <Input placeholder="Work Phone" {...field} />
+                  <Input placeholder='Work Phone' {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -168,18 +169,18 @@ export function FieldForm({
 
           <FormField
             control={form.control}
-            name="type"
+            name='type'
             render={({ field }) => <FieldTypeSelect field={field} disabled={isEditing} />}
           />
 
           <FormField
             control={form.control}
-            name="description"
+            name='description'
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Description (Optional)</FormLabel>
                 <FormControl>
-                  <Textarea placeholder="Description or help text for this field" {...field} />
+                  <Textarea placeholder='Description or help text for this field' {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -188,15 +189,15 @@ export function FieldForm({
 
           <FormField
             control={form.control}
-            name="required"
+            name='required'
             render={({ field }) => (
-              <FormItem className="flex flex-row items-center justify-between rounded-xl border px-3 py-1.5">
-                <div className="space-y-0.5">
+              <FormItem className='flex flex-row items-center justify-between rounded-xl border px-3 py-1.5'>
+                <div className='space-y-0.5'>
                   <FormLabel>Required Field</FormLabel>
                   <FormDescription>Make this field mandatory for contacts</FormDescription>
                 </div>
                 <FormControl>
-                  <Switch checked={field.value} onCheckedChange={field.onChange} size="sm" />
+                  <Switch checked={field.value} onCheckedChange={field.onChange} size='sm' />
                 </FormControl>
               </FormItem>
             )}
@@ -205,10 +206,10 @@ export function FieldForm({
           {canFieldBeUnique(selectedType) && (
             <FormField
               control={form.control}
-              name="isUnique"
+              name='isUnique'
               render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-xl border px-3 py-1.5">
-                  <div className="space-y-0.5">
+                <FormItem className='flex flex-row items-center justify-between rounded-xl border px-3 py-1.5'>
+                  <div className='space-y-0.5'>
                     <FormLabel>Unique</FormLabel>
                     <FormDescription>
                       Only one record can have this value. Can be used to match records during
@@ -216,7 +217,7 @@ export function FieldForm({
                     </FormDescription>
                   </div>
                   <FormControl>
-                    <Switch checked={field.value} onCheckedChange={field.onChange} size="sm" />
+                    <Switch checked={field.value} onCheckedChange={field.onChange} size='sm' />
                   </FormControl>
                 </FormItem>
               )}
@@ -225,12 +226,12 @@ export function FieldForm({
 
           <FormField
             control={form.control}
-            name="defaultValue"
+            name='defaultValue'
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Default Value (Optional)</FormLabel>
                 <FormControl>
-                  <Input placeholder="Default value" {...field} />
+                  <Input placeholder='Default value' {...field} />
                 </FormControl>
                 <FormDescription>Pre-filled value for new contacts</FormDescription>
                 <FormMessage />
@@ -241,12 +242,12 @@ export function FieldForm({
           {/* Render type-specific fields */}
           {renderTypeSpecificFields()}
 
-          <div className="flex gap-2">
-            <Button type="submit" disabled={isSubmitting}>
+          <div className='flex gap-2'>
+            <Button type='submit' disabled={isSubmitting}>
               {isEditing ? 'Update Field' : 'Add Field'}
             </Button>
             {onCancel && (
-              <Button type="button" variant="outline" onClick={onCancel}>
+              <Button type='button' variant='outline' onClick={onCancel}>
                 Cancel
               </Button>
             )}

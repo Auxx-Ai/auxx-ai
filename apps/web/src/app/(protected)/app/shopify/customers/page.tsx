@@ -1,6 +1,6 @@
 import React from 'react'
-import { CustomersOverview } from '../_components/customers-overview'
 import { api } from '~/trpc/server'
+import { CustomersOverview } from '../_components/customers-overview'
 import NoShopifyIntegration from '../_components/no-shopify-integration'
 
 async function CustomersPage() {

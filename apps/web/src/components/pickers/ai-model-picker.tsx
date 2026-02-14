@@ -1,9 +1,9 @@
 // ~/components/pickers/ai-model-picker.tsx
 'use client'
 
-import React, { useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import type { ModelData, ModelType } from '@auxx/lib/ai/providers/types'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   Command,
   CommandEmpty,
@@ -12,17 +12,19 @@ import {
   CommandItem,
   CommandList,
 } from '@auxx/ui/components/command'
-import { Button } from '@auxx/ui/components/button'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { Check, ChevronsUpDown, Settings, Bot } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
-import { api, type RouterOutputs } from '~/trpc/react'
-import { Badge } from '@auxx/ui/components/badge'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { ProviderIcon } from '@auxx/ui/components/provider-icon'
-import { ModelType, ModelData } from '@auxx/lib/ai/providers/types'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { cn } from '@auxx/ui/lib/utils'
+import { Bot, Check, ChevronsUpDown, Settings } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import type React from 'react'
+import { useMemo, useState } from 'react'
+import { api, type RouterOutputs } from '~/trpc/react'
 
 /** Type for unified model data from the API */
 export type UnifiedModelData = RouterOutputs['aiIntegration']['getUnifiedModelData']
+
 import ModelIcon from '~/components/workflow/ui/model-parameter/model-icon'
 import ModelName from '~/components/workflow/ui/model-parameter/model-name'
 
@@ -218,7 +220,7 @@ export function AiModelPicker({
         {children || triggerButton || (
           <Button
             variant={triggerVariant === 'transparent' ? 'ghost' : triggerVariant}
-            role="combobox"
+            role='combobox'
             aria-expanded={isOpen}
             disabled={isUpdating}
             className={cn(
@@ -229,23 +231,23 @@ export function AiModelPicker({
               triggerClassName
             )}>
             {isUpdating ? (
-              <div className="flex items-center gap-2 flex-1">
-                <Skeleton className="h-4 w-4 rounded-full" />
-                <Skeleton className="h-4 w-24" />
+              <div className='flex items-center gap-2 flex-1'>
+                <Skeleton className='h-4 w-4 rounded-full' />
+                <Skeleton className='h-4 w-24' />
               </div>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className='flex items-center gap-2'>
                 {selectedModel ? (
                   <>
                     <ModelIcon
                       provider={selectedModel.provider}
                       modelName={selectedModel.modelId}
-                      size="sm"
-                      className="flex-shrink-0"
+                      size='sm'
+                      className='flex-shrink-0'
                     />
                     <ModelName
                       modelItem={selectedModel}
-                      className="truncate"
+                      className='truncate'
                       showMode
                       showModelType
                       showFeatures
@@ -256,7 +258,7 @@ export function AiModelPicker({
                 )}
               </div>
             )}
-            <ChevronsUpDown className="opacity-50 flex-shrink-0" />
+            <ChevronsUpDown className='opacity-50 flex-shrink-0' />
           </Button>
         )}
       </PopoverTrigger>
@@ -272,14 +274,14 @@ export function AiModelPicker({
             {isLoading && <CommandEmpty>Loading AI models...</CommandEmpty>}
             {!isLoading && Object.keys(groupedModels).length === 0 && (
               <CommandGroup>
-                <div className="flex items-center justify-between px-2 py-1">
-                  <span className="text-sm font-medium">No models found</span>
+                <div className='flex items-center justify-between px-2 py-1'>
+                  <span className='text-sm font-medium'>No models found</span>
                 </div>
                 <CommandItem
-                  value="setup-models"
+                  value='setup-models'
                   onSelect={handleSetupModelsNavigation}
-                  className="cursor-pointer">
-                  <div className="flex items-center gap-2">
+                  className='cursor-pointer'>
+                  <div className='flex items-center gap-2'>
                     <Bot size={16} />
                     <span>{emptyText}</span>
                   </div>
@@ -294,17 +296,17 @@ export function AiModelPicker({
 
                 return (
                   <CommandGroup key={provider}>
-                    <div className="flex items-center justify-between px-2 py-1">
-                      <span className="text-sm font-medium">
+                    <div className='flex items-center justify-between px-2 py-1'>
+                      <span className='text-sm font-medium'>
                         {firstModel?.providerLabel || provider}
                       </span>
                       {enableProviderConfiguration && (
                         <Button
-                          variant="ghost"
-                          size="sm"
+                          variant='ghost'
+                          size='sm'
                           onClick={() => handleProviderConfigure(provider)}
-                          className="h-6 w-6 p-0">
-                          <Settings className="h-3 w-3" />
+                          className='h-6 w-6 p-0'>
+                          <Settings className='h-3 w-3' />
                         </Button>
                       )}
                     </div>
@@ -313,18 +315,18 @@ export function AiModelPicker({
                         key={model.id}
                         value={model.id}
                         onSelect={() => handleSelect(model)}
-                        className="cursor-pointer flex items-center justify-between"
+                        className='cursor-pointer flex items-center justify-between'
                         disabled={model.status === 'not_configured' && !showUnconfigured}>
-                        <div className="flex flex-row gap-1 flex-1 min-w-0">
+                        <div className='flex flex-row gap-1 flex-1 min-w-0'>
                           <ModelIcon
                             provider={model.provider}
                             modelName={model.modelId}
-                            size="sm"
-                            className="flex-shrink-0"
+                            size='sm'
+                            className='flex-shrink-0'
                           />
                           <ModelName
                             modelItem={model}
-                            className="truncate"
+                            className='truncate'
                             showMode
                             showModelType
                           />

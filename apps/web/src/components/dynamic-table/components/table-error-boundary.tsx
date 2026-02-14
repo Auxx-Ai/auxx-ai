@@ -2,9 +2,9 @@
 
 'use client'
 
-import React from 'react'
-import { AlertCircle } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
+import { AlertCircle } from 'lucide-react'
+import React from 'react'
 
 interface Props {
   children: React.ReactNode
@@ -46,21 +46,21 @@ export class TableErrorBoundary extends React.Component<Props, State> {
       }
 
       return (
-        <div className="flex flex-col items-center justify-center p-8 text-center">
-          <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Something went wrong</h3>
-          <p className="text-sm text-muted-foreground mb-4">
+        <div className='flex flex-col items-center justify-center p-8 text-center'>
+          <AlertCircle className='h-12 w-12 text-destructive mb-4' />
+          <h3 className='text-lg font-semibold mb-2'>Something went wrong</h3>
+          <p className='text-sm text-muted-foreground mb-4'>
             An error occurred while rendering the table.
           </p>
           {this.state.error && (
-            <details className="mb-4 text-xs text-muted-foreground">
-              <summary className="cursor-pointer">Error details</summary>
-              <pre className="mt-2 p-2 bg-muted rounded text-left overflow-auto max-w-lg">
+            <details className='mb-4 text-xs text-muted-foreground'>
+              <summary className='cursor-pointer'>Error details</summary>
+              <pre className='mt-2 p-2 bg-muted rounded text-left overflow-auto max-w-lg'>
                 {this.state.error.message}
               </pre>
             </details>
           )}
-          <Button onClick={this.handleReset} variant="outline" size="sm">
+          <Button onClick={this.handleReset} variant='outline' size='sm'>
             Try again
           </Button>
         </div>

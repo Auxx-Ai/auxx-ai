@@ -1,6 +1,6 @@
 // packages/email/src/templates/weekly-summary/weekly-summary-notification-email.tsx
 import { Container, Hr, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -54,9 +54,9 @@ export async function WeeklySummaryNotificationEmail({
             </Text>
           ))}
         </div>
-        <EmailButton href={ctaUrl} label="Open Dashboard" />
+        <EmailButton href={ctaUrl} label='Open Dashboard' />
         <Hr style={{ borderColor: '#e2e8f0', margin: '24px 0' }} />
-        <Text className="mb-0">
+        <Text className='mb-0'>
           Need help making the most of these insights? Our team is here to support you with next
           steps.
         </Text>

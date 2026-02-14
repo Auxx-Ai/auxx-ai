@@ -1,14 +1,15 @@
 'use client'
+
 // apps/web/src/components/global/comments/drawer-comments.tsx
 
+import { getDefinitionId, parseRecordId, type RecordId } from '@auxx/lib/field-values/client'
 import { MessagesSquare } from 'lucide-react'
 import React from 'react'
-import { EmptyState } from '~/components/global/empty-state'
-import { CommentList } from '~/components/global/comments/comment-list'
 import CommentComposer from '~/components/global/comments/comment-composer'
-import { api } from '~/trpc/react'
+import { CommentList } from '~/components/global/comments/comment-list'
+import { EmptyState } from '~/components/global/empty-state'
 import { isSystemEntityType } from '~/hooks/use-comments'
-import { parseRecordId, getDefinitionId, type RecordId } from '@auxx/lib/field-values/client'
+import { api } from '~/trpc/react'
 
 /**
  * Props for the DrawerComments wrapper component.
@@ -58,12 +59,12 @@ const DrawerComments = ({
   // Loading state
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full w-full">
+      <div className='flex items-center justify-center h-full w-full'>
         <EmptyState
           icon={MessagesSquare}
-          iconClassName="animate-spin"
-          title="Loading comments"
-          description="Fetching comments..."
+          iconClassName='animate-spin'
+          title='Loading comments'
+          description='Fetching comments...'
         />
       </div>
     )
@@ -71,10 +72,10 @@ const DrawerComments = ({
 
   // Content state (including empty state)
   return (
-    <div className="relative h-full w-full flex flex-col">
-      <div className="flex items-center justify-between px-4 sticky top-0 z-1 pt-3">
-        <h2 className="text-base flex items-center space-x-2 gap-2 text-[14px]">
-          <MessagesSquare className="size-4 text-muted-foreground/50" />
+    <div className='relative h-full w-full flex flex-col'>
+      <div className='flex items-center justify-between px-4 sticky top-0 z-1 pt-3'>
+        <h2 className='text-base flex items-center space-x-2 gap-2 text-[14px]'>
+          <MessagesSquare className='size-4 text-muted-foreground/50' />
           {defaultHeaderTitle}
         </h2>
       </div>
@@ -83,22 +84,22 @@ const DrawerComments = ({
       {!commentsData?.comments || commentsData.comments.length === 0 ? (
         <EmptyState
           icon={MessagesSquare}
-          className="h-full flex flex-1 items-center"
+          className='h-full flex flex-1 items-center'
           title={defaultEmptyTitle}
           description={defaultEmptyDescription}
         />
       ) : (
-        <div className="flex-1 overflow-y-auto pt-0 p-4">
+        <div className='flex-1 overflow-y-auto pt-0 p-4'>
           <CommentList recordId={recordId} initialComments={commentsData.comments} />
         </div>
       )}
 
       {/* Comment Composer - always visible at bottom */}
-      <div className="px-4 pb-4 pt-2">
+      <div className='px-4 pb-4 pt-2'>
         <CommentComposer
           recordId={recordId}
           expanded
-          expandHeight="100px"
+          expandHeight='100px'
           focusTrigger={focusComposerTrigger}
           placeholder={defaultPlaceholder}
           onSubmitted={() => {

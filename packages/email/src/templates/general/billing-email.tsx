@@ -1,5 +1,5 @@
 import { Container, Heading, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -42,11 +42,11 @@ export async function BillingEmail({
           <Text style={{ margin: '8px 0', fontWeight: 'bold' }}>Due Date: {dueDate}</Text>
         </div>
 
-        {invoiceUrl && <EmailButton href={invoiceUrl} label="View Invoice" />}
+        {invoiceUrl && <EmailButton href={invoiceUrl} label='View Invoice' />}
 
         <Text>Please ensure payment is made by the due date.</Text>
 
-        <Text className="mb-0">
+        <Text className='mb-0'>
           If you have any questions about this invoice, please contact our billing team.
         </Text>
 

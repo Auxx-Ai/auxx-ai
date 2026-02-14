@@ -1,6 +1,6 @@
 // packages/lib/src/import/resolution/resolvers/email.ts
 
-import type { ResolvedValue, ResolutionConfig } from '../../types/resolution'
+import type { ResolutionConfig, ResolvedValue } from '../../types/resolution'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 

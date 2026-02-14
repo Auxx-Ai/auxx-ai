@@ -4,27 +4,27 @@ export interface SendMessageOptions {
   // Required fields
   from: string
   to: string | string[]
-  
+
   // Content (at least one should be provided)
   subject?: string // Optional for non-email messages
   text?: string
   html?: string
-  
+
   // Email recipients
   cc?: string[]
   bcc?: string[]
   replyTo?: string[] // For explicit Reply-To header
-  
+
   // Threading
   inReplyTo?: string
   references?: string
   messageId?: string // Provider-specific ID for outgoing message if available
   externalThreadId?: string // Link to existing thread if applicable
-  
+
   // Attachments
   attachmentIds?: string[] // References to stored attachments (used by our system)
   attachments?: AttachmentFile[] // Direct attachment objects (used by providers)
-  
+
   // Other options
   trackingEnabled?: boolean // Generic tracking flag
   metadata?: Record<string, any> // For provider-specific options (deprecated - for backward compatibility only)

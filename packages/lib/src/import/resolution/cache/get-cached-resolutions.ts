@@ -1,8 +1,8 @@
 // packages/lib/src/import/resolution/cache/get-cached-resolutions.ts
 
-import { eq, inArray } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { eq, inArray } from 'drizzle-orm'
 import type { ValueResolution } from '../../types/resolution'
 
 /**

@@ -1,8 +1,8 @@
 // apps/web/src/components/editor/inline-picker/core/inline-picker-extension.ts
 
 import { Extension } from '@tiptap/core'
-import Suggestion from '@tiptap/suggestion'
 import { PluginKey } from '@tiptap/pm/state'
+import Suggestion from '@tiptap/suggestion'
 import type { InlinePickerExtensionConfig, InlinePickerState } from '../types'
 
 /** Initial state when picker is closed */

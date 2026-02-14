@@ -1,18 +1,18 @@
 // packages/database/src/db/schema/field-value.ts
 // Drizzle table for FieldValue - typed field value storage for unified entity architecture
 
+import { createId } from '@paralleldrive/cuid2'
 import {
+  type AnyPgColumn,
+  boolean,
+  doublePrecision,
+  index,
+  jsonb,
   pgTable,
   text,
   timestamp,
-  boolean,
-  jsonb,
-  index,
   uniqueIndex,
-  type AnyPgColumn,
-  doublePrecision,
 } from './_shared'
-import { createId } from '@paralleldrive/cuid2'
 import { CustomField } from './custom-field'
 import { Organization } from './organization'
 import { User } from './user'

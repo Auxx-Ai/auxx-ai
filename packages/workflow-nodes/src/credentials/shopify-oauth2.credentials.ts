@@ -1,8 +1,8 @@
 // packages/workflow-nodes/src/credentials/shopify-oauth2.credentials.ts
 
+import { URLTransformUtils } from '../services/url-template.service'
 import type { ICredentialType, INodeProperty } from '../types'
 import type { OAuth2Config } from '../types/oauth2'
-import { URLTransformUtils } from '../services/url-template.service'
 
 /**
  * Shopify OAuth2 credential type for workflow integrations

@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useCallback, useState, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { toastSuccess } from '../components/toast'
 
 interface UseCopyOptions {

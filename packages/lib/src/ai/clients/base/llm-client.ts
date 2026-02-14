@@ -1,18 +1,18 @@
 // packages/lib/src/ai/clients/base/llm-client.ts
 
-import { BaseSpecializedClient } from './base-specialized-client'
 import { TokenCalculator } from '../utils/token-calculator'
+import { BaseSpecializedClient } from './base-specialized-client'
 import type {
   ClientConfig,
   LLMInvokeParams,
   LLMResponse,
   LLMStreamChunk,
   LLMStreamResult,
+  Message,
   MultiModalContent,
+  ProcessedContent,
   Tool,
   ToolCall,
-  Message,
-  ProcessedContent,
   UsageMetrics,
 } from './types'
 
@@ -97,11 +97,7 @@ export abstract class LLMClient extends BaseSpecializedClient {
   /**
    * Calculate tokens for complete request (messages + tools)
    */
-  calculateRequestTokens(
-    messages: Message[],
-    tools?: Tool[],
-    model?: string
-  ): number {
+  calculateRequestTokens(messages: Message[], tools?: Tool[], model?: string): number {
     let totalTokens = 0
 
     // Calculate message tokens
@@ -148,46 +144,46 @@ export abstract class LLMClient extends BaseSpecializedClient {
    */
   protected filterUnsupportedFeatures(params: LLMInvokeParams): LLMInvokeParams {
     const processed = { ...params }
-    
+
     // Get model capabilities from the registry (implement getModelCapabilities in derived classes)
     const modelCapabilities = this.getModelCapabilitiesFromRegistry?.(params.model)
-    
+
     // Filter tools if model doesn't support them
     if (processed.tools?.length && modelCapabilities?.supports?.toolCalling === false) {
       this.logger.warn('Tools not supported for this model, removing tools from request', {
         model: params.model,
         toolCount: processed.tools.length,
-        toolNames: processed.tools.map(t => t.function?.name).filter(Boolean)
+        toolNames: processed.tools.map((t) => t.function?.name).filter(Boolean),
       })
       delete processed.tools
     }
-    
+
     // Filter structured output if model doesn't support it
     if (processed.response_format && modelCapabilities?.supports?.structured === false) {
       this.logger.warn('Structured output not supported for this model, removing response_format', {
         model: params.model,
-        responseFormat: processed.response_format
+        responseFormat: processed.response_format,
       })
       delete processed.response_format
       delete processed.json_schema
     }
-    
+
     // Filter vision content if model doesn't support it
     if (processed.messages && modelCapabilities?.supports?.vision === false) {
-      const hasVisionContent = processed.messages.some(msg => 
-        Array.isArray(msg.content) && 
-        msg.content.some(content => content.type === 'image')
+      const hasVisionContent = processed.messages.some(
+        (msg) =>
+          Array.isArray(msg.content) && msg.content.some((content) => content.type === 'image')
       )
-      
+
       if (hasVisionContent) {
         this.logger.warn('Vision not supported for this model, removing image content', {
-          model: params.model
+          model: params.model,
         })
-        
+
         // Remove image content from messages
-        processed.messages = processed.messages.map(msg => {
+        processed.messages = processed.messages.map((msg) => {
           if (Array.isArray(msg.content)) {
-            const filteredContent = msg.content.filter(content => content.type !== 'image')
+            const filteredContent = msg.content.filter((content) => content.type !== 'image')
             // Convert back to string if only text content remains
             if (filteredContent.length === 1 && filteredContent[0].type === 'text') {
               return { ...msg, content: filteredContent[0].data }
@@ -198,7 +194,7 @@ export abstract class LLMClient extends BaseSpecializedClient {
         })
       }
     }
-    
+
     return processed
   }
 
@@ -240,7 +236,11 @@ export abstract class LLMClient extends BaseSpecializedClient {
    */
   protected validateModelParameters(parameters: any): void {
     if (parameters.temperature !== undefined) {
-      if (typeof parameters.temperature !== 'number' || parameters.temperature < 0 || parameters.temperature > 2) {
+      if (
+        typeof parameters.temperature !== 'number' ||
+        parameters.temperature < 0 ||
+        parameters.temperature > 2
+      ) {
         throw new Error('Temperature must be a number between 0 and 2')
       }
     }
@@ -263,10 +263,10 @@ export abstract class LLMClient extends BaseSpecializedClient {
    */
   protected clearIllegalPromptMessages(messages: Message[], model: string): Message[] {
     const baseModel = this.getBaseModel(model)
-    
+
     // O1/O3 models don't support system messages
     if (baseModel.startsWith('o1') || baseModel.startsWith('o3')) {
-      return messages.map(msg => {
+      return messages.map((msg) => {
         if (msg.role === 'system') {
           return { ...msg, role: 'user' }
         }
@@ -281,7 +281,7 @@ export abstract class LLMClient extends BaseSpecializedClient {
    * Check if messages contain multi-modal content
    */
   protected hasMultiModalContent(messages: Message[]): boolean {
-    return messages.some(msg => Array.isArray(msg.content))
+    return messages.some((msg) => Array.isArray(msg.content))
   }
 
   /**
@@ -302,7 +302,7 @@ export abstract class LLMClient extends BaseSpecializedClient {
     // Combine content from all chunks
     for (const chunk of chunks) {
       content += chunk.delta || ''
-      
+
       if (chunk.toolCalls) {
         toolCalls = chunk.toolCalls
       }
@@ -324,7 +324,10 @@ export abstract class LLMClient extends BaseSpecializedClient {
   /**
    * Create tool call from function call (OpenAI compatibility)
    */
-  protected createToolCallFromFunction(functionCall: { name?: string; arguments?: string }): ToolCall {
+  protected createToolCallFromFunction(functionCall: {
+    name?: string
+    arguments?: string
+  }): ToolCall {
     if (!functionCall.name) {
       throw new Error('Function call missing name')
     }
@@ -344,7 +347,7 @@ export abstract class LLMClient extends BaseSpecializedClient {
    */
   protected estimateCompletionTokens(params: LLMInvokeParams): number {
     const maxTokens = params.parameters?.max_tokens || params.max_completion_tokens
-    
+
     if (maxTokens) {
       return Math.min(maxTokens, 4096) // Reasonable default max
     }

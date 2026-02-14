@@ -1,21 +1,21 @@
 // packages/lib/src/ai/providers/openai/openai-client.ts
 
 import OpenAI from 'openai'
+import { type BaseSpecializedClient, DEFAULT_CLIENT_CONFIG } from '../../clients/base/types'
 import { ProviderClient } from '../base/provider-client'
 import {
-  ValidationResult,
-  ConnectionTestResult,
-  ProviderCredentials,
+  type ConnectionTestResult,
   CredentialValidationError,
+  type ProviderCredentials,
+  type ValidationResult,
 } from '../base/types'
-import { ModelCapabilities, ModelType } from '../types'
+import { type ModelCapabilities, ModelType } from '../types'
 import { OPENAI_CAPABILITIES, OPENAI_MODELS } from './openai-defaults'
-import { BaseSpecializedClient, DEFAULT_CLIENT_CONFIG } from '../../clients/base/types'
 import {
   OpenAILLMClient,
-  OpenAITextEmbeddingClient,
-  OpenAISpeech2TextClient,
   OpenAIModerationClient,
+  OpenAISpeech2TextClient,
+  OpenAITextEmbeddingClient,
   OpenAITTSClient,
 } from './specialized-clients'
 

@@ -2,13 +2,10 @@
 
 'use client'
 
-import React, { useRef } from 'react'
+import { Popover, PopoverAnchor, PopoverContentDialogAware } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import {
-  Popover,
-  PopoverAnchor,
-  PopoverContentDialogAware,
-} from '@auxx/ui/components/popover'
+import type React from 'react'
+import { useRef } from 'react'
 import type { InlinePickerPopoverProps } from '../types'
 
 /**
@@ -84,8 +81,8 @@ export function InlinePickerPopover({
         ref={contentRef}
         className={cn('p-0 overflow-hidden', className)}
         style={{ width: width === 'auto' ? 'auto' : width }}
-        side="bottom"
-        align="start"
+        side='bottom'
+        align='start'
         sideOffset={4}
         onOpenAutoFocus={handleOpenAutoFocus}
         onCloseAutoFocus={(e) => {

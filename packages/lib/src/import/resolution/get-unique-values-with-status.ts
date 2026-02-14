@@ -1,9 +1,9 @@
 // packages/lib/src/import/resolution/get-unique-values-with-status.ts
 
-import { eq, and, count, desc } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import type { ResolvedValue, OverrideValue, ColumnFieldConfig } from '../types'
+import { and, count, desc, eq } from 'drizzle-orm'
+import type { ColumnFieldConfig, OverrideValue, ResolvedValue } from '../types'
 
 /** Resolution status types */
 export type ResolutionStatus = 'pending' | 'valid' | 'error' | 'warning' | 'create'
@@ -58,7 +58,10 @@ function buildFieldConfig(mappingProp: {
 
   const resolutionConfig = mappingProp.resolutionConfig as {
     options?: Array<{ value: string; label: string }>
-    relationConfig?: { relatedEntityDefinitionId: string; relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many' }
+    relationConfig?: {
+      relatedEntityDefinitionId: string
+      relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
+    }
   } | null
 
   // Derive base type from resolution type

@@ -1,12 +1,12 @@
 // packages/services/src/app-events/index.ts
 
-import { database, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
-import { createScopedLogger } from '@auxx/logger'
 import { LAMBDA_API_URL } from '@auxx/config/urls'
-import { ok, err, type Result } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
+import { database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
+import { err, ok, type Result } from 'neverthrow'
 import type { DatabaseError } from '../shared/errors'
+import { fromDatabase } from '../shared/utils'
 
 const logger = createScopedLogger('app-events')
 

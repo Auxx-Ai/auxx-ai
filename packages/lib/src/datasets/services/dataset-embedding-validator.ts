@@ -1,9 +1,9 @@
 // packages/lib/src/datasets/services/dataset-embedding-validator.ts
 
 import { database as db, schema } from '@auxx/database'
-import { ProviderConfigurationModel, ModelConfigurationModel } from '@auxx/database/models'
-import { and, eq, asc } from 'drizzle-orm'
+import { ModelConfigurationModel, ProviderConfigurationModel } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
+import { and, asc, eq } from 'drizzle-orm'
 import { SystemModelService } from '../../ai/providers/system-model-service'
 import { ModelType } from '../../ai/providers/types'
 
@@ -140,7 +140,8 @@ export class DatasetEmbeddingValidator {
       // If there are errors, suggest a working configuration
       let suggestedConfig: DatasetEmbeddingConfig | undefined
       if (errors.length > 0) {
-        suggestedConfig = await this.getRecommendedEmbeddingConfig(organizationId)
+        suggestedConfig =
+          await DatasetEmbeddingValidator.getRecommendedEmbeddingConfig(organizationId)
       }
 
       return {
@@ -179,7 +180,7 @@ export class DatasetEmbeddingValidator {
         const modelId = `${systemDefault.provider}:${systemDefault.model}`
         return {
           modelId,
-          dimensions: this.getModelDimensions(systemDefault.model),
+          dimensions: DatasetEmbeddingValidator.getModelDimensions(systemDefault.model),
         }
       }
 
@@ -207,7 +208,7 @@ export class DatasetEmbeddingValidator {
         const modelId = `${modelConfig.provider}:${modelConfig.model}`
         return {
           modelId,
-          dimensions: this.getModelDimensions(modelConfig.model),
+          dimensions: DatasetEmbeddingValidator.getModelDimensions(modelConfig.model),
         }
       }
 
@@ -215,7 +216,7 @@ export class DatasetEmbeddingValidator {
       logger.warn('No embedding models configured for organization, returning defaults', {
         organizationId,
       })
-      return this.getDefaultEmbeddingConfig()
+      return DatasetEmbeddingValidator.getDefaultEmbeddingConfig()
     } catch (error) {
       logger.error('Failed to get recommended embedding configuration', {
         error: error instanceof Error ? error.message : error,
@@ -223,7 +224,7 @@ export class DatasetEmbeddingValidator {
       })
 
       // Return safe defaults
-      return this.getDefaultEmbeddingConfig()
+      return DatasetEmbeddingValidator.getDefaultEmbeddingConfig()
     }
   }
 
@@ -254,7 +255,7 @@ export class DatasetEmbeddingValidator {
         .filter((config) => config.provider) // Only include configs with valid providers
         .map((config) => ({
           modelId: `${config.provider}:${config.model}`,
-          dimensions: this.getModelDimensions(config.model),
+          dimensions: DatasetEmbeddingValidator.getModelDimensions(config.model),
         }))
     } catch (error) {
       logger.error('Failed to get available embedding configurations', {
@@ -282,7 +283,10 @@ export class DatasetEmbeddingValidator {
   ): Promise<DatasetEmbeddingConfig> {
     // If modelId is provided, validate and return
     if (providedModelId) {
-      const validation = await this.validateEmbeddingConfig(providedModelId, organizationId)
+      const validation = await DatasetEmbeddingValidator.validateEmbeddingConfig(
+        providedModelId,
+        organizationId
+      )
 
       if (validation.isValid) {
         // Parse to get model name for dimensions lookup
@@ -290,7 +294,7 @@ export class DatasetEmbeddingValidator {
         const model = modelParts.join(':')
         return {
           modelId: providedModelId,
-          dimensions: providedDimensions || this.getModelDimensions(model),
+          dimensions: providedDimensions || DatasetEmbeddingValidator.getModelDimensions(model),
         }
       }
 
@@ -304,7 +308,8 @@ export class DatasetEmbeddingValidator {
     }
 
     // Get recommended configuration based on organization's available models
-    const recommendedConfig = await this.getRecommendedEmbeddingConfig(organizationId)
+    const recommendedConfig =
+      await DatasetEmbeddingValidator.getRecommendedEmbeddingConfig(organizationId)
 
     logger.info('Resolved embedding configuration for dataset', {
       provided: { providedModelId, providedDimensions },
@@ -345,7 +350,8 @@ export class DatasetEmbeddingValidator {
 
       if (!hasValidConfig) {
         // Missing configuration - set recommended defaults
-        const recommendedConfig = await this.getRecommendedEmbeddingConfig(organizationId)
+        const recommendedConfig =
+          await DatasetEmbeddingValidator.getRecommendedEmbeddingConfig(organizationId)
 
         await db
           .update(schema.Dataset)
@@ -366,7 +372,7 @@ export class DatasetEmbeddingValidator {
       }
 
       // Validate current configuration
-      const validation = await this.validateEmbeddingConfig(
+      const validation = await DatasetEmbeddingValidator.validateEmbeddingConfig(
         dataset.embeddingModel!,
         organizationId
       )
@@ -374,7 +380,8 @@ export class DatasetEmbeddingValidator {
       // If invalid, update with working configuration
       if (!validation.isValid) {
         const workingConfig =
-          validation.suggestedConfig || (await this.getRecommendedEmbeddingConfig(organizationId))
+          validation.suggestedConfig ||
+          (await DatasetEmbeddingValidator.getRecommendedEmbeddingConfig(organizationId))
 
         await db
           .update(schema.Dataset)

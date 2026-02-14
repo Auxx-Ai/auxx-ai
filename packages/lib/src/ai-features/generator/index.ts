@@ -2,10 +2,10 @@
 
 export { AIGeneratorService, getAIGeneratorService } from './ai-generator.service'
 export type {
-  GenerationType,
-  CodeLanguage,
-  CodeGeneratorInput,
-  CodeGeneratorOutput,
   AIGeneratorRequest,
   AIGeneratorResponse,
+  CodeGeneratorInput,
+  CodeGeneratorOutput,
+  CodeLanguage,
+  GenerationType,
 } from './types'

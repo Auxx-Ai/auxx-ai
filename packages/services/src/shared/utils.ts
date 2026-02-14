@@ -20,10 +20,7 @@ export function fromDatabase<T>(
 /**
  * Wrap S3 operations in Result type for error handling
  */
-export function fromS3<T>(
-  promise: Promise<T>,
-  operation: string
-): ResultAsync<T, S3Error> {
+export function fromS3<T>(promise: Promise<T>, operation: string): ResultAsync<T, S3Error> {
   return ResultAsync.fromPromise(promise, (error) => ({
     code: 'S3_ERROR' as const,
     message: `S3 operation "${operation}" failed`,

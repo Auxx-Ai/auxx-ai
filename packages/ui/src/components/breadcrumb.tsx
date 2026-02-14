@@ -1,11 +1,10 @@
-import * as React from 'react'
-import { Slot as SlotPrimitive } from 'radix-ui'
-import { ChevronRight, MoreHorizontal } from 'lucide-react'
-
 import { cn } from '@auxx/ui/lib/utils'
+import { ChevronRight, MoreHorizontal } from 'lucide-react'
+import { Slot as SlotPrimitive } from 'radix-ui'
+import type * as React from 'react'
 
 function Breadcrumb({ ...props }: React.ComponentProps<'nav'> & { separator?: React.ReactNode }) {
-  return <nav aria-label="breadcrumb" {...props} />
+  return <nav aria-label='breadcrumb' {...props} />
 }
 
 function BreadcrumbList({ className, ...props }: React.ComponentProps<'ol'>) {
@@ -37,9 +36,9 @@ function BreadcrumbLink({
 function BreadcrumbPage({ className, ...props }: React.ComponentProps<'span'>) {
   return (
     <span
-      role="link"
-      aria-disabled="true"
-      aria-current="page"
+      role='link'
+      aria-disabled='true'
+      aria-current='page'
       className={cn('font-normal text-foreground', className)}
       {...props}
     />
@@ -49,8 +48,8 @@ function BreadcrumbPage({ className, ...props }: React.ComponentProps<'span'>) {
 function BreadcrumbSeparator({ children, className, ...props }: React.ComponentProps<'li'>) {
   return (
     <li
-      role="presentation"
-      aria-hidden="true"
+      role='presentation'
+      aria-hidden='true'
       className={cn('[&>svg]:w-3.5 [&>svg]:h-3.5', className)}
       {...props}>
       {children ?? <ChevronRight />}
@@ -61,12 +60,12 @@ function BreadcrumbSeparator({ children, className, ...props }: React.ComponentP
 function BreadcrumbEllipsis({ className, ...props }: React.ComponentProps<'span'>) {
   return (
     <span
-      role="presentation"
-      aria-hidden="true"
+      role='presentation'
+      aria-hidden='true'
       className={cn('flex h-9 w-9 items-center justify-center', className)}
       {...props}>
-      <MoreHorizontal className="h-4 w-4" />
-      <span className="sr-only">More</span>
+      <MoreHorizontal className='h-4 w-4' />
+      <span className='sr-only'>More</span>
     </span>
   )
 }

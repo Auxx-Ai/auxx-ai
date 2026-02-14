@@ -1,9 +1,9 @@
 // apps/web/src/components/groups/store/groups-store.ts
 'use client'
 
-import { create } from 'zustand'
 import type { EntityInstanceEntity } from '@auxx/database'
 import type { GroupMember, GroupPermissionInfo } from '@auxx/types/groups'
+import { create } from 'zustand'
 
 /** Groups store state interface */
 interface GroupsStoreState {

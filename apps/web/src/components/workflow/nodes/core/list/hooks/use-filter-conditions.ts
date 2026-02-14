@@ -16,7 +16,7 @@ import type { ListNodeData } from '../types'
  */
 export function useFilterConditions(
   nodeData: ListNodeData,
-  setNodeData: (data: ListNodeData) => void,
+  setNodeData: (data: ListNodeData) => void
 ) {
   /**
    * Handler to update the filter conditions
@@ -31,7 +31,7 @@ export function useFilterConditions(
         },
       })
     },
-    [nodeData, setNodeData],
+    [nodeData, setNodeData]
   )
 
   return {

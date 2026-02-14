@@ -1,17 +1,17 @@
 // packages/lib/src/files/upload/processors/__tests__/unified-processor-system.test.ts
 
-import { describe, it, expect, beforeEach, vi, MockedFunction } from 'vitest'
-import { ProcessorRegistry } from '../processor-registry'
-import { FileProcessor } from '../file-processor'
-import {
-  TicketProcessor,
-  UserProfileProcessor,
-  ArticleProcessor,
-  WorkflowRunProcessor,
-} from '../entity-processors'
-import type { UploadInitConfig } from '../../init-types'
+import { beforeEach, describe, expect, it, type MockedFunction, vi } from 'vitest'
 import type { EntityType } from '../../../types/entities'
 import { ENTITY_TYPES } from '../../../types/entities'
+import type { UploadInitConfig } from '../../init-types'
+import {
+  ArticleProcessor,
+  TicketProcessor,
+  UserProfileProcessor,
+  WorkflowRunProcessor,
+} from '../entity-processors'
+import { FileProcessor } from '../file-processor'
+import { ProcessorRegistry } from '../processor-registry'
 
 // Mock the database and services
 vi.mock('@auxx/database', () => ({
@@ -181,7 +181,9 @@ describe('Unified Processor System', () => {
 
       // Mock database response
       const { database } = require('@auxx/database')
-      ;(database.query.Ticket.findFirst as MockedFunction<any>).mockResolvedValue({ id: 'ticket123' })
+      ;(database.query.Ticket.findFirst as MockedFunction<any>).mockResolvedValue({
+        id: 'ticket123',
+      })
     })
 
     it('should process config with ticket-specific policies', async () => {
@@ -328,7 +330,9 @@ describe('Unified Processor System', () => {
 
       // Mock database response
       const { database } = require('@auxx/database')
-      ;(database.query.WorkflowRun.findFirst as MockedFunction<any>).mockResolvedValue({ id: 'workflow123' })
+      ;(database.query.WorkflowRun.findFirst as MockedFunction<any>).mockResolvedValue({
+        id: 'workflow123',
+      })
     })
 
     it('should use multipart for files > 25MB', async () => {
@@ -378,7 +382,9 @@ describe('Unified Processor System', () => {
 
       const result = await processor.processConfig(config)
 
-      expect(result.config.storageKey).toMatch(/^org123\/file\/(?:temp|[a-zA-Z0-9_-]+)\/\d+_test_file\.pdf$/)
+      expect(result.config.storageKey).toMatch(
+        /^org123\/file\/(?:temp|[a-zA-Z0-9_-]+)\/\d+_test_file\.pdf$/
+      )
       expect(result.config.policy.keyPrefix).toBe('org123/')
       expect(result.config.storageKey.startsWith(result.config.policy.keyPrefix)).toBe(true)
     })

@@ -1,13 +1,12 @@
 // packages/lib/src/users/user-avatar-service.ts
 
-import { database as db } from '@auxx/database'
-import { schema } from '@auxx/database'
+import { database as db, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { createScopedLogger } from '../logger'
 import { S3Adapter } from '../files/adapters/s3-adapter'
+import type { UploadInitConfig } from '../files/upload/init-types'
 import { UserProfileProcessor } from '../files/upload/processors/entity-processors'
 import { SessionManager } from '../files/upload/session-manager'
-import type { UploadInitConfig } from '../files/upload/init-types'
+import { createScopedLogger } from '../logger'
 
 const logger = createScopedLogger('user-avatar-service')
 
@@ -157,7 +156,7 @@ export class UserAvatarService {
         return false
       }
 
-      const assetId = await this.downloadAndCreateAvatarAsset(
+      const assetId = await UserAvatarService.downloadAndCreateAvatarAsset(
         userId,
         user.image,
         user.defaultOrganizationId

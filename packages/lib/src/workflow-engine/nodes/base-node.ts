@@ -1,25 +1,25 @@
 // packages/lib/src/workflow-engine/nodes/base-node.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { safeJsonStringify } from '../utils/serialization'
-import type {
-  WorkflowNode,
-  WorkflowNodeType,
-  NodeProcessor,
-  NodeExecutionResult,
-  ValidationResult,
-  PreprocessedNodeData,
-} from '../core/types'
-import { NodeRunningStatus } from '../core/types'
-import type { ExecutionContextManager } from '../core/execution-context'
 import {
-  WorkflowNodeProcessingError,
-  WorkflowNodeExecutionError,
-  WorkflowNodeValidationError,
+  type NodeErrorContext,
   WorkflowNodeConfigurationError,
   WorkflowNodeError,
-  type NodeErrorContext,
+  WorkflowNodeExecutionError,
+  WorkflowNodeProcessingError,
+  WorkflowNodeValidationError,
 } from '../core/errors'
+import type { ExecutionContextManager } from '../core/execution-context'
+import type {
+  NodeExecutionResult,
+  NodeProcessor,
+  PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
+  WorkflowNodeType,
+} from '../core/types'
+import { NodeRunningStatus } from '../core/types'
+import { safeJsonStringify } from '../utils/serialization'
 
 const logger = createScopedLogger('base-node')
 

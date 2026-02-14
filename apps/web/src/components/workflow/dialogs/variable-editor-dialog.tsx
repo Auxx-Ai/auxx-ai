@@ -2,8 +2,8 @@
 
 'use client'
 
-import React, { useState, useEffect } from 'react'
 import { Button } from '@auxx/ui/components/button'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -12,31 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Input } from '@auxx/ui/components/input'
-import { Label } from '@auxx/ui/components/label'
-import { Switch } from '@auxx/ui/components/switch'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import {
-  VariableTypePicker,
-  type VariableTypeValue,
-} from '~/components/workflow/ui/variable-type-picker'
-import { BaseType } from '~/components/workflow/types/unified-types'
-import { useVarStore } from '~/components/workflow/store/use-var-store'
-import {
-  Plus,
-  Minus,
-  X,
-  Edit2,
-  Trash2,
-  Variable as VariableIcon,
-  Check,
-  Variable,
-} from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
-import { type EnvVar } from '~/components/workflow/types'
-import { useConfirm } from '~/hooks/use-confirm'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   Empty,
   EmptyDescription,
@@ -44,12 +19,37 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@auxx/ui/components/empty'
+import { Input } from '@auxx/ui/components/input'
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
 } from '@auxx/ui/components/input-group'
+import { Label } from '@auxx/ui/components/label'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Switch } from '@auxx/ui/components/switch'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
+import {
+  Check,
+  Edit2,
+  Minus,
+  Plus,
+  Trash2,
+  Variable,
+  Variable as VariableIcon,
+  X,
+} from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { useVarStore } from '~/components/workflow/store/use-var-store'
+import type { EnvVar } from '~/components/workflow/types'
+import { BaseType } from '~/components/workflow/types/unified-types'
+import {
+  VariableTypePicker,
+  type VariableTypeValue,
+} from '~/components/workflow/ui/variable-type-picker'
+import { useConfirm } from '~/hooks/use-confirm'
 
 interface VariableEditorDialogProps {
   open: boolean
@@ -106,29 +106,29 @@ function ArrayValueEditor({
   }
 
   return (
-    <div className="space-y-2">
+    <div className='space-y-2'>
       {value.map((item, index) => (
         <InputGroup key={index}>
           <InputGroupInput
             value={item}
             onChange={(e) => updateItem(index, e.target.value)}
             placeholder={`Item ${index + 1}`}
-            className="flex-1"
+            className='flex-1'
           />
-          <InputGroupAddon align="inline-end">
+          <InputGroupAddon align='inline-end'>
             <InputGroupButton
-              type="button"
-              className="rounded-full"
-              aria-label="Remove item"
-              title="Remove"
-              size="icon-xs"
+              type='button'
+              className='rounded-full'
+              aria-label='Remove item'
+              title='Remove'
+              size='icon-xs'
               onClick={() => removeItem(index)}>
               <Trash2 />
             </InputGroupButton>
           </InputGroupAddon>
         </InputGroup>
       ))}
-      <Button type="button" variant="ghost" size="xs" onClick={addItem} className="">
+      <Button type='button' variant='ghost' size='xs' onClick={addItem} className=''>
         <Plus />
         Add Item
       </Button>
@@ -186,19 +186,19 @@ function VariableItem({
           aria-label={`Select ${variable.name}`}
         />
       )}
-      <VariableIcon className="size-4 text-muted-foreground" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-sm">{variable.name}</span>
-          <span className="text-xs bg-secondary px-2 py-0.5 rounded">{variable.type}</span>
-          <div className="text-xs text-muted-foreground font-mono truncate">{displayValue()}</div>
+      <VariableIcon className='size-4 text-muted-foreground' />
+      <div className='flex-1 min-w-0'>
+        <div className='flex items-center gap-2'>
+          <span className='font-medium text-sm'>{variable.name}</span>
+          <span className='text-xs bg-secondary px-2 py-0.5 rounded'>{variable.type}</span>
+          <div className='text-xs text-muted-foreground font-mono truncate'>{displayValue()}</div>
         </div>
       </div>
       {!bulkSelectMode && (
-        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+        <div className='opacity-0 group-hover:opacity-100 transition-opacity flex gap-1'>
           <Button
-            variant="ghost"
-            size="icon-sm"
+            variant='ghost'
+            size='icon-sm'
             onClick={(e) => {
               e.stopPropagation()
               onEdit(variable)
@@ -207,9 +207,9 @@ function VariableItem({
             <Edit2 />
           </Button>
           <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-destructive hover:text-destructive"
+            variant='ghost'
+            size='icon-sm'
+            className='text-destructive hover:text-destructive'
             onClick={(e) => {
               e.stopPropagation()
               onDelete(variable.id)
@@ -254,7 +254,11 @@ export function VariableEditorDialog({ open, onOpenChange }: VariableEditorDialo
       setSelectedVariableIds(new Set())
       setBulkSelectMode(false)
       const defaultTypeValue = { baseType: BaseType.STRING, isArray: false }
-      setFormData({ name: '', value: getDefaultValue(defaultTypeValue), typeValue: defaultTypeValue })
+      setFormData({
+        name: '',
+        value: getDefaultValue(defaultTypeValue),
+        typeValue: defaultTypeValue,
+      })
     }
   }, [open])
 
@@ -409,7 +413,11 @@ export function VariableEditorDialog({ open, onOpenChange }: VariableEditorDialo
       setIsEditing(false)
       setEditingVariable(null)
       const defaultTypeValue = { baseType: BaseType.STRING, isArray: false }
-      setFormData({ name: '', value: getDefaultValue(defaultTypeValue), typeValue: defaultTypeValue })
+      setFormData({
+        name: '',
+        value: getDefaultValue(defaultTypeValue),
+        typeValue: defaultTypeValue,
+      })
     } catch (error) {
       console.error('Failed to save environment variable:', error)
       toastError({
@@ -508,31 +516,31 @@ export function VariableEditorDialog({ open, onOpenChange }: VariableEditorDialo
       case BaseType.NUMBER:
         return (
           <Input
-            type="number"
+            type='number'
             value={formData.value}
             onChange={(e) => setFormData({ ...formData, value: Number(e.target.value) })}
-            placeholder="Enter number"
+            placeholder='Enter number'
           />
         )
 
       case BaseType.BOOLEAN:
         return (
-          <div className="flex items-center space-x-2">
+          <div className='flex items-center space-x-2'>
             <Switch
               checked={formData.value}
               onCheckedChange={(checked) => setFormData({ ...formData, value: checked })}
             />
-            <Label className="text-sm">{formData.value ? 'True' : 'False'}</Label>
+            <Label className='text-sm'>{formData.value ? 'True' : 'False'}</Label>
           </div>
         )
 
       case BaseType.SECRET:
         return (
           <Input
-            type="password"
+            type='password'
             value={formData.value}
             onChange={(e) => setFormData({ ...formData, value: e.target.value })}
-            placeholder="Enter secret value"
+            placeholder='Enter secret value'
           />
         )
 
@@ -541,7 +549,7 @@ export function VariableEditorDialog({ open, onOpenChange }: VariableEditorDialo
           <Input
             value={formData.value}
             onChange={(e) => setFormData({ ...formData, value: e.target.value })}
-            placeholder="Enter value"
+            placeholder='Enter value'
           />
         )
     }
@@ -550,7 +558,7 @@ export function VariableEditorDialog({ open, onOpenChange }: VariableEditorDialo
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[80vh]" position="tc" size="md">
+        <DialogContent className='max-h-[80vh]' position='tc' size='md'>
           <DialogHeader>
             <DialogTitle>Environment Variables</DialogTitle>
             <DialogDescription>
@@ -559,33 +567,33 @@ export function VariableEditorDialog({ open, onOpenChange }: VariableEditorDialo
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-col gap-4">
+          <div className='flex flex-col gap-4'>
             {/* Variable List */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
+            <div className='space-y-3'>
+              <div className='flex items-center justify-between'>
                 {bulkSelectMode ? (
-                  <div className="flex items-center gap-3">
+                  <div className='flex items-center gap-3'>
                     <Checkbox
                       checked={
                         selectedVariableIds.size === envVariables.length && envVariables.length > 0
                       }
                       onCheckedChange={handleSelectAll}
-                      aria-label="Select all variables"
+                      aria-label='Select all variables'
                     />
-                    <span className="text-sm font-medium">
+                    <span className='text-sm font-medium'>
                       {selectedVariableIds.size > 0
                         ? `${selectedVariableIds.size} of ${envVariables.length} selected`
                         : 'Select all variables'}
                     </span>
                   </div>
                 ) : (
-                  <Label className="text-sm font-medium">Variables</Label>
+                  <Label className='text-sm font-medium'>Variables</Label>
                 )}
-                <div className="flex items-center gap-2">
+                <div className='flex items-center gap-2'>
                   {envVariables.length > 0 && (
                     <Button
                       variant={bulkSelectMode ? 'default' : 'outline'}
-                      size="xs"
+                      size='xs'
                       onClick={toggleBulkSelectMode}>
                       <Check />
                       {bulkSelectMode ? 'Cancel Selection' : 'Select Multiple'}
@@ -594,15 +602,15 @@ export function VariableEditorDialog({ open, onOpenChange }: VariableEditorDialo
 
                   {bulkSelectMode ? (
                     selectedVariableIds.size > 0 && (
-                      <Button variant="destructive" size="xs" onClick={handleBulkDelete}>
+                      <Button variant='destructive' size='xs' onClick={handleBulkDelete}>
                         <Trash2 />
                         Delete Selected ({selectedVariableIds.size})
                       </Button>
                     )
                   ) : (
                     <Button
-                      variant="outline"
-                      size="xs"
+                      variant='outline'
+                      size='xs'
                       onClick={() => setIsEditing(true)}
                       disabled={isEditing}>
                       <Plus />
@@ -615,10 +623,10 @@ export function VariableEditorDialog({ open, onOpenChange }: VariableEditorDialo
               {/* Bulk Actions Bar */}
 
               {envVariables.length === 0 ? (
-                <div className="h-[200px]">
-                  <Empty className="border border-primary-300">
-                    <EmptyHeader className="gap-0">
-                      <EmptyMedia variant="icon" className="bg-primary-100">
+                <div className='h-[200px]'>
+                  <Empty className='border border-primary-300'>
+                    <EmptyHeader className='gap-0'>
+                      <EmptyMedia variant='icon' className='bg-primary-100'>
                         <Variable />
                       </EmptyMedia>
                       <EmptyTitle>No env variables</EmptyTitle>
@@ -627,8 +635,8 @@ export function VariableEditorDialog({ open, onOpenChange }: VariableEditorDialo
                   </Empty>
                 </div>
               ) : (
-                <ScrollArea className="h-[200px] border rounded-lg p-2">
-                  <div className="space-y-2">
+                <ScrollArea className='h-[200px] border rounded-lg p-2'>
+                  <div className='space-y-2'>
                     {envVariables.map((variable) => (
                       <VariableItem
                         key={variable.id}
@@ -649,24 +657,24 @@ export function VariableEditorDialog({ open, onOpenChange }: VariableEditorDialo
 
             {/* Edit Form */}
             {isEditing && (
-              <div className="space-y-2 border rounded-lg p-2 bg-primary-100 ">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">
+              <div className='space-y-2 border rounded-lg p-2 bg-primary-100 '>
+                <div className='flex items-center justify-between'>
+                  <Label className='text-sm font-medium'>
                     {editingVariable ? 'Edit Variable' : 'Add Variable'}
                   </Label>
-                  <Button variant="ghost" size="icon" onClick={handleCancel} className="h-6 w-6">
+                  <Button variant='ghost' size='icon' onClick={handleCancel} className='h-6 w-6'>
                     <X />
                   </Button>
                 </div>
 
-                <div className="relative">
+                <div className='relative'>
                   <Input
-                    id="var-name"
+                    id='var-name'
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="VARIABLE_NAME"
+                    placeholder='VARIABLE_NAME'
                   />
-                  <div className="absolute right-1 top-1/2 -translate-y-1/2">
+                  <div className='absolute right-1 top-1/2 -translate-y-1/2'>
                     <VariableTypePicker
                       value={formData.typeValue}
                       onChange={(newTypeValue) => {
@@ -675,7 +683,7 @@ export function VariableEditorDialog({ open, onOpenChange }: VariableEditorDialo
                       }}
                       compact
                       popoverWidth={320}
-                      align="end"
+                      align='end'
                       excludeTypes={[
                         BaseType.DATE,
                         BaseType.DATETIME,
@@ -695,17 +703,17 @@ export function VariableEditorDialog({ open, onOpenChange }: VariableEditorDialo
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="var-value">Value</Label>
+                <div className='space-y-2'>
+                  <Label htmlFor='var-value'>Value</Label>
                   {renderValueInput()}
                 </div>
 
-                <div className="flex gap-2 flex-row justify-end">
-                  <Button variant="ghost" onClick={handleCancel} size="sm">
+                <div className='flex gap-2 flex-row justify-end'>
+                  <Button variant='ghost' onClick={handleCancel} size='sm'>
                     Cancel
                   </Button>
 
-                  <Button onClick={handleSave} size="sm" variant="outline">
+                  <Button onClick={handleSave} size='sm' variant='outline'>
                     {editingVariable ? 'Update' : 'Create'}
                   </Button>
                 </div>

@@ -1,94 +1,95 @@
 // packages/utils/src/index.ts
 
-// Browser utilities
-export { isMac, IS_MAC_SCRIPT } from './browser'
-
 // Array utilities
 export { uniqueBy } from './arrays'
-
+// Browser utilities
+export { IS_MAC_SCRIPT, isMac } from './browser'
+// Calc expression utilities
+export {
+  CALC_FUNCTIONS,
+  type CalcFunction,
+  evaluateCalcExpression,
+  getAvailableFunctions,
+  type ParsedExpression,
+  validateCalcExpression,
+} from './calc-expression'
 // Comment utilities
-export { groupConsecutiveComments, getGroupPosition } from './comments'
-
+export { getGroupPosition, groupConsecutiveComments } from './comments'
 // Contact utilities
 export {
-  getFullName,
-  getContactDisplayName,
-  getInitials,
-  getInitialsFromName,
   type ContactName,
-  formatPhoneNumber,
-  formatStreetAddress,
+  formatCityName,
   formatCompanyName,
   formatComplexName,
-  formatCityName,
+  formatPhoneNumber,
+  formatStreetAddress,
+  getContactDisplayName,
+  getFullName,
+  getInitials,
+  getInitialsFromName,
 } from './contact'
-
 // Currency utilities
 export {
-  formatCurrency,
-  parseToCents,
+  type CurrencyDisplayOptions,
   centsToDollars,
   convertToCents,
-  type CurrencyDisplayOptions,
+  formatCurrency,
+  parseToCents,
 } from './currency'
-
 // Date utilities
 export {
-  formatRelativeTime,
-  isSameWeek,
-  getStartOfWeek,
-  getEndOfWeek,
   formatInTimezone,
+  formatRelativeTime,
   formatRelativeTimeWithTimezone,
   getCurrentTimeInTimezone,
+  getEndOfWeek,
+  getStartOfWeek,
+  isSameWeek,
 } from './date'
-
-// Timezone utilities (re-export everything)
-export * from './timezone'
 
 // Email utilities
 export {
-  parseEmailString,
-  formatEmailAddress,
+  buildGraphFileAttachment,
+  buildThreadingHeaders,
+  emailsAreEquivalent,
+  encodeEmailHeader,
   extractDomainFromEmail,
   extractEmailAddress,
-  formatEmail,
-  normalizeEmail,
-  isUserEmail,
   extractNameFromHeader,
-  isValidEmail,
-  emailsAreEquivalent,
-  normalizeMessageId,
-  htmlToPlainText,
+  formatEmail,
+  formatEmailAddress,
   formatEmailList,
-  encodeEmailHeader,
-  validateSendAsAddress,
+  htmlToPlainText,
+  isUserEmail,
+  isValidEmail,
+  normalizeEmail,
+  normalizeMessageId,
+  parseEmailString,
   sanitizeHeaderValue,
-  buildThreadingHeaders,
   toGraphRecipients,
-  buildGraphFileAttachment,
+  validateSendAsAddress,
 } from './email'
 
 // File utilities
 export {
+  calculateBase64Size,
   formatBytes,
-  getFileExtension,
+  getAttachmentByteSize,
   getDirectoryPath,
+  getFileExtension,
+  getFilenameFromPath,
+  getMimeTypeFromExtension,
   isImageFile,
   isPreviewableImage,
   sanitizeFilename,
-  calculateBase64Size,
   validateAttachmentSizes,
-  getMimeTypeFromExtension,
-  getAttachmentByteSize,
-  getFilenameFromPath,
 } from './file'
 
 // Fractional indexing utilities
 export {
+  BASE_62_DIGITS,
   generateKeyBetween,
   generateNKeysBetween,
-  BASE_62_DIGITS,
   getSmartSortPositions,
   type SmartSortItem,
   type SmartSortResult,
@@ -105,26 +106,22 @@ export { filterSensitiveHeaders } from './headers'
 
 // MIME utilities
 export {
-  foldMimeHeader,
-  encodeRFC2231Filename,
-  encodeQuotedPrintable,
   encodeBase64WithLineBreaks,
-  generateMimeBoundary,
-  validateMimeStructure,
+  encodeQuotedPrintable,
+  encodeRFC2231Filename,
   ensureCRLF,
+  foldMimeHeader,
+  generateMimeBoundary,
   parseMultipartMixedResponse,
   validateLineLengths,
+  validateMimeStructure,
 } from './mime'
 
 // Object utilities
-export { cloneDeep, getByPath, deepMerge } from './objects'
+export { cloneDeep, deepMerge, getByPath } from './objects'
 
 // Parse utilities
 export { parseBoolean } from './parse'
-
-// Retry utilities
-export { withRetry } from './retry'
-
 // Relationship utilities
 export {
   getInverseCardinality,
@@ -132,14 +129,16 @@ export {
   isSingleRelationship,
   type RelationshipType,
 } from './relationships'
+// Retry utilities
+export { withRetry } from './retry'
 
 // String utilities
 export {
-  titleize,
-  removeExcessiveWhitespace,
-  pluralize,
-  interpretEscapeSequences,
   incrementTitle,
+  interpretEscapeSequences,
+  pluralize,
+  removeExcessiveWhitespace,
+  titleize,
 } from './strings'
 
 // Task date utilities
@@ -147,22 +146,14 @@ export {
   addDays,
   addMonths,
   addYears,
-  calculateTargetDate,
-  calculateTargetDateInTimezone,
+  calculateDuration,
   calculateEndOfMonth,
   calculateNextQuarter,
-  calculateDuration,
+  calculateTargetDate,
+  calculateTargetDateInTimezone,
+  formatAbsoluteDate,
   formatRelativeDate,
   formatTimeRemaining,
-  formatAbsoluteDate,
 } from './task-date'
-
-// Calc expression utilities
-export {
-  evaluateCalcExpression,
-  validateCalcExpression,
-  getAvailableFunctions,
-  CALC_FUNCTIONS,
-  type CalcFunction,
-  type ParsedExpression,
-} from './calc-expression'
+// Timezone utilities (re-export everything)
+export * from './timezone'

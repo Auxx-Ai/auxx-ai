@@ -1,8 +1,8 @@
 // packages/lib/src/import/mapping/get-mapped-columns.ts
 
-import { eq, and, asc, sql } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { and, asc, eq, sql } from 'drizzle-orm'
 
 /**
  * Input for getting mapped columns with stats.
@@ -40,10 +40,7 @@ export async function getMappedColumnsWithStats(
 
   // Get job with mapping and properties in single query
   const job = await db.query.ImportJob.findFirst({
-    where: and(
-      eq(schema.ImportJob.id, jobId),
-      eq(schema.ImportJob.organizationId, organizationId)
-    ),
+    where: and(eq(schema.ImportJob.id, jobId), eq(schema.ImportJob.organizationId, organizationId)),
     with: {
       importMapping: {
         with: {
@@ -66,9 +63,7 @@ export async function getMappedColumnsWithStats(
   const mappableByIndex = new Map(mappableProps.map((p) => [p.columnIndex, p]))
 
   // Filter to non-skipped columns
-  const mappedProperties = job.importMapping.properties.filter(
-    (p) => p.targetType !== 'skip'
-  )
+  const mappedProperties = job.importMapping.properties.filter((p) => p.targetType !== 'skip')
 
   if (mappedProperties.length === 0) {
     return []
@@ -79,7 +74,9 @@ export async function getMappedColumnsWithStats(
   const uniqueCounts = await db
     .select({
       columnIndex: schema.ImportJobRawData.columnIndex,
-      uniqueCount: sql<number>`count(distinct ${schema.ImportJobRawData.valueHash})`.as('unique_count'),
+      uniqueCount: sql<number>`count(distinct ${schema.ImportJobRawData.valueHash})`.as(
+        'unique_count'
+      ),
     })
     .from(schema.ImportJobRawData)
     .where(
@@ -100,7 +97,9 @@ export async function getMappedColumnsWithStats(
       sql`${schema.ImportJobProperty.importMappingPropertyId} IN (${sql.raw(mappingPropertyIds.map((id) => `'${id}'`).join(','))})`
     ),
   })
-  const errorByPropertyId = new Map(jobProperties.map((p) => [p.importMappingPropertyId, p.errorCount ?? 0]))
+  const errorByPropertyId = new Map(
+    jobProperties.map((p) => [p.importMappingPropertyId, p.errorCount ?? 0])
+  )
 
   // Build result
   return mappedProperties.map((prop) => {

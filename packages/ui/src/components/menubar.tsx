@@ -1,10 +1,9 @@
 'use client'
 
-import * as React from 'react'
-import { Menubar as MenubarPrimitive } from 'radix-ui'
-import { Check, ChevronRight, Circle } from 'lucide-react'
-
 import { cn } from '@auxx/ui/lib/utils'
+import { Check, ChevronRight, Circle } from 'lucide-react'
+import { Menubar as MenubarPrimitive } from 'radix-ui'
+import type * as React from 'react'
 
 function MenubarMenu({ ...props }: React.ComponentProps<typeof MenubarPrimitive.Menu>) {
   return <MenubarPrimitive.Menu {...props} />
@@ -23,7 +22,7 @@ function MenubarRadioGroup({ ...props }: React.ComponentProps<typeof MenubarPrim
 }
 
 function MenubarSub({ ...props }: React.ComponentProps<typeof MenubarPrimitive.Sub>) {
-  return <MenubarPrimitive.Sub data-slot="menubar-sub" {...props} />
+  return <MenubarPrimitive.Sub data-slot='menubar-sub' {...props} />
 }
 
 function Menubar({ className, ...props }: React.ComponentProps<typeof MenubarPrimitive.Root>) {
@@ -68,7 +67,7 @@ function MenubarSubTrigger({
       )}
       {...props}>
       {children}
-      <ChevronRight className="ml-auto h-4 w-4" />
+      <ChevronRight className='ml-auto h-4 w-4' />
     </MenubarPrimitive.SubTrigger>
   )
 }
@@ -142,9 +141,9 @@ function MenubarCheckboxItem({
       )}
       checked={checked}
       {...props}>
-      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+      <span className='absolute left-2 flex h-3.5 w-3.5 items-center justify-center'>
         <MenubarPrimitive.ItemIndicator>
-          <Check className="h-4 w-4" />
+          <Check className='h-4 w-4' />
         </MenubarPrimitive.ItemIndicator>
       </span>
       {children}
@@ -164,9 +163,9 @@ function MenubarRadioItem({
         className
       )}
       {...props}>
-      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+      <span className='absolute left-2 flex h-3.5 w-3.5 items-center justify-center'>
         <MenubarPrimitive.ItemIndicator>
-          <Circle className="h-4 w-4 fill-current" />
+          <Circle className='h-4 w-4 fill-current' />
         </MenubarPrimitive.ItemIndicator>
       </span>
       {children}

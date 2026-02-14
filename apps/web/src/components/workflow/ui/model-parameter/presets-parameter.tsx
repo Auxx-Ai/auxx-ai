@@ -1,10 +1,5 @@
 // apps/web/src/components/workflow/ui/model-parameter/presets-parameter.tsx
 
-import type { FC } from 'react'
-import { useCallback } from 'react'
-import { PresetsParameterProps } from './types'
-import { TONE_LIST } from './constants'
-import { cn } from '@auxx/ui/lib/utils'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -12,7 +7,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, Palette, Scale, Target } from 'lucide-react'
+import type { FC } from 'react'
+import { useCallback } from 'react'
+import { TONE_LIST } from './constants'
+import type { PresetsParameterProps } from './types'
 
 const PresetsParameter: FC<PresetsParameterProps> = ({ onSelect }) => {
   const getToneIcon = (toneId: number) => {
@@ -37,18 +37,18 @@ const PresetsParameter: FC<PresetsParameterProps> = ({ onSelect }) => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button size="sm" variant="outline" className="h-6 px-2 text-xs">
+        <Button size='sm' variant='outline' className='h-6 px-2 text-xs'>
           Load Presets
-          <ChevronDown className="ml-0.5 size-2 text-muted-foreground" />
+          <ChevronDown className='ml-0.5 size-2 text-muted-foreground' />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-40 z-61">
+      <DropdownMenuContent align='end' className='w-40 z-61'>
         {TONE_LIST.slice(0, 3).map((tone) => (
           <DropdownMenuItem
             key={tone.id}
             onClick={() => onSelect(tone.id)}
-            className="cursor-pointer">
-            <div className="flex h-full items-center">
+            className='cursor-pointer'>
+            <div className='flex h-full items-center'>
               {getToneIcon(tone.id)}
               {getToneName(tone.name)}
             </div>

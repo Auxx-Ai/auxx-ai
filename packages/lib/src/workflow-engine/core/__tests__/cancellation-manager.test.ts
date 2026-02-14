@@ -1,6 +1,6 @@
 // packages/lib/src/workflow-engine/core/__tests__/cancellation-manager.test.ts
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { CancellationManager } from '../cancellation-manager'
 
 describe('CancellationManager', () => {

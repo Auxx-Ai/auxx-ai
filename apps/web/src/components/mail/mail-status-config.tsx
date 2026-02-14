@@ -1,19 +1,20 @@
 // apps/web/src/components/mail/mail-status-config.ts
+
+import { IntegrationAuthStatus, JobStatus, SendStatus, SYNC_STATUS } from '@auxx/database/enums'
 import {
-  CheckCircle,
-  XCircle,
-  Clock,
   AlertCircle,
-  RefreshCw,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
   Loader2,
   Mail,
-  Phone,
   MessageSquare,
-  AlertTriangle,
   Pause,
+  Phone,
+  RefreshCw,
+  XCircle,
 } from 'lucide-react'
-import { GoogleIcon, OutlookIcon, FacebookIcon, InstagramIcon } from '~/constants/icons'
-import { JobStatus, SendStatus, SYNC_STATUS, IntegrationAuthStatus } from '@auxx/database/enums'
+import { FacebookIcon, GoogleIcon, InstagramIcon, OutlookIcon } from '~/constants/icons'
 // ============================================================================
 // Processing Job Status Configuration
 // ============================================================================
@@ -421,7 +422,7 @@ export function getIntegrationConfig(integration?: string | null) {
 export function getIntegrationIcon(integration?: string | null) {
   const config = getIntegrationConfig(integration)
   const Icon = config.icon
-  return <Icon className="h-3 w-3" />
+  return <Icon className='h-3 w-3' />
 }
 /**
  * Get integration icon constructor (for dynamic usage)

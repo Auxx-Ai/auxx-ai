@@ -1,9 +1,9 @@
 // apps/web/src/components/dynamic-table/hooks/use-table-selectors.ts
 
-import { useShallow } from 'zustand/react/shallow'
 import type { RowSelectionState } from '@tanstack/react-table'
-import type { CellSelectionState } from '../types'
+import { useShallow } from 'zustand/react/shallow'
 import { useSelectionStore } from '../stores/selection-store'
+import type { CellSelectionState } from '../types'
 
 // ============================================================================
 // STABLE REFERENCES (prevent unnecessary re-renders)

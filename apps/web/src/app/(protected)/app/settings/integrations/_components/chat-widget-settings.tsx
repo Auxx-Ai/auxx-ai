@@ -1,13 +1,18 @@
 // ~/app/(protected)/app/settings/integrations/_components/chat-widget-settings.tsx
 'use client'
-import React, { useState, useEffect, useMemo } from 'react'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
-import { useRouter } from 'next/navigation'
-import { api } from '~/trpc/react'
+import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { CopyButton } from '@auxx/ui/components/button-copy'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@auxx/ui/components/card'
 import {
   Form,
   FormControl,
@@ -18,17 +23,6 @@ import {
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import { Switch } from '@auxx/ui/components/switch'
-import { Textarea } from '@auxx/ui/components/textarea'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@auxx/ui/components/card'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import {
   Select,
   SelectContent,
@@ -36,17 +30,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs' // Import Tabs components
-import { Loader2, ArrowLeft, AlertCircle, InboxIcon, Eye } from 'lucide-react'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
 import { Separator } from '@auxx/ui/components/separator'
-import { Badge } from '@auxx/ui/components/badge'
-import { useIntegration } from '~/hooks/use-integration'
-import { CopyButton } from '@auxx/ui/components/button-copy'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { Switch } from '@auxx/ui/components/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs' // Import Tabs components
+import { Textarea } from '@auxx/ui/components/textarea'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { AlertCircle, ArrowLeft, Eye, InboxIcon, Loader2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import SettingsPage from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useIntegration } from '~/hooks/use-integration'
+import { api } from '~/trpc/react'
 
 interface ChatWidgetSettingsPageProps {
   integrationId: string
@@ -262,18 +261,18 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
   // --- Loading/Error States ---
   if (isLoadingData || isLoadingInboxes) {
     return (
-      <div className="container space-y-4 py-6">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-10 w-full max-w-sm" />
-        <Skeleton className="h-96 w-full" />
+      <div className='container space-y-4 py-6'>
+        <Skeleton className='h-8 w-64' />
+        <Skeleton className='h-10 w-full max-w-sm' />
+        <Skeleton className='h-96 w-full' />
       </div>
     )
   }
   if (dataError || !integrationData || !integrationData.chatWidget) {
     return (
-      <div className="container py-6">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
+      <div className='container py-6'>
+        <Alert variant='destructive'>
+          <AlertCircle className='h-4 w-4' />
           <AlertTitle>Error</AlertTitle>
           <AlertDescription>{dataError?.message || 'Failed...'}</AlertDescription>
         </Alert>
@@ -329,34 +328,34 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
   return (
     <SettingsPage
       title={`Edit Chat Widget: ${integrationData.name || widget.name}`}
-      description="Modify the appearance, behavior, and settings."
+      description='Modify the appearance, behavior, and settings.'
       breadcrumbs={[
         { title: 'Settings', href: '/app/settings' },
         { title: 'Integrations', href: '/app/settings/integrations' },
         { title: 'Chat Widget' },
       ]}
       button={
-        <Button variant="outline" size="sm" onClick={handleBack}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
+        <Button variant='outline' size='sm' onClick={handleBack}>
+          <ArrowLeft className='mr-2 h-4 w-4' />
           Back
         </Button>
       }>
       <ConfirmDialog />
-      <div className=" space-y-6 p-6">
+      <div className=' space-y-6 p-6'>
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex shrink-0 items-center space-x-2">
-            <span className="text-sm font-medium">Status:</span>
+        <div className='flex flex-wrap items-center justify-between gap-4'>
+          <div className='flex shrink-0 items-center space-x-2'>
+            <span className='text-sm font-medium'>Status:</span>
             <Switch
               checked={integrationData.enabled}
               onCheckedChange={handleToggleStatus}
               disabled={toggleIntegration.isPending}
-              aria-label="Toggle Integration Status"
+              aria-label='Toggle Integration Status'
             />
             <span
               className={`text-sm font-medium ${integrationData.enabled ? 'text-green-600' : 'text-muted-foreground'}`}>
               {toggleIntegration.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className='h-4 w-4 animate-spin' />
               ) : integrationData.enabled ? (
                 'Enabled'
               ) : (
@@ -364,9 +363,9 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
               )}
             </span>
           </div>
-          <div className="flex items-center space-x-2">
-            <Button variant="outline" size="sm" onClick={handlePreview} disabled={!integrationData}>
-              <Eye className="mr-2 h-4 w-4" />
+          <div className='flex items-center space-x-2'>
+            <Button variant='outline' size='sm' onClick={handlePreview} disabled={!integrationData}>
+              <Eye className='mr-2 h-4 w-4' />
               Preview Widget
             </Button>
           </div>
@@ -374,9 +373,9 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
 
         {/* Inbox Routing (Separate Card) */}
         <div>
-          <div className="flex items-center justify-between">
-            <CardHeader className="pl-0">
-              <CardTitle className="flex items-center gap-2">
+          <div className='flex items-center justify-between'>
+            <CardHeader className='pl-0'>
+              <CardTitle className='flex items-center gap-2'>
                 <InboxIcon size={20} /> Inbox Routing
               </CardTitle>
               <CardDescription>
@@ -388,7 +387,7 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                 value={integrationData.inboxId ?? NO_INBOX_VALUE}
                 onValueChange={handleInboxChange}
                 disabled={isLoadingInboxes || updateChatWidget.isPending}>
-                <SelectTrigger className="w-full md:w-[350px]">
+                <SelectTrigger className='w-full md:w-[350px]'>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -399,13 +398,13 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                     </SelectItem>
                   ))}
                   {!inboxesData?.length && !isLoadingInboxes && (
-                    <div className="p-2 text-sm text-muted-foreground">No inboxes.</div>
+                    <div className='p-2 text-sm text-muted-foreground'>No inboxes.</div>
                   )}
                 </SelectContent>
               </Select>
               {updateChatWidget.isPending && (
-                <p className="mt-2 flex items-center gap-1 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Updating...
+                <p className='mt-2 flex items-center gap-1 text-sm text-muted-foreground'>
+                  <Loader2 className='h-4 w-4 animate-spin' /> Updating...
                 </p>
               )}
             </div>
@@ -414,27 +413,27 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
 
         {/* --- Settings Tabs --- */}
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6'>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-3 md:grid-cols-6">
-                <TabsTrigger value="general">General</TabsTrigger>
-                <TabsTrigger value="appearance">Appearance</TabsTrigger>
-                <TabsTrigger value="behavior">Behavior</TabsTrigger>
-                <TabsTrigger value="domains">Domains</TabsTrigger>
-                <TabsTrigger value="ai">AI</TabsTrigger>
-                <TabsTrigger value="installation">Installation</TabsTrigger>
+              <TabsList className='grid w-full grid-cols-3 md:grid-cols-6'>
+                <TabsTrigger value='general'>General</TabsTrigger>
+                <TabsTrigger value='appearance'>Appearance</TabsTrigger>
+                <TabsTrigger value='behavior'>Behavior</TabsTrigger>
+                <TabsTrigger value='domains'>Domains</TabsTrigger>
+                <TabsTrigger value='ai'>AI</TabsTrigger>
+                <TabsTrigger value='installation'>Installation</TabsTrigger>
               </TabsList>
 
               {/* General Tab */}
-              <TabsContent value="general" className="mt-6">
+              <TabsContent value='general' className='mt-6'>
                 <Card>
                   <CardHeader>
                     <CardTitle>General Settings</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className='space-y-4'>
                     <FormField
                       control={form.control}
-                      name="name"
+                      name='name'
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Widget Name (Internal)</FormLabel>
@@ -453,15 +452,15 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
               </TabsContent>
 
               {/* Appearance Tab */}
-              <TabsContent value="appearance" className="mt-6">
+              <TabsContent value='appearance' className='mt-6'>
                 <Card>
                   <CardHeader>
                     <CardTitle>Appearance Customization</CardTitle>
                   </CardHeader>
-                  <CardContent className="grid grid-cols-1 gap-4 space-y-4 md:grid-cols-2">
+                  <CardContent className='grid grid-cols-1 gap-4 space-y-4 md:grid-cols-2'>
                     <FormField
                       control={form.control}
-                      name="title"
+                      name='title'
                       render={({ field }) => (
                         <FormItem>
                           {' '}
@@ -475,7 +474,7 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                     />
                     <FormField
                       control={form.control}
-                      name="subtitle"
+                      name='subtitle'
                       render={({ field }) => (
                         <FormItem>
                           {' '}
@@ -489,13 +488,13 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                     />
                     <FormField
                       control={form.control}
-                      name="primaryColor"
+                      name='primaryColor'
                       render={({ field }) => (
                         <FormItem>
                           {' '}
                           <FormLabel>Primary Color</FormLabel>{' '}
                           <FormControl>
-                            <Input type="color" {...field} />
+                            <Input type='color' {...field} />
                           </FormControl>
                           <FormMessage />{' '}
                         </FormItem>
@@ -503,13 +502,13 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                     />
                     <FormField
                       control={form.control}
-                      name="logoUrl"
+                      name='logoUrl'
                       render={({ field }) => (
                         <FormItem>
                           {' '}
                           <FormLabel>Logo URL (Optional)</FormLabel>{' '}
                           <FormControl>
-                            <Input type="url" {...field} />
+                            <Input type='url' {...field} />
                           </FormControl>{' '}
                           <FormMessage />{' '}
                         </FormItem>
@@ -517,7 +516,7 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                     />
                     <FormField
                       control={form.control}
-                      name="position"
+                      name='position'
                       render={({ field }) => (
                         <FormItem>
                           {' '}
@@ -531,10 +530,10 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                             </FormControl>{' '}
                             <SelectContent>
                               {' '}
-                              <SelectItem value="BOTTOM_RIGHT">Bottom Right</SelectItem>{' '}
-                              <SelectItem value="BOTTOM_LEFT">Bottom Left</SelectItem>{' '}
-                              <SelectItem value="TOP_RIGHT">Top Right</SelectItem>{' '}
-                              <SelectItem value="TOP_LEFT">Top Left</SelectItem>{' '}
+                              <SelectItem value='BOTTOM_RIGHT'>Bottom Right</SelectItem>{' '}
+                              <SelectItem value='BOTTOM_LEFT'>Bottom Left</SelectItem>{' '}
+                              <SelectItem value='TOP_RIGHT'>Top Right</SelectItem>{' '}
+                              <SelectItem value='TOP_LEFT'>Top Left</SelectItem>{' '}
                             </SelectContent>{' '}
                           </Select>{' '}
                           <FormMessage />{' '}
@@ -546,15 +545,15 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
               </TabsContent>
 
               {/* Behavior Tab */}
-              <TabsContent value="behavior" className="mt-6">
+              <TabsContent value='behavior' className='mt-6'>
                 <Card>
                   <CardHeader>
                     <CardTitle>Widget Behavior</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-6">
+                  <CardContent className='space-y-6'>
                     <FormField
                       control={form.control}
-                      name="welcomeMessage"
+                      name='welcomeMessage'
                       render={({ field }) => (
                         <FormItem>
                           {' '}
@@ -569,7 +568,7 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                     />
                     <FormField
                       control={form.control}
-                      name="offlineMessage"
+                      name='offlineMessage'
                       render={({ field }) => (
                         <FormItem>
                           {' '}
@@ -584,12 +583,12 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                         </FormItem>
                       )}
                     />
-                    <div className="grid grid-cols-1 gap-4 pt-4 md:grid-cols-3">
+                    <div className='grid grid-cols-1 gap-4 pt-4 md:grid-cols-3'>
                       <FormField
                         control={form.control}
-                        name="autoOpen"
+                        name='autoOpen'
                         render={({ field }) => (
-                          <FormItem className="flex items-center justify-between rounded-lg border p-4">
+                          <FormItem className='flex items-center justify-between rounded-lg border p-4'>
                             {' '}
                             <FormLabel>Auto Open</FormLabel>{' '}
                             <FormControl>
@@ -600,9 +599,9 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                       />
                       <FormField
                         control={form.control}
-                        name="mobileFullScreen"
+                        name='mobileFullScreen'
                         render={({ field }) => (
-                          <FormItem className="flex items-center justify-between rounded-lg border p-4">
+                          <FormItem className='flex items-center justify-between rounded-lg border p-4'>
                             {' '}
                             <FormLabel>Mobile Full Screen</FormLabel>{' '}
                             <FormControl>
@@ -613,9 +612,9 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                       />
                       <FormField
                         control={form.control}
-                        name="collectUserInfo"
+                        name='collectUserInfo'
                         render={({ field }) => (
-                          <FormItem className="flex items-center justify-between rounded-lg border p-4">
+                          <FormItem className='flex items-center justify-between rounded-lg border p-4'>
                             {' '}
                             <FormLabel>Collect User Info</FormLabel>{' '}
                             <FormControl>
@@ -630,7 +629,7 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
               </TabsContent>
 
               {/* Domains Tab */}
-              <TabsContent value="domains" className="mt-6">
+              <TabsContent value='domains' className='mt-6'>
                 <Card>
                   <CardHeader>
                     <CardTitle>Allowed Domains</CardTitle>
@@ -639,9 +638,9 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex items-center space-x-2">
+                    <div className='flex items-center space-x-2'>
                       <Input
-                        placeholder="example.com"
+                        placeholder='example.com'
                         value={currentDomain}
                         onChange={(e) => setCurrentDomain(e.target.value)}
                         onKeyDown={(e) => {
@@ -651,35 +650,35 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                           }
                         }}
                       />
-                      <Button type="button" variant="outline" onClick={handleAddDomain}>
+                      <Button type='button' variant='outline' onClick={handleAddDomain}>
                         Add
                       </Button>
                     </div>
-                    <div className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded border p-2">
+                    <div className='mt-3 max-h-40 space-y-1 overflow-y-auto rounded border p-2'>
                       {form.watch('allowedDomains')?.map((domain) => (
                         <div
                           key={domain}
-                          className="flex items-center justify-between rounded bg-background p-1 px-2 text-sm">
+                          className='flex items-center justify-between rounded bg-background p-1 px-2 text-sm'>
                           <span>{domain}</span>
                           <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
+                            type='button'
+                            variant='ghost'
+                            size='sm'
                             onClick={() => handleRemoveDomain(domain)}
-                            className="h-6 px-1 text-muted-foreground hover:text-destructive">
+                            className='h-6 px-1 text-muted-foreground hover:text-destructive'>
                             Remove
                           </Button>
                         </div>
                       ))}
                       {form.watch('allowedDomains')?.length === 0 && (
-                        <p className="py-2 text-center text-sm text-muted-foreground">
+                        <p className='py-2 text-center text-sm text-muted-foreground'>
                           No domain restrictions applied.
                         </p>
                       )}
                     </div>
                     <FormField
                       control={form.control}
-                      name="allowedDomains"
+                      name='allowedDomains'
                       render={() => <FormMessage />}
                     />
                   </CardContent>
@@ -687,19 +686,19 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
               </TabsContent>
 
               {/* AI Tab */}
-              <TabsContent value="ai" className="mt-6">
+              <TabsContent value='ai' className='mt-6'>
                 <Card>
                   <CardHeader>
                     <CardTitle>AI Settings</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className='space-y-4'>
                     <FormField
                       control={form.control}
-                      name="useAi"
+                      name='useAi'
                       render={({ field }) => (
-                        <FormItem className="flex items-center justify-between rounded-lg border p-4">
+                        <FormItem className='flex items-center justify-between rounded-lg border p-4'>
                           {' '}
-                          <div className="space-y-0.5">
+                          <div className='space-y-0.5'>
                             <FormLabel>Use AI Assistance</FormLabel>
                             <FormDescription>
                               Enable AI features (requires configuration).
@@ -712,15 +711,15 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                       )}
                     />
                     {form.watch('useAi') && (
-                      <div className="ml-2 space-y-4 border-l pl-4 pt-4">
+                      <div className='ml-2 space-y-4 border-l pl-4 pt-4'>
                         <FormField
                           control={form.control}
-                          name="aiModel"
+                          name='aiModel'
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel>AI Model</FormLabel>
                               <FormControl>
-                                <Input placeholder="e.g., gpt-4o" {...field} />
+                                <Input placeholder='e.g., gpt-4o' {...field} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -728,13 +727,13 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                         />
                         <FormField
                           control={form.control}
-                          name="aiInstructions"
+                          name='aiInstructions'
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel>AI Instructions</FormLabel>
                               <FormControl>
                                 <Textarea
-                                  placeholder="Instructions for the AI assistant..."
+                                  placeholder='Instructions for the AI assistant...'
                                   {...field}
                                   rows={4}
                                 />
@@ -753,7 +752,7 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
               </TabsContent>
 
               {/* Installation Tab */}
-              <TabsContent value="installation" className="mt-6">
+              <TabsContent value='installation' className='mt-6'>
                 <Card>
                   <CardHeader>
                     <CardTitle>Installation</CardTitle>
@@ -762,20 +761,20 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    {isLoadingCode && <Skeleton className="h-20 w-full" />}
+                    {isLoadingCode && <Skeleton className='h-20 w-full' />}
                     {installCodeData?.script && (
-                      <div className="relative rounded bg-muted p-4 font-mono text-sm">
-                        <pre className="overflow-x-auto">
+                      <div className='relative rounded bg-muted p-4 font-mono text-sm'>
+                        <pre className='overflow-x-auto'>
                           <code>{installCodeData.script}</code>
                         </pre>
                         <CopyButton
                           text={installCodeData.script}
-                          className="absolute right-2 top-2"
+                          className='absolute right-2 top-2'
                         />
                       </div>
                     )}
                     {!isLoadingCode && !installCodeData?.script && (
-                      <p className="text-destructive">Could not load installation code.</p>
+                      <p className='text-destructive'>Could not load installation code.</p>
                     )}
                   </CardContent>
                 </Card>
@@ -783,31 +782,31 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
             </Tabs>
 
             {/* Save Button (Outside Tabs, inside Form) */}
-            <div className="sticky bottom-0 flex justify-end border-t bg-background py-3 pt-4">
+            <div className='sticky bottom-0 flex justify-end border-t bg-background py-3 pt-4'>
               <Button
-                type="submit"
+                type='submit'
                 disabled={updateChatWidget.isPending || !form.formState.isDirty}>
-                {updateChatWidget.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {updateChatWidget.isPending && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
                 Save Settings
               </Button>
             </div>
           </form>
         </Form>
 
-        <Separator className="my-8" />
+        <Separator className='my-8' />
 
         {/* Danger Zone (Separate Card) */}
-        <Card className="border-destructive">
+        <Card className='border-destructive'>
           <CardHeader>
-            <CardTitle className="text-destructive">Danger Zone</CardTitle>
+            <CardTitle className='text-destructive'>Danger Zone</CardTitle>
             <CardDescription>Deleting this integration cannot be undone.</CardDescription>
           </CardHeader>
           <CardFooter>
             <Button
-              variant="destructive"
+              variant='destructive'
               onClick={handleDelete}
               loading={disconnectIntegration.isPending}
-              loadingText="Deleting...">
+              loadingText='Deleting...'>
               Delete Integration
             </Button>
           </CardFooter>

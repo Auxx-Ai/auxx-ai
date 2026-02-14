@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/hooks/use-var-store-sync.ts
 
-import { useEffect, useRef, useCallback } from 'react'
 import { useStore, useStoreApi } from '@xyflow/react'
-import { useVarStore } from '../store/use-var-store'
+import { useCallback, useEffect, useRef } from 'react'
 import { shallow } from 'zustand/shallow'
-import { BaseType, type UnifiedVariable } from '../types'
+import { useVarStore } from '../store/use-var-store'
+import type { BaseType, UnifiedVariable } from '../types'
 
 /**
  * Hook to sync ReactFlow state with the variable store

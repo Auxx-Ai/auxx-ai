@@ -1,28 +1,29 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/human-confirmation.ts
-import { BaseNodeProcessor } from '../base-node'
+
+import { env } from '@auxx/config/server'
+import { database as db, schema } from '@auxx/database'
+import { ApprovalStatus } from '@auxx/database/enums'
+import {
+  ApprovalRequestModel,
+  UserModel,
+  WorkflowModel,
+  WorkflowRunModel,
+} from '@auxx/database/models'
+import { sendApprovalRequestEmail } from '@auxx/email'
+import { eq, inArray } from 'drizzle-orm'
+import { v4 as uuidv4 } from 'uuid'
+import { publisher } from '../../../events/publisher'
+import { getQueue, Queues } from '../../../jobs/queues'
+import { NotificationService } from '../../../notifications/notification-service'
+import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
-  WorkflowNode,
   NodeExecutionResult,
-  ValidationResult,
   PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
-import { getQueue, Queues } from '../../../jobs/queues'
-import { database as db, schema } from '@auxx/database'
-import { eq, inArray } from 'drizzle-orm'
-import {
-  WorkflowRunModel,
-  WorkflowModel,
-  UserModel,
-  ApprovalRequestModel,
-} from '@auxx/database/models'
-import { ApprovalStatus } from '@auxx/database/enums'
-import { publisher } from '../../../events/publisher'
-import { NotificationService } from '../../../notifications/notification-service'
-import { sendApprovalRequestEmail } from '@auxx/email'
-import { env } from '@auxx/config/server'
-import { v4 as uuidv4 } from 'uuid'
+import { BaseNodeProcessor } from '../base-node'
 
 interface HumanConfirmationNodeData {
   // Basic configuration

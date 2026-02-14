@@ -1,8 +1,6 @@
 // apps/web/src/app/(protected)/app/workflows/_components/buttons/create-workflow-button.tsx
 'use client'
 
-import { useState } from 'react'
-import { Plus, Workflow, FileText, Zap } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -11,7 +9,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { FileText, Plus, Workflow, Zap } from 'lucide-react'
 import Link from 'next/link'
+import { useState } from 'react'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { WorkflowTemplateDialog } from '~/components/workflow/dialogs/workflow-template-dialog'
 import { useOrganization } from '~/hooks/use-organization'
@@ -25,12 +25,12 @@ export function CreateWorkflowButton() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="sm">
+          <Button size='sm'>
             <Plus />
             Create Workflow
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align='end'>
           <DropdownMenuItem onClick={() => setCreateDialogOpen(true)}>
             <Workflow />
             Create from scratch
@@ -45,7 +45,7 @@ export function CreateWorkflowButton() {
       <WorkflowFormDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
-        mode="create"
+        mode='create'
       />
       <WorkflowTemplateDialog
         open={templateDialogOpen}

@@ -1,24 +1,24 @@
 // apps/web/src/components/custom-fields/hooks/use-custom-field-mutations.tsx
 
-import { useCallback, useRef } from 'react'
-import { toastError, toastSuccess, toastInfo } from '@auxx/ui/components/toast'
-import { arrayMove } from '@dnd-kit/sortable'
-import { api } from '~/trpc/react'
-import { getResourceStoreState } from '~/components/resources/store/resource-store'
-import { toResourceFieldId, toFieldId, parseResourceFieldId } from '@auxx/types/field'
-import type { ResourceFieldId } from '@auxx/types/field'
-import type { ResourceField, FieldCapabilities } from '@auxx/lib/resources/client'
-import type { FieldType as FieldTypeEnum, FieldType } from '@auxx/database/types'
-import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
-import { mapFieldTypeToBaseType } from '@auxx/lib/workflow-engine/client'
+import type { FieldType, FieldType as FieldTypeEnum } from '@auxx/database/types'
 import { PRIMARY_DISPLAY_ELIGIBLE_TYPES } from '@auxx/lib/custom-fields/client'
-import { useField } from '~/components/resources/hooks/use-field'
+import type { FieldCapabilities, ResourceField } from '@auxx/lib/resources/client'
+import { mapFieldTypeToBaseType } from '@auxx/lib/workflow-engine/client'
 import {
+  getInverseFieldId,
+  type RelationshipConfig,
   type SelectOption,
   type TargetTimeInStatus,
-  type RelationshipConfig,
-  getInverseFieldId,
 } from '@auxx/types/custom-field'
+import type { ResourceFieldId } from '@auxx/types/field'
+import { parseResourceFieldId, toFieldId, toResourceFieldId } from '@auxx/types/field'
+import { toastError, toastInfo, toastSuccess } from '@auxx/ui/components/toast'
+import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
+import { arrayMove } from '@dnd-kit/sortable'
+import { useCallback, useRef } from 'react'
+import { useField } from '~/components/resources/hooks/use-field'
+import { getResourceStoreState } from '~/components/resources/store/resource-store'
+import { api } from '~/trpc/react'
 
 /** Props for useCustomFieldMutations hook */
 interface UseCustomFieldMutationsProps {
@@ -256,7 +256,11 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
         autoSetInFlight.current = true
         setPrimaryDisplayField.mutate(
           { id: effectiveEntityDefId, data: { primaryDisplayFieldId: result.id } },
-          { onSettled: () => { autoSetInFlight.current = false } }
+          {
+            onSettled: () => {
+              autoSetInFlight.current = false
+            },
+          }
         )
         toastInfo({
           title: `"${result.name}" set as display field`,
@@ -317,7 +321,9 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
       let inverseKey: ResourceFieldId | null = null
       if (variables.inverseName !== undefined) {
         const currentField = store.fieldMap[key]
-        const relationshipConfig = currentField?.options?.relationship as RelationshipConfig | undefined
+        const relationshipConfig = currentField?.options?.relationship as
+          | RelationshipConfig
+          | undefined
         if (relationshipConfig?.inverseResourceFieldId) {
           inverseKey = relationshipConfig.inverseResourceFieldId
           store.setFieldOptimistic(inverseKey, {

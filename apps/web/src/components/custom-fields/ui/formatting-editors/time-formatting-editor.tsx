@@ -1,6 +1,8 @@
 // apps/web/src/components/custom-fields/ui/formatting-editors/time-formatting-editor.tsx
 'use client'
 
+import type { DateFieldOptions } from '@auxx/lib/field-values/client'
+import { Field, FieldGroup, FieldLabel } from '@auxx/ui/components/field'
 import {
   Select,
   SelectContent,
@@ -8,8 +10,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
-import type { DateFieldOptions } from '@auxx/lib/field-values/client'
 
 /** Props for TimeFormattingEditor */
 interface TimeFormattingEditorProps {
@@ -27,7 +27,7 @@ export function TimeFormattingEditor({ options, onChange }: TimeFormattingEditor
   }
 
   return (
-    <FieldGroup className="gap-3">
+    <FieldGroup className='gap-3'>
       <Field>
         <FieldLabel>Time Format</FieldLabel>
         <Select
@@ -36,11 +36,11 @@ export function TimeFormattingEditor({ options, onChange }: TimeFormattingEditor
             onChange({ ...current, timeFormat: v as DateFieldOptions['timeFormat'] })
           }>
           <SelectTrigger>
-            <SelectValue placeholder="Select time format" />
+            <SelectValue placeholder='Select time format' />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="12h">12-hour (2:30 PM)</SelectItem>
-            <SelectItem value="24h">24-hour (14:30)</SelectItem>
+            <SelectItem value='12h'>12-hour (2:30 PM)</SelectItem>
+            <SelectItem value='24h'>24-hour (14:30)</SelectItem>
           </SelectContent>
         </Select>
       </Field>

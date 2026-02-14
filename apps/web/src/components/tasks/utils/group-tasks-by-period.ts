@@ -1,6 +1,6 @@
 // apps/web/src/components/tasks/utils/group-tasks-by-period.ts
 
-import { isToday, isTomorrow, format, differenceInDays } from 'date-fns'
+import { differenceInDays, format, isToday, isTomorrow } from 'date-fns'
 
 /**
  * Format deadline for task item display.

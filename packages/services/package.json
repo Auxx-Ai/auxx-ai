@@ -46,7 +46,6 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@auxx/eslint-config": "workspace:*",
     "@auxx/typescript-config": "workspace:*",
     "@types/node": "catalog:",
     "chokidar-cli": "^3.0.0",

@@ -3,12 +3,12 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import type { UploadStore } from './types'
-import { createUnifiedSessionSlice } from './slices/session-slice'
-import { createFileSlice } from './slices/file-slice'
-import { createUISlice } from './slices/ui-slice'
-import { createEnhancedOrchestrationSlice, cleanupUploader } from './slices/orchestration-slice'
 import { createEntitySlice } from './slices/entity-slice'
+import { createFileSlice } from './slices/file-slice'
+import { cleanupUploader, createEnhancedOrchestrationSlice } from './slices/orchestration-slice'
+import { createUnifiedSessionSlice } from './slices/session-slice'
+import { createUISlice } from './slices/ui-slice'
+import type { UploadStore } from './types'
 
 // Export cleanupUploader for use in hooks
 export { cleanupUploader }

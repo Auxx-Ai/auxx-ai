@@ -1,13 +1,13 @@
 // apps/web/src/components/workflow/nodes/core/crud/schema.ts
 
-import { type NodeDefinition, NodeCategory } from '~/components/workflow/types'
+import { NodeCategory, type NodeDefinition } from '~/components/workflow/types'
 import { NodeType } from '~/components/workflow/types/node-types'
-import { type CrudNodeData, createCrudNodeDefaultData, crudNodeDataSchema } from './types'
-import { getCrudNodeOutputVariables } from './output-variables'
-import { CrudPanel } from './panel'
-import { validateCrudNodeConfig } from './validation'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { isNodeVariable } from '~/components/workflow/utils/variable-utils'
+import { getCrudNodeOutputVariables } from './output-variables'
+import { CrudPanel } from './panel'
+import { type CrudNodeData, createCrudNodeDefaultData, crudNodeDataSchema } from './types'
+import { validateCrudNodeConfig } from './validation'
 /**
  * Zod schema for CRUD node validation
  */

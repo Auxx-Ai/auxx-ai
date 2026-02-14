@@ -2,7 +2,7 @@
 
 import { constants, promises as fs } from 'fs'
 import { join } from 'path'
-import { complete, errored, type Result, type CreateProjectError } from '../errors.js'
+import { type CreateProjectError, complete, errored, type Result } from '../errors.js'
 
 /**
  * Creates a new directory in the current working directory when it does not

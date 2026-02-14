@@ -1,11 +1,11 @@
 'use client'
-import { cn } from '~/lib/utils'
-import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
-import { Button } from '~/components/ui/button'
 import Link from 'next/link'
+import { type ReactNode, useState } from 'react'
+import { Button } from '~/components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { useMedia } from '~/hooks/use-media'
-import { useState, type ReactNode } from 'react'
 import { config } from '~/lib/config'
+import { cn } from '~/lib/utils'
 
 const plans = ['free', 'pro', 'team'] as const
 
@@ -265,17 +265,17 @@ export default function PlansSection() {
 
   const plansActions: Record<Plan, ReactNode> = {
     free: (
-      <Button className="lg:w-full" size="sm" asChild>
+      <Button className='lg:w-full' size='sm' asChild>
         <Link href={config.urls.signup}>Get Started</Link>
       </Button>
     ),
     pro: (
-      <Button className="lg:w-full" size="sm" asChild>
+      <Button className='lg:w-full' size='sm' asChild>
         <Link href={config.urls.signup}>Start a free trial</Link>
       </Button>
     ),
     team: (
-      <Button className="lg:w-full" size="sm" asChild>
+      <Button className='lg:w-full' size='sm' asChild>
         <Link href={`mailto:${config.emails.sales}`}>Contact Us</Link>
       </Button>
     ),
@@ -290,16 +290,16 @@ export default function PlansSection() {
   const renderPlanColumn = (plan: Plan) => {
     const header =
       plan === 'pro' ? (
-        <div className="bg-muted sticky top-0 flex h-36 flex-col justify-center rounded-t-xl border-b px-4 max-md:hidden lg:px-6">
-          <div className="text-lg font-medium">Pro</div>
-          <div className="text-muted-foreground mb-4 mt-0.5">15$ / month</div>
+        <div className='bg-muted sticky top-0 flex h-36 flex-col justify-center rounded-t-xl border-b px-4 max-md:hidden lg:px-6'>
+          <div className='text-lg font-medium'>Pro</div>
+          <div className='text-muted-foreground mb-4 mt-0.5'>15$ / month</div>
           {plansActions[plan]}
         </div>
       ) : (
-        <div className="bg-background sticky top-0 flex h-36 flex-col justify-center border-b px-4 pt-2 max-md:hidden lg:px-8">
-          <div className="text-lg font-medium">{plan === 'free' ? 'Free' : 'Business'}</div>
-          <div className="text-muted-foreground mb-4 mt-0.5">{prices[plan]}</div>
-          <div className="[--color-primary-foreground:var(--color-background)] [--color-primary:var(--color-foreground)]">
+        <div className='bg-background sticky top-0 flex h-36 flex-col justify-center border-b px-4 pt-2 max-md:hidden lg:px-8'>
+          <div className='text-lg font-medium'>{plan === 'free' ? 'Free' : 'Business'}</div>
+          <div className='text-muted-foreground mb-4 mt-0.5'>{prices[plan]}</div>
+          <div className='[--color-primary-foreground:var(--color-background)] [--color-primary:var(--color-foreground)]'>
             {plansActions[plan]}
           </div>
         </div>
@@ -319,7 +319,7 @@ export default function PlansSection() {
               {category.features.map((feature, index) => (
                 <div
                   key={index}
-                  className="lg:in-data-[plan=pro]:px-6 flex h-14 items-center border-t px-6 text-sm last:h-[calc(3.5rem+1px)] last:border-b max-md:justify-center max-md:border-l md:px-4 lg:px-8">
+                  className='lg:in-data-[plan=pro]:px-6 flex h-14 items-center border-t px-6 text-sm last:h-[calc(3.5rem+1px)] last:border-b max-md:justify-center max-md:border-l md:px-4 lg:px-8'>
                   <div>
                     {feature.plans[plan] === true ? (
                       <Indicator checked />
@@ -334,29 +334,29 @@ export default function PlansSection() {
             </div>
           </div>
         ))}
-        <div className="flex h-6 items-center justify-center px-4 text-sm max-md:hidden lg:px-6" />
+        <div className='flex h-6 items-center justify-center px-4 text-sm max-md:hidden lg:px-6' />
       </div>
     )
   }
 
   return (
-    <section className="relative border-foreground/10 border-b">
-      <div className="relative z-10 mx-auto max-w-6xl border-x px-3">
-        <div className="border-x">
+    <section className='relative border-foreground/10 border-b'>
+      <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
+        <div className='border-x'>
           <div
             aria-hidden
-            className="h-3 w-full bg-[repeating-linear-gradient(-45deg,var(--color-foreground),var(--color-foreground)_1px,transparent_1px,transparent_4px)] opacity-5"
+            className='h-3 w-full bg-[repeating-linear-gradient(-45deg,var(--color-foreground),var(--color-foreground)_1px,transparent_1px,transparent_4px)] opacity-5'
           />
-          <div className="pb-16 md:py-24">
-            <div className="mx-auto max-w-5xl md:px-6">
+          <div className='pb-16 md:py-24'>
+            <div className='mx-auto max-w-5xl md:px-6'>
               {!isMedium && (
-                <div className="bg-muted sticky top-0 z-10 flex justify-between gap-4 border-b px-5 py-3">
-                  <div className="flex justify-center">
+                <div className='bg-muted sticky top-0 z-10 flex justify-between gap-4 border-b px-5 py-3'>
+                  <div className='flex justify-center'>
                     {plans.map((plan, index) => (
                       <button
                         key={index}
                         onClick={() => setActivePlan(plan)}
-                        className="text-muted-foreground group max-md:px-1 md:block md:py-1">
+                        className='text-muted-foreground group max-md:px-1 md:block md:py-1'>
                         <span
                           className={cn(
                             'flex w-fit items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors [&>svg]:size-4',
@@ -364,7 +364,7 @@ export default function PlansSection() {
                               ? 'bg-card ring-foreground/5 text-primary font-medium shadow-sm ring-1'
                               : 'hover:text-foreground group-hover:bg-foreground/5'
                           )}>
-                          <span className="capitalize">{plan}</span>
+                          <span className='capitalize'>{plan}</span>
                         </span>
                       </button>
                     ))}
@@ -373,34 +373,34 @@ export default function PlansSection() {
                 </div>
               )}
 
-              <div className="grid grid-cols-3 md:grid-cols-4">
-                <div className="col-span-2 md:col-span-1">
-                  <div className="bg-background z-1 sticky top-0 flex h-36 items-end gap-1.5 border-b py-2 max-md:hidden">
-                    <div className="text-muted-foreground text-sm font-medium">Features</div>
+              <div className='grid grid-cols-3 md:grid-cols-4'>
+                <div className='col-span-2 md:col-span-1'>
+                  <div className='bg-background z-1 sticky top-0 flex h-36 items-end gap-1.5 border-b py-2 max-md:hidden'>
+                    <div className='text-muted-foreground text-sm font-medium'>Features</div>
                   </div>
 
                   {categories.map((category, index) => (
                     <div key={index}>
-                      <div className="relative flex h-14 flex-col justify-center max-md:px-6 md:h-28">
-                        <h3 className="text-lg font-medium">{category.name}</h3>
-                        <p className="text-muted-foreground mt-1 line-clamp-2 text-balance text-sm max-md:hidden md:-mr-24">
+                      <div className='relative flex h-14 flex-col justify-center max-md:px-6 md:h-28'>
+                        <h3 className='text-lg font-medium'>{category.name}</h3>
+                        <p className='text-muted-foreground mt-1 line-clamp-2 text-balance text-sm max-md:hidden md:-mr-24'>
                           {category.description}
                         </p>
                       </div>
                       {category.features.map((feature, index) => (
                         <div
                           key={index}
-                          className="text-muted-foreground flex h-14 items-center border-t last:h-[calc(3.5rem+1px)] last:border-b max-md:px-6">
-                          <div className="text-sm">{feature.name}</div>{' '}
+                          className='text-muted-foreground flex h-14 items-center border-t last:h-[calc(3.5rem+1px)] last:border-b max-md:px-6'>
+                          <div className='text-sm'>{feature.name}</div>{' '}
                           {feature.description && (
                             <TooltipProvider>
                               <Tooltip>
-                                <TooltipTrigger className="flex size-7">
-                                  <span className="bg-foreground/10 text-foreground/65 m-auto flex size-4 items-center justify-center rounded-full text-sm">
+                                <TooltipTrigger className='flex size-7'>
+                                  <span className='bg-foreground/10 text-foreground/65 m-auto flex size-4 items-center justify-center rounded-full text-sm'>
                                     ?
                                   </span>
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-56 text-sm">
+                                <TooltipContent className='max-w-56 text-sm'>
                                   {feature.description}
                                 </TooltipContent>
                               </Tooltip>
@@ -412,11 +412,11 @@ export default function PlansSection() {
                   ))}
                 </div>
 
-                <div className="grid md:col-span-3 md:grid-cols-3">
+                <div className='grid md:col-span-3 md:grid-cols-3'>
                   {isMedium ? (
                     <>
                       {plans.map((plan) => (
-                        <div key={plan} className="group">
+                        <div key={plan} className='group'>
                           {renderPlanColumn(plan)}
                         </div>
                       ))}

@@ -2,8 +2,8 @@
 
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import { type SelectionState } from './types'
 import { storeEventBus } from './event-bus'
+import type { SelectionState } from './types'
 
 interface SelectionStore extends SelectionState {
   // Selection actions

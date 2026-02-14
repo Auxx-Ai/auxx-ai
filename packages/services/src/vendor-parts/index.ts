@@ -1,29 +1,30 @@
 // packages/services/src/vendor-parts/index.ts
 
-// Query operations
-export {
-  getVendorParts,
-  getVendorPartById,
-  getVendorPartByContactAndPart,
-  checkVendorPartExists,
-} from './vendor-part-queries'
-
+// Errors
+export type {
+  VendorPartAlreadyExistsError,
+  VendorPartError,
+  VendorPartNotFoundError,
+} from './errors'
+// Types
+export type {
+  CreateVendorPartInput,
+  ListVendorPartsInput,
+  UpdateVendorPartInput,
+  VendorPartContext,
+} from './types'
 // Mutation operations
 export {
+  clearOtherPreferred,
+  deleteVendorPart,
   insertVendorPart,
   insertVendorPartTx,
   updateVendorPart,
-  deleteVendorPart,
-  clearOtherPreferred,
 } from './vendor-part-mutations'
-
-// Types
-export type {
-  VendorPartContext,
-  CreateVendorPartInput,
-  UpdateVendorPartInput,
-  ListVendorPartsInput,
-} from './types'
-
-// Errors
-export type { VendorPartError, VendorPartNotFoundError, VendorPartAlreadyExistsError } from './errors'
+// Query operations
+export {
+  checkVendorPartExists,
+  getVendorPartByContactAndPart,
+  getVendorPartById,
+  getVendorParts,
+} from './vendor-part-queries'

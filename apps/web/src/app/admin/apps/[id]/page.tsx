@@ -1,25 +1,9 @@
 // apps/web/src/app/admin/apps/[id]/page.tsx
 'use client'
 
-import { use, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { api } from '~/trpc/react'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import { ArrowLeft, Trash2, ExternalLink, CheckCircle, XCircle, Ban } from 'lucide-react'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { formatDistanceToNow } from 'date-fns'
-import { useConfirm } from '~/hooks/use-confirm'
-import { toastError } from '@auxx/ui/components/toast'
-import { Badge } from '@auxx/ui/components/badge'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@auxx/ui/components/table'
 import {
   Dialog,
   DialogContent,
@@ -28,9 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Textarea } from '@auxx/ui/components/textarea'
 import { Label } from '@auxx/ui/components/label'
-import { Switch } from '@auxx/ui/components/switch'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -38,6 +20,24 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { Switch } from '@auxx/ui/components/switch'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@auxx/ui/components/table'
+import { Textarea } from '@auxx/ui/components/textarea'
+import { toastError } from '@auxx/ui/components/toast'
+import { formatDistanceToNow } from 'date-fns'
+import { ArrowLeft, Ban, CheckCircle, ExternalLink, Trash2, XCircle } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { use, useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 /**
  * Get badge variant for publication status
@@ -259,15 +259,15 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
       <MainPage loading>
         <MainPageHeader>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title="Admin" href="/admin" />
-            <MainPageBreadcrumbItem title="Apps" href="/admin/apps" />
-            <MainPageBreadcrumbItem title="Loading..." href="#" last />
+            <MainPageBreadcrumbItem title='Admin' href='/admin' />
+            <MainPageBreadcrumbItem title='Apps' href='/admin/apps' />
+            <MainPageBreadcrumbItem title='Loading...' href='#' last />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className="space-y-6">
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-96 w-full" />
+          <div className='space-y-6'>
+            <Skeleton className='h-12 w-full' />
+            <Skeleton className='h-96 w-full' />
           </div>
         </MainPageContent>
       </MainPage>
@@ -279,15 +279,15 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
       <MainPage>
         <MainPageHeader>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title="Admin" href="/admin" />
-            <MainPageBreadcrumbItem title="Apps" href="/admin/apps" />
-            <MainPageBreadcrumbItem title="Not Found" href="#" last />
+            <MainPageBreadcrumbItem title='Admin' href='/admin' />
+            <MainPageBreadcrumbItem title='Apps' href='/admin/apps' />
+            <MainPageBreadcrumbItem title='Not Found' href='#' last />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className="flex flex-col items-center justify-center h-full py-12">
-            <p className="text-muted-foreground">App not found</p>
-            <Button variant="outline" className="mt-4" onClick={() => router.push('/admin/apps')}>
+          <div className='flex flex-col items-center justify-center h-full py-12'>
+            <p className='text-muted-foreground'>App not found</p>
+            <Button variant='outline' className='mt-4' onClick={() => router.push('/admin/apps')}>
               <ArrowLeft />
               Back to Apps
             </Button>
@@ -309,31 +309,31 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
               Please provide a reason for rejecting this version. The developer will be notified.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="reason">Rejection Reason</Label>
+          <div className='space-y-4 py-4'>
+            <div className='space-y-2'>
+              <Label htmlFor='reason'>Rejection Reason</Label>
               <Textarea
-                id="reason"
-                placeholder="Explain why this version is being rejected..."
+                id='reason'
+                placeholder='Explain why this version is being rejected...'
                 value={rejectionReason}
                 onChange={(e) => setRejectionReason(e.target.value)}
-                className="min-h-[100px]"
+                className='min-h-[100px]'
               />
               {rejectionReason.length < 10 && rejectionReason.length > 0 && (
-                <p className="text-sm text-destructive">Reason must be at least 10 characters</p>
+                <p className='text-sm text-destructive'>Reason must be at least 10 characters</p>
               )}
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>
+            <Button variant='outline' onClick={() => setRejectDialogOpen(false)}>
               Cancel
             </Button>
             <Button
-              variant="destructive"
+              variant='destructive'
               onClick={handleRejectVersionSubmit}
               disabled={rejectionReason.length < 10 || rejectVersion.isPending}
               loading={rejectVersion.isPending}
-              loadingText="Rejecting...">
+              loadingText='Rejecting...'>
               Reject Version
             </Button>
           </DialogFooter>
@@ -343,11 +343,11 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
       <MainPage>
         <MainPageHeader
           action={
-            <div className="flex items-center gap-2">
+            <div className='flex items-center gap-2'>
               {app.autoApprove && (
                 <Badge
-                  variant="secondary"
-                  className="bg-green-500/10 text-green-500 border-green-500/20">
+                  variant='secondary'
+                  className='bg-green-500/10 text-green-500 border-green-500/20'>
                   Auto-Approve
                 </Badge>
               )}
@@ -358,273 +358,283 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
                 {app.publicationStatus}
               </Badge>
               <Button
-                size="sm"
-                variant="destructive"
+                size='sm'
+                variant='destructive'
                 onClick={handleDeleteApp}
                 loading={deleteApp.isPending}
-                loadingText="Deleting...">
+                loadingText='Deleting...'>
                 <Trash2 />
                 Delete App
               </Button>
             </div>
           }>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title="Admin" href="/admin" />
-            <MainPageBreadcrumbItem title="Apps" href="/admin/apps" />
-            <MainPageBreadcrumbItem
-              title={app.title}
-              href={`/admin/apps/${id}`}
-              last
-            />
+            <MainPageBreadcrumbItem title='Admin' href='/admin' />
+            <MainPageBreadcrumbItem title='Apps' href='/admin/apps' />
+            <MainPageBreadcrumbItem title={app.title} href={`/admin/apps/${id}`} last />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className="grid lg:grid-cols-3">
-            <Card className="border-none rounded-none shadow-none">
-          <CardHeader>
-            <CardTitle>App Information</CardTitle>
-            <CardDescription>Details about this app</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-hidden rounded-md border bg-background">
-              <Table>
-                <TableBody>
-                  <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                    <TableCell className="bg-muted/50 py-2 font-medium">
-                      Developer Account
-                    </TableCell>
-                    <TableCell className="py-2">{app.developerAccount?.title || '-'}</TableCell>
-                  </TableRow>
-                  <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                    <TableCell className="bg-muted/50 py-2 font-medium">Slug</TableCell>
-                    <TableCell className="py-2 font-mono text-sm">{app.slug}</TableCell>
-                  </TableRow>
-                  <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                    <TableCell className="bg-muted/50 py-2 font-medium">Category</TableCell>
-                    <TableCell className="py-2">{app.category || '-'}</TableCell>
-                  </TableRow>
-                  <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                    <TableCell className="bg-muted/50 py-2 font-medium">
-                      Publication Status
-                    </TableCell>
-                    <TableCell className="py-2">
-                      <Badge variant={getPublicationStatusVariant(app.publicationStatus)}>
-                        {app.publicationStatus}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                  {app.reviewStatus && (
-                    <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                      <TableCell className="bg-muted/50 py-2 font-medium">Review Status</TableCell>
-                      <TableCell className="py-2">
-                        <Badge variant={getReviewStatusVariant(app.reviewStatus)}>
-                          {app.reviewStatus}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                    <TableCell className="bg-muted/50 py-2 font-medium">Auto-Approve</TableCell>
-                    <TableCell className="py-2">
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={app.autoApprove || false}
-                          onCheckedChange={handleToggleAutoApprove}
-                          disabled={toggleAutoApprove.isPending}
-                        />
-                        <span className="text-sm text-muted-foreground">
-                          {app.autoApprove ? 'Enabled' : 'Disabled'}
-                        </span>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                    <TableCell className="bg-muted/50 py-2 font-medium">Website</TableCell>
-                    <TableCell className="py-2">
-                      {app.websiteUrl ? (
-                        <Button variant="link" className="h-auto p-0" asChild>
-                          <a href={app.websiteUrl} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink />
-                            Link
-                          </a>
-                        </Button>
-                      ) : (
-                        '-'
-                      )}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                    <TableCell className="bg-muted/50 py-2 font-medium">Documentation</TableCell>
-                    <TableCell className="py-2">
-                      {app.documentationUrl ? (
-                        <Button variant="link" className="h-auto p-0" asChild>
-                          <a href={app.documentationUrl} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink />
-                            Link
-                          </a>
-                        </Button>
-                      ) : (
-                        '-'
-                      )}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                    <TableCell className="bg-muted/50 py-2 font-medium">Support Site</TableCell>
-                    <TableCell className="py-2">
-                      {app.supportSiteUrl ? (
-                        <Button variant="link" className="h-auto p-0" asChild>
-                          <a href={app.supportSiteUrl} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink />
-                            Link
-                          </a>
-                        </Button>
-                      ) : (
-                        '-'
-                      )}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                    <TableCell className="bg-muted/50 py-2 font-medium">Has OAuth</TableCell>
-                    <TableCell className="py-2">{app.hasOauth ? 'Yes' : 'No'}</TableCell>
-                  </TableRow>
-                  <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                    <TableCell className="bg-muted/50 py-2 font-medium">Has Bundle</TableCell>
-                    <TableCell className="py-2">{app.hasBundle ? 'Yes' : 'No'}</TableCell>
-                  </TableRow>
-                  <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                    <TableCell className="bg-muted/50 py-2 font-medium">Scopes</TableCell>
-                    <TableCell className="py-2">
-                      {app.scopes.length > 0 ? app.scopes.join(', ') : '-'}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                    <TableCell className="bg-muted/50 py-2 font-medium">Created</TableCell>
-                    <TableCell className="py-2">
-                      {formatDistanceToNow(new Date(app.createdAt), { addSuffix: true })}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                    <TableCell className="bg-muted/50 py-2 font-medium">Updated</TableCell>
-                    <TableCell className="py-2">
-                      {formatDistanceToNow(new Date(app.updatedAt), { addSuffix: true })}
-                    </TableCell>
-                  </TableRow>
-                  {app.description && (
-                    <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
-                      <TableCell className="bg-muted/50 py-2 font-medium">Description</TableCell>
-                      <TableCell className="py-2 text-sm">{app.description}</TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="col-span-2 border-none rounded-none shadow-none">
-          <CardHeader>
-            <CardTitle>Versions</CardTitle>
-            <CardDescription>Manage app versions</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {app.versions.length === 0 ? (
-              <div className="flex h-40 items-center justify-center text-muted-foreground">
-                No versions found
-              </div>
-            ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Version</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {app.versions.map((version) => (
-                      <TableRow key={version.id}>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium font-mono">{version.versionString}</div>
-                            <div className="text-xs text-muted-foreground">
-                              <Badge variant={getLifecycleVariant(version.status)} className="mr-2">
-                                {version.status}
-                              </Badge>
-                              {version.releasedAt &&
-                                formatDistanceToNow(new Date(version.releasedAt), {
-                                  addSuffix: true,
-                                })}
-                            </div>
-                          </div>
+          <div className='grid lg:grid-cols-3'>
+            <Card className='border-none rounded-none shadow-none'>
+              <CardHeader>
+                <CardTitle>App Information</CardTitle>
+                <CardDescription>Details about this app</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className='overflow-hidden rounded-md border bg-background'>
+                  <Table>
+                    <TableBody>
+                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                        <TableCell className='bg-muted/50 py-2 font-medium'>
+                          Developer Account
                         </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            {version.reviewStatus && (
-                              <Badge variant={getReviewStatusVariant(version.reviewStatus)}>
-                                {version.reviewStatus}
-                              </Badge>
-                            )}
-                            <Badge
-                              variant={getPublicationStatusVariant(
-                                version.publicationStatus || 'unpublished'
-                              )}>
-                              {version.publicationStatus || 'unpublished'}
+                        <TableCell className='py-2'>{app.developerAccount?.title || '-'}</TableCell>
+                      </TableRow>
+                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                        <TableCell className='bg-muted/50 py-2 font-medium'>Slug</TableCell>
+                        <TableCell className='py-2 font-mono text-sm'>{app.slug}</TableCell>
+                      </TableRow>
+                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                        <TableCell className='bg-muted/50 py-2 font-medium'>Category</TableCell>
+                        <TableCell className='py-2'>{app.category || '-'}</TableCell>
+                      </TableRow>
+                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                        <TableCell className='bg-muted/50 py-2 font-medium'>
+                          Publication Status
+                        </TableCell>
+                        <TableCell className='py-2'>
+                          <Badge variant={getPublicationStatusVariant(app.publicationStatus)}>
+                            {app.publicationStatus}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                      {app.reviewStatus && (
+                        <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                          <TableCell className='bg-muted/50 py-2 font-medium'>
+                            Review Status
+                          </TableCell>
+                          <TableCell className='py-2'>
+                            <Badge variant={getReviewStatusVariant(app.reviewStatus)}>
+                              {app.reviewStatus}
                             </Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1 justify-between">
-                            <div className="flex gap-0.5">
-                              {(version.reviewStatus === 'pending-review' ||
-                                version.reviewStatus === 'in-review') && (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleApproveVersion(version.id)}
-                                    loading={approveVersion.isPending}>
-                                    <CheckCircle />
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleRejectVersionClick(version.id)}
-                                    loading={rejectVersion.isPending}>
-                                    <XCircle />
-                                    Reject
-                                  </Button>
-                                </>
-                              )}
-                              {version.publicationStatus === 'published' && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleUnpublishVersion(version.id)}
-                                  loading={unpublishVersion.isPending}>
-                                  <Ban />
-                                  Unpublish
-                                </Button>
-                              )}
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="destructive-hover"
-                              onClick={() => handleDeleteVersion(version.id)}
-                              loading={deleteVersion.isPending}>
-                              <Trash2 />
-                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                        <TableCell className='bg-muted/50 py-2 font-medium'>Auto-Approve</TableCell>
+                        <TableCell className='py-2'>
+                          <div className='flex items-center gap-2'>
+                            <Switch
+                              checked={app.autoApprove || false}
+                              onCheckedChange={handleToggleAutoApprove}
+                              disabled={toggleAutoApprove.isPending}
+                            />
+                            <span className='text-sm text-muted-foreground'>
+                              {app.autoApprove ? 'Enabled' : 'Disabled'}
+                            </span>
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                        <TableCell className='bg-muted/50 py-2 font-medium'>Website</TableCell>
+                        <TableCell className='py-2'>
+                          {app.websiteUrl ? (
+                            <Button variant='link' className='h-auto p-0' asChild>
+                              <a href={app.websiteUrl} target='_blank' rel='noopener noreferrer'>
+                                <ExternalLink />
+                                Link
+                              </a>
+                            </Button>
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
+                      </TableRow>
+                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                        <TableCell className='bg-muted/50 py-2 font-medium'>
+                          Documentation
+                        </TableCell>
+                        <TableCell className='py-2'>
+                          {app.documentationUrl ? (
+                            <Button variant='link' className='h-auto p-0' asChild>
+                              <a
+                                href={app.documentationUrl}
+                                target='_blank'
+                                rel='noopener noreferrer'>
+                                <ExternalLink />
+                                Link
+                              </a>
+                            </Button>
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
+                      </TableRow>
+                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                        <TableCell className='bg-muted/50 py-2 font-medium'>Support Site</TableCell>
+                        <TableCell className='py-2'>
+                          {app.supportSiteUrl ? (
+                            <Button variant='link' className='h-auto p-0' asChild>
+                              <a
+                                href={app.supportSiteUrl}
+                                target='_blank'
+                                rel='noopener noreferrer'>
+                                <ExternalLink />
+                                Link
+                              </a>
+                            </Button>
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
+                      </TableRow>
+                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                        <TableCell className='bg-muted/50 py-2 font-medium'>Has OAuth</TableCell>
+                        <TableCell className='py-2'>{app.hasOauth ? 'Yes' : 'No'}</TableCell>
+                      </TableRow>
+                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                        <TableCell className='bg-muted/50 py-2 font-medium'>Has Bundle</TableCell>
+                        <TableCell className='py-2'>{app.hasBundle ? 'Yes' : 'No'}</TableCell>
+                      </TableRow>
+                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                        <TableCell className='bg-muted/50 py-2 font-medium'>Scopes</TableCell>
+                        <TableCell className='py-2'>
+                          {app.scopes.length > 0 ? app.scopes.join(', ') : '-'}
+                        </TableCell>
+                      </TableRow>
+                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                        <TableCell className='bg-muted/50 py-2 font-medium'>Created</TableCell>
+                        <TableCell className='py-2'>
+                          {formatDistanceToNow(new Date(app.createdAt), { addSuffix: true })}
+                        </TableCell>
+                      </TableRow>
+                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                        <TableCell className='bg-muted/50 py-2 font-medium'>Updated</TableCell>
+                        <TableCell className='py-2'>
+                          {formatDistanceToNow(new Date(app.updatedAt), { addSuffix: true })}
+                        </TableCell>
+                      </TableRow>
+                      {app.description && (
+                        <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                          <TableCell className='bg-muted/50 py-2 font-medium'>
+                            Description
+                          </TableCell>
+                          <TableCell className='py-2 text-sm'>{app.description}</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className='col-span-2 border-none rounded-none shadow-none'>
+              <CardHeader>
+                <CardTitle>Versions</CardTitle>
+                <CardDescription>Manage app versions</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {app.versions.length === 0 ? (
+                  <div className='flex h-40 items-center justify-center text-muted-foreground'>
+                    No versions found
+                  </div>
+                ) : (
+                  <div className='rounded-md border'>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Version</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {app.versions.map((version) => (
+                          <TableRow key={version.id}>
+                            <TableCell>
+                              <div>
+                                <div className='font-medium font-mono'>{version.versionString}</div>
+                                <div className='text-xs text-muted-foreground'>
+                                  <Badge
+                                    variant={getLifecycleVariant(version.status)}
+                                    className='mr-2'>
+                                    {version.status}
+                                  </Badge>
+                                  {version.releasedAt &&
+                                    formatDistanceToNow(new Date(version.releasedAt), {
+                                      addSuffix: true,
+                                    })}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className='flex gap-2'>
+                                {version.reviewStatus && (
+                                  <Badge variant={getReviewStatusVariant(version.reviewStatus)}>
+                                    {version.reviewStatus}
+                                  </Badge>
+                                )}
+                                <Badge
+                                  variant={getPublicationStatusVariant(
+                                    version.publicationStatus || 'unpublished'
+                                  )}>
+                                  {version.publicationStatus || 'unpublished'}
+                                </Badge>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className='flex gap-1 justify-between'>
+                                <div className='flex gap-0.5'>
+                                  {(version.reviewStatus === 'pending-review' ||
+                                    version.reviewStatus === 'in-review') && (
+                                    <>
+                                      <Button
+                                        size='sm'
+                                        variant='outline'
+                                        onClick={() => handleApproveVersion(version.id)}
+                                        loading={approveVersion.isPending}>
+                                        <CheckCircle />
+                                        Approve
+                                      </Button>
+                                      <Button
+                                        size='sm'
+                                        variant='outline'
+                                        onClick={() => handleRejectVersionClick(version.id)}
+                                        loading={rejectVersion.isPending}>
+                                        <XCircle />
+                                        Reject
+                                      </Button>
+                                    </>
+                                  )}
+                                  {version.publicationStatus === 'published' && (
+                                    <Button
+                                      size='sm'
+                                      variant='outline'
+                                      onClick={() => handleUnpublishVersion(version.id)}
+                                      loading={unpublishVersion.isPending}>
+                                      <Ban />
+                                      Unpublish
+                                    </Button>
+                                  )}
+                                </div>
+                                <Button
+                                  size='sm'
+                                  variant='destructive-hover'
+                                  onClick={() => handleDeleteVersion(version.id)}
+                                  loading={deleteVersion.isPending}>
+                                  <Trash2 />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </MainPageContent>
       </MainPage>

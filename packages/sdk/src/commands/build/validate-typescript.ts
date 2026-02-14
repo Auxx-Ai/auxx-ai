@@ -1,9 +1,9 @@
 // // packages/sdk/src/commands/build/validate-typescript.ts
 
 import path from 'path'
+import type { default as ts } from 'typescript'
 import { complete, errored } from '../../errors.js'
 import { getDiagnostics, readConfig, typeScriptErrorSchema } from '../../util/typescript.js'
-import { default as ts } from 'typescript'
 
 export async function validateTypeScript() {
   try {

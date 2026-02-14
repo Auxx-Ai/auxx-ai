@@ -1,7 +1,5 @@
 // apps/web/src/components/workflow/nodes/core/http/components/auth-dialog.tsx
 
-import { useState } from 'react'
-import { Key, LockKeyhole, Settings, ShieldOff, UserCheck } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -15,10 +13,12 @@ import {
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
-import { AuthType, type Authorization } from '../types'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
+import { Key, LockKeyhole, Settings, ShieldOff, UserCheck } from 'lucide-react'
+import { useState } from 'react'
+import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
-import { VAR_MODE, BaseType } from '~/components/workflow/types'
+import { type Authorization, AuthType } from '../types'
 
 interface AuthDialogProps {
   authorization: Authorization
@@ -95,9 +95,9 @@ export function AuthDialog({ authorization, nodeId, onChange }: AuthDialogProps)
     switch (selectedType) {
       case AuthType.basic:
         return (
-          <div className="space-y-4 pt-4">
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+          <div className='space-y-4 pt-4'>
+            <div className='space-y-2'>
+              <Label htmlFor='username'>Username</Label>
               <VarEditorField>
                 <VarEditor
                   nodeId={nodeId}
@@ -106,14 +106,14 @@ export function AuthDialog({ authorization, nodeId, onChange }: AuthDialogProps)
                   varType={BaseType.STRING}
                   allowedTypes={[BaseType.STRING]}
                   mode={VAR_MODE.PICKER}
-                  placeholder="Select variable"
-                  placeholderConstant="Enter username"
+                  placeholder='Select variable'
+                  placeholderConstant='Enter username'
                   allowConstant
                 />
               </VarEditorField>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+            <div className='space-y-2'>
+              <Label htmlFor='password'>Password</Label>
               <VarEditorField>
                 <VarEditor
                   nodeId={nodeId}
@@ -122,8 +122,8 @@ export function AuthDialog({ authorization, nodeId, onChange }: AuthDialogProps)
                   varType={BaseType.STRING}
                   allowedTypes={[BaseType.STRING]}
                   mode={VAR_MODE.PICKER}
-                  placeholder="Select variable"
-                  placeholderConstant="Enter password"
+                  placeholder='Select variable'
+                  placeholderConstant='Enter password'
                   allowConstant
                 />
               </VarEditorField>
@@ -133,8 +133,8 @@ export function AuthDialog({ authorization, nodeId, onChange }: AuthDialogProps)
 
       case AuthType.bearer:
         return (
-          <div className="space-y-2 pt-4">
-            <Label htmlFor="token">Bearer Token</Label>
+          <div className='space-y-2 pt-4'>
+            <Label htmlFor='token'>Bearer Token</Label>
             <VarEditorField>
               <VarEditor
                 nodeId={nodeId}
@@ -143,8 +143,8 @@ export function AuthDialog({ authorization, nodeId, onChange }: AuthDialogProps)
                 varType={BaseType.STRING}
                 allowedTypes={[BaseType.STRING]}
                 mode={VAR_MODE.PICKER}
-                placeholder="Select variable"
-                placeholderConstant="Enter bearer token"
+                placeholder='Select variable'
+                placeholderConstant='Enter bearer token'
                 allowConstant
               />
             </VarEditorField>
@@ -153,9 +153,9 @@ export function AuthDialog({ authorization, nodeId, onChange }: AuthDialogProps)
 
       case AuthType.custom:
         return (
-          <div className="space-y-4 pt-4">
-            <div className="space-y-2">
-              <Label htmlFor="header">Header Name</Label>
+          <div className='space-y-4 pt-4'>
+            <div className='space-y-2'>
+              <Label htmlFor='header'>Header Name</Label>
               <VarEditorField>
                 <VarEditor
                   nodeId={nodeId}
@@ -164,14 +164,14 @@ export function AuthDialog({ authorization, nodeId, onChange }: AuthDialogProps)
                   varType={BaseType.STRING}
                   allowedTypes={[BaseType.STRING]}
                   mode={VAR_MODE.PICKER}
-                  placeholder="Select variable"
-                  placeholderConstant="e.g., X-API-Key"
+                  placeholder='Select variable'
+                  placeholderConstant='e.g., X-API-Key'
                   allowConstant
                 />
               </VarEditorField>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="custom-token">API Key</Label>
+            <div className='space-y-2'>
+              <Label htmlFor='custom-token'>API Key</Label>
               <VarEditorField>
                 <VarEditor
                   nodeId={nodeId}
@@ -180,8 +180,8 @@ export function AuthDialog({ authorization, nodeId, onChange }: AuthDialogProps)
                   varType={BaseType.STRING}
                   allowedTypes={[BaseType.STRING]}
                   mode={VAR_MODE.RICH}
-                  placeholder="Select variable"
-                  placeholderConstant="Enter API key"
+                  placeholder='Select variable'
+                  placeholderConstant='Enter API key'
                   allowConstant
                 />
               </VarEditorField>
@@ -197,18 +197,18 @@ export function AuthDialog({ authorization, nodeId, onChange }: AuthDialogProps)
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="xs">
+        <Button variant='ghost' size='xs'>
           <LockKeyhole />
           {getAuthButtonText()}
         </Button>
       </DialogTrigger>
-      <DialogContent size="sm" position="tc">
+      <DialogContent size='sm' position='tc'>
         <DialogHeader>
           <DialogTitle>Authentication</DialogTitle>
           <DialogDescription>Configure authentication for your HTTP request.</DialogDescription>
         </DialogHeader>
 
-        <RadioGroup className="gap-2" value={selectedType} onValueChange={handleTypeChange}>
+        <RadioGroup className='gap-2' value={selectedType} onValueChange={handleTypeChange}>
           {authTypeItems.map((item) => (
             <RadioGroupItemCard
               key={item.type}
@@ -221,14 +221,14 @@ export function AuthDialog({ authorization, nodeId, onChange }: AuthDialogProps)
           ))}
         </RadioGroup>
 
-        {selectedType !== AuthType.none && <div className="">{renderAuthFields()}</div>}
+        {selectedType !== AuthType.none && <div className=''>{renderAuthFields()}</div>}
 
         <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
-            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+          <Button variant='ghost' size='sm' onClick={() => setOpen(false)}>
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
-          <Button variant="outline" size="sm" onClick={handleSave} data-dialog-submit>
-            Save <KbdSubmit variant="outline" size="sm" />
+          <Button variant='outline' size='sm' onClick={handleSave} data-dialog-submit>
+            Save <KbdSubmit variant='outline' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

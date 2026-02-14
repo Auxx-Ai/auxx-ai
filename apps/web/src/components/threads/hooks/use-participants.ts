@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useMemo } from 'react'
 import { useShallow } from 'zustand/shallow'
-import { useParticipantStore, type ParticipantMeta } from '../store'
+import { type ParticipantMeta, useParticipantStore } from '../store'
 
 /**
  * Hook to get multiple participants.

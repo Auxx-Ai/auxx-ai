@@ -1,12 +1,12 @@
 // apps/web/src/app/api/sync/[...slug]/route.ts
-import { NextRequest, NextResponse } from 'next/server'
-import { headers } from 'next/headers'
 
-import { auth } from '~/auth/server'
 import { ShopifyIntegrationModel } from '@auxx/database/models'
-import { SyncManager } from '@auxx/lib/shopify'
 import { getQueue } from '@auxx/lib/jobs/queues'
 import { Queues } from '@auxx/lib/jobs/queues/types'
+import { SyncManager } from '@auxx/lib/shopify'
+import { headers } from 'next/headers'
+import { type NextRequest, NextResponse } from 'next/server'
+import { auth } from '~/auth/server'
 
 // type Props = { params: Promise<{ type: string }> }
 

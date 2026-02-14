@@ -1,5 +1,6 @@
 // apps/web/src/components/dynamic-table/utils/view-config.ts
 
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type {
   ColumnOrderState,
   ColumnPinningState,
@@ -7,13 +8,7 @@ import type {
   SortingState,
   VisibilityState,
 } from '@tanstack/react-table'
-import type {
-  ExtendedColumnDef,
-  ViewConfig,
-  ColumnFormatting,
-  KanbanViewConfig,
-} from '../types'
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import type { ColumnFormatting, ExtendedColumnDef, KanbanViewConfig, ViewConfig } from '../types'
 
 /**
  * Snapshot of the table state that can be persisted as a view configuration.
@@ -157,7 +152,9 @@ export function normalizeViewConfig(config?: Partial<ViewConfig> | null): ViewCo
     columnSizing: config?.columnSizing ? { ...config.columnSizing } : {},
     columnPinning: config?.columnPinning ? cloneColumnPinning(config.columnPinning) : {},
     columnLabels: config?.columnLabels ? { ...config.columnLabels } : {},
-    columnFormatting: config?.columnFormatting ? cloneColumnFormatting(config.columnFormatting) : {},
+    columnFormatting: config?.columnFormatting
+      ? cloneColumnFormatting(config.columnFormatting)
+      : {},
     // Preserve view type (defaults to 'table' for backward compatibility)
     viewType: config?.viewType ?? 'table',
     // Preserve kanban configuration if present
@@ -176,9 +173,7 @@ function cloneKanbanConfig(kanban: KanbanViewConfig): KanbanViewConfig {
     cardFields: kanban.cardFields ? [...kanban.cardFields] : undefined,
     primaryFieldId: kanban.primaryFieldId,
     columnSettings: kanban.columnSettings
-      ? Object.fromEntries(
-          Object.entries(kanban.columnSettings).map(([k, v]) => [k, { ...v }])
-        )
+      ? Object.fromEntries(Object.entries(kanban.columnSettings).map(([k, v]) => [k, { ...v }]))
       : undefined,
   }
 }
@@ -186,7 +181,10 @@ function cloneKanbanConfig(kanban: KanbanViewConfig): KanbanViewConfig {
 /**
  * Determine whether two view configurations represent the same state.
  */
-export function areViewConfigsEqual(a?: Partial<ViewConfig> | null, b?: Partial<ViewConfig> | null): boolean {
+export function areViewConfigsEqual(
+  a?: Partial<ViewConfig> | null,
+  b?: Partial<ViewConfig> | null
+): boolean {
   const normalizedA = normalizeViewConfig(a)
   const normalizedB = normalizeViewConfig(b)
   return deepEqual(normalizedA, normalizedB)
@@ -276,7 +274,7 @@ function deepEqual(left: unknown, right: unknown): boolean {
   }
 
   for (const [key, value] of leftEntries) {
-    if (!Object.prototype.hasOwnProperty.call(right, key)) {
+    if (!Object.hasOwn(right, key)) {
       return false
     }
     if (!deepEqual(value, (right as Record<string, unknown>)[key])) {

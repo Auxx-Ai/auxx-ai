@@ -1,6 +1,6 @@
 // apps/api/src/lib/utils.ts
 
-import { type Result, fromPromise, type ResultAsync } from 'neverthrow'
+import { fromPromise, type Result, type ResultAsync } from 'neverthrow'
 
 /**
  * Database error type with literal code
@@ -49,11 +49,14 @@ export function fromDatabase<T>(
   promise: Promise<T>,
   errorCode: string
 ): ResultAsync<T, DatabaseError> {
-  return fromPromise(promise, (cause): DatabaseError => ({
-    code: 'DATABASE_ERROR',
-    message: `Database operation failed: ${errorCode}`,
-    cause,
-  }))
+  return fromPromise(
+    promise,
+    (cause): DatabaseError => ({
+      code: 'DATABASE_ERROR',
+      message: `Database operation failed: ${errorCode}`,
+      cause,
+    })
+  )
 }
 
 /**
@@ -81,13 +84,13 @@ export function fromDatabase<T>(
  * const object = result.value
  * ```
  */
-export function fromS3<T>(
-  promise: Promise<T>,
-  operation: string
-): ResultAsync<T, S3Error> {
-  return fromPromise(promise, (cause): S3Error => ({
-    code: 'S3_ERROR',
-    message: `S3 operation failed: ${operation}`,
-    cause,
-  }))
+export function fromS3<T>(promise: Promise<T>, operation: string): ResultAsync<T, S3Error> {
+  return fromPromise(
+    promise,
+    (cause): S3Error => ({
+      code: 'S3_ERROR',
+      message: `S3 operation failed: ${operation}`,
+      cause,
+    })
+  )
 }

@@ -51,7 +51,11 @@ export type PartMetadata = {
 /**
  * Union type for all entity metadata types
  */
-export type EntityMetadata = TicketMetadata | ContactMetadata | PartMetadata | Record<string, unknown>
+export type EntityMetadata =
+  | TicketMetadata
+  | ContactMetadata
+  | PartMetadata
+  | Record<string, unknown>
 
 /**
  * Helper type to get metadata type by entity type

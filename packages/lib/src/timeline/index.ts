@@ -1,39 +1,39 @@
 // packages/lib/src/timeline/index.ts
 
-export { TimelineService } from './timeline-service'
 export { ContactTimelineTracker } from './contact-timeline-tracker'
 export {
-  TimelineEntityType,
-  TimelineActorType,
   ContactEventType,
-  TicketEventType,
-  EntityInstanceEventType,
-  ENTITY_TYPE_PREFIX,
-  SYSTEM_ENTITY_TYPES,
-  isSystemEntityType,
-  isCustomEntityType,
-  getEntityDefinitionId,
   createCustomEntityType,
+  ENTITY_TYPE_PREFIX,
+  EntityInstanceEventType,
+  getEntityDefinitionId,
+  isCustomEntityType,
+  isSystemEntityType,
+  SYSTEM_ENTITY_TYPES,
+  TicketEventType,
+  TimelineActorType,
+  TimelineEntityType,
   type TimelineEventType,
 } from './event-types'
+export {
+  type GroupedTimelineData,
+  getPeriodTitle,
+  getPeriodType,
+  groupTimelineEventsByPeriod,
+  MONTH_NAMES,
+  type PeriodType,
+  PeriodTypes,
+  type TimelinePeriodGroup,
+} from './timeline-periods'
+export { TimelineService } from './timeline-service'
 export type {
-  TimelineActor,
-  TimelineEventBase,
-  SingleTimelineEvent,
+  CreateTimelineEventInput,
   GroupedTimelineEvent,
+  SingleTimelineEvent,
+  TimelineActor,
+  TimelineCursor,
+  TimelineEventBase,
   TimelineItem,
   TimelineQueryInput,
   TimelineQueryResult,
-  CreateTimelineEventInput,
-  TimelineCursor,
 } from './types'
-export {
-  groupTimelineEventsByPeriod,
-  getPeriodType,
-  getPeriodTitle,
-  PeriodTypes,
-  MONTH_NAMES,
-  type PeriodType,
-  type TimelinePeriodGroup,
-  type GroupedTimelineData,
-} from './timeline-periods'

@@ -1,14 +1,11 @@
 // apps/web/src/components/workflow/nodes/shared/node-inputs/datetime-input.tsx
 'use client'
 
-import React from 'react'
 import { format } from 'date-fns'
-import { createNodeInput, type NodeInputProps } from './base-node-input'
-import {
-  DateTimePicker,
-  type PickerMode,
-} from '~/components/pickers/date-time-picker'
+import React from 'react'
+import { DateTimePicker, type PickerMode } from '~/components/pickers/date-time-picker'
 import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
+import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 interface DateTimeInputProps extends NodeInputProps {
   /** Field name */
@@ -104,7 +101,7 @@ export const DateTimeInput = createNodeInput<DateTimeInputProps>(
         disabled={isLoading}
         hideNowButton={false}
         notClearable={false}
-        className="w-full"
+        className='w-full'
         triggerProps={triggerProps}
         open={open}
         onOpenChange={onOpenChange}

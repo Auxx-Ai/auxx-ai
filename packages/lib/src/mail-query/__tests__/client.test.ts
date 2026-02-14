@@ -1,7 +1,7 @@
 // packages/lib/src/mail-query/__tests__/client.test.ts
 
-import { describe, it, expect } from 'vitest'
-import { mapStatusSlugToClientFilter, threadMatchesFilter, filterThreads } from '../client'
+import { describe, expect, it } from 'vitest'
+import { filterThreads, mapStatusSlugToClientFilter, threadMatchesFilter } from '../client'
 
 describe('mapStatusSlugToClientFilter', () => {
   it('maps open to OPEN status', () => {
@@ -100,13 +100,19 @@ describe('threadMatchesFilter', () => {
   describe('assigneeId filter', () => {
     it('matches specific assignee with ActorIdObject (type and id match)', () => {
       const assigned = { ...baseThread, assigneeId: { type: 'user' as const, id: 'user-1' } }
-      expect(threadMatchesFilter(assigned, { assigneeId: { type: 'user', id: 'user-1' } })).toBe(true)
-      expect(threadMatchesFilter(assigned, { assigneeId: { type: 'user', id: 'user-2' } })).toBe(false)
+      expect(threadMatchesFilter(assigned, { assigneeId: { type: 'user', id: 'user-1' } })).toBe(
+        true
+      )
+      expect(threadMatchesFilter(assigned, { assigneeId: { type: 'user', id: 'user-2' } })).toBe(
+        false
+      )
     })
 
     it('does not match when type differs', () => {
       const assigned = { ...baseThread, assigneeId: { type: 'user' as const, id: 'user-1' } }
-      expect(threadMatchesFilter(assigned, { assigneeId: { type: 'contact', id: 'user-1' } })).toBe(false)
+      expect(threadMatchesFilter(assigned, { assigneeId: { type: 'contact', id: 'user-1' } })).toBe(
+        false
+      )
     })
 
     it('matches null assigneeId filter for unassigned', () => {
@@ -241,7 +247,9 @@ describe('filterThreads', () => {
       assigneeId: null
       customField: string
     }
-    const extended: ExtendedThread[] = [{ id: '1', status: 'OPEN', assigneeId: null, customField: 'test' }]
+    const extended: ExtendedThread[] = [
+      { id: '1', status: 'OPEN', assigneeId: null, customField: 'test' },
+    ]
 
     const result = filterThreads(extended, { status: 'OPEN' })
     expect(result[0].customField).toBe('test')

@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import type { TaskSortConfig } from '@auxx/lib/tasks/client'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -10,12 +10,12 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { TasksList } from './tasks-list'
-import { TaskFilterBar } from './task-filter-bar'
-import { TasksStatsCards } from './tasks-stats-cards'
-import { CreateTaskButton } from './create-task-button'
-import type { TaskSortConfig } from '@auxx/lib/tasks/client'
+import { useState } from 'react'
 import type { Condition } from '~/components/conditions'
+import { CreateTaskButton } from './create-task-button'
+import { TaskFilterBar } from './task-filter-bar'
+import { TasksList } from './tasks-list'
+import { TasksStatsCards } from './tasks-stats-cards'
 
 /**
  * TasksPage renders a full-page global task management view.
@@ -36,8 +36,8 @@ export function TasksPage() {
     <MainPage>
       <MainPageHeader action={<CreateTaskButton />}>
         <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title="Tasks" href="/app/tasks" />
-          <MainPageBreadcrumbItem title="Overview" last />
+          <MainPageBreadcrumbItem title='Tasks' href='/app/tasks' />
+          <MainPageBreadcrumbItem title='Overview' last />
         </MainPageBreadcrumb>
       </MainPageHeader>
 
@@ -56,14 +56,14 @@ export function TasksPage() {
         />
 
         {/* Task List */}
-        <div className="flex-1 flex flex-col h-full overflow-y-auto bg-muted dark:bg-[#1e2227] @container">
+        <div className='flex-1 flex flex-col h-full overflow-y-auto bg-muted dark:bg-[#1e2227] @container'>
           <TasksList
-            viewMode="global"
+            viewMode='global'
             filters={filters}
             sort={sort}
             includeCompleted={includeCompleted}
             showEntityReferences
-            className="p-3"
+            className='p-3'
           />
         </div>
       </MainPageContent>

@@ -5,9 +5,9 @@
 import { memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
-import { type KnowledgeRetrievalNode as KnowledgeRetrievalNodeType } from './types'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
 import { isNodeVariable } from '~/components/workflow/utils/variable-utils'
+import type { KnowledgeRetrievalNode as KnowledgeRetrievalNodeType } from './types'
 
 /**
  * Knowledge Retrieval node component for the workflow canvas
@@ -33,20 +33,20 @@ export const KnowledgeRetrievalNode = memo<KnowledgeRetrievalNodeType>(({ id, da
           : 'Hybrid'
 
   return (
-    <BaseNode id={id} data={data} selected={selected} width={244} height="auto">
-      <NodeTargetHandle id={id} data={{ ...data, selected }} handleId="target" />
-      <div className="space-y-1 pb-2">
-        <div className="relative px-2">
+    <BaseNode id={id} data={data} selected={selected} width={244} height='auto'>
+      <NodeTargetHandle id={id} data={{ ...data, selected }} handleId='target' />
+      <div className='space-y-1 pb-2'>
+        <div className='relative px-2'>
           {hasQuery || hasDatasets ? (
-            <div className="space-y-1 mt-1">
+            <div className='space-y-1 mt-1'>
               {/* Query */}
               {hasQuery && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <div className='flex items-center gap-1 text-xs text-muted-foreground'>
                   <span>Query:</span>
                   {isQueryVariable ? (
                     <VariableTag variableId={data.query as string} nodeId={id} />
                   ) : (
-                    <span className="font-mono text-primary-600 truncate max-w-[140px]">
+                    <span className='font-mono text-primary-600 truncate max-w-[140px]'>
                       {data.query}
                     </span>
                   )}
@@ -55,37 +55,37 @@ export const KnowledgeRetrievalNode = memo<KnowledgeRetrievalNodeType>(({ id, da
 
               {/* Datasets */}
               {hasDatasets && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <div className='flex items-center gap-1 text-xs text-muted-foreground'>
                   <span>Datasets:</span>
-                  <span className="font-mono text-primary-600">
+                  <span className='font-mono text-primary-600'>
                     {datasetCount} {datasetCount === 1 ? 'dataset' : 'datasets'}
                   </span>
                 </div>
               )}
 
               {/* Search Type */}
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <div className='flex items-center gap-1 text-xs text-muted-foreground'>
                 <span>Search:</span>
-                <span className="font-mono text-primary-600">{searchTypeDisplay}</span>
+                <span className='font-mono text-primary-600'>{searchTypeDisplay}</span>
               </div>
 
               {/* Limit */}
               {data.limit && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <div className='flex items-center gap-1 text-xs text-muted-foreground'>
                   <span>Limit:</span>
-                  <span className="font-mono text-primary-600">{data.limit}</span>
+                  <span className='font-mono text-primary-600'>{data.limit}</span>
                 </div>
               )}
             </div>
           ) : (
-            <div className="text-xs text-primary-400 mt-1">Not configured</div>
+            <div className='text-xs text-primary-400 mt-1'>Not configured</div>
           )}
 
           <NodeSourceHandle
-            handleId="source"
+            handleId='source'
             id={id}
             data={{ ...data, selected }}
-            handleClassName="!bottom-5"
+            handleClassName='!bottom-5'
             handleIndex={0}
             handleTotal={1}
           />

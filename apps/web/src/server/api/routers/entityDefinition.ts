@@ -1,13 +1,13 @@
 // apps/web/src/server/api/routers/entityDefinition.ts
 
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { EntityDefinitionService } from '@auxx/lib/entity-definitions'
-import { checkSlugExists } from '@auxx/services/entity-definitions'
 import {
   createEntityDefinitionSchema,
   updateEntityDefinitionSchema,
 } from '@auxx/lib/entity-definitions/types'
+import { checkSlugExists } from '@auxx/services/entity-definitions'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 export const entityDefinitionRouter = createTRPCRouter({
   /**
@@ -32,7 +32,7 @@ export const entityDefinitionRouter = createTRPCRouter({
         }
         throw new Error(result.error.message)
       }
-      return { exists: result.value, reason: result.value ? 'taken' as const : null }
+      return { exists: result.value, reason: result.value ? ('taken' as const) : null }
     }),
 
   /**
@@ -47,29 +47,21 @@ export const entityDefinitionRouter = createTRPCRouter({
         .optional()
     )
     .query(async ({ ctx, input }) => {
-      const service = new EntityDefinitionService(
-        ctx.session.organizationId,
-        ctx.session.user.id
-      )
+      const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
       return await service.getAll(input)
     }),
 
   /**
    * Get a single entity definition by ID
    */
-  getById: protectedProcedure
-    .input(z.object({ id: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const service = new EntityDefinitionService(
-        ctx.session.organizationId,
-        ctx.session.user.id
-      )
-      const result = await service.getById(input.id)
-      if (!result) {
-        throw new Error('Entity definition not found')
-      }
-      return result
-    }),
+  getById: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
+    const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
+    const result = await service.getById(input.id)
+    if (!result) {
+      throw new Error('Entity definition not found')
+    }
+    return result
+  }),
 
   /**
    * Get entity definition by apiSlug
@@ -77,10 +69,7 @@ export const entityDefinitionRouter = createTRPCRouter({
   getBySlug: protectedProcedure
     .input(z.object({ slug: z.string() }))
     .query(async ({ ctx, input }) => {
-      const service = new EntityDefinitionService(
-        ctx.session.organizationId,
-        ctx.session.user.id
-      )
+      const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
       const result = await service.getBySlug(input.slug)
       if (!result) {
         throw new Error('Entity definition not found')
@@ -94,10 +83,7 @@ export const entityDefinitionRouter = createTRPCRouter({
   create: protectedProcedure
     .input(createEntityDefinitionSchema)
     .mutation(async ({ ctx, input }) => {
-      const service = new EntityDefinitionService(
-        ctx.session.organizationId,
-        ctx.session.user.id
-      )
+      const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
       return await service.create(input)
     }),
 
@@ -113,10 +99,7 @@ export const entityDefinitionRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const service = new EntityDefinitionService(
-        ctx.session.organizationId,
-        ctx.session.user.id
-      )
+      const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
       return await service.update(input.id, input.data)
     }),
 
@@ -127,10 +110,7 @@ export const entityDefinitionRouter = createTRPCRouter({
   archive: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const service = new EntityDefinitionService(
-        ctx.session.organizationId,
-        ctx.session.user.id
-      )
+      const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
       return await service.archive(input.id)
     }),
 
@@ -141,10 +121,7 @@ export const entityDefinitionRouter = createTRPCRouter({
   restore: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const service = new EntityDefinitionService(
-        ctx.session.organizationId,
-        ctx.session.user.id
-      )
+      const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
       return await service.restore(input.id)
     }),
 
@@ -154,10 +131,7 @@ export const entityDefinitionRouter = createTRPCRouter({
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const service = new EntityDefinitionService(
-        ctx.session.organizationId,
-        ctx.session.user.id
-      )
+      const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
       return await service.delete(input.id)
     }),
 })

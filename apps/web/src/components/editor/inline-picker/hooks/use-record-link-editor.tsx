@@ -2,12 +2,12 @@
 
 'use client'
 
-import { useCallback } from 'react'
-import { useInlinePicker } from './use-inline-picker'
-import { RecordBadge } from '~/components/resources/ui/record-badge'
-import { cn } from '@auxx/ui/lib/utils'
 import type { RecordId } from '@auxx/types/resource'
+import { cn } from '@auxx/ui/lib/utils'
 import type { Editor, JSONContent } from '@tiptap/react'
+import { useCallback } from 'react'
+import { RecordBadge } from '~/components/resources/ui/record-badge'
+import { useInlinePicker } from './use-inline-picker'
 
 /** Options for useRecordLinkEditor hook */
 interface UseRecordLinkEditorOptions {
@@ -36,17 +36,22 @@ interface UseRecordLinkEditorOptions {
  * @returns Editor instance and record-link-specific controls
  */
 export function useRecordLinkEditor(options: UseRecordLinkEditorOptions = {}) {
-  const { initialContent = '', placeholder, onUpdate, onJsonUpdate, editable = true, extensions = [], className } = options
+  const {
+    initialContent = '',
+    placeholder,
+    onUpdate,
+    onJsonUpdate,
+    editable = true,
+    extensions = [],
+    className,
+  } = options
 
   // Render badge using RecordBadge component with selection styling
   const renderBadge = useCallback(
     ({ id, selected }: { id: string; selected: boolean }) => (
       <RecordBadge
         recordId={id as RecordId}
-        className={cn(
-          'transition-all',
-          selected && 'ring-2 ring-primary ring-offset-1'
-        )}
+        className={cn('transition-all', selected && 'ring-2 ring-primary ring-offset-1')}
       />
     ),
     []
@@ -66,7 +71,7 @@ export function useRecordLinkEditor(options: UseRecordLinkEditorOptions = {}) {
     onJsonUpdate,
     // Paste/load pattern: support both #[id] and {id} formats
     pastePattern: {
-      pattern: /(?:#\[([^\]]+)\]|\{([^\}]+)\})/,
+      pattern: /(?:#\[([^\]]+)\]|\{([^}]+)\})/,
       getId: (match) => match[1] ?? match[2]!,
     },
   })

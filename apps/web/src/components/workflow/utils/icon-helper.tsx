@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/utils/icon-helper.tsx
 
-import React from 'react'
-import { Circle } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
-import { BaseType } from '../types/unified-types'
 import { getIcon as getIconData } from '@auxx/ui/components/icons'
+import { cn } from '@auxx/ui/lib/utils'
+import { Circle } from 'lucide-react'
+import type React from 'react'
+import { BaseType } from '../types/unified-types'
 
 /**
  * Get an icon component by name

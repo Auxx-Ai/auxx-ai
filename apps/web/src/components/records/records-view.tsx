@@ -1,31 +1,11 @@
 // apps/web/src/components/records/records-view.tsx
 'use client'
 
-import { useMemo, useState, useCallback } from 'react'
-import { useParams } from 'next/navigation'
-import { Button } from '@auxx/ui/components/button'
-import {
-  Plus,
-  Trash2,
-  Archive,
-  Database,
-  FileText,
-  SquarePen,
-  BookPlus,
-  Play,
-  Combine,
-} from 'lucide-react'
-import { useEntityInstanceOperations } from '~/hooks/use-entity-instance-operations'
-import {
-  DynamicView,
-  DynamicTableFooter,
-  CustomFieldCell,
-  PrimaryFieldCell,
-} from '~/components/dynamic-table'
-import type { ExtendedColumnDef, CellSelectionConfig } from '~/components/dynamic-table'
+import type { FieldType } from '@auxx/database/types'
+import { isCustomResource, type RecordId, type ResourceField } from '@auxx/lib/resources/client'
 import { ModelTypes } from '@auxx/types/custom-field'
-import { EmptyState } from '~/components/global/empty-state'
-import { getIconForFieldType } from '~/components/dynamic-table/custom-field-column-factory'
+import { toFieldId, toResourceFieldId } from '@auxx/types/field'
+import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,7 +13,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import type { FieldType } from '@auxx/database/types'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -41,25 +20,46 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
+import {
+  Archive,
+  BookPlus,
+  Combine,
+  Database,
+  FileText,
+  Play,
+  Plus,
+  SquarePen,
+  Trash2,
+} from 'lucide-react'
+import { useParams } from 'next/navigation'
+import { useCallback, useMemo, useState } from 'react'
 import { BulkUpdateEntityInstanceDialog } from '~/components/custom-fields/ui/bulk-update-entity-instance-dialog'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
-import { RecordDrawer } from './record-drawer'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
-import { useDockStore } from '~/stores/dock-store'
-import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
-import { MergeDialog } from '~/components/merge'
-import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
+import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
+import type { CellSelectionConfig, ExtendedColumnDef } from '~/components/dynamic-table'
 import {
+  CustomFieldCell,
+  DynamicTableFooter,
+  DynamicView,
+  PrimaryFieldCell,
+} from '~/components/dynamic-table'
+import { getIconForFieldType } from '~/components/dynamic-table/custom-field-column-factory'
+import {
+  useColumnVisibility,
   useTableFilters,
   useTableSorting,
-  useColumnVisibility,
 } from '~/components/dynamic-table/stores/store-selectors'
-import { useRecordList, useResource, toRecordId, type RecordMeta } from '~/components/resources'
-import { isCustomResource, type ResourceField, type RecordId } from '@auxx/lib/resources/client'
-import { toResourceFieldId, toFieldId } from '@auxx/types/field'
 import { decodeColumnId } from '~/components/dynamic-table/utils/column-id'
+import { EmptyState } from '~/components/global/empty-state'
+import { MergeDialog } from '~/components/merge'
+import { type RecordMeta, toRecordId, useRecordList, useResource } from '~/components/resources'
+import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { useResourceStore } from '~/components/resources/store/resource-store'
+import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
+import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
+import { useEntityInstanceOperations } from '~/hooks/use-entity-instance-operations'
+import { useDockStore } from '~/stores/dock-store'
+import { RecordDrawer } from './record-drawer'
 
 /** Page size for infinite query */
 const PAGE_SIZE = 100
@@ -84,14 +84,14 @@ interface HeaderActionsDropdownProps {
  */
 function HeaderActionsDropdown({ onNewField }: HeaderActionsDropdownProps) {
   return (
-    <div className="flex items-center h-8">
+    <div className='flex items-center h-8'>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-xs" className="rounded-sm">
+          <Button variant='ghost' size='icon-xs' className='rounded-sm'>
             <Plus />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align='end'>
           <DropdownMenuItem onClick={onNewField}>
             <BookPlus />
             New Field
@@ -399,7 +399,7 @@ export function RecordsView() {
                 Archive
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={() => handleDelete(row.original.id)}>
+              <DropdownMenuItem variant='destructive' onClick={() => handleDelete(row.original.id)}>
                 <Trash2 />
                 Delete
               </DropdownMenuItem>
@@ -519,13 +519,13 @@ export function RecordsView() {
    */
   const EmptyStateComponent = useCallback(
     () => (
-      <div className="flex h-full items-center justify-center">
+      <div className='flex h-full items-center justify-center'>
         <EmptyState
           icon={Database}
           title={`No ${resource?.plural?.toLowerCase() ?? 'records'} found`}
           description={`Create your first ${resource?.label?.toLowerCase() ?? 'record'}`}
           button={
-            <Button size="sm" variant="outline" onClick={() => setIsCreateDialogOpen(true)}>
+            <Button size='sm' variant='outline' onClick={() => setIsCreateDialogOpen(true)}>
               <Plus />
               Create {resource?.label ?? 'Record'}
             </Button>
@@ -542,12 +542,12 @@ export function RecordsView() {
       <MainPage>
         <MainPageHeader>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title="Loading..." href={`/app/custom/${slug}`} last />
+            <MainPageBreadcrumbItem title='Loading...' href={`/app/custom/${slug}`} last />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className="flex h-full items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <div className='flex h-full items-center justify-center'>
+            <div className='h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent' />
           </div>
         </MainPageContent>
       </MainPage>
@@ -560,14 +560,14 @@ export function RecordsView() {
       <MainPage>
         <MainPageHeader>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title="Not Found" href={`/app/custom/${slug}`} last />
+            <MainPageBreadcrumbItem title='Not Found' href={`/app/custom/${slug}`} last />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className="flex h-full items-center justify-center">
+          <div className='flex h-full items-center justify-center'>
             <EmptyState
               icon={FileText}
-              title="Entity not found"
+              title='Entity not found'
               description={`The entity "${slug}" could not be found or you don't have access to it.`}
             />
           </div>
@@ -594,10 +594,10 @@ export function RecordsView() {
         <MainPageHeader
           action={
             <Button
-              size="sm"
-              className="h-7 rounded-lg"
+              size='sm'
+              className='h-7 rounded-lg'
               onClick={() => setIsCreateDialogOpen(true)}>
-              <Plus className="size-4" />
+              <Plus className='size-4' />
               Create {resource.label}
             </Button>
           }>
@@ -611,10 +611,10 @@ export function RecordsView() {
           onDockedPanelWidthChange={setDockedWidth}
           dockedPanelMinWidth={minWidth}
           dockedPanelMaxWidth={maxWidth}>
-          <div className="flex-1 overflow-hidden rounded-lg bg-white dark:bg-muted/10 flex-col flex">
+          <div className='flex-1 overflow-hidden rounded-lg bg-white dark:bg-muted/10 flex-col flex'>
             <DynamicView
               data={records}
-              className="h-full flex-1"
+              className='h-full flex-1'
               tableId={`entity-${entityDefinitionId}`}
               bulkActions={bulkActions}
               enableSearch
@@ -639,17 +639,17 @@ export function RecordsView() {
               selectedKanbanCardIds={selectedKanbanCardIds}
               onSelectedKanbanCardIdsChange={setSelectedKanbanCardIds}>
               <DynamicTableFooter>
-                <div className="flex items-center justify-between px-4 py-2 text-sm">
+                <div className='flex items-center justify-between px-4 py-2 text-sm'>
                   <div>
                     {records.length}{' '}
                     {records.length === 1
                       ? resource.label.toLowerCase()
                       : resource.plural.toLowerCase()}
-                    {hasNextPage && <span className="ml-2">(more available)</span>}
+                    {hasNextPage && <span className='ml-2'>(more available)</span>}
                   </div>
                   {isFetchingNextPage && (
-                    <div className="flex items-center gap-2">
-                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    <div className='flex items-center gap-2'>
+                      <div className='h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent' />
                       <span>Loading more...</span>
                     </div>
                   )}

@@ -1,18 +1,18 @@
 // packages/lib/src/utils/__tests__/file.test.ts
 
-import { describe, test, expect } from 'vitest'
+import { describe, expect, test } from 'vitest'
 import {
+  calculateBase64Size,
   formatBytes,
-  getFileExtension,
+  getAttachmentByteSize,
   getDirectoryPath,
+  getFileExtension,
+  getFilenameFromPath,
+  getMimeTypeFromExtension,
   isImageFile,
   isPreviewableImage,
   sanitizeFilename,
-  calculateBase64Size,
   validateAttachmentSizes,
-  getMimeTypeFromExtension,
-  getAttachmentByteSize,
-  getFilenameFromPath,
 } from '../file'
 
 describe('File Utilities', () => {
@@ -190,9 +190,7 @@ describe('File Utilities', () => {
     })
 
     test('detects single file size violations', () => {
-      const attachments = [
-        { size: 2 * 1024 * 1024, filename: 'large.pdf' },
-      ]
+      const attachments = [{ size: 2 * 1024 * 1024, filename: 'large.pdf' }]
       const result = validateAttachmentSizes(attachments, limits)
       expect(result.valid).toBe(false)
       expect(result.errors).toHaveLength(1)
@@ -209,7 +207,7 @@ describe('File Utilities', () => {
       ]
       const result = validateAttachmentSizes(attachments, limits)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e => e.filename === 'Total attachments')).toBe(true)
+      expect(result.errors.some((e) => e.filename === 'Total attachments')).toBe(true)
     })
   })
 
@@ -254,10 +252,12 @@ describe('File Utilities', () => {
     })
 
     test('prefers size property over content', () => {
-      expect(getAttachmentByteSize({ 
-        size: 100, 
-        content: 'This is much longer content' 
-      })).toBe(100)
+      expect(
+        getAttachmentByteSize({
+          size: 100,
+          content: 'This is much longer content',
+        })
+      ).toBe(100)
     })
   })
 

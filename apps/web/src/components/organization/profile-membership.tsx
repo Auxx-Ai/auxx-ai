@@ -1,21 +1,21 @@
 // apps/web/src/components/organization/profile-membership.tsx
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { MailPlus, Loader2, Building } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
-import { api } from '~/trpc/react'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { Separator } from '@auxx/ui/components/separator'
 import { OrganizationRole as OrganizationRoleEnum } from '@auxx/database/enums'
+import { Button } from '@auxx/ui/components/button'
+import { Separator } from '@auxx/ui/components/separator'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { Building, Loader2, MailPlus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import {
   LeaveOrganizationDialog,
   OrganizationItem,
-  PendingInvitationItem,
   type OrganizationMembership,
+  PendingInvitationItem,
 } from '~/components/organization'
 import { useOrganization } from '~/hooks/use-organization'
+import { api } from '~/trpc/react'
 
 /** Displays user's organization memberships and pending invitations */
 export function ProfileMemberships() {
@@ -75,20 +75,20 @@ export function ProfileMemberships() {
   const isLoading = isLoadingMemberships || isLoadingInvites
 
   return (
-    <div className="p-6 space-y-6">
+    <div className='p-6 space-y-6'>
       {/* Loading State */}
       {isLoading && (
-        <div className="flex items-center justify-center py-6">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          <span className="ml-2 text-muted-foreground">Loading memberships...</span>
+        <div className='flex items-center justify-center py-6'>
+          <Loader2 className='h-6 w-6 animate-spin text-muted-foreground' />
+          <span className='ml-2 text-muted-foreground'>Loading memberships...</span>
         </div>
       )}
 
       {/* Pending Invitations Section */}
       {!isLoading && pendingInvites && pendingInvites.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground">
-            <MailPlus className="size-4" /> Pending Invitations
+        <div className='space-y-4'>
+          <div className='flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground'>
+            <MailPlus className='size-4' /> Pending Invitations
           </div>
           {pendingInvites.map((invite) => (
             <PendingInvitationItem
@@ -106,9 +106,9 @@ export function ProfileMemberships() {
 
       {/* Existing Memberships Section */}
       {!isLoading && organizations && organizations.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground">
-            <Building className="size-4" /> Your Organization
+        <div className='space-y-4'>
+          <div className='flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground'>
+            <Building className='size-4' /> Your Organization
           </div>
 
           {organizations.map((org) => {
@@ -136,11 +136,11 @@ export function ProfileMemberships() {
       {!isLoading &&
         (!organizations || organizations.length === 0) &&
         (!pendingInvites || pendingInvites.length === 0) && (
-          <div className="py-6 text-center">
-            <p className="text-muted-foreground">
+          <div className='py-6 text-center'>
+            <p className='text-muted-foreground'>
               You don't belong to any organizations and have no pending invitations.
             </p>
-            <Button className="mt-4" onClick={() => router.push('/onboarding')}>
+            <Button className='mt-4' onClick={() => router.push('/onboarding')}>
               Create an Organization
             </Button>
           </div>

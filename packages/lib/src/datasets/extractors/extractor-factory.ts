@@ -1,9 +1,9 @@
 // packages/lib/src/datasets/extractors/extractor-factory.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { ExtractorRegistry } from './extractor-registry'
+import type { ExtractionOptions, ExtractionResult, ExtractorInfo } from '../types/extractor.types'
 import { BaseExtractor } from './base-extractor'
-import type { ExtractionResult, ExtractionOptions, ExtractorInfo } from '../types/extractor.types'
+import { ExtractorRegistry } from './extractor-registry'
 
 // Auto-import all extractors to register them
 import './text-extractor'
@@ -35,9 +35,9 @@ export class ExtractorFactory {
     mimeType: string,
     extension: string,
     metadata: {
-      fileName?: string,
-      documentId?: string,
-      organizationId?: string,
+      fileName?: string
+      documentId?: string
+      organizationId?: string
     },
     options: ExtractorFactoryOptions = {}
   ): Promise<ExtractorFactoryResult> {
@@ -74,7 +74,7 @@ export class ExtractorFactory {
 
       // Try preferred extractor first if specified
       if (options.preferredExtractor) {
-        const preferredResult = await this.trySpecificExtractor(
+        const preferredResult = await ExtractorFactory.trySpecificExtractor(
           options.preferredExtractor,
           fileContent,
           metadata,
@@ -112,7 +112,7 @@ export class ExtractorFactory {
         try {
           logger.debug('Attempting extraction', { extractor: extractorInfo.name })
 
-          const result = await this.trySpecificExtractor(
+          const result = await ExtractorFactory.trySpecificExtractor(
             extractorInfo.name,
             fileContent,
             metadata,
@@ -147,9 +147,6 @@ export class ExtractorFactory {
           if (options.fallbackEnabled === false) {
             throw lastError
           }
-
-          // Continue to next extractor
-          continue
         }
       }
 
@@ -185,7 +182,6 @@ export class ExtractorFactory {
     }
   }
 
-
   /**
    * Try a specific extractor
    */
@@ -193,9 +189,9 @@ export class ExtractorFactory {
     extractorName: string,
     fileContent: Buffer,
     metadata: {
-      fileName?: string,
-      documentId?: string,
-      organizationId?: string,
+      fileName?: string
+      documentId?: string
+      organizationId?: string
     },
     options: ExtractorFactoryOptions
   ): Promise<ExtractionResult | null> {
@@ -213,13 +209,10 @@ export class ExtractorFactory {
 
     try {
       // Create extractor instance
-      const cacheKey = metadata.documentId ? `extract:${extractorName}:${metadata.documentId}` : undefined
-      const extractor = new ExtractorClass(
-        fileContent,
-        metadata.fileName,
-        cacheKey,
-        options
-      )
+      const cacheKey = metadata.documentId
+        ? `extract:${extractorName}:${metadata.documentId}`
+        : undefined
+      const extractor = new ExtractorClass(fileContent, metadata.fileName, cacheKey, options)
 
       // Extract content with retries
       const maxRetries = options.maxRetries || 2
@@ -276,7 +269,6 @@ export class ExtractorFactory {
       throw error
     }
   }
-
 
   /**
    * Get extraction capabilities summary

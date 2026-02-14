@@ -1,13 +1,13 @@
 // apps/web/src/components/workflow/nodes/actions/find/schema.ts
 
-import { type NodeDefinition, NodeCategory } from '~/components/workflow/types'
+import type { Condition, ConditionGroup } from '~/components/conditions'
+import { NodeCategory, type NodeDefinition } from '~/components/workflow/types'
 import { NodeType } from '~/components/workflow/types/node-types'
-import { type FindNodeData, createFindNodeDefaultData, findNodeDataSchema } from './types'
-import { validateFindNodeConfig } from './validation'
+import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { getFindNodeOutputVariables } from './output-variables'
 import { FindPanel } from './panel'
-import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
-import type { Condition, ConditionGroup } from '~/components/conditions'
+import { createFindNodeDefaultData, type FindNodeData, findNodeDataSchema } from './types'
+import { validateFindNodeConfig } from './validation'
 
 /**
  * Extract variables from find node filter conditions

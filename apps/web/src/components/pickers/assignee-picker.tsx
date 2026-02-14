@@ -1,12 +1,6 @@
 // components/ui/assignee-picker.tsx
 'use client'
 
-import { useState, useEffect, ReactNode } from 'react'
-import { Check, X, Users, Search } from 'lucide-react'
-// import { useDebounce } from 'use-debounce'
-import { api } from '~/trpc/react'
-
-import { cn } from '@auxx/ui/lib/utils'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -18,11 +12,16 @@ import {
   CommandList,
   CommandSeparator,
 } from '@auxx/ui/components/command'
-import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@auxx/ui/components/form'
-import { type Control } from 'react-hook-form'
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { cn } from '@auxx/ui/lib/utils'
+import { Check, Search, Users, X } from 'lucide-react'
+import { type ReactNode, useEffect, useState } from 'react'
+import type { Control } from 'react-hook-form'
 import { useDebounce } from '~/hooks/use-debounced-value'
 import { useUser } from '~/hooks/use-user'
+// import { useDebounce } from 'use-debounce'
+import { api } from '~/trpc/react'
 
 // Define interfaces for our component
 export interface TeamMember {
@@ -257,36 +256,36 @@ export function AssigneePicker({
     children
   ) : (
     <Button
-      variant="outline"
-      role="combobox"
+      variant='outline'
+      role='combobox'
       size={size}
       aria-expanded={isOpen}
       disabled={disabled}
       className={cn('justify-between rounded-full h-7 px-1.5 shrink-0', className)}>
       {selectedMembers && selectedMembers.length > 0 ? (
-        <div className="flex items-center gap-2">
+        <div className='flex items-center gap-2'>
           {selectedMembers.length === 1 ? (
             <>
-              <Avatar className="size-6">
+              <Avatar className='size-6'>
                 <AvatarImage
                   src={selectedMembers[0].image || undefined}
                   alt={selectedMembers[0].name || 'Assignee'}
                 />
                 <AvatarFallback>{getInitials(selectedMembers[0].name)}</AvatarFallback>
               </Avatar>
-              <span className="truncate pe-1.5">
+              <span className='truncate pe-1.5'>
                 {selectedMembers[0].name || selectedMembers[0].email}
               </span>
             </>
           ) : (
-            <div className="flex items-center gap-2">
-              <Users className="size-4" />
+            <div className='flex items-center gap-2'>
+              <Users className='size-4' />
               <span>{selectedMembers.length} assignees</span>
             </div>
           )}
         </div>
       ) : (
-        <span className="text-primary-400">{placeholder}</span>
+        <span className='text-primary-400'>{placeholder}</span>
       )}
       {/* <ChevronsUpDown className='ml-2 size-4 shrink-0 opacity-50' /> */}
     </Button>
@@ -301,7 +300,7 @@ export function AssigneePicker({
         <PopoverTrigger asChild>{triggerElement}</PopoverTrigger>
       )}
       <PopoverContent
-        className="p-0"
+        className='p-0'
         align={align}
         side={side}
         sideOffset={sideOffset}
@@ -313,14 +312,13 @@ export function AssigneePicker({
           // Prevent closing on focus changes when using anchorRef
           if (anchorRef) e.preventDefault()
         }}
-        {...props}
-      >
+        {...props}>
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder="Search team members..."
+            placeholder='Search team members...'
             value={searchValue}
             onValueChange={setSearchValue}
-            className="h-9"
+            className='h-9'
             icon={Search}
           />
 
@@ -329,17 +327,17 @@ export function AssigneePicker({
 
             {/* Selected members group */}
             {((selectedMembers && selectedMembers.length > 0) || includeUnassigned) && (
-              <CommandGroup heading="Selected">
+              <CommandGroup heading='Selected'>
                 {includeUnassigned && (
                   <CommandItem
-                    value="unassigned"
+                    value='unassigned'
                     onSelect={() => handleSelect(null)}
-                    className="flex items-center rounded-full ">
-                    <div className="mr-2 flex size-6 items-center justify-center rounded-full border">
-                      <X className="size-3" />
+                    className='flex items-center rounded-full '>
+                    <div className='mr-2 flex size-6 items-center justify-center rounded-full border'>
+                      <X className='size-3' />
                     </div>
                     <span>Unassigned</span>
-                    {selectedMembers.length === 0 && <Check className="ml-auto size-4" />}
+                    {selectedMembers.length === 0 && <Check className='ml-auto size-4' />}
                   </CommandItem>
                 )}
 
@@ -350,18 +348,18 @@ export function AssigneePicker({
                       key={member.id}
                       value={`selected-${member.id}`}
                       onSelect={() => handleSelect(member)}
-                      className="flex items-center">
-                      <Avatar className="mr-2 size-6">
+                      className='flex items-center'>
+                      <Avatar className='mr-2 size-6'>
                         <AvatarImage src={member.image || undefined} alt={getName(member)} />
                         <AvatarFallback>{getInitials(member.name)}</AvatarFallback>
                       </Avatar>
                       <span>{getName(member)}</span>
                       {allowMultiple ? (
-                        <div className="ml-auto flex size-4 items-center justify-center rounded-sm border">
-                          <Check className="size-3" />
+                        <div className='ml-auto flex size-4 items-center justify-center rounded-sm border'>
+                          <Check className='size-3' />
                         </div>
                       ) : (
-                        <Check className="ml-auto size-4" />
+                        <Check className='ml-auto size-4' />
                       )}
                     </CommandItem>
                   ))}
@@ -372,20 +370,20 @@ export function AssigneePicker({
             {unselectedMembers.length > 0 && (
               <>
                 <CommandSeparator />
-                <CommandGroup heading="All members">
+                <CommandGroup heading='All members'>
                   {unselectedMembers.map((member) => (
                     <CommandItem
                       key={member.id}
                       value={member.id}
                       onSelect={() => handleSelect(member)}
-                      className="flex items-center px-1">
-                      <Avatar className="mr-2 size-6">
+                      className='flex items-center px-1'>
+                      <Avatar className='mr-2 size-6'>
                         <AvatarImage src={member.image || undefined} alt={getName(member)} />
                         <AvatarFallback>{getInitials(member.name)}</AvatarFallback>
                       </Avatar>
                       <span>{getName(member)}</span>
                       {allowMultiple && (
-                        <div className="ml-auto flex size-4 items-center justify-center rounded-sm border" />
+                        <div className='ml-auto flex size-4 items-center justify-center rounded-sm border' />
                       )}
                     </CommandItem>
                   ))}
@@ -420,7 +418,7 @@ export function FormAssigneePicker({
       control={control}
       name={name}
       render={({ field }) => (
-        <FormItem className="flex flex-col">
+        <FormItem className='flex flex-col'>
           {label && <FormLabel>{label}</FormLabel>}
           <FormControl>
             <AssigneePicker {...props} selected={field.value || []} onChange={field.onChange} />

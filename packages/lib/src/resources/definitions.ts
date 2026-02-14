@@ -2,10 +2,10 @@
 import { RESOURCE_TABLE_MAP, type TableId } from './registry/field-registry'
 import {
   createContactVariables,
-  createTicketVariables,
-  createThreadVariables,
-  createMessageVariables,
   createDatasetVariables,
+  createMessageVariables,
+  createThreadVariables,
+  createTicketVariables,
 } from './variable-generators'
 
 /**

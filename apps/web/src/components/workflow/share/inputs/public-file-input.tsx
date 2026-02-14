@@ -2,11 +2,11 @@
 
 'use client'
 
-import { useState, useCallback, useRef, useId } from 'react'
-import { FileUp, Loader2, AlertCircle, Trash2 } from 'lucide-react'
+import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatBytes } from '@auxx/utils/file'
-import { Button } from '@auxx/ui/components/button'
+import { AlertCircle, FileUp, Loader2, Trash2 } from 'lucide-react'
+import { useCallback, useId, useRef, useState } from 'react'
 import { FileIcon } from '~/components/files/utils/file-icon'
 
 /**
@@ -355,17 +355,17 @@ export function PublicFileInput({
       onDragLeave={handleDragLeave}>
       <input
         ref={inputRef}
-        type="file"
+        type='file'
         multiple={allowMultiple}
         onChange={handleFileInput}
-        className="sr-only"
+        className='sr-only'
         id={inputId}
         accept={acceptTypes}
         disabled={disabled}
       />
 
       {hasFiles ? (
-        <div className="space-y-1 w-full">
+        <div className='space-y-1 w-full'>
           {/* Files being uploaded (shown until moved to completedFiles after 500ms delay) */}
           {fileStates.map((fileState) => (
             <FileItem
@@ -399,7 +399,7 @@ export function PublicFileInput({
             !isUploading && (
               <label
                 htmlFor={inputId}
-                className="block text-sm text-primary-400 cursor-pointer hover:underline py-1">
+                className='block text-sm text-primary-400 cursor-pointer hover:underline py-1'>
                 + Add more files
               </label>
             )}
@@ -407,11 +407,11 @@ export function PublicFileInput({
       ) : (
         <label
           htmlFor={inputId}
-          className="cursor-pointer flex flex-row items-center gap-1 h-8.5 flex-1">
-          <FileUp className="size-4 text-primary-400" />
-          <p className="text-sm text-primary-400">{placeholder}</p>
+          className='cursor-pointer flex flex-row items-center gap-1 h-8.5 flex-1'>
+          <FileUp className='size-4 text-primary-400' />
+          <p className='text-sm text-primary-400'>{placeholder}</p>
           {maxFileSize && (
-            <p className="text-xs text-primary-400">Max file size: {formatBytes(maxFileSize)}</p>
+            <p className='text-xs text-primary-400'>Max file size: {formatBytes(maxFileSize)}</p>
           )}
         </label>
       )}
@@ -461,28 +461,28 @@ function FileItem({
       {/* Progress bar - only when uploading */}
       {isUploading && (
         <div
-          className="absolute inset-0 bg-primary-500/10 pointer-events-none transition-all duration-200"
+          className='absolute inset-0 bg-primary-500/10 pointer-events-none transition-all duration-200'
           style={{ width: `${progress}%` }}
         />
       )}
-      <div className="flex items-center justify-center size-7 bg-primary-200/50 rounded-full">
-        <FileIcon mimeType={mimeType} className="size-4 text-primary-400 flex-shrink-0 z-10 " />
+      <div className='flex items-center justify-center size-7 bg-primary-200/50 rounded-full'>
+        <FileIcon mimeType={mimeType} className='size-4 text-primary-400 flex-shrink-0 z-10 ' />
       </div>
 
-      <div className="flex-1 min-w-0 z-10">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium truncate" title={filename}>
+      <div className='flex-1 min-w-0 z-10'>
+        <div className='flex items-center gap-2'>
+          <span className='text-sm font-medium truncate' title={filename}>
             {filename}
           </span>
           {/* Size inline for completed files */}
           {isCompleted ? (
-            <div className="text-xs text-primary-400">{formatBytes(size)}</div>
+            <div className='text-xs text-primary-400'>{formatBytes(size)}</div>
           ) : (
-            <div className="text-xs text-gray-500">
+            <div className='text-xs text-gray-500'>
               {error ? (
-                <span className="text-bad-500">{error}</span>
+                <span className='text-bad-500'>{error}</span>
               ) : isUploading ? (
-                <span className="text-primary-500">{progress}% uploading...</span>
+                <span className='text-primary-500'>{progress}% uploading...</span>
               ) : (
                 formatBytes(size)
               )}
@@ -491,20 +491,20 @@ function FileItem({
         </div>
       </div>
 
-      <div className="flex items-center z-10">
-        {isUploading && <Loader2 className="size-4 animate-spin text-primary-500" />}
-        {isFailed && <AlertCircle className="size-4 text-bad-500" />}
+      <div className='flex items-center z-10'>
+        {isUploading && <Loader2 className='size-4 animate-spin text-primary-500' />}
+        {isFailed && <AlertCircle className='size-4 text-bad-500' />}
 
         <Button
-          variant="ghost"
-          size="icon-sm"
+          variant='ghost'
+          size='icon-sm'
           onClick={(e) => {
             e.stopPropagation()
             onRemove(id)
           }}
           disabled={isUploading}
-          className="hover:bg-bad-200/50 hover:text-bad-500 rounded-full"
-          title="Remove file">
+          className='hover:bg-bad-200/50 hover:text-bad-500 rounded-full'
+          title='Remove file'>
           <Trash2 />
         </Button>
       </div>

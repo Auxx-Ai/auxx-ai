@@ -1,26 +1,26 @@
 // packages/lib/src/workflows/types.ts
 // Re-export workflow engine types
 export * from '../workflow-engine/core/types'
-// Import from workflow engine
-import { WorkflowTriggerType } from '../workflow-engine/core/types'
-import type {
-  WorkflowRunStatus,
-  WorkflowTriggerSource,
-  NodeTriggerSource,
-} from '@auxx/database/types'
+
 import {
+  NodeTriggerSource as NodeTriggerSourceEnum,
   WorkflowRunStatus as WorkflowRunStatusEnum,
   WorkflowTriggerSource as WorkflowTriggerSourceEnum,
-  NodeTriggerSource as NodeTriggerSourceEnum,
 } from '@auxx/database/enums'
-
 import type {
+  UserEntity as User,
   WorkflowEntity as Workflow,
   WorkflowAppEntity as WorkflowApp,
-  WorkflowRunEntity as WorkflowRun,
   WorkflowNodeExecutionEntity as WorkflowNodeExecution,
-  UserEntity as User,
+  WorkflowRunEntity as WorkflowRun,
 } from '@auxx/database/models'
+import type {
+  NodeTriggerSource,
+  WorkflowRunStatus,
+  WorkflowTriggerSource,
+} from '@auxx/database/types'
+// Import from workflow engine
+import type { WorkflowTriggerType } from '../workflow-engine/core/types'
 
 // Error handling types
 export interface WorkflowExecutionError {

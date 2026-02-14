@@ -1,8 +1,8 @@
 // packages/lib/src/import/job/get-job.ts
 
-import { eq, and } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { and, eq } from 'drizzle-orm'
 
 /**
  * Get an import job by ID, scoped to organization.
@@ -12,16 +12,9 @@ import { schema } from '@auxx/database'
  * @param jobId - Import job ID
  * @returns Import job or null if not found
  */
-export async function getJobByOrg(
-  db: Database,
-  organizationId: string,
-  jobId: string
-) {
+export async function getJobByOrg(db: Database, organizationId: string, jobId: string) {
   return db.query.ImportJob.findFirst({
-    where: and(
-      eq(schema.ImportJob.id, jobId),
-      eq(schema.ImportJob.organizationId, organizationId)
-    ),
+    where: and(eq(schema.ImportJob.id, jobId), eq(schema.ImportJob.organizationId, organizationId)),
   })
 }
 
@@ -33,16 +26,9 @@ export async function getJobByOrg(
  * @param jobId - Import job ID
  * @returns Import job with mapping or null if not found
  */
-export async function getJobWithMapping(
-  db: Database,
-  organizationId: string,
-  jobId: string
-) {
+export async function getJobWithMapping(db: Database, organizationId: string, jobId: string) {
   return db.query.ImportJob.findFirst({
-    where: and(
-      eq(schema.ImportJob.id, jobId),
-      eq(schema.ImportJob.organizationId, organizationId)
-    ),
+    where: and(eq(schema.ImportJob.id, jobId), eq(schema.ImportJob.organizationId, organizationId)),
     with: {
       importMapping: true,
     },
@@ -63,10 +49,7 @@ export async function getJobWithMappingProperties(
   jobId: string
 ) {
   return db.query.ImportJob.findFirst({
-    where: and(
-      eq(schema.ImportJob.id, jobId),
-      eq(schema.ImportJob.organizationId, organizationId)
-    ),
+    where: and(eq(schema.ImportJob.id, jobId), eq(schema.ImportJob.organizationId, organizationId)),
     with: {
       importMapping: {
         with: {

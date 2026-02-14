@@ -1,6 +1,6 @@
 // packages/lib/src/import/utils/resource-id.ts
 
-import { toRecordId, type RecordId } from '@auxx/types/resource'
+import { type RecordId, toRecordId } from '@auxx/types/resource'
 
 /**
  * Build a RecordId from an import context.

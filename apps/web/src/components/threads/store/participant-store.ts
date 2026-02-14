@@ -2,8 +2,8 @@
 
 import '~/lib/immer-config'
 import { create } from 'zustand'
-import { immer } from 'zustand/middleware/immer'
 import { subscribeWithSelector } from 'zustand/middleware'
+import { immer } from 'zustand/middleware/immer'
 
 /** Batching configuration */
 const BATCH_DELAY = 50

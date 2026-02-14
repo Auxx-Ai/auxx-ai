@@ -1,32 +1,8 @@
 // apps/build/src/components/apps/app-update-form.tsx
 'use client'
 
-import { useEffect } from 'react'
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
-// import { zodResolver } from '@hookform/resolvers/zod'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import {
-  BarChart3,
-  Bot,
-  CreditCard,
-  Phone,
-  Headphones,
-  MessageSquare,
-  ClipboardList,
-  Package,
-} from 'lucide-react'
-
+import { constants } from '@auxx/config/client'
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import {
   Field,
   FieldDescription,
@@ -36,10 +12,33 @@ import {
   FieldSeparator,
   FieldSet,
 } from '@auxx/ui/components/field'
-import { constants } from '@auxx/config/client'
-import { api } from '~/trpc/react'
+import { Input } from '@auxx/ui/components/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
+import { Textarea } from '@auxx/ui/components/textarea'
+// import { zodResolver } from '@hookform/resolvers/zod'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import {
+  BarChart3,
+  Bot,
+  ClipboardList,
+  CreditCard,
+  Headphones,
+  MessageSquare,
+  Package,
+  Phone,
+} from 'lucide-react'
+import { useEffect } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { toastError } from '~/components/global/toast'
 import { useBuildDehydratedState } from '~/components/providers/dehydrated-state-provider'
+import { api } from '~/trpc/react'
 
 /** Icon mapping for app categories */
 const iconMap = {
@@ -236,8 +235,8 @@ export function AppUpdateForm({ appSlug }: AppUpdateFormProps) {
   const displayApp = fullApp || app
 
   return (
-    <div className="flex flex-col items-center justify-start gap-1 py-10 px-4 overflow-y-auto">
-      <div className="max-w-3xl w-full mx-auto">
+    <div className='flex flex-col items-center justify-start gap-1 py-10 px-4 overflow-y-auto'>
+      <div className='max-w-3xl w-full mx-auto'>
         <form onSubmit={handleSubmit(onSubmit)}>
           <FieldGroup>
             {/* Basic Information Section */}
@@ -247,53 +246,53 @@ export function AppUpdateForm({ appSlug }: AppUpdateFormProps) {
                 Update your app's basic information and marketplace details
               </FieldDescription>
               <FieldGroup>
-                <div className="grid grid-cols-2 gap-4">
+                <div className='grid grid-cols-2 gap-4'>
                   <Field>
-                    <FieldLabel htmlFor="app-name">Name</FieldLabel>
+                    <FieldLabel htmlFor='app-name'>Name</FieldLabel>
                     <Input
-                      id="app-name"
-                      type="text"
+                      id='app-name'
+                      type='text'
                       {...register('title')}
-                      placeholder="My Awesome App"
+                      placeholder='My Awesome App'
                     />
                     {errors.title && (
-                      <p className="text-sm text-red-600 mt-1">{errors.title.message}</p>
+                      <p className='text-sm text-red-600 mt-1'>{errors.title.message}</p>
                     )}
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="slug">Slug</FieldLabel>
-                    <Input id="slug" type="text" value={displayApp.slug} disabled />
+                    <FieldLabel htmlFor='slug'>Slug</FieldLabel>
+                    <Input id='slug' type='text' value={displayApp.slug} disabled />
                     <FieldDescription>Slug cannot be changed after creation</FieldDescription>
                   </Field>
                 </div>
                 <Field>
-                  <FieldLabel htmlFor="app-tagline">Tagline</FieldLabel>
+                  <FieldLabel htmlFor='app-tagline'>Tagline</FieldLabel>
                   <Input
-                    id="app-tagline"
-                    placeholder="Enter a brief tagline"
+                    id='app-tagline'
+                    placeholder='Enter a brief tagline'
                     {...register('description')}
                   />
                   {errors.description && (
-                    <p className="text-sm text-red-600 mt-1">{errors.description.message}</p>
+                    <p className='text-sm text-red-600 mt-1'>{errors.description.message}</p>
                   )}
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="app-category">Category</FieldLabel>
+                  <FieldLabel htmlFor='app-category'>Category</FieldLabel>
                   <Select
                     value={watch('category')}
                     onValueChange={(value) =>
                       setValue('category', value as any, { shouldDirty: true })
                     }>
-                    <SelectTrigger id="app-category">
-                      <SelectValue placeholder="Select a category..." />
+                    <SelectTrigger id='app-category'>
+                      <SelectValue placeholder='Select a category...' />
                     </SelectTrigger>
                     <SelectContent>
                       {constants.appCategories.map((category) => {
                         const Icon = iconMap[category.icon as keyof typeof iconMap]
                         return (
                           <SelectItem key={category.value} value={category.value}>
-                            <div className="flex items-center gap-2">
-                              {Icon && <Icon className="size-4" />}
+                            <div className='flex items-center gap-2'>
+                              {Icon && <Icon className='size-4' />}
                               <span>{category.label}</span>
                             </div>
                           </SelectItem>
@@ -302,7 +301,7 @@ export function AppUpdateForm({ appSlug }: AppUpdateFormProps) {
                     </SelectContent>
                   </Select>
                   {errors.category && (
-                    <p className="text-sm text-red-600 mt-1">{errors.category.message}</p>
+                    <p className='text-sm text-red-600 mt-1'>{errors.category.message}</p>
                   )}
                 </Field>
               </FieldGroup>
@@ -318,39 +317,39 @@ export function AppUpdateForm({ appSlug }: AppUpdateFormProps) {
               </FieldDescription>
               <FieldGroup>
                 <Field>
-                  <FieldLabel htmlFor="app-overview">Overview</FieldLabel>
+                  <FieldLabel htmlFor='app-overview'>Overview</FieldLabel>
                   <Textarea
-                    id="app-overview"
-                    placeholder="Describe what your app does..."
+                    id='app-overview'
+                    placeholder='Describe what your app does...'
                     rows={6}
                     {...register('contentOverview')}
                   />
                   {errors.contentOverview && (
-                    <p className="text-sm text-red-600 mt-1">{errors.contentOverview.message}</p>
+                    <p className='text-sm text-red-600 mt-1'>{errors.contentOverview.message}</p>
                   )}
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="app-how-it-works">How it works</FieldLabel>
+                  <FieldLabel htmlFor='app-how-it-works'>How it works</FieldLabel>
                   <Textarea
-                    id="app-how-it-works"
-                    placeholder="Explain how your app works..."
+                    id='app-how-it-works'
+                    placeholder='Explain how your app works...'
                     rows={6}
                     {...register('contentHowItWorks')}
                   />
                   {errors.contentHowItWorks && (
-                    <p className="text-sm text-red-600 mt-1">{errors.contentHowItWorks.message}</p>
+                    <p className='text-sm text-red-600 mt-1'>{errors.contentHowItWorks.message}</p>
                   )}
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="app-configurations">Configuration</FieldLabel>
+                  <FieldLabel htmlFor='app-configurations'>Configuration</FieldLabel>
                   <Textarea
-                    id="app-configurations"
-                    placeholder="Explain how to configure your app..."
+                    id='app-configurations'
+                    placeholder='Explain how to configure your app...'
                     rows={6}
                     {...register('contentConfigure')}
                   />
                   {errors.contentConfigure && (
-                    <p className="text-sm text-red-600 mt-1">{errors.contentConfigure.message}</p>
+                    <p className='text-sm text-red-600 mt-1'>{errors.contentConfigure.message}</p>
                   )}
                 </Field>
               </FieldGroup>
@@ -364,59 +363,59 @@ export function AppUpdateForm({ appSlug }: AppUpdateFormProps) {
               <FieldDescription>Provide links to your app's resources</FieldDescription>
               <FieldGroup>
                 <Field>
-                  <FieldLabel htmlFor="app-website">Website</FieldLabel>
+                  <FieldLabel htmlFor='app-website'>Website</FieldLabel>
                   <Input
-                    id="app-website"
-                    placeholder="https://example.com"
+                    id='app-website'
+                    placeholder='https://example.com'
                     {...register('websiteUrl')}
                   />
                   {errors.websiteUrl && (
-                    <p className="text-sm text-red-600 mt-1">{errors.websiteUrl.message}</p>
+                    <p className='text-sm text-red-600 mt-1'>{errors.websiteUrl.message}</p>
                   )}
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="app-documentation">Documentation</FieldLabel>
+                  <FieldLabel htmlFor='app-documentation'>Documentation</FieldLabel>
                   <Input
-                    id="app-documentation"
-                    placeholder="https://docs.example.com"
+                    id='app-documentation'
+                    placeholder='https://docs.example.com'
                     {...register('documentationUrl')}
                   />
                   {errors.documentationUrl && (
-                    <p className="text-sm text-red-600 mt-1">{errors.documentationUrl.message}</p>
+                    <p className='text-sm text-red-600 mt-1'>{errors.documentationUrl.message}</p>
                   )}
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="app-support-contact">Support contact</FieldLabel>
+                  <FieldLabel htmlFor='app-support-contact'>Support contact</FieldLabel>
                   <Input
-                    id="app-support-contact"
-                    placeholder="support@example.com"
+                    id='app-support-contact'
+                    placeholder='support@example.com'
                     {...register('contactUrl')}
                   />
                   {errors.contactUrl && (
-                    <p className="text-sm text-red-600 mt-1">{errors.contactUrl.message}</p>
+                    <p className='text-sm text-red-600 mt-1'>{errors.contactUrl.message}</p>
                   )}
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="app-terms">Terms of Service</FieldLabel>
+                  <FieldLabel htmlFor='app-terms'>Terms of Service</FieldLabel>
                   <Input
-                    id="app-terms"
-                    placeholder="https://example.com/terms"
+                    id='app-terms'
+                    placeholder='https://example.com/terms'
                     {...register('termsOfServiceUrl')}
                   />
                   {errors.termsOfServiceUrl && (
-                    <p className="text-sm text-red-600 mt-1">{errors.termsOfServiceUrl.message}</p>
+                    <p className='text-sm text-red-600 mt-1'>{errors.termsOfServiceUrl.message}</p>
                   )}
                 </Field>
               </FieldGroup>
             </FieldSet>
 
             {/* Submit Button */}
-            <Field orientation="horizontal">
+            <Field orientation='horizontal'>
               <Button
-                type="submit"
-                size="sm"
+                type='submit'
+                size='sm'
                 loading={updateApp.isPending}
-                loadingText="Saving..."
+                loadingText='Saving...'
                 disabled={!isDirty || updateApp.isPending}>
                 Save Changes
               </Button>

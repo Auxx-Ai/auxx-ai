@@ -1,4 +1,4 @@
 // packages/lib/src/cache/index.ts
-export { BaseCacheService } from './base-cache-service'
 
-export type { CacheOptions, CacheEntry } from './base-cache-service'
+export type { CacheEntry, CacheOptions } from './base-cache-service'
+export { BaseCacheService } from './base-cache-service'

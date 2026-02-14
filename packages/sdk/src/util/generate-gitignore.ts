@@ -1,7 +1,8 @@
 import fs from 'fs/promises'
 import path from 'path'
-import { complete, errored } from '../errors.js'
 import { HIDDEN_AUXX_DIRECTORY } from '../constants/hidden-auxx-directory.js'
+import { complete, errored } from '../errors.js'
+
 const GITIGNORE_FILENAME = '.gitignore'
 const GITIGNORE_CONTENT = `node_modules
 graphql.d.ts

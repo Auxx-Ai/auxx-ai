@@ -1,19 +1,19 @@
 // apps/web/src/components/workflow/hooks/use-available-variables-v2.ts
 
-import React, { useMemo, useCallback, useRef } from 'react'
 import { useStore } from '@xyflow/react'
-import { useVarStore } from '../store/use-var-store'
-import { useNodeAvailableVariables } from './use-var-store-sync'
+import { Globe, Repeat, Settings } from 'lucide-react'
+import React, { useCallback, useMemo, useRef } from 'react'
 import type { UnifiedVariable, VariableGroup } from '~/components/workflow/types/variable-types'
 import {
   getNodeIdFromVariableId,
   getPathFromVariableId,
 } from '~/components/workflow/utils/variable-utils'
-import { BaseType } from '../types/unified-types'
-import { getIcon } from '../utils/icon-helper'
-import { Settings, Globe, Repeat } from 'lucide-react'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
 import type { LoopContext } from '../store/use-var-store'
+import { useVarStore } from '../store/use-var-store'
+import type { BaseType } from '../types/unified-types'
+import { getIcon } from '../utils/icon-helper'
+import { useNodeAvailableVariables } from './use-var-store-sync'
 
 /** Stable empty array to avoid creating new references */
 const EMPTY_LOOP_CONTEXTS: LoopContext[] = []
@@ -100,7 +100,9 @@ export function useAvailableVariables({
 
       // Create hash of titles/types to detect actual changes
       const newHash = state.nodes
-        .map((n) => `${n.id}:${n.data?.title || n.data?.label || n.id}:${n.data?.type || 'unknown'}`)
+        .map(
+          (n) => `${n.id}:${n.data?.title || n.data?.label || n.id}:${n.data?.type || 'unknown'}`
+        )
         .sort()
         .join('|')
 
@@ -198,7 +200,7 @@ export function useAvailableVariables({
           // nodeId: contexts[0]?.loopNodeId || '',
           name: contextName,
           type: 'loop',
-          icon: <Repeat className="size-4" />,
+          icon: <Repeat className='size-4' />,
           order: -1, // Show at top
           variables: loopVars,
           color: '#8B5CF6',
@@ -227,7 +229,7 @@ export function useAvailableVariables({
         // nodeId: '',
         name: 'Environment Variables',
         type: 'environment',
-        icon: <Settings className="size-4" />,
+        icon: <Settings className='size-4' />,
         order: 1000,
         variables: envVars,
         color: '#10B981',
@@ -241,7 +243,7 @@ export function useAvailableVariables({
         // nodeId: '',
         name: 'System Variables',
         type: 'system',
-        icon: <Globe className="size-4" />,
+        icon: <Globe className='size-4' />,
         order: 1001,
         variables: sysVariables,
         color: '#3B82F6',

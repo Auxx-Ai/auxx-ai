@@ -24,21 +24,23 @@ export class TextChunker {
     })
 
     try {
-      this.validateChunkingOptions(options)
+      TextChunker.validateChunkingOptions(options)
 
       if (!content || content.trim().length === 0) {
         logger.warn('Empty content provided for chunking')
         return []
       }
 
-      const segments = this.slidingWindowChunk(content, options)
+      const segments = TextChunker.slidingWindowChunk(content, options)
 
       logger.info('Text chunking completed', {
         originalLength: content.length,
         segmentCount: segments.length,
         averageSegmentSize:
           segments.length > 0
-            ? Math.round(segments.reduce((acc, seg) => acc + seg.content.length, 0) / segments.length)
+            ? Math.round(
+                segments.reduce((acc, seg) => acc + seg.content.length, 0) / segments.length
+              )
             : 0,
       })
 
@@ -99,7 +101,7 @@ export class TextChunker {
       const maxEnd = Math.min(position + chunkSize, content.length)
 
       // Find the best break point within the window
-      const chunkEnd = this.findBestBreakPoint(content, position, maxEnd, options)
+      const chunkEnd = TextChunker.findBestBreakPoint(content, position, maxEnd, options)
 
       // Extract and trim the chunk
       const chunkContent = content.slice(position, chunkEnd).trim()
@@ -110,11 +112,11 @@ export class TextChunker {
           position: segmentIndex,
           startOffset: position,
           endOffset: chunkEnd,
-          tokenCount: this.estimateTokens(chunkContent),
+          tokenCount: TextChunker.estimateTokens(chunkContent),
           metadata: {
             chunkMethod: 'sliding-window',
             originalLength: chunkEnd - position,
-            wordCount: this.countWords(chunkContent),
+            wordCount: TextChunker.countWords(chunkContent),
           },
         })
         segmentIndex++
@@ -244,7 +246,7 @@ export class TextChunker {
       targetTokens,
     })
 
-    const contentAnalysis = this.analyzeContent(content)
+    const contentAnalysis = TextChunker.analyzeContent(content)
     let optimizedSize = baseOptions.chunkSize
 
     // Adjust based on content density
@@ -274,7 +276,7 @@ export class TextChunker {
 
     // Adjust for target token count if specified
     if (targetTokens) {
-      const estimatedTokensPerChar = this.estimateTokens(content) / content.length
+      const estimatedTokensPerChar = TextChunker.estimateTokens(content) / content.length
       const targetCharacters = Math.floor(targetTokens / estimatedTokensPerChar)
 
       // Blend target size with content-optimized size
@@ -387,7 +389,8 @@ export class TextChunker {
     const sizes = segments.map((seg) => seg.content.length)
     const totalCharacters = sizes.reduce((sum, size) => sum + size, 0)
     const totalWords = segments.reduce(
-      (sum, seg) => sum + ((seg.metadata?.wordCount as number) || this.countWords(seg.content)),
+      (sum, seg) =>
+        sum + ((seg.metadata?.wordCount as number) || TextChunker.countWords(seg.content)),
       0
     )
     const totalTokens = segments.reduce((sum, seg) => sum + seg.tokenCount, 0)
@@ -451,7 +454,7 @@ export class TextChunker {
     // Check chunk size consistency
     const sizes = segments.map((seg) => seg.content.length)
     const averageSize = sizes.reduce((sum, size) => sum + size, 0) / sizes.length
-    const sizeVariation = this.calculateStandardDeviation(sizes, averageSize)
+    const sizeVariation = TextChunker.calculateStandardDeviation(sizes, averageSize)
     const variationRatio = sizeVariation / averageSize
 
     if (variationRatio > 0.5) {
@@ -485,7 +488,7 @@ export class TextChunker {
     }
 
     // Check for semantic coherence indicators
-    const coherenceScore = this.assessSemanticCoherence(segments)
+    const coherenceScore = TextChunker.assessSemanticCoherence(segments)
     qualityScore += coherenceScore - 50 // Adjust based on coherence (50 is neutral)
 
     if (coherenceScore < 40) {
@@ -509,7 +512,7 @@ export class TextChunker {
    * Calculate standard deviation for size consistency analysis
    */
   private static calculateStandardDeviation(values: number[], mean: number): number {
-    const squaredDiffs = values.map((value) => Math.pow(value - mean, 2))
+    const squaredDiffs = values.map((value) => (value - mean) ** 2)
     const avgSquaredDiff = squaredDiffs.reduce((sum, diff) => sum + diff, 0) / values.length
     return Math.sqrt(avgSquaredDiff)
   }
@@ -593,7 +596,7 @@ export class TextChunker {
 
     if (qualityAnalysis.issues.some((issue) => issue.includes('High variation'))) {
       // Enable content-aware optimization
-      const optimized = this.optimizeChunkSize(content, improvedOptions)
+      const optimized = TextChunker.optimizeChunkSize(content, improvedOptions)
       return optimized
     }
 

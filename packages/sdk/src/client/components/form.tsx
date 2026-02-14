@@ -1,6 +1,6 @@
 // packages/sdk/src/client/components/form.tsx
 
-import React, { useRef, useImperativeHandle, forwardRef } from 'react'
+import React, { forwardRef, useImperativeHandle, useRef } from 'react'
 import type { FormSchema, InferFormValues } from '../forms/types.js'
 
 /**
@@ -22,10 +22,7 @@ export interface FormRef<S extends FormSchema> {
   reset: () => void
 
   /** Set a field value programmatically */
-  setValue: <K extends keyof InferFormValues<S>>(
-    name: K,
-    value: InferFormValues<S>[K]
-  ) => void
+  setValue: <K extends keyof InferFormValues<S>>(name: K, value: InferFormValues<S>[K]) => void
 
   /** Trigger validation manually */
   validate: () => Promise<boolean>
@@ -97,10 +94,7 @@ export interface FormProps<S extends FormSchema = FormSchema> {
  *   )
  * }
  */
-function FormComponent<S extends FormSchema>(
-  props: FormProps<S>,
-  ref: React.Ref<FormRef<S>>
-) {
+function FormComponent<S extends FormSchema>(props: FormProps<S>, ref: React.Ref<FormRef<S>>) {
   // Internal ref for form control methods
   const internalRef = useRef<any>(null)
 

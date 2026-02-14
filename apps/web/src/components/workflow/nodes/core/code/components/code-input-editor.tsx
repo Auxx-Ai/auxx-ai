@@ -1,14 +1,14 @@
 // apps/web/src/components/workflow/nodes/core/code/components/code-input-editor.tsx
 
-import React from 'react'
 import { Button } from '@auxx/ui/components/button'
-import { Plus, Trash2 } from 'lucide-react'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
 import { cn } from '@auxx/ui/lib/utils'
 import { produce } from 'immer'
+import { Plus, Trash2 } from 'lucide-react'
+import type React from 'react'
+import Section from '~/components/workflow/ui/section'
 import { VariablePicker } from '~/components/workflow/ui/variables/variable-picker'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
-import Section from '~/components/workflow/ui/section'
 
 export interface CodeInput {
   name: string
@@ -101,34 +101,34 @@ export const CodeInputEditor: React.FC<CodeInputEditorProps> = ({
 
   return (
     <Section
-      title="Input Variables"
-      description="Connect workflow variables to use as direct variables in your main() function."
+      title='Input Variables'
+      description='Connect workflow variables to use as direct variables in your main() function.'
       initialOpen={true}
       actions={
         !isReadOnly && (
-          <Button variant="ghost" size="xs" onClick={handleAdd}>
+          <Button variant='ghost' size='xs' onClick={handleAdd}>
             <Plus /> Add
           </Button>
         )
       }>
-      <div className="space-y-4">
+      <div className='space-y-4'>
         {inputs.length > 0 && (
-          <div className="space-y-2">
+          <div className='space-y-2'>
             {inputs.map((input, index) => {
               const error = getNameError(input.name, index)
               const variableSelector = input.variableId // ? input.variableId.split('.') : null
 
               return (
                 <div key={index}>
-                  <InputGroup className="flex items-center gap-2">
+                  <InputGroup className='flex items-center gap-2'>
                     <InputGroupInput
                       className={cn('flex-1', error && 'border-red-500')}
                       disabled={isReadOnly}
                       value={input.name}
                       onChange={(e) => handleNameChange(index, e.target.value)}
-                      placeholder="Variable name"
+                      placeholder='Variable name'
                     />
-                    <InputGroupAddon align="inline-end">
+                    <InputGroupAddon align='inline-end'>
                       <VariablePicker
                         value={variableSelector}
                         onChange={(value) =>
@@ -138,32 +138,32 @@ export const CodeInputEditor: React.FC<CodeInputEditorProps> = ({
                           )
                         }
                         nodeId={nodeId}
-                        placeholder="Select variable">
+                        placeholder='Select variable'>
                         {input.variableId ? (
                           <span>
-                            <span className="cursor-pointer pointer-events-none">
+                            <span className='cursor-pointer pointer-events-none'>
                               <VariableTag variableId={input.variableId} nodeId={nodeId} />
                             </span>
                           </span>
                         ) : (
-                          <Button size="xs" variant="outline" className="py-0 text-xs">
+                          <Button size='xs' variant='outline' className='py-0 text-xs'>
                             Select Variable
                           </Button>
                         )}
                       </VariablePicker>
                     </InputGroupAddon>
                     {!isReadOnly && (
-                      <InputGroupAddon align="inline-end">
+                      <InputGroupAddon align='inline-end'>
                         <Button
-                          size="icon-xs"
-                          variant="destructive-hover"
+                          size='icon-xs'
+                          variant='destructive-hover'
                           onClick={() => handleRemove(index)}>
                           <Trash2 />
                         </Button>
                       </InputGroupAddon>
                     )}
                   </InputGroup>
-                  {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+                  {error && <p className='text-xs text-red-500 mt-1'>{error}</p>}
                 </div>
               )
             })}
@@ -171,7 +171,7 @@ export const CodeInputEditor: React.FC<CodeInputEditorProps> = ({
         )}
 
         {inputs.length === 0 && (
-          <div className="text-sm text-muted-foreground text-center py-4">
+          <div className='text-sm text-muted-foreground text-center py-4'>
             No input variables defined. Click the + button to connect workflow variables to your
             code.
           </div>

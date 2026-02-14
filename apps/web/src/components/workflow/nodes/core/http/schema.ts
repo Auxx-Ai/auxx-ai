@@ -1,17 +1,16 @@
 // apps/web/src/components/workflow/nodes/core/http/schema.ts
 
-import { z } from 'zod'
 import { HTTP_NODE_CONSTANTS } from '@auxx/lib/workflow-engine/constants'
+import { z } from 'zod'
 import { NodeType } from '~/components/workflow/types/node-types'
-import { NodeCategory } from '~/components/workflow/types/registry'
 import type { NodeDefinition, ValidationResult } from '~/components/workflow/types/registry'
+import { NodeCategory } from '~/components/workflow/types/registry'
 import type { OutputVariable } from '~/components/workflow/types/variable-types'
 import { BaseType } from '~/components/workflow/types/variable-types'
+import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
 import { HttpNodePanel } from './panel'
-import { type HttpNodeData } from './types'
-import { Method, BodyType, AuthType, ErrorStrategy } from './types'
-import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
+import { AuthType, BodyType, ErrorStrategy, type HttpNodeData, Method } from './types'
 
 // Zod schema for validation (config - deprecated)
 export const httpNodeSchema = z.object({

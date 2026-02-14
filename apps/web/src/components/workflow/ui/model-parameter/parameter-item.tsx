@@ -1,12 +1,8 @@
 // apps/web/src/components/workflow/ui/model-parameter/parameter-item.tsx
 
-import type { FC } from 'react'
-import { useEffect, useRef, useState } from 'react'
-import { ParameterItemProps, ParameterValue } from './types'
-import { cn } from '@auxx/ui/lib/utils'
-import { Switch } from '@auxx/ui/components/switch'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
-import { Slider } from '@auxx/ui/components/slider'
+import { Badge } from '@auxx/ui/components/badge'
+import { Input } from '@auxx/ui/components/input'
+import { Label } from '@auxx/ui/components/label'
 import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
 import {
   Select,
@@ -15,11 +11,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Input } from '@auxx/ui/components/input'
+import { Slider } from '@auxx/ui/components/slider'
+import { Switch } from '@auxx/ui/components/switch'
 import { Textarea } from '@auxx/ui/components/textarea'
-import { Badge } from '@auxx/ui/components/badge'
-import { Label } from '@auxx/ui/components/label'
-import { X, HelpCircle } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
+import { cn } from '@auxx/ui/lib/utils'
+import { HelpCircle, X } from 'lucide-react'
+import type { FC } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { ParameterItemProps, ParameterValue } from './types'
 
 const isNullOrUndefined = <T,>(value: T | null | undefined): value is null | undefined => {
   return value === null || value === undefined
@@ -164,10 +164,10 @@ const ParameterItem: FC<ParameterItemProps> = ({
       }
 
       return (
-        <div className="flex items-center gap-2">
+        <div className='flex items-center gap-2'>
           {numberInputWithSlide && (
             <Slider
-              className="w-[120px]"
+              className='w-[120px]'
               value={[renderValue as number]}
               min={parameterRule.min}
               max={parameterRule.max}
@@ -178,12 +178,12 @@ const ParameterItem: FC<ParameterItemProps> = ({
           )}
           <Input
             ref={numberInputRef}
-            className="h-7 w-22 shrink-0 text-sm pe-0.5"
-            type="number"
+            className='h-7 w-22 shrink-0 text-sm pe-0.5'
+            type='number'
             max={parameterRule.max}
             min={parameterRule.min}
             disabled={disabled}
-            step={numberInputWithSlide ? step : Math.pow(10, -(parameterRule.precision || 0))}
+            step={numberInputWithSlide ? step : 10 ** -(parameterRule.precision || 0)}
             onChange={handleNumberInputChange}
             onBlur={handleNumberInputBlur}
           />
@@ -193,10 +193,10 @@ const ParameterItem: FC<ParameterItemProps> = ({
 
     if (parameterRule.type === 'float') {
       return (
-        <div className="flex items-center gap-2">
+        <div className='flex items-center gap-2'>
           {numberInputWithSlide && (
             <Slider
-              className="w-[120px]"
+              className='w-[120px]'
               value={[renderValue as number]}
               min={parameterRule.min}
               max={parameterRule.max}
@@ -207,12 +207,12 @@ const ParameterItem: FC<ParameterItemProps> = ({
           )}
           <Input
             ref={numberInputRef}
-            className="h-7 w-22 shrink-0 text-sm pe-0.5"
-            type="number"
+            className='h-7 w-22 shrink-0 text-sm pe-0.5'
+            type='number'
             max={parameterRule.max}
             min={parameterRule.min}
             disabled={disabled}
-            step={numberInputWithSlide ? 0.1 : Math.pow(10, -(parameterRule.precision || 0))}
+            step={numberInputWithSlide ? 0.1 : 10 ** -(parameterRule.precision || 0)}
             onChange={handleNumberInputChange}
             onBlur={handleNumberInputBlur}
           />
@@ -223,18 +223,18 @@ const ParameterItem: FC<ParameterItemProps> = ({
     if (parameterRule.type === 'boolean') {
       return (
         <RadioGroup
-          className="flex w-[178px] items-center gap-4"
+          className='flex w-[178px] items-center gap-4'
           value={renderValue ? '1' : '0'}
           onValueChange={handleRadioChange}>
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="1" id={`${parameterRule.name}-true`} />
-            <Label htmlFor={`${parameterRule.name}-true`} className="text-sm">
+          <div className='flex items-center space-x-2'>
+            <RadioGroupItem value='1' id={`${parameterRule.name}-true`} />
+            <Label htmlFor={`${parameterRule.name}-true`} className='text-sm'>
               True
             </Label>
           </div>
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="0" id={`${parameterRule.name}-false`} />
-            <Label htmlFor={`${parameterRule.name}-false`} className="text-sm">
+          <div className='flex items-center space-x-2'>
+            <RadioGroupItem value='0' id={`${parameterRule.name}-false`} />
+            <Label htmlFor={`${parameterRule.name}-false`} className='text-sm'>
               False
             </Label>
           </div>
@@ -247,8 +247,8 @@ const ParameterItem: FC<ParameterItemProps> = ({
         <Input
           className={cn(isInWorkflow ? 'w-[178px]' : 'w-full')}
           value={renderValue as string}
-          variant="secondary"
-          size="sm"
+          variant='secondary'
+          size='sm'
           onChange={handleStringInputChange}
           disabled={disabled}
         />
@@ -258,7 +258,7 @@ const ParameterItem: FC<ParameterItemProps> = ({
     if (parameterRule.type === 'text') {
       return (
         <Textarea
-          className="h-20 w-full text-sm"
+          className='h-20 w-full text-sm'
           disabled={disabled}
           value={renderValue as string}
           onChange={handleStringInputChange}
@@ -269,10 +269,10 @@ const ParameterItem: FC<ParameterItemProps> = ({
     if (parameterRule.type === 'string' && !!parameterRule?.options?.length) {
       return (
         <Select value={renderValue as string} onValueChange={handleSelect}>
-          <SelectTrigger size="sm" disabled={disabled}>
+          <SelectTrigger size='sm' disabled={disabled}>
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="z-200">
+          <SelectContent className='z-200'>
             {parameterRule.options.map((option) => (
               <SelectItem key={option} value={option}>
                 {option}
@@ -301,29 +301,29 @@ const ParameterItem: FC<ParameterItemProps> = ({
   }
 
   return (
-    <div className="mb-2 flex items-center justify-between gap-2">
-      <div className="shrink-0 basis-1/2">
+    <div className='mb-2 flex items-center justify-between gap-2'>
+      <div className='shrink-0 basis-1/2'>
         <div className={cn('flex w-full shrink-0 items-center gap-2')}>
           {!parameterRule.required && parameterRule.name !== 'stop' && (
             <Switch
-              size="sm"
+              size='sm'
               checked={!isNullOrUndefined(value)}
               onCheckedChange={handleSwitch}
               disabled={disabled}
             />
           )}
           <div
-            className="text-xs text-muted-foreground truncate"
+            className='text-xs text-muted-foreground truncate'
             title={getLabel(parameterRule.label)}>
             {getLabel(parameterRule.label)}
           </div>
           {parameterRule.help && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <HelpCircle className="h-3 w-3 text-muted-foreground shrink-0" />
+                <HelpCircle className='h-3 w-3 text-muted-foreground shrink-0' />
               </TooltipTrigger>
-              <TooltipContent className="max-w-[200px]">
-                <p className="whitespace-pre-wrap text-xs">{getHelpText(parameterRule.help)}</p>
+              <TooltipContent className='max-w-[200px]'>
+                <p className='whitespace-pre-wrap text-xs'>{getHelpText(parameterRule.help)}</p>
               </TooltipContent>
             </Tooltip>
           )}
@@ -334,7 +334,7 @@ const ParameterItem: FC<ParameterItemProps> = ({
           </div>
         )}
       </div>
-      <div className="flex-1">{renderInput()}</div>
+      <div className='flex-1'>{renderInput()}</div>
     </div>
   )
 }
@@ -370,13 +370,13 @@ const TagInput: FC<{
         'focus-within:ring-1 focus-within:ring-blue-500'
       )}>
       {items.map((item, index) => (
-        <Badge key={index} variant="secondary" className="text-xs h-5 px-1">
+        <Badge key={index} variant='secondary' className='text-xs h-5 px-1'>
           {item}
           <button
-            type="button"
+            type='button'
             onClick={() => removeItem(index)}
-            className="ml-1 hover:text-destructive">
-            <X className="size-3" />
+            className='ml-1 hover:text-destructive'>
+            <X className='size-3' />
           </button>
         </Badge>
       ))}
@@ -386,7 +386,7 @@ const TagInput: FC<{
         onChange={(e) => setInputValue(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={items.length === 0 ? placeholder : ''}
-        className="border-0 bg-transparent p-0 h-auto focus-visible:ring-0 text-xs flex-1 min-w-[60px] shadow-none"
+        className='border-0 bg-transparent p-0 h-auto focus-visible:ring-0 text-xs flex-1 min-w-[60px] shadow-none'
       />
     </div>
   )

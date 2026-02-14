@@ -1,49 +1,49 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/crud.ts
-import { BaseNodeProcessor } from '../base-node'
-import type {
-  WorkflowNode,
-  NodeExecutionResult,
-  ValidationResult,
-  PreprocessedNodeData,
-} from '../../core/types'
-import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
+
+import { type Database, database, type ModelType, ModelTypes } from '@auxx/database'
+import { type ModelType as FieldModelType, FieldValueService } from '@auxx/lib/field-values'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { toRecordId } from '@auxx/types/resource'
 import {
   ContactService,
   type CreateContactInput,
   type UpdateContactInput,
 } from '../../../contacts/contact-service'
+import { UnifiedCrudHandler } from '../../../resources/crud'
+import { CRUD_RESOURCE_CONFIGS, getCrudField } from '../../../resources/crud-definitions'
 import {
-  TicketService,
-  type CreateTicketInput,
-  type UpdateTicketInput,
-} from '../../../tickets/ticket-service'
+  type FieldOptionItem,
+  getAllFields,
+  getField,
+  getFieldOptionsForResource,
+  isCustomResourceId,
+  isSystemResourceId,
+  isValidFieldOptionValue,
+  setEntityVariables,
+} from '../../../resources/registry'
+import type { TableId } from '../../../resources/registry/field-registry'
+import type { ResourceField } from '../../../resources/registry/field-types'
+import { ResourceRegistryService } from '../../../resources/registry/resource-registry-service'
+import type { CustomResource } from '../../../resources/registry/types'
 import { ThreadMutationService } from '../../../threads/thread-mutation.service'
 import { UnreadService } from '../../../threads/unread-service'
-import { FieldValueService, type ModelType as FieldModelType } from '@auxx/lib/field-values'
-import { ModelTypes, type ModelType } from '@auxx/database'
-import { database, type Database } from '@auxx/database'
-import { getCrudField, CRUD_RESOURCE_CONFIGS } from '../../../resources/crud-definitions'
 import {
-  isValidFieldOptionValue,
-  getFieldOptionsForResource,
-  type FieldOptionItem,
-  getField,
-  getAllFields,
-  setEntityVariables,
-  isSystemResourceId,
-  isCustomResourceId,
-} from '../../../resources/registry'
-import { BaseType } from '../../core/types'
-import type { TableId } from '../../../resources/registry/field-registry'
+  type CreateTicketInput,
+  TicketService,
+  type UpdateTicketInput,
+} from '../../../tickets/ticket-service'
+import type { ExecutionContextManager } from '../../core/execution-context'
+import type {
+  NodeExecutionResult,
+  PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
+} from '../../core/types'
+import { BaseType, NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { createResourceReference } from '../../types/resource-reference'
-import { ResourceRegistryService } from '../../../resources/registry/resource-registry-service'
-import { UnifiedCrudHandler } from '../../../resources/crud'
-import type { CustomResource } from '../../../resources/registry/types'
-import type { ResourceField } from '../../../resources/registry/field-types'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
-import { parseResourceFieldId, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
-import { toRecordId } from '@auxx/types/resource'
+import { BaseNodeProcessor } from '../base-node'
+
 /**
  * CRUD node data interface
  * Supports both system resources (contact, ticket) and custom entities (UUID/CUID format)
@@ -95,7 +95,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     const config = node.data as unknown as CrudNodeData
 
     // Resolve and extract resource ID for update/delete operations
-    let resolvedResourceId: string | undefined = undefined
+    let resolvedResourceId: string | undefined
     if (config.resourceId) {
       resolvedResourceId = await this.extractIdFromValue(config.resourceId, contextManager)
 

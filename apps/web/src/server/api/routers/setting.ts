@@ -1,9 +1,10 @@
-import { z } from 'zod'
-import { SETTINGS_CATALOG, SettingsService } from '@auxx/lib/settings'
-import { DehydrationService } from '@auxx/lib/dehydration'
 import { OrganizationMemberModel } from '@auxx/database/models'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { DehydrationService } from '@auxx/lib/dehydration'
+import { SETTINGS_CATALOG, SettingsService } from '@auxx/lib/settings'
 import { createScopedLogger } from '@auxx/logger'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+
 const logger = createScopedLogger('api-settings')
 
 // Input validation schema for getting user settings

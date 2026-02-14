@@ -1,20 +1,20 @@
 // packages/redis/src/core/redis-event-router.ts
 import {
-  logger,
   type EventHandler,
   type EventRouterStats,
-  type SubscriptionOptions,
+  logger,
   type RedisEvent,
+  type SubscriptionOptions,
 } from '../types'
-import { PubSubAdapterFactory, type BasePubSubAdapter } from './pub-sub-adapter'
-import { RedisClientFactory } from './redis-client-factory'
-import { matchesPattern, findMatchingPatterns } from '../utils/channel-matcher'
-import { generateEventId } from '../utils/event-serializer'
+import { findMatchingPatterns, matchesPattern } from '../utils/channel-matcher'
 import {
-  serializeRedisEvent,
-  deserializeRedisEvent,
   createRedisEvent,
+  deserializeRedisEvent,
+  generateEventId,
+  serializeRedisEvent,
 } from '../utils/event-serializer'
+import { type BasePubSubAdapter, PubSubAdapterFactory } from './pub-sub-adapter'
+import { RedisClientFactory } from './redis-client-factory'
 
 /**
  * General-purpose Redis Event Router
@@ -52,11 +52,11 @@ export class RedisEventRouter {
     instanceId = 'default',
     options: { pollingInterval?: number } = {}
   ): RedisEventRouter {
-    if (!this.instances.has(instanceId)) {
+    if (!RedisEventRouter.instances.has(instanceId)) {
       logger.info(`Creating new RedisEventRouter instance: ${instanceId}`)
-      this.instances.set(instanceId, new RedisEventRouter(instanceId, options))
+      RedisEventRouter.instances.set(instanceId, new RedisEventRouter(instanceId, options))
     }
-    return this.instances.get(instanceId)!
+    return RedisEventRouter.instances.get(instanceId)!
   }
 
   /**
@@ -356,9 +356,11 @@ export class RedisEventRouter {
    * Close all router instances
    */
   static async closeAllInstances(): Promise<void> {
-    const promises = Array.from(this.instances.values()).map((instance) => instance.disconnect())
+    const promises = Array.from(RedisEventRouter.instances.values()).map((instance) =>
+      instance.disconnect()
+    )
     await Promise.all(promises)
-    this.instances.clear()
+    RedisEventRouter.instances.clear()
     logger.info('All RedisEventRouter instances closed')
   }
 
@@ -366,10 +368,10 @@ export class RedisEventRouter {
    * Close specific router instance
    */
   static async closeInstance(instanceId: string): Promise<void> {
-    const instance = this.instances.get(instanceId)
+    const instance = RedisEventRouter.instances.get(instanceId)
     if (instance) {
       await instance.disconnect()
-      this.instances.delete(instanceId)
+      RedisEventRouter.instances.delete(instanceId)
       logger.info(`RedisEventRouter instance ${instanceId} closed`)
     }
   }

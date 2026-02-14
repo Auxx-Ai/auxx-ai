@@ -1,9 +1,9 @@
 // packages/lib/src/files/core/filesystem-service.ts
 
 import { database as db, schema } from '@auxx/database'
-import { and, eq, gte, lt, count, desc, asc, or, isNull, inArray, type SQL } from 'drizzle-orm'
-import type { FolderTreeNode } from '../core/types'
 import { createScopedLogger } from '@auxx/logger'
+import { and, asc, count, desc, eq, gte, inArray, isNull, lt, or, type SQL } from 'drizzle-orm'
+import type { FolderTreeNode } from '../core/types'
 import { FileService } from './file-service'
 import { FolderService } from './folder-service'
 

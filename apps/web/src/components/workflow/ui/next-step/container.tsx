@@ -30,9 +30,9 @@ const Container = ({
           {branchName}
         </div>
       )}
-      <div className="space-y-0.5">
+      <div className='space-y-0.5'>
         {nextNodes.map((nextNode) => (
-          <Item key={nextNode.id} nodeId={nextNode.id} data={nextNode.data} sourceHandle="source" />
+          <Item key={nextNode.id} nodeId={nextNode.id} data={nextNode.data} sourceHandle='source' />
         ))}
       </div>
       <Add

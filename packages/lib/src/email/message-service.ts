@@ -1,13 +1,14 @@
 // packages/lib/src/email/message-service-refactored.ts
-import {
-  type IntegrationProvider,
-  type SendMessageOptions,
-} from '../providers/integration-provider.interface'
+
 import { createScopedLogger } from '@auxx/logger'
-import { ProviderRegistryService } from '../providers/provider-registry-service'
 import { MessageSenderService } from '../messages/message-sender.service'
-import { WebhookManagerService } from '../providers/webhook-manager-service'
 import { MessageSyncService } from '../messages/message-sync-service'
+import type {
+  IntegrationProvider,
+  SendMessageOptions,
+} from '../providers/integration-provider.interface'
+import { ProviderRegistryService } from '../providers/provider-registry-service'
+import { WebhookManagerService } from '../providers/webhook-manager-service'
 
 const logger = createScopedLogger('message-service')
 

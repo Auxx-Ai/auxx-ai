@@ -2,19 +2,19 @@
 
 'use client'
 
-import React from 'react'
-import { useFormContext } from 'react-hook-form'
-import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
 import { Checkbox } from '@auxx/ui/components/checkbox'
+import { Input } from '@auxx/ui/components/input'
+import { Label } from '@auxx/ui/components/label'
 import {
   Select,
-  SelectTrigger,
-  SelectValue,
   SelectContent,
   SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '@auxx/ui/components/select'
-import { Label } from '@auxx/ui/components/label'
+import { Textarea } from '@auxx/ui/components/textarea'
+import React from 'react'
+import { useFormContext } from 'react-hook-form'
 import type { SerializedFormValue } from './types'
 
 interface FieldRendererProps {
@@ -46,7 +46,8 @@ export const FieldRenderer = React.memo(function FieldRenderer({
   } = useFormContext()
 
   const error = errors[name]?.message as string | undefined
-  const isOptional = 'optional' in fieldSchema.metadata ? fieldSchema.metadata.optional ?? false : false
+  const isOptional =
+    'optional' in fieldSchema.metadata ? (fieldSchema.metadata.optional ?? false) : false
 
   // Use placeholder from props or fallback to schema
   const effectivePlaceholder =
@@ -68,10 +69,10 @@ export const FieldRenderer = React.memo(function FieldRenderer({
           : 'text'
 
       return (
-        <div className="space-y-2">
+        <div className='space-y-2'>
           <Label htmlFor={fieldId}>
             {label}
-            {!isOptional && <span className="text-destructive ml-1">*</span>}
+            {!isOptional && <span className='text-destructive ml-1'>*</span>}
           </Label>
 
           {isMultiline ? (
@@ -80,9 +81,7 @@ export const FieldRenderer = React.memo(function FieldRenderer({
               placeholder={effectivePlaceholder}
               disabled={disabled}
               aria-invalid={!!error}
-              aria-describedby={
-                error ? errorId : description ? descriptionId : undefined
-              }
+              aria-describedby={error ? errorId : description ? descriptionId : undefined}
               {...register(name)}
             />
           ) : (
@@ -92,21 +91,19 @@ export const FieldRenderer = React.memo(function FieldRenderer({
               placeholder={effectivePlaceholder}
               disabled={disabled}
               aria-invalid={!!error}
-              aria-describedby={
-                error ? errorId : description ? descriptionId : undefined
-              }
+              aria-describedby={error ? errorId : description ? descriptionId : undefined}
               {...register(name)}
             />
           )}
 
           {description && (
-            <p id={descriptionId} className="text-sm text-muted-foreground">
+            <p id={descriptionId} className='text-sm text-muted-foreground'>
               {description}
             </p>
           )}
 
           {error && (
-            <p id={errorId} role="alert" className="text-sm text-destructive">
+            <p id={errorId} role='alert' className='text-sm text-destructive'>
               {error}
             </p>
           )}
@@ -116,33 +113,31 @@ export const FieldRenderer = React.memo(function FieldRenderer({
 
     case 'number': {
       return (
-        <div className="space-y-2">
+        <div className='space-y-2'>
           <Label htmlFor={fieldId}>
             {label}
-            {!isOptional && <span className="text-destructive ml-1">*</span>}
+            {!isOptional && <span className='text-destructive ml-1'>*</span>}
           </Label>
 
           <Input
             id={fieldId}
-            type="number"
+            type='number'
             placeholder={effectivePlaceholder}
             disabled={disabled}
             aria-invalid={!!error}
-            aria-describedby={
-              error ? errorId : description ? descriptionId : undefined
-            }
+            aria-describedby={error ? errorId : description ? descriptionId : undefined}
             step={fieldSchema.metadata.integer ? '1' : 'any'}
             {...register(name, { valueAsNumber: true })}
           />
 
           {description && (
-            <p id={descriptionId} className="text-sm text-muted-foreground">
+            <p id={descriptionId} className='text-sm text-muted-foreground'>
               {description}
             </p>
           )}
 
           {error && (
-            <p id={errorId} role="alert" className="text-sm text-destructive">
+            <p id={errorId} role='alert' className='text-sm text-destructive'>
               {error}
             </p>
           )}
@@ -154,8 +149,8 @@ export const FieldRenderer = React.memo(function FieldRenderer({
       const value = watch(name)
 
       return (
-        <div className="space-y-2">
-          <div className="flex items-center space-x-2">
+        <div className='space-y-2'>
+          <div className='flex items-center space-x-2'>
             <Checkbox
               id={fieldId}
               checked={value}
@@ -164,19 +159,19 @@ export const FieldRenderer = React.memo(function FieldRenderer({
               aria-invalid={!!error}
               aria-describedby={error ? errorId : undefined}
             />
-            <Label htmlFor={fieldId} className="cursor-pointer">
+            <Label htmlFor={fieldId} className='cursor-pointer'>
               {label}
             </Label>
           </div>
 
           {description && (
-            <p id={descriptionId} className="text-sm text-muted-foreground">
+            <p id={descriptionId} className='text-sm text-muted-foreground'>
               {description}
             </p>
           )}
 
           {error && (
-            <p id={errorId} role="alert" className="text-sm text-destructive">
+            <p id={errorId} role='alert' className='text-sm text-destructive'>
               {error}
             </p>
           )}
@@ -193,32 +188,22 @@ export const FieldRenderer = React.memo(function FieldRenderer({
       const value = watch(name)
 
       return (
-        <div className="space-y-2">
+        <div className='space-y-2'>
           <Label htmlFor={fieldId}>
             {label}
-            {!isOptional && <span className="text-destructive ml-1">*</span>}
+            {!isOptional && <span className='text-destructive ml-1'>*</span>}
           </Label>
 
-          <Select
-            value={value}
-            onValueChange={(val) => setValue(name, val)}
-            disabled={disabled}>
+          <Select value={value} onValueChange={(val) => setValue(name, val)} disabled={disabled}>
             <SelectTrigger
               id={fieldId}
               aria-invalid={!!error}
-              aria-describedby={
-                error ? errorId : description ? descriptionId : undefined
-              }>
-              <SelectValue
-                placeholder={effectivePlaceholder || 'Select an option'}
-              />
+              aria-describedby={error ? errorId : description ? descriptionId : undefined}>
+              <SelectValue placeholder={effectivePlaceholder || 'Select an option'} />
             </SelectTrigger>
             <SelectContent>
               {options.map((option) => (
-                <SelectItem
-                  key={option.value}
-                  value={option.value}
-                  disabled={option.disabled}>
+                <SelectItem key={option.value} value={option.value} disabled={option.disabled}>
                   {option.label}
                 </SelectItem>
               ))}
@@ -226,13 +211,13 @@ export const FieldRenderer = React.memo(function FieldRenderer({
           </Select>
 
           {description && (
-            <p id={descriptionId} className="text-sm text-muted-foreground">
+            <p id={descriptionId} className='text-sm text-muted-foreground'>
               {description}
             </p>
           )}
 
           {error && (
-            <p id={errorId} role="alert" className="text-sm text-destructive">
+            <p id={errorId} role='alert' className='text-sm text-destructive'>
               {error}
             </p>
           )}

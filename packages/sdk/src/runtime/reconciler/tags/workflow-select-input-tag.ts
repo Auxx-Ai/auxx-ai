@@ -1,7 +1,7 @@
 // packages/sdk/src/runtime/reconciler/tags/workflow-select-input-tag.ts
 
-import { BaseTag } from './base-tag.js'
 import { registerEventHandler } from '../../register-event-handler.js'
+import { BaseTag } from './base-tag.js'
 
 /**
  * Tag for SelectInput component.
@@ -23,15 +23,7 @@ export class WorkflowSelectInputTag extends BaseTag {
 
   getAttributes(props: Record<string, any>): Record<string, any> {
     // ✓ Explicitly whitelist only serializable props
-    const {
-      name,
-      value,
-      label,
-      description,
-      placeholder,
-      disabled,
-      options,
-    } = props
+    const { name, value, label, description, placeholder, disabled, options } = props
 
     return {
       name,

@@ -40,9 +40,7 @@ export function RenderDataHandler() {
 
       // Dev logging
       if (isDevLoggingEnabled) {
-        console.log(
-          `[RenderDataHandler] App(${appId}) rendered ${root.children.length} elements`
-        )
+        console.log(`[RenderDataHandler] App(${appId}) rendered ${root.children.length} elements`)
       }
 
       return null

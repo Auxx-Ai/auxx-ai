@@ -33,7 +33,11 @@ export class KnowledgeBaseModel extends BaseModel<
    */
   async findByIdGlobal(id: string): Promise<TypedResult<KnowledgeBaseEntity | null, Error>> {
     try {
-      const rows = await this.db.select().from(KnowledgeBase).where(eq(KnowledgeBase.id, id)).limit(1)
+      const rows = await this.db
+        .select()
+        .from(KnowledgeBase)
+        .where(eq(KnowledgeBase.id, id))
+        .limit(1)
       return Result.ok((rows?.[0] as KnowledgeBaseEntity) ?? null)
     } catch (error: any) {
       return Result.error(error)

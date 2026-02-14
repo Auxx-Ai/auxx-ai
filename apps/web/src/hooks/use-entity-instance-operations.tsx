@@ -1,12 +1,12 @@
 // apps/web/src/hooks/use-entity-instance-operations.tsx
 'use client'
 
-import { useCallback, useRef } from 'react'
-import { api } from '~/trpc/react'
-import { useConfirm } from '~/hooks/use-confirm'
+import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
-import { toRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { useCallback, useRef } from 'react'
 import type { EntityRow } from '~/app/(protected)/app/custom/[slug]/_components/types'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 /**
  * Options for useEntityInstanceOperations hook

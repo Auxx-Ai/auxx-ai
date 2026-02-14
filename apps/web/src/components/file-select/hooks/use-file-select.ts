@@ -2,9 +2,9 @@
 
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
-import { useFileUpload } from '~/components/file-upload/hooks/use-file-upload'
 import { generateId } from '@auxx/utils/generateId'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useFileUpload } from '~/components/file-upload/hooks/use-file-upload'
 import type { FileItem } from '~/components/files/files-store'
 import type { FileSelectState, UseFileSelectOptions, UseFileSelectReturn } from '../types'
 

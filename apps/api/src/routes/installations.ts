@@ -1,15 +1,14 @@
 // apps/api/src/routes/installations.ts
 
-import { Hono } from 'hono'
-import { authMiddleware } from '../middleware/auth'
-import { requireScope } from '../middleware/scope'
-import { errorResponse, type ErrorStatusCode } from '../lib/response'
-import type { AppContext } from '../types/context'
-
+import { getDevInstallation } from '@auxx/services/app-installations'
 // Service imports
 // import { verifyAppAccess } from '../services/developer-accounts'
 import { verifyAppAccess } from '@auxx/services/developer-accounts'
-import { getDevInstallation } from '@auxx/services/app-installations'
+import { Hono } from 'hono'
+import { type ErrorStatusCode, errorResponse } from '../lib/response'
+import { authMiddleware } from '../middleware/auth'
+import { requireScope } from '../middleware/scope'
+import type { AppContext } from '../types/context'
 
 const installations = new Hono<AppContext>()
 

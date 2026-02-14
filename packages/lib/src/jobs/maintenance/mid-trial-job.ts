@@ -1,13 +1,13 @@
 // packages/lib/src/jobs/maintenance/mid-trial-job.ts
 
-import type { Job } from 'bullmq'
-import { z } from 'zod'
-import { createScopedLogger } from '@auxx/logger'
-import { addDays } from 'date-fns'
-import { database as db, schema } from '@auxx/database'
-import { and, gte, lte, eq, isNull } from 'drizzle-orm'
-import { sendMidTrialEmail } from '@auxx/email'
 import { WEBAPP_URL } from '@auxx/config/server'
+import { database as db, schema } from '@auxx/database'
+import { sendMidTrialEmail } from '@auxx/email'
+import { createScopedLogger } from '@auxx/logger'
+import type { Job } from 'bullmq'
+import { addDays } from 'date-fns'
+import { and, eq, gte, isNull, lte } from 'drizzle-orm'
+import { z } from 'zod'
 
 const payloadSchema = z.object({
   dryRun: z.boolean().default(false),
@@ -68,10 +68,7 @@ export const sendMidTrialEmailsJob = async (job: Job) => {
         schema.Organization,
         eq(schema.Organization.id, schema.PlanSubscription.organizationId)
       )
-      .innerJoin(
-        schema.User,
-        eq(schema.User.id, schema.Organization.createdById)
-      )
+      .innerJoin(schema.User, eq(schema.User.id, schema.Organization.createdById))
       .where(
         and(
           // Trial started around 7 days ago (with 1-day buffer)

@@ -1,12 +1,11 @@
 'use client'
 
+import { Command, CommandGroup, CommandItem, CommandList } from '@auxx/ui/components/command'
+import { cn } from '@auxx/ui/lib/utils'
 import { Command as CommandPrimitive, useCommandState } from 'cmdk'
 import { XIcon } from 'lucide-react'
 import * as React from 'react'
 import { useEffect } from 'react'
-
-import { cn } from '@auxx/ui/lib/utils'
-import { Command, CommandGroup, CommandItem, CommandList } from '@auxx/ui/components/command'
 
 export interface Option {
   value: string
@@ -147,8 +146,8 @@ const CommandEmpty = ({
   return (
     <div
       className={cn('px-2 py-4 text-center text-sm', className)}
-      cmdk-empty=""
-      role="presentation"
+      cmdk-empty=''
+      role='presentation'
       {...props}
     />
   )
@@ -333,7 +332,7 @@ const MultipleSelector = ({
     const Item = (
       <CommandItem
         value={inputValue}
-        className="cursor-pointer"
+        className='cursor-pointer'
         onMouseDown={(e) => {
           e.preventDefault()
           e.stopPropagation()
@@ -371,7 +370,7 @@ const MultipleSelector = ({
     // For async search that showing emptyIndicator
     if (onSearch && !creatable && Object.keys(options).length === 0) {
       return (
-        <CommandItem value="-" disabled>
+        <CommandItem value='-' disabled>
           {emptyIndicator}
         </CommandItem>
       )
@@ -429,7 +428,7 @@ const MultipleSelector = ({
           if (disabled) return
           inputRef?.current?.focus()
         }}>
-        <div className="flex flex-wrap gap-1">
+        <div className='flex flex-wrap gap-1'>
           {selected.map((option) => {
             // console.log(option, option.value)
             return (
@@ -443,7 +442,7 @@ const MultipleSelector = ({
                 data-disabled={disabled || undefined}>
                 {option.label}
                 <button
-                  className="outline-hidden absolute -inset-y-px -end-px flex size-7 items-center justify-center rounded-e-md border border-transparent p-0 text-muted-foreground/80 outline-hidden transition-[color,box-shadow] hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  className='outline-hidden absolute -inset-y-px -end-px flex size-7 items-center justify-center rounded-e-md border border-transparent p-0 text-muted-foreground/80 outline-hidden transition-[color,box-shadow] hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       handleUnselect(option)
@@ -454,8 +453,8 @@ const MultipleSelector = ({
                     e.stopPropagation()
                   }}
                   onClick={() => handleUnselect(option)}
-                  aria-label="Remove">
-                  <XIcon size={14} aria-hidden="true" />
+                  aria-label='Remove'>
+                  <XIcon size={14} aria-hidden='true' />
                 </button>
               </div>
             )
@@ -495,7 +494,7 @@ const MultipleSelector = ({
             )}
           />
           <button
-            type="button"
+            type='button'
             onClick={() => {
               setSelected(selected.filter((s) => s.fixed))
               onChange?.(selected.filter((s) => s.fixed))
@@ -508,12 +507,12 @@ const MultipleSelector = ({
                 selected.filter((s) => s.fixed).length === selected.length) &&
                 'hidden'
             )}
-            aria-label="Clear all">
-            <XIcon size={16} aria-hidden="true" />
+            aria-label='Clear all'>
+            <XIcon size={16} aria-hidden='true' />
           </button>
         </div>
       </div>
-      <div className="relative">
+      <div className='relative'>
         <div
           className={cn(
             'absolute top-2 z-10 w-full overflow-hidden rounded-md border border-input',
@@ -523,7 +522,7 @@ const MultipleSelector = ({
           data-state={open ? 'open' : 'closed'}>
           {open && (
             <CommandList
-              className="outline-hidden bg-popover text-popover-foreground shadow-lg"
+              className='outline-hidden bg-popover text-popover-foreground shadow-lg'
               onMouseLeave={() => {
                 setOnScrollbar(false)
               }}
@@ -539,9 +538,9 @@ const MultipleSelector = ({
                 <>
                   {EmptyItem()}
                   {CreatableItem()}
-                  {!selectFirstItem && <CommandItem value="-" className="hidden" />}
+                  {!selectFirstItem && <CommandItem value='-' className='hidden' />}
                   {Object.entries(selectables).map(([key, dropdowns]) => (
-                    <CommandGroup key={key} heading={key} className="h-full overflow-auto">
+                    <CommandGroup key={key} heading={key} className='h-full overflow-auto'>
                       <>
                         {dropdowns.map((option) => {
                           return (

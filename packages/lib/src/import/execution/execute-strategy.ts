@@ -1,15 +1,15 @@
 // packages/lib/src/import/execution/execute-strategy.ts
 
-import { eq, and, asc } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import type { ImportPlanStrategy, StrategyType } from '../types/plan'
-import type { ImportMappingProperty } from '../types/mapping'
-import type { ValueResolution } from '../types/resolution'
-import type { BatchExecutionResult, ExecutionProgress } from '../types/execution'
+import { and, asc, eq } from 'drizzle-orm'
 import { getBatchRowData } from '../raw-data/get-row-data'
+import type { BatchExecutionResult, ExecutionProgress } from '../types/execution'
+import type { ImportMappingProperty } from '../types/mapping'
+import type { ImportPlanStrategy, StrategyType } from '../types/plan'
+import type { ValueResolution } from '../types/resolution'
 import { buildRecordData } from './build-record-data'
-import { executeBatch, type ExecuteBatchContext, type BatchRecord } from './execute-batch'
+import { type BatchRecord, type ExecuteBatchContext, executeBatch } from './execute-batch'
 
 /** Batch size for execution */
 const BATCH_SIZE = 50

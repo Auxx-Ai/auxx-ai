@@ -1,13 +1,15 @@
 // ~/app/(protected)/app/settings/integrations/_components/chat-widget-integration-form.tsx
 'use client'
-import React from 'react'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
-import { useRouter } from 'next/navigation'
-import { api } from '~/trpc/react'
+import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types' // Use the schema from types
 import { Button } from '@auxx/ui/components/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@auxx/ui/components/card'
 import {
   Form,
   FormControl,
@@ -18,17 +20,6 @@ import {
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import { Switch } from '@auxx/ui/components/switch'
-import { Textarea } from '@auxx/ui/components/textarea'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@auxx/ui/components/card'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import {
   Select,
   SelectContent,
@@ -36,17 +27,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { Switch } from '@auxx/ui/components/switch'
+import { Textarea } from '@auxx/ui/components/textarea'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import {
+  ArrowLeft,
+  BrainCircuit,
+  Globe,
   Loader2,
+  MessageSquare,
   Palette,
   Settings,
-  MessageSquare,
-  Globe,
-  BrainCircuit,
-  ArrowLeft,
 } from 'lucide-react' // Icons
-import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types' // Use the schema from types
+import { useRouter } from 'next/navigation'
+import React from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import SettingsPage from '~/components/global/settings-page'
+import { api } from '~/trpc/react'
 
 // Define the form schema by combining Integration name and ChatWidget fields
 const formSchema = z.object({
@@ -144,7 +143,7 @@ export default function ChatWidgetIntegrationForm() {
   return (
     <SettingsPage
       title={`Chat Integration`}
-      description="Setup your new integration"
+      description='Setup your new integration'
       breadcrumbs={[
         { title: 'Settings', href: '/app/settings' },
         { title: 'Integrations', href: '/app/settings/integrations' },
@@ -152,34 +151,34 @@ export default function ChatWidgetIntegrationForm() {
         { title: 'Chat Integration' },
       ]}
       button={
-        <Button variant="outline" size="sm" onClick={handleBack}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
+        <Button variant='outline' size='sm' onClick={handleBack}>
+          <ArrowLeft className='mr-2 h-4 w-4' />
           Back
         </Button>
       }>
-      <div className="p-6">
+      <div className='p-6'>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-            <Card className="mx-auto max-w-4xl">
+          <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-8'>
+            <Card className='mx-auto max-w-4xl'>
               <CardHeader>
-                <div className="flex items-center space-x-2">
-                  <MessageSquare className="h-6 w-6 text-indigo-500" />
+                <div className='flex items-center space-x-2'>
+                  <MessageSquare className='h-6 w-6 text-indigo-500' />
                   <CardTitle>Create New Chat Widget</CardTitle>
                 </div>
                 <CardDescription>
                   Configure the details for your new website chat widget.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className='space-y-6'>
                 {/* --- General --- */}
                 <FormField
                   control={form.control}
-                  name="name"
+                  name='name'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Widget Name (Internal)</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g., Support Widget" {...field} />
+                        <Input placeholder='e.g., Support Widget' {...field} />
                       </FormControl>
                       <FormDescription>
                         An internal name to identify this widget integration.
@@ -189,19 +188,19 @@ export default function ChatWidgetIntegrationForm() {
                   )}
                 />
                 {/* --- Appearance --- */}
-                <h3 className="mt-6 flex items-center gap-2 border-b pb-2 text-lg font-medium">
+                <h3 className='mt-6 flex items-center gap-2 border-b pb-2 text-lg font-medium'>
                   <Palette size={20} /> Appearance
                 </h3>
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
                   <FormField
                     control={form.control}
-                    name="title"
+                    name='title'
                     render={({ field }) => (
                       <FormItem>
                         {' '}
                         <FormLabel>Widget Title</FormLabel>{' '}
                         <FormControl>
-                          <Input placeholder="Chat Support" {...field} />
+                          <Input placeholder='Chat Support' {...field} />
                         </FormControl>{' '}
                         <FormMessage />{' '}
                       </FormItem>
@@ -209,13 +208,13 @@ export default function ChatWidgetIntegrationForm() {
                   />
                   <FormField
                     control={form.control}
-                    name="subtitle"
+                    name='subtitle'
                     render={({ field }) => (
                       <FormItem>
                         {' '}
                         <FormLabel>Subtitle</FormLabel>{' '}
                         <FormControl>
-                          <Input placeholder="Typically replies in minutes" {...field} />
+                          <Input placeholder='Typically replies in minutes' {...field} />
                         </FormControl>{' '}
                         <FormMessage />{' '}
                       </FormItem>
@@ -223,13 +222,13 @@ export default function ChatWidgetIntegrationForm() {
                   />
                   <FormField
                     control={form.control}
-                    name="primaryColor"
+                    name='primaryColor'
                     render={({ field }) => (
                       <FormItem>
                         {' '}
                         <FormLabel>Primary Color</FormLabel>{' '}
                         <FormControl>
-                          <Input type="color" {...field} />
+                          <Input type='color' {...field} />
                         </FormControl>
                         <FormDescription>
                           Main color for the widget header and button.
@@ -240,15 +239,15 @@ export default function ChatWidgetIntegrationForm() {
                   />
                   <FormField
                     control={form.control}
-                    name="logoUrl"
+                    name='logoUrl'
                     render={({ field }) => (
                       <FormItem>
                         {' '}
                         <FormLabel>Logo URL (Optional)</FormLabel>{' '}
                         <FormControl>
                           <Input
-                            type="url"
-                            placeholder="https://yourdomain.com/logo.png"
+                            type='url'
+                            placeholder='https://yourdomain.com/logo.png'
                             {...field}
                           />
                         </FormControl>{' '}
@@ -258,21 +257,21 @@ export default function ChatWidgetIntegrationForm() {
                   />
                   <FormField
                     control={form.control}
-                    name="position"
+                    name='position'
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Position on Page</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Select position" />
+                              <SelectValue placeholder='Select position' />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="BOTTOM_RIGHT">Bottom Right</SelectItem>
-                            <SelectItem value="BOTTOM_LEFT">Bottom Left</SelectItem>
-                            <SelectItem value="TOP_RIGHT">Top Right</SelectItem>
-                            <SelectItem value="TOP_LEFT">Top Left</SelectItem>
+                            <SelectItem value='BOTTOM_RIGHT'>Bottom Right</SelectItem>
+                            <SelectItem value='BOTTOM_LEFT'>Bottom Left</SelectItem>
+                            <SelectItem value='TOP_RIGHT'>Top Right</SelectItem>
+                            <SelectItem value='TOP_LEFT'>Top Left</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -281,18 +280,18 @@ export default function ChatWidgetIntegrationForm() {
                   />
                 </div>
                 {/* --- Behavior --- */}
-                <h3 className="mt-6 flex items-center gap-2 border-b pb-2 text-lg font-medium">
+                <h3 className='mt-6 flex items-center gap-2 border-b pb-2 text-lg font-medium'>
                   <Settings size={20} /> Behavior
                 </h3>
                 <FormField
                   control={form.control}
-                  name="welcomeMessage"
+                  name='welcomeMessage'
                   render={({ field }) => (
                     <FormItem>
                       {' '}
                       <FormLabel>Welcome Message</FormLabel>{' '}
                       <FormControl>
-                        <Textarea placeholder="Welcome! How can we help?" {...field} />
+                        <Textarea placeholder='Welcome! How can we help?' {...field} />
                       </FormControl>{' '}
                       <FormDescription>
                         Sent automatically when a visitor starts a chat.
@@ -303,7 +302,7 @@ export default function ChatWidgetIntegrationForm() {
                 />
                 <FormField
                   control={form.control}
-                  name="offlineMessage"
+                  name='offlineMessage'
                   render={({ field }) => (
                     <FormItem>
                       {' '}
@@ -318,13 +317,13 @@ export default function ChatWidgetIntegrationForm() {
                     </FormItem>
                   )}
                 />
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
                   <FormField
                     control={form.control}
-                    name="autoOpen"
+                    name='autoOpen'
                     render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                        <div className="space-y-0.5">
+                      <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                        <div className='space-y-0.5'>
                           <FormLabel>Auto Open Chat</FormLabel>
                           <FormDescription>
                             Automatically open the chat window for visitors.
@@ -338,10 +337,10 @@ export default function ChatWidgetIntegrationForm() {
                   />
                   <FormField
                     control={form.control}
-                    name="mobileFullScreen"
+                    name='mobileFullScreen'
                     render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                        <div className="space-y-0.5">
+                      <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                        <div className='space-y-0.5'>
                           <FormLabel>Mobile Full Screen</FormLabel>
                           <FormDescription>Use full screen mode on mobile devices.</FormDescription>
                         </div>
@@ -353,10 +352,10 @@ export default function ChatWidgetIntegrationForm() {
                   />
                   <FormField
                     control={form.control}
-                    name="collectUserInfo"
+                    name='collectUserInfo'
                     render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                        <div className="space-y-0.5">
+                      <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                        <div className='space-y-0.5'>
                           <FormLabel>Collect User Info</FormLabel>
                           <FormDescription>
                             Ask for name/email before starting chat.
@@ -370,16 +369,16 @@ export default function ChatWidgetIntegrationForm() {
                   />
                 </div>
                 {/* --- Domain Allowlist --- */}
-                <h3 className="mt-6 flex items-center gap-2 border-b pb-2 text-lg font-medium">
+                <h3 className='mt-6 flex items-center gap-2 border-b pb-2 text-lg font-medium'>
                   <Globe size={20} /> Allowed Domains
                 </h3>
                 <FormDescription>
                   Restrict the widget to specific website domains (e.g., yourdomain.com). Leave
                   empty to allow on any domain.
                 </FormDescription>
-                <div className="mt-2 flex items-center space-x-2">
+                <div className='mt-2 flex items-center space-x-2'>
                   <Input
-                    placeholder="example.com"
+                    placeholder='example.com'
                     value={currentDomain}
                     onChange={(e) => setCurrentDomain(e.target.value)}
                     onKeyDown={(e) => {
@@ -389,20 +388,20 @@ export default function ChatWidgetIntegrationForm() {
                       }
                     }}
                   />
-                  <Button type="button" variant="outline" onClick={handleAddDomain}>
+                  <Button type='button' variant='outline' onClick={handleAddDomain}>
                     Add
                   </Button>
                 </div>
-                <div className="mt-2 space-y-1">
+                <div className='mt-2 space-y-1'>
                   {form.watch('allowedDomains')?.map((domain) => (
                     <div
                       key={domain}
-                      className="flex items-center justify-between rounded bg-muted p-1 text-sm">
+                      className='flex items-center justify-between rounded bg-muted p-1 text-sm'>
                       <span>{domain}</span>
                       <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
+                        type='button'
+                        variant='ghost'
+                        size='sm'
                         onClick={() => handleRemoveDomain(domain)}>
                         Remove
                       </Button>
@@ -411,20 +410,20 @@ export default function ChatWidgetIntegrationForm() {
                 </div>
                 <FormField
                   control={form.control}
-                  name="allowedDomains"
+                  name='allowedDomains'
                   render={() => <FormMessage />}
                 />{' '}
                 {/* To show general array errors */}
                 {/* --- AI Settings --- */}
-                <h3 className="mt-6 flex items-center gap-2 border-b pb-2 text-lg font-medium">
+                <h3 className='mt-6 flex items-center gap-2 border-b pb-2 text-lg font-medium'>
                   <BrainCircuit size={20} /> AI Settings (Optional)
                 </h3>
                 <FormField
                   control={form.control}
-                  name="useAi"
+                  name='useAi'
                   render={({ field }) => (
-                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                      <div className="space-y-0.5">
+                    <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                      <div className='space-y-0.5'>
                         <FormLabel>Use AI Assistance</FormLabel>
                         <FormDescription>
                           Enable AI features like automated responses (requires configuration).
@@ -437,15 +436,15 @@ export default function ChatWidgetIntegrationForm() {
                   )}
                 />
                 {form.watch('useAi') && (
-                  <div className="ml-2 space-y-4 border-l pl-4">
+                  <div className='ml-2 space-y-4 border-l pl-4'>
                     <FormField
                       control={form.control}
-                      name="aiModel"
+                      name='aiModel'
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>AI Model</FormLabel>
                           <FormControl>
-                            <Input placeholder="e.g., gpt-4o" {...field} />
+                            <Input placeholder='e.g., gpt-4o' {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -453,13 +452,13 @@ export default function ChatWidgetIntegrationForm() {
                     />
                     <FormField
                       control={form.control}
-                      name="aiInstructions"
+                      name='aiInstructions'
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>AI Instructions</FormLabel>
                           <FormControl>
                             <Textarea
-                              placeholder="Instructions for the AI assistant..."
+                              placeholder='Instructions for the AI assistant...'
                               {...field}
                             />
                           </FormControl>
@@ -474,8 +473,8 @@ export default function ChatWidgetIntegrationForm() {
                 )}
               </CardContent>
               <CardFooter>
-                <Button type="submit" disabled={addChatWidget.isPending}>
-                  {addChatWidget.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Button type='submit' disabled={addChatWidget.isPending}>
+                  {addChatWidget.isPending && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
                   Create Chat Widget
                 </Button>
               </CardFooter>

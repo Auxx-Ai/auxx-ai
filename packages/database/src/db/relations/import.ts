@@ -3,19 +3,19 @@
 
 import { relations } from 'drizzle-orm/relations'
 import {
-  ImportMapping,
-  ImportMappingProperty,
+  CustomField,
   ImportJob,
   ImportJobMappableProperty,
   ImportJobProperty,
   ImportJobRawData,
-  ImportValueResolution,
+  ImportMapping,
+  ImportMappingProperty,
   ImportPlan,
-  ImportPlanStrategy,
   ImportPlanRow,
+  ImportPlanStrategy,
+  ImportValueResolution,
   Organization,
   User,
-  CustomField,
 } from '../schema'
 
 /** Relations for ImportMapping */

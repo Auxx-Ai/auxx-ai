@@ -9,10 +9,7 @@ import { z } from 'zod'
 export const conditionSchema: z.ZodType<any> = z.lazy(() =>
   z.object({
     id: z.string(),
-    fieldId: z.union([
-      z.string(),
-      z.array(z.string())
-    ]),
+    fieldId: z.union([z.string(), z.array(z.string())]),
     operator: z.string(),
     value: z.any(),
     logicalOperator: z.enum(['AND', 'OR']).optional(),

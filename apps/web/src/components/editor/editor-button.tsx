@@ -1,45 +1,46 @@
 // components/editor/EditorButtons.tsx
-import React, { useState, useMemo } from 'react'
-import { Editor } from '@tiptap/react'
-import { motion, type Variants } from 'motion/react'
-import { useEditorContext } from './editor-context'
-import { useEditorActiveStateContext } from '~/components/mail/email-editor/editor-active-state-context'
-import {
-  Bold,
-  Italic,
-  Underline,
-  Strikethrough,
-  List,
-  Link as LinkIcon,
-  Quote,
-  File,
-  Command,
-  CornerDownLeft,
-  ALargeSmall,
-  Sparkles,
-  CaseSensitive,
-  LetterText,
-} from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
+
 import { Badge } from '@auxx/ui/components/badge'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { BorderBeam } from '@auxx/ui/components/border-beam'
+import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuCheckboxItem,
 } from '@auxx/ui/components/dropdown-menu'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Separator } from '@auxx/ui/components/separator'
-import EditorSelector from './editor-selector'
-import { FileSelectPicker } from '~/components/pickers/file-select-picker'
+import { cn } from '@auxx/ui/lib/utils'
+import type { Editor } from '@tiptap/react'
+import {
+  ALargeSmall,
+  Bold,
+  CaseSensitive,
+  Command,
+  CornerDownLeft,
+  File,
+  Italic,
+  LetterText,
+  Link as LinkIcon,
+  List,
+  Quote,
+  Sparkles,
+  Strikethrough,
+  Underline,
+} from 'lucide-react'
+import { motion, type Variants } from 'motion/react'
+import React, { useMemo, useState } from 'react'
 import type { UseFileSelectReturn } from '~/components/file-select/types'
 import { Tooltip } from '~/components/global/tooltip'
-import { cn } from '@auxx/ui/lib/utils'
 import { AITools } from '~/components/mail/email-editor/ai-tools'
-import { BorderBeam } from '@auxx/ui/components/border-beam'
+import { useEditorActiveStateContext } from '~/components/mail/email-editor/editor-active-state-context'
+import { FileSelectPicker } from '~/components/pickers/file-select-picker'
 import { MetaIcon } from '~/constants/icons'
+import { useEditorContext } from './editor-context'
+import EditorSelector from './editor-selector'
 
 // Font options
 const fontOptions = [
@@ -103,13 +104,13 @@ export const FontSelectorButton = ({ editor, disabled }: EditorButtonsProps) => 
 
   return (
     <EditorSelector
-      id="font-selector"
+      id='font-selector'
       options={fontOptions}
       value={editor.getAttributes('textStyle').fontFamily || ''}
       onChange={(value) => editor.chain().focus().setFontFamily(value).run()}
-      placeholder="Font"
+      placeholder='Font'
       disabled={disabled}
-      className="min-w-[100px] "
+      className='min-w-[100px] '
     />
   )
 }
@@ -120,13 +121,13 @@ export const FontSizeButton = ({ editor, disabled }: EditorButtonsProps) => {
 
   return (
     <EditorSelector
-      id="font-size-selector"
+      id='font-size-selector'
       options={fontSizeOptions}
       value={editor.getAttributes('textStyle').fontSize || ''}
       onChange={(value) => editor.chain().focus().setFontSize(value).run()}
-      placeholder="Size"
+      placeholder='Size'
       disabled={disabled}
-      className="min-w-[60px]"
+      className='min-w-[60px]'
     />
   )
 }
@@ -155,17 +156,17 @@ export const ColorPickerButton = ({ editor, disabled }: EditorButtonsProps) => {
         }
       }}>
       <PopoverTrigger asChild>
-        <div className="shrink-0 flex">
-          <Tooltip content="Text color" side="bottom">
+        <div className='shrink-0 flex'>
+          <Tooltip content='Text color' side='bottom'>
             <Button
-              variant="ghost"
-              size="icon-sm"
-              type="button"
-              className="rounded-full"
+              variant='ghost'
+              size='icon-sm'
+              type='button'
+              className='rounded-full'
               disabled={disabled}>
-              <div className="flex size-4 items-center justify-center rounded-full border border-gray-300">
+              <div className='flex size-4 items-center justify-center rounded-full border border-gray-300'>
                 <div
-                  className="size-3 rounded-full"
+                  className='size-3 rounded-full'
                   style={{ backgroundColor: editor.getAttributes('textStyle').color || '#000000' }}
                 />
               </div>
@@ -173,19 +174,19 @@ export const ColorPickerButton = ({ editor, disabled }: EditorButtonsProps) => {
           </Tooltip>
         </div>
       </PopoverTrigger>
-      <PopoverContent className="w-64 p-2">
-        <div className="grid grid-cols-5 gap-1">
+      <PopoverContent className='w-64 p-2'>
+        <div className='grid grid-cols-5 gap-1'>
           {colorOptions.map((color) => (
             <button
               key={color.value}
-              type="button"
-              className="size-6 rounded-md border p-0.5"
+              type='button'
+              className='size-6 rounded-md border p-0.5'
               style={{ backgroundColor: color.value }}
               onClick={() => editor.chain().focus().setColor(color.value).run()}
               title={color.label}>
               {editor.getAttributes('textStyle').color === color.value && (
-                <div className="flex h-full w-full items-center justify-center rounded-sm bg-black/10">
-                  <div className="size-3 rounded-full bg-white" />
+                <div className='flex h-full w-full items-center justify-center rounded-sm bg-black/10'>
+                  <div className='size-3 rounded-full bg-white' />
                 </div>
               )}
             </button>
@@ -201,11 +202,11 @@ export const BoldButton = ({ editor, disabled }: EditorButtonsProps) => {
   if (!editor) return null
 
   return (
-    <Tooltip content="Bold" side="bottom">
+    <Tooltip content='Bold' side='bottom'>
       <Button
-        variant="ghost"
-        type="button"
-        size="icon-sm"
+        variant='ghost'
+        type='button'
+        size='icon-sm'
         className={`rounded-full ${editor.isActive('bold') ? 'bg-muted' : ''}`}
         onClick={() => editor.chain().focus().toggleBold().run()}
         disabled={disabled}>
@@ -220,11 +221,11 @@ export const ItalicButton = ({ editor, disabled }: EditorButtonsProps) => {
   if (!editor) return null
 
   return (
-    <Tooltip content="Italic" side="bottom">
+    <Tooltip content='Italic' side='bottom'>
       <Button
-        variant="ghost"
-        type="button"
-        size="icon-sm"
+        variant='ghost'
+        type='button'
+        size='icon-sm'
         className={`rounded-full ${editor.isActive('italic') ? 'bg-muted' : ''}`}
         onClick={() => editor.chain().focus().toggleItalic().run()}
         disabled={disabled}>
@@ -239,11 +240,11 @@ export const UnderlineButton = ({ editor, disabled }: EditorButtonsProps) => {
   if (!editor) return null
 
   return (
-    <Tooltip content="Underline" side="bottom">
+    <Tooltip content='Underline' side='bottom'>
       <Button
-        variant="ghost"
-        type="button"
-        size="icon-sm"
+        variant='ghost'
+        type='button'
+        size='icon-sm'
         className={`rounded-full ${editor.isActive('underline') ? 'bg-muted' : ''}`}
         onClick={() => editor.chain().focus().toggleUnderline().run()}
         disabled={disabled}>
@@ -258,11 +259,11 @@ export const StrikethroughButton = ({ editor, disabled }: EditorButtonsProps) =>
   if (!editor) return null
 
   return (
-    <Tooltip content="Strikethrough" side="bottom">
+    <Tooltip content='Strikethrough' side='bottom'>
       <Button
-        variant="ghost"
-        type="button"
-        size="icon-sm"
+        variant='ghost'
+        type='button'
+        size='icon-sm'
         className={`rounded-full ${editor.isActive('strike') ? 'bg-muted' : ''}`}
         onClick={() => editor.chain().focus().toggleStrike().run()}
         disabled={disabled}>
@@ -300,9 +301,9 @@ export const ListButton = ({ editor, disabled }: EditorButtonsProps) => {
       }}>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="ghost"
-          size="icon-sm"
-          type="button"
+          variant='ghost'
+          size='icon-sm'
+          type='button'
           className={`rounded-full ${
             editor.isActive('bulletList') || editor.isActive('orderedList') ? 'bg-muted' : ''
           }`}
@@ -310,7 +311,7 @@ export const ListButton = ({ editor, disabled }: EditorButtonsProps) => {
           <List />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56" align="start" side="bottom">
+      <DropdownMenuContent className='w-56' align='start' side='bottom'>
         <DropdownMenuItem
           className={editor.isActive('bulletList') ? 'bg-muted' : ''}
           onClick={() => editor.chain().focus().toggleBulletList().run()}>
@@ -356,11 +357,11 @@ export const LinkButton = ({ editor, disabled }: EditorButtonsProps) => {
   }
 
   return (
-    <Tooltip content="Link" side="bottom">
+    <Tooltip content='Link' side='bottom'>
       <Button
-        variant="ghost"
-        type="button"
-        size="icon-sm"
+        variant='ghost'
+        type='button'
+        size='icon-sm'
         className={`rounded-full ${editor.isActive('link') ? 'bg-muted' : ''}`}
         onClick={setLink}>
         <LinkIcon />
@@ -374,11 +375,11 @@ export const QuoteButton = ({ editor, disabled }: EditorButtonsProps) => {
   if (!editor) return null
 
   return (
-    <Tooltip content="Quote" side="bottom">
+    <Tooltip content='Quote' side='bottom'>
       <Button
-        variant="ghost"
-        type="button"
-        size="icon-sm"
+        variant='ghost'
+        type='button'
+        size='icon-sm'
         className={`rounded-full ${editor.isActive('blockquote') ? 'bg-muted' : ''}`}
         onClick={() => editor.chain().focus().toggleBlockquote().run()}
         disabled={disabled}>
@@ -407,8 +408,8 @@ const FileSelectPickerWithTracking = ({
   return (
     <FileSelectPicker
       fileSelect={fileSelect}
-      align="end"
-      side="top"
+      align='end'
+      side='top'
       onOpenChange={(open) => {
         if (activeState) {
           if (open) {
@@ -418,22 +419,22 @@ const FileSelectPickerWithTracking = ({
           }
         }
       }}>
-      <div className="flex shrink-0">
-        <Tooltip content="Attach files" side="bottom">
+      <div className='flex shrink-0'>
+        <Tooltip content='Attach files' side='bottom'>
           <Button
-            variant="ghost"
-            size="icon-sm"
-            className="rounded-full relative"
+            variant='ghost'
+            size='icon-sm'
+            className='rounded-full relative'
             disabled={disabled}>
-            <File aria-hidden="true" />
+            <File aria-hidden='true' />
             {fileSelect.selectedItems.length > 0 && (
               <Badge
-                className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center"
-                variant="default">
+                className='absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center'
+                variant='default'>
                 {fileSelect.selectedItems.length}
               </Badge>
             )}
-            <span className="sr-only">Attach files</span>
+            <span className='sr-only'>Attach files</span>
           </Button>
         </Tooltip>
       </div>
@@ -567,28 +568,28 @@ export const EditorToolbar = ({
   // Return placeholder with same height to prevent layout jump
   if (!editor) {
     return (
-      <div className="flex flex-1 items-center justify-between">
-        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar p-0.5 h-10" />
+      <div className='flex flex-1 items-center justify-between'>
+        <div className='flex items-center gap-1 overflow-x-auto no-scrollbar p-0.5 h-10' />
       </div>
     )
   }
 
   return (
-    <div className="flex flex-1 items-center justify-between">
-      <div className="flex items-center gap-1 overflow-x-auto no-scrollbar p-0.5 h-10">
+    <div className='flex flex-1 items-center justify-between'>
+      <div className='flex items-center gap-1 overflow-x-auto no-scrollbar p-0.5 h-10'>
         {/* Main category buttons */}
-        <div className="flex items-center gap-0.5 shrink-0">
+        <div className='flex items-center gap-0.5 shrink-0'>
           {buttonGroups.map((group, index) => {
             const Icon = group.icon
 
             return (
               <React.Fragment key={group.id}>
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Tooltip content={group.tooltip} side="bottom">
+                  <Tooltip content={group.tooltip} side='bottom'>
                     <Button
-                      variant="ghost"
-                      type="button"
-                      size="icon-sm"
+                      variant='ghost'
+                      type='button'
+                      size='icon-sm'
                       className={cn(
                         'rounded-full relative',
                         // activeGroup === group.id && 'bg-primary-200 hover:bg-primary-200 ',
@@ -603,7 +604,7 @@ export const EditorToolbar = ({
                           duration={8}
                           size={30}
                           // borderWidth={1.5}
-                          className="from-transparent via-comparison-500 "
+                          className='from-transparent via-comparison-500 '
                         />
                       )}
                     </Button>
@@ -617,7 +618,7 @@ export const EditorToolbar = ({
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.3 }}
-                    className="flex items-center">
+                    className='flex items-center'>
                     <FileSelectPickerWithTracking fileSelect={fileSelect} disabled={disabled} />
                   </motion.div>
                 )}
@@ -627,12 +628,12 @@ export const EditorToolbar = ({
         </div>
 
         {/* Animated group content - all groups stay in DOM */}
-        <div className="relative flex items-center">
+        <div className='relative flex items-center'>
           {buttonGroups.map((group) => (
             <motion.div
               key={group.id}
               variants={slideAnimationVariants}
-              initial="hidden"
+              initial='hidden'
               animate={activeGroup === group.id ? 'visible' : 'hidden'}
               className={cn(
                 'flex items-center gap-0.5  no-scrollbar origin-left',
@@ -644,7 +645,7 @@ export const EditorToolbar = ({
               {/* Only show separator for active group */}
               {activeGroup === group.id && (
                 <motion.div
-                  className="mx-1 h-4 w-px bg-border"
+                  className='mx-1 h-4 w-px bg-border'
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.2 }}
@@ -653,7 +654,7 @@ export const EditorToolbar = ({
 
               {/* Group items */}
               <motion.div
-                className="flex items-center gap-0.5"
+                className='flex items-center gap-0.5'
                 initial={{ opacity: 0 }}
                 animate={{ opacity: activeGroup === group.id ? 1 : 0 }}
                 transition={{ delay: 0.1 }}>
@@ -667,17 +668,17 @@ export const EditorToolbar = ({
       </div>
       {showSend && (
         <Button
-          className="min-w-[80px] gap-0 ms-2"
+          className='min-w-[80px] gap-0 ms-2'
           onClick={onSend}
-          size="sm"
+          size='sm'
           // Disable if sending, saving draft via mutation, or editor isn't ready
           disabled={disabled}
           loading={isSending}
-          loadingText="Sending...">
+          loadingText='Sending...'>
           Send
-          <Separator orientation="vertical" className="mx-1.5 h-3 opacity-50" />
-          <MetaIcon className="size-3! opacity-80" />
-          <CornerDownLeft className="size-3! opacity-80" />
+          <Separator orientation='vertical' className='mx-1.5 h-3 opacity-50' />
+          <MetaIcon className='size-3! opacity-80' />
+          <CornerDownLeft className='size-3! opacity-80' />
         </Button>
       )}
     </div>

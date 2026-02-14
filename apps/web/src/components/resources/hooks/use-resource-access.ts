@@ -2,11 +2,11 @@
 
 'use client'
 
-import { useMemo } from 'react'
-import { api } from '~/trpc/react'
-import { toActorId, type ActorId } from '@auxx/types/actor'
 import { ResourceGranteeType } from '@auxx/database/enums'
 import type { ResourceAccessInfo } from '@auxx/lib/resource-access'
+import { type ActorId, toActorId } from '@auxx/types/actor'
+import { useMemo } from 'react'
+import { api } from '~/trpc/react'
 
 interface UseResourceAccessOptions {
   /** RecordId in format "entityType:instanceId" (e.g., "inbox:abc123") */
@@ -33,7 +33,10 @@ interface UseResourceAccessResult {
 /**
  * Hook to get resource access grants and convert to ActorIds.
  */
-export function useResourceAccess({ recordId, enabled = true }: UseResourceAccessOptions): UseResourceAccessResult {
+export function useResourceAccess({
+  recordId,
+  enabled = true,
+}: UseResourceAccessOptions): UseResourceAccessResult {
   const utils = api.useUtils()
 
   const { data: grants = [], isLoading } = api.resourceAccess.forInstance.useQuery(

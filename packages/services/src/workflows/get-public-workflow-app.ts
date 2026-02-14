@@ -1,10 +1,10 @@
 // packages/services/src/workflows/get-public-workflow-app.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and, isNotNull } from 'drizzle-orm'
+import { and, eq, isNotNull } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
 import type { DatabaseError } from '../shared/errors'
+import { fromDatabase } from '../shared/utils'
 
 /**
  * Public workflow error types

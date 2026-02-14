@@ -12,17 +12,17 @@
 
 import type React from 'react'
 
-export { TextBlock, type TextBlockProps } from './text-block.js'
-export { Button, type ButtonProps } from './button.js'
-export { Banner, type BannerProps } from './banner.js'
-export { Badge, type BadgeProps } from './badge.js'
 export { Avatar, type AvatarProps } from './avatar.js'
+export { Badge, type BadgeProps } from './badge.js'
+export { Banner, type BannerProps } from './banner.js'
+export { Button, type ButtonProps } from './button.js'
 export { Separator, type SeparatorProps } from './separator.js'
+export { TextBlock, type TextBlockProps } from './text-block.js'
 export {
   Typography,
-  type TypographyProps,
   type TypographyBodyProps,
   type TypographyCaptionProps,
+  type TypographyProps,
 } from './typography.js'
 
 // === Form Components ===

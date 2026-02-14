@@ -1,12 +1,8 @@
 // apps/web/src/components/workflow/nodes/core/if-else/adapters/condition-adapter.tsx
 
-import { useCallback, useMemo, useRef } from 'react'
 import { generateId } from '@auxx/utils/generateId'
-import type {
-  ConditionGroup,
-  ConditionSystemConfig,
-  Condition,
-} from '~/components/conditions'
+import { useCallback, useMemo, useRef } from 'react'
+import type { Condition, ConditionGroup, ConditionSystemConfig } from '~/components/conditions'
 import type { IfElseCase, IfElseCondition, IfElseNodeData } from '../types'
 
 interface UseIfElseConditionAdapterProps {

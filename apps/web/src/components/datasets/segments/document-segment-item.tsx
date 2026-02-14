@@ -2,12 +2,9 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
-import { MoreVertical, Edit2, Trash2 } from 'lucide-react'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardHeader } from '@auxx/ui/components/card'
-import { Switch } from '@auxx/ui/components/switch'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   DropdownMenu,
@@ -15,10 +12,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { useConfirm } from '~/hooks/use-confirm'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
+import { Switch } from '@auxx/ui/components/switch'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
+import { Edit2, MoreVertical, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 import { SegmentEditorDialog } from './segment-editor-dialog'
 
 interface DocumentSegmentItemProps {
@@ -59,7 +59,7 @@ function highlightSearchMatch(text: string, query: string): React.ReactNode {
       <>
         {parts.map((part, i) =>
           part.toLowerCase() === query.toLowerCase() ? (
-            <mark key={i} className="bg-yellow-200 dark:bg-yellow-800 px-0.5 rounded">
+            <mark key={i} className='bg-yellow-200 dark:bg-yellow-800 px-0.5 rounded'>
               {part}
             </mark>
           ) : (
@@ -282,7 +282,7 @@ export function DocumentSegmentItem({
         <Checkbox
           checked={isSelected}
           onCheckedChange={onSelectionChange}
-          className="mt-4"
+          className='mt-4'
           aria-label={`Select segment ${segment.position}`}
         />
         <Card
@@ -291,21 +291,21 @@ export function DocumentSegmentItem({
             !localEnabled && 'opacity-50',
             isSelected && 'ring-2 ring-info/50 ring-offset-2 bg-info/10 dark:ring-offset-black'
           )}>
-          <CardHeader className="flex flex-row items-start justify-between pb-1">
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" size="sm">
+          <CardHeader className='flex flex-row items-start justify-between pb-1'>
+            <div className='flex items-center gap-2'>
+              <Badge variant='outline' size='sm'>
                 Segment {segment.position + 1}
               </Badge>
-              <span className="text-xs text-muted-foreground">{segment.tokenCount} tokens</span>
-              <Badge variant={getStatusVariant(segment.indexStatus)} size="sm">
+              <span className='text-xs text-muted-foreground'>{segment.tokenCount} tokens</span>
+              <Badge variant={getStatusVariant(segment.indexStatus)} size='sm'>
                 {segment.indexStatus}
               </Badge>
             </div>
 
-            <div className="flex items-center gap-1 absolute top-1 right-1">
+            <div className='flex items-center gap-1 absolute top-1 right-1'>
               <Switch
                 checked={localEnabled}
-                size="sm"
+                size='sm'
                 onCheckedChange={handleToggleEnabled}
                 disabled={toggleEnabled.isPending}
                 aria-label={`Toggle segment ${segment.position}`}
@@ -314,19 +314,19 @@ export function DocumentSegmentItem({
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="rounded-full "
+                    variant='ghost'
+                    size='icon-sm'
+                    className='rounded-full '
                     disabled={deleteSegment.isPending || updateContent.isPending}>
                     <MoreVertical />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align='end'>
                   <DropdownMenuItem onClick={() => setIsEditorOpen(true)}>
                     <Edit2 />
                     Edit
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleDelete} variant="destructive">
+                  <DropdownMenuItem onClick={handleDelete} variant='destructive'>
                     <Trash2 />
                     Delete
                   </DropdownMenuItem>
@@ -339,15 +339,15 @@ export function DocumentSegmentItem({
 
             {/* Content */}
             <div>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap truncate">
+              <p className='text-sm text-muted-foreground whitespace-pre-wrap truncate'>
                 {highlightText
                   ? highlightSearchMatch(displayContent, highlightText)
                   : displayContent}
                 {shouldTruncate && (
                   <Button
-                    variant="link"
-                    size="sm"
-                    className="ms-2 px-0 h-auto mt-1"
+                    variant='link'
+                    size='sm'
+                    className='ms-2 px-0 h-auto mt-1'
                     onClick={() => setIsExpanded(!isExpanded)}>
                     {isExpanded ? 'Show less' : 'Show more'}
                   </Button>

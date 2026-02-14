@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -11,9 +11,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { useState } from 'react'
 import { useFilesystemContext } from './provider/filesystem-provider'
 
 /**
@@ -43,7 +43,7 @@ export function CreateFolderDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className='sm:max-w-md'>
         <CreateFolderDialogContent
           parentFolderId={parentFolderId}
           onClose={() => onOpenChange(false)}
@@ -89,8 +89,8 @@ function CreateFolderDialogContent({ parentFolderId, onClose }: CreateFolderDial
       </DialogHeader>
 
       <Input
-        id="folder-name"
-        placeholder="Enter folder name..."
+        id='folder-name'
+        placeholder='Enter folder name...'
         value={folderName}
         onChange={(e) => setFolderName(e.target.value)}
         disabled={isCreatingFolder}
@@ -99,22 +99,22 @@ function CreateFolderDialogContent({ parentFolderId, onClose }: CreateFolderDial
 
       <DialogFooter>
         <Button
-          type="button"
-          variant="ghost"
-          size="sm"
+          type='button'
+          variant='ghost'
+          size='sm'
           onClick={onClose}
           disabled={isCreatingFolder}>
-          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+          Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
         </Button>
         <Button
-          type="submit"
-          size="sm"
-          variant="outline"
+          type='submit'
+          size='sm'
+          variant='outline'
           disabled={!folderName.trim() || isCreatingFolder}
           loading={isCreatingFolder}
-          loadingText="Creating..."
+          loadingText='Creating...'
           data-dialog-submit>
-          Create Folder <KbdSubmit variant="outline" size="sm" />
+          Create Folder <KbdSubmit variant='outline' size='sm' />
         </Button>
       </DialogFooter>
     </form>

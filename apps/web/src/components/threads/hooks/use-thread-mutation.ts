@@ -1,13 +1,13 @@
 // apps/web/src/components/threads/hooks/use-thread-mutation.ts
 
-import { useCallback } from 'react'
-import { useThreadStore, type ThreadMeta } from '../store'
-import { toastError } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
 import { toRecordId } from '@auxx/types/resource'
+import { toastError } from '@auxx/ui/components/toast'
+import { useCallback } from 'react'
+import { type ThreadCountContext, useCountUpdates } from '~/components/mail/hooks'
+import { type CountUpdates, useMailCountsStore } from '~/components/mail/store'
 import { useUser } from '~/hooks/use-user'
-import { useCountUpdates, type ThreadCountContext } from '~/components/mail/hooks'
-import { useMailCountsStore, type CountUpdates } from '~/components/mail/store'
+import { api } from '~/trpc/react'
+import { type ThreadMeta, useThreadStore } from '../store'
 
 /**
  * Partial thread updates that can be applied optimistically.
@@ -59,11 +59,7 @@ export function useThreadMutation() {
   const batchUpdate = useMailCountsStore((s) => s.batchUpdate)
 
   // Count update helpers (for status and read changes that handle batching internally)
-  const {
-    onMarkAsRead,
-    onMarkAsUnread,
-    onArchiveOrTrash,
-  } = useCountUpdates()
+  const { onMarkAsRead, onMarkAsUnread, onArchiveOrTrash } = useCountUpdates()
 
   // Create mutations internally
   const updateMutation = api.thread.update.useMutation()
@@ -208,7 +204,14 @@ export function useThreadMutation() {
         }
       )
     },
-    [updateThreadOptimistic, confirmOptimistic, rollbackOptimistic, updateMutation, applyCountUpdates, restoreSnapshot]
+    [
+      updateThreadOptimistic,
+      confirmOptimistic,
+      rollbackOptimistic,
+      updateMutation,
+      applyCountUpdates,
+      restoreSnapshot,
+    ]
   )
 
   /**
@@ -244,7 +247,14 @@ export function useThreadMutation() {
         }
       )
     },
-    [updateThreadOptimistic, confirmOptimistic, rollbackOptimistic, updateBulkMutation, applyCountUpdates, restoreSnapshot]
+    [
+      updateThreadOptimistic,
+      confirmOptimistic,
+      rollbackOptimistic,
+      updateBulkMutation,
+      applyCountUpdates,
+      restoreSnapshot,
+    ]
   )
 
   /**
@@ -286,7 +296,15 @@ export function useThreadMutation() {
         }
       )
     },
-    [removeThread, removeMutation, currentUserId, buildThreadContext, restoreSnapshot, saveSnapshot, batchUpdate]
+    [
+      removeThread,
+      removeMutation,
+      currentUserId,
+      buildThreadContext,
+      restoreSnapshot,
+      saveSnapshot,
+      batchUpdate,
+    ]
   )
 
   /**
@@ -333,7 +351,15 @@ export function useThreadMutation() {
         }
       )
     },
-    [removeThread, removeBulkMutation, currentUserId, buildThreadContext, restoreSnapshot, saveSnapshot, batchUpdate]
+    [
+      removeThread,
+      removeBulkMutation,
+      currentUserId,
+      buildThreadContext,
+      restoreSnapshot,
+      saveSnapshot,
+      batchUpdate,
+    ]
   )
 
   return {

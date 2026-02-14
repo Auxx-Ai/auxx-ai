@@ -2,10 +2,11 @@
 
 'use client'
 
-import React, { useMemo } from 'react'
-import { ConditionProvider, ConditionContainer } from '~/components/conditions'
+import type React from 'react'
+import { useMemo } from 'react'
 import type { ConditionSystemConfig } from '~/components/conditions'
-import { useFilterFieldResolver, useFilterConditions } from '../hooks'
+import { ConditionContainer, ConditionProvider } from '~/components/conditions'
+import { useFilterConditions, useFilterFieldResolver } from '../hooks'
 import type { ListNodeData } from '../types'
 
 /**
@@ -66,7 +67,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
   // Show hint if no array selected
   if (isEmpty) {
     return (
-      <div className="text-center py-8 text-sm text-muted-foreground">
+      <div className='text-center py-8 text-sm text-muted-foreground'>
         Select an array in "Input List" to configure filters
       </div>
     )
@@ -75,9 +76,9 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
   // Error state: array has no field metadata (this should not happen)
   if (!hasFields) {
     return (
-      <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-center">
-        <div className="font-medium text-sm text-destructive">Missing field definitions</div>
-        <div className="text-xs mt-2 text-muted-foreground">
+      <div className='rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-center'>
+        <div className='font-medium text-sm text-destructive'>Missing field definitions</div>
+        <div className='text-xs mt-2 text-muted-foreground'>
           The selected array variable does not define its item structure.
           <br />
           This is likely a bug in the source node. Check the browser console for details.

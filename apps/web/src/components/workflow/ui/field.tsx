@@ -2,8 +2,8 @@
 
 'use client'
 
-import React from 'react'
 import { Field as BaseField, type FieldProps } from '@auxx/ui/components/section'
+import React from 'react'
 
 /**
  * Re-export Field component from packages/ui for backwards compatibility.

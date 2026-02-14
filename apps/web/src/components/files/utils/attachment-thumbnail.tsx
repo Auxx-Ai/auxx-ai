@@ -1,8 +1,9 @@
 // apps/web/src/components/files/utils/attachment-thumbnail.tsx
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
+import type React from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface AttachmentThumbnailProps {
   attachmentId: string
@@ -57,7 +58,7 @@ export function AttachmentThumbnail({
     if (attemptCount < maxRetries) {
       setAttemptCount((prev) => prev + 1)
       // Exponential backoff for retries
-      const backoffDelay = retryDelay * Math.pow(1.5, attemptCount)
+      const backoffDelay = retryDelay * 1.5 ** attemptCount
       timeoutRef.current = setTimeout(() => {
         // Force re-render by updating a key or timestamp
         setStatus('loading')
@@ -76,9 +77,9 @@ export function AttachmentThumbnail({
   }
 
   return (
-    <div className="relative size-12">
+    <div className='relative size-12'>
       {status === 'loading' && (
-        <div className="absolute inset-0 bg-gray-200 animate-pulse rounded" />
+        <div className='absolute inset-0 bg-gray-200 animate-pulse rounded' />
       )}
       <img
         key={`${attachmentId}-${attemptCount}`} // Force reload on retry
@@ -87,8 +88,8 @@ export function AttachmentThumbnail({
         className={cn('size-12 object-cover rounded', className)}
         width={48}
         height={48}
-        loading="lazy"
-        decoding="async"
+        loading='lazy'
+        decoding='async'
         onLoad={handleImageLoad}
         onError={handleImageError}
         style={{ opacity: status === 'ready' ? 1 : 0, transition: 'opacity 0.2s' }}

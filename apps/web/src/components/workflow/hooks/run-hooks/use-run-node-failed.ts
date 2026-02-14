@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/hooks/run-hooks/use-run-node-failed.ts
 
+import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
+import type { ExecutionEvent } from '../../store/run-store'
 import { useRunStore } from '../../store/run-store'
 import { useNodesInteractions } from '../use-node-interactions'
-import { toastError } from '@auxx/ui/components/toast'
-import type { ExecutionEvent } from '../../store/run-store'
 
 /**
  * Hook to handle NODE_FAILED events from the workflow execution

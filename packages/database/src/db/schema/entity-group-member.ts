@@ -1,12 +1,11 @@
 // packages/database/src/db/schema/entity-group-member.ts
 // Drizzle table: entityGroupMember
 
-import { pgTable, uniqueIndex, index, text, timestamp, type AnyPgColumn } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
-
+import type { MemberType } from '../../enums'
+import { type AnyPgColumn, index, pgTable, text, timestamp, uniqueIndex } from './_shared'
 import { EntityInstance } from './entity-instance'
 import { User } from './user'
-import type { MemberType } from '../../enums'
 
 /**
  * EntityGroupMember table for storing group memberships
@@ -26,7 +25,10 @@ export const EntityGroupMember = pgTable(
     /** The group (an EntityInstance with resourceType: 'entity_group') */
     groupInstanceId: text()
       .notNull()
-      .references((): AnyPgColumn => EntityInstance.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
+      .references((): AnyPgColumn => EntityInstance.id, {
+        onUpdate: 'cascade',
+        onDelete: 'cascade',
+      }),
 
     /** Member type discriminator - determines how to interpret memberRefId */
     memberType: text().notNull().$type<MemberType>(),
@@ -39,7 +41,10 @@ export const EntityGroupMember = pgTable(
     memberRefId: text().notNull(),
 
     /** User who added this member (for audit) */
-    addedById: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'set null' }),
+    addedById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
 
     /** Ordering within group (fractional indexing) */
     sortKey: text().notNull().default('a0'),

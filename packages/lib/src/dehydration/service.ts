@@ -1,19 +1,19 @@
 // packages/lib/src/dehydration/service.ts
 
-import { database as ddb, schema, type Database } from '@auxx/database'
-import { eq, count } from 'drizzle-orm'
-import { DehydrationCacheService } from './cache'
-import { FeaturePermissionService } from '../permissions'
-import { SettingsService, SETTINGS_CATALOG } from '../settings'
+import { API_URL, env, HOMEPAGE_URL, WEBAPP_URL } from '@auxx/config/client'
+import { type Database, database as ddb, schema } from '@auxx/database'
+import { count, eq } from 'drizzle-orm'
 import { MediaAssetService } from '../files'
 import { createScopedLogger } from '../logger'
+import { FeaturePermissionService } from '../permissions'
+import { SETTINGS_CATALOG, SettingsService } from '../settings'
+import { DehydrationCacheService } from './cache'
 import type {
+  DehydratedEnvironment,
+  DehydratedOrganization,
   DehydratedState,
   DehydratedUser,
-  DehydratedOrganization,
-  DehydratedEnvironment,
 } from './types'
-import { env, WEBAPP_URL, HOMEPAGE_URL, API_URL } from '@auxx/config/client'
 
 const logger = createScopedLogger('DehydrationService', { color: 'blue' })
 

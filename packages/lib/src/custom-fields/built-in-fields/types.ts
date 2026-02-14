@@ -1,7 +1,7 @@
 // packages/lib/src/custom-fields/built-in-fields/types.ts
 
-import type { FieldType } from '@auxx/database/types'
 import type { Database, Transaction } from '@auxx/database'
+import type { FieldType } from '@auxx/database/types'
 
 /**
  * Handler function for a built-in field

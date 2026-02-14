@@ -9,7 +9,7 @@ export const AI_OPERATION = {
   TRANSLATE: 'translate',
   FIX_GRAMMAR: 'fix_grammar',
   EXPAND: 'expand',
-  SHORTEN: 'shorten'
+  SHORTEN: 'shorten',
 } as const
 
 export type AIOperation = (typeof AI_OPERATION)[keyof typeof AI_OPERATION]
@@ -20,7 +20,7 @@ export type AIOperation = (typeof AI_OPERATION)[keyof typeof AI_OPERATION]
 export const AI_TONE_TYPE = {
   PROFESSIONAL: 'Professional',
   FRIENDLY: 'Friendly',
-  EMPATHETIC: 'Empathetic'
+  EMPATHETIC: 'Empathetic',
 } as const
 
 export type AIToneType = (typeof AI_TONE_TYPE)[keyof typeof AI_TONE_TYPE]
@@ -46,7 +46,7 @@ export const AI_LANG_TYPE = {
   RUSSIAN: 'Russian',
   SPANISH: 'Spanish',
   SWEDISH: 'Swedish',
-  TURKISH: 'Turkish'
+  TURKISH: 'Turkish',
 } as const
 
 export type AILangType = (typeof AI_LANG_TYPE)[keyof typeof AI_LANG_TYPE]
@@ -57,7 +57,7 @@ export type AILangType = (typeof AI_LANG_TYPE)[keyof typeof AI_LANG_TYPE]
 export const OUTPUT_FORMAT = {
   EDITOR: 'editor',
   RAW: 'raw',
-  HTML: 'html'
+  HTML: 'html',
 } as const
 
 export type OutputFormat = (typeof OUTPUT_FORMAT)[keyof typeof OUTPUT_FORMAT]
@@ -66,7 +66,7 @@ export type OutputFormat = (typeof OUTPUT_FORMAT)[keyof typeof OUTPUT_FORMAT]
  * Entity types using const assertion
  */
 export const COMPOSE_ENTITY_TYPE = {
-  THREAD: 'THREAD'
+  THREAD: 'THREAD',
 } as const
 
 export type ComposeEntityType = (typeof COMPOSE_ENTITY_TYPE)[keyof typeof COMPOSE_ENTITY_TYPE]

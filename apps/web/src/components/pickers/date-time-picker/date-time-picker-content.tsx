@@ -1,27 +1,26 @@
 // apps/web/src/components/pickers/date-time-picker/date-time-picker-content.tsx
 'use client'
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
-import { addMonths, subMonths, setMonth, setYear } from 'date-fns'
-
-import { ViewType, Period, type DateTimePickerContentProps } from './types'
+import { addMonths, setMonth, setYear, subMonths } from 'date-fns'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import PickerFooter from './components/picker-footer'
+import PickerHeader from './components/picker-header'
+import { DEFAULT_DATE_PRESETS } from './presets'
+import { type DateTimePickerContentProps, Period, ViewType } from './types'
 import {
-  to24Hour,
+  cloneTimeToDate,
+  createDateWithTime,
+  formatTime12Hour,
   getHourIn12HourFormat,
   getPeriod,
-  formatTime12Hour,
-  createDateWithTime,
-  cloneTimeToDate,
   startOfDay,
+  to24Hour,
 } from './utils'
-import PickerHeader from './components/picker-header'
-import PickerFooter from './components/picker-footer'
 import CalendarView from './views/calendar-view'
-import YearMonthView from './views/year-month-view'
 import TimeView from './views/time-view'
-import { DEFAULT_DATE_PRESETS } from './presets'
+import YearMonthView from './views/year-month-view'
 
 /**
  * DateTimePickerContent
@@ -205,13 +204,13 @@ export function DateTimePickerContent({
     <div className={cn('w-[240px] min-w-[240px]', className)}>
       {/* Presets (optional) */}
       {showPresets && mode !== 'time' && view === ViewType.Calendar && (
-        <div className="grid grid-cols-2 gap-1 border-b p-2">
+        <div className='grid grid-cols-2 gap-1 border-b p-2'>
           {presets.map((preset) => (
             <Button
               key={preset.value}
-              variant="ghost"
-              size="sm"
-              className="h-7 justify-start text-xs"
+              variant='ghost'
+              size='sm'
+              className='h-7 justify-start text-xs'
               onClick={() => handlePresetSelect(preset)}>
               {preset.label}
             </Button>

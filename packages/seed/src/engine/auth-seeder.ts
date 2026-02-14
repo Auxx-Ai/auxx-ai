@@ -1,8 +1,8 @@
 // packages/seed/src/engine/auth-seeder.ts
 // Seeder responsible for provisioning authentication records with scrypt parity
 
-import { createId } from '@paralleldrive/cuid2'
 import { database, schema } from '@auxx/database'
+import { createId } from '@paralleldrive/cuid2'
 import type { AuthSeederResult, SeedingConfig, SeedingScenarioName } from '../types'
 import { hashPassword } from '../utils/auth-hash'
 

@@ -1,14 +1,14 @@
 // apps/web/src/components/workflow/nodes/core/dataset/schema.ts
 
 import { z } from 'zod'
-import { type NodeDefinition, NodeCategory } from '~/components/workflow/types'
-import { NodeType } from '~/components/workflow/types/node-types'
+import { NodeCategory, type NodeDefinition } from '~/components/workflow/types'
 import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
-import { type DatasetNodeData } from './types'
-import { getDatasetOutputVariables } from './output-variables'
-import { DatasetPanel } from './panel'
+import { NodeType } from '~/components/workflow/types/node-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { isNodeVariable, isVariableMode } from '~/components/workflow/utils/variable-utils'
+import { getDatasetOutputVariables } from './output-variables'
+import { DatasetPanel } from './panel'
+import type { DatasetNodeData } from './types'
 
 /**
  * Zod schema for Dataset node data validation

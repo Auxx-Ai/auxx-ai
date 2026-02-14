@@ -2,23 +2,8 @@
 
 'use client'
 
-import { useState } from 'react'
-import { Table2, LayoutGrid } from 'lucide-react'
-import type {
-  VisibilityState,
-  ColumnOrderState,
-  ColumnSizingState,
-  ColumnPinningState,
-  SortingState,
-} from '@tanstack/react-table'
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from '@auxx/ui/components/input-group'
+import { Combobox } from '@auxx/ui/components/combobox'
 import {
   Dialog,
   DialogContent,
@@ -27,13 +12,28 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { Input } from '@auxx/ui/components/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@auxx/ui/components/input-group'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { RadioGroup, RadioGroupItemCard } from '@auxx/ui/components/radio-group'
-import { Combobox } from '@auxx/ui/components/combobox'
 import { incrementTitle } from '@auxx/utils'
-import type { TableView, ViewConfig } from '../../types'
+import type {
+  ColumnOrderState,
+  ColumnPinningState,
+  ColumnSizingState,
+  SortingState,
+  VisibilityState,
+} from '@tanstack/react-table'
+import { LayoutGrid, Table2 } from 'lucide-react'
+import { useState } from 'react'
 import { useViewMutations } from '../../hooks/use-view-mutations'
+import type { TableView, ViewConfig } from '../../types'
 
 /** Select field for kanban grouping */
 interface SelectField {
@@ -156,7 +156,7 @@ export function CreateViewDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent size="sm" position="tc">
+      <DialogContent size='sm' position='tc'>
         <DialogHeader>
           <DialogTitle>Create New View</DialogTitle>
           <DialogDescription>
@@ -164,15 +164,15 @@ export function CreateViewDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className='space-y-4'>
           {/* View name input */}
-          <div className="flex flex-col space-y-2">
-            <Label htmlFor="view-name">Name (Optional)</Label>
+          <div className='flex flex-col space-y-2'>
+            <Label htmlFor='view-name'>Name (Optional)</Label>
             <Input
-              id="view-name"
+              id='view-name'
               value={newViewName}
               onChange={(e) => setNewViewName(e.target.value)}
-              placeholder="View name..."
+              placeholder='View name...'
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   handleCreateView()
@@ -182,29 +182,29 @@ export function CreateViewDialog({
           </div>
 
           {/* View type selector */}
-          <div className="flex flex-col space-y-2">
+          <div className='flex flex-col space-y-2'>
             <Label>View Type</Label>
             <RadioGroup
               value={viewType}
               onValueChange={(v) => setViewType(v as 'table' | 'kanban')}>
               <RadioGroupItemCard
-                label="Table"
-                value="table"
+                label='Table'
+                value='table'
                 icon={<Table2 />}
-                description="Organize your records on a table"
+                description='Organize your records on a table'
               />
               <RadioGroupItemCard
-                label="Kanban"
-                value="kanban"
+                label='Kanban'
+                value='kanban'
                 icon={<LayoutGrid />}
-                description="Organize records on a pipeline"
+                description='Organize records on a pipeline'
               />
             </RadioGroup>
           </div>
 
           {/* Field selector for kanban */}
           {viewType === 'kanban' && (
-            <div className="space-y-2 flex flex-col">
+            <div className='space-y-2 flex flex-col'>
               <Label>Group by field</Label>
               {isCreatingField ? (
                 // Inline creation mode - Input field
@@ -212,7 +212,7 @@ export function CreateViewDialog({
                   <InputGroupInput
                     value={newFieldName}
                     onChange={(e) => setNewFieldName(e.target.value)}
-                    placeholder="Field name..."
+                    placeholder='Field name...'
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === 'Escape') {
@@ -221,14 +221,14 @@ export function CreateViewDialog({
                       }
                     }}
                   />
-                  <InputGroupAddon align="inline-end">
+                  <InputGroupAddon align='inline-end'>
                     <InputGroupButton
-                      type="button"
-                      className="rounded-lg me-0.5"
-                      variant="destructive-hover"
-                      aria-label="Cancel"
-                      title="Cancel"
-                      size="xs"
+                      type='button'
+                      className='rounded-lg me-0.5'
+                      variant='destructive-hover'
+                      aria-label='Cancel'
+                      title='Cancel'
+                      size='xs'
                       onClick={() => {
                         setIsCreatingField(false)
                         setNewFieldName('')
@@ -241,8 +241,8 @@ export function CreateViewDialog({
                 // Combobox selection mode
                 <Combobox
                   options={(selectFields ?? []).map((f) => ({ value: f.id, label: f.name }))}
-                  placeholder="Select a status field..."
-                  emptyText="No single-select fields found"
+                  placeholder='Select a status field...'
+                  emptyText='No single-select fields found'
                   value={selectedFieldId}
                   onChangeValue={(value) => {
                     setSelectedFieldId(value)
@@ -259,7 +259,7 @@ export function CreateViewDialog({
               )}
               {/* Show the new field name that will be created */}
               {isCreatingField && newFieldName.trim() && (
-                <p className="text-xs text-muted-foreground">
+                <p className='text-xs text-muted-foreground'>
                   A new &quot;{newFieldName}&quot; field will be created when you save this view.
                 </p>
               )}
@@ -268,21 +268,21 @@ export function CreateViewDialog({
         </div>
 
         <DialogFooter>
-          <Button size="sm" variant="ghost" onClick={() => handleOpenChange(false)}>
-            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+          <Button size='sm' variant='ghost' onClick={() => handleOpenChange(false)}>
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
           <Button
             data-dialog-submit
             onClick={handleCreateView}
-            size="sm"
-            variant="outline"
+            size='sm'
+            variant='outline'
             loading={createView.isPending}
-            loadingText="Creating..."
+            loadingText='Creating...'
             disabled={
               createView.isPending ||
               (viewType === 'kanban' && !selectedFieldId && !newFieldName.trim())
             }>
-            Create View <KbdSubmit variant="outline" size="sm" />
+            Create View <KbdSubmit variant='outline' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

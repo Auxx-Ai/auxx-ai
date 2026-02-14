@@ -1,10 +1,11 @@
 // 'use client'
+
+import { Button } from '@auxx/ui/components/button'
+import { Separator } from '@auxx/ui/components/separator'
 import Link from 'next/link'
 import React from 'react'
 import { api } from '~/trpc/server'
 import { ArticleForm } from '../../_components/article-form'
-import { Separator } from '@auxx/ui/components/separator'
-import { Button } from '@auxx/ui/components/button'
 
 type Props = { params: Promise<{ articleId: string }> }
 
@@ -24,16 +25,16 @@ async function EditArticlePage({ params }: Props) {
 
   return (
     <>
-      <div className="flex items-center space-x-2 px-4 py-2">
-        <Button variant="outline" size="sm" asChild>
+      <div className='flex items-center space-x-2 px-4 py-2'>
+        <Button variant='outline' size='sm' asChild>
           <Link href={`/app/kb/${articleId}`}>Back</Link>
         </Button>
 
-        <span className="text-sm text-muted-foreground">Edit Article</span>
+        <span className='text-sm text-muted-foreground'>Edit Article</span>
       </div>
       <Separator />
 
-      <div className="p-4">
+      <div className='p-4'>
         <div>
           {/* <h1>Edit Article</h1> */}
           <ArticleForm

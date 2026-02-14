@@ -1,11 +1,12 @@
 // src/app/preview/widget/[integrationId]/page.tsx
 'use client'
 
-import { type NextPage } from 'next'
+import { env, WEBAPP_URL } from '@auxx/config/client'
+import type { NextPage } from 'next'
+import { useParams, useSearchParams } from 'next/navigation'
 import Script from 'next/script' // Use Next.js Script component
 import { useRef } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
-import { env, WEBAPP_URL } from '@auxx/config/client'
+
 // Define props type for Client Component (params are direct, not Promises)
 interface PreviewWidgetPageProps {
   params: { integrationId: string }
@@ -126,11 +127,11 @@ const PreviewWidgetPage: NextPage<PreviewWidgetPageProps> = () => {
     // Basic container for the preview page
     <div style={{ height: '100vh', width: '100vw', background: '#f7f9fc' }}>
       {/* Optional: Link to dynamic styles if needed */}
-      <link rel="stylesheet" href={stylesUrl} />
+      <link rel='stylesheet' href={stylesUrl} />
 
       {/* Preview Banner */}
       <div
-        className="preview-banner"
+        className='preview-banner'
         style={{
           padding: '10px',
           background: '#2d3748',
@@ -147,14 +148,14 @@ const PreviewWidgetPage: NextPage<PreviewWidgetPageProps> = () => {
 
       {/* *** THE CONTAINER THE BUNDLE EXPECTS *** */}
       {/* Ensure this element exists before the bundle tries to find it */}
-      <div id="auxx-chat-widget-container"></div>
+      <div id='auxx-chat-widget-container'></div>
 
       {/* Load Dependencies using next/script */}
       {/* Strategy 'beforeInteractive' attempts to load before the page becomes interactive */}
       {/* Pusher */}
       <Script
-        src="https://js.pusher.com/8.3.0/pusher.min.js"
-        crossOrigin="anonymous"
+        src='https://js.pusher.com/8.3.0/pusher.min.js'
+        crossOrigin='anonymous'
         onReady={() => {
           loadWidgetBundleAndInit()
         }}

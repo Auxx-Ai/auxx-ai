@@ -1,8 +1,8 @@
-import DisplayWrapper from './display-wrapper'
-import { useFieldContext } from './display-field'
 import { Badge } from '@auxx/ui/components/badge'
-import { FieldOptionButton } from './field-option-button'
 import { Mail } from 'lucide-react'
+import { useFieldContext } from './display-field'
+import DisplayWrapper from './display-wrapper'
+import { FieldOptionButton } from './field-option-button'
 
 /**
  * DisplayEmail component
@@ -13,14 +13,14 @@ export function DisplayEmail() {
   const email = typeof value === 'string' ? value : ''
 
   const buttons = [
-    <FieldOptionButton key="open" label="Email" href={`mailto:${email}`}>
+    <FieldOptionButton key='open' label='Email' href={`mailto:${email}`}>
       <Mail />
     </FieldOptionButton>,
   ]
 
   return (
     <DisplayWrapper copyValue={email || null} buttons={buttons}>
-      <Badge variant="pill" className="focus:ring-0">
+      <Badge variant='pill' className='focus:ring-0'>
         {email}
       </Badge>
     </DisplayWrapper>

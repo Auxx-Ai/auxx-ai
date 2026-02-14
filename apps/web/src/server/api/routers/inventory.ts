@@ -1,10 +1,9 @@
+import { schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import { and, asc, eq, lt } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { schema } from '@auxx/database'
-import { and, eq, lt, asc } from 'drizzle-orm'
-import { createScopedLogger } from '@auxx/logger'
 
 const logger = createScopedLogger('api-inventory')
 export const inventoryRouter = createTRPCRouter({

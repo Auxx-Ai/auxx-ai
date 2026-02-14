@@ -1,9 +1,9 @@
 // apps/web/src/app/(protected)/app/workflows/_components/states/credentials-empty-state.tsx
 'use client'
 
-import { useState } from 'react'
-import { Key, SearchX } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
+import { Key, SearchX } from 'lucide-react'
+import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { CreateCredentialDialog } from '~/components/workflow/credentials/create-credential-dialog'
 
@@ -36,12 +36,12 @@ export function CredentialsEmptyState({
 
   if (hasFilters) {
     return (
-      <div className="flex flex-col items-center flex-1 h-full">
+      <div className='flex flex-col items-center flex-1 h-full'>
         <EmptyState
           icon={SearchX}
-          title="No credentials found"
+          title='No credentials found'
           description={
-            <div className="space-y-4 max-w-md">
+            <div className='space-y-4 max-w-md'>
               <p>
                 No credentials match your current search or filter criteria. Try adjusting your
                 search terms or clearing filters.
@@ -49,14 +49,14 @@ export function CredentialsEmptyState({
             </div>
           }
           button={
-            <div className="flex items-center justify-center gap-3">
-              <Button variant="outline" onClick={onClearFilters}>
+            <div className='flex items-center justify-center gap-3'>
+              <Button variant='outline' onClick={onClearFilters}>
                 Clear Filters
               </Button>
               <Button
-                className="gap-2"
-                size="sm"
-                variant="outline"
+                className='gap-2'
+                size='sm'
+                variant='outline'
                 onClick={() => setCreateDialogOpen(true)}>
                 <Key />
                 Add Credential
@@ -69,28 +69,28 @@ export function CredentialsEmptyState({
   }
 
   return (
-    <div className="flex flex-col items-center flex-1 h-full">
+    <div className='flex flex-col items-center flex-1 h-full'>
       <EmptyState
         icon={Key}
-        title="No credentials yet"
+        title='No credentials yet'
         description={
-          <div className="space-y-6">
-            <p className="max-w-md mx-auto">
+          <div className='space-y-6'>
+            <p className='max-w-md mx-auto'>
               Get started by creating your first credential to connect your workflows to external
               services like email, databases, and APIs.
             </p>
 
             {/* Quick Start Options */}
-            <div className="space-y-4">
-              <div className="text-sm text-muted-foreground">Popular credential types:</div>
+            <div className='space-y-4'>
+              <div className='text-sm text-muted-foreground'>Popular credential types:</div>
 
-              <div className="flex items-center justify-center gap-3 flex-wrap">
+              <div className='flex items-center justify-center gap-3 flex-wrap'>
                 {POPULAR_CREDENTIALS.map((type) => (
                   <Button
                     key={type.id}
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
+                    variant='outline'
+                    size='sm'
+                    className='gap-2'
                     onClick={() => onSelectType?.(type.id)}>
                     <Key />
                     {type.displayName}
@@ -102,9 +102,9 @@ export function CredentialsEmptyState({
         }
         button={
           <Button
-            className="gap-2"
-            variant="outline"
-            size="sm"
+            className='gap-2'
+            variant='outline'
+            size='sm'
             onClick={() => setCreateDialogOpen(true)}>
             <Key />
             Add Credential

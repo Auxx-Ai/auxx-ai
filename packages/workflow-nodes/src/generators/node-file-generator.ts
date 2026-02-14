@@ -1,9 +1,9 @@
 // packages/workflow-nodes/src/generators/node-file-generator.ts
 
 import type {
-  UnifiedNodeConfig,
   FieldConfig,
   SectionConfig,
+  UnifiedNodeConfig,
   ValidationRule,
 } from '../types/unified-config'
 

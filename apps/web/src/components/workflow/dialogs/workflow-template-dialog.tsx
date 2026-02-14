@@ -1,51 +1,51 @@
 // apps/web/src/components/workflow/dialogs/workflow-template-dialog.tsx
 'use client'
 
-import { useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
-import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
-import { InputSearch } from '@auxx/ui/components/input-search'
-import { Label } from '@auxx/ui/components/label'
-import { Textarea } from '@auxx/ui/components/textarea'
+import { constants } from '@auxx/config/client'
 import { Badge } from '@auxx/ui/components/badge'
-import { RadioGroup } from '@auxx/ui/components/radio-group'
-import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
-import {
-  Empty,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-  EmptyDescription,
-} from '@auxx/ui/components/empty'
-import {
-  Search,
-  Sparkles,
-  TrendingUp,
-  Image as ImageIcon,
-  Loader2,
-  LayoutGrid,
-  Headphones,
-  ShoppingBag,
-  Zap,
-  GitBranch,
-  type LucideIcon,
-  ChevronLeft,
-} from 'lucide-react'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from '@auxx/ui/components/dialog'
-import { api } from '~/trpc/react'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@auxx/ui/components/empty'
+import { Input } from '@auxx/ui/components/input'
+import { InputSearch } from '@auxx/ui/components/input-search'
+import { Label } from '@auxx/ui/components/label'
+import { RadioGroup } from '@auxx/ui/components/radio-group'
+import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { toastError } from '@auxx/ui/components/toast'
-import { constants } from '@auxx/config/client'
 import { Separator } from '@auxx/ui/components/separator'
-import { WorkflowViewer } from '~/components/workflow/viewer/workflow-viewer'
+import { Textarea } from '@auxx/ui/components/textarea'
+import { toastError } from '@auxx/ui/components/toast'
+import {
+  ChevronLeft,
+  GitBranch,
+  Headphones,
+  Image as ImageIcon,
+  LayoutGrid,
+  Loader2,
+  type LucideIcon,
+  Search,
+  ShoppingBag,
+  Sparkles,
+  TrendingUp,
+  Zap,
+} from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useMemo, useState } from 'react'
 import type { WorkflowViewerData } from '~/components/workflow/viewer/hooks/use-workflow-viewer'
+import { WorkflowViewer } from '~/components/workflow/viewer/workflow-viewer'
+import { api } from '~/trpc/react'
 
 export type WorkflowCategory = (typeof constants.workflowCategories)[number]['value']
 
@@ -215,33 +215,33 @@ export function WorkflowTemplateDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className=" h-[550px]" innerClassName="p-0" position="tc" size="3xl">
-        <div className="flex flex-col flex-1 min-h-0">
+      <DialogContent className=' h-[550px]' innerClassName='p-0' position='tc' size='3xl'>
+        <div className='flex flex-col flex-1 min-h-0'>
           {viewMode === 'list' ? (
             <>
               {/* LIST VIEW */}
-              <DialogHeader className="border-b px-3 h-10 flex flex-row items-center justify-start mb-0">
+              <DialogHeader className='border-b px-3 h-10 flex flex-row items-center justify-start mb-0'>
                 <div>
-                  <Button variant="ghost" size="sm">
+                  <Button variant='ghost' size='sm'>
                     Template selector
                   </Button>
 
-                  <DialogTitle className="sr-only">Use Template</DialogTitle>
-                  <DialogDescription className="sr-only">Template selector</DialogDescription>
+                  <DialogTitle className='sr-only'>Use Template</DialogTitle>
+                  <DialogDescription className='sr-only'>Template selector</DialogDescription>
                 </div>
               </DialogHeader>
 
               {/* Search Bar */}
 
               {/* Main Content: Sidebar + Templates */}
-              <div className="flex flex-1 flex-row justify-start w-full min-h-0">
+              <div className='flex flex-1 flex-row justify-start w-full min-h-0'>
                 {/* Sidebar */}
-                <div className="w-64 border-r bg-muted/30 flex flex-col rounded-bl-[16px]">
+                <div className='w-64 border-r bg-muted/30 flex flex-col rounded-bl-[16px]'>
                   <ScrollArea>
-                    <h3 className="p-3 pb-0 text-sm font-semibold text-muted-foreground sticky top-0">
+                    <h3 className='p-3 pb-0 text-sm font-semibold text-muted-foreground sticky top-0'>
                       Categories
                     </h3>
-                    <div className="p-3">
+                    <div className='p-3'>
                       <RadioGroup
                         value={selectedCategory}
                         onValueChange={(value) => setSelectedCategory(value as WorkflowCategory)}>
@@ -275,10 +275,10 @@ export function WorkflowTemplateDialog({
                 </div>
 
                 {/* Template List */}
-                <div className="flex-1 overflow-hidden flex flex-col">
-                  <div className="py-3 px-6">
+                <div className='flex-1 overflow-hidden flex flex-col'>
+                  <div className='py-3 px-6'>
                     <InputSearch
-                      placeholder="Search templates by name or description..."
+                      placeholder='Search templates by name or description...'
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onClear={() => setSearchQuery('')}
@@ -288,54 +288,54 @@ export function WorkflowTemplateDialog({
                   {isLoading ? (
                     <Empty>
                       <EmptyHeader>
-                        <EmptyMedia variant="icon">
-                          <Loader2 className="animate-spin" />
+                        <EmptyMedia variant='icon'>
+                          <Loader2 className='animate-spin' />
                         </EmptyMedia>
                         <EmptyTitle>Loading...</EmptyTitle>
                         <EmptyDescription>Fetching workflow templates</EmptyDescription>
                       </EmptyHeader>
                     </Empty>
                   ) : filteredTemplates.length > 0 ? (
-                    <ScrollArea className="flex-1">
-                      <div className="p-6 space-y-2">
+                    <ScrollArea className='flex-1'>
+                      <div className='p-6 space-y-2'>
                         {filteredTemplates.map((template) => (
                           <div
                             key={template.id}
                             onClick={() => handleSelectTemplate(template)}
-                            className="group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200 cursor-pointer">
-                            <div className="flex items-start gap-3 flex-1 min-w-0">
-                              <div className="size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors overflow-hidden shrink-0">
+                            className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200 cursor-pointer'>
+                            <div className='flex items-start gap-3 flex-1 min-w-0'>
+                              <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors overflow-hidden shrink-0'>
                                 {template.imgUrl ? (
                                   <img
                                     src={template.imgUrl}
                                     alt={template.name}
-                                    className="size-full object-cover"
+                                    className='size-full object-cover'
                                   />
                                 ) : (
-                                  <Sparkles className="size-4 text-primary-500" />
+                                  <Sparkles className='size-4 text-primary-500' />
                                 )}
                               </div>
-                              <div className="flex flex-col flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium truncate">
+                              <div className='flex flex-col flex-1 min-w-0'>
+                                <div className='flex items-center gap-2'>
+                                  <span className='text-sm font-medium truncate'>
                                     {template.name}
                                   </span>
                                   {template.popularity > 80 && (
-                                    <Badge variant="secondary" className="text-xs shrink-0">
-                                      <TrendingUp className="size-3 mr-1" />
+                                    <Badge variant='secondary' className='text-xs shrink-0'>
+                                      <TrendingUp className='size-3 mr-1' />
                                       Popular
                                     </Badge>
                                   )}
                                 </div>
-                                <span className="text-xs text-muted-foreground line-clamp-1 mt-0.5 min-h-[50px]">
+                                <span className='text-xs text-muted-foreground line-clamp-1 mt-0.5 min-h-[50px]'>
                                   {template.description}
                                 </span>
                               </div>
                             </div>
                             {(template.categories as string[])?.length > 0 && (
-                              <div className="flex gap-1 shrink-0">
+                              <div className='flex gap-1 shrink-0'>
                                 {(template.categories as string[]).slice(0, 2).map((cat) => (
-                                  <Badge key={cat} variant="outline" className="text-xs">
+                                  <Badge key={cat} variant='outline' className='text-xs'>
                                     {cat}
                                   </Badge>
                                 ))}
@@ -348,7 +348,7 @@ export function WorkflowTemplateDialog({
                   ) : (
                     <Empty>
                       <EmptyHeader>
-                        <EmptyMedia variant="icon">
+                        <EmptyMedia variant='icon'>
                           <Search />
                         </EmptyMedia>
                         <EmptyTitle>No templates found</EmptyTitle>
@@ -362,8 +362,8 @@ export function WorkflowTemplateDialog({
                   )}
 
                   {!isLoading && filteredTemplates.length > 0 && (
-                    <div className="border-t px-6 py-3 bg-muted/30">
-                      <p className="text-sm text-muted-foreground">
+                    <div className='border-t px-6 py-3 bg-muted/30'>
+                      <p className='text-sm text-muted-foreground'>
                         Showing {filteredTemplates.length} template
                         {filteredTemplates.length !== 1 ? 's' : ''}
                       </p>
@@ -375,34 +375,34 @@ export function WorkflowTemplateDialog({
           ) : (
             <>
               {/* DETAIL VIEW */}
-              <DialogHeader className="border-b px-3 py-2 mb-0 h-10 ">
-                <div className="flex items-center gap-1">
+              <DialogHeader className='border-b px-3 py-2 mb-0 h-10 '>
+                <div className='flex items-center gap-1'>
                   <Button
-                    variant="ghost"
-                    size="sm"
+                    variant='ghost'
+                    size='sm'
                     onClick={handleBackToList}
                     disabled={createWorkflow.isPending}>
                     <ChevronLeft />
                     Back
                   </Button>
-                  <Separator orientation="vertical" className="h-5" />
-                  <Button variant="ghost" size="sm">
+                  <Separator orientation='vertical' className='h-5' />
+                  <Button variant='ghost' size='sm'>
                     {selectedTemplate.name}
                   </Button>
 
                   <div>
-                    <DialogTitle className="sr-only">Use Template</DialogTitle>
-                    <DialogDescription className="sr-only">Template selector</DialogDescription>
+                    <DialogTitle className='sr-only'>Use Template</DialogTitle>
+                    <DialogDescription className='sr-only'>Template selector</DialogDescription>
                   </div>
                 </div>
               </DialogHeader>
 
-              <div className="flex flex-1 overflow-hidden">
+              <div className='flex flex-1 overflow-hidden'>
                 {/* Left Column: Preview (2/3 width) */}
-                <div className="flex-[2] border-r bg-muted/30 flex flex-col overflow-hidden">
+                <div className='flex-[2] border-r bg-muted/30 flex flex-col overflow-hidden'>
                   {isLoadingDetail ? (
-                    <div className="flex-1 flex items-center justify-center">
-                      <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                    <div className='flex-1 flex items-center justify-center'>
+                      <Loader2 className='w-8 h-8 animate-spin text-muted-foreground' />
                     </div>
                   ) : workflowViewerData ? (
                     <WorkflowViewer
@@ -413,29 +413,29 @@ export function WorkflowTemplateDialog({
                         showNavigation: true,
                         showBranding: false,
                       }}
-                      className="h-full w-full"
+                      className='h-full w-full'
                     />
                   ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
-                      <ImageIcon className="size-8 mb-4" />
-                      <p className="text-sm">No preview available</p>
+                    <div className='flex-1 flex flex-col items-center justify-center text-muted-foreground'>
+                      <ImageIcon className='size-8 mb-4' />
+                      <p className='text-sm'>No preview available</p>
                     </div>
                   )}
                 </div>
 
                 {/* Right Column: Form (1/3 width) */}
-                <div className="flex-1 flex flex-col">
-                  <ScrollArea className="flex-1">
-                    <div className="p-3 space-y-6">
+                <div className='flex-1 flex flex-col'>
+                  <ScrollArea className='flex-1'>
+                    <div className='p-3 space-y-6'>
                       {/* Template Info */}
                       <div>
-                        <h3 className="text-sm font-semibold text-muted-foreground mb-2">
+                        <h3 className='text-sm font-semibold text-muted-foreground mb-2'>
                           {selectedTemplate.name}
                         </h3>
-                        <p className="text-sm">{selectedTemplate?.description}</p>
-                        <div className="flex gap-1 flex-wrap mt-2">
+                        <p className='text-sm'>{selectedTemplate?.description}</p>
+                        <div className='flex gap-1 flex-wrap mt-2'>
                           {(selectedTemplate?.categories as string[])?.map((cat) => (
-                            <Badge key={cat} variant="outline" className="text-xs">
+                            <Badge key={cat} variant='outline' className='text-xs'>
                               {cat}
                             </Badge>
                           ))}
@@ -443,26 +443,26 @@ export function WorkflowTemplateDialog({
                       </div>
 
                       {/* Workflow Name */}
-                      <div className="space-y-2">
-                        <Label htmlFor="workflow-name">Workflow Name *</Label>
+                      <div className='space-y-2'>
+                        <Label htmlFor='workflow-name'>Workflow Name *</Label>
                         <Input
-                          id="workflow-name"
+                          id='workflow-name'
                           value={workflowName}
                           onChange={(e) => setWorkflowName(e.target.value)}
-                          placeholder="Enter workflow name"
+                          placeholder='Enter workflow name'
                           disabled={createWorkflow.isPending}
                           required
                         />
                       </div>
 
                       {/* Workflow Description */}
-                      <div className="space-y-2 pb-6">
-                        <Label htmlFor="workflow-description">Description</Label>
+                      <div className='space-y-2 pb-6'>
+                        <Label htmlFor='workflow-description'>Description</Label>
                         <Textarea
-                          id="workflow-description"
+                          id='workflow-description'
                           value={workflowDescription}
                           onChange={(e) => setWorkflowDescription(e.target.value)}
-                          placeholder="Enter workflow description (optional)"
+                          placeholder='Enter workflow description (optional)'
                           disabled={createWorkflow.isPending}
                           rows={4}
                         />
@@ -471,12 +471,12 @@ export function WorkflowTemplateDialog({
                   </ScrollArea>
 
                   {/* Footer */}
-                  <div className="border-t p-3">
+                  <div className='border-t p-3'>
                     <Button
-                      className="w-full"
+                      className='w-full'
                       onClick={handleCreateFromTemplate}
                       loading={createWorkflow.isPending}
-                      loadingText="Creating workflow...">
+                      loadingText='Creating workflow...'>
                       Use this template
                     </Button>
                   </div>

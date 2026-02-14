@@ -2,11 +2,11 @@
 
 'use client'
 
-import React from 'react'
-import { FolderOpen, Plus } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
-import { FileSelectDialog } from './file-select-dialog'
+import { FolderOpen, Plus } from 'lucide-react'
+import React from 'react'
 import type { FileItem } from '~/components/files/files-store'
+import { FileSelectDialog } from './file-select-dialog'
 
 /**
  * Props for FileSelectPickerButton component
@@ -44,12 +44,12 @@ export function FileSelectPickerButton({
 }: FileSelectPickerButtonProps) {
   const trigger =
     variant === 'inline' ? (
-      <Button variant="ghost" size="sm" disabled={disabled} className={className}>
+      <Button variant='ghost' size='sm' disabled={disabled} className={className}>
         <Plus />
         Add from Files
       </Button>
     ) : (
-      <Button variant="outline" size="sm" disabled={disabled} className={className}>
+      <Button variant='outline' size='sm' disabled={disabled} className={className}>
         <FolderOpen />
         Browse Files
       </Button>

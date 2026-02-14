@@ -2,7 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
-import { ModelType } from './types'
+import type { ModelType } from './types'
 
 /**
  * Interface representing a system model default configuration

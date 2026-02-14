@@ -1,8 +1,8 @@
 // packages/lib/src/datasets/extractors/text-extractor.ts
 
+import type { ExtractionResult, ExtractorCapabilities } from '../types/extractor.types'
 import { BaseExtractor } from './base-extractor'
 import { ExtractorRegistry } from './extractor-registry'
-import type { ExtractionResult, ExtractorCapabilities } from '../types/extractor.types'
 
 /**
  * Plain text extractor for .txt, .md, .csv, .json and other text-based files
@@ -16,8 +16,7 @@ export class TextExtractor extends BaseExtractor {
     const capabilities = this.getSupportedTypes()
     const normalizedExt = this.normalizeExtension(extension)
     return (
-      capabilities.mimeTypes.includes(mimeType) ||
-      capabilities.extensions.includes(normalizedExt)
+      capabilities.mimeTypes.includes(mimeType) || capabilities.extensions.includes(normalizedExt)
     )
   }
 
@@ -163,9 +162,7 @@ export class TextExtractor extends BaseExtractor {
     for (const encoding of encodings) {
       try {
         return buffer.toString(encoding)
-      } catch (error) {
-        continue
-      }
+      } catch (error) {}
     }
 
     // Last resort - use UTF-8 and replace invalid characters

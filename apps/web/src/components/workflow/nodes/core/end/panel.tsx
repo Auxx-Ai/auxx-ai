@@ -1,12 +1,13 @@
 // apps/web/src/components/workflow/nodes/core/end/panel.tsx
 
-import React, { memo, useCallback } from 'react'
 import { produce } from 'immer'
-import { type EndNodeData } from './types'
-import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
+import type React from 'react'
+import { memo, useCallback } from 'react'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import Section from '../../../ui/section'
+import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import { Editor } from '~/components/workflow/ui/prompt-editor'
+import Section from '../../../ui/section'
+import type { EndNodeData } from './types'
 
 interface EndPanelProps {
   nodeId: string
@@ -34,18 +35,18 @@ const EndPanelComponent: React.FC<EndPanelProps> = ({ nodeId, data }) => {
   )
 
   return (
-    <BasePanel title="End Node Configuration" nodeId={nodeId} data={data} showNextStep={false}>
-      <Section title="End Configuration" initialOpen description="Configure how the workflow ends">
-        <div className="space-y-4">
+    <BasePanel title='End Node Configuration' nodeId={nodeId} data={data} showNextStep={false}>
+      <Section title='End Configuration' initialOpen description='Configure how the workflow ends'>
+        <div className='space-y-4'>
           <Editor
-            title={<span className="text-xs font-semibold text-muted-foreground">Message</span>}
+            title={<span className='text-xs font-semibold text-muted-foreground'>Message</span>}
             readOnly={isReadOnly}
             value={inputs.message || ''}
             onChange={(value) => {
               // Store both the original editor content and the preprocessed text
               updateMessage(value)
             }}
-            placeholder="Use { for variables"
+            placeholder='Use { for variables'
             nodeId={nodeId}
             includeEnvironment
             includeSystem

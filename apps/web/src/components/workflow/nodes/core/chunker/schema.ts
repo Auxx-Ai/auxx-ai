@@ -1,14 +1,18 @@
 // apps/web/src/components/workflow/nodes/core/chunker/schema.ts
 
 import { z } from 'zod'
-import { type NodeDefinition, NodeCategory, type ValidationResult } from '~/components/workflow/types'
-import { NodeType } from '~/components/workflow/types/node-types'
+import {
+  NodeCategory,
+  type NodeDefinition,
+  type ValidationResult,
+} from '~/components/workflow/types'
 import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
-import { type ChunkerNodeData } from './types'
-import { getChunkerOutputVariables } from './output-variables'
-import { ChunkerPanel } from './panel'
+import { NodeType } from '~/components/workflow/types/node-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { isNodeVariable, isVariableMode } from '~/components/workflow/utils/variable-utils'
+import { getChunkerOutputVariables } from './output-variables'
+import { ChunkerPanel } from './panel'
+import type { ChunkerNodeData } from './types'
 
 /**
  * Zod schema for Chunker node data validation

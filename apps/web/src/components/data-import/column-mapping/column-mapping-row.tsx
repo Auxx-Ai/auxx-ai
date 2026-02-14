@@ -2,18 +2,18 @@
 
 'use client'
 
-import { useState } from 'react'
-import { ArrowRight, ChevronsUpDown, Trash2 } from 'lucide-react'
+import type { ImportableField } from '@auxx/lib/import'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { Popover, PopoverTrigger } from '@auxx/ui/components/popover'
 import { SmartBreadcrumb } from '@auxx/ui/components/smart-breadcrumb'
-import { FieldPicker } from './field-picker'
 import { cn } from '@auxx/ui/lib/utils'
+import { ArrowRight, ChevronsUpDown, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import { useResource } from '~/components/resources'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import type { ColumnMappingUI } from '../types'
-import type { ImportableField } from '@auxx/lib/import'
+import { FieldPicker } from './field-picker'
 
 interface ColumnMappingRowProps {
   mapping: ColumnMappingUI
@@ -55,21 +55,21 @@ export function ColumnMappingRow({
       const fullPath = `${selectedField.label} > ${mapping.matchField}`
 
       return (
-        <span className="flex min-w-0 items-center gap-1 flex-1">
+        <span className='flex min-w-0 items-center gap-1 flex-1'>
           <EntityIcon
             iconId={targetResource.icon}
             color={'color' in targetResource ? targetResource.color : undefined}
-            size="xs"
-            className="shrink-0"
+            size='xs'
+            className='shrink-0'
           />
           <SmartBreadcrumb
             segments={[
               { id: 'field', label: selectedField.label },
               { id: 'match', label: mapping.matchField },
             ]}
-            mode="display"
-            size="sm"
-            className="min-w-0"
+            mode='display'
+            size='sm'
+            className='min-w-0'
           />
         </span>
       )
@@ -95,11 +95,11 @@ export function ColumnMappingRow({
       )}
       onClick={onClick}>
       {/* CSV Column name - 40% */}
-      <div className="min-w-0 flex-[0.4]">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-base font-medium">{mapping.columnName}</span>
+      <div className='min-w-0 flex-[0.4]'>
+        <div className='flex items-center gap-2'>
+          <span className='truncate text-base font-medium'>{mapping.columnName}</span>
           {mapping.suggestedField && !mapping.isMapped && (
-            <Badge variant="outline" className="shrink-0 text-xs">
+            <Badge variant='outline' className='shrink-0 text-xs'>
               suggested
             </Badge>
           )}
@@ -107,7 +107,7 @@ export function ColumnMappingRow({
       </div>
 
       {/* Arrow - 20% */}
-      <div className="flex flex-[0.2] justify-start">
+      <div className='flex flex-[0.2] justify-start'>
         <ArrowRight
           className={cn(
             'size-4 transition-colors',
@@ -117,15 +117,15 @@ export function ColumnMappingRow({
       </div>
 
       {/* Target field selector - 40% */}
-      <div className="min-w-0 flex-[0.4]" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-0">
-          <div className="flex-1">
+      <div className='min-w-0 flex-[0.4]' onClick={(e) => e.stopPropagation()}>
+        <div className='flex items-center gap-0'>
+          <div className='flex-1'>
             <Popover open={open} onOpenChange={setOpen}>
               <PopoverTrigger asChild>
                 <Button
-                  variant="outline"
-                  size="sm"
-                  role="combobox"
+                  variant='outline'
+                  size='sm'
+                  role='combobox'
                   aria-expanded={open}
                   className={cn(
                     'w-full justify-between',
@@ -133,7 +133,7 @@ export function ColumnMappingRow({
                     !mapping.targetFieldKey && 'text-muted-foreground'
                   )}>
                   {getDisplayContent()}
-                  <ChevronsUpDown className="ml-2 shrink-0 opacity-50" />
+                  <ChevronsUpDown className='ml-2 shrink-0 opacity-50' />
                 </Button>
               </PopoverTrigger>
               <FieldPicker
@@ -150,9 +150,9 @@ export function ColumnMappingRow({
           {/* Clear button */}
           {mapping.targetFieldKey && (
             <Button
-              variant="outline"
-              size="icon-sm"
-              className="rounded-l-none bg-linear-0 shadow-none hover:inset-shadow-none hover:border-destructive/20 hover:from-destructive/5 hover:to-destructive/5 hover:text-destructive hover:shadow-xs"
+              variant='outline'
+              size='icon-sm'
+              className='rounded-l-none bg-linear-0 shadow-none hover:inset-shadow-none hover:border-destructive/20 hover:from-destructive/5 hover:to-destructive/5 hover:text-destructive hover:shadow-xs'
               onClick={handleClear}>
               <Trash2 />
             </Button>

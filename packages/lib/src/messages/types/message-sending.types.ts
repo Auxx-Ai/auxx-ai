@@ -1,5 +1,5 @@
 // packages/lib/src/messages/types/message-sending.types.ts
-import { SendStatus, IdentifierType, ParticipantRole } from '@auxx/database/enums'
+import type { IdentifierType, ParticipantRole, SendStatus } from '@auxx/database/enums'
 
 /**
  * Input for sending a message

@@ -1,7 +1,8 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/schema-editor.tsx
+
+import { cn } from '@auxx/ui/lib/utils'
 import React, { type FC } from 'react'
 import CodeEditor from './code-editor'
-import { cn } from '@auxx/ui/lib/utils'
 
 type SchemaEditorProps = {
   schema: string
@@ -22,7 +23,7 @@ const SchemaEditor: FC<SchemaEditorProps> = ({
     <CodeEditor
       readOnly={readonly}
       className={cn('grow rounded-xl', className)}
-      editorWrapperClassName="grow"
+      editorWrapperClassName='grow'
       value={schema}
       onUpdate={onUpdate}
       hideTopMenu={hideTopMenu}

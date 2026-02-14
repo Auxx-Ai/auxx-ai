@@ -1,8 +1,9 @@
 // apps/web/src/server/api/routers/customer.ts
+
+import { schema } from '@auxx/database'
+import { and, asc, desc, eq, gt, ilike, lt, or, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { schema } from '@auxx/database'
-import { eq, and, or, lt, desc, asc, gt, ilike, SQL } from 'drizzle-orm'
 
 // customerRouter: tRPC router that exposes Shopify customer queries scoped to the active organization
 export const customerRouter = createTRPCRouter({
@@ -131,7 +132,7 @@ export const customerRouter = createTRPCRouter({
         },
       })
 
-      let nextCursor: typeof cursor | undefined = undefined
+      let nextCursor: typeof cursor | undefined
 
       // If we got more items than requested, we know there are more
       if (items.length > limit) {

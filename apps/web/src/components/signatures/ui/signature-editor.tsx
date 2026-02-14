@@ -1,14 +1,14 @@
 // apps/web/src/components/signatures/ui/signature-editor.tsx
 'use client'
 
-import { Pencil, Plus, X } from 'lucide-react'
-import { useState, useEffect, useCallback } from 'react'
-import { SignaturePicker } from './signature-picker'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { Pencil, Plus, X } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
 import { useEditorActiveStateContext } from '~/components/mail/email-editor/editor-active-state-context'
 import { sanitizeHtml } from '~/lib/sanitize'
-import { useSignatures, useDefaultSignature } from '../hooks'
+import { useDefaultSignature, useSignatures } from '../hooks'
+import { SignaturePicker } from './signature-picker'
 
 /** Props for the SignatureEditor component */
 interface SignatureEditorProps {
@@ -77,8 +77,8 @@ function SignatureEditor({
 
   if (isLoading) {
     return (
-      <div className="group relative mx-2 mb-0 rounded-md">
-        <Skeleton className="h-4 w-26" />
+      <div className='group relative mx-2 mb-0 rounded-md'>
+        <Skeleton className='h-4 w-26' />
       </div>
     )
   }
@@ -86,7 +86,7 @@ function SignatureEditor({
   // No signature selected - show "Add" button with picker
   if (!currentSignature) {
     return (
-      <div className="mx-2">
+      <div className='mx-2'>
         <SignaturePicker
           signatures={signatures}
           selected={null}
@@ -94,14 +94,14 @@ function SignatureEditor({
           open={isPickerOpen}
           onOpenChange={setIsPickerOpen}
           disabled={disabled}
-          align="start">
+          align='start'>
           <Button
-            variant="ghost"
-            size="xs"
+            variant='ghost'
+            size='xs'
             onClick={handleAddClick}
             disabled={disabled}
-            className="text-muted-foreground/50">
-            <Plus className="size-4" />
+            className='text-muted-foreground/50'>
+            <Plus className='size-4' />
             Add signature
           </Button>
         </SignaturePicker>
@@ -113,13 +113,13 @@ function SignatureEditor({
   return (
     <div
       className={`group mx-2 relative rounded-md hover:bg-muted dark:hover:bg-muted ${disabled ? 'pointer-events-none opacity-50' : ''}`}>
-      <div className="p-2">
+      <div className='p-2'>
         <div
-          className="prose prose-sm max-w-none text-sm dark:prose-invert"
+          className='prose prose-sm max-w-none text-sm dark:prose-invert'
           dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentSignature.body) }}
         />
         {/* Edit/Remove Controls */}
-        <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className='absolute right-2 top-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
           <SignaturePicker
             signatures={signatures}
             selected={selectedSignatureId}
@@ -127,20 +127,20 @@ function SignatureEditor({
             open={isPickerOpen}
             onOpenChange={setIsPickerOpen}
             disabled={disabled}
-            align="end">
+            align='end'>
             <button
-              title="Change signature"
-              className="flex size-5 items-center justify-center rounded-full bg-foreground/30 text-xs text-background hover:bg-foreground/50 disabled:cursor-not-allowed disabled:opacity-50"
+              title='Change signature'
+              className='flex size-5 items-center justify-center rounded-full bg-foreground/30 text-xs text-background hover:bg-foreground/50 disabled:cursor-not-allowed disabled:opacity-50'
               disabled={disabled}>
-              <Pencil className="size-3" />
+              <Pencil className='size-3' />
             </button>
           </SignaturePicker>
           <button
-            title="Remove signature"
-            className="flex size-5 items-center justify-center rounded-full bg-foreground/30 text-xs text-background hover:bg-foreground/50 disabled:cursor-not-allowed disabled:opacity-50"
+            title='Remove signature'
+            className='flex size-5 items-center justify-center rounded-full bg-foreground/30 text-xs text-background hover:bg-foreground/50 disabled:cursor-not-allowed disabled:opacity-50'
             onClick={handleRemoveClick}
             disabled={disabled}>
-            <X className="size-3" />
+            <X className='size-3' />
           </button>
         </div>
       </div>

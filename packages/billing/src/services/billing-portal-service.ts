@@ -4,11 +4,11 @@
  */
 
 import type { Database } from '@auxx/database'
-import { stripeClient } from './stripe-client'
+import { createScopedLogger } from '@auxx/logger'
 import type { BillingPortalInput } from '../types'
 import { BillingError, ErrorCode } from '../utils/error-codes'
 import { buildUrl } from '../utils/url-helpers'
-import { createScopedLogger } from '@auxx/logger'
+import { stripeClient } from './stripe-client'
 
 const logger = createScopedLogger('billing-portal-service')
 

@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/core/context-merger.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { BranchResult, MergeStrategy, ExecutionContext } from './types'
+import type { BranchResult, ExecutionContext, MergeStrategy } from './types'
 
 const logger = createScopedLogger('context-merger')
 

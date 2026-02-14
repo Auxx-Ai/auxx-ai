@@ -4,12 +4,11 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-
-import { createViewSlice } from './view-slice'
-import { createUISlice } from './ui-slice'
 import { createFilterSlice } from './filter-slice'
 import { createSharedSlice } from './shared-slice'
 import type { DynamicTableStore } from './store-types'
+import { createUISlice } from './ui-slice'
+import { createViewSlice } from './view-slice'
 
 /** Combined dynamic table store using slice pattern */
 export const useDynamicTableStore = create<DynamicTableStore>()(

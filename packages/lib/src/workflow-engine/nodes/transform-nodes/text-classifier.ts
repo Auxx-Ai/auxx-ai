@@ -1,17 +1,20 @@
 // packages/lib/src/workflow-engine/nodes/transform-nodes/text-classifier.ts
 
-import { BaseAiNodeProcessor, type BaseAiModelConfig } from '../base-ai-node'
-import type { WorkflowNode, NodeExecutionResult, ValidationResult } from '../../core/types'
-import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
 import type { Message } from '../../../ai/clients/base/types'
-import type { StructuredOutputConfig, InvokeOrchestratorResponse } from '../utils/ai-invocation-utils'
+import type { ExecutionContextManager } from '../../core/execution-context'
+import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
+import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { type BaseAiModelConfig, BaseAiNodeProcessor } from '../base-ai-node'
+import type {
+  InvokeOrchestratorResponse,
+  StructuredOutputConfig,
+} from '../utils/ai-invocation-utils'
 import {
-  parseClassificationResult,
-  getOutputHandleForCategory,
   buildClassificationSystemPrompt,
   buildClassificationUserPrompt,
   type Category,
+  getOutputHandleForCategory,
+  parseClassificationResult,
 } from '../utils/ai-response-utils'
 
 /**
@@ -71,7 +74,7 @@ export class TextClassifierProcessor extends BaseAiNodeProcessor {
         description: cat.description
           ? await this.interpolateVariables(cat.description, contextManager)
           : undefined,
-      })),
+      }))
     )
 
     // Build user prompt using utility
@@ -155,7 +158,6 @@ export class TextClassifierProcessor extends BaseAiNodeProcessor {
   protected getDefaultTemperature(): number {
     return 0.3
   }
-
 
   /**
    * Extract variables from text, instruction, and category description fields

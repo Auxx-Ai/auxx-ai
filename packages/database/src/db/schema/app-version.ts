@@ -1,17 +1,17 @@
 // packages/database/src/db/schema/app-version.ts
 // Drizzle table for app version
 
+import { createId } from '@paralleldrive/cuid2'
 import {
+  type AnyPgColumn,
+  boolean,
+  index,
+  integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
-  integer,
-  jsonb,
-  boolean,
-  index,
-  type AnyPgColumn,
 } from './_shared'
-import { createId } from '@paralleldrive/cuid2'
 import { App } from './app'
 import { DeveloperAccountMember } from './developer-account-member'
 import { Organization } from './organization'

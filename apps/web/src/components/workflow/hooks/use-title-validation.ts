@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/hooks/use-title-validation.ts
 
-import { useState, useCallback } from 'react'
-import { isTitleUnique } from '../utils/unique-title-generator'
 import { useStoreApi } from '@xyflow/react'
+import { useCallback, useState } from 'react'
+import { isTitleUnique } from '../utils/unique-title-generator'
 
 /** Error types for title validation */
 export type TitleErrorType = 'empty' | 'duplicate' | 'contains-dot' | null

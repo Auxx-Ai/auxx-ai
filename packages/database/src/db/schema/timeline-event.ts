@@ -1,16 +1,8 @@
 // packages/database/src/db/schema/timeline-event.ts
 // Drizzle table: timelineEvent
 
-import {
-  pgTable,
-  index,
-  text,
-  timestamp,
-  jsonb,
-  type AnyPgColumn,
-  boolean,
-} from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, boolean, index, jsonb, pgTable, text, timestamp } from './_shared'
 import { Organization } from './organization'
 
 /** Drizzle table for timelineEvent */

@@ -1,9 +1,9 @@
 // apps/web/src/components/workflow/store/canvas-store.ts
 
+import type { Viewport } from '@xyflow/react'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import { type CanvasViewport } from './types'
-import { type Viewport } from '@xyflow/react'
+import type { CanvasViewport } from './types'
 
 interface WorkflowVersion {
   id: string

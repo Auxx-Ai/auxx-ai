@@ -1,11 +1,10 @@
 // apps/web/src/components/ui/switch.tsx
 'use client'
 
-import * as React from 'react'
-import { Switch as SwitchPrimitives } from 'radix-ui'
-import { cva, type VariantProps } from 'class-variance-authority'
-
 import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { Switch as SwitchPrimitives } from 'radix-ui'
+import type * as React from 'react'
 
 /**
  * switchVariants - cva for Switch root element

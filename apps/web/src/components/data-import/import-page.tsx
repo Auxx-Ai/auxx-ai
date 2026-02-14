@@ -2,27 +2,27 @@
 
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import {
   MainPage,
-  MainPageHeader,
-  MainPageContent,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
+  MainPageContent,
+  MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { useConfirm } from '~/hooks/use-confirm'
 import { toastError } from '@auxx/ui/components/toast'
+import { useRouter } from 'next/navigation'
+import { parseAsStringLiteral, useQueryState } from 'nuqs'
+import { useCallback, useEffect, useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { ImportStepCards } from './import-step-cards'
+import { IMPORT_STEPS } from './constants'
+import { useImportWizard } from './hooks/use-import-wizard'
 import { ImportActions } from './import-actions'
-import { StepUpload } from './steps/step-upload'
+import { ImportStepCards } from './import-step-cards'
+import { StepConfirmImport } from './steps/step-confirm-import'
 import { StepMapColumns } from './steps/step-map-columns'
 import { StepReviewValues } from './steps/step-review-values'
-import { StepConfirmImport } from './steps/step-confirm-import'
-import { useImportWizard } from './hooks/use-import-wizard'
-import { IMPORT_STEPS } from './constants'
+import { StepUpload } from './steps/step-upload'
 import type { ImportStep } from './types'
 
 /** Parser for step query param with validation */
@@ -155,7 +155,9 @@ export function ImportPage({
   const renderStep = () => {
     switch (currentStep) {
       case 'upload':
-        return <StepUpload entityDefinitionId={entityDefinitionId} onComplete={handleUploadComplete} />
+        return (
+          <StepUpload entityDefinitionId={entityDefinitionId} onComplete={handleUploadComplete} />
+        )
       case 'map-columns':
         return (
           <StepMapColumns
@@ -182,11 +184,11 @@ export function ImportPage({
         }>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title={resourceLabel} href={basePath} />
-          <MainPageBreadcrumbItem title="Import" last />
+          <MainPageBreadcrumbItem title='Import' last />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>
-        <div className="flex flex-col flex-1 min-h-0 ">
+        <div className='flex flex-col flex-1 min-h-0 '>
           {/* Step navigation as Stepper */}
           <ImportStepCards
             currentStep={currentStep}
@@ -196,7 +198,7 @@ export function ImportPage({
           />
 
           {/* Current step content */}
-          <div className="flex-1 overflow-y-auto relative flex flex-col min-h-0">
+          <div className='flex-1 overflow-y-auto relative flex flex-col min-h-0'>
             {renderStep()}
           </div>
         </div>

@@ -2,24 +2,24 @@
 
 'use client'
 
-import React, { useMemo } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { CircularProgress } from '@auxx/ui/components/progress'
-import { RotateCcw, Pause, Trash2 } from 'lucide-react'
-import { useUploadStore, selectFile, selectFileProgress, selectFileStatus } from '../stores'
+import { cn } from '@auxx/ui/lib/utils'
 import { formatBytes } from '@auxx/utils/file'
+import { Pause, RotateCcw, Trash2 } from 'lucide-react'
+import React, { useMemo } from 'react'
+import type { FileItem as FileItemType } from '~/components/files/files-store'
 import { FileIcon } from '~/components/files/utils/file-icon'
 import {
-  FileStatusDisplay,
-  type FileStatus,
-  canRetryStatus,
   canCancelStatus,
+  canRetryStatus,
+  type FileStatus,
+  FileStatusDisplay,
   isActiveStatus,
   isErrorStatus,
 } from '~/components/files/utils/file-status'
-import { Badge } from '@auxx/ui/components/badge'
-import type { FileItem as FileItemType } from '~/components/files/files-store'
+import { selectFile, selectFileProgress, selectFileStatus, useUploadStore } from '../stores'
 
 /**
  * Props for FileItem component
@@ -138,26 +138,26 @@ export function FileItem({
       />
       <FileIcon
         mimeType={file.mimeType || (file as any).file?.type}
-        className="size-4 text-gray-500 flex-shrink-0"
+        className='size-4 text-gray-500 flex-shrink-0'
       />
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium truncate" title={file.name}>
+      <div className='flex-1 min-w-0'>
+        <div className='flex items-center gap-2'>
+          <span className='text-sm font-medium truncate' title={file.name}>
             {file.name}
           </span>
-          <FileStatusDisplay status={status} variant="icon" size="sm" showLabel={false} />
+          <FileStatusDisplay status={status} variant='icon' size='sm' showLabel={false} />
           {/* Source badge */}
           {showSource && file.source && (
-            <Badge variant="secondary" className="text-xs">
+            <Badge variant='secondary' className='text-xs'>
               {file.source === 'upload' ? 'Upload' : 'Filesystem'}
             </Badge>
           )}
         </div>
       </div>
 
-      <div className="flex items-center">
-        <span className="text-xs text-gray-500 me-1">
+      <div className='flex items-center'>
+        <span className='text-xs text-gray-500 me-1'>
           {formatBytes(file.displaySize || (file.size ? Number(file.size) : 0))}
         </span>
 
@@ -165,54 +165,54 @@ export function FileItem({
           <>
             {status === 'completed' && onDeleteServer ? (
               <Button
-                variant="ghost"
-                size="icon-sm"
+                variant='ghost'
+                size='icon-sm'
                 onClick={handleDeleteServer}
                 loading={isDeleting}
                 title={isDeleting ? 'Deleting...' : 'Delete on server'}
-                className=" hover:bg-bad-200/50 hover:text-bad-500 rounded-full">
+                className=' hover:bg-bad-200/50 hover:text-bad-500 rounded-full'>
                 <Trash2 />
               </Button>
             ) : (
               <Button
-                variant="ghost"
-                size="icon-sm"
+                variant='ghost'
+                size='icon-sm'
                 onClick={handleRemove}
                 loading={isDeleting}
-                title="Remove file"
-                className=" hover:bg-bad-200/50 hover:text-bad-500 rounded-full">
+                title='Remove file'
+                className=' hover:bg-bad-200/50 hover:text-bad-500 rounded-full'>
                 <Trash2 />
               </Button>
             )}
           </>
         )}
         {isActive && (
-          <div className="relative flex items-center w-7 shrink-0">
+          <div className='relative flex items-center w-7 shrink-0'>
             {canCancel && (
               <Button
-                variant="ghost"
-                size="icon-sm"
+                variant='ghost'
+                size='icon-sm'
                 onClick={handleCancel}
-                className="opacity-0 group-hover/file-item:opacity-100 hover:bg-primary-200 absolute z-3 transition-all rounded-full right-[0px]">
+                className='opacity-0 group-hover/file-item:opacity-100 hover:bg-primary-200 absolute z-3 transition-all rounded-full right-[0px]'>
                 <Pause />
               </Button>
             )}
             {canRetry && (
               <Button
-                variant="ghost"
-                size="icon-sm"
+                variant='ghost'
+                size='icon-sm'
                 onClick={handleRetry}
-                className="rounded-full hover:bg-accent-200 bg-accent-100">
+                className='rounded-full hover:bg-accent-200 bg-accent-100'>
                 <RotateCcw />
               </Button>
             )}
-            <div className="">
+            <div className=''>
               <CircularProgress
                 value={progress}
                 // size={100}
-                className="h-7 text-xs text-normal group-hover/file-item:opacity-0 transition-all shrink-0"
-                gaugePrimary="text-accent-500"
-                gaugeSecondary="text-primary-200"
+                className='h-7 text-xs text-normal group-hover/file-item:opacity-0 transition-all shrink-0'
+                gaugePrimary='text-accent-500'
+                gaugeSecondary='text-primary-200'
               />
             </div>
           </div>

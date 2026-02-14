@@ -3,10 +3,10 @@
 // Re-export for backward compatibility
 // Existing code can continue using ConditionQueryBuilder.buildWhereSql(...)
 
-import { systemConditionBuilder } from './system-condition-builder'
-import type { GenericCondition, ConditionGroup } from './base-condition-builder'
-import type { TableId } from '../../resources/registry/field-registry'
 import type { SQL } from 'drizzle-orm'
+import type { TableId } from '../../resources/registry/field-registry'
+import type { ConditionGroup, GenericCondition } from './base-condition-builder'
+import { systemConditionBuilder } from './system-condition-builder'
 
 /**
  * @deprecated Use SystemConditionBuilder directly for new code

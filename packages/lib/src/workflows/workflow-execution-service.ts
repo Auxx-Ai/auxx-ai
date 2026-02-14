@@ -1,48 +1,47 @@
 // packages/lib/src/workflows/workflow-execution-service.ts
 
-import { type Database } from '@auxx/database'
-import { database, schema } from '@auxx/database'
-import { eq, and, desc, gt, lt, gte, lte, or } from 'drizzle-orm'
+import { type Database, database, schema } from '@auxx/database'
+import { SystemUserService } from '@auxx/lib/users'
 import {
-  WorkflowEngine,
-  NodeRunningStatus,
-  WorkflowGraphBuilder,
-  WorkflowPausedException,
+  calculateTotalTokens,
   type ExecutionState,
   executeSingleNode,
   JoinState, // V5: Added for join state deserialization
-  calculateTotalTokens,
+  NodeRunningStatus,
+  RedisWorkflowExecutionReporter,
+  WorkflowEngine,
+  WorkflowEventType,
+  WorkflowGraphBuilder,
+  WorkflowPausedException,
 } from '@auxx/lib/workflow-engine'
-import { RedisWorkflowExecutionReporter, WorkflowEventType } from '@auxx/lib/workflow-engine'
 
 import { createScopedLogger } from '@auxx/logger'
+import { and, desc, eq, gt, gte, lt, lte, or } from 'drizzle-orm'
 import { getQueue, Queues } from '../jobs/queues'
-import { ApprovalQueryService } from '../workflow-engine/services/approval-query-service'
-import { SystemUserService } from '@auxx/lib/users'
-import {
-  type WorkflowTriggerEvent,
-  type WorkflowNode,
-  WorkflowTriggerType,
-  WorkflowExecutionStatus,
-  WorkflowRunStatus,
-  WorkflowTriggerSource,
-  NodeTriggerSource,
-  // type RunWorkflowParams,
-  type RunNodeParams,
-  type ListRunOptions,
-  type PaginatedResult,
-  type WorkflowRun,
-  type WorkflowNodeExecution,
-  type WorkflowRunWithDetails,
-  type WorkflowExecutionError,
-  type ErrorHandler,
-} from './types'
-
 import type {
-  StoredExecutionContext,
   NodeExecutionResult,
   PauseReason,
+  StoredExecutionContext,
 } from '../workflow-engine/core/types'
+import { ApprovalQueryService } from '../workflow-engine/services/approval-query-service'
+import {
+  type ErrorHandler,
+  type ListRunOptions,
+  NodeTriggerSource,
+  type PaginatedResult,
+  // type RunWorkflowParams,
+  type RunNodeParams,
+  type WorkflowExecutionError,
+  WorkflowExecutionStatus,
+  type WorkflowNode,
+  type WorkflowNodeExecution,
+  type WorkflowRun,
+  WorkflowRunStatus,
+  type WorkflowRunWithDetails,
+  type WorkflowTriggerEvent,
+  WorkflowTriggerSource,
+  WorkflowTriggerType,
+} from './types'
 
 type SerializedExecutionState = {
   executionId: string

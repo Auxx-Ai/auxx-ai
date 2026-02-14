@@ -1,26 +1,23 @@
 // src/server/auth/config.ts
-import { betterAuth } from 'better-auth' // core lib
-import { passkey } from 'better-auth/plugins/passkey'
-import { twoFactor, phoneNumber, customSession, oidcProvider, bearer } from 'better-auth/plugins'
-import { isValidPhoneNumber } from 'libphonenumber-js'
 
-import { nextCookies } from 'better-auth/next-js'
-
-import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { API_URL, DEV_PORTAL_URL, env, WEBAPP_URL } from '@auxx/config/server'
 import { database, schema } from '@auxx/database' // Drizzle database for services
-import { UserModel } from '@auxx/database/models'
-import { accountModel } from '@auxx/database/models'
-import { env, WEBAPP_URL, DEV_PORTAL_URL, API_URL } from '@auxx/config/server'
-import { seedNewUserDatabase } from '@auxx/lib/seed'
-
-import { createScopedLogger } from '@auxx/logger'
+import { accountModel, UserModel } from '@auxx/database/models'
 import {
-  sendVerificationEmail,
-  sendResetPasswordEmail,
-  sendWelcomeEmail,
   sendEmailChangeVerificationEmail,
   sendPasswordResetNotifyEmail,
+  sendResetPasswordEmail,
+  sendVerificationEmail,
+  sendWelcomeEmail,
 } from '@auxx/email'
+import { seedNewUserDatabase } from '@auxx/lib/seed'
+import { createScopedLogger } from '@auxx/logger'
+import { betterAuth } from 'better-auth' // core lib
+import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { nextCookies } from 'better-auth/next-js'
+import { bearer, customSession, oidcProvider, phoneNumber, twoFactor } from 'better-auth/plugins'
+import { passkey } from 'better-auth/plugins/passkey'
+import { isValidPhoneNumber } from 'libphonenumber-js'
 
 const logger = createScopedLogger('auth')
 
@@ -266,7 +263,7 @@ export const auth = betterAuth({
       }
 
       // Fetch avatar URL if user has an avatar asset
-      let avatarUrl: string | null = extendedUser.image || null
+      const avatarUrl: string | null = extendedUser.image || null
       // if (extendedUser.avatarAssetId && extendedUser.defaultOrganizationId) {
       //   const { MediaAssetService } = await import('@auxx/lib/files')
       //   const mediaAssetService = new MediaAssetService(

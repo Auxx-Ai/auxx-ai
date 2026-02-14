@@ -1,7 +1,7 @@
 // apps/web/src/components/tasks/utils/condition-to-props.ts
 
-import type { Condition } from '~/components/conditions'
 import type { TaskPriority } from '@auxx/lib/tasks'
+import type { Condition } from '~/components/conditions'
 
 /**
  * Task filter props that useTasks hook accepts

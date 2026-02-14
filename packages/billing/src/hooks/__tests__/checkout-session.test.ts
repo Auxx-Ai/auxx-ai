@@ -1,10 +1,10 @@
 // packages/billing/src/hooks/__tests__/checkout-session.test.ts
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import type { Database } from '@auxx/database'
-import type Stripe from 'stripe'
 import { handleCheckoutSessionCompleted } from '@auxx/billing/hooks/checkout-session'
 import { handleSubscriptionCreated } from '@auxx/billing/hooks/subscription-updated'
+import type { Database } from '@auxx/database'
+import type Stripe from 'stripe'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { retrieveMock, getClientMock } = vi.hoisted(() => {
   const retrieve = vi.fn()

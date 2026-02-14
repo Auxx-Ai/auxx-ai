@@ -1,9 +1,10 @@
 // apps/web/src/server/api/routers/mailView.ts
-import { z } from 'zod'
-import { TRPCError } from '@trpc/server'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { MailViewService } from '@auxx/lib/mail-views'
+
 import { conditionGroupsSchema } from '@auxx/lib/conditions/client'
+import { MailViewService } from '@auxx/lib/mail-views'
+import { TRPCError } from '@trpc/server'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 // Create mail view input schema
 const createMailViewSchema = z.object({

@@ -1,8 +1,9 @@
 // 'use client'
-import React from 'react'
-import KBEditorView from './_components/kb-editor-view'
-import { api } from '~/trpc/server'
+
 import { redirect } from 'next/navigation'
+import React from 'react'
+import { api } from '~/trpc/server'
+import KBEditorView from './_components/kb-editor-view'
 
 type Props = {}
 

@@ -1,10 +1,10 @@
 // apps/web/src/app/(protected)/app/onboarding/page.tsx
 
-import { auth } from '~/auth/server'
-import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
 import { database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
+import { headers } from 'next/headers'
+import { redirect } from 'next/navigation'
+import { auth } from '~/auth/server'
 
 /**
  * Onboarding entry point that determines where to redirect the user based on:

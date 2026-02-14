@@ -1,9 +1,9 @@
 // packages/lib/src/workflow-engine/core/single-node-executor.ts
 
-import type { WorkflowNode } from './types'
-import type { NodeProcessorRegistry } from './node-processor-registry'
-import { ExecutionContextManager } from './execution-context'
 import type { Database } from '@auxx/database'
+import { ExecutionContextManager } from './execution-context'
+import type { NodeProcessorRegistry } from './node-processor-registry'
+import type { WorkflowNode } from './types'
 
 /**
  * Context for single node execution

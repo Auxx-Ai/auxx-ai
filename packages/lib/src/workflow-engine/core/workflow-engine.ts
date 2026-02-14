@@ -1,74 +1,72 @@
 // packages/lib/src/workflow-engine/core/workflow-engine.ts
 import { database as db, schema } from '@auxx/database'
-import { eq, and, desc } from 'drizzle-orm'
-import { createScopedLogger } from '@auxx/logger'
-import { ExecutionContextManager } from './execution-context'
-import { NodeProcessorRegistry } from './node-processor-registry'
-import { CancellationManager } from './cancellation-manager'
-import { ExecutionTrackingManager } from './execution-tracking'
-import { StatePersistenceManager } from './state-persistence-manager'
-import { LoopExecutionManager } from './loop-execution-manager'
-import { LoopContextManager } from './loop-context-extensions'
-import {
-  WorkflowGraphBuilder,
-  WorkflowGraphHelper,
-  type WorkflowGraph,
-} from './workflow-graph-builder'
-import { workflowMetrics } from './workflow-metrics'
-import {
-  JoinExecutionManager,
-  type BranchArrivalStatus,
-  type JoinWaitOptions,
-} from './join-execution-manager'
-import { BatchedJoinStateUpdater } from './batched-join-updater'
-import { JoinStateCache } from './join-state-cache'
-import { BranchMerger } from './branch-merger'
-import { WorkflowEventType } from '../shared/types'
-import type {
-  Workflow,
-  WorkflowNode,
-  WorkflowExecutionResult,
-  WorkflowExecutionOptions,
-  WorkflowTriggerEvent,
-  NodeExecutionResult,
-  ExecutionState,
-  PauseReason,
-  ResumeOptions,
-  BranchResult,
-  ValidationResult,
-  BranchConvergenceResult,
-  JoinPointInfo,
-} from './types'
-
-import {
-  WorkflowPausedException,
-  NodeRunningStatus,
-  WorkflowTriggerType,
-  WorkflowNodeType,
-  WorkflowExecutionStatus,
-  JoinState, // V5: Import as value to call static fromJSON() method
-} from './types'
-
-import {
-  WorkflowNodeError,
-  WorkflowNodeProcessingError,
-  WorkflowNodeExecutionError,
-} from './errors'
 import { NodeTriggerSource } from '@auxx/database/enums'
+import { createScopedLogger } from '@auxx/logger'
+import { and, desc, eq } from 'drizzle-orm'
 import type { WorkflowExecutionReporter } from '../execution-reporter'
-import {
-  findEntryNode,
-  findNodeById,
-  getTargetsFromHandle,
-  getNextNodeIds,
-} from './graph-navigation'
-import { calculateTotalTokens } from './execution-utils'
-import { shouldPauseBeTerminal, determineNextNodesForResume } from './pause-resume'
+import { WorkflowEventType } from '../shared/types'
+import { BatchedJoinStateUpdater } from './batched-join-updater'
+import { BranchMerger } from './branch-merger'
+import { CancellationManager } from './cancellation-manager'
 import {
   handleNodeError as handleNodeErrorUtil,
   handlePreprocessingError as handlePreprocessingErrorUtil,
 } from './error-handlers'
+import {
+  WorkflowNodeError,
+  WorkflowNodeExecutionError,
+  WorkflowNodeProcessingError,
+} from './errors'
+import { ExecutionContextManager } from './execution-context'
+import { ExecutionTrackingManager } from './execution-tracking'
+import { calculateTotalTokens } from './execution-utils'
+import {
+  findEntryNode,
+  findNodeById,
+  getNextNodeIds,
+  getTargetsFromHandle,
+} from './graph-navigation'
+import {
+  type BranchArrivalStatus,
+  JoinExecutionManager,
+  type JoinWaitOptions,
+} from './join-execution-manager'
+import { JoinStateCache } from './join-state-cache'
+import { LoopContextManager } from './loop-context-extensions'
+import { LoopExecutionManager } from './loop-execution-manager'
+import { NodeProcessorRegistry } from './node-processor-registry'
+import { determineNextNodesForResume, shouldPauseBeTerminal } from './pause-resume'
+import { StatePersistenceManager } from './state-persistence-manager'
+import type {
+  BranchConvergenceResult,
+  BranchResult,
+  ExecutionState,
+  JoinPointInfo,
+  NodeExecutionResult,
+  PauseReason,
+  ResumeOptions,
+  ValidationResult,
+  Workflow,
+  WorkflowExecutionOptions,
+  WorkflowExecutionResult,
+  WorkflowNode,
+  WorkflowTriggerEvent,
+} from './types'
+import {
+  JoinState, // V5: Import as value to call static fromJSON() method
+  NodeRunningStatus,
+  WorkflowExecutionStatus,
+  WorkflowNodeType,
+  WorkflowPausedException,
+  WorkflowTriggerType,
+} from './types'
 import { validateWorkflow } from './validation'
+import {
+  type WorkflowGraph,
+  WorkflowGraphBuilder,
+  WorkflowGraphHelper,
+} from './workflow-graph-builder'
+import { workflowMetrics } from './workflow-metrics'
 
 const logger = createScopedLogger('workflow-engine')
 /**

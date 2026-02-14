@@ -1,9 +1,9 @@
 // apps/web/src/components/workflow/nodes/core/find/output-variables.ts
 
-import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
-import { generateFindNodeVariablesFromFields } from '@auxx/lib/workflow-engine/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
-import { type FindNodeData } from './types'
+import { generateFindNodeVariablesFromFields } from '@auxx/lib/workflow-engine/client'
+import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
+import type { FindNodeData } from './types'
 
 /** Resource shape for variable generation */
 type ResourceWithFields = { id: string; label: string; plural: string; fields: ResourceField[] }

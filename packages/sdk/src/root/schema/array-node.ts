@@ -19,9 +19,11 @@ export interface ArraySchemaOptions extends BaseSchemaOptions {
 /**
  * Array schema field node
  */
-export class SchemaArrayNode<
-  TItem extends BaseSchemaNode = BaseSchemaNode,
-> extends BaseSchemaNode<'array', any[], ArraySchemaOptions> {
+export class SchemaArrayNode<TItem extends BaseSchemaNode = BaseSchemaNode> extends BaseSchemaNode<
+  'array',
+  any[],
+  ArraySchemaOptions
+> {
   get type(): 'array' {
     return 'array'
   }

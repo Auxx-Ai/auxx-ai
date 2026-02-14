@@ -2,11 +2,11 @@
 
 'use client'
 
-import { createContext, useContext, useMemo, useEffect } from 'react'
-import { useResources } from '~/components/resources'
 import type { Resource } from '@auxx/lib/resources/client'
-import { useVarStore } from '../store/use-var-store'
+import { createContext, useContext, useEffect, useMemo } from 'react'
+import { useResources } from '~/components/resources'
 import { api } from '~/trpc/react'
+import { useVarStore } from '../store/use-var-store'
 
 /**
  * Context value for workflow resource provider

@@ -1,34 +1,11 @@
 // apps/web/src/app/admin/users/page.tsx
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { api } from '~/trpc/react'
-import { Input } from '@auxx/ui/components/input'
-import { Button } from '@auxx/ui/components/button'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@auxx/ui/components/table'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import { Search, ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { formatDistanceToNow } from 'date-fns'
-import { Checkbox } from '@auxx/ui/components/checkbox'
-import { useConfirm } from '~/hooks/use-confirm'
-import { toastError } from '@auxx/ui/components/toast'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { Checkbox } from '@auxx/ui/components/checkbox'
+import { Input } from '@auxx/ui/components/input'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -37,6 +14,29 @@ import {
   MainPageHeader,
   MainPageSubheader,
 } from '@auxx/ui/components/main-page'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@auxx/ui/components/table'
+import { toastError } from '@auxx/ui/components/toast'
+import { formatDistanceToNow } from 'date-fns'
+import { ChevronLeft, ChevronRight, Search, Trash2, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 const PAGE_SIZE = 100
 
@@ -218,8 +218,8 @@ export default function UsersPage() {
       <MainPage>
         <MainPageHeader>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title="Admin" href="/admin" />
-            <MainPageBreadcrumbItem title="Users" href="/admin/users" last />
+            <MainPageBreadcrumbItem title='Admin' href='/admin' />
+            <MainPageBreadcrumbItem title='Users' href='/admin/users' last />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
@@ -227,8 +227,8 @@ export default function UsersPage() {
           <MainPageSubheader>
             {/* Organization Filter */}
             <Select value={selectedOrgId} onValueChange={handleOrgFilter}>
-              <SelectTrigger className="w-[250px]" size="sm">
-                <SelectValue placeholder="All Organizations" />
+              <SelectTrigger className='w-[250px]' size='sm'>
+                <SelectValue placeholder='All Organizations' />
               </SelectTrigger>
               <SelectContent>
                 {organizations?.map((org) => (
@@ -240,29 +240,29 @@ export default function UsersPage() {
             </Select>
 
             {selectedOrgId && (
-              <Button variant="ghost" size="sm" onClick={clearOrgFilter}>
+              <Button variant='ghost' size='sm' onClick={clearOrgFilter}>
                 <X />
                 Clear filter
               </Button>
             )}
 
             {/* Search */}
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-2 top-1.5 h-4 w-4 text-muted-foreground" />
+            <div className='relative flex-1 max-w-sm'>
+              <Search className='absolute left-2 top-1.5 h-4 w-4 text-muted-foreground' />
               <Input
-                placeholder="Search by name or email..."
+                placeholder='Search by name or email...'
                 value={search}
-                size="sm"
+                size='sm'
                 onChange={(e) => handleSearch(e.target.value)}
-                className="pl-8"
+                className='pl-8'
               />
             </div>
 
             {/* Bulk Delete */}
             {selectedIds.size > 0 && (
               <Button
-                variant="destructive"
-                size="sm"
+                variant='destructive'
+                size='sm'
                 onClick={handleBulkDelete}
                 loading={deleteUser.isPending}>
                 <Trash2 />
@@ -273,30 +273,30 @@ export default function UsersPage() {
 
           {/* Active Filter Badge */}
           {selectedOrgId && selectedOrg && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Filtering by:</span>
-              <Badge variant="secondary">
+            <div className='flex items-center gap-2'>
+              <span className='text-sm text-muted-foreground'>Filtering by:</span>
+              <Badge variant='secondary'>
                 {selectedOrg.name || selectedOrg.handle || 'Unnamed'}
               </Badge>
             </div>
           )}
           {/* Table */}
-          <div className="flex-1 overflow-hidden flex flex-col min-h-0 relative">
-            <div className="overflow-auto flex-1 relative">
+          <div className='flex-1 overflow-hidden flex flex-col min-h-0 relative'>
+            <div className='overflow-auto flex-1 relative'>
               <Table>
-                <TableHeader className="sticky top-0 bg-background z-10">
+                <TableHeader className='sticky top-0 bg-background z-10'>
                   <TableRow>
-                    <TableHead className="w-12">
+                    <TableHead className='w-12'>
                       <Checkbox
                         checked={allCurrentPageSelected}
                         onCheckedChange={toggleSelectAll}
-                        aria-label="Select all"
+                        aria-label='Select all'
                       />
                     </TableHead>
                     <TableHead>ID</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
-                    <TableHead className="text-right">Organizations</TableHead>
+                    <TableHead className='text-right'>Organizations</TableHead>
                     <TableHead>Verified</TableHead>
                     <TableHead>Created</TableHead>
                   </TableRow>
@@ -307,31 +307,31 @@ export default function UsersPage() {
                     Array.from({ length: 5 }).map((_, i) => (
                       <TableRow key={i}>
                         <TableCell>
-                          <Skeleton className="h-4 w-4" />
+                          <Skeleton className='h-4 w-4' />
                         </TableCell>
                         <TableCell>
-                          <Skeleton className="h-4 w-12" />
+                          <Skeleton className='h-4 w-12' />
                         </TableCell>
                         <TableCell>
-                          <Skeleton className="h-4 w-32" />
+                          <Skeleton className='h-4 w-32' />
                         </TableCell>
                         <TableCell>
-                          <Skeleton className="h-4 w-40" />
+                          <Skeleton className='h-4 w-40' />
                         </TableCell>
                         <TableCell>
-                          <Skeleton className="h-4 w-8 ml-auto" />
+                          <Skeleton className='h-4 w-8 ml-auto' />
                         </TableCell>
                         <TableCell>
-                          <Skeleton className="h-4 w-16" />
+                          <Skeleton className='h-4 w-16' />
                         </TableCell>
                         <TableCell>
-                          <Skeleton className="h-4 w-24" />
+                          <Skeleton className='h-4 w-24' />
                         </TableCell>
                       </TableRow>
                     ))
                   ) : users && users.length > 0 ? (
                     users.map((user) => (
-                      <TableRow key={user.id} className="hover:bg-muted/50">
+                      <TableRow key={user.id} className='hover:bg-muted/50'>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <Checkbox
                             checked={selectedIds.has(user.id)}
@@ -340,38 +340,38 @@ export default function UsersPage() {
                           />
                         </TableCell>
                         <TableCell
-                          className="font-mono text-xs text-muted-foreground cursor-pointer"
+                          className='font-mono text-xs text-muted-foreground cursor-pointer'
                           onClick={() => handleRowClick(user.id)}>
                           ...{formatId(user.id)}
                         </TableCell>
                         <TableCell
-                          className="font-medium cursor-pointer"
+                          className='font-medium cursor-pointer'
                           onClick={() => handleRowClick(user.id)}>
                           {getDisplayName(user)}
                         </TableCell>
                         <TableCell
-                          className="text-muted-foreground cursor-pointer"
+                          className='text-muted-foreground cursor-pointer'
                           onClick={() => handleRowClick(user.id)}>
                           {user.email || '-'}
                         </TableCell>
                         <TableCell
-                          className="text-right cursor-pointer"
+                          className='text-right cursor-pointer'
                           onClick={() => handleRowClick(user.id)}>
                           {user.organizationCount}
                         </TableCell>
                         <TableCell
-                          className="cursor-pointer"
+                          className='cursor-pointer'
                           onClick={() => handleRowClick(user.id)}>
                           {user.emailVerified ? (
-                            <Badge variant="outline" className="text-xs">
+                            <Badge variant='outline' className='text-xs'>
                               Yes
                             </Badge>
                           ) : (
-                            <span className="text-xs text-muted-foreground">No</span>
+                            <span className='text-xs text-muted-foreground'>No</span>
                           )}
                         </TableCell>
                         <TableCell
-                          className="text-sm text-muted-foreground cursor-pointer"
+                          className='text-sm text-muted-foreground cursor-pointer'
                           onClick={() => handleRowClick(user.id)}>
                           {formatDistanceToNow(user.createdAt, { addSuffix: true })}
                         </TableCell>
@@ -379,7 +379,7 @@ export default function UsersPage() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={7} className='text-center text-muted-foreground py-8'>
                         {search || selectedOrgId
                           ? 'No users found matching your filters'
                           : 'No users'}
@@ -392,8 +392,8 @@ export default function UsersPage() {
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between px-2 py-1 border-t">
-            <div className="text-sm text-muted-foreground">
+          <div className='flex items-center justify-between px-2 py-1 border-t'>
+            <div className='text-sm text-muted-foreground'>
               {users && users.length > 0 ? (
                 <>
                   Showing {page * PAGE_SIZE + 1} to {page * PAGE_SIZE + users.length}
@@ -402,18 +402,18 @@ export default function UsersPage() {
                 'No results'
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className='flex items-center gap-2'>
               <Button
-                variant="outline"
-                size="sm"
+                variant='outline'
+                size='sm'
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={page === 0 || isLoading}>
                 <ChevronLeft />
                 Previous
               </Button>
               <Button
-                variant="outline"
-                size="sm"
+                variant='outline'
+                size='sm'
                 onClick={() => setPage((p) => p + 1)}
                 disabled={!hasMore || isLoading}>
                 Next

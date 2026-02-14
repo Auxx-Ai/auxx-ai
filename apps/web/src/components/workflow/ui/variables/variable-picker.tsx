@@ -2,11 +2,12 @@
 
 'use client'
 
-import React, { useState, useCallback, useMemo } from 'react'
-import { Popover, PopoverContentDialogAware, PopoverTrigger } from '@auxx/ui/components/popover'
-import { VariableExplorerEnhanced } from './variable-explorer-enhanced'
-import type { BaseType, UnifiedVariable } from '~/components/workflow/types'
 import type { TableId } from '@auxx/lib/workflow-engine/client'
+import { Popover, PopoverContentDialogAware, PopoverTrigger } from '@auxx/ui/components/popover'
+import React, { useCallback, useMemo, useState } from 'react'
+import type { BaseType, UnifiedVariable } from '~/components/workflow/types'
+import { VariableExplorerEnhanced } from './variable-explorer-enhanced'
+
 // import { useAvailableVariables } from '~/components/workflow/hooks/use-available-variables'
 
 /**
@@ -149,7 +150,7 @@ export const VariablePicker = React.memo<VariablePickerProps>(
       <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger asChild>{triggerElement}</PopoverTrigger>
         <PopoverContentDialogAware
-          className="w-[420px] max-h-[600px] p-0 overflow-y-auto"
+          className='w-[420px] max-h-[600px] p-0 overflow-y-auto'
           align={align}
           side={side}
           style={popoverStyle}>
@@ -157,7 +158,7 @@ export const VariablePicker = React.memo<VariablePickerProps>(
             nodeId={nodeId}
             selected={value}
             onVariableSelect={handleVariableSelect}
-            className="h-full relative flex flex-1"
+            className='h-full relative flex flex-1'
             placeholder={placeholder}
             maxHeight={popoverHeight}
             allowedTypes={allowedTypes}

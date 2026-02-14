@@ -1,14 +1,14 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/output-vars.tsx
 'use client'
-import type { FC, ReactNode } from 'react'
-import React, { useState } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
-import { ChevronDown, ChevronRight } from 'lucide-react'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@auxx/ui/components/collapsible'
+import { cn } from '@auxx/ui/lib/utils'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import type { FC, ReactNode } from 'react'
+import React, { useState } from 'react'
 
 type Props = {
   className?: string
@@ -36,19 +36,19 @@ const OutputVars: FC<Props> = ({
 
   return (
     <Collapsible open={isOpen} onOpenChange={handleToggle} className={cn('group', className)}>
-      <div className="flex items-center justify-between">
-        <CollapsibleTrigger className="flex items-center gap-1 hover:opacity-80">
+      <div className='flex items-center justify-between'>
+        <CollapsibleTrigger className='flex items-center gap-1 hover:opacity-80'>
           {isOpen ? (
-            <ChevronDown className="h-4 w-4 text-gray-500" />
+            <ChevronDown className='h-4 w-4 text-gray-500' />
           ) : (
-            <ChevronRight className="h-4 w-4 text-gray-500" />
+            <ChevronRight className='h-4 w-4 text-gray-500' />
           )}
-          <span className="text-sm font-medium text-gray-700">{title || 'Output Variables'}</span>
+          <span className='text-sm font-medium text-gray-700'>{title || 'Output Variables'}</span>
         </CollapsibleTrigger>
         {operations}
       </div>
       <CollapsibleContent>
-        <div className="pl-5">{children}</div>
+        <div className='pl-5'>{children}</div>
       </CollapsibleContent>
     </Collapsible>
   )
@@ -70,8 +70,8 @@ export const VarItem: FC<VarItemProps> = ({ name, type, description, subItems, i
   return (
     <div className={cn('flex', isIndent && 'relative left-[-7px]')}>
       {isIndent && <TreeIndentLine />}
-      <div className=" w-full">
-        <div className="flex items-center justify-between">
+      <div className=' w-full'>
+        <div className='flex items-center justify-between'>
           <button
             onClick={() => hasSubItems && setIsExpanded(!isExpanded)}
             className={cn(
@@ -79,25 +79,25 @@ export const VarItem: FC<VarItemProps> = ({ name, type, description, subItems, i
               hasSubItems &&
                 'hover:opacity-70 transition-opacity cursor-pointer hover:bg-primary-200'
             )}
-            type="button"
+            type='button'
             disabled={!hasSubItems}>
-            <code className="text-sm font-mono font-semibold text-primary-500">{name}</code>
-            <div className="flex items-center gap-1">
-              <div className="text-xs font-normal ml-2 text-primary-400">{type}</div>
+            <code className='text-sm font-mono font-semibold text-primary-500'>{name}</code>
+            <div className='flex items-center gap-1'>
+              <div className='text-xs font-normal ml-2 text-primary-400'>{type}</div>
               {hasSubItems &&
                 (isExpanded ? (
-                  <ChevronDown className="size-3 text-gray-500" />
+                  <ChevronDown className='size-3 text-gray-500' />
                 ) : (
-                  <ChevronRight className="size-3 text-gray-500" />
+                  <ChevronRight className='size-3 text-gray-500' />
                 ))}
             </div>
           </button>
         </div>
         {description && (
-          <div className="text-xs font-normal mt-0.5 text-primary-400">{description}</div>
+          <div className='text-xs font-normal mt-0.5 text-primary-400'>{description}</div>
         )}
         {hasSubItems && isExpanded && (
-          <div className="ml-3 mt-0">
+          <div className='ml-3 mt-0'>
             {subItems.map((item, index) => (
               <VarItem
                 key={index}

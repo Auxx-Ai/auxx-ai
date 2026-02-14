@@ -1,9 +1,9 @@
 // packages/lib/src/resources/registry/resources/dataset-fields.ts
 
-import { BaseType } from '../../types'
 import { toFieldId } from '@auxx/types/field'
-import type { ResourceField } from '../field-types'
+import { BaseType } from '../../types'
 import { DatasetStatusEnum, VectorDbTypeEnum } from '../enum-values'
+import type { ResourceField } from '../field-types'
 
 /**
  * Field definitions for the Dataset resource

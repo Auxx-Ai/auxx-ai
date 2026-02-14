@@ -9,7 +9,7 @@ import type { SerializedFormValue } from './types.js'
  * IMPORTANT: We only store metadata, not Zod schemas.
  * Zod schemas are reconstructed on the web app side from this metadata.
  */
-// @ts-ignore - T is used for type inference only
+// @ts-expect-error - T is used for type inference only
 export abstract class FormValue<T = any> {
   /**
    * Field metadata for serialization.

@@ -1,7 +1,7 @@
 // packages/sdk/src/runtime/reconciler/tags/workflow-boolean-input-tag.ts
 
-import { BaseTag } from './base-tag.js'
 import { registerEventHandler } from '../../register-event-handler.js'
+import { BaseTag } from './base-tag.js'
 
 /**
  * Tag for BooleanInput component.
@@ -23,13 +23,7 @@ export class WorkflowBooleanInputTag extends BaseTag {
 
   getAttributes(props: Record<string, any>): Record<string, any> {
     // ✓ Explicitly whitelist only serializable props
-    const {
-      name,
-      value,
-      label,
-      description,
-      disabled,
-    } = props
+    const { name, value, label, description, disabled } = props
 
     return {
       name,

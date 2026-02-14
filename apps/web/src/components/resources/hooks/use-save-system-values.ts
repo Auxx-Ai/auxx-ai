@@ -1,11 +1,11 @@
 // apps/web/src/components/resources/hooks/use-save-system-values.ts
 
-import { useCallback } from 'react'
-import type { RecordId } from '@auxx/lib/resources/client'
 import type { FieldType } from '@auxx/database/types'
+import type { RecordId } from '@auxx/lib/resources/client'
+import { parseResourceFieldId } from '@auxx/types/field'
+import { useCallback } from 'react'
 import { useResourceStore } from '../store/resource-store'
 import { useSaveFieldValue } from './use-save-field-value'
-import { parseResourceFieldId } from '@auxx/types/field'
 
 /**
  * Sugar hook for saving system field values with optimistic updates.

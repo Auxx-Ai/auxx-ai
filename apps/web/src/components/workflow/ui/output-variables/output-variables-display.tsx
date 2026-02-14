@@ -2,13 +2,14 @@
 
 'use client'
 
-import React, { useMemo } from 'react'
+import type React from 'react'
+import { useMemo } from 'react'
+import { getVariableDisplayType } from '~/components/workflow/utils/variable-utils'
+import type { DisplayVariable, OutputVariablesDisplayProps } from '../../types/output-variables'
+import { BaseType, type UnifiedVariable } from '../../types/variable-types'
+import Section from '../section'
 // import Section from '../section'
 import { VarItem } from '../structured-output-generator/output-vars'
-import { type UnifiedVariable, BaseType } from '../../types/variable-types'
-import type { OutputVariablesDisplayProps, DisplayVariable } from '../../types/output-variables'
-import Section from '../section'
-import { getVariableDisplayType } from '~/components/workflow/utils/variable-utils'
 
 /**
  * Converts a UnifiedVariable to a DisplayVariable structure for the VarItem component

@@ -1,16 +1,20 @@
 // packages/lib/src/workflow-engine/nodes/flow-nodes/end.ts
 
-import { BaseNodeProcessor } from '../base-node'
+import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
-  WorkflowNode,
   NodeExecutionResult,
-  ValidationResult,
   PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
 import type { ContentSegment } from '../../types/content-segment'
-import { extractFileData, isWorkflowFileData, isWorkflowFileDataArray } from '../../types/content-segment'
+import {
+  extractFileData,
+  isWorkflowFileData,
+  isWorkflowFileDataArray,
+} from '../../types/content-segment'
+import { BaseNodeProcessor } from '../base-node'
 
 /**
  * End node configuration interface
@@ -103,7 +107,10 @@ export class EndProcessor extends BaseNodeProcessor {
 
     // Parse message to segments for rich content rendering
     const messageTemplate = config.message || 'Workflow completed'
-    const { plainText, segments } = await this.parseMessageToSegments(messageTemplate, contextManager)
+    const { plainText, segments } = await this.parseMessageToSegments(
+      messageTemplate,
+      contextManager
+    )
 
     // Use preprocessed message if available (for backwards compatibility)
     const message = preprocessedData?.inputs.message ?? plainText

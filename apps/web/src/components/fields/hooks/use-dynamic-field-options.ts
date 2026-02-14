@@ -1,11 +1,11 @@
 // apps/web/src/components/fields/hooks/use-dynamic-field-options.ts
 
-import { useMemo } from 'react'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import { useMemo } from 'react'
 import {
-  getDynamicOptionsEntry,
-  type DynamicOption,
   DYNAMIC_OPTIONS_REGISTRY,
+  type DynamicOption,
+  getDynamicOptionsEntry,
 } from '../registries/dynamic-options-registry'
 
 /**

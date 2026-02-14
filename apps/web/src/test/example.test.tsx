@@ -1,25 +1,23 @@
 // apps/web/src/test/example.test.tsx
-import React from 'react'
-import { describe, it, expect, vi } from 'vitest'
+
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import React from 'react'
+import { describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from './utils'
 
 // Simple components to test
 function TestComponent({ message }: { message: string }) {
-  return <div data-testid="test-message">{message}</div>
+  return <div data-testid='test-message'>{message}</div>
 }
 
 function InteractiveComponent() {
   const [count, setCount] = React.useState(0)
-  
+
   return (
     <div>
-      <span data-testid="count">{count}</span>
-      <button 
-        data-testid="increment" 
-        onClick={() => setCount(c => c + 1)}
-      >
+      <span data-testid='count'>{count}</span>
+      <button data-testid='increment' onClick={() => setCount((c) => c + 1)}>
         Increment
       </button>
     </div>
@@ -29,19 +27,23 @@ function InteractiveComponent() {
 function FormComponent() {
   const [name, setName] = React.useState('')
   const [submitted, setSubmitted] = React.useState(false)
-  
+
   return (
-    <form onSubmit={(e) => { e.preventDefault(); setSubmitted(true) }}>
-      <input 
-        data-testid="name-input"
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        setSubmitted(true)
+      }}>
+      <input
+        data-testid='name-input'
         value={name}
         onChange={(e) => setName(e.target.value)}
-        placeholder="Enter your name"
+        placeholder='Enter your name'
       />
-      <button data-testid="submit" type="submit">
+      <button data-testid='submit' type='submit'>
         Submit
       </button>
-      {submitted && <div data-testid="success">Form submitted!</div>}
+      {submitted && <div data-testid='success'>Form submitted!</div>}
     </form>
   )
 }
@@ -50,16 +52,16 @@ describe('Example Tests', () => {
   describe('Basic Rendering', () => {
     it('should render a simple component', () => {
       const message = 'Hello, Vitest!'
-      
+
       renderWithProviders(<TestComponent message={message} />)
-      
+
       expect(screen.getByTestId('test-message')).toHaveTextContent(message)
       expect(screen.getByTestId('test-message')).toBeInTheDocument()
     })
 
     it('should render with different props', () => {
-      renderWithProviders(<TestComponent message="Different message" />)
-      
+      renderWithProviders(<TestComponent message='Different message' />)
+
       expect(screen.getByTestId('test-message')).toHaveTextContent('Different message')
     })
   })
@@ -67,30 +69,30 @@ describe('Example Tests', () => {
   describe('User Interactions', () => {
     it('should handle click events', async () => {
       const user = userEvent.setup()
-      
+
       renderWithProviders(<InteractiveComponent />)
-      
+
       // Initial state
       expect(screen.getByTestId('count')).toHaveTextContent('0')
-      
+
       // Click button
       await user.click(screen.getByTestId('increment'))
-      
+
       // Check updated state
       expect(screen.getByTestId('count')).toHaveTextContent('1')
     })
 
     it('should handle multiple clicks', async () => {
       const user = userEvent.setup()
-      
+
       renderWithProviders(<InteractiveComponent />)
-      
+
       const button = screen.getByTestId('increment')
-      
+
       await user.click(button)
       await user.click(button)
       await user.click(button)
-      
+
       expect(screen.getByTestId('count')).toHaveTextContent('3')
     })
   })
@@ -98,27 +100,27 @@ describe('Example Tests', () => {
   describe('Form Handling', () => {
     it('should handle input changes', async () => {
       const user = userEvent.setup()
-      
+
       renderWithProviders(<FormComponent />)
-      
+
       const input = screen.getByTestId('name-input')
-      
+
       await user.type(input, 'John Doe')
-      
+
       expect(input).toHaveValue('John Doe')
     })
 
     it('should handle form submission', async () => {
       const user = userEvent.setup()
-      
+
       renderWithProviders(<FormComponent />)
-      
+
       const input = screen.getByTestId('name-input')
       const submitButton = screen.getByTestId('submit')
-      
+
       await user.type(input, 'Jane Smith')
       await user.click(submitButton)
-      
+
       expect(screen.getByTestId('success')).toHaveTextContent('Form submitted!')
     })
   })
@@ -126,29 +128,29 @@ describe('Example Tests', () => {
   describe('Accessibility', () => {
     it('should have proper attributes', () => {
       renderWithProviders(
-        <button aria-label="Close dialog" data-testid="close-btn">
+        <button aria-label='Close dialog' data-testid='close-btn'>
           ×
         </button>
       )
-      
+
       const button = screen.getByTestId('close-btn')
       expect(button).toHaveAttribute('aria-label', 'Close dialog')
     })
 
     it('should support keyboard navigation', async () => {
       const user = userEvent.setup()
-      
+
       renderWithProviders(
         <div>
-          <button data-testid="btn-1">Button 1</button>
-          <button data-testid="btn-2">Button 2</button>
+          <button data-testid='btn-1'>Button 1</button>
+          <button data-testid='btn-2'>Button 2</button>
         </div>
       )
-      
+
       // Tab to first button
       await user.tab()
       expect(screen.getByTestId('btn-1')).toHaveFocus()
-      
+
       // Tab to second button
       await user.tab()
       expect(screen.getByTestId('btn-2')).toHaveFocus()
@@ -191,10 +193,10 @@ describe('Example Tests', () => {
 
     it('should handle async functions', async () => {
       const asyncFunction = async () => {
-        await new Promise(resolve => setTimeout(resolve, 10))
+        await new Promise((resolve) => setTimeout(resolve, 10))
         return 'completed'
       }
-      
+
       const result = await asyncFunction()
       expect(result).toBe('completed')
     })

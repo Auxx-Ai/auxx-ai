@@ -9,16 +9,15 @@ import TextStyle from '@tiptap/extension-text-style'
 import TiptapUnderline from '@tiptap/extension-underline'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from 'tiptap-markdown'
+import { CharacterCount } from './character-count'
 import CustomKeymap from './custom-keymap'
+import { FontSize } from './font-size'
+import GlobalDragHandle from './global-drag-handle'
 import { ImageResizer } from './image-resizer'
-import UpdatedImage from './updated-image'
+import { Table, TableCell, TableHeader, TableRow, TableView } from './table'
 import { TaskItem } from './task-item'
 import { TaskList } from './task-list'
-import { CharacterCount } from './character-count'
-import GlobalDragHandle from './global-drag-handle'
-
-import { Table, TableCell, TableHeader, TableRow, TableView } from './table'
-import { FontSize } from './font-size'
+import UpdatedImage from './updated-image'
 
 const PlaceholderExtension = Placeholder.configure({
   placeholder: ({ node }) => {
@@ -61,8 +60,8 @@ const Horizontal = HorizontalRule.extend({
 })
 
 export * from './ai-highlight'
-export * from './slash-command'
 export * from './mention-extension'
+export * from './slash-command'
 // export * from './variable-picker-extension'
 export * from './variable-node'
 export {

@@ -1,8 +1,9 @@
 // apps/web/src/components/workflow/editor/workflow-editor-provider.tsx
 
-import React, { createContext, useContext, useCallback, useEffect } from 'react'
-import { FlowNode, FlowEdge } from '../store/types'
+import type React from 'react'
+import { createContext, useCallback, useContext, useEffect } from 'react'
 import { setupNodeRegistry } from '../nodes/registry-setup'
+import type { FlowEdge, FlowNode } from '../store/types'
 
 interface WorkflowEditorContextValue {
   // Initial data for ReactFlow state initialization

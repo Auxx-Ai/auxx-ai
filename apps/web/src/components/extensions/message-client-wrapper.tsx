@@ -1,15 +1,15 @@
 // apps/web/src/components/extensions/message-client-wrapper.tsx
 'use client'
 
-import { useEffect, useRef, useMemo } from 'react'
-import { useInternalAppsContext } from '~/providers/extensions/internal-apps-context'
+import { useEffect, useMemo, useRef } from 'react'
 import { MessageClient } from '~/lib/extensions/message-client'
 import { setupServerFunctionHandler } from '~/lib/extensions/server-function-handler'
 import {
-  useEnvironment,
-  useDehydratedUser,
   useDehydratedOrganization,
+  useDehydratedUser,
+  useEnvironment,
 } from '~/providers/dehydrated-state-provider'
+import { useInternalAppsContext } from '~/providers/extensions/internal-apps-context'
 
 /**
  * MessageClientWrapper props.

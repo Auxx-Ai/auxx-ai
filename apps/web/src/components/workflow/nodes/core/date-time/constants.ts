@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/nodes/core/date-time/constants.ts
 
 import {
-  DateTimeOperation,
-  TimeUnit,
   DateFormatType,
+  DateTimeOperation,
+  type DateTimeSelectOption,
   ParseDateFormatType,
-  DateTimeSelectOption,
+  TimeUnit,
 } from './types'
 
 /**
@@ -106,7 +106,11 @@ export const DEFAULT_FORMAT_TYPE = DateFormatType.ISO
  * Parse date format options
  */
 export const PARSE_DATE_FORMAT_OPTIONS: DateTimeSelectOption[] = [
-  { value: ParseDateFormatType.AUTO, label: 'Auto Detect', description: 'Automatically detect format' },
+  {
+    value: ParseDateFormatType.AUTO,
+    label: 'Auto Detect',
+    description: 'Automatically detect format',
+  },
   { value: ParseDateFormatType.ISO, label: 'ISO 8601', description: '2024-01-01T00:00:00.000Z' },
   { value: ParseDateFormatType.MM_DD_YYYY, label: 'MM/DD/YYYY', description: '01/01/2024' },
   { value: ParseDateFormatType.DD_MM_YYYY, label: 'DD/MM/YYYY', description: '01/01/2024' },
@@ -116,7 +120,11 @@ export const PARSE_DATE_FORMAT_OPTIONS: DateTimeSelectOption[] = [
   { value: ParseDateFormatType.YYYY_MM_DD_DASH, label: 'YYYY-MM-DD', description: '2024-01-01' },
   { value: ParseDateFormatType.UNIX, label: 'Unix Timestamp', description: '1704067200' },
   { value: ParseDateFormatType.UNIX_MS, label: 'Unix (ms)', description: '1704067200000' },
-  { value: ParseDateFormatType.CUSTOM, label: 'Custom Format', description: 'Specify format tokens' },
+  {
+    value: ParseDateFormatType.CUSTOM,
+    label: 'Custom Format',
+    description: 'Specify format tokens',
+  },
 ]
 
 /**

@@ -1,10 +1,10 @@
 // apps/web/src/components/ui/tags-view.tsx
 'use client'
 
-import { useMemo } from 'react'
-import { Badge, type Variant } from '@auxx/ui/components/badge'
 import type { SelectOption } from '@auxx/types/custom-field'
-import { ItemsListView, ItemsCellView, type ItemsListItem } from './items-list-view'
+import { Badge, type Variant } from '@auxx/ui/components/badge'
+import { useMemo } from 'react'
+import { ItemsCellView, type ItemsListItem, ItemsListView } from './items-list-view'
 
 /**
  * Props for TagsView components
@@ -73,7 +73,7 @@ export function TagsView({ value, options, variant = 'pill', className }: TagsVi
     <ItemsListView
       items={tags}
       renderItem={(tag) => (
-        <Badge variant={variant} shape="tag">
+        <Badge variant={variant} shape='tag'>
           {tag.label}
         </Badge>
       )}
@@ -92,7 +92,7 @@ export function TagsCellView({ value, options, variant = 'pill', className }: Ta
     <ItemsCellView
       items={tags}
       renderItem={(tag) => (
-        <Badge variant={variant} shape="tag">
+        <Badge variant={variant} shape='tag'>
           {tag.label}
         </Badge>
       )}

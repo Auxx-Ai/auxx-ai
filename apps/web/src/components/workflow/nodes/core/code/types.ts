@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/code/types.ts
 
-import { BaseNodeData, SpecificNode, ExecutionResult, VariableSelector } from '../../../types'
-import { BaseType } from '../../../types/unified-types'
+import type { BaseNodeData, ExecutionResult, SpecificNode, VariableSelector } from '../../../types'
+import type { BaseType } from '../../../types/unified-types'
 
 /**
  * Variable input for code execution

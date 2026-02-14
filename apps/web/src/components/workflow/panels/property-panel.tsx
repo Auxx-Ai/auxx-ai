@@ -1,16 +1,16 @@
 // apps/web/src/components/workflow/panels/property-panel.tsx
 
-import React, { useMemo, useEffect } from 'react'
-import { usePanelStore } from '../store/panel-store'
-import { unifiedNodeRegistry } from '../nodes/unified-registry'
-import { useRegistryVersion } from '../hooks'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { useStore } from '@xyflow/react'
+import React, { useEffect, useMemo } from 'react'
 import { useShallow } from 'zustand/shallow'
+import { useDockPortal } from '~/components/global/dock-portal-provider'
 import { NodeType } from '~/components/workflow/types'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
-import { useDockPortal } from '~/components/global/dock-portal-provider'
+import { useRegistryVersion } from '../hooks'
+import { unifiedNodeRegistry } from '../nodes/unified-registry'
+import { usePanelStore } from '../store/panel-store'
 
 interface PropertyPanelProps {
   className?: string
@@ -99,9 +99,9 @@ const PropertyPanel: React.FC<PropertyPanelProps> = React.memo(() => {
       onWidthChange={handleWidthChange}
       minWidth={minWidth}
       maxWidth={maxWidth}
-      title="Properties"
+      title='Properties'
       portalTarget={primaryPanelRef}
-      panelType="property">
+      panelType='property'>
       <PanelComponent
         key={selectedNode.id}
         nodeId={selectedNode.id}

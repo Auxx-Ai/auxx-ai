@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
-import { defaultExtensions } from './default-extensions'
+import { Separator } from '@auxx/ui/components/separator'
+import type { AnyExtension, Editor as EditorInstance, JSONContent } from '@tiptap/core'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useDebounceCallback } from 'usehooks-ts'
 import { slashCommand, suggestionItems } from './auxx-slash-command'
-import { JSONContent } from '@tiptap/core'
-import { type Editor as EditorInstance, AnyExtension } from '@tiptap/core'
 import {
   EditorCommand,
   EditorCommandEmpty,
@@ -13,17 +13,16 @@ import {
   EditorContent,
   EditorRoot,
 } from './components'
-import { handleCommandNavigation, ImageResizer } from './extensions'
-import { handleImageDrop, handleImagePaste } from './plugins'
-import GenerativeMenuSwitch from './generative/generative-menu-switch'
-import { Separator } from '@auxx/ui/components/separator'
-import { NodeSelector } from './selectors/node-selector'
-import { LinkSelector } from './selectors/link-selector'
-import { TextButtons } from './selectors/text-buttons'
-import { ColorSelector } from './selectors/color-selector'
 import { defaultEditorContent } from './default-editor-content'
+import { defaultExtensions } from './default-extensions'
+import { handleCommandNavigation, ImageResizer } from './extensions'
+import GenerativeMenuSwitch from './generative/generative-menu-switch'
+import { handleImageDrop, handleImagePaste } from './plugins'
 import { uploadFn } from './plugins/image-upload'
-import { useDebounceCallback } from 'usehooks-ts'
+import { ColorSelector } from './selectors/color-selector'
+import { LinkSelector } from './selectors/link-selector'
+import { NodeSelector } from './selectors/node-selector'
+import { TextButtons } from './selectors/text-buttons'
 
 import '~/styles/prosemirror.css'
 
@@ -184,10 +183,10 @@ const AuxxEditor = ({
   return (
     <div
       ref={editorContainerRef}
-      className="relative w-full max-w-(--breakpoint-lg) cursor-text"
+      className='relative w-full max-w-(--breakpoint-lg) cursor-text'
       onClick={handleContainerClick}>
-      <div className="absolute right-0 -top-5 z-10 mb-5 flex gap-2">
-        <div className="rounded-lg bg-accent px-2 py-1 text-sm text-muted-foreground">
+      <div className='absolute right-0 -top-5 z-10 mb-5 flex gap-2'>
+        <div className='rounded-lg bg-accent px-2 py-1 text-sm text-muted-foreground'>
           {saveStatus}
         </div>
         <div
@@ -201,7 +200,7 @@ const AuxxEditor = ({
         <EditorContent
           initialContent={initialContent}
           extensions={extensions}
-          className="prose prose-sm prose-base relative my-5 min-h-[500px] w-full max-w-(--breakpoint-lg) focus:outline-hidden hover:prose-a:text-blue-500 sm:mb-[calc(20vh)] sm:rounded-lg"
+          className='prose prose-sm prose-base relative my-5 min-h-[500px] w-full max-w-(--breakpoint-lg) focus:outline-hidden hover:prose-a:text-blue-500 sm:mb-[calc(20vh)] sm:rounded-lg'
           shouldRerenderOnTransaction={false}
           immediatelyRender={true}
           editorProps={{
@@ -216,8 +215,8 @@ const AuxxEditor = ({
           }}
           onUpdate={handleEditorUpdate}
           slotAfter={<ImageResizer />}>
-          <EditorCommand className="z-50 h-auto max-h-[330px] overflow-y-auto rounded-md border border-muted bg-background px-1 py-2 shadow-md transition-all">
-            <EditorCommandEmpty className="px-2 text-muted-foreground">
+          <EditorCommand className='z-50 h-auto max-h-[330px] overflow-y-auto rounded-md border border-muted bg-background px-1 py-2 shadow-md transition-all'>
+            <EditorCommandEmpty className='px-2 text-muted-foreground'>
               No results
             </EditorCommandEmpty>
             <EditorCommandList>
@@ -225,14 +224,14 @@ const AuxxEditor = ({
                 <EditorCommandItem
                   value={item.title}
                   onCommand={(val) => item.command?.(val)}
-                  className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent aria-selected:bg-accent"
+                  className='flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent aria-selected:bg-accent'
                   key={item.title}>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-md border border-muted bg-background">
+                  <div className='flex h-10 w-10 items-center justify-center rounded-md border border-muted bg-background'>
                     {item.icon}
                   </div>
                   <div>
-                    <p className="font-medium">{item.title}</p>
-                    <p className="text-xs text-muted-foreground">{item.description}</p>
+                    <p className='font-medium'>{item.title}</p>
+                    <p className='text-xs text-muted-foreground'>{item.description}</p>
                   </div>
                 </EditorCommandItem>
               ))}
@@ -240,14 +239,14 @@ const AuxxEditor = ({
           </EditorCommand>
 
           <GenerativeMenuSwitch open={openAI} onOpenChange={setOpenAI}>
-            <Separator orientation="vertical" />
+            <Separator orientation='vertical' />
             <NodeSelector open={openNode} onOpenChange={setOpenNode} />
-            <Separator orientation="vertical" />
+            <Separator orientation='vertical' />
 
             <LinkSelector open={openLink} onOpenChange={setOpenLink} />
-            <Separator orientation="vertical" />
+            <Separator orientation='vertical' />
             <TextButtons />
-            <Separator orientation="vertical" />
+            <Separator orientation='vertical' />
             <ColorSelector open={openColor} onOpenChange={setOpenColor} />
           </GenerativeMenuSwitch>
         </EditorContent>

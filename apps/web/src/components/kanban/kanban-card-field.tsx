@@ -1,22 +1,22 @@
 // apps/web/src/components/kanban/kanban-card-field.tsx
 'use client'
 
-import { memo, useState, useCallback, useRef, useMemo } from 'react'
-import { useFieldValue } from '~/components/resources/hooks/use-field-values'
-import { toRecordId } from '~/components/resources/store/field-value-store'
-import type { FieldReference, FieldPath, ResourceFieldId } from '@auxx/types/field'
-import { renderCellValue, type CellConfig } from '~/components/dynamic-table'
-import { CellFieldEditor } from '~/components/dynamic-table/components/cell-field-editor'
-import { useCellSelectionOptional } from '~/components/dynamic-table/context/cell-selection-context'
+import type { FieldType } from '@auxx/database/types'
+import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
+import type { FieldPath, FieldReference, ResourceFieldId } from '@auxx/types/field'
+import { toFieldId, toResourceFieldId } from '@auxx/types/field'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
-import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
-import type { FieldType } from '@auxx/database/types'
-import { EntityIcon } from '@auxx/ui/components/icons'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import { type CellConfig, renderCellValue } from '~/components/dynamic-table'
+import { CellFieldEditor } from '~/components/dynamic-table/components/cell-field-editor'
+import { useCellSelectionOptional } from '~/components/dynamic-table/context/cell-selection-context'
 import type { CustomField } from '~/components/dynamic-table/types'
-import { toResourceFieldId, toFieldId } from '@auxx/types/field'
 import { decodeColumnId } from '~/components/dynamic-table/utils/column-id'
 import { useField } from '~/components/resources/hooks/use-field'
+import { useFieldValue } from '~/components/resources/hooks/use-field-values'
+import { toRecordId } from '~/components/resources/store/field-value-store'
 import { ItemsCellView } from '~/components/ui/items-list-view'
 
 /** Field types that already handle array values internally */
@@ -146,7 +146,7 @@ export const KanbanCardField = memo(function KanbanCardField({
 
   // Loading state
   if (isLoading && value === undefined) {
-    return <Skeleton className="h-4 w-16" />
+    return <Skeleton className='h-4 w-16' />
   }
 
   // Build config for renderers (pass field options)
@@ -177,12 +177,12 @@ export const KanbanCardField = memo(function KanbanCardField({
             : undefined
       }>
       {/* Field type icon */}
-      <EntityIcon iconId={iconId} variant="default" size="xs" className="text-muted-foreground" />
+      <EntityIcon iconId={iconId} variant='default' size='xs' className='text-muted-foreground' />
 
       {/* Value display or empty placeholder */}
-      <div className="truncate flex-1 [&_[data-slot=expandable-cell]]:min-h-6.5 [&_[data-slot=expandable-cell-inner]]:min-h-6.5">
+      <div className='truncate flex-1 [&_[data-slot=expandable-cell]]:min-h-6.5 [&_[data-slot=expandable-cell-inner]]:min-h-6.5'>
         {isEmpty ? (
-          <span className="min-h-6.5 flex items-center text-primary-400 pl-3">No value</span>
+          <span className='min-h-6.5 flex items-center text-primary-400 pl-3'>No value</span>
         ) : isArrayValue && !fieldHandlesArrays && value.length > 0 ? (
           // Array values from paths that don't handle arrays internally
           <ItemsCellView

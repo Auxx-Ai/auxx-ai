@@ -1,9 +1,9 @@
 // apps/web/src/components/resources/store/computed-field-registry.ts
 
-import type { CalcOptions, NameFieldOptions } from '@auxx/lib/custom-fields/client'
-import type { ResourceFieldId } from '@auxx/types/field'
-import type { ResourceField } from '@auxx/lib/resources/client'
 import { FieldType } from '@auxx/database/enums'
+import type { CalcOptions, NameFieldOptions } from '@auxx/lib/custom-fields/client'
+import type { ResourceField } from '@auxx/lib/resources/client'
+import type { ResourceFieldId } from '@auxx/types/field'
 
 /**
  * Configuration for a computed (CALC) field.

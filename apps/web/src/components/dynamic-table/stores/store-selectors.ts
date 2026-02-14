@@ -1,26 +1,26 @@
 // apps/web/src/components/dynamic-table/stores/store-selectors.ts
 
-import { useShallow } from 'zustand/react/shallow'
-import { useDynamicTableStore } from './dynamic-table-store'
-import type { TableView, ViewConfig, ColumnFormatting, KanbanViewConfig } from '../types'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type {
+  ColumnOrderState,
+  ColumnPinningState,
+  ColumnSizingState,
   SortingState,
   VisibilityState,
-  ColumnOrderState,
-  ColumnSizingState,
-  ColumnPinningState,
 } from '@tanstack/react-table'
+import { useShallow } from 'zustand/react/shallow'
+import type { ColumnFormatting, KanbanViewConfig, TableView, ViewConfig } from '../types'
 import {
-  EMPTY_VIEWS,
+  EMPTY_COLUMN_FORMATTING,
+  EMPTY_COLUMN_LABELS,
+  EMPTY_COLUMN_ORDER,
+  EMPTY_COLUMN_SIZING,
+  EMPTY_COLUMN_VISIBILITY,
   EMPTY_FILTERS,
   EMPTY_SORTING,
-  EMPTY_COLUMN_ORDER,
-  EMPTY_COLUMN_VISIBILITY,
-  EMPTY_COLUMN_SIZING,
-  EMPTY_COLUMN_LABELS,
-  EMPTY_COLUMN_FORMATTING,
+  EMPTY_VIEWS,
 } from '../utils/constants'
+import { useDynamicTableStore } from './dynamic-table-store'
 
 // ─── View Selectors ───────────────────────────────────────────────────────────
 
@@ -45,10 +45,7 @@ export function useViewStoreInitialized(): boolean {
 }
 
 /** Get the org's default field view for an entity and context type */
-export function useOrgFieldView(
-  entityDefinitionId: string,
-  contextType: string
-): TableView | null {
+export function useOrgFieldView(entityDefinitionId: string, contextType: string): TableView | null {
   return useDynamicTableStore((s) => {
     const views = s.viewsByTableId[entityDefinitionId] ?? EMPTY_VIEWS
     return views.find((v) => v.contextType === contextType && v.isDefault && v.isShared) ?? null
@@ -75,8 +72,8 @@ export function useActiveViewConfig(tableId: string): ViewConfig | null {
   const filters = useDynamicTableStore(
     useShallow((s) =>
       viewId
-        ? s.viewFilters[viewId] ?? EMPTY_FILTERS
-        : s.sessionFilters[tableId] ?? EMPTY_FILTERS
+        ? (s.viewFilters[viewId] ?? EMPTY_FILTERS)
+        : (s.sessionFilters[tableId] ?? EMPTY_FILTERS)
     )
   )
 
@@ -93,8 +90,8 @@ export function useTableFilters(tableId: string): ConditionGroup[] {
   return useDynamicTableStore(
     useShallow((s) =>
       viewId
-        ? s.viewFilters[viewId] ?? EMPTY_FILTERS
-        : s.sessionFilters[tableId] ?? EMPTY_FILTERS
+        ? (s.viewFilters[viewId] ?? EMPTY_FILTERS)
+        : (s.sessionFilters[tableId] ?? EMPTY_FILTERS)
     )
   )
 }
@@ -152,7 +149,11 @@ export function useColumnSizing(tableId: string): ColumnSizingState {
   return useDynamicTableStore(
     useShallow((s) => {
       if (!viewId) return s.sessionConfigs[tableId]?.columnSizing ?? EMPTY_COLUMN_SIZING
-      return s.pendingConfigs[viewId]?.columnSizing ?? s.viewConfigs[viewId]?.columnSizing ?? EMPTY_COLUMN_SIZING
+      return (
+        s.pendingConfigs[viewId]?.columnSizing ??
+        s.viewConfigs[viewId]?.columnSizing ??
+        EMPTY_COLUMN_SIZING
+      )
     })
   )
 }
@@ -174,7 +175,11 @@ export function useColumnLabels(tableId: string): Record<string, string> {
   return useDynamicTableStore(
     useShallow((s) => {
       if (!viewId) return s.sessionConfigs[tableId]?.columnLabels ?? EMPTY_COLUMN_LABELS
-      return s.pendingConfigs[viewId]?.columnLabels ?? s.viewConfigs[viewId]?.columnLabels ?? EMPTY_COLUMN_LABELS
+      return (
+        s.pendingConfigs[viewId]?.columnLabels ??
+        s.viewConfigs[viewId]?.columnLabels ??
+        EMPTY_COLUMN_LABELS
+      )
     })
   )
 }
@@ -185,7 +190,11 @@ export function useColumnFormatting(tableId: string): Record<string, ColumnForma
   return useDynamicTableStore(
     useShallow((s) => {
       if (!viewId) return s.sessionConfigs[tableId]?.columnFormatting ?? EMPTY_COLUMN_FORMATTING
-      return s.pendingConfigs[viewId]?.columnFormatting ?? s.viewConfigs[viewId]?.columnFormatting ?? EMPTY_COLUMN_FORMATTING
+      return (
+        s.pendingConfigs[viewId]?.columnFormatting ??
+        s.viewConfigs[viewId]?.columnFormatting ??
+        EMPTY_COLUMN_FORMATTING
+      )
     })
   )
 }

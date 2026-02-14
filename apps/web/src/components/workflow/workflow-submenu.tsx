@@ -2,20 +2,20 @@
 
 // apps/web/src/components/workflow/workflow-submenu.tsx
 
-import { useRef } from 'react'
-import { Play, Loader2 } from 'lucide-react'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import {
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { toastError } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
-import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
-import { showWorkflowProgressToast } from './workflow-progress-toast'
+import { Loader2, Play } from 'lucide-react'
+import { useRef } from 'react'
 import { createWorkflowInvalidator } from '~/lib/workflow'
-import { type RecordId, parseRecordId } from '@auxx/types/resource'
+import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
+import { api } from '~/trpc/react'
+import { showWorkflowProgressToast } from './workflow-progress-toast'
 
 /**
  * Props for the WorkflowSubMenu component
@@ -92,10 +92,10 @@ export function WorkflowSubMenu({ recordId, onSuccess }: WorkflowSubMenuProps) {
         <Play />
         Run Workflow
       </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent className="w-48">
+      <DropdownMenuSubContent className='w-48'>
         {workflowsLoading ? (
           <DropdownMenuItem disabled>
-            <Loader2 className="animate-spin" />
+            <Loader2 className='animate-spin' />
             Loading...
           </DropdownMenuItem>
         ) : hasWorkflows ? (
@@ -109,7 +109,7 @@ export function WorkflowSubMenu({ recordId, onSuccess }: WorkflowSubMenuProps) {
             </DropdownMenuItem>
           ))
         ) : (
-          <DropdownMenuItem disabled className="text-muted-foreground">
+          <DropdownMenuItem disabled className='text-muted-foreground'>
             No workflows available
           </DropdownMenuItem>
         )}

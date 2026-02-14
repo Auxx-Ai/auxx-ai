@@ -1,9 +1,9 @@
 // packages/lib/src/files/core/__tests__/thumbnail-service.test.ts
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ThumbnailService } from '../thumbnail-service'
-import { THUMBNAIL_PRESETS } from '../thumbnail-types'
 import type { ThumbnailSource } from '../thumbnail-types'
+import { THUMBNAIL_PRESETS } from '../thumbnail-types'
 
 // Mock dependencies
 vi.mock('@auxx/database', () => ({
@@ -29,11 +29,13 @@ vi.mock('@auxx/database', () => ({
     insert: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-    transaction: vi.fn((fn) => fn({
-      insert: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    })),
+    transaction: vi.fn((fn) =>
+      fn({
+        insert: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+      })
+    ),
   },
   schema: {
     MediaAsset: {},
@@ -164,7 +166,9 @@ describe('ThumbnailService', () => {
 
       const { database } = await import('@auxx/database')
       vi.mocked(database.query.MediaAsset.findFirst).mockResolvedValue(mockAsset as any)
-      vi.mocked(database.query.MediaAssetVersion.findFirst).mockResolvedValue(mockExistingThumbnail as any)
+      vi.mocked(database.query.MediaAssetVersion.findFirst).mockResolvedValue(
+        mockExistingThumbnail as any
+      )
 
       const result = await service.ensureThumbnail(source, { preset: 'avatar-64' })
 
@@ -193,7 +197,7 @@ describe('ThumbnailService', () => {
 
       const { database } = await import('@auxx/database')
       const { redis } = await import('../../../redis/client')
-      
+
       vi.mocked(database.query.MediaAsset.findFirst).mockResolvedValue(mockAsset as any)
       vi.mocked(database.query.MediaAssetVersion.findFirst).mockResolvedValue(null)
       vi.mocked(redis.get).mockResolvedValue(null)
@@ -234,11 +238,13 @@ describe('ThumbnailService', () => {
 
       const { database } = await import('@auxx/database')
       const { StorageManager } = await import('../../storage/storage-manager')
-      
+
       vi.mocked(database.query.MediaAsset.findFirst).mockResolvedValue(mockAsset as any)
       vi.mocked(database.query.MediaAssetVersion.findFirst).mockResolvedValue(null)
-      vi.mocked(database.query.MediaAssetVersion.findFirst).mockResolvedValue(mockSourceVersion as any)
-      
+      vi.mocked(database.query.MediaAssetVersion.findFirst).mockResolvedValue(
+        mockSourceVersion as any
+      )
+
       const mockStorage = new StorageManager()
       vi.mocked(mockStorage.downloadFile).mockResolvedValue(Buffer.from('test-image'))
       vi.mocked(mockStorage.uploadFile).mockResolvedValue({ id: 'storage_new' } as any)
@@ -353,9 +359,9 @@ describe('ThumbnailService', () => {
 
       const { database } = await import('@auxx/database')
       const { StorageManager } = await import('../../storage/storage-manager')
-      
+
       vi.mocked(database.query.MediaAssetVersion.findMany).mockResolvedValue(mockThumbnails as any)
-      
+
       const mockStorage = new StorageManager()
       vi.mocked(mockStorage.deleteFile).mockResolvedValue(undefined)
 

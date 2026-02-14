@@ -1,10 +1,11 @@
 // packages/lib/src/providers/google/messages/parse-message.ts
-import parse from 'gmail-api-parse-message'
+
 import { createScopedLogger } from '@auxx/logger'
-import { MessageData, EmailLabel } from '../../../email/email-storage'
-import { parseParticipantString, parseMultipleParticipants, isDefined } from '../../provider-utils'
 import { extractEmailAddress, isUserEmail } from '@auxx/utils'
-import type { ParsedGmailMessage, GmailMessageWithPayload } from '../types'
+import parse from 'gmail-api-parse-message'
+import { EmailLabel, type MessageData } from '../../../email/email-storage'
+import { isDefined, parseMultipleParticipants, parseParticipantString } from '../../provider-utils'
+import type { GmailMessageWithPayload, ParsedGmailMessage } from '../types'
 
 const logger = createScopedLogger('google-parse-message')
 

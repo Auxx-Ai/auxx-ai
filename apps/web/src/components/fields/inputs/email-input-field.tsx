@@ -1,6 +1,7 @@
 // apps/web/src/components/fields/inputs/email-input-field.tsx
+
+import { useEffect, useRef, useState } from 'react'
 import { usePropertyContext } from '../property-provider'
-import { useRef, useEffect, useState } from 'react'
 
 /**
  * EmailInputField
@@ -50,7 +51,7 @@ export function EmailInputField() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      e.stopPropagation()  // Prevent parent from reopening
+      e.stopPropagation() // Prevent parent from reopening
       commitValueAndClose(inputValue)
     }
   }
@@ -58,7 +59,7 @@ export function EmailInputField() {
   return (
     <input
       ref={inputRef}
-      type="email"
+      type='email'
       className={`w-full rounded px-2 py-1 text-sm outline-none focus:ring-0 border-none
                 ${isSaving ? 'opacity-70' : ''}`}
       value={inputValue}

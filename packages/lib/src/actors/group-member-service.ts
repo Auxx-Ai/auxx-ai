@@ -1,9 +1,9 @@
 // packages/lib/src/actors/group-member-service.ts
 
 import type { ActorContext, ActorId, UserActor } from '@auxx/types/actor'
-import { toActorId, parseActorId } from '@auxx/types/actor'
+import { parseActorId, toActorId } from '@auxx/types/actor'
 import type { GroupMember } from '@auxx/types/groups'
-import { getMembers, getGroupsForUser } from '../groups/group-functions'
+import { getGroupsForUser, getMembers } from '../groups/group-functions'
 
 /**
  * Service for group member operations.
@@ -94,10 +94,7 @@ export class GroupMemberService {
             userIds.add(parsed.id)
           }
         }
-      } catch {
-        // Skip invalid ActorIds
-        continue
-      }
+      } catch {}
     }
 
     return Array.from(userIds)

@@ -1,12 +1,13 @@
 // File: packages/lib/src/jobs/messages/sync-single-integration-messages-job.ts
-import type { Job } from 'bullmq'
-import { database as db, schema, type Database } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
-import { MessageService, IntegrationProviderType } from '../../email/message-service'
-import { publisher } from '../../events/publisher'
-import { type MessageSyncProcessingEvent } from '../../events/types'
-import { eq, and } from 'drizzle-orm'
+
+import { type Database, database as db, schema } from '@auxx/database'
 import { SYNC_STATUS } from '@auxx/database/enums'
+import { createScopedLogger } from '@auxx/logger'
+import type { Job } from 'bullmq'
+import { and, eq } from 'drizzle-orm'
+import { type IntegrationProviderType, MessageService } from '../../email/message-service'
+import { publisher } from '../../events/publisher'
+import type { MessageSyncProcessingEvent } from '../../events/types'
 
 const logger = createScopedLogger('job:sync-single-integration-messages')
 
@@ -21,18 +22,10 @@ async function checkIfCancelled(
   const [syncJob] = await db
     .select({ status: schema.SyncJob.status, error: schema.SyncJob.error })
     .from(schema.SyncJob)
-    .where(
-      and(
-        eq(schema.SyncJob.id, syncJobId),
-        eq(schema.SyncJob.organizationId, organizationId)
-      )
-    )
+    .where(and(eq(schema.SyncJob.id, syncJobId), eq(schema.SyncJob.organizationId, organizationId)))
     .limit(1)
 
-  return (
-    syncJob?.status === SYNC_STATUS.FAILED &&
-    syncJob?.error === 'CANCELLED_BY_USER'
-  )
+  return syncJob?.status === SYNC_STATUS.FAILED && syncJob?.error === 'CANCELLED_BY_USER'
 }
 
 // Define the job data type

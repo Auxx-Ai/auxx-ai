@@ -2,9 +2,9 @@
 
 'use client'
 
-import { useState, useMemo } from 'react'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
+import { useMemo, useState } from 'react'
 import { ComboPicker, type Option } from '~/components/pickers/combo-picker'
 import type { ColumnFieldConfig, OverrideValue } from '../types'
 
@@ -155,7 +155,7 @@ export function EditingInput({
         onOpen={() => setPickerOpen(true)}
         onClose={handleEnumClose}
         onChange={handleEnumChange}>
-        <Button variant="outline" size="sm" className="h-7 min-w-[120px] justify-start">
+        <Button variant='outline' size='sm' className='h-7 min-w-[120px] justify-start'>
           {selectedOptions.length > 0
             ? selectedOptions.map((o) => o.label).join(', ')
             : 'Select value...'}
@@ -169,9 +169,9 @@ export function EditingInput({
     <Input
       value={editValue}
       onChange={(e) => setEditValue(e.target.value)}
-      className="h-7"
-      variant="transparent"
-      size="sm"
+      className='h-7'
+      variant='transparent'
+      size='sm'
       onBlur={handleTextBlur}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {

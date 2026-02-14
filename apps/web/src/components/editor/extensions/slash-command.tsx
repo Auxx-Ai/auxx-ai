@@ -1,9 +1,8 @@
-import { Extension } from '@tiptap/core'
 import type { Editor, Range } from '@tiptap/core'
+import { Extension } from '@tiptap/core'
 import { ReactRenderer } from '@tiptap/react'
 import Suggestion, { type SuggestionOptions } from '@tiptap/suggestion'
-import type { RefObject } from 'react'
-import type { ReactNode } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import tippy, { type GetReferenceClientRect, type Instance, type Props } from 'tippy.js'
 import { EditorCommandOut } from '../components/editor-command'
 

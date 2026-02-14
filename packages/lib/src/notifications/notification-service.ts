@@ -1,10 +1,10 @@
 // lib/notifications/notification-service.ts
 import { database as db, schema } from '@auxx/database'
-import { and, eq, inArray, gte, lt, desc, count } from 'drizzle-orm'
-import { createScopedLogger } from '@auxx/logger'
-import { RealTimeService } from '../realtime/realtime-service'
-import type { NotificationType } from '@auxx/database/types'
 import type { NotificationEntity as Notification } from '@auxx/database/models'
+import type { NotificationType } from '@auxx/database/types'
+import { createScopedLogger } from '@auxx/logger'
+import { and, count, desc, eq, gte, inArray, lt } from 'drizzle-orm'
+import { RealTimeService } from '../realtime/realtime-service'
 
 const logger = createScopedLogger('notification-service')
 // Input interface for creating a notification

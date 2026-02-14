@@ -2,20 +2,21 @@
 
 'use client'
 
-import React, { memo, useCallback } from 'react'
 import { produce } from 'immer'
-import { type ChunkerNodeData } from './types'
-import { BasePanel } from '../../shared/base/base-panel'
+import type React from 'react'
+import { memo, useCallback } from 'react'
 import { useNodeCrud } from '~/components/workflow/hooks'
-import Section from '~/components/workflow/ui/section'
-import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import {
   VarEditor,
   VarEditorField,
   VarEditorFieldRow,
 } from '~/components/workflow/ui/input-editor/var-editor'
-import { VAR_MODE, BaseType } from '~/components/workflow/types'
+import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import Section from '~/components/workflow/ui/section'
+import { BasePanel } from '../../shared/base/base-panel'
 import { getChunkerOutputVariables } from './output-variables'
+import type { ChunkerNodeData } from './types'
 
 interface ChunkerPanelProps {
   nodeId: string
@@ -133,12 +134,12 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
   return (
     <BasePanel nodeId={nodeId} data={nodeData}>
       {/* Input Section */}
-      <Section title="Input">
-        <VarEditorField className="p-0">
+      <Section title='Input'>
+        <VarEditorField className='p-0'>
           <VarEditorFieldRow
-            className="pe-2"
-            title="Content"
-            description="The text content to split into chunks"
+            className='pe-2'
+            title='Content'
+            description='The text content to split into chunks'
             type={BaseType.STRING}
             isRequired>
             <VarEditor
@@ -148,8 +149,8 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
               varType={BaseType.STRING}
               allowedTypes={[BaseType.STRING]}
               mode={VAR_MODE.PICKER}
-              placeholder="Select content from previous node"
-              placeholderConstant="Enter text to chunk..."
+              placeholder='Select content from previous node'
+              placeholderConstant='Enter text to chunk...'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['content'] ?? false}
             />
@@ -158,13 +159,13 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
       </Section>
 
       {/* Settings Section */}
-      <Section title="Settings">
-        <VarEditorField className="p-0">
+      <Section title='Settings'>
+        <VarEditorField className='p-0'>
           <VarEditorFieldRow
-            className=""
+            className=''
             isRequired
-            title="Chunk Size"
-            description="Maximum size of each chunk in characters"
+            title='Chunk Size'
+            description='Maximum size of each chunk in characters'
             type={BaseType.NUMBER}>
             <VarEditor
               nodeId={nodeId}
@@ -175,18 +176,18 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
               varType={BaseType.NUMBER}
               mode={VAR_MODE.PICKER}
               allowedTypes={[BaseType.NUMBER]}
-              placeholder="Pick variable"
-              placeholderConstant="Enter chunk size"
+              placeholder='Pick variable'
+              placeholderConstant='Enter chunk size'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['chunkSize'] ?? true}
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
-            className=""
+            className=''
             isRequired
-            title="Chunk Overlap"
-            description="Number of overlapping characters between chunks"
+            title='Chunk Overlap'
+            description='Number of overlapping characters between chunks'
             type={BaseType.NUMBER}>
             <VarEditor
               nodeId={nodeId}
@@ -197,18 +198,18 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
               varType={BaseType.NUMBER}
               mode={VAR_MODE.PICKER}
               allowedTypes={[BaseType.NUMBER]}
-              placeholder="Pick variable"
-              placeholderConstant="Enter overlap"
+              placeholder='Pick variable'
+              placeholderConstant='Enter overlap'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['chunkOverlap'] ?? true}
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
-            className=""
+            className=''
             isRequired
-            title="Delimiter"
-            description="Custom delimiter for splitting (e.g., \n\n for paragraphs). Leave empty for auto-detect."
+            title='Delimiter'
+            description='Custom delimiter for splitting (e.g., \n\n for paragraphs). Leave empty for auto-detect.'
             type={BaseType.STRING}>
             <VarEditor
               nodeId={nodeId}
@@ -217,17 +218,17 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
               varType={BaseType.STRING}
               mode={VAR_MODE.PICKER}
               allowedTypes={[BaseType.STRING]}
-              placeholder="Pick variable"
-              placeholderConstant="Auto-detect"
+              placeholder='Pick variable'
+              placeholderConstant='Auto-detect'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['delimiter'] ?? true}
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
-            className=""
-            title="Norm. Whitespace"
-            description="Replace consecutive spaces and newlines with single space"
+            className=''
+            title='Norm. Whitespace'
+            description='Replace consecutive spaces and newlines with single space'
             type={BaseType.BOOLEAN}>
             <VarEditor
               nodeId={nodeId}
@@ -245,9 +246,9 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
-            className=""
-            title="Remove URLs & Emails"
-            description="Strip URLs and email addresses from content before chunking"
+            className=''
+            title='Remove URLs & Emails'
+            description='Strip URLs and email addresses from content before chunking'
             type={BaseType.BOOLEAN}>
             <VarEditor
               nodeId={nodeId}

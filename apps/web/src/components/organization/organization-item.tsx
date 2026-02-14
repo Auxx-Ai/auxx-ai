@@ -1,24 +1,24 @@
 // components/organization/organization-item.tsx
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { LogOut, ShieldAlert, Shield, UserCircle2, Trash2 } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
-import { Badge } from '@auxx/ui/components/badge'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import {
-  OrganizationType as OrganizationTypeEnum,
   OrganizationRole as OrganizationRoleEnum,
+  OrganizationType as OrganizationTypeEnum,
 } from '@auxx/database/enums'
 import type { OrganizationRole } from '@auxx/database/types'
-import type { OrganizationMembership } from './types'
-import { DeleteOrganizationDialog } from './delete-organization-dialog'
-import { useUser } from '~/hooks/use-user'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { LogOut, Shield, ShieldAlert, Trash2, UserCircle2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { useSession } from '~/auth/auth-client'
-import { useDehydratedOrganizationId } from '~/providers/dehydrated-state-provider'
 import { clearResourceCaches } from '~/components/resources'
+import { useUser } from '~/hooks/use-user'
+import { useDehydratedOrganizationId } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
+import { DeleteOrganizationDialog } from './delete-organization-dialog'
+import type { OrganizationMembership } from './types'
 
 interface OrganizationItemProps {
   organization: OrganizationMembership
@@ -32,11 +32,11 @@ interface OrganizationItemProps {
 function getRoleIcon(role: OrganizationRole) {
   switch (role) {
     case OrganizationRoleEnum.OWNER:
-      return <ShieldAlert className="size-4 text-primary-500" />
+      return <ShieldAlert className='size-4 text-primary-500' />
     case OrganizationRoleEnum.ADMIN:
-      return <Shield className="size-4 text-indigo-500" />
+      return <Shield className='size-4 text-indigo-500' />
     case OrganizationRoleEnum.USER:
-      return <UserCircle2 className="size-4 text-muted-foreground" />
+      return <UserCircle2 className='size-4 text-muted-foreground' />
   }
 }
 
@@ -94,43 +94,43 @@ export function OrganizationItem({
 
   return (
     <>
-      <div className="group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200">
-        <div className="flex flex-row items-center gap-2">
-          <div className="size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0">
+      <div className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200'>
+        <div className='flex flex-row items-center gap-2'>
+          <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0'>
             {getRoleIcon(organization.role)}
           </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <span className="text-sm">
+          <div className='flex flex-col'>
+            <div className='flex items-center gap-2'>
+              <span className='text-sm'>
                 {organization.name || `Organization ${organization.id.substring(0, 6)}`}
               </span>
               {isDefault && (
-                <Badge size="xs" variant="user">
+                <Badge size='xs' variant='user'>
                   Default
                 </Badge>
               )}
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <span className='flex items-center gap-1 text-xs text-muted-foreground'>
                 {organization.role}
               </span>
             </div>
-            <span className="text-xs text-muted-foreground">
+            <span className='text-xs text-muted-foreground'>
               {organization.type === OrganizationTypeEnum.INDIVIDUAL
                 ? 'Individual Workspace'
                 : 'Team Organization'}
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className='flex items-center gap-2'>
           {isOwner && (
-            <Button variant="destructive" size="sm" onClick={() => setIsDeleteDialogOpen(true)}>
+            <Button variant='destructive' size='sm' onClick={() => setIsDeleteDialogOpen(true)}>
               <Trash2 />
               Delete
             </Button>
           )}
           {!isDefault && (
             <Button
-              variant="outline"
-              size="sm"
+              variant='outline'
+              size='sm'
               onClick={handleSwitchOrganization}
               disabled={isLeaving}>
               Switch
@@ -138,9 +138,9 @@ export function OrganizationItem({
           )}
           {canLeave ? (
             <Button
-              variant="outline"
-              size="sm"
-              className="text-destructive hover:text-destructive"
+              variant='outline'
+              size='sm'
+              className='text-destructive hover:text-destructive'
               onClick={onLeave}
               disabled={isLeaving}>
               <LogOut />
@@ -148,11 +148,11 @@ export function OrganizationItem({
             </Button>
           ) : (
             <Button
-              variant="outline"
-              size="sm"
-              className="text-muted-foreground"
+              variant='outline'
+              size='sm'
+              className='text-muted-foreground'
               disabled
-              title="Cannot leave your only organization as the owner.">
+              title='Cannot leave your only organization as the owner.'>
               <LogOut />
               Leave
             </Button>

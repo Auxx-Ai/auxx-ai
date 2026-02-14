@@ -1,9 +1,9 @@
 // packages/lib/src/jobs/queues/flow-producer.ts
 
-import { FlowProducer, type FlowJob, type FlowOpts } from 'bullmq'
-import { getConnectionOptions } from '@auxx/redis'
 import { createScopedLogger } from '@auxx/logger'
-import { Queues } from './types'
+import { getConnectionOptions } from '@auxx/redis'
+import { type FlowJob, type FlowOpts, FlowProducer } from 'bullmq'
+import type { Queues } from './types'
 
 const logger = createScopedLogger('flow-producer')
 

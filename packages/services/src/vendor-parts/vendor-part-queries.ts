@@ -1,9 +1,9 @@
 // packages/services/src/vendor-parts/vendor-part-queries.ts
 
 import { database } from '@auxx/database'
-import { ok, err } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { VendorPartContext, ListVendorPartsInput } from './types'
+import type { ListVendorPartsInput, VendorPartContext } from './types'
 
 /**
  * Get all vendor parts with optional filtering using relational queries
@@ -23,7 +23,10 @@ export async function getVendorParts(input: ListVendorPartsInput) {
         contact: true,
         part: true,
       },
-      orderBy: (vendorParts, { desc, asc }) => [desc(vendorParts.isPreferred), asc(vendorParts.createdAt)],
+      orderBy: (vendorParts, { desc, asc }) => [
+        desc(vendorParts.isPreferred),
+        asc(vendorParts.createdAt),
+      ],
     }),
     'get-vendor-parts'
   )
@@ -101,7 +104,9 @@ export async function getVendorPartByContactAndPart(
 /**
  * Check if vendor part association exists
  */
-export async function checkVendorPartExists(input: { contactId: string; partId: string } & VendorPartContext) {
+export async function checkVendorPartExists(
+  input: { contactId: string; partId: string } & VendorPartContext
+) {
   const { contactId, partId, organizationId } = input
 
   const result = await fromDatabase(

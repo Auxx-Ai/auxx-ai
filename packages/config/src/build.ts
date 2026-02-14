@@ -1,8 +1,5 @@
 // packages/config/src/build.ts
 
-// Build-safe config exports for tooling and build-time consumers.
-// Do not export runtime loaders from this entrypoint.
-export * from './url'
 export {
   constants,
   RESERVED_API_SLUGS,
@@ -10,13 +7,16 @@ export {
   type ReservedApiSlug,
   type ReservedOrganizationHandle,
 } from './constants'
-export { IANA_TIME_ZONES, detectTimezone, isValidTimezone, type IANATimeZone } from './timezones'
 export {
   CURRENCIES,
+  type Currency,
+  type CurrencyCode,
   getCurrency,
   getCurrencySymbol,
   isValidCurrency,
-  type Currency,
-  type CurrencyCode,
 } from './currencies'
 export { features } from './features'
+export { detectTimezone, IANA_TIME_ZONES, type IANATimeZone, isValidTimezone } from './timezones'
+// Build-safe config exports for tooling and build-time consumers.
+// Do not export runtime loaders from this entrypoint.
+export * from './url'

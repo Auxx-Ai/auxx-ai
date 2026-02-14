@@ -1,7 +1,7 @@
 // packages/sdk/src/util/find-surface-exports/find-surface-exports.ts
 import fs from 'fs/promises'
 import path from 'path'
-import { Project, type SourceFile, type Symbol as MorphSymbol } from 'ts-morph'
+import { type Symbol as MorphSymbol, Project, type SourceFile } from 'ts-morph'
 import { complete, errored, isComplete, type Result } from '../../errors.js'
 import { generateRandomFileName } from './generate-random-file-name.js'
 import { parseFileExports, type SurfaceExport, type SurfaceTypesMap } from './parse-file-exports.js'
@@ -11,9 +11,7 @@ import { walkDir } from './walk-dir.js'
 /**
  * Possible error types that can occur when loading a source file.
  */
-type FileLoadError =
-  | { code: 'FILE_NOT_FOUND' }
-  | { code: 'UNKNOWN_ERROR' }
+type FileLoadError = { code: 'FILE_NOT_FOUND' } | { code: 'UNKNOWN_ERROR' }
 
 /**
  * Result type for source file loading operations.
@@ -79,7 +77,9 @@ export async function findSurfaceExports(
     callRecordingTranscriptTextSelectionAction: surfaceTypesSourceFile
       .getInterfaceOrThrow('CallRecordingTranscriptTextSelectionAction')
       .getType(),
-    organizationSettings: surfaceTypesSourceFile.getInterfaceOrThrow('OrganizationSettings').getType(),
+    organizationSettings: surfaceTypesSourceFile
+      .getInterfaceOrThrow('OrganizationSettings')
+      .getType(),
     workflowBlock: surfaceTypesSourceFile.getInterfaceOrThrow('WorkflowBlock').getType(),
   }
 

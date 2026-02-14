@@ -1,8 +1,9 @@
 // server/email/permissions.ts
-import { TRPCError } from '@trpc/server'
+
 import { database as db } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
 import { OrganizationRole } from '@auxx/database/enums'
+import { createScopedLogger } from '@auxx/logger'
+import { TRPCError } from '@trpc/server'
 import { MemberService } from '../members/member-service'
 
 const logger = createScopedLogger('permissions')

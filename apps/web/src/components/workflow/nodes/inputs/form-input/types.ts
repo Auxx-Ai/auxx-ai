@@ -1,9 +1,9 @@
 // apps/web/src/components/workflow/nodes/inputs/form-input/types.ts
 
-import { NodeType } from '~/components/workflow/types/node-types'
-import { BaseNodeData } from '~/components/workflow/types/node-base'
-import { BaseType } from '~/components/workflow/types/unified-types'
 import type { FileTypeCategory } from '@auxx/lib/files/client'
+import type { BaseNodeData } from '~/components/workflow/types/node-base'
+import type { NodeType } from '~/components/workflow/types/node-types'
+import type { BaseType } from '~/components/workflow/types/unified-types'
 
 /**
  * Select option for ENUM type

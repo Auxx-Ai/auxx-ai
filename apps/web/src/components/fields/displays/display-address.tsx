@@ -10,7 +10,7 @@ export function DisplayAddress() {
   const copyText = value == null ? '' : String(value)
   return (
     <DisplayWrapper copyValue={copyText || null}>
-      <span className="inline-flex items-center gap-1">{value}</span>
+      <span className='inline-flex items-center gap-1'>{value}</span>
     </DisplayWrapper>
   )
 }
@@ -43,13 +43,15 @@ export function DisplayAddressStruct() {
 
   // Format: street1, street2, city, state zipCode, country
   const streetPart = [street1, street2].filter(Boolean).join(', ')
-  const cityStatePart = [city, [state, zipCode].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+  const cityStatePart = [city, [state, zipCode].filter(Boolean).join(' ')]
+    .filter(Boolean)
+    .join(', ')
   const parts = [streetPart, cityStatePart, country].filter(Boolean)
   const formattedAddress = parts.join(', ')
 
   return (
     <DisplayWrapper copyValue={formattedAddress || null}>
-      <span className="inline-flex items-center gap-1">{formattedAddress}</span>
+      <span className='inline-flex items-center gap-1'>{formattedAddress}</span>
     </DisplayWrapper>
   )
 }

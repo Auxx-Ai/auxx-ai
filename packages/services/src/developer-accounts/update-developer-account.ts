@@ -1,10 +1,10 @@
 // packages/services/src/developer-accounts/update-developer-account.ts
 
-import { database, DeveloperAccount } from '@auxx/database'
-import { ok, err } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
+import { DeveloperAccount, database } from '@auxx/database'
 // import type { DeveloperAccountError } from './errors'
 import { eq } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
+import { fromDatabase } from '../shared/utils'
 
 /**
  * Update a developer account

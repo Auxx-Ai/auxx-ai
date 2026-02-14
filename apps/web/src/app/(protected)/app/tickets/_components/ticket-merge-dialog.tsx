@@ -1,8 +1,8 @@
 // apps/web/src/app/(protected)/app/tickets/_components/ticket-merge-dialog.tsx
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { getInstanceId, type RecordId } from '@auxx/lib/field-values/client'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -13,11 +13,11 @@ import {
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
+import { useRouter } from 'next/navigation'
+import { useCallback, useMemo, useState } from 'react'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { getInstanceId, type RecordId } from '@auxx/lib/field-values/client'
+import { api } from '~/trpc/react'
 
 /**
  * Props for TicketMergeDialog
@@ -55,7 +55,7 @@ export function TicketMergeDialog({
   return (
     <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-      <DialogContent size="sm">
+      <DialogContent size='sm'>
         <TicketMergeDialogContent
           primaryTicketId={primaryTicketId}
           onClose={() => setDialogOpen(false)}
@@ -118,7 +118,7 @@ function TicketMergeDialogContent({
 
   return (
     <>
-      <DialogHeader className="mb-4">
+      <DialogHeader className='mb-4'>
         <DialogTitle>Merge Tickets</DialogTitle>
         <DialogDescription>
           Select tickets to merge into the current ticket. The merged tickets will become child
@@ -126,33 +126,33 @@ function TicketMergeDialogContent({
         </DialogDescription>
       </DialogHeader>
 
-      <div className="grid gap-4">
-        <div className="grid gap-2">
-          <label className="text-sm font-medium">Tickets to Merge</label>
+      <div className='grid gap-4'>
+        <div className='grid gap-2'>
+          <label className='text-sm font-medium'>Tickets to Merge</label>
           <MultiRelationInput
-            entityDefinitionId="ticket"
+            entityDefinitionId='ticket'
             value={ticketsToMerge}
             onChange={setTicketsToMerge}
             excludeIds={[primaryTicketId]}
-            placeholder="Search tickets to merge..."
+            placeholder='Search tickets to merge...'
             multi={true}
           />
         </div>
       </div>
 
       <DialogFooter>
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+        <Button variant='ghost' size='sm' onClick={onClose}>
+          Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
         </Button>
         <Button
-          variant="outline"
-          size="sm"
+          variant='outline'
+          size='sm'
           onClick={handleMerge}
           disabled={ticketsToMergeIds.length === 0}
           loading={isPending}
-          loadingText="Merging..."
+          loadingText='Merging...'
           data-dialog-submit>
-          Merge Tickets <KbdSubmit variant="outline" size="sm" />
+          Merge Tickets <KbdSubmit variant='outline' size='sm' />
         </Button>
       </DialogFooter>
     </>

@@ -2,8 +2,8 @@
 // Coordinates webhook disconnection and reconnection for organization-specific seeding
 
 import { database as db, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
 
 const logger = createScopedLogger('org-webhook-coordinator')
 

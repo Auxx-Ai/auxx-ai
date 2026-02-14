@@ -1,6 +1,6 @@
 // packages/email/src/templates/lifecycle/trial-deletion-final-email.tsx
 import { Container, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -50,7 +50,7 @@ export async function TrialDeletionFinalEmail({
         <div style={{ textAlign: 'center', margin: '35px 0' }}>
           <EmailButton
             href={reactivationLink}
-            label="REACTIVATE NOW"
+            label='REACTIVATE NOW'
             style={{
               backgroundColor: '#e53e3e',
               fontSize: '18px',
@@ -84,7 +84,7 @@ export async function TrialDeletionFinalEmail({
 
         <Text style={{ fontSize: '16px', color: '#e53e3e', fontWeight: '600', marginTop: '24px' }}>
           Need immediate help? Contact support at{' '}
-          <a href="mailto:support@auxx.ai" style={{ color: '#e53e3e', textDecoration: 'none' }}>
+          <a href='mailto:support@auxx.ai' style={{ color: '#e53e3e', textDecoration: 'none' }}>
             support@auxx.ai
           </a>{' '}
           right away.

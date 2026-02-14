@@ -12,9 +12,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { MoreVertical, Lock } from 'lucide-react'
+import { Lock, MoreVertical } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
-import { getGroupMetadata, getMemberDisplayInfo, getInitials } from '../utils'
+import { getGroupMetadata, getInitials, getMemberDisplayInfo } from '../utils'
 
 /** Props for GroupItem component */
 interface GroupItemProps {
@@ -41,40 +41,42 @@ export function GroupItem({ group, members = [], onSelect, onEdit, onDelete }: G
 
   return (
     <div
-      className="group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200 cursor-pointer"
+      className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200 cursor-pointer'
       onClick={() => onSelect?.(group.id)}>
-      <div className="flex flex-row items-center gap-3">
-        <div className="size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0">
+      <div className='flex flex-row items-center gap-3'>
+        <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0'>
           {emoji}
         </div>
 
-        <div className="flex flex-col">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-medium">{group.displayName}</span>
-            {metadata.visibility === 'private' && <Lock className="h-3 w-3 text-muted-foreground" />}
+        <div className='flex flex-col'>
+          <div className='flex items-center gap-1.5'>
+            <span className='text-sm font-medium'>{group.displayName}</span>
+            {metadata.visibility === 'private' && (
+              <Lock className='h-3 w-3 text-muted-foreground' />
+            )}
           </div>
-          <span className="text-xs text-muted-foreground">
+          <span className='text-xs text-muted-foreground'>
             {memberCount} {memberCount === 1 ? 'member' : 'members'}
           </span>
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <div className="flex -space-x-2">
+      <div className='flex items-center gap-2'>
+        <div className='flex -space-x-2'>
           {members.slice(0, 4).map((member) => {
             const display = getMemberDisplayInfo(member)
             return (
               <Tooltip key={member.id} content={display.name}>
-                <Avatar className="border-2 border-background size-8">
+                <Avatar className='border-2 border-background size-8'>
                   <AvatarImage src={display.image || undefined} alt={display.name} />
-                  <AvatarFallback className="text-sm">{getInitials(display.name)}</AvatarFallback>
+                  <AvatarFallback className='text-sm'>{getInitials(display.name)}</AvatarFallback>
                 </Avatar>
               </Tooltip>
             )
           })}
           {memberCount > 4 && (
             <Tooltip content={`${memberCount - 4} more members`}>
-              <Avatar className="border-2 border-background bg-muted">
+              <Avatar className='border-2 border-background bg-muted'>
                 <AvatarFallback>+{memberCount - 4}</AvatarFallback>
               </Avatar>
             </Tooltip>
@@ -84,11 +86,11 @@ export function GroupItem({ group, members = [], onSelect, onEdit, onDelete }: G
         {(onEdit || onDelete) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-              <Button variant="ghost" size="icon-sm">
+              <Button variant='ghost' size='icon-sm'>
                 <MoreVertical />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align='end'>
               {onEdit && (
                 <DropdownMenuItem
                   onClick={(e) => {
@@ -102,7 +104,7 @@ export function GroupItem({ group, members = [], onSelect, onEdit, onDelete }: G
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    variant="destructive"
+                    variant='destructive'
                     onClick={(e) => {
                       e.stopPropagation()
                       onDelete(group.id)

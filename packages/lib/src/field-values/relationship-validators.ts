@@ -1,12 +1,12 @@
 // packages/lib/src/field-values/relationship-validators.ts
 
 import { type Database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
 import {
+  isSelfReferentialRelationship,
   type RelationshipConfig,
   type RelationshipConstraints,
-  isSelfReferentialRelationship,
 } from '@auxx/types/custom-field'
+import { and, eq } from 'drizzle-orm'
 
 // ============================================================================
 // TYPES

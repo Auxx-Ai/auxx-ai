@@ -2,31 +2,31 @@
 
 'use client'
 
-import { memo, useMemo } from 'react'
-import { useReactFlow } from '@xyflow/react'
-import { Plus, Clipboard, Play } from 'lucide-react'
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
   DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { useWorkflowStore } from '../store/workflow-store'
-import { usePanelStore } from '../store/panel-store'
-import { useContextMenu } from '../hooks/use-context-menu'
+import { useReactFlow } from '@xyflow/react'
+import { Clipboard, Play, Plus } from 'lucide-react'
+import { memo, useMemo } from 'react'
 import {
-  useNodesInteractions,
-  useReadOnly,
-  useNonTriggerDefinitions,
   useNodeAddition,
+  useNodesInteractions,
+  useNonTriggerDefinitions,
+  useReadOnly,
 } from '../hooks'
-import { BlockSelector } from './block-selector'
+import { useContextMenu } from '../hooks/use-context-menu'
+import { usePanelStore } from '../store/panel-store'
+import { useWorkflowStore } from '../store/workflow-store'
 import { NodeType } from '../types/node-types'
+import { BlockSelector } from './block-selector'
 
 /**
  * Pane context menu - single instance for right-clicking empty canvas
@@ -129,21 +129,21 @@ export const PaneContextMenu = memo(() => {
       {/* Invisible trigger positioned at click location */}
       <DropdownMenuTrigger asChild>
         <div
-          className="absolute w-0 h-0 pointer-events-none"
+          className='absolute w-0 h-0 pointer-events-none'
           style={{
             left: paneMenu?.left ?? 0,
             top: paneMenu?.top ?? 0,
           }}
         />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <DropdownMenuContent align='start'>
         {/* Add Block - submenu with BlockSelector */}
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>
             <Plus />
             Add Block
           </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="p-0">
+          <DropdownMenuSubContent className='p-0'>
             <BlockSelector
               inline={true}
               open={true}

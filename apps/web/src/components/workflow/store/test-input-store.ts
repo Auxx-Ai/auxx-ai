@@ -1,9 +1,8 @@
 // apps/web/src/components/workflow/store/test-input-store.ts
 
 import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { persist } from 'zustand/middleware'
-import { BaseType } from '../types/unified-types'
+import { persist, subscribeWithSelector } from 'zustand/middleware'
+import type { BaseType } from '../types/unified-types'
 import { useWorkflowStore } from './workflow-store'
 
 /**

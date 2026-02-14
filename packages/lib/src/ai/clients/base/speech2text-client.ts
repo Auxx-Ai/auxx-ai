@@ -1,11 +1,7 @@
 // packages/lib/src/ai/clients/base/speech2text-client.ts
 
 import { BaseSpecializedClient } from './base-specialized-client'
-import type {
-  ClientConfig,
-  TranscribeParams,
-  TranscribeResponse,
-} from './types'
+import type { ClientConfig, TranscribeParams, TranscribeResponse } from './types'
 
 /**
  * Abstract base class for speech-to-text clients
@@ -39,7 +35,11 @@ export abstract class Speech2TextClient extends BaseSpecializedClient {
     }
 
     if (params.temperature !== undefined) {
-      if (typeof params.temperature !== 'number' || params.temperature < 0 || params.temperature > 1) {
+      if (
+        typeof params.temperature !== 'number' ||
+        params.temperature < 0 ||
+        params.temperature > 1
+      ) {
         throw new Error('Temperature must be a number between 0 and 1')
       }
     }
@@ -59,7 +59,7 @@ export abstract class Speech2TextClient extends BaseSpecializedClient {
       // Basic file type detection (very simple)
       const header = audio.slice(0, 12)
       const isValidAudio = this.isValidAudioBuffer(header)
-      
+
       if (!isValidAudio) {
         this.logger.warn('Audio buffer may not be a valid audio file format')
       }
@@ -124,7 +124,7 @@ export abstract class Speech2TextClient extends BaseSpecializedClient {
         return `${startTime} --> ${endTime}\n${segment.text}\n`
       })
       .join('\n')
-    
+
     return header + body
   }
 
@@ -165,7 +165,7 @@ export abstract class Speech2TextClient extends BaseSpecializedClient {
    */
   protected estimateAudioDuration(audio: Buffer): number {
     // Very rough estimate: assuming average bitrate of 128kbps
-    const averageBitrate = 128 * 1000 / 8 // 128kbps in bytes per second
+    const averageBitrate = (128 * 1000) / 8 // 128kbps in bytes per second
     return audio.length / averageBitrate
   }
 }

@@ -1,9 +1,9 @@
 // apps/api/src/lib/session-validator.ts
 
-import { getCookie } from 'hono/cookie'
-import type { Context } from 'hono'
-import { BETTER_AUTH_SESSION_URL } from '../config'
 import { createScopedLogger } from '@auxx/logger'
+import type { Context } from 'hono'
+import { getCookie } from 'hono/cookie'
+import { BETTER_AUTH_SESSION_URL } from '../config'
 
 const logger = createScopedLogger('session-validator')
 

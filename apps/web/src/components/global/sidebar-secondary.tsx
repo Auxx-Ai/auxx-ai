@@ -1,11 +1,11 @@
+import { Button } from '@auxx/ui/components/button'
+import { cn } from '@auxx/ui/lib/utils'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import Link from 'next/link'
 import React, { useState } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
-import { SidebarProps } from '~/constants/menu'
-import { useUser } from '~/hooks/use-user'
+import type { SidebarProps } from '~/constants/menu'
 import { useIsMobile } from '~/hooks/use-mobile'
-import { cn } from '@auxx/ui/lib/utils'
-import { Button } from '@auxx/ui/components/button'
+import { useUser } from '~/hooks/use-user'
 
 type Props = { items: SidebarProps[]; baseUrl: string; title: string; current: string | undefined }
 
@@ -20,27 +20,27 @@ function SidebarSecondary({ items, baseUrl, title, current }: Props) {
 
   return (
     // <div className='flex h-full min-h-screen w-[16rem] overflow-auto border-r bg-sidebar text-sidebar-foreground'>
-    <div className="flex md:w-[16rem] overflow-auto md:border-r bg-neutral-50 dark:bg-sidebar text-sidebar-foreground">
-      <div className="flex w-full flex-col">
+    <div className='flex md:w-[16rem] overflow-auto md:border-r bg-neutral-50 dark:bg-sidebar text-sidebar-foreground'>
+      <div className='flex w-full flex-col'>
         {/* Mobile toggle button */}
         {isMobile && (
-          <div className="sticky top-0 z-10 bg-neutral-50 dark:bg-primary-50 border-b border-neutral-200 dark:border-primary-200 p-2">
+          <div className='sticky top-0 z-10 bg-neutral-50 dark:bg-primary-50 border-b border-neutral-200 dark:border-primary-200 p-2'>
             <Button
-              variant="ghost"
-              className="w-full justify-between h-10 px-3"
+              variant='ghost'
+              className='w-full justify-between h-10 px-3'
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}>
-              <span className="font-medium">{title}</span>
+              <span className='font-medium'>{title}</span>
               {isDropdownOpen ? (
-                <ChevronUp className="h-4 w-4" />
+                <ChevronUp className='h-4 w-4' />
               ) : (
-                <ChevronDown className="h-4 w-4" />
+                <ChevronDown className='h-4 w-4' />
               )}
             </Button>
           </div>
         )}
 
         <div
-          id="dropdown"
+          id='dropdown'
           className={cn(
             'flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden transition-all duration-300 ease-in-out',
             // Mobile-specific classes
@@ -76,7 +76,7 @@ function createSidebarGroup(
   }
 
   return (
-    <div className="relative flex w-full min-w-0 flex-col p-2 group-data-[collapsible=icon]:hidden">
+    <div className='relative flex w-full min-w-0 flex-col p-2 group-data-[collapsible=icon]:hidden'>
       <div
         className={cn(
           'flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 outline-hidden',
@@ -85,9 +85,9 @@ function createSidebarGroup(
         )}>
         {title}
       </div>
-      <ul className="flex w-full min-w-0 flex-col gap-1">
+      <ul className='flex w-full min-w-0 flex-col gap-1'>
         {items.map((item) => (
-          <li className="group/menu-item relative" key={item.id}>
+          <li className='group/menu-item relative' key={item.id}>
             <Link
               href={`${baseUrl}/${item.slug}`}
               data-active={item.slug == current}

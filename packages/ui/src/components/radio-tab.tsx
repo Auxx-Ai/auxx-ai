@@ -22,13 +22,12 @@
  */
 'use client'
 
+import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
+import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
 import * as React from 'react'
 import { useId, useState } from 'react'
-import { cva, type VariantProps } from 'class-variance-authority'
-
-import { cn } from '@auxx/ui/lib/utils'
-import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@auxx/ui/components/tooltip'
 
 /**
  * Variants for the RadioTab container component using class-variance-authority
@@ -235,7 +234,7 @@ function RadioTabItem({
       )}
       {...props}>
       {children}
-      <RadioGroupItem id={id} value={value} className="sr-only" disabled={disabled} />
+      <RadioGroupItem id={id} value={value} className='sr-only' disabled={disabled} />
     </label>
   )
 

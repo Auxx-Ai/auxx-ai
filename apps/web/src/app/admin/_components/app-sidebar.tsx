@@ -1,7 +1,6 @@
 // apps/web/src/app/admin/_components/app-sidebar.tsx
 'use client'
 
-import * as React from 'react'
 import {
   Sidebar,
   SidebarContent,
@@ -9,6 +8,7 @@ import {
   SidebarHeader,
   SidebarRail,
 } from '@auxx/ui/components/sidebar'
+import type * as React from 'react'
 import { NavUser } from '~/components/global/sidebar/nav-user'
 import { AdminNavMain } from './admin-nav-main'
 
@@ -35,11 +35,11 @@ type AdminAppSidebarProps = {
  */
 export function AdminAppSidebar({ user, ...props }: AdminAppSidebarProps) {
   return (
-    <Sidebar collapsible="icon" {...props}>
+    <Sidebar collapsible='icon' {...props}>
       <SidebarHeader>
         <NavUser user={user} />
       </SidebarHeader>
-      <SidebarContent className="gap-0">
+      <SidebarContent className='gap-0'>
         <AdminNavMain />
       </SidebarContent>
       <SidebarRail />

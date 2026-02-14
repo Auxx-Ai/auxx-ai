@@ -2,11 +2,11 @@
 
 'use client'
 
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { cn } from '@auxx/ui/lib/utils'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { TaskGroupVariant } from '../utils/group-tasks'
 
 /**
@@ -54,33 +54,33 @@ export function TasksListHeader({
   const variantClass = VARIANT_STYLES[variant] ?? ''
 
   return (
-    <div className="flex items-center gap-2 pb-1">
+    <div className='flex items-center gap-2 pb-1'>
       {/* Avatar for assignee groups */}
       {meta?.userImage !== undefined && (
-        <Avatar className="size-5">
+        <Avatar className='size-5'>
           <AvatarImage src={meta.userImage ?? undefined} />
-          <AvatarFallback className="text-xs">{title.charAt(0).toUpperCase()}</AvatarFallback>
+          <AvatarFallback className='text-xs'>{title.charAt(0).toUpperCase()}</AvatarFallback>
         </Avatar>
       )}
 
       {/* Title Badge */}
-      <Badge variant="pill" size="sm" className={cn(variantClass)}>
+      <Badge variant='pill' size='sm' className={cn(variantClass)}>
         {title}
       </Badge>
 
       {/* Task Count */}
-      <span className="text-xs text-muted-foreground">
+      <span className='text-xs text-muted-foreground'>
         {count} {count === 1 ? 'task' : 'tasks'}
       </span>
 
       {/* Divider Line */}
-      <span className="h-px flex-1 bg-primary-100 dark:bg-[#ffffff1d]" role="none" />
+      <span className='h-px flex-1 bg-primary-100 dark:bg-[#ffffff1d]' role='none' />
 
       {/* Collapse Toggle */}
       <Button
-        type="button"
-        size="icon-xs"
-        variant="ghost"
+        type='button'
+        size='icon-xs'
+        variant='ghost'
         onClick={onToggle}
         aria-label={isCollapsed ? 'Expand group' : 'Collapse group'}>
         {isCollapsed ? <ChevronRight /> : <ChevronDown />}

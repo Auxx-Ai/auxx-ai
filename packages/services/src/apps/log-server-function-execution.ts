@@ -1,6 +1,6 @@
 // packages/services/src/apps/log-server-function-execution.ts
 
-import { database, AppEventLog } from '@auxx/database'
+import { AppEventLog, database } from '@auxx/database'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 

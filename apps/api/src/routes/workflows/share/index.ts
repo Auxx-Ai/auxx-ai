@@ -6,10 +6,10 @@
  */
 
 import { Hono } from 'hono'
-import passportRoute from './passport'
-import siteRoute from './site'
-import runsRoute from './runs'
 import authStatusRoute from './auth-status'
+import passportRoute from './passport'
+import runsRoute from './runs'
+import siteRoute from './site'
 
 const shareRoutes = new Hono()
 

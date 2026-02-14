@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/resource-trigger/types.ts
 import { z } from 'zod'
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
 import type { ExecutionResult } from '~/components/workflow/types'
+import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
 import { NodeType } from '~/components/workflow/types/node-types'
 
 /**

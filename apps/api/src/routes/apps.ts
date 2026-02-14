@@ -1,10 +1,10 @@
 // apps/api/src/routes/apps.ts
 
-import { Hono } from 'hono'
 import { database } from '@auxx/database'
+import { Hono } from 'hono'
+import { errorResponse, successResponse } from '../lib/response'
 import { authMiddleware } from '../middleware/auth'
 import { requireScope } from '../middleware/scope'
-import { successResponse, errorResponse } from '../lib/response'
 import type { AppContext } from '../types/context'
 
 const apps = new Hono<AppContext>()

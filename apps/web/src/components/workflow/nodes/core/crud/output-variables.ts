@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/nodes/core/crud/output-variables.ts
 
-import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
-import { BaseType } from '~/components/workflow/types/unified-types'
-import type { CrudNodeData } from './types'
-import { generateCrudNodeVariablesFromFields } from '@auxx/lib/workflow-engine/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import { generateCrudNodeVariablesFromFields } from '@auxx/lib/workflow-engine/client'
+import { BaseType } from '~/components/workflow/types/unified-types'
+import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
+import type { CrudNodeData } from './types'
 
 /** Resource shape for variable generation */
 type ResourceWithFields = { id: string; label: string; plural: string; fields: ResourceField[] }

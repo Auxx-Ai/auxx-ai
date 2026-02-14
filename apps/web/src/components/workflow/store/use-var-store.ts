@@ -1,17 +1,17 @@
 // apps/web/src/components/workflow/store/use-var-store.ts
 
+import type { Resource } from '@auxx/lib/resources/client'
+import type { Edge, Node } from '@xyflow/react'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import type { Node, Edge } from '@xyflow/react'
-import { type UnifiedVariable, BaseType } from '~/components/workflow/types'
-import { type EnvVar } from '../types'
-import type { Resource } from '@auxx/lib/resources/client'
-import { getNodeIdFromVariableId } from '~/components/workflow/utils/variable-utils'
-import { getUpstreamNodeIds } from '~/components/workflow/utils/graph-utils'
 import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registry'
-import { useWorkflowStore } from './workflow-store'
+import { BaseType, type UnifiedVariable } from '~/components/workflow/types'
+import { getUpstreamNodeIds } from '~/components/workflow/utils/graph-utils'
 import { cloneAndRewriteVariableIds } from '~/components/workflow/utils/variable-cloning'
+import { getNodeIdFromVariableId } from '~/components/workflow/utils/variable-utils'
+import type { EnvVar } from '../types'
+import { useWorkflowStore } from './workflow-store'
 
 export interface LoopContext {
   loopNodeId: string

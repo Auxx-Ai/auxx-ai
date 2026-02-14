@@ -10,7 +10,7 @@
     "version": "1.0",
     "group": ["marketing", "social"]
   },
-  
+
   "execution": {
     "credentials": [
       {
@@ -44,14 +44,14 @@
               },
               {
                 "name": "Schedule",
-                "value": "scheduleContent", 
+                "value": "scheduleContent",
                 "description": "Schedule content for later"
               }
             ]
           }
         ]
       },
-      
+
       {
         "id": "content",
         "title": "Content",
@@ -71,13 +71,13 @@
                 "description": "Simple text-based post"
               },
               {
-                "name": "Image Post", 
+                "name": "Image Post",
                 "value": "imagePost",
                 "description": "Post with image attachment"
               },
               {
                 "name": "Article Post",
-                "value": "articlePost", 
+                "value": "articlePost",
                 "description": "Post with article/link preview"
               }
             ]
@@ -112,7 +112,7 @@
         "children": [
           {
             "id": "authorType",
-            "name": "authorType", 
+            "name": "authorType",
             "type": "select",
             "title": "Post As",
             "required": true,
@@ -133,7 +133,7 @@
           {
             "id": "postVisibility",
             "name": "postVisibility",
-            "type": "select", 
+            "type": "select",
             "title": "Post Visibility",
             "default": "PUBLIC",
             "options": [
@@ -143,7 +143,7 @@
                 "description": "Visible to everyone on LinkedIn"
               },
               {
-                "name": "Connections Only", 
+                "name": "Connections Only",
                 "value": "CONNECTIONS",
                 "description": "Visible only to your connections"
               }
@@ -160,7 +160,7 @@
       },
 
       {
-        "id": "imageSettings", 
+        "id": "imageSettings",
         "title": "Image Settings",
         "type": "section",
         "showWhen": [
@@ -174,7 +174,7 @@
           {
             "id": "imageData",
             "name": "imageData",
-            "type": "input", 
+            "type": "input",
             "title": "Image Data Property",
             "required": true,
             "default": "data",
@@ -184,7 +184,7 @@
             "id": "imageTitle",
             "name": "imageTitle",
             "type": "input",
-            "title": "Image Title", 
+            "title": "Image Title",
             "placeholder": "Optional image title...",
             "validation": [
               {
@@ -199,7 +199,7 @@
 
       {
         "id": "articleSettings",
-        "title": "Article Settings", 
+        "title": "Article Settings",
         "type": "section",
         "showWhen": [
           {
@@ -224,7 +224,7 @@
             ]
           },
           {
-            "id": "articleTitle", 
+            "id": "articleTitle",
             "name": "articleTitle",
             "type": "input",
             "title": "Article Title",
@@ -240,7 +240,7 @@
           },
           {
             "id": "articleDescription",
-            "name": "articleDescription", 
+            "name": "articleDescription",
             "type": "textarea",
             "title": "Article Description",
             "placeholder": "Optional article description...",
@@ -263,7 +263,7 @@
         "showWhen": [
           {
             "field": "action",
-            "operator": "equals", 
+            "operator": "equals",
             "value": "scheduleContent"
           }
         ],

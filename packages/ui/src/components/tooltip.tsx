@@ -2,12 +2,11 @@
 
 'use client'
 
-import * as React from 'react'
-import { Tooltip as TooltipPrimitive } from 'radix-ui'
-import { HelpCircle } from 'lucide-react'
-import { cva, type VariantProps } from 'class-variance-authority'
-
 import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { HelpCircle } from 'lucide-react'
+import { Tooltip as TooltipPrimitive } from 'radix-ui'
+import type * as React from 'react'
 
 /** Tooltip content style variants */
 const tooltipContentVariants = cva(
@@ -71,11 +70,18 @@ function TooltipExplanation({ text, size, className }: TooltipExplanationProps) 
         <HelpCircle className={cn('text-primary-400', tooltipIconVariants({ size }), className)} />
       </TooltipTrigger>
       <TooltipContent>
-        <div className="max-w-xs">{text}</div>
+        <div className='max-w-xs'>{text}</div>
       </TooltipContent>
     </Tooltip>
   )
 }
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, tooltipContentVariants, TooltipExplanation }
+export {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+  tooltipContentVariants,
+  TooltipExplanation,
+}
 export type { TooltipContentProps, TooltipExplanationProps }

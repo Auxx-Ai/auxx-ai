@@ -2,19 +2,19 @@
 
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
-import { keepPreviousData } from '@tanstack/react-query'
+import type { Actor, ActorId } from '@auxx/types/actor'
 import {
   Command,
   CommandEmpty,
+  CommandGroup,
   CommandInput,
   CommandList,
   CommandSeparator,
-  CommandGroup,
 } from '@auxx/ui/components/command'
 import { cn } from '@auxx/ui/lib/utils'
-import type { Actor, ActorId } from '@auxx/types/actor'
-import { useAvailableActors, useActors } from '~/components/resources/hooks/use-actor'
+import { keepPreviousData } from '@tanstack/react-query'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useActors, useAvailableActors } from '~/components/resources/hooks/use-actor'
 import { api } from '~/trpc/react'
 import { ActorItem } from './actor-item'
 
@@ -216,7 +216,7 @@ export function ActorPickerContent({
 
         {/* Selected Items Section */}
         {hasSelectedSection && (
-          <CommandGroup aria-label="Selected">
+          <CommandGroup aria-label='Selected'>
             {filteredSelectedItems.map((actor) => (
               <ActorItem
                 key={actor.actorId}
@@ -234,7 +234,7 @@ export function ActorPickerContent({
 
         {/* Users Section */}
         {hasUsersSection && (
-          <CommandGroup heading={showGroupHeadings ? 'Users' : undefined} aria-label="Users">
+          <CommandGroup heading={showGroupHeadings ? 'Users' : undefined} aria-label='Users'>
             {groupedAvailable.users.map((actor) => (
               <ActorItem
                 key={actor.actorId}
@@ -249,7 +249,7 @@ export function ActorPickerContent({
 
         {/* Groups Section */}
         {hasGroupsSection && (
-          <CommandGroup heading={showGroupHeadings ? 'Groups' : undefined} aria-label="Groups">
+          <CommandGroup heading={showGroupHeadings ? 'Groups' : undefined} aria-label='Groups'>
             {groupedAvailable.groups.map((actor) => (
               <ActorItem
                 key={actor.actorId}

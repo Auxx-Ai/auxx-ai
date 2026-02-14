@@ -36,15 +36,15 @@
 
 import React from 'react'
 import * as ClientSDK from '../client/index.js'
-import * as SharedSDK from '../shared/index.js'
 import * as RootSDK from '../root/index.js'
+import { ExtensionInitError, ExtensionLoadError } from '../shared/errors.js'
+import * as SharedSDK from '../shared/index.js'
+import { eventBus } from './event-bus.js'
+import { Host } from './host.js'
 import { render } from './reconciler/reconciler.js'
 import type { SanitizedInstance } from './reconciler/types.js'
-import { SURFACES } from './surfaces.js'
-import { Host } from './host.js'
 import { runServerFunction } from './run-server-function.js'
-import { ExtensionLoadError, ExtensionInitError } from '../shared/errors.js'
-import { eventBus } from './event-bus.js'
+import { SURFACES } from './surfaces.js'
 import './workflow.js' // Import workflow runtime handlers
 
 // Export for client SDK imports
@@ -366,7 +366,6 @@ async function main() {
     for (const property in Globals) {
       ;(globalThis as any)[property] = Globals[property as keyof typeof Globals]
     }
-
     // Also set up SDK namespaces
     ;(globalThis as any).AUXX_CLIENT_EXTENSION_SDK = ClientSDK
     ;(globalThis as any).AUXX_SHARED_SDK = SharedSDK
@@ -467,7 +466,7 @@ async function main() {
  */
 function setupHostHandlers() {
   // Handle component render requests
-  Host.onRequest('render-component', async ({ id }: { id: string}) => {
+  Host.onRequest('render-component', async ({ id }: { id: string }) => {
     try {
       const component = SURFACES.getRenderedComponent(id)
       if (!component) {
@@ -683,9 +682,9 @@ async function loadExtensionBundle(bundleUrl: string): Promise<void> {
       reject(
         new ExtensionLoadError(
           `Bundle load timeout after 8000ms\n` +
-          `URL: ${bundleUrl}\n` +
-          `The extension bundle failed to download within the timeout period. ` +
-          `This may indicate network issues, slow connection, or unavailable bundle URL.`
+            `URL: ${bundleUrl}\n` +
+            `The extension bundle failed to download within the timeout period. ` +
+            `This may indicate network issues, slow connection, or unavailable bundle URL.`
         )
       )
     }, 8000) // 8 second timeout for bundle loading

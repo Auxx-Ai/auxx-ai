@@ -1,10 +1,10 @@
 // packages/lib/src/threads/unread-service.ts
 import { database as db, schema } from '@auxx/database'
-import { eq, and, or, inArray, sql, count, lt, isNull } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
-import { type UserUnreadCounts, type FullCountsResponse } from './types'
-import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
+import { and, count, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import type { ConditionGroup } from '../conditions/types'
+import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
+import type { FullCountsResponse, UserUnreadCounts } from './types'
 
 const logger = createScopedLogger('unread-service')
 
@@ -481,10 +481,7 @@ export class UnreadService {
     const withUnreadStatus = await db
       .select({ count: count() })
       .from(schema.Thread)
-      .innerJoin(
-        schema.ThreadReadStatus,
-        eq(schema.ThreadReadStatus.threadId, schema.Thread.id)
-      )
+      .innerJoin(schema.ThreadReadStatus, eq(schema.ThreadReadStatus.threadId, schema.Thread.id))
       .where(
         and(
           eq(schema.Thread.organizationId, this.organizationId),
@@ -552,10 +549,7 @@ export class UnreadService {
     ])
 
     // Combine and deduplicate
-    const allIds = new Set([
-      ...userViews.map((v) => v.id),
-      ...sharedViews.map((v) => v.id),
-    ])
+    const allIds = new Set([...userViews.map((v) => v.id), ...sharedViews.map((v) => v.id)])
 
     return Array.from(allIds)
   }
@@ -612,10 +606,7 @@ export class UnreadService {
       const withUnreadStatusResult = await db
         .select({ count: count() })
         .from(schema.Thread)
-        .innerJoin(
-          schema.ThreadReadStatus,
-          eq(schema.ThreadReadStatus.threadId, schema.Thread.id)
-        )
+        .innerJoin(schema.ThreadReadStatus, eq(schema.ThreadReadStatus.threadId, schema.Thread.id))
         .where(
           and(
             whereCondition,

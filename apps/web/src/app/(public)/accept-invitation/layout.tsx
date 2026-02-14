@@ -1,5 +1,6 @@
 // import { SessionProvider } from 'next-auth/react'
 import { Suspense } from 'react'
+
 // import { auth } from '~/auth/server'
 
 type Props = { children: React.ReactNode }

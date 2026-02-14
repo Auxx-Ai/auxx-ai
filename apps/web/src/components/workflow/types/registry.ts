@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/types/registry.ts
 
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
-import { type ComponentType } from 'react'
-import { type UnifiedOutputVariablesFunction } from './output-variables'
+import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import type { ComponentType } from 'react'
+import type { UnifiedOutputVariablesFunction } from './output-variables'
 
 // Simplified typing approach to avoid Zod complexity
 

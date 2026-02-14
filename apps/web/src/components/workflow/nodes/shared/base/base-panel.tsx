@@ -1,73 +1,69 @@
 // apps/web/src/components/workflow/nodes/shared/base/base-panel.tsx
 
-import React, {
-  memo,
-  type ReactNode,
-  useEffect,
-  useRef,
-  useCallback,
-  useMemo,
-  useState,
-} from 'react'
-import { useDebouncedCallback } from '~/hooks/use-debounced-value'
-import { Input } from '@auxx/ui/components/input'
-import { DrawerHeader } from '@auxx/ui/components/drawer'
-import {
-  MoreHorizontal,
-  Target,
-  Copy,
-  Trash2,
-  RefreshCw,
-  TextCursorInput,
-  Medal,
-  Cog,
-  Play,
-  Pin,
-  PinOff,
-  PowerOff,
-  Power,
-} from 'lucide-react'
+import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Button } from '@auxx/ui/components/button'
+import { DrawerHeader } from '@auxx/ui/components/drawer'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
   DropdownMenuSub,
-  DropdownMenuSubTrigger,
   DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
+import { EntityIcon } from '@auxx/ui/components/icons'
+import { Input } from '@auxx/ui/components/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { cn } from '@auxx/ui/lib/utils'
+import {
+  Cog,
+  Copy,
+  Medal,
+  MoreHorizontal,
+  Pin,
+  PinOff,
+  Play,
+  Power,
+  PowerOff,
+  RefreshCw,
+  Target,
+  TextCursorInput,
+  Trash2,
+} from 'lucide-react'
+import React, {
+  memo,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
-import { EntityIcon } from '@auxx/ui/components/icons'
-
-// Store imports
-import { usePanelStore } from '~/components/workflow/store/panel-store'
-import { unifiedNodeRegistry } from '../../unified-registry'
-
 // Hooks
 import {
+  useNodeAddition,
+  useNodeCrud,
   useNodesInteractions,
+  useNonTriggerDefinitions,
+  useReadOnly,
   useRunSingleNode,
   useTitleValidation,
-  useNodeCrud,
-  useReadOnly,
-  useNonTriggerDefinitions,
-  useNodeAddition,
 } from '~/components/workflow/hooks'
-
+// Store imports
+import { usePanelStore } from '~/components/workflow/store/panel-store'
 // types
 import { NodeType } from '~/components/workflow/types'
-
+import { BlockSelector } from '~/components/workflow/ui/block-selector'
+import NextStep from '~/components/workflow/ui/next-step'
 // Specific UI imports
 import { ReplaceTrigger } from '~/components/workflow/ui/replace-trigger'
-import { BlockSelector } from '~/components/workflow/ui/block-selector'
+import { useDebouncedCallback } from '~/hooks/use-debounced-value'
+import { unifiedNodeRegistry } from '../../unified-registry'
 import { SingleRunInputTab } from '../single-run-input-tab'
 import { SingleRunResultTab } from '../single-run-result-tab'
-import NextStep from '~/components/workflow/ui/next-step'
-import { DockToggleButton } from '~/components/global/dock-toggle-button'
 
 interface BasePanelProps {
   title?: string
@@ -81,7 +77,7 @@ interface BasePanelProps {
  * Component to display keyboard shortcuts alongside menu items
  */
 const KeyboardShortcut = ({ shortcut }: { shortcut: string }) => (
-  <span className="ml-auto pl-2 text-xs text-muted-foreground">{shortcut}</span>
+  <span className='ml-auto pl-2 text-xs text-muted-foreground'>{shortcut}</span>
 )
 
 /**
@@ -271,25 +267,25 @@ export const BasePanel = memo<BasePanelProps>(
     }, [nodeType])
 
     return (
-      <div className="flex-1 h-full w-full flex flex-col overflow-y-auto [--sticky-offset:89px]">
+      <div className='flex-1 h-full w-full flex flex-col overflow-y-auto [--sticky-offset:89px]'>
         <DrawerHeader
           icon={
             <EntityIcon
               iconId={nodeIconName}
-              className="size-6 text-white"
+              className='size-6 text-white'
               style={{ backgroundColor: nodeColor }}
             />
           }
           title={
-            <div className="relative flex-1">
+            <div className='relative flex-1'>
               <Input
-                id="title"
-                variant="transparent"
+                id='title'
+                variant='transparent'
                 value={localTitle}
                 onChange={handleTitleChange}
                 onBlur={handleTitleBlur}
                 onKeyDown={handleTitleKeyDown}
-                placeholder="Enter node title"
+                placeholder='Enter node title'
                 tabIndex={-1}
                 className={cn(
                   'mr-2 h-7 min-w-0 w-full appearance-none rounded-md border focus-visible:ring-1 focus-visible:ring-blue-500 px-1 outline-none',
@@ -298,7 +294,7 @@ export const BasePanel = memo<BasePanelProps>(
                 )}
               />
               {titleError && (
-                <div className="absolute top-full left-0 mt-1 text-xs text-red-500 z-20">
+                <div className='absolute top-full left-0 mt-1 text-xs text-red-500 z-20'>
                   {titleError === 'empty' && 'Title cannot be empty'}
                   {titleError === 'duplicate' && 'Title must be unique'}
                   {titleError === 'contains-dot' && 'Title cannot contain dots'}
@@ -312,11 +308,11 @@ export const BasePanel = memo<BasePanelProps>(
           }}
           actions={
             <>
-              <Tooltip content="Center viewport on this node">
+              <Tooltip content='Center viewport on this node'>
                 <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="rounded-full"
+                  variant='ghost'
+                  size='icon-sm'
+                  className='rounded-full'
                   onClick={() => handleCenterOnNode(nodeId)}
                   tabIndex={-1}>
                   <Target />
@@ -324,31 +320,31 @@ export const BasePanel = memo<BasePanelProps>(
               </Tooltip>
               <Tooltip content={isPinned ? 'Unpin sidebar' : 'Pin sidebar'}>
                 <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="rounded-full"
+                  variant='ghost'
+                  size='icon-sm'
+                  className='rounded-full'
                   onClick={pinSidebar}
                   tabIndex={-1}>
                   {isPinned ? <PinOff /> : <Pin />}
                 </Button>
               </Tooltip>
-              <DockToggleButton size="icon-sm" />
+              <DockToggleButton size='icon-sm' />
 
               {!isReadOnly && (
                 <DropdownMenu modal={false}>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" className="rounded-full" tabIndex={-1}>
+                    <Button variant='ghost' size='icon-sm' className='rounded-full' tabIndex={-1}>
                       <MoreHorizontal />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuContent align='end' className='w-48'>
                     {!isTrigger && (
                       <DropdownMenuSub>
                         <DropdownMenuSubTrigger>
                           <RefreshCw />
                           Change Block
                         </DropdownMenuSubTrigger>
-                        <DropdownMenuSubContent className="p-0 w-[220px]">
+                        <DropdownMenuSubContent className='p-0 w-[220px]'>
                           <BlockSelector
                             inline={true}
                             open={true}
@@ -362,7 +358,7 @@ export const BasePanel = memo<BasePanelProps>(
                     <DropdownMenuItem onClick={() => handleCopyNode(nodeId)}>
                       <Copy />
                       Copy
-                      <KeyboardShortcut shortcut="⌘C" />
+                      <KeyboardShortcut shortcut='⌘C' />
                     </DropdownMenuItem>
                     {canBeDisabled && (
                       <DropdownMenuItem
@@ -380,15 +376,15 @@ export const BasePanel = memo<BasePanelProps>(
                             Disable Node
                           </>
                         )}
-                        <KeyboardShortcut shortcut="D" />
+                        <KeyboardShortcut shortcut='D' />
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuItem
                       onClick={() => handleDeleteNode(nodeId)}
-                      variant="destructive">
+                      variant='destructive'>
                       <Trash2 />
                       Delete
-                      <KeyboardShortcut shortcut="Del" />
+                      <KeyboardShortcut shortcut='Del' />
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -396,54 +392,54 @@ export const BasePanel = memo<BasePanelProps>(
             </>
           }>
           {/* Description area */}
-          <div className="leading-0 group flex rounded-lg px-2 py-[5px]">
+          <div className='leading-0 group flex rounded-lg px-2 py-[5px]'>
             <AutosizeTextarea
-              id="desc"
+              id='desc'
               minHeight={1}
               value={localDesc}
               onChange={handleDescChange}
               onBlur={handleDescBlur}
               onKeyDown={handleDescKeyDown}
-              className="w-full bg-transparent dark:bg-transparent border-none resize-none appearance-none text-xs leading-[18px] caret-[#295EFF] outline-none"
-              placeholder="Enter node description"
+              className='w-full bg-transparent dark:bg-transparent border-none resize-none appearance-none text-xs leading-[18px] caret-[#295EFF] outline-none'
+              placeholder='Enter node description'
             />
           </div>
         </DrawerHeader>
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col ">
-          <div className="w-full border-b flex flex-col flex-1">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className='flex-1 flex flex-col '>
+          <div className='w-full border-b flex flex-col flex-1'>
             <TabsList
-              variant="outline"
-              className="sticky top-[var(--sticky-offset)] z-10 bg-background/60 backdrop-blur-sm">
-              <TabsTrigger value="settings" variant="outline" size="sm">
+              variant='outline'
+              className='sticky top-[var(--sticky-offset)] z-10 bg-background/60 backdrop-blur-sm'>
+              <TabsTrigger value='settings' variant='outline' size='sm'>
                 <Cog />
                 Settings
               </TabsTrigger>
               {nodeDefinition?.canRunSingle && (
                 <>
                   {!isReadOnly && (
-                    <TabsTrigger value="input" variant="outline" size="sm">
+                    <TabsTrigger value='input' variant='outline' size='sm'>
                       <TextCursorInput />
                       Input
                     </TabsTrigger>
                   )}
-                  <TabsTrigger value="result" variant="outline" size="sm">
+                  <TabsTrigger value='result' variant='outline' size='sm'>
                     <Medal />
                     Result
                   </TabsTrigger>
                 </>
               )}
             </TabsList>
-            <TabsContent value="settings" className="flex-1 flex flex-col mt-0">
-              <div className="flex-1 flex-col flex">
-                <div className="flex-1 flex flex-col">{children}</div>
+            <TabsContent value='settings' className='flex-1 flex flex-col mt-0'>
+              <div className='flex-1 flex-col flex'>
+                <div className='flex-1 flex flex-col'>{children}</div>
 
                 {/* Next Step Section */}
                 {showNextStep && data && (
                   <>
                     {isTrigger && <ReplaceTrigger nodeId={nodeId} nodeType={nodeType} />}
-                    <div className="border-t bg-background sticky bottom-0">
-                      <div className="p-3">
-                        <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+                    <div className='border-t bg-background sticky bottom-0'>
+                      <div className='p-3'>
+                        <div className='mb-2 text-xs font-semibold uppercase text-muted-foreground'>
                           Next Steps
                         </div>
                         <NextStep data={data} nodeId={nodeId} />
@@ -456,11 +452,11 @@ export const BasePanel = memo<BasePanelProps>(
             {nodeDefinition?.canRunSingle && (
               <>
                 {!isReadOnly && (
-                  <TabsContent value="input" className="flex-1 flex flex-col p-0 mt-0">
+                  <TabsContent value='input' className='flex-1 flex flex-col p-0 mt-0'>
                     <SingleRunInputTab nodeId={nodeId} data={data} onRun={handleRun} />
                   </TabsContent>
                 )}
-                <TabsContent value="result" className="flex-1 flex flex-col p-0 mt-0">
+                <TabsContent value='result' className='flex-1 flex flex-col p-0 mt-0'>
                   <SingleRunResultTab nodeId={nodeId} onRun={handleRun} />
                 </TabsContent>
               </>

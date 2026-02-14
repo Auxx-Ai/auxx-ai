@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/dataset/types.ts
 
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
 import type { DocumentTypeValues } from '@auxx/database/enums'
+import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
 
 /**
  * Dataset node data interface

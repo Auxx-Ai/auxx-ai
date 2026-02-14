@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react'
 import { cn } from '@auxx/ui/lib/utils' // Assuming this utility exists for class names
+import type React from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { sanitizeSimple } from '~/lib/sanitize'
 
 interface EditableTextProps {
@@ -129,8 +130,7 @@ export const EditableText = ({
           suppressContentEditableWarning={true}
           // Render only the actual text state. If it was empty when clicked,
           // this div will be empty, allowing the user to type directly.
-          dangerouslySetInnerHTML={{ __html: sanitizeSimple(text) }}
-        >
+          dangerouslySetInnerHTML={{ __html: sanitizeSimple(text) }}>
           {/* Content is set via dangerouslySetInnerHTML */}
         </div>
       ) : (

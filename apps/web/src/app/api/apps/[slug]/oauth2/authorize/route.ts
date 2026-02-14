@@ -1,13 +1,13 @@
 // apps/web/src/app/api/apps/[slug]/oauth2/authorize/route.ts
 
-import { headers } from 'next/headers'
-import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '~/auth/server'
-import { database as db } from '@auxx/database'
-import { getRedisClient } from '@auxx/redis'
 import { WEBAPP_URL } from '@auxx/config/urls'
-import crypto from 'crypto'
+import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { getRedisClient } from '@auxx/redis'
+import crypto from 'crypto'
+import { headers } from 'next/headers'
+import { type NextRequest, NextResponse } from 'next/server'
+import { auth } from '~/auth/server'
 
 const logger = createScopedLogger('oauth-authorize')
 
@@ -59,10 +59,7 @@ function ensureOfflineAccessScope(
  *
  * Redirects user to OAuth provider's authorization page
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const session = await auth.api.getSession({ headers: await headers() })
 
   if (!session?.user?.id) {

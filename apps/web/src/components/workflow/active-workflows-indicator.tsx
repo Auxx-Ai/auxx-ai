@@ -2,10 +2,10 @@
 
 'use client'
 
-import { Loader2 } from 'lucide-react'
-import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
 import { Badge } from '@auxx/ui/components/badge'
+import { Loader2 } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
+import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
 
 /**
  * Shows count of active workflow runs in header/sidebar
@@ -20,8 +20,8 @@ export function ActiveWorkflowsIndicator() {
 
   return (
     <Tooltip content={`${activeCount} workflow${activeCount > 1 ? 's' : ''} running`}>
-      <Badge variant="secondary" className="gap-1">
-        <Loader2 className="size-3 animate-spin" />
+      <Badge variant='secondary' className='gap-1'>
+        <Loader2 className='size-3 animate-spin' />
         {activeCount}
       </Badge>
     </Tooltip>

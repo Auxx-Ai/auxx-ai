@@ -1,16 +1,16 @@
 // apps/web/src/components/custom-fields/ui/field-input-row.tsx
 'use client'
 
-import { VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
-import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import {
   extractRelationshipRecordIds,
   isMultiRelationship,
   type RecordId,
 } from '@auxx/lib/field-values/client'
-import { type RelationshipConfig, type ActorOptions } from '@auxx/types/custom-field'
 import type { ResourceField } from '@auxx/lib/resources/client'
-import { isActorId, toActorId, type ActorId } from '@auxx/types/actor'
+import { type ActorId, isActorId, toActorId } from '@auxx/types/actor'
+import type { ActorOptions, RelationshipConfig } from '@auxx/types/custom-field'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 
 /**
  * Extract ActorIds from various value formats.

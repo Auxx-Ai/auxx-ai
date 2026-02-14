@@ -1,5 +1,5 @@
 export {
-  processEmbeddingJob,
   deleteEmbeddingsForDocument,
+  processEmbeddingJob,
   processNextPendingJob,
 } from './embedding-service'

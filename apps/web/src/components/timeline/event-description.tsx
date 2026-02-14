@@ -1,17 +1,17 @@
 // apps/web/src/components/timeline/event-description.tsx
 'use client'
 
-import DOMPurify from 'dompurify'
-import { Badge } from '@auxx/ui/components/badge'
+import type { RecordId } from '@auxx/lib/resources/client'
 import {
   ContactEventType,
-  TicketEventType,
   EntityInstanceEventType,
+  TicketEventType,
   type TimelineEventBase,
 } from '@auxx/lib/timeline/client'
-import { StatusBadge } from './status-badge'
+import { Badge } from '@auxx/ui/components/badge'
+import DOMPurify from 'dompurify'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
-import type { RecordId } from '@auxx/lib/resources/client'
+import { StatusBadge } from './status-badge'
 
 /**
  * Props for the EventDescription component
@@ -35,7 +35,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Contact{' '}
-          <span className="emphasis">
+          <span className='emphasis'>
             {event.eventData.contact_first_name || event.eventData.firstName}{' '}
             {event.eventData.contact_last_name || event.eventData.lastName}
           </span>{' '}
@@ -46,20 +46,20 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case ContactEventType.UPDATED:
       return (
         <>
-          <span className="emphasis">{event.actor.name || 'Someone'}</span> updated contact details
+          <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated contact details
         </>
       )
 
     case ContactEventType.MERGED:
       return (
         <>
-          Contact merged into <span className="emphasis">{event.eventData.primaryContactName}</span>
+          Contact merged into <span className='emphasis'>{event.eventData.primaryContactName}</span>
         </>
       )
 
     case ContactEventType.STATUS_CHANGED:
       return (
-        <div className="flex items-center gap-1.5">
+        <div className='flex items-center gap-1.5'>
           Status changed to
           <StatusBadge status={event.eventData.contact_status || event.eventData.newStatus} />
         </div>
@@ -69,21 +69,21 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Ticket{' '}
-          <span className="emphasis">
+          <span className='emphasis'>
             #{event.eventData.ticket_number || event.eventData.number}
           </span>{' '}
           created
           {(event.eventData.ticket_title || event.eventData.title) && (
-            <div className="mt-0.5 truncate text-xs text-primary-500">
+            <div className='mt-0.5 truncate text-xs text-primary-500'>
               {event.eventData.ticket_title || event.eventData.title}
             </div>
           )}
           {event.relatedRecordId && (
-            <div className="mt-1 flex">
+            <div className='mt-1 flex'>
               <RecordBadge
                 recordId={event.relatedRecordId as RecordId}
                 showIcon
-                variant="link"
+                variant='link'
                 link
               />
             </div>
@@ -95,7 +95,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Ticket{' '}
-          <span className="emphasis">
+          <span className='emphasis'>
             #{event.eventData.ticket_number || event.eventData.number}
           </span>{' '}
           status changed to{' '}
@@ -106,9 +106,9 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case ContactEventType.EMAIL_RECEIVED:
       return (
         <>
-          <div className="mb-0.5 font-medium emphasis">Email received</div>
+          <div className='mb-0.5 font-medium emphasis'>Email received</div>
           {event.eventData.subject && (
-            <div className="truncate text-xs">Subject: {event.eventData.subject}</div>
+            <div className='truncate text-xs'>Subject: {event.eventData.subject}</div>
           )}
         </>
       )
@@ -116,9 +116,9 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case ContactEventType.EMAIL_SENT:
       return (
         <>
-          <div className="mb-0.5 font-medium emphasis">Email sent</div>
+          <div className='mb-0.5 font-medium emphasis'>Email sent</div>
           {event.eventData.subject && (
-            <div className="truncate text-xs">Subject: {event.eventData.subject}</div>
+            <div className='truncate text-xs'>Subject: {event.eventData.subject}</div>
           )}
         </>
       )
@@ -126,10 +126,10 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case ContactEventType.NOTE_ADDED:
       return (
         <>
-          <span className="emphasis">{event.actor.name || 'Someone'}</span> added a note
+          <span className='emphasis'>{event.actor.name || 'Someone'}</span> added a note
           {event.eventData.content && (
             <div
-              className="mt-1 line-clamp-2 text-xs"
+              className='mt-1 line-clamp-2 text-xs'
               dangerouslySetInnerHTML={{
                 __html: DOMPurify.sanitize(event.eventData.content),
               }}
@@ -141,24 +141,24 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case ContactEventType.NOTE_UPDATED:
       return (
         <>
-          <span className="emphasis">{event.actor.name || 'Someone'}</span> updated a note
+          <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated a note
         </>
       )
 
     case ContactEventType.NOTE_DELETED:
       return (
         <>
-          <span className="emphasis">{event.actor.name || 'Someone'}</span> deleted a note
+          <span className='emphasis'>{event.actor.name || 'Someone'}</span> deleted a note
         </>
       )
 
     case ContactEventType.GROUP_ADDED:
       return (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className='flex flex-wrap items-center gap-2'>
           <span>
-            <span className="emphasis">{event.actor.name || 'Someone'}</span> added to group
+            <span className='emphasis'>{event.actor.name || 'Someone'}</span> added to group
           </span>
-          <Badge variant="green" size="sm">
+          <Badge variant='green' size='sm'>
             {event.eventData.groupName}
           </Badge>
         </div>
@@ -166,11 +166,11 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
 
     case ContactEventType.GROUP_REMOVED:
       return (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className='flex flex-wrap items-center gap-2'>
           <span>
-            <span className="emphasis">{event.actor.name || 'Someone'}</span> removed from group
+            <span className='emphasis'>{event.actor.name || 'Someone'}</span> removed from group
           </span>
-          <Badge variant="red" size="sm">
+          <Badge variant='red' size='sm'>
             {event.eventData.groupName}
           </Badge>
         </div>
@@ -178,13 +178,13 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
 
     case ContactEventType.TAG_ADDED:
       return (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className='flex flex-wrap items-center gap-2'>
           <span>
-            <span className="emphasis">{event.actor.name || 'Someone'}</span> added tags
+            <span className='emphasis'>{event.actor.name || 'Someone'}</span> added tags
           </span>
-          <div className="flex gap-1">
+          <div className='flex gap-1'>
             {event.eventData.tags?.map((tag: string, idx: number) => (
-              <Badge variant="pill" size="sm" key={idx}>
+              <Badge variant='pill' size='sm' key={idx}>
                 {tag}
               </Badge>
             ))}
@@ -194,13 +194,13 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
 
     case ContactEventType.TAG_REMOVED:
       return (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className='flex flex-wrap items-center gap-2'>
           <span>
-            <span className="emphasis">{event.actor.name || 'Someone'}</span> removed tags
+            <span className='emphasis'>{event.actor.name || 'Someone'}</span> removed tags
           </span>
-          <div className="flex gap-1">
+          <div className='flex gap-1'>
             {event.eventData.tags?.map((tag: string, idx: number) => (
-              <Badge variant="pill" size="sm" key={idx}>
+              <Badge variant='pill' size='sm' key={idx}>
                 {tag}
               </Badge>
             ))}
@@ -210,16 +210,16 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
 
     case ContactEventType.FIELD_UPDATED:
       return (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className='flex flex-wrap items-center gap-2'>
           <span>
-            <span className="emphasis">{event.actor.name || 'Someone'}</span> updated{' '}
-            <span className="font-medium">{event.eventData.fieldName}</span>
+            <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated{' '}
+            <span className='font-medium'>{event.eventData.fieldName}</span>
           </span>
           {hasExpandableContent && (
             <button
-              type="button"
+              type='button'
               onClick={onToggleExpand}
-              className="inline-flex items-center rounded bg-accent-50 px-2 py-0.5 text-xs font-medium text-accent-700 transition-colors hover:bg-accent-100">
+              className='inline-flex items-center rounded bg-accent-50 px-2 py-0.5 text-xs font-medium text-accent-700 transition-colors hover:bg-accent-100'>
               View changes
             </button>
           )}
@@ -229,14 +229,14 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case ContactEventType.ASSIGNED:
       return (
         <>
-          Assigned to <span className="emphasis">{event.eventData.assigneeName}</span>
+          Assigned to <span className='emphasis'>{event.eventData.assigneeName}</span>
         </>
       )
 
     case ContactEventType.UNASSIGNED:
       return (
         <>
-          Unassigned from <span className="emphasis">{event.eventData.assigneeName}</span>
+          Unassigned from <span className='emphasis'>{event.eventData.assigneeName}</span>
         </>
       )
 
@@ -247,22 +247,22 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Ticket{' '}
-          <span className="emphasis">
+          <span className='emphasis'>
             #{event.eventData.ticket_number || event.eventData.number}
           </span>{' '}
           was created
           {(event.eventData.ticket_title || event.eventData.title) && (
-            <div className="mt-0.5 truncate text-xs text-primary-500">
+            <div className='mt-0.5 truncate text-xs text-primary-500'>
               {event.eventData.ticket_title || event.eventData.title}
             </div>
           )}
           {' for'}
           {event.relatedRecordId && (
-            <div className="flex-inline">
+            <div className='flex-inline'>
               <RecordBadge
                 recordId={event.relatedRecordId as RecordId}
                 showIcon
-                variant="link"
+                variant='link'
                 link
               />
             </div>
@@ -273,7 +273,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case TicketEventType.UPDATED:
       return (
         <>
-          <span className="emphasis">{event.actor.name || 'Someone'}</span> updated ticket details
+          <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated ticket details
         </>
       )
 
@@ -289,7 +289,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Priority changed to{' '}
-          <span className="emphasis">
+          <span className='emphasis'>
             {event.eventData.ticket_priority || event.eventData.newPriority}
           </span>
         </>
@@ -299,28 +299,28 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Type changed to{' '}
-          <span className="emphasis">{event.eventData.ticket_type || event.eventData.newType}</span>
+          <span className='emphasis'>{event.eventData.ticket_type || event.eventData.newType}</span>
         </>
       )
 
     case TicketEventType.DELETED:
       return (
         <>
-          Ticket <span className="emphasis">deleted</span>
+          Ticket <span className='emphasis'>deleted</span>
         </>
       )
 
     case TicketEventType.ARCHIVED:
       return (
         <>
-          <span className="emphasis">{event.actor.name || 'Someone'}</span> archived this ticket
+          <span className='emphasis'>{event.actor.name || 'Someone'}</span> archived this ticket
         </>
       )
 
     case TicketEventType.RESTORED:
       return (
         <>
-          <span className="emphasis">{event.actor.name || 'Someone'}</span> restored this ticket
+          <span className='emphasis'>{event.actor.name || 'Someone'}</span> restored this ticket
         </>
       )
 
@@ -328,7 +328,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Assigned to{' '}
-          <span className="emphasis">
+          <span className='emphasis'>
             {event.eventData.assignee_name || event.eventData.assigneeName || 'someone'}
           </span>
         </>
@@ -338,7 +338,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Unassigned from{' '}
-          <span className="emphasis">
+          <span className='emphasis'>
             {event.eventData.assignee_name || event.eventData.assigneeName || 'someone'}
           </span>
         </>
@@ -347,9 +347,9 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case TicketEventType.MESSAGE_RECEIVED:
       return (
         <>
-          <div className="mb-0.5 font-medium emphasis">Message received</div>
+          <div className='mb-0.5 font-medium emphasis'>Message received</div>
           {event.eventData.subject && (
-            <div className="truncate text-xs">Subject: {event.eventData.subject}</div>
+            <div className='truncate text-xs'>Subject: {event.eventData.subject}</div>
           )}
         </>
       )
@@ -358,9 +358,9 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case TicketEventType.REPLY_SENT:
       return (
         <>
-          <div className="mb-0.5 font-medium emphasis">Reply sent</div>
+          <div className='mb-0.5 font-medium emphasis'>Reply sent</div>
           {event.eventData.subject && (
-            <div className="truncate text-xs">Subject: {event.eventData.subject}</div>
+            <div className='truncate text-xs'>Subject: {event.eventData.subject}</div>
           )}
         </>
       )
@@ -368,10 +368,10 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case TicketEventType.NOTE_ADDED:
       return (
         <>
-          <span className="emphasis">{event.actor.name || 'Someone'}</span> added a note
+          <span className='emphasis'>{event.actor.name || 'Someone'}</span> added a note
           {event.eventData.content && (
             <div
-              className="mt-1 line-clamp-2 text-xs"
+              className='mt-1 line-clamp-2 text-xs'
               dangerouslySetInnerHTML={{
                 __html: DOMPurify.sanitize(event.eventData.content),
               }}
@@ -383,14 +383,14 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case TicketEventType.NOTE_UPDATED:
       return (
         <>
-          <span className="emphasis">{event.actor.name || 'Someone'}</span> updated a note
+          <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated a note
         </>
       )
 
     case TicketEventType.NOTE_DELETED:
       return (
         <>
-          <span className="emphasis">{event.actor.name || 'Someone'}</span> deleted a note
+          <span className='emphasis'>{event.actor.name || 'Someone'}</span> deleted a note
         </>
       )
 
@@ -398,7 +398,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Ticket merged into{' '}
-          <span className="emphasis">
+          <span className='emphasis'>
             #{event.eventData.target_ticket_number || event.eventData.targetTicketNumber}
           </span>
         </>
@@ -408,7 +408,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Linked to ticket{' '}
-          <span className="emphasis">
+          <span className='emphasis'>
             #{event.eventData.linked_ticket_number || event.eventData.linkedTicketNumber}
           </span>
         </>
@@ -418,7 +418,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Unlinked from ticket{' '}
-          <span className="emphasis">
+          <span className='emphasis'>
             #{event.eventData.unlinked_ticket_number || event.eventData.unlinkedTicketNumber}
           </span>
         </>
@@ -426,13 +426,13 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
 
     case TicketEventType.TAG_ADDED:
       return (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className='flex flex-wrap items-center gap-2'>
           <span>
-            <span className="emphasis">{event.actor.name || 'Someone'}</span> added tags
+            <span className='emphasis'>{event.actor.name || 'Someone'}</span> added tags
           </span>
-          <div className="flex gap-1">
+          <div className='flex gap-1'>
             {event.eventData.tags?.map((tag: string, idx: number) => (
-              <Badge variant="pill" size="sm" key={idx}>
+              <Badge variant='pill' size='sm' key={idx}>
                 {tag}
               </Badge>
             ))}
@@ -442,13 +442,13 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
 
     case TicketEventType.TAG_REMOVED:
       return (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className='flex flex-wrap items-center gap-2'>
           <span>
-            <span className="emphasis">{event.actor.name || 'Someone'}</span> removed tags
+            <span className='emphasis'>{event.actor.name || 'Someone'}</span> removed tags
           </span>
-          <div className="flex gap-1">
+          <div className='flex gap-1'>
             {event.eventData.tags?.map((tag: string, idx: number) => (
-              <Badge variant="pill" size="sm" key={idx}>
+              <Badge variant='pill' size='sm' key={idx}>
                 {tag}
               </Badge>
             ))}
@@ -458,16 +458,16 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
 
     case TicketEventType.FIELD_UPDATED:
       return (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className='flex flex-wrap items-center gap-2'>
           <span>
-            <span className="emphasis">{event.actor.name || 'Someone'}</span> updated{' '}
-            <span className="font-medium">{event.eventData.fieldName}</span>
+            <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated{' '}
+            <span className='font-medium'>{event.eventData.fieldName}</span>
           </span>
           {hasExpandableContent && (
             <button
-              type="button"
+              type='button'
               onClick={onToggleExpand}
-              className="inline-flex items-center rounded bg-accent-50 px-2 py-0.5 text-xs font-medium text-accent-700 transition-colors hover:bg-accent-100">
+              className='inline-flex items-center rounded bg-accent-50 px-2 py-0.5 text-xs font-medium text-accent-700 transition-colors hover:bg-accent-100'>
               View changes
             </button>
           )}
@@ -477,14 +477,14 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case TicketEventType.WORKFLOW_TRIGGERED:
       return (
         <>
-          Workflow <span className="emphasis">{event.eventData.workflowName || 'triggered'}</span>
+          Workflow <span className='emphasis'>{event.eventData.workflowName || 'triggered'}</span>
         </>
       )
 
     case TicketEventType.WORKFLOW_COMPLETED:
       return (
         <>
-          Workflow <span className="emphasis">{event.eventData.workflowName || 'completed'}</span>
+          Workflow <span className='emphasis'>{event.eventData.workflowName || 'completed'}</span>
         </>
       )
 
@@ -494,29 +494,29 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case EntityInstanceEventType.CREATED:
       return (
         <>
-          Record <span className="emphasis">created</span>
+          Record <span className='emphasis'>created</span>
         </>
       )
 
     case EntityInstanceEventType.UPDATED:
       return (
         <>
-          <span className="emphasis">{event.actor.name || 'Someone'}</span> updated this record
+          <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated this record
         </>
       )
 
     case EntityInstanceEventType.FIELD_UPDATED:
       return (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className='flex flex-wrap items-center gap-2'>
           <span>
-            <span className="emphasis">{event.actor.name || 'Someone'}</span> updated{' '}
-            <span className="font-medium">{event.eventData.fieldName}</span>
+            <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated{' '}
+            <span className='font-medium'>{event.eventData.fieldName}</span>
           </span>
           {hasExpandableContent && (
             <button
-              type="button"
+              type='button'
               onClick={onToggleExpand}
-              className="inline-flex items-center rounded bg-accent-50 px-2 py-0.5 text-xs font-medium text-accent-700 transition-colors hover:bg-accent-100">
+              className='inline-flex items-center rounded bg-accent-50 px-2 py-0.5 text-xs font-medium text-accent-700 transition-colors hover:bg-accent-100'>
               View changes
             </button>
           )}
@@ -526,56 +526,56 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case EntityInstanceEventType.DELETED:
       return (
         <>
-          Record <span className="emphasis">deleted</span>
+          Record <span className='emphasis'>deleted</span>
         </>
       )
 
     case EntityInstanceEventType.ARCHIVED:
       return (
         <>
-          <span className="emphasis">{event.actor.name || 'Someone'}</span> archived this record
+          <span className='emphasis'>{event.actor.name || 'Someone'}</span> archived this record
         </>
       )
 
     case EntityInstanceEventType.RESTORED:
       return (
         <>
-          <span className="emphasis">{event.actor.name || 'Someone'}</span> restored this record
+          <span className='emphasis'>{event.actor.name || 'Someone'}</span> restored this record
         </>
       )
 
     case EntityInstanceEventType.NOTE_ADDED:
       return (
         <>
-          <span className="emphasis">{event.actor.name || 'Someone'}</span> added a note
+          <span className='emphasis'>{event.actor.name || 'Someone'}</span> added a note
         </>
       )
 
     case EntityInstanceEventType.NOTE_UPDATED:
       return (
         <>
-          <span className="emphasis">{event.actor.name || 'Someone'}</span> updated a note
+          <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated a note
         </>
       )
 
     case EntityInstanceEventType.NOTE_DELETED:
       return (
         <>
-          <span className="emphasis">{event.actor.name || 'Someone'}</span> deleted a note
+          <span className='emphasis'>{event.actor.name || 'Someone'}</span> deleted a note
         </>
       )
 
     case EntityInstanceEventType.WORKFLOW_TRIGGERED:
       return (
         <>
-          Workflow <span className="emphasis">{event.eventData.workflowName || 'triggered'}</span>
+          Workflow <span className='emphasis'>{event.eventData.workflowName || 'triggered'}</span>
         </>
       )
 
     case EntityInstanceEventType.WORKFLOW_COMPLETED:
       return (
         <>
-          Workflow <span className="emphasis">{event.eventData.workflowName || 'completed'}</span>
+          Workflow <span className='emphasis'>{event.eventData.workflowName || 'completed'}</span>
         </>
       )
 

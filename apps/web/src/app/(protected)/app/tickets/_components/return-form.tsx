@@ -1,15 +1,15 @@
 // components/tickets/ticket-forms/return-form.tsx
 'use client'
 
-import { type UseFormReturn } from 'react-hook-form'
-import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@auxx/ui/components/form'
-import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
 import { Button } from '@auxx/ui/components/button'
 import { Calendar } from '@auxx/ui/components/calendar'
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@auxx/ui/components/form'
+import { Input } from '@auxx/ui/components/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { CalendarIcon } from 'lucide-react'
+import { Textarea } from '@auxx/ui/components/textarea'
 import { format } from 'date-fns'
+import { CalendarIcon } from 'lucide-react'
+import type { UseFormReturn } from 'react-hook-form'
 
 interface ReturnFormProps {
   form: UseFormReturn<any>
@@ -52,20 +52,20 @@ export function ReturnForm({ form, data, setData }: ReturnFormProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+    <div className='space-y-4'>
+      <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
         {/* Order ID field */}
-        <div className="flex flex-col space-y-1.5">
+        <div className='flex flex-col space-y-1.5'>
           <FormLabel>Order ID</FormLabel>
           <Input
             value={data.orderId}
             onChange={(e) => setData({ ...data, orderId: e.target.value })}
-            placeholder="Enter order ID"
+            placeholder='Enter order ID'
           />
         </div>
 
         {/* Order Date field */}
-        <div className="flex flex-col space-y-1.5">
+        <div className='flex flex-col space-y-1.5'>
           <FormLabel>Order Date</FormLabel>
           <Popover>
             <PopoverTrigger asChild>
@@ -75,12 +75,12 @@ export function ReturnForm({ form, data, setData }: ReturnFormProps) {
                   !data.orderDate ? 'text-muted-foreground' : ''
                 }`}>
                 {data.orderDate ? format(data.orderDate, 'PPP') : <span>Pick a date</span>}
-                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                <CalendarIcon className='ml-auto h-4 w-4 opacity-50' />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
+            <PopoverContent className='w-auto p-0' align='start'>
               <Calendar
-                mode="single"
+                mode='single'
                 selected={data.orderDate}
                 onSelect={(date) => setData({ ...data, orderDate: date })}
                 disabled={(date) => date > new Date(new Date().setHours(23, 59, 59, 999))}
@@ -92,50 +92,50 @@ export function ReturnForm({ form, data, setData }: ReturnFormProps) {
       </div>
 
       <div>
-        <div className="mb-2 flex items-center justify-between">
+        <div className='mb-2 flex items-center justify-between'>
           <FormLabel>Return Items</FormLabel>
-          <Button type="button" variant="outline" size="sm" onClick={addReturnItem}>
+          <Button type='button' variant='outline' size='sm' onClick={addReturnItem}>
             Add Item
           </Button>
         </div>
 
         {data.returnItems.map((item, index) => (
-          <div key={index} className="mb-2 grid grid-cols-12 items-center gap-2">
-            <div className="col-span-4">
+          <div key={index} className='mb-2 grid grid-cols-12 items-center gap-2'>
+            <div className='col-span-4'>
               <Input
                 value={item.name}
                 onChange={(e) => updateReturnItem(index, 'name', e.target.value)}
-                placeholder="Item name"
+                placeholder='Item name'
               />
             </div>
-            <div className="col-span-2">
+            <div className='col-span-2'>
               <Input
-                type="number"
+                type='number'
                 value={item.quantity}
                 min={1}
                 onChange={(e) => updateReturnItem(index, 'quantity', e.target.value)}
-                placeholder="Qty"
+                placeholder='Qty'
               />
             </div>
-            <div className="col-span-2">
+            <div className='col-span-2'>
               <Input
                 value={item.sku}
                 onChange={(e) => updateReturnItem(index, 'sku', e.target.value)}
-                placeholder="SKU"
+                placeholder='SKU'
               />
             </div>
-            <div className="col-span-3">
+            <div className='col-span-3'>
               <Input
                 value={item.reason}
                 onChange={(e) => updateReturnItem(index, 'reason', e.target.value)}
-                placeholder="Reason"
+                placeholder='Reason'
               />
             </div>
-            <div className="col-span-1">
+            <div className='col-span-1'>
               <Button
-                type="button"
-                variant="ghost"
-                size="sm"
+                type='button'
+                variant='ghost'
+                size='sm'
                 onClick={() => removeReturnItem(index)}
                 disabled={data.returnItems.length <= 1}>
                 &times;
@@ -145,13 +145,13 @@ export function ReturnForm({ form, data, setData }: ReturnFormProps) {
         ))}
       </div>
 
-      <div className="flex flex-col space-y-1.5">
+      <div className='flex flex-col space-y-1.5'>
         <FormLabel>Overall Return Reason</FormLabel>
         <Textarea
           value={data.returnReason}
           onChange={(e) => setData({ ...data, returnReason: e.target.value })}
-          placeholder="Overall reason for the return"
-          className="min-h-[80px]"
+          placeholder='Overall reason for the return'
+          className='min-h-[80px]'
         />
       </div>
     </div>

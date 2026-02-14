@@ -2,9 +2,9 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
-import { Tooltip } from '~/components/global/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistance, isValid, parseISO } from 'date-fns'
+import { Tooltip } from '~/components/global/tooltip'
 
 interface BadgeAiQuotaProps {
   /** Type of quota: trial, paid, free */
@@ -52,13 +52,13 @@ export function BadgeAiQuota({ quotaUsed, quotaLimit, resetsAt, className }: Bad
 
   return (
     <Tooltip content={tooltipText}>
-      <Badge variant="secondary" className={cn('text-xs cursor-default', className)}>
+      <Badge variant='secondary' className={cn('text-xs cursor-default', className)}>
         {isUnlimited ? (
           'Unlimited'
         ) : (
           <>
             {remaining}
-            <span className="ms-1 font-semibold">credits</span>
+            <span className='ms-1 font-semibold'>credits</span>
           </>
         )}
       </Badge>

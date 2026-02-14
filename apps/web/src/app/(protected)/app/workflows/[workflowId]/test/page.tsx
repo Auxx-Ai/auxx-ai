@@ -1,9 +1,11 @@
 // apps/web/src/app/(protected)/app/workflows/[workflowId]/test/page.tsx
 'use client'
 
-import { use, useState } from 'react'
-import { ArrowLeft, Play, TestTube2 } from 'lucide-react'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { Input } from '@auxx/ui/components/input'
+import { Label } from '@auxx/ui/components/label'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -11,17 +13,15 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import { Label } from '@auxx/ui/components/label'
-import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
-import { Switch } from '@auxx/ui/components/switch'
-import { api } from '~/trpc/react'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import Link from 'next/link'
-import { Badge } from '@auxx/ui/components/badge'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { Switch } from '@auxx/ui/components/switch'
+import { Textarea } from '@auxx/ui/components/textarea'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { ArrowLeft, Play, TestTube2 } from 'lucide-react'
+import Link from 'next/link'
+import { use, useState } from 'react'
+import { api } from '~/trpc/react'
 
 interface TestWorkflowPageProps {
   params: Promise<{ workflowId: string }>
@@ -110,15 +110,15 @@ export default function TestWorkflowPage({ params }: TestWorkflowPageProps) {
       <MainPage>
         <MainPageHeader>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title="Workflows" href="/app/workflows" />
-            <MainPageBreadcrumbItem title={<Skeleton className="h-4 w-32" />} />
-            <MainPageBreadcrumbItem title="Test" last />
+            <MainPageBreadcrumbItem title='Workflows' href='/app/workflows' />
+            <MainPageBreadcrumbItem title={<Skeleton className='h-4 w-32' />} />
+            <MainPageBreadcrumbItem title='Test' last />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className="p-6 space-y-4">
-            <Skeleton className="h-8 w-64" />
-            <Skeleton className="h-64 w-full" />
+          <div className='p-6 space-y-4'>
+            <Skeleton className='h-8 w-64' />
+            <Skeleton className='h-64 w-full' />
           </div>
         </MainPageContent>
       </MainPage>
@@ -130,21 +130,21 @@ export default function TestWorkflowPage({ params }: TestWorkflowPageProps) {
       <MainPage>
         <MainPageHeader>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title="Workflows" href="/app/workflows" />
-            <MainPageBreadcrumbItem title="Not Found" />
-            <MainPageBreadcrumbItem title="Test" last />
+            <MainPageBreadcrumbItem title='Workflows' href='/app/workflows' />
+            <MainPageBreadcrumbItem title='Not Found' />
+            <MainPageBreadcrumbItem title='Test' last />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className="p-6 text-center">
-            <h1 className="text-2xl font-bold text-destructive mb-2">Workflow Not Found</h1>
-            <p className="text-muted-foreground mb-4">
+          <div className='p-6 text-center'>
+            <h1 className='text-2xl font-bold text-destructive mb-2'>Workflow Not Found</h1>
+            <p className='text-muted-foreground mb-4'>
               The workflow you're trying to test doesn't exist or you don't have permission to test
               it.
             </p>
             <Button asChild>
-              <Link href="/app/workflows">
-                <ArrowLeft className="h-4 w-4 mr-2" />
+              <Link href='/app/workflows'>
+                <ArrowLeft className='h-4 w-4 mr-2' />
                 Back to Workflows
               </Link>
             </Button>
@@ -158,26 +158,26 @@ export default function TestWorkflowPage({ params }: TestWorkflowPageProps) {
     <MainPage>
       <MainPageHeader
         action={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" asChild>
+          <div className='flex items-center gap-2'>
+            <Button variant='outline' size='sm' asChild>
               <Link href={`/app/workflows/${workflowId}`}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
+                <ArrowLeft className='h-4 w-4 mr-2' />
                 Back to Workflow
               </Link>
             </Button>
           </div>
         }>
         <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title="Workflows" href="/app/workflows" />
+          <MainPageBreadcrumbItem title='Workflows' href='/app/workflows' />
           <MainPageBreadcrumbItem title={workflow.name} href={`/app/workflows/${workflowId}`} />
-          <MainPageBreadcrumbItem title="Test" last />
+          <MainPageBreadcrumbItem title='Test' last />
         </MainPageBreadcrumb>
       </MainPageHeader>
 
       <MainPageContent>
-        <div className="p-6 max-w-6xl mx-auto grid gap-6 md:grid-cols-2">
+        <div className='p-6 max-w-6xl mx-auto grid gap-6 md:grid-cols-2'>
           {/* Test Configuration */}
-          <div className="space-y-6">
+          <div className='space-y-6'>
             <Card>
               <CardHeader>
                 <CardTitle>Test Configuration</CardTitle>
@@ -185,76 +185,76 @@ export default function TestWorkflowPage({ params }: TestWorkflowPageProps) {
                   Configure the test message data to simulate workflow execution
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="subject">Email Subject</Label>
+              <CardContent className='space-y-4'>
+                <div className='space-y-2'>
+                  <Label htmlFor='subject'>Email Subject</Label>
                   <Input
-                    id="subject"
+                    id='subject'
                     value={testSubject}
                     onChange={(e) => setTestSubject(e.target.value)}
-                    placeholder="Enter test email subject"
+                    placeholder='Enter test email subject'
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="body">Email Body</Label>
+                <div className='space-y-2'>
+                  <Label htmlFor='body'>Email Body</Label>
                   <Textarea
-                    id="body"
+                    id='body'
                     value={testBody}
                     onChange={(e) => setTestBody(e.target.value)}
-                    placeholder="Enter test email body"
+                    placeholder='Enter test email body'
                     rows={4}
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="from">From Email</Label>
+                <div className='grid grid-cols-2 gap-4'>
+                  <div className='space-y-2'>
+                    <Label htmlFor='from'>From Email</Label>
                     <Input
-                      id="from"
-                      type="email"
+                      id='from'
+                      type='email'
                       value={testFrom}
                       onChange={(e) => setTestFrom(e.target.value)}
-                      placeholder="test@example.com"
+                      placeholder='test@example.com'
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="fromName">From Name</Label>
+                  <div className='space-y-2'>
+                    <Label htmlFor='fromName'>From Name</Label>
                     <Input
-                      id="fromName"
+                      id='fromName'
                       value={testFromName}
                       onChange={(e) => setTestFromName(e.target.value)}
-                      placeholder="Test User"
+                      placeholder='Test User'
                     />
                   </div>
                 </div>
 
-                <div className="space-y-4 pt-4 border-t">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label htmlFor="dryRun">Dry Run</Label>
-                      <p className="text-sm text-muted-foreground">
+                <div className='space-y-4 pt-4 border-t'>
+                  <div className='flex items-center justify-between'>
+                    <div className='space-y-0.5'>
+                      <Label htmlFor='dryRun'>Dry Run</Label>
+                      <p className='text-sm text-muted-foreground'>
                         Simulate execution without making actual changes
                       </p>
                     </div>
-                    <Switch id="dryRun" checked={dryRun} onCheckedChange={setDryRun} />
+                    <Switch id='dryRun' checked={dryRun} onCheckedChange={setDryRun} />
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label htmlFor="debug">Debug Mode</Label>
-                      <p className="text-sm text-muted-foreground">Show detailed execution logs</p>
+                  <div className='flex items-center justify-between'>
+                    <div className='space-y-0.5'>
+                      <Label htmlFor='debug'>Debug Mode</Label>
+                      <p className='text-sm text-muted-foreground'>Show detailed execution logs</p>
                     </div>
-                    <Switch id="debug" checked={debug} onCheckedChange={setDebug} />
+                    <Switch id='debug' checked={debug} onCheckedChange={setDebug} />
                   </div>
                 </div>
 
                 <Button
-                  className="w-full"
+                  className='w-full'
                   onClick={handleRunTest}
                   loading={isTestRunning}
-                  loadingText="Running test...">
-                  <TestTube2 className="h-4 w-4 mr-2" />
+                  loadingText='Running test...'>
+                  <TestTube2 className='h-4 w-4 mr-2' />
                   Run Test
                 </Button>
               </CardContent>
@@ -262,26 +262,26 @@ export default function TestWorkflowPage({ params }: TestWorkflowPageProps) {
           </div>
 
           {/* Test Results */}
-          <div className="space-y-6">
-            <Card className="h-[600px] flex flex-col">
+          <div className='space-y-6'>
+            <Card className='h-[600px] flex flex-col'>
               <CardHeader>
                 <CardTitle>Test Results</CardTitle>
                 <CardDescription>View the execution results and debug information</CardDescription>
               </CardHeader>
-              <CardContent className="flex-1 overflow-hidden">
+              <CardContent className='flex-1 overflow-hidden'>
                 {!testResult ? (
-                  <div className="h-full flex items-center justify-center text-muted-foreground">
-                    <div className="text-center">
-                      <TestTube2 className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                  <div className='h-full flex items-center justify-center text-muted-foreground'>
+                    <div className='text-center'>
+                      <TestTube2 className='h-12 w-12 mx-auto mb-4 opacity-20' />
                       <p>Run a test to see results here</p>
                     </div>
                   </div>
                 ) : (
-                  <ScrollArea className="h-full">
-                    <div className="space-y-4">
+                  <ScrollArea className='h-full'>
+                    <div className='space-y-4'>
                       {/* Status Badge */}
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">Status:</span>
+                      <div className='flex items-center gap-2'>
+                        <span className='text-sm font-medium'>Status:</span>
                         <Badge variant={testResult.success ? 'default' : 'destructive'}>
                           {testResult.success ? 'Success' : 'Failed'}
                         </Badge>
@@ -289,19 +289,19 @@ export default function TestWorkflowPage({ params }: TestWorkflowPageProps) {
 
                       {/* Execution Summary */}
                       {testResult.result && (
-                        <div className="space-y-2 text-sm">
+                        <div className='space-y-2 text-sm'>
                           <div>
-                            <span className="font-medium">Execution ID:</span>{' '}
-                            <code className="text-xs bg-muted px-1 py-0.5 rounded">
+                            <span className='font-medium'>Execution ID:</span>{' '}
+                            <code className='text-xs bg-muted px-1 py-0.5 rounded'>
                               {testResult.result.executionId}
                             </code>
                           </div>
                           <div>
-                            <span className="font-medium">Total Time:</span>{' '}
+                            <span className='font-medium'>Total Time:</span>{' '}
                             {testResult.result.totalExecutionTime}ms
                           </div>
                           <div>
-                            <span className="font-medium">Nodes Executed:</span>{' '}
+                            <span className='font-medium'>Nodes Executed:</span>{' '}
                             {Object.keys(testResult.result.nodeResults || {}).length}
                           </div>
                         </div>
@@ -309,9 +309,9 @@ export default function TestWorkflowPage({ params }: TestWorkflowPageProps) {
 
                       {/* Debug Output */}
                       {debug && testResult.result?.debugLogs && (
-                        <div className="space-y-2">
-                          <h4 className="font-medium text-sm">Debug Logs</h4>
-                          <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">
+                        <div className='space-y-2'>
+                          <h4 className='font-medium text-sm'>Debug Logs</h4>
+                          <pre className='text-xs bg-muted p-3 rounded overflow-x-auto'>
                             {JSON.stringify(testResult.result.debugLogs, null, 2)}
                           </pre>
                         </div>
@@ -319,20 +319,20 @@ export default function TestWorkflowPage({ params }: TestWorkflowPageProps) {
 
                       {/* Error Information */}
                       {testResult.result?.error && (
-                        <div className="space-y-2">
-                          <h4 className="font-medium text-sm text-destructive">Error Details</h4>
-                          <div className="text-sm bg-destructive/10 text-destructive p-3 rounded">
+                        <div className='space-y-2'>
+                          <h4 className='font-medium text-sm text-destructive'>Error Details</h4>
+                          <div className='text-sm bg-destructive/10 text-destructive p-3 rounded'>
                             {testResult.result.error}
                           </div>
                         </div>
                       )}
 
                       {/* Full Result JSON */}
-                      <details className="space-y-2">
-                        <summary className="cursor-pointer font-medium text-sm">
+                      <details className='space-y-2'>
+                        <summary className='cursor-pointer font-medium text-sm'>
                           Full Execution Result
                         </summary>
-                        <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">
+                        <pre className='text-xs bg-muted p-3 rounded overflow-x-auto'>
                           {JSON.stringify(testResult, null, 2)}
                         </pre>
                       </details>

@@ -1,8 +1,9 @@
 // app/api/preview/kb/[knowledgeBaseId]/route.ts
-import { NextRequest, NextResponse } from 'next/server'
+
 import { database as db } from '@auxx/database'
 import { KnowledgeBaseModel } from '@auxx/database/models'
 import { KBService } from '@auxx/lib/kb'
+import { type NextRequest, NextResponse } from 'next/server'
 
 export async function GET(
   request: NextRequest,

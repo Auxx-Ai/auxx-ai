@@ -1,7 +1,6 @@
 // ~/components/global/integration-status-indicator.tsx
 'use client'
 
-import React from 'react'
 import { Badge } from '@auxx/ui/components/badge'
 import {
   Tooltip,
@@ -9,8 +8,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@auxx/ui/components/tooltip'
-import { Clock } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
+import { Clock } from 'lucide-react'
+import React from 'react'
 import { useIsSmallScreen } from '~/hooks/use-small-screen'
 import { integrationStatusConfig } from '../mail/mail-status-config'
 
@@ -97,10 +97,10 @@ export function IntegrationStatusIndicator({
               />
             </div>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="max-w-xs">
-            <div className="text-center">
-              <div className="font-medium">{config.label}</div>
-              <div className="text-xs text-muted-foreground mt-1">{config.description}</div>
+          <TooltipContent side='bottom' className='max-w-xs'>
+            <div className='text-center'>
+              <div className='font-medium'>{config.label}</div>
+              <div className='text-xs text-muted-foreground mt-1'>{config.description}</div>
             </div>
           </TooltipContent>
         </Tooltip>
@@ -112,7 +112,7 @@ export function IntegrationStatusIndicator({
   const content = (
     <Badge
       variant={config.variant}
-      size="sm"
+      size='sm'
       className={cn(
         'inline-flex items-center font-medium',
         sizeClasses.badge,
@@ -120,7 +120,7 @@ export function IntegrationStatusIndicator({
         className
       )}>
       <Icon className={cn(sizeClasses.icon, status === 'syncing' && 'animate-spin')} />
-      {showLabel && <span className="truncate">{config.label}</span>}
+      {showLabel && <span className='truncate'>{config.label}</span>}
     </Badge>
   )
 
@@ -129,10 +129,10 @@ export function IntegrationStatusIndicator({
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>{content}</TooltipTrigger>
-        <TooltipContent side="bottom" className="max-w-xs">
+        <TooltipContent side='bottom' className='max-w-xs'>
           <div>
-            <div className="font-medium">{config.label}</div>
-            <div className="text-xs text-muted-foreground mt-1">{config.description}</div>
+            <div className='font-medium'>{config.label}</div>
+            <div className='text-xs text-muted-foreground mt-1'>{config.description}</div>
           </div>
         </TooltipContent>
       </Tooltip>

@@ -1,7 +1,7 @@
-import { memo } from 'react'
-import { Panel, useStore } from '@xyflow/react'
-import type { ReactFlowState } from '@xyflow/react'
 import { pluralize } from '@auxx/utils/strings'
+import type { ReactFlowState } from '@xyflow/react'
+import { Panel, useStore } from '@xyflow/react'
+import { memo } from 'react'
 
 const nodesLengthSelector = (state: ReactFlowState) => state.nodes.length || 0
 const edgesLengthSelector = (state: ReactFlowState) => state.edges.length || 0
@@ -16,8 +16,8 @@ const CanvasNodeInfo = memo(() => {
 
   if (selectedNodes === 0 && selectedEdges === 0) return null
   return (
-    <Panel position="bottom-center">
-      <div className="text-xs text-muted-foreground glass px-2 py-1 rounded select-none">
+    <Panel position='bottom-center'>
+      <div className='text-xs text-muted-foreground glass px-2 py-1 rounded select-none'>
         {selectedNodes > 0 && (
           <>
             {selectedNodes} {pluralize(selectedNodes, 'node')}

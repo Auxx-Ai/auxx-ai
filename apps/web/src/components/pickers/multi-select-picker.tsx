@@ -1,22 +1,22 @@
 // apps/web/src/components/pickers/multi-select-picker.tsx
 'use client'
 
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
-import { Plus, Tags, Trash2, Check, X, TextCursorInput, Pencil, Loader2 } from 'lucide-react'
-import {
-  Command,
-  CommandInput,
-  CommandList,
-  CommandGroup,
-  CommandItem,
-  CommandEmpty,
-} from '@auxx/ui/components/command'
-import { Checkbox } from '@auxx/ui/components/checkbox'
-import { Button } from '@auxx/ui/components/button'
-import { cn } from '@auxx/ui/lib/utils'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import { getColorSwatch } from '@auxx/lib/custom-fields/client'
 import type { SelectOption } from '@auxx/types/custom-field'
+import { Button } from '@auxx/ui/components/button'
+import { Checkbox } from '@auxx/ui/components/checkbox'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@auxx/ui/components/command'
+import { EntityIcon } from '@auxx/ui/components/icons'
+import { cn } from '@auxx/ui/lib/utils'
+import { Check, Loader2, Pencil, Plus, Tags, TextCursorInput, Trash2, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 /**
  * Props for the MultiSelectPicker component
@@ -317,30 +317,30 @@ export function MultiSelectPicker({
     <Command shouldFilter={false} className={cn('rounded-lg', className)}>
       {/* Search/Edit Input Area */}
       {editingOptionId ? (
-        <div className="flex items-center border-b border-border/50 ps-3 pe-1">
-          <TextCursorInput className="mr-2 size-4 shrink-0 opacity-50" />
+        <div className='flex items-center border-b border-border/50 ps-3 pe-1'>
+          <TextCursorInput className='mr-2 size-4 shrink-0 opacity-50' />
           <input
             ref={editInputRef}
-            className="flex h-8 w-full rounded-md bg-transparent py-1 text-sm outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            className='flex h-8 w-full rounded-md bg-transparent py-1 text-sm outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50'
             value={editInputValue}
             onChange={(e) => setEditInputValue(e.target.value)}
             onKeyDown={handleEditKeyDown}
-            placeholder="Edit option name..."
+            placeholder='Edit option name...'
             disabled={disabled}
           />
           <button
-            type="button"
+            type='button'
             onClick={saveEdit}
             disabled={disabled}
-            className="rounded-full cursor-default flex items-center justify-center hover:bg-good-100 hover:text-good-500 size-5 shrink-0 mx-0.5">
-            <Check className="size-3" />
+            className='rounded-full cursor-default flex items-center justify-center hover:bg-good-100 hover:text-good-500 size-5 shrink-0 mx-0.5'>
+            <Check className='size-3' />
           </button>
           <button
-            type="button"
+            type='button'
             onClick={cancelEdit}
             disabled={disabled}
-            className="rounded-full cursor-default flex items-center justify-center hover:bg-bad-100 hover:text-bad-500 size-5 shrink-0">
-            <X className="size-3" />
+            className='rounded-full cursor-default flex items-center justify-center hover:bg-bad-100 hover:text-bad-500 size-5 shrink-0'>
+            <X className='size-3' />
           </button>
         </div>
       ) : (
@@ -358,8 +358,8 @@ export function MultiSelectPicker({
       <CommandList>
         {/* Loading state */}
         {isLoading ? (
-          <div className="flex items-center justify-center py-6">
-            <Loader2 className="size-4 animate-spin" />
+          <div className='flex items-center justify-center py-6'>
+            <Loader2 className='size-4 animate-spin' />
           </div>
         ) : (
           <>
@@ -369,15 +369,15 @@ export function MultiSelectPicker({
                 <CommandGroup>
                   <CommandItem
                     onSelect={createOption}
-                    className="cursor-pointer h-7"
+                    className='cursor-pointer h-7'
                     disabled={disabled}>
-                    <Plus className="text-muted-foreground" />
+                    <Plus className='text-muted-foreground' />
                     <span>
-                      Create "<span className="font-medium">{searchValue.trim()}</span>"
+                      Create "<span className='font-medium'>{searchValue.trim()}</span>"
                     </span>
                   </CommandItem>
                 </CommandGroup>
-                <div className="-mx-1 h-px bg-border/50" />
+                <div className='-mx-1 h-px bg-border/50' />
               </>
             )}
 
@@ -405,14 +405,14 @@ export function MultiSelectPicker({
                         isManageMode && 'py-0 pe-1',
                         editingOptionId === opt.value && 'bg-primary-200'
                       )}>
-                      <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-2">
+                      <div className='flex items-center justify-between w-full'>
+                        <div className='flex items-center gap-2'>
                           {/* Selection indicator (checkbox/radio) or manage icon */}
 
                           {/* Icon (if option has icon) */}
                           {opt.icon && (
                             <>
-                              <EntityIcon iconId={opt.icon} size="sm" color="gray" />
+                              <EntityIcon iconId={opt.icon} size='sm' color='gray' />
                             </>
                           )}
 
@@ -429,21 +429,21 @@ export function MultiSelectPicker({
                           {/* Option label */}
                           <span>{opt.label}</span>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <div className="flex items-center justify-center">
+                        <div className='flex items-center gap-1'>
+                          <div className='flex items-center justify-center'>
                             {isManageMode ? (
-                              <span className="bg-secondary rounded-sm py-[1px] px-[3px] text-[10px]">
+                              <span className='bg-secondary rounded-sm py-[1px] px-[3px] text-[10px]'>
                                 Click to edit
                               </span>
                             ) : multi ? (
                               <Checkbox
                                 checked={localSelected.includes(opt.value)}
-                                className="pointer-events-none"
+                                className='pointer-events-none'
                               />
                             ) : (
                               localSelected.includes(opt.value) && (
-                                <div className="rounded-full size-4 bg-info flex items-center justify-center border border-blue-800">
-                                  <Check className="size-2.5! text-white" strokeWidth={4} />
+                                <div className='rounded-full size-4 bg-info flex items-center justify-center border border-blue-800'>
+                                  <Check className='size-2.5! text-white' strokeWidth={4} />
                                 </div>
                               )
                             )}
@@ -451,9 +451,9 @@ export function MultiSelectPicker({
                           {/* Delete button in manage mode */}
                           {isManageMode && (
                             <Button
-                              variant="destructive-hover"
-                              type="button"
-                              size="icon-xs"
+                              variant='destructive-hover'
+                              type='button'
+                              size='icon-xs'
                               disabled={disabled}
                               onClick={(e) => {
                                 e.stopPropagation()
@@ -467,7 +467,7 @@ export function MultiSelectPicker({
                     </CommandItem>
                   ))}
                 </CommandGroup>
-                <div className="-mx-1 h-px bg-border/50" />
+                <div className='-mx-1 h-px bg-border/50' />
               </>
             )}
 
@@ -477,15 +477,15 @@ export function MultiSelectPicker({
                 <CommandItem
                   onSelect={toggleManageMode}
                   disabled={disabled}
-                  className="cursor-pointer h-7.5">
+                  className='cursor-pointer h-7.5'>
                   {isManageMode ? (
                     <>
-                      <Check className="text-good-500" />
+                      <Check className='text-good-500' />
                       <span>Done</span>
                     </>
                   ) : (
                     <>
-                      <Tags className="text-muted-foreground" />
+                      <Tags className='text-muted-foreground' />
                       <span>{manageLabel}</span>
                     </>
                   )}
@@ -499,8 +499,8 @@ export function MultiSelectPicker({
                 <CommandItem
                   onSelect={onCreate}
                   disabled={disabled}
-                  className="cursor-pointer h-7.5">
-                  <Plus className="text-muted-foreground" />
+                  className='cursor-pointer h-7.5'>
+                  <Plus className='text-muted-foreground' />
                   <span>{createLabel}</span>
                 </CommandItem>
               </CommandGroup>

@@ -2,10 +2,11 @@
 
 'use client'
 
-import React, { useCallback } from 'react'
 import { produce } from 'immer'
+import type React from 'react'
+import { useCallback } from 'react'
+import type { VariableAssignment } from '../types'
 import { VarAssignItem } from './var-assign-item'
-import { type VariableAssignment } from '../types'
 
 interface VarAssignListProps {
   assignments: VariableAssignment[]

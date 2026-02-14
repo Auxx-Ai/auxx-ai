@@ -4,7 +4,7 @@
  * Bundle loader - supports both S3 (production) and filesystem (development)
  */
 
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { parseError } from './utils.ts'
 
 /** S3 client instance (reused across invocations) */

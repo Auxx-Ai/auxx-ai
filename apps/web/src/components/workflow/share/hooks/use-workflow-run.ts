@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/share/hooks/use-workflow-run.ts
 'use client'
 
-import { useCallback, useRef } from 'react'
-import { useWorkflowShareStore } from '../workflow-share-provider'
 import { WorkflowEventType } from '@auxx/lib/workflow-engine/types'
 import type { ContentSegment } from '@auxx/lib/workflow-engine/types/content-segment'
+import { useCallback, useRef } from 'react'
+import { useWorkflowShareStore } from '../workflow-share-provider'
 
 /**
  * Workflow SSE event structure
@@ -99,7 +99,9 @@ export function useWorkflowRun(shareToken: string) {
                     title: event.data.title || 'Output',
                     status: 'completed',
                     message: event.data.outputs?.message as string | undefined,
-                    contentSegments: event.data.outputs?.contentSegments as ContentSegment[] | undefined,
+                    contentSegments: event.data.outputs?.contentSegments as
+                      | ContentSegment[]
+                      | undefined,
                   })
                 }
                 break

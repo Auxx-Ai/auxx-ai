@@ -1,8 +1,8 @@
 // apps/web/src/utils/prisma.ts
 
-import { DatabaseError } from 'pg'
-import { DrizzleError } from 'drizzle-orm/errors'
 import { databaseErrorCodes, NotFoundError } from '@auxx/lib/errors'
+import { DrizzleError } from 'drizzle-orm/errors'
+import { DatabaseError } from 'pg'
 
 // Unique constraint violation SQLSTATE code
 const UNIQUE_VIOLATION_CODE = databaseErrorCodes.uniqueViolation
@@ -14,7 +14,12 @@ const NOT_FOUND_SQLSTATES = new Set(['02000', 'P0002'])
 const getDatabaseError = (error: unknown) => {
   if (error instanceof DatabaseError) return error
   if (error instanceof DrizzleError && error.cause instanceof DatabaseError) return error.cause
-  if (error && typeof error === 'object' && 'cause' in error && (error as any).cause instanceof DatabaseError) {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'cause' in error &&
+    (error as any).cause instanceof DatabaseError
+  ) {
     return (error as { cause: DatabaseError }).cause
   }
   return undefined

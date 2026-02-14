@@ -1,9 +1,9 @@
 // apps/web/src/components/threads/hooks/use-selection-reset.ts
 'use client'
 
+import type { ConditionGroup } from '@auxx/lib/conditions'
 import { useEffect, useRef } from 'react'
 import { useThreadSelectionStore } from '../store/thread-selection-store'
-import type { ConditionGroup } from '@auxx/lib/conditions'
 
 /**
  * Resets thread selection when the list filter changes.

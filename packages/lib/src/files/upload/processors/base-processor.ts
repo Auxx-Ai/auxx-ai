@@ -1,26 +1,26 @@
 // packages/lib/src/files/upload/processors/base-processor.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { MediaAssetService } from '../../core/media-asset-service'
-import { FileService } from '../../core/file-service'
 import { AttachmentService } from '../../core/attachment-service'
-import type { FileProcessor, ProcessorMetadata, ProcessorResult } from './types'
-import type { PresignedUploadSession } from '../session-types'
+import { FileService } from '../../core/file-service'
+import { MediaAssetService } from '../../core/media-asset-service'
 import type {
-  UploadInitConfig,
-  UploadPreparedConfig,
-  UploadPolicy,
-  UploadPlan,
   ProcessorConfigResult,
+  UploadInitConfig,
+  UploadPlan,
+  UploadPolicy,
+  UploadPreparedConfig,
 } from '../init-types'
+import type { PresignedUploadSession } from '../session-types'
 import {
   clamp,
   deriveStorageKey,
+  getBucketForVisibility,
+  getDefaultKeyPrefix,
   normalizeMimeType,
   shouldUseMultipart,
-  getDefaultKeyPrefix,
-  getBucketForVisibility,
 } from '../util'
+import type { FileProcessor, ProcessorMetadata, ProcessorResult } from './types'
 
 const logger = createScopedLogger('base-processor')
 

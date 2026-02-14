@@ -1,11 +1,10 @@
 'use client'
 
-import * as React from 'react'
-import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
-import { Check, ChevronRight, Circle } from 'lucide-react'
-import { cva, type VariantProps } from 'class-variance-authority'
-
 import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { Check, ChevronRight, Circle } from 'lucide-react'
+import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
+import type * as React from 'react'
 
 const dropdownVariants = cva('', {
   variants: {
@@ -51,7 +50,7 @@ function DropdownMenuSubTrigger({
       )}
       {...props}>
       {children}
-      <ChevronRight className="ml-auto" />
+      <ChevronRight className='ml-auto' />
     </DropdownMenuPrimitive.SubTrigger>
   )
 }
@@ -134,9 +133,9 @@ function DropdownMenuCheckboxItem({
       )}
       checked={checked}
       {...props}>
-      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+      <span className='absolute left-2 flex h-3.5 w-3.5 items-center justify-center'>
         <DropdownMenuPrimitive.ItemIndicator>
-          <Check className="h-4 w-4" />
+          <Check className='h-4 w-4' />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
       {children}
@@ -161,9 +160,9 @@ function DropdownMenuRadioItem({
       )}
       {...props}>
       {children}
-      <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
+      <span className='absolute right-2 flex h-3.5 w-3.5 items-center justify-center'>
         <DropdownMenuPrimitive.ItemIndicator>
-          <Check className="h-5 w-5" />
+          <Check className='h-5 w-5' />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
     </DropdownMenuPrimitive.RadioItem>

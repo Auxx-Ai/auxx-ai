@@ -1,10 +1,10 @@
 // src/lib/providers/instagram/instagram-oauth.ts
 import { env, WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
-import { eq, and } from 'drizzle-orm'
-import crypto from 'crypto'
 import { InboxService } from '@auxx/lib/inboxes'
+import { createScopedLogger } from '@auxx/logger'
+import crypto from 'crypto'
+import { and, eq } from 'drizzle-orm'
 
 const logger = createScopedLogger('instagram-oauth')
 const API_VERSION = env.FACEBOOK_GRAPH_API_VERSION || 'v19.0' // Use a recent, stable version
@@ -199,15 +199,18 @@ export class InstagramOAuthService {
 
       // 7. Store or update integration in the database
       // Unique identifier: provider + instagramBusinessAccountId
-      const existingIntegrations = await db.select()
+      const existingIntegrations = await db
+        .select()
         .from(schema.Integration)
-        .where(and(
-          eq(schema.Integration.organizationId, orgId),
-          eq(schema.Integration.provider, 'instagram')
-        ))
+        .where(
+          and(
+            eq(schema.Integration.organizationId, orgId),
+            eq(schema.Integration.provider, 'instagram')
+          )
+        )
 
       // Filter by metadata in application code since Drizzle doesn't support JSON path queries elegantly
-      const existingIntegration = existingIntegrations.find(integration => {
+      const existingIntegration = existingIntegrations.find((integration) => {
         const metadata = integration.metadata as any
         return metadata?.instagramBusinessAccountId === instagramAccount.id
       })
@@ -215,7 +218,8 @@ export class InstagramOAuthService {
       let integration
       if (existingIntegration) {
         // Update existing integration
-        const [updatedIntegration] = await db.update(schema.Integration)
+        const [updatedIntegration] = await db
+          .update(schema.Integration)
           .set({
             refreshToken: longLivedUserToken || 'N/A', // Store LL UAT here
             accessToken: longLivedPageToken, // Store LL PAT here
@@ -229,7 +233,8 @@ export class InstagramOAuthService {
         integration = updatedIntegration
       } else {
         // Create new integration
-        const [newIntegration] = await db.insert(schema.Integration)
+        const [newIntegration] = await db
+          .insert(schema.Integration)
           .values({
             organizationId: orgId,
             provider: 'instagram',
@@ -425,7 +430,8 @@ export class InstagramOAuthService {
     // 3. Call DELETE /{user-id}/permissions?access_token={userAccessToken}
     // 4. Update DB to disable, clear tokens and metadata
     try {
-      const [integration] = await db.select()
+      const [integration] = await db
+        .select()
         .from(schema.Integration)
         .where(eq(schema.Integration.id, integrationId))
         .limit(1)
@@ -472,7 +478,8 @@ export class InstagramOAuthService {
         logger.warn('Missing FB User ID or UAT, cannot revoke app permissions.', { integrationId })
       }
 
-      await db.update(schema.Integration)
+      await db
+        .update(schema.Integration)
         .set({
           enabled: false,
           accessToken: null,
@@ -494,7 +501,8 @@ export class InstagramOAuthService {
     logger.info(
       `'refreshTokens' called for Instagram integration ${integrationId}. Checking token validity.`
     )
-    const [integration] = await db.select()
+    const [integration] = await db
+      .select()
       .from(schema.Integration)
       .where(eq(schema.Integration.id, integrationId))
       .limit(1)
@@ -517,7 +525,8 @@ export class InstagramOAuthService {
           `Instagram (Page) Access Token for integration ${integrationId} is invalid or expired.`,
           { debugData }
         )
-        await db.update(schema.Integration)
+        await db
+          .update(schema.Integration)
           .set({ enabled: false, accessToken: null })
           .where(eq(schema.Integration.id, integrationId))
         throw new Error('Instagram token is invalid. Re-authentication required.')
@@ -535,13 +544,14 @@ export class InstagramOAuthService {
 
   /** Get the Page Access Token */
   public async getPageAccessToken(integrationId: string): Promise<string | null> {
-    const [integration] = await db.select({
-      accessToken: schema.Integration.accessToken,
-      enabled: schema.Integration.enabled
-    })
-    .from(schema.Integration)
-    .where(eq(schema.Integration.id, integrationId))
-    .limit(1)
+    const [integration] = await db
+      .select({
+        accessToken: schema.Integration.accessToken,
+        enabled: schema.Integration.enabled,
+      })
+      .from(schema.Integration)
+      .where(eq(schema.Integration.id, integrationId))
+      .limit(1)
     if (integration?.enabled && integration.accessToken) {
       // Optionally run validity check before returning
       // await this.refreshTokens(integrationId).catch(() => { return null; }); // Ignore error here, just check
@@ -552,12 +562,13 @@ export class InstagramOAuthService {
 
   /** Get the Instagram Business Account ID */
   public async getInstagramAccountId(integrationId: string): Promise<string | null> {
-    const [integration] = await db.select({
-      metadata: schema.Integration.metadata
-    })
-    .from(schema.Integration)
-    .where(eq(schema.Integration.id, integrationId))
-    .limit(1)
+    const [integration] = await db
+      .select({
+        metadata: schema.Integration.metadata,
+      })
+      .from(schema.Integration)
+      .where(eq(schema.Integration.id, integrationId))
+      .limit(1)
     if (integration?.metadata) {
       const metadata = integration.metadata as unknown as Partial<InstagramIntegrationMetadata>
       return metadata.instagramBusinessAccountId ?? null
@@ -567,12 +578,13 @@ export class InstagramOAuthService {
 
   /** Get the linked Facebook Page ID */
   public async getPageId(integrationId: string): Promise<string | null> {
-    const [integration] = await db.select({
-      metadata: schema.Integration.metadata
-    })
-    .from(schema.Integration)
-    .where(eq(schema.Integration.id, integrationId))
-    .limit(1)
+    const [integration] = await db
+      .select({
+        metadata: schema.Integration.metadata,
+      })
+      .from(schema.Integration)
+      .where(eq(schema.Integration.id, integrationId))
+      .limit(1)
     if (integration?.metadata) {
       const metadata = integration.metadata as unknown as Partial<InstagramIntegrationMetadata>
       return metadata.pageId ?? null

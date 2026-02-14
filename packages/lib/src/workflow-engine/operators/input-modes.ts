@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/operators/input-modes.ts
 
-import { BaseType } from '../core/types'
 import type { Operator } from '../../conditions/operator-definitions'
+import { BaseType } from '../core/types'
 
 /**
  * Input rendering modes for condition values

@@ -1,13 +1,14 @@
 'use client'
+
 // /Users/mklooth/Sites/auxx-ai/apps/web/src/components/contacts/displays/display-wrapper.tsx
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { MouseEvent, ReactNode } from 'react'
-import { Check, Copy } from 'lucide-react'
-import { usePropertyContext } from '../property-provider'
-import { useDisplayOnlyContext } from '../display-only-provider'
-import { FieldOptionButton } from './field-option-button'
 import { cn } from '@auxx/ui/lib/utils'
+import { Check, Copy } from 'lucide-react'
+import type { MouseEvent, ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useDisplayOnlyContext } from '../display-only-provider'
+import { usePropertyContext } from '../property-provider'
+import { FieldOptionButton } from './field-option-button'
 
 /**
  * Helper hook that tries PropertyContext first (editable fields),
@@ -80,8 +81,8 @@ function DisplayWrapper({
   const renderedButtons = useMemo(() => {
     const extraButtons = buttons ?? []
     const copyButton = resolvedCopyValue ? (
-      <FieldOptionButton key="copy" label={copied ? 'Copied' : 'Copy'} onClick={handleCopy}>
-        {copied ? <Check className="size-2.5" /> : <Copy className="size-2.5" />}
+      <FieldOptionButton key='copy' label={copied ? 'Copied' : 'Copy'} onClick={handleCopy}>
+        {copied ? <Check className='size-2.5' /> : <Copy className='size-2.5' />}
       </FieldOptionButton>
     ) : null
 
@@ -89,8 +90,8 @@ function DisplayWrapper({
   }, [buttons, copied, handleCopy, resolvedCopyValue])
 
   return (
-    <div className="relative flex-1 overflow-hidden ">
-      <div className="group-hover/property-row:dark:bg-foreground/8 group-hover/property-row:bg-neutral-100 rounded-md flex items-start w-full gap-2 ">
+    <div className='relative flex-1 overflow-hidden '>
+      <div className='group-hover/property-row:dark:bg-foreground/8 group-hover/property-row:bg-neutral-100 rounded-md flex items-start w-full gap-2 '>
         <div
           className={cn(
             'rounded-md px-1 w-full overflow-hidden h-auto min-h-[28px] flex items-center mask-[linear-gradient(to_right,black_0%,black_calc(100%-40px),transparent_calc(100%-20px),transparent_100%)] mask-size-[160%_100%] mask-position-[60%_0%] group-hover/property-row:mask-position-[100%_0%] transition-[mask-position] duration-200 ease', // group-hover:bg-neutral-200 group-hover:dark:bg-foreground/8
@@ -106,9 +107,9 @@ function DisplayWrapper({
           </div>
         </div>
       </div>
-      <div className="pointer-events-none absolute inset-y-0 right-0.5 flex items-center pr-2">
+      <div className='pointer-events-none absolute inset-y-0 right-0.5 flex items-center pr-2'>
         {renderedButtons.length > 0 && (
-          <div className="pointer-events-auto flex items-center gap-0.5 shrink-0 absolute right-0 opacity-0 group-hover/property-row:opacity-100 transition-opacity duration-600 ease-out">
+          <div className='pointer-events-auto flex items-center gap-0.5 shrink-0 absolute right-0 opacity-0 group-hover/property-row:opacity-100 transition-opacity duration-600 ease-out'>
             {renderedButtons.map((button, index) => (
               <div key={index}>{button}</div>
             ))}

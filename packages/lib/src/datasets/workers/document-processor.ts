@@ -1,17 +1,17 @@
 // packages/lib/src/datasets/workers/document-processor.ts
 import { database as db, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
+import { DocumentStatus, IndexStatus } from '@auxx/database/enums'
+import type { ChunkPreprocessingOptions, ChunkSettings } from '@auxx/database/types'
+import { MediaAssetService } from '@auxx/lib/files'
+import { createDocumentProcessingFlow } from '@auxx/lib/jobs/flows'
 import { createScopedLogger } from '@auxx/logger'
+import { interpretEscapeSequences } from '@auxx/utils'
+import { eq } from 'drizzle-orm'
+import { DocumentEventType, type DocumentExecutionReporter } from '../events'
 import { ExtractorFactory } from '../extractors/extractor-factory'
 import { TextChunker } from '../processors/text-chunker'
-import type { DocumentProcessingJobData, WorkerJobResult } from '../types/worker.types'
-import { createDocumentProcessingFlow } from '@auxx/lib/jobs/flows'
-import { MediaAssetService } from '@auxx/lib/files'
-import { DocumentStatus, IndexStatus } from '@auxx/database/enums'
-import type { ChunkSettings, ChunkPreprocessingOptions } from '@auxx/database/types'
-import { interpretEscapeSequences } from '@auxx/utils'
-import { DocumentEventType, type DocumentExecutionReporter } from '../events'
 import { DocumentService } from '../services/document-service'
+import type { DocumentProcessingJobData, WorkerJobResult } from '../types/worker.types'
 
 const logger = createScopedLogger('document-processor')
 /**
@@ -69,7 +69,7 @@ export class DocumentProcessor {
 
       // 1. Extract content
       await reporter.emit(DocumentEventType.EXTRACTION_STARTED, { step: 'extraction' })
-      const extractionResult = await this.extractContent(jobData)
+      const extractionResult = await DocumentProcessor.extractContent(jobData)
 
       if (!extractionResult.success) {
         throw new Error(`Extraction failed: ${extractionResult.error}`)
@@ -97,7 +97,7 @@ export class DocumentProcessor {
       const settings = documentChunkSettings ?? datasetChunkSettings
 
       // 3. Clean content WITH preprocessing settings (preserves whitespace fix)
-      const cleanedContent = this.preprocessContent(
+      const cleanedContent = DocumentProcessor.preprocessContent(
         extractionResult.content!,
         settings?.preprocessing
       )
@@ -112,7 +112,7 @@ export class DocumentProcessor {
         contentLength: cleanedContent.length,
       })
 
-      const segments = await this.createSegments(
+      const segments = await DocumentProcessor.createSegments(
         documentId,
         datasetId,
         cleanedContent,

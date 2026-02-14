@@ -1,21 +1,21 @@
 // apps/web/src/components/manufacturing/parts/parts-drawer.tsx
 'use client'
 
-import * as React from 'react'
-import { Package, Trash, SquarePen, Expand } from 'lucide-react'
+import { parseRecordId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
-import { useRecord } from '~/components/resources'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { Tooltip } from '~/components/global/tooltip'
+import { Expand, Package, SquarePen, Trash } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import * as React from 'react'
+import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
+import { Tooltip } from '~/components/global/tooltip'
+import { useRecord } from '~/components/resources'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
-import { EntityIcon } from '@auxx/ui/components/icons'
-import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
-import { useRouter } from 'next/navigation'
-import { parseRecordId } from '@auxx/lib/resources/client'
 import type { RouterOutputs } from '~/trpc/react'
-import type { RecordId } from '@auxx/types/resource'
 
 /** Part type from the API */
 type Part = NonNullable<RouterOutputs['part']['byId']>
@@ -70,66 +70,58 @@ export function PartsDrawer({ open, onOpenChange, recordId, onDelete, onEdit }: 
       recordId={recordId}
       open={open}
       onOpenChange={onOpenChange}
-      entityType="part"
+      entityType='part'
       isDocked={isDocked}
       dockedWidth={dockedWidth}
       onWidthChange={setDockedWidth}
       minWidth={400}
       maxWidth={800}
       onClose={handleClose}
-      headerIcon={<EntityIcon iconId="package" color="orange" className="size-6" />}
-      headerTitle="Part"
+      headerIcon={<EntityIcon iconId='package' color='orange' className='size-6' />}
+      headerTitle='Part'
       headerActions={
         <>
           {part && onEdit && (
-            <Tooltip content="Edit part">
-              <Button variant="ghost" size="icon-xs" onClick={() => onEdit(part as Part)}>
+            <Tooltip content='Edit part'>
+              <Button variant='ghost' size='icon-xs' onClick={() => onEdit(part as Part)}>
                 <SquarePen />
               </Button>
             </Tooltip>
           )}
-          <Tooltip content="View full page">
+          <Tooltip content='View full page'>
             <Button
-              variant="ghost"
-              size="icon-xs"
+              variant='ghost'
+              size='icon-xs'
               onClick={() => router.push(`/app/parts?p=${partId}`)}>
               <Expand />
             </Button>
           </Tooltip>
-          <Tooltip content="Delete part">
+          <Tooltip content='Delete part'>
             <Button
-              variant="ghost"
-              size="icon-xs"
+              variant='ghost'
+              size='icon-xs'
               onClick={() => {
                 if (onDelete && partId) {
                   void onDelete(partId)
                 }
               }}>
-              <Trash className="text-bad-500" />
+              <Trash className='text-bad-500' />
             </Button>
           </Tooltip>
           <DockToggleButton />
         </>
       }
       cardContent={
-        <div className="flex gap-3 py-2 px-3 flex-row items-center justify-start border-b">
-          <div className="size-10 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0">
-            <Package className="size-6 text-neutral-500 dark:text-foreground" />
+        <div className='flex gap-3 py-2 px-3 flex-row items-center justify-start border-b'>
+          <div className='size-10 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0'>
+            <Package className='size-6 text-neutral-500 dark:text-foreground' />
           </div>
-          <div className="flex flex-col align-start w-full">
-            <div className="text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate">
-              {part ? (
-                part.title
-              ) : (
-                <Skeleton className="h-6 w-80 mb-1" />
-              )}
+          <div className='flex flex-col align-start w-full'>
+            <div className='text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate'>
+              {part ? part.title : <Skeleton className='h-6 w-80 mb-1' />}
             </div>
-            <div className="text-xs text-neutral-500 truncate">
-              {part ? (
-                <>SKU: {part.sku}</>
-              ) : (
-                <Skeleton className="h-4 w-40" />
-              )}
+            <div className='text-xs text-neutral-500 truncate'>
+              {part ? <>SKU: {part.sku}</> : <Skeleton className='h-4 w-40' />}
             </div>
           </div>
         </div>

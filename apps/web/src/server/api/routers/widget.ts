@@ -1,11 +1,12 @@
 // src/server/api/routers/widget.ts
-import { z } from 'zod'
-import { TRPCError } from '@trpc/server'
-import { createTRPCRouter, protectedProcedure, publicProcedure } from '~/server/api/trpc'
-import { createScopedLogger } from '@auxx/logger'
-import { widgetSchema } from '@auxx/lib/widgets/types'
+
 import { database as db, schema } from '@auxx/database'
-import { and, eq, desc, exists } from 'drizzle-orm'
+import { widgetSchema } from '@auxx/lib/widgets/types'
+import { createScopedLogger } from '@auxx/logger'
+import { TRPCError } from '@trpc/server'
+import { and, desc, eq, exists } from 'drizzle-orm'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure, publicProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('widget-router')
 
@@ -32,7 +33,10 @@ export const widgetRouter = createTRPCRouter({
                   .from(schema.OrganizationMember)
                   .where(
                     and(
-                      eq(schema.OrganizationMember.organizationId, schema.ChatWidget.organizationId),
+                      eq(
+                        schema.OrganizationMember.organizationId,
+                        schema.ChatWidget.organizationId
+                      ),
                       eq(schema.OrganizationMember.userId, ctx.session.user.id)
                     )
                   )
@@ -226,9 +230,7 @@ export const widgetRouter = createTRPCRouter({
         }
 
         // Delete widget
-        await db
-          .delete(schema.ChatWidget)
-          .where(eq(schema.ChatWidget.id, input.widgetId))
+        await db.delete(schema.ChatWidget).where(eq(schema.ChatWidget.id, input.widgetId))
 
         return { success: true }
       } catch (error) {
@@ -268,10 +270,7 @@ export const widgetRouter = createTRPCRouter({
           })
           .from(schema.ChatWidget)
           .where(
-            and(
-              eq(schema.ChatWidget.id, input.widgetId),
-              eq(schema.ChatWidget.isActive, true)
-            )
+            and(eq(schema.ChatWidget.id, input.widgetId), eq(schema.ChatWidget.isActive, true))
           )
           .limit(1)
 
@@ -322,14 +321,12 @@ export const widgetRouter = createTRPCRouter({
 
         // Create welcome message if configured
         if (widget.welcomeMessage) {
-          await db
-            .insert(schema.ChatMessage)
-            .values({
-              sessionId: session.id,
-              content: widget.welcomeMessage,
-              sender: 'SYSTEM',
-              status: 'DELIVERED',
-            })
+          await db.insert(schema.ChatMessage).values({
+            sessionId: session.id,
+            content: widget.welcomeMessage,
+            sender: 'SYSTEM',
+            status: 'DELIVERED',
+          })
         }
 
         return { sessionId: session.id, visitorId: session.visitorId }
@@ -370,7 +367,10 @@ export const widgetRouter = createTRPCRouter({
                   .from(schema.OrganizationMember)
                   .where(
                     and(
-                      eq(schema.OrganizationMember.organizationId, schema.ChatWidget.organizationId),
+                      eq(
+                        schema.OrganizationMember.organizationId,
+                        schema.ChatWidget.organizationId
+                      ),
                       eq(schema.OrganizationMember.userId, ctx.session.user.id)
                     )
                   )

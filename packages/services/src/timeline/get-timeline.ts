@@ -1,11 +1,11 @@
 // packages/services/src/timeline/get-timeline.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and, desc, inArray, lt, or } from 'drizzle-orm'
+import type { TimelineEventEntity } from '@auxx/database/models'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
+import { and, desc, eq, inArray, lt, or } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { TimelineEventEntity } from '@auxx/database/models'
-import { parseRecordId, toRecordId, type RecordId } from '@auxx/types/resource'
 
 /**
  * Cursor for timeline pagination
@@ -51,14 +51,7 @@ export interface GetTimelineEventsOutput {
  * @returns Result with timeline events and pagination info
  */
 export async function getTimelineEvents(input: GetTimelineEventsInput) {
-  const {
-    organizationId,
-    recordId,
-    cursor,
-    limit = 100,
-    actorFilter,
-    eventTypeFilter,
-  } = input
+  const { organizationId, recordId, cursor, limit = 100, actorFilter, eventTypeFilter } = input
 
   // Parse recordId to get components
   const { entityDefinitionId: entityType, entityInstanceId: entityId } = parseRecordId(recordId)

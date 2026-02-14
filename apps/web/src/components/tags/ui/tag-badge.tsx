@@ -1,10 +1,10 @@
 // apps/web/src/components/tags/ui/tag-badge.tsx
 'use client'
 
-import { X } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import type { RecordId } from '@auxx/lib/resources/client'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { cn } from '@auxx/ui/lib/utils'
+import { X } from 'lucide-react'
 import { useRecord, useSystemValues } from '~/components/resources/hooks'
 
 interface TagBadgeProps {
@@ -59,20 +59,20 @@ export function TagBadge({ recordId, size = 'md', onRemove, className, ...props 
       {...props}>
       {emoji && <span>{emoji}</span>}
       {color && !emoji && (
-        <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+        <span className='size-2 rounded-full shrink-0' style={{ backgroundColor: color }} />
       )}
-      <span data-slot="text" className="font-medium shrink-0">
+      <span data-slot='text' className='font-medium shrink-0'>
         {displayName}
       </span>
       {onRemove && (
         <button
-          type="button"
+          type='button'
           onClick={(e) => {
             e.stopPropagation()
             onRemove()
           }}
-          className="ml-0.5 rounded hover:bg-muted shrink-0">
-          <X className="size-3 shrink-0" />
+          className='ml-0.5 rounded hover:bg-muted shrink-0'>
+          <X className='size-3 shrink-0' />
         </button>
       )}
     </span>

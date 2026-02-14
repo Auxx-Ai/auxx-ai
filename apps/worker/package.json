@@ -7,8 +7,6 @@
     "build": "tsup",
     "start": "cd dist && node server.js",
     "dev": "node --import tsx/esm --watch src/server.ts",
-    "lint": "eslint . --max-warnings 100",
-    "lint:fix": "eslint . --fix --max-warnings 100",
     "tc": "tsc --noEmit",
     "clean": "rm -rf node_modules dist .turbo"
   },
@@ -38,10 +36,8 @@
     "sst": "^3.17.12"
   },
   "devDependencies": {
-    "@auxx/eslint-config": "workspace:*",
     "@auxx/typescript-config": "workspace:*",
     "@types/node": "catalog:",
-    "eslint": "catalog:",
     "rimraf": "catalog:",
     "tsconfig-paths": "^4.2.0",
     "tsup": "catalog:",

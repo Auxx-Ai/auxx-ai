@@ -2,37 +2,7 @@
 
 'use client'
 
-import { useState } from 'react'
-import type {
-  VisibilityState,
-  ColumnOrderState,
-  ColumnSizingState,
-  ColumnPinningState,
-  SortingState,
-} from '@tanstack/react-table'
-import {
-  ChevronDown,
-  MoreHorizontal,
-  Lock,
-  Check,
-  Pin,
-  Plus,
-  Copy,
-  Edit,
-  Trash,
-  RotateCcw,
-  Save,
-  Table2,
-  LayoutGrid,
-} from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
 import {
   Command,
   CommandEmpty,
@@ -42,14 +12,44 @@ import {
   CommandList,
   CommandSeparator,
 } from '@auxx/ui/components/command'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import type { TableView, ViewAction, ViewConfig } from '../../types'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { useConfirm } from '~/hooks/use-confirm'
+import type {
+  ColumnOrderState,
+  ColumnPinningState,
+  ColumnSizingState,
+  SortingState,
+  VisibilityState,
+} from '@tanstack/react-table'
+import {
+  Check,
+  ChevronDown,
+  Copy,
+  Edit,
+  LayoutGrid,
+  Lock,
+  MoreHorizontal,
+  Pin,
+  Plus,
+  RotateCcw,
+  Save,
+  Table2,
+  Trash,
+} from 'lucide-react'
+import { useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
-import { CreateViewDialog, RenameViewDialog } from '../dialogs'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useViewMutations } from '../../hooks/use-view-mutations'
+import type { TableView, ViewAction, ViewConfig } from '../../types'
+import { CreateViewDialog, RenameViewDialog } from '../dialogs'
 
 /** Select field for kanban grouping */
 interface SelectField {
@@ -106,13 +106,16 @@ export function ViewSelector({
   const [open, setOpen] = useState(false)
 
   // Capture table state only when dialog opens
-  const [capturedTableState, setCapturedTableState] = useState<{
-    columnVisibility: VisibilityState
-    columnOrder: ColumnOrderState
-    columnSizing: ColumnSizingState
-    columnPinning: ColumnPinningState
-    sorting: SortingState
-  } | undefined>(undefined)
+  const [capturedTableState, setCapturedTableState] = useState<
+    | {
+        columnVisibility: VisibilityState
+        columnOrder: ColumnOrderState
+        columnSizing: ColumnSizingState
+        columnPinning: ColumnPinningState
+        sorting: SortingState
+      }
+    | undefined
+  >(undefined)
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
 
   // Sync external control with internal state
@@ -151,16 +154,17 @@ export function ViewSelector({
     if (!view) return
 
     switch (action) {
-      case 'duplicate':
+      case 'duplicate': {
         const duplicateName = `${view.name} (Copy)`
         await duplicateView.mutateAsync({ id: viewId, name: duplicateName })
         break
+      }
 
       case 'rename':
         setShowRenameDialog(true)
         break
 
-      case 'delete':
+      case 'delete': {
         const isDefault = view.isDefault
         const deleteDescription = isDefault
           ? `Are you sure you want to delete "${view.name}"? This is your default view. After deletion, you'll be switched to "All rows".`
@@ -180,6 +184,7 @@ export function ViewSelector({
           }
         }
         break
+      }
 
       case 'setDefault':
         await setDefaultView.mutateAsync({ tableId, viewId })
@@ -207,31 +212,31 @@ export function ViewSelector({
 
   return (
     <>
-      <div className="flex">
+      <div className='flex'>
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <Button
-              variant="outline"
-              size="sm"
+              variant='outline'
+              size='sm'
               className={cn('text-xs', activeView && 'rounded-r-none')}>
               {activeView ? (
                 <>
-                  <span className="max-w-40 truncate">{activeView.name}</span>
+                  <span className='max-w-40 truncate'>{activeView.name}</span>
                 </>
               ) : (
                 <>
-                  <Lock className="size-3.5!" />
+                  <Lock className='size-3.5!' />
                   <span>All rows</span>
                 </>
               )}
-              <ChevronDown className="size-3 text-muted-foreground" />
+              <ChevronDown className='size-3 text-muted-foreground' />
             </Button>
           </PopoverTrigger>
 
-          <PopoverContent className="w-[250px] p-0" align="start">
+          <PopoverContent className='w-[250px] p-0' align='start'>
             <Command>
               <CommandInput
-                placeholder="Search views..."
+                placeholder='Search views...'
                 value={searchTerm}
                 onValueChange={setSearchTerm}
               />
@@ -245,9 +250,9 @@ export function ViewSelector({
                       onViewSelect(null)
                       setOpen(false)
                     }}>
-                    <Lock className="size-3.5!" />
-                    <span className="flex-1">All rows</span>
-                    {!activeView && <Check className="size-4 ml-auto" />}
+                    <Lock className='size-3.5!' />
+                    <span className='flex-1'>All rows</span>
+                    {!activeView && <Check className='size-4 ml-auto' />}
                   </CommandItem>
                 </CommandGroup>
 
@@ -255,7 +260,7 @@ export function ViewSelector({
                 {filteredViews.length > 0 && (
                   <>
                     <CommandSeparator />
-                    <CommandGroup heading="Saved views">
+                    <CommandGroup heading='Saved views'>
                       {filteredViews.map((view) => (
                         <CommandItem
                           key={view.id}
@@ -266,19 +271,19 @@ export function ViewSelector({
                           }}>
                           {/* View type icon */}
                           {view.config.viewType === 'kanban' ? (
-                            <LayoutGrid className="size-3.5 text-muted-foreground" />
+                            <LayoutGrid className='size-3.5 text-muted-foreground' />
                           ) : (
-                            <Table2 className="size-3.5 text-muted-foreground" />
+                            <Table2 className='size-3.5 text-muted-foreground' />
                           )}
-                          <span className="flex-1">{view.name}</span>
+                          <span className='flex-1'>{view.name}</span>
                           {activeView?.id === view.id && (
-                            <Tooltip content="Active">
-                              <Check className="" />
+                            <Tooltip content='Active'>
+                              <Check className='' />
                             </Tooltip>
                           )}
                           {view.isDefault && (
-                            <Tooltip content="Default view">
-                              <Pin className="size-3 text-muted-foreground" />
+                            <Tooltip content='Default view'>
+                              <Pin className='size-3 text-muted-foreground' />
                             </Tooltip>
                           )}
                         </CommandItem>
@@ -308,17 +313,17 @@ export function ViewSelector({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                variant="outline"
-                size="sm"
-                className="px-1 rounded-l-none border-l-0 relative focus:ring-offset-0">
-                <MoreHorizontal className="size-3" />
+                variant='outline'
+                size='sm'
+                className='px-1 rounded-l-none border-l-0 relative focus:ring-offset-0'>
+                <MoreHorizontal className='size-3' />
                 {showUnsavedBadge && (
-                  <span className="absolute bg-info rounded-full -top-2 left-full size-3 -translate-x-1/2"></span>
+                  <span className='absolute bg-info rounded-full -top-2 left-full size-3 -translate-x-1/2'></span>
                 )}
               </Button>
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align='end'>
               {activeView && (
                 <DropdownMenuItem disabled={!canSave} onClick={handleSave}>
                   <Save />
@@ -354,7 +359,7 @@ export function ViewSelector({
 
               <DropdownMenuItem
                 onClick={() => handleViewAction(activeView.id, 'delete')}
-                variant="destructive">
+                variant='destructive'>
                 <Trash />
                 Delete
               </DropdownMenuItem>

@@ -1,38 +1,37 @@
 // packages/credentials/src/manager/credential-type-registry.ts
 
-import type { ICredentialType } from '@auxx/workflow-nodes/types'
-import type { ICredentialTypeRegistry, ProviderInfo, ProviderCapabilities } from '../types'
 import { createScopedLogger } from '@auxx/logger'
-
 // Import all credential types for auto-registration
 import {
-  AwsS3Credentials,
-  GoogleDriveStorageOAuth2,
-  DropboxOAuth2,
-  OneDriveOAuth2,
-  BoxOAuth2,
-  GoogleOAuth2Api,
-  OutlookOAuth2Api,
-  FacebookOAuth2Api,
-  InstagramOAuth2Api,
-  ShopifyOAuth2Api,
-  SmtpCredentials,
-  Imap,
-  Postgres,
-  PostgresWithTesting,
-  CrateDb,
   AirtableApi,
   AirtableOAuth2Api,
+  AnthropicApiCredentials,
+  AwsS3Credentials,
+  BoxOAuth2,
+  CrateDb,
+  DeepSeekApiCredentials,
+  DropboxOAuth2,
+  FacebookOAuth2Api,
+  GoogleAIApiCredentials,
+  GoogleDriveStorageOAuth2,
+  GoogleOAuth2Api,
+  GroqApiCredentials,
   HttpBasicAuth,
   HttpHeaderAuth,
+  Imap,
+  InstagramOAuth2Api,
   OAuth2Api,
+  OneDriveOAuth2,
   // AI provider credentials
   OpenAIApiCredentials,
-  AnthropicApiCredentials,
-  GoogleAIApiCredentials,
-  GroqApiCredentials,
-  DeepSeekApiCredentials,
+  OutlookOAuth2Api,
+  Postgres,
+  PostgresWithTesting,
+  ShopifyOAuth2Api,
+  SmtpCredentials,
 } from '@auxx/workflow-nodes/credentials'
+import type { ICredentialType } from '@auxx/workflow-nodes/types'
+import type { ICredentialTypeRegistry, ProviderCapabilities, ProviderInfo } from '../types'
 
 const logger = createScopedLogger('credential-type-registry')
 

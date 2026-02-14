@@ -1,7 +1,7 @@
 // packages/services/src/custom-fields/get-field-by-id.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { ModelType } from './types'

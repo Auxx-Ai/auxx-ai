@@ -1,8 +1,7 @@
 import { Extension } from '@tiptap/core'
+import { Fragment, type Node, Slice } from '@tiptap/pm/model'
 import { NodeSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
-import { Fragment, Slice, Node } from '@tiptap/pm/model'
-import { EditorView } from '@tiptap/pm/view'
-
+import type { EditorView } from '@tiptap/pm/view'
 import * as pmView from '@tiptap/pm/view'
 
 function getPmView() {
@@ -15,16 +14,16 @@ function getPmView() {
 
 export function serializeForClipboard(view: EditorView, slice: Slice) {
   // Newer Tiptap/ProseMirror
-  // @ts-ignore
+  // @ts-expect-error
   if (view && typeof view.serializeForClipboard === 'function') {
     return view.serializeForClipboard(slice)
   }
 
   // Older version fallback
   const proseMirrorView = getPmView()
-  // @ts-ignore
+  // @ts-expect-error
   if (proseMirrorView && typeof proseMirrorView?.__serializeForClipboard === 'function') {
-    // @ts-ignore
+    // @ts-expect-error
     return proseMirrorView.__serializeForClipboard(view, slice)
   }
 

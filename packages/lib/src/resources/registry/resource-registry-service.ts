@@ -1,23 +1,28 @@
 // packages/lib/src/resources/registry/resource-registry-service.ts
 
 import type { Database } from '@auxx/database'
-import { RESOURCE_TABLE_REGISTRY, RESOURCE_FIELD_REGISTRY, type TableId } from './field-registry'
+import {
+  FieldType as FieldTypeEnum,
+  type ModelType,
+  ModelTypeMeta,
+  ModelTypeValues,
+} from '@auxx/database/enums'
+import type { RelationshipConfig } from '@auxx/types/custom-field'
+import { toFieldId, toResourceFieldId } from '@auxx/types/field'
+import { mapFieldTypeToBaseType } from '../../workflow-engine/utils/field-type-mapper'
 import { RESOURCE_DISPLAY_CONFIG } from './display-config'
-import { NEW_SYSTEM_ENTITY_TYPES, type NewSystemEntityType } from './entity-types'
 import { resolveNewSystemEntityDefId } from './entity-def-resolver'
+import { getEntityInstanceFields } from './entity-instance-fields'
+import { NEW_SYSTEM_ENTITY_TYPES, type NewSystemEntityType } from './entity-types'
+import { RESOURCE_FIELD_REGISTRY, RESOURCE_TABLE_REGISTRY, type TableId } from './field-registry'
+import type { ResourceField } from './field-types'
 import type {
+  CustomResource,
+  CustomResourceId,
+  DisplayFieldConfig,
   Resource,
   SystemResource,
-  CustomResource,
-  DisplayFieldConfig,
-  CustomResourceId,
 } from './types'
-import type { ResourceField } from './field-types'
-import { mapFieldTypeToBaseType } from '../../workflow-engine/utils/field-type-mapper'
-import { FieldType as FieldTypeEnum, ModelTypeMeta, ModelTypeValues, type ModelType } from '@auxx/database/enums'
-import { getEntityInstanceFields } from './entity-instance-fields'
-import { toFieldId, toResourceFieldId } from '@auxx/types/field'
-import type { RelationshipConfig } from '@auxx/types/custom-field'
 
 /**
  * Old system types that use modelType string directly as entityDefinitionId.

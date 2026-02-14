@@ -1,6 +1,6 @@
 // packages/email/src/templates/billing/trial-ending-email.tsx
 import { Container, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -57,7 +57,7 @@ export async function TrialEndingEmail({
 
         <Text>If you'd like to review your plan or make changes, visit your billing settings:</Text>
 
-        <EmailButton href={billingUrl} label="Manage Subscription" />
+        <EmailButton href={billingUrl} label='Manage Subscription' />
 
         <Text>
           Questions? Our support team is available to help you make the most of {planName}.

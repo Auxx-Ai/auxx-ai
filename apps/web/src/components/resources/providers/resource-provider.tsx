@@ -2,16 +2,22 @@
 
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
-import { api } from '~/trpc/react'
-import { getRelationshipStoreState, useRelationshipStore, getRecordStoreState, useActorStore, getActorStoreState } from '../store'
-import { getResourceStoreState } from '../store/resource-store'
-import { fieldValueFetchQueue } from '../store/field-value-fetch-queue'
-import { initComputedFieldSync } from '../store/computed-field-registry'
-import { useFieldValueStore } from '../store/field-value-store'
 import type { RecordId } from '@auxx/lib/resources/client'
-import type { ActorId, Actor } from '@auxx/types/actor'
+import type { Actor, ActorId } from '@auxx/types/actor'
+import { useEffect, useRef, useState } from 'react'
+import { api } from '~/trpc/react'
 import { useRecordBatchFetcher } from '../hooks/use-record-batch-fetcher'
+import {
+  getActorStoreState,
+  getRecordStoreState,
+  getRelationshipStoreState,
+  useActorStore,
+  useRelationshipStore,
+} from '../store'
+import { initComputedFieldSync } from '../store/computed-field-registry'
+import { fieldValueFetchQueue } from '../store/field-value-fetch-queue'
+import { useFieldValueStore } from '../store/field-value-store'
+import { getResourceStoreState } from '../store/resource-store'
 
 /**
  * Component that handles batch fetching of records.

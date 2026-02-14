@@ -1,7 +1,7 @@
 // apps/web/src/lib/extensions/surface-instance-external-store.ts
 
-import { EventBroker } from './event-broker'
 import type { AppStore } from './app-store'
+import { EventBroker } from './event-broker'
 import type { MessageClient } from './message-client'
 
 /**

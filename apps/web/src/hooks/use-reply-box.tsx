@@ -1,12 +1,15 @@
 'use client'
+import { groupParticipantsByRole, type ParticipantId } from '@auxx/types'
 // src/hooks/use-reply-box.tsx
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
-import type { EditorMode, MessageType as EditorMessageType } from '~/components/mail/email-editor/types'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDraft } from '~/components/mail/email-editor/hooks'
+import type {
+  MessageType as EditorMessageType,
+  EditorMode,
+} from '~/components/mail/email-editor/types'
+import { useMessage, useParticipant } from '~/components/threads/hooks'
 import type { ThreadMeta } from '~/components/threads/store'
 import { useThreadStore } from '~/components/threads/store/thread-store'
-import { useMessage, useParticipant } from '~/components/threads/hooks'
-import { groupParticipantsByRole, type ParticipantId } from '@auxx/types'
 
 /**
  * Custom hook for managing the state of the Reply/Compose editor.

@@ -163,8 +163,7 @@ const PostgresErrorHandlers: Record<string, ErrorHandler> = {
 
   // Invalid transaction state
   [PostgresErrorCodes.invalidTransactionState]: (error) => ({
-    message:
-      'Transaction failed: a data integrity issue occurred within a database transaction.',
+    message: 'Transaction failed: a data integrity issue occurred within a database transaction.',
     constraint: null,
     code: error.code,
   }),
@@ -231,7 +230,8 @@ export function getDbErrorMessage(error: unknown): DbErrorMessage {
   // Handle Drizzle errors that wrap PostgreSQL DatabaseError
   if (error instanceof DrizzleError && error.cause instanceof DatabaseError) {
     const originalError = error.cause
-    const handler = PostgresErrorHandlers[originalError.code ?? 'default'] ?? PostgresErrorHandlers.default!
+    const handler =
+      PostgresErrorHandlers[originalError.code ?? 'default'] ?? PostgresErrorHandlers.default!
 
     return handler(originalError)
   }

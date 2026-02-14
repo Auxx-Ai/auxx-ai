@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/information-extractor/constants.ts
 
-import { SchemaRoot } from './types'
+import type { SchemaRoot } from './types'
 
 /**
  * Pre-built extraction templates for common use cases

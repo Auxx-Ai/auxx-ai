@@ -1,11 +1,12 @@
 // src/server/api/routers/featurePermissions.ts (New File or add to existing)
+
+import { getUserOrganizationId } from '@auxx/lib/email' // Ensure this path is correct
+import { FeaturePermissionService } from '@auxx/lib/permissions'
+import type { FeatureKey } from '@auxx/lib/types'
+import { createScopedLogger } from '@auxx/logger'
+import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { getUserOrganizationId } from '@auxx/lib/email' // Ensure this path is correct
-import { TRPCError } from '@trpc/server'
-import { FeatureKey } from '@auxx/lib/types'
-import { createScopedLogger } from '@auxx/logger'
-import { FeaturePermissionService } from '@auxx/lib/permissions'
 
 const logger = createScopedLogger('featurePermissions-router')
 

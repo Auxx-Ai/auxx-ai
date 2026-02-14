@@ -1,6 +1,7 @@
 import React from 'react'
-import { Mailbox } from '../_components/mail'
 import { api } from '~/trpc/server'
+import { Mailbox } from '../_components/mail'
+
 // import { api } from '~/trpc/ser'
 
 type Props = { params: Promise<{ labelId: string }> }

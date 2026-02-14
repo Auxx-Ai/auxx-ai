@@ -151,7 +151,7 @@
 }
 .auxx-chat-message-typing .auxx-chat-message-content::before,
 .auxx-chat-message-typing .auxx-chat-message-content::after {
-  content: '.';
+  content: ".";
   animation: auxx-dot-blink 1.4s infinite both;
 }
 .auxx-chat-message-typing .auxx-chat-message-content::before {

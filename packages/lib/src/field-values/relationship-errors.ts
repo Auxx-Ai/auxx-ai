@@ -43,8 +43,5 @@ export function createMaxDepthError(maxDepth: number): RelationshipValidationErr
  * Create an error for deletion with children
  */
 export function createHasChildrenError(): RelationshipValidationError {
-  return new RelationshipValidationError(
-    'Cannot delete: this item has children',
-    'HAS_CHILDREN'
-  )
+  return new RelationshipValidationError('Cannot delete: this item has children', 'HAS_CHILDREN')
 }

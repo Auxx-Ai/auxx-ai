@@ -1,7 +1,7 @@
 // packages/lib/src/utils/rate-limiter/concurrency-semaphore.ts
 
-import { createScopedLogger } from '../../logger'
 import { getRedisClient, type RedisClient } from '@auxx/redis'
+import { createScopedLogger } from '../../logger'
 
 /** Default timeout for Redis operations in milliseconds */
 const REDIS_OPERATION_TIMEOUT_MS = 5000
@@ -261,7 +261,10 @@ export class ConcurrencySemaphore {
       await this.withTimeout(this.redis.set(redisKey, '0'))
     }
 
-    this.logger.debug('Released concurrency slot (Redis)', { key, currentCount: Math.max(0, newCount) })
+    this.logger.debug('Released concurrency slot (Redis)', {
+      key,
+      currentCount: Math.max(0, newCount),
+    })
   }
 
   /**

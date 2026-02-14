@@ -1,6 +1,6 @@
-import { Job } from 'bullmq'
 import { EventModel } from '@auxx/database/models'
-import { type AuxxEvent } from '../types'
+import type { Job } from 'bullmq'
+import type { AuxxEvent } from '../types'
 
 export const createEventJob = async (job: Job<AuxxEvent>) => {
   const event = job.data

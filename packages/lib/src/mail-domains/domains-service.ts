@@ -1,9 +1,10 @@
 // packages/lib/src/mail-domains/domains-service.ts
-import crypto from 'crypto'
-import { database as db, schema } from '@auxx/database'
+
 import { env } from '@auxx/config/server'
-import { and, eq } from 'drizzle-orm'
+import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import crypto from 'crypto'
+import { and, eq } from 'drizzle-orm'
 import { MailgunApiService } from '../providers/mailgun/mailgun-api-service'
 
 const logger = createScopedLogger('domain-service')
@@ -41,7 +42,7 @@ export class DomainService {
     routingPrefix: string = 'ticket'
   ) {
     try {
-      const providerDomain = await this.getProviderDomain()
+      const providerDomain = await DomainService.getProviderDomain()
 
       // Normalize the subdomain
       const normalizedSubdomain = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '')
@@ -72,7 +73,7 @@ export class DomainService {
           domain: fullDomain,
           subdomain: normalizedSubdomain,
           routingPrefix,
-          verificationToken: this.generateVerificationToken(),
+          verificationToken: DomainService.generateVerificationToken(),
           isVerified: true,
           verifiedAt: new Date(),
           isActive: true,
@@ -91,7 +92,8 @@ export class DomainService {
     } catch (error) {
       logger.error('Error registering provider domain:', { error })
       throw new Error(
-        'Failed to register provider domain: ' + (error instanceof Error ? error.message : 'Unknown error')
+        'Failed to register provider domain: ' +
+          (error instanceof Error ? error.message : 'Unknown error')
       )
     }
   }
@@ -101,7 +103,12 @@ export class DomainService {
     const [domainRecord] = await db
       .select()
       .from(schema.MailDomain)
-      .where(and(eq(schema.MailDomain.id, domainId), eq(schema.MailDomain.organizationId, organizationId)))
+      .where(
+        and(
+          eq(schema.MailDomain.id, domainId),
+          eq(schema.MailDomain.organizationId, organizationId)
+        )
+      )
 
     if (!domainRecord) {
       logger.error('Domain not found for deletion', { organizationId, domainId })
@@ -136,7 +143,10 @@ export class DomainService {
       .select({ id: schema.MailDomain.id })
       .from(schema.MailDomain)
       .where(
-        and(eq(schema.MailDomain.subdomain, normalizedSubdomain), eq(schema.MailDomain.type, 'PROVIDER' as any))
+        and(
+          eq(schema.MailDomain.subdomain, normalizedSubdomain),
+          eq(schema.MailDomain.type, 'PROVIDER' as any)
+        )
       )
 
     return !existingDomain
@@ -153,7 +163,7 @@ export class DomainService {
         .padStart(3, '0')
       const suggestion = `${normalizedBase}-${randomSuffix}`
 
-      if (await this.checkSubdomainAvailability(suggestion)) {
+      if (await DomainService.checkSubdomainAvailability(suggestion)) {
         suggestions.push(suggestion)
       }
     }

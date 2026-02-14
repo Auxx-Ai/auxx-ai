@@ -1,28 +1,27 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
+  FormControl,
   FormField,
   FormItem,
   FormLabel,
-  FormControl,
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { useEffect } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 
 // Schema for validation
 const knowledgeBaseSchema = z.object({
@@ -120,20 +119,20 @@ function KnowledgeBaseDialogContent({
 
   return (
     <>
-      <DialogHeader className="mb-4">
+      <DialogHeader className='mb-4'>
         <DialogTitle>{mode === 'create' ? 'Create' : 'Edit'} Knowledge Base</DialogTitle>
       </DialogHeader>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
           <FormField
             control={form.control}
-            name="name"
+            name='name'
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Name</FormLabel>
                 <FormControl>
-                  <Input {...field} placeholder="My Knowledge Base" onChange={handleNameChange} />
+                  <Input {...field} placeholder='My Knowledge Base' onChange={handleNameChange} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -142,12 +141,12 @@ function KnowledgeBaseDialogContent({
 
           <FormField
             control={form.control}
-            name="slug"
+            name='slug'
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Slug</FormLabel>
                 <FormControl>
-                  <Input {...field} placeholder="my-knowledge-base" />
+                  <Input {...field} placeholder='my-knowledge-base' />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -156,20 +155,20 @@ function KnowledgeBaseDialogContent({
 
           <DialogFooter>
             <Button
-              type="button"
-              variant="ghost"
-              size="sm"
+              type='button'
+              variant='ghost'
+              size='sm'
               onClick={onClose}
               disabled={isSubmitting}>
-              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
             <Button
-              type="submit"
-              variant="outline"
-              size="sm"
+              type='submit'
+              variant='outline'
+              size='sm'
               loading={isSubmitting}
               loadingText={mode === 'create' ? 'Creating...' : 'Saving...'}>
-              {mode === 'create' ? 'Create' : 'Save'} <KbdSubmit variant="outline" size="sm" />
+              {mode === 'create' ? 'Create' : 'Save'} <KbdSubmit variant='outline' size='sm' />
             </Button>
           </DialogFooter>
         </form>

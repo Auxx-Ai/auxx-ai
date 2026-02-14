@@ -1,10 +1,10 @@
 // packages/ui/src/components/dockable-drawer.tsx
 'use client'
 
+import { cn } from '@auxx/ui/lib/utils'
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 import { Drawer, DrawerContent, DrawerHandle, DrawerOverlay, DrawerTitle } from './drawer'
-import { cn } from '@auxx/ui/lib/utils'
 
 /**
  * Context value for dockable drawer
@@ -103,9 +103,7 @@ export function DockableDrawer({
     // When docked, no handle needed - resize is handled by PanelFrame gap
     return createPortal(
       <DockableDrawerContext.Provider value={contextValue}>
-        <div className="flex flex-col h-full relative rounded">
-          {children}
-        </div>
+        <div className='flex flex-col h-full relative rounded'>{children}</div>
       </DockableDrawerContext.Provider>,
       portalTarget.current
     )
@@ -116,9 +114,7 @@ export function DockableDrawer({
     // When docked, no handle needed - resize is handled by PanelFrame gap
     return (
       <DockableDrawerContext.Provider value={contextValue}>
-        <div className="flex flex-col h-full relative rounded">
-          {children}
-        </div>
+        <div className='flex flex-col h-full relative rounded'>{children}</div>
       </DockableDrawerContext.Provider>
     )
   }
@@ -127,7 +123,7 @@ export function DockableDrawer({
   if (!isDocked) {
     return (
       <Drawer
-        direction="right"
+        direction='right'
         open={open}
         onOpenChange={onOpenChange}
         modal={false}
@@ -136,10 +132,10 @@ export function DockableDrawer({
         minWidth={minWidth}
         maxWidth={maxWidth}
         onWidthChange={onWidthChange}>
-        <DrawerOverlay className="bg-transparent" />
+        <DrawerOverlay className='bg-transparent' />
         <DrawerContent>
           <DrawerHandle />
-          <DrawerTitle className="sr-only">{title}</DrawerTitle>
+          <DrawerTitle className='sr-only'>{title}</DrawerTitle>
           <DockableDrawerContext.Provider value={contextValue}>
             {children}
           </DockableDrawerContext.Provider>

@@ -1,8 +1,8 @@
 // packages/lib/src/import/resolution/update-value-resolution.ts
 
-import { eq, and } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { and, eq } from 'drizzle-orm'
 import type { OverrideValue, ResolvedValue } from '../types'
 
 /** Input for updating a value resolution */
@@ -88,7 +88,8 @@ export async function updateValueResolution(
     // Get original values from stored override or current values
     const storedOverride = existingResolution.userOverride as UserOverrideData | null
     const originalIsValid = storedOverride?.originalIsValid ?? existingResolution.isValid
-    const originalResolvedValues = storedOverride?.originalResolvedValues ??
+    const originalResolvedValues =
+      storedOverride?.originalResolvedValues ??
       (existingResolution.resolvedValues as ResolvedValue[])
 
     await db
@@ -123,10 +124,11 @@ export async function updateValueResolution(
 
   // Store original values for revert (only if not already overridden)
   const existingOverride = existingResolution?.userOverride as UserOverrideData | null
-  const originalIsValid = existingOverride?.originalIsValid ??
-    existingResolution?.isValid ?? true
-  const originalResolvedValues = existingOverride?.originalResolvedValues ??
-    (existingResolution?.resolvedValues as ResolvedValue[] | undefined) ?? []
+  const originalIsValid = existingOverride?.originalIsValid ?? existingResolution?.isValid ?? true
+  const originalResolvedValues =
+    existingOverride?.originalResolvedValues ??
+    (existingResolution?.resolvedValues as ResolvedValue[] | undefined) ??
+    []
 
   const userOverride: UserOverrideData = {
     isOverridden: true,

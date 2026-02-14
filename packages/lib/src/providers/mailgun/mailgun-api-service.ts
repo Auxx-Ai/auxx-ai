@@ -1,14 +1,15 @@
 // packages/lib/src/providers/mailgun/mailgun-api-service.ts
-import formData from 'form-data'
-import Mailgun from 'mailgun.js'
+
 import { env } from '@auxx/config/server'
 import { createScopedLogger } from '@auxx/logger'
+import formData from 'form-data'
+import Mailgun from 'mailgun.js'
 import type {
-  EmailProvider,
-  EmailOptions,
-  EmailResult,
-  DkimRecord,
   Attachment,
+  DkimRecord,
+  EmailOptions,
+  EmailProvider,
+  EmailResult,
 } from '../../email/types'
 
 const logger = createScopedLogger('mailgun-api')
@@ -187,10 +188,10 @@ export class MailgunApiService implements EmailProvider {
           )
 
           if (dkimRecord) {
-            return { 
-              name: dkimRecord.name, 
+            return {
+              name: dkimRecord.name,
               value: dkimRecord.value,
-              type: dkimRecord.record_type || 'TXT'
+              type: dkimRecord.record_type || 'TXT',
             }
           }
 
@@ -214,10 +215,10 @@ export class MailgunApiService implements EmailProvider {
           )
 
           if (dkimRecord) {
-            return { 
-              name: dkimRecord.name, 
+            return {
+              name: dkimRecord.name,
               value: dkimRecord.value,
-              type: dkimRecord.record_type || 'TXT'
+              type: dkimRecord.record_type || 'TXT',
             }
           }
         }
@@ -249,10 +250,7 @@ export class MailgunApiService implements EmailProvider {
     },
     domain?: string
   ): Promise<EmailResult>
-  async sendEmail(
-    options: EmailOptions | any,
-    domain?: string
-  ): Promise<EmailResult> {
+  async sendEmail(options: EmailOptions | any, domain?: string): Promise<EmailResult> {
     const messageData: Record<string, any> = {
       to: Array.isArray(options.to) ? options.to.join(',') : options.to,
       from: options.from,
@@ -291,7 +289,7 @@ export class MailgunApiService implements EmailProvider {
         id: '',
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
-        raw: error
+        raw: error,
       }
     }
   }

@@ -1,14 +1,12 @@
 // packages/credentials/src/passport/index.ts
 
 export { issueWorkflowPassport } from './issue-workflow-passport'
-
-export { verifyWorkflowPassport } from './verify-workflow-passport'
-
 export type {
-  WorkflowPassportPayload,
   IssueWorkflowPassportOptions,
-  WorkflowPassportResult,
-  VerifiedPassport,
   PassportError,
+  VerifiedPassport,
+  WorkflowPassportPayload,
+  WorkflowPassportResult,
   WorkflowShareAccessMode,
 } from './types'
+export { verifyWorkflowPassport } from './verify-workflow-passport'

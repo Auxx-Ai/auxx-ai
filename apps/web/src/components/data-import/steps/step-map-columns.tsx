@@ -2,18 +2,18 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { suggestResolutionType } from '@auxx/lib/import/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Empty,
+  EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-  EmptyDescription,
 } from '@auxx/ui/components/empty'
 import { Loader2, Wand2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { api } from '~/trpc/react'
-import { suggestResolutionType } from '@auxx/lib/import/client'
 import { ColumnMappingTable } from '../column-mapping/column-mapping-table'
 import { SampleValuesPanel } from '../column-mapping/sample-values-panel'
 import type { ColumnMappingUI } from '../types'
@@ -202,11 +202,11 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
 
   if (jobLoading || fieldsLoading) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 min-h-0 h-full">
+      <div className='flex flex-col items-center justify-center flex-1 min-h-0 h-full'>
         <Empty>
           <EmptyHeader>
-            <EmptyMedia variant="icon" className="bg-background">
-              <Loader2 className="animate-spin" />
+            <EmptyMedia variant='icon' className='bg-background'>
+              <Loader2 className='animate-spin' />
             </EmptyMedia>
             <EmptyTitle>Loading...</EmptyTitle>
             <EmptyDescription>Fetching column mappings</EmptyDescription>
@@ -217,35 +217,35 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
   }
 
   return (
-    <div className="">
+    <div className=''>
       {/* Header with auto-map */}
-      <div className="flex items-center justify-between sticky top-0 px-4 border-b bg-muted/80 backdrop-blur h-12 z-10">
-        <div className="flex flex-row items-center gap-2">
-          <h3 className="font-medium">Column Mappings</h3>
-          <p className="text-sm text-muted-foreground">
+      <div className='flex items-center justify-between sticky top-0 px-4 border-b bg-muted/80 backdrop-blur h-12 z-10'>
+        <div className='flex flex-row items-center gap-2'>
+          <h3 className='font-medium'>Column Mappings</h3>
+          <p className='text-sm text-muted-foreground'>
             {mappedCount} of {mappings.length} columns mapped
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-row">
+        <div className='flex items-center gap-2 flex-row'>
           <Button
-            variant="outline"
-            size="sm"
+            variant='outline'
+            size='sm'
             onClick={handleAutoMap}
             loading={autoMap.isPending}
-            loadingText="Auto-mapping...">
+            loadingText='Auto-mapping...'>
             <Wand2 />
             Auto-map Columns
           </Button>
-          <Button onClick={onComplete} disabled={!canContinue} size="sm">
+          <Button onClick={onComplete} disabled={!canContinue} size='sm'>
             Continue to Review
           </Button>
         </div>
       </div>
 
       {/* Two-panel layout: mapping table + sample values preview */}
-      <div className="flex gap-4">
+      <div className='flex gap-4'>
         {/* Left: Mapping table (CSV Column | Maps To) */}
-        <div className="flex-1 min-w-0 shrink-0">
+        <div className='flex-1 min-w-0 shrink-0'>
           <ColumnMappingTable
             mappings={mappings}
             availableFields={fields ?? []}
@@ -256,7 +256,7 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
         </div>
 
         {/* Right: Sample values panel (shows on hover/click, defaults to first column) */}
-        <div className="w-[300px] shrink-0 pe-6">
+        <div className='w-[300px] shrink-0 pe-6'>
           <SampleValuesPanel mapping={mappings.find((m) => m.sourceColumnIndex === activeColumn)} />
         </div>
       </div>

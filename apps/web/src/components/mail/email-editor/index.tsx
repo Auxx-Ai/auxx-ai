@@ -1,50 +1,52 @@
 // apps/web/src/components/mail/email-editor/index.tsx
 'use client'
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import type { IdentifierType } from '@auxx/database/types'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { Mail, Loader2, X, Ellipsis, Plus, Upload, Trash2 } from 'lucide-react'
-import { Badge } from '@auxx/ui/components/badge'
-import { useDropzone } from 'react-dropzone'
 import { cn } from '@auxx/ui/lib/utils'
-// Editor Imports
-import { LazyTiptapEditor } from './lazy-tiptap-editor'
+import { Ellipsis, Loader2, Mail, Plus, Trash2, Upload, X } from 'lucide-react'
+import type React from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useDropzone } from 'react-dropzone'
 import { EditorToolbar } from '~/components/editor/editor-button'
 import { EditorProvider, useEditorContext } from '~/components/editor/editor-context'
+import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
+import { SignatureEditor } from '~/components/signatures/ui'
+import { useConfirm } from '~/hooks/use-confirm'
+import { useDebouncedCallback } from '~/hooks/use-debounced-value'
+// Local imports
+import { api } from '~/trpc/react'
+import {
+  AI_OPERATION,
+  type AIOperation,
+  COMPOSE_ENTITY_TYPE,
+  OUTPUT_FORMAT,
+} from '~/types/ai-tools'
+import { AIStatus } from './ai-status'
+import { deriveInitialState, type InitState } from './derive-initial'
 import {
   EditorActiveStateProvider,
   useEditorActiveStateContext,
 } from './editor-active-state-context'
-import { SignatureEditor } from '~/components/signatures/ui'
+import { useAIToolsState, useDraftMutations } from './hooks'
+import IntegrationSelector from './integration-selector'
+// Editor Imports
+import { LazyTiptapEditor } from './lazy-tiptap-editor'
+import { MessageFile } from './message-file'
 import PrevMessage from './prev-message'
 import { RecipientInput } from './recipient-input'
-import IntegrationSelector from './integration-selector'
-import { MessageFile } from './message-file'
-import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
-import { useAIToolsState, useDraftMutations } from './hooks'
-import { AIStatus } from './ai-status'
-import {
-  AI_OPERATION,
-  OUTPUT_FORMAT,
-  COMPOSE_ENTITY_TYPE,
-  type AIOperation,
-} from '~/types/ai-tools'
-// Local imports
-import { api } from '~/trpc/react'
-import { useConfirm } from '~/hooks/use-confirm'
-import { deriveInitialState, type InitState } from './derive-initial'
-import { useDraftAutosave } from './use-draft-autosave'
-import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import type {
-  ReplyComposeEditorProps,
-  Recipients,
-  RecipientState,
-  ParticipantInputData,
   DraftPayload,
   FileAttachment,
+  ParticipantInputData,
+  RecipientState,
+  Recipients,
+  ReplyComposeEditorProps,
 } from './types'
-import { type IdentifierType } from '@auxx/database/types'
+import { useDraftAutosave } from './use-draft-autosave'
+
 const INTERACTIVE_ELEMENT_SELECTORS = `
   button, a, input, select, textarea,
   [role="button"], [role="option"], [role="combobox"], [role="menuitem"], [role="tab"],
@@ -642,18 +644,18 @@ function ReplyComposeEditorComponent({
   return (
     <>
       <ConfirmDialog />
-      <div className="transition-background flex flex-col duration-200 ease-in-out relative">
+      <div className='transition-background flex flex-col duration-200 ease-in-out relative'>
         {/* Header */}
-        <div className="absolute top-[-32px] h-full w-full rounded-t-[15px] bg-gray-300  dark:bg-gray-800 ">
-          <div className="flex justify-between h-[36px]">
-            <div className="ps-4 flex flex-row items-center gap-2">
-              <Mail size="16" className="my-1.5 text-foreground" />
-              <span className="text-sm">Compose Email</span>
+        <div className='absolute top-[-32px] h-full w-full rounded-t-[15px] bg-gray-300  dark:bg-gray-800 '>
+          <div className='flex justify-between h-[36px]'>
+            <div className='ps-4 flex flex-row items-center gap-2'>
+              <Mail size='16' className='my-1.5 text-foreground' />
+              <span className='text-sm'>Compose Email</span>
               {isUpserting && (
-                <Loader2 className="ml-auto size-4 animate-spin text-muted-foreground" />
+                <Loader2 className='ml-auto size-4 animate-spin text-muted-foreground' />
               )}
             </div>
-            <div className="flex flex-row gap-0 items-center me-1">
+            <div className='flex flex-row gap-0 items-center me-1'>
               {/* AI Status (undo/redo and processing) */}
               <AIStatus
                 state={aiToolsState}
@@ -662,29 +664,29 @@ function ReplyComposeEditorComponent({
                 onUndo={undo}
                 onRedo={redo}
               />
-              {state.draftId && <span className="text-muted-foreground text-sm me-2">Draft</span>}
+              {state.draftId && <span className='text-muted-foreground text-sm me-2'>Draft</span>}
 
               {/* Delete button - only show in dialog mode when draft exists */}
               {isDialogMode && state.draftId && (
                 <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  className="rounded-full text-muted-foreground hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30"
+                  size='icon-sm'
+                  variant='ghost'
+                  className='rounded-full text-muted-foreground hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30'
                   onClick={handleDiscardClick}
                   disabled={isSending || isUpserting || isDeleting}
-                  title="Delete draft">
-                  {isDeleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 />}
+                  title='Delete draft'>
+                  {isDeleting ? <Loader2 className='size-4 animate-spin' /> : <Trash2 />}
                 </Button>
               )}
 
               {/* Close/Discard button */}
               <Button
-                size="icon-sm"
-                variant="ghost"
-                className="rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700"
+                size='icon-sm'
+                variant='ghost'
+                className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
                 onClick={isDialogMode ? handleCloseClick : handleDiscardClick}
                 disabled={isSending || isUpserting || (isDeleting && !isDialogMode)}>
-                {isDeleting && !isDialogMode ? <Loader2 className="size-4 animate-spin" /> : <X />}
+                {isDeleting && !isDialogMode ? <Loader2 className='size-4 animate-spin' /> : <X />}
               </Button>
             </div>
           </div>
@@ -720,21 +722,21 @@ function ReplyComposeEditorComponent({
 
           {/* Drag overlay */}
           {isDragActive && (
-            <div className="absolute inset-[-1px] z-50 flex items-center justify-center rounded-[20px] bg-blue-500/10 border-1 border-dashed border-info">
-              <div className="text-center">
-                <Upload className="mx-auto size-8 text-blue-500" />
-                <Badge variant="blue" className="cursor-default">
+            <div className='absolute inset-[-1px] z-50 flex items-center justify-center rounded-[20px] bg-blue-500/10 border-1 border-dashed border-info'>
+              <div className='text-center'>
+                <Upload className='mx-auto size-8 text-blue-500' />
+                <Badge variant='blue' className='cursor-default'>
                   Drop here
                 </Badge>
               </div>
             </div>
           )}
           {/* Header Fields */}
-          <div className="flex flex-col border-b border-border">
+          <div className='flex flex-col border-b border-border'>
             {/* From Field */}
-            <div className="flex items-center gap-2 px-4 py-2">
-              <span className="w-10 shrink-0 text-sm text-muted-foreground">From:</span>
-              <div className="flex-1">
+            <div className='flex items-center gap-2 px-4 py-2'>
+              <span className='w-10 shrink-0 text-sm text-muted-foreground'>From:</span>
+              <div className='flex-1'>
                 <IntegrationSelector
                   value={state.integrationId}
                   onChange={handleIntegrationChange}
@@ -742,25 +744,25 @@ function ReplyComposeEditorComponent({
                 />
               </div>
             </div>
-            <Separator className="mx-4 w-auto" />
+            <Separator className='mx-4 w-auto' />
 
             {/* To Field & Toggles */}
-            <div className="flex items-center gap-2 px-4 py-2">
-              <span className="w-10 shrink-0 text-sm text-muted-foreground">To:</span>
+            <div className='flex items-center gap-2 px-4 py-2'>
+              <span className='w-10 shrink-0 text-sm text-muted-foreground'>To:</span>
               <RecipientInput
                 recipients={recipients.TO}
                 onAdd={(r) => upsertRecipient('TO', r)}
                 onRemove={(id) => removeRecipient('TO', id)}
                 onContactSelect={(c) => handleContactSelect('TO', c)}
-                placeholder="Add recipients..."
+                placeholder='Add recipients...'
                 disabled={isSending}
               />
-              <div className="ml-auto flex shrink-0 items-center gap-1">
+              <div className='ml-auto flex shrink-0 items-center gap-1'>
                 {!showSubject && (
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-1 text-xs text-info"
+                    variant='ghost'
+                    size='sm'
+                    className='h-6 px-1 text-xs text-info'
                     onClick={() => setShowSubject(true)}
                     disabled={isSending}>
                     Subject
@@ -768,9 +770,9 @@ function ReplyComposeEditorComponent({
                 )}
                 {!showCc && (
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-1 text-xs text-info"
+                    variant='ghost'
+                    size='sm'
+                    className='h-6 px-1 text-xs text-info'
                     onClick={() => setShowCc(true)}
                     disabled={isSending}>
                     Cc
@@ -778,9 +780,9 @@ function ReplyComposeEditorComponent({
                 )}
                 {!showBcc && (
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-1 text-xs text-info"
+                    variant='ghost'
+                    size='sm'
+                    className='h-6 px-1 text-xs text-info'
                     onClick={() => setShowBcc(true)}
                     disabled={isSending}>
                     Bcc
@@ -792,21 +794,21 @@ function ReplyComposeEditorComponent({
             {/* Cc Field */}
             {showCc && (
               <>
-                <Separator className="mx-4 w-auto" />
-                <div className="flex items-center gap-2 px-4 py-2">
-                  <span className="w-10 shrink-0 text-sm text-muted-foreground">Cc:</span>
+                <Separator className='mx-4 w-auto' />
+                <div className='flex items-center gap-2 px-4 py-2'>
+                  <span className='w-10 shrink-0 text-sm text-muted-foreground'>Cc:</span>
                   <RecipientInput
                     recipients={recipients.CC}
                     onAdd={(r) => upsertRecipient('CC', r)}
                     onRemove={(id) => removeRecipient('CC', id)}
                     onContactSelect={(c) => handleContactSelect('CC', c)}
-                    placeholder="Add Cc recipients..."
+                    placeholder='Add Cc recipients...'
                     disabled={isSending}
                   />
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto h-6 px-1 text-xs text-muted-foreground"
+                    variant='ghost'
+                    size='sm'
+                    className='ml-auto h-6 px-1 text-xs text-muted-foreground'
                     onClick={() => {
                       setShowCc(false)
                       setRecipients((prev) => ({ ...prev, CC: [] }))
@@ -821,21 +823,21 @@ function ReplyComposeEditorComponent({
             {/* Bcc Field */}
             {showBcc && (
               <>
-                <Separator className="mx-4 w-auto" />
-                <div className="flex items-center gap-2 px-4 py-2">
-                  <span className="w-10 shrink-0 text-sm text-muted-foreground">Bcc:</span>
+                <Separator className='mx-4 w-auto' />
+                <div className='flex items-center gap-2 px-4 py-2'>
+                  <span className='w-10 shrink-0 text-sm text-muted-foreground'>Bcc:</span>
                   <RecipientInput
                     recipients={recipients.BCC}
                     onAdd={(r) => upsertRecipient('BCC', r)}
                     onRemove={(id) => removeRecipient('BCC', id)}
                     onContactSelect={(c) => handleContactSelect('BCC', c)}
-                    placeholder="Add Bcc recipients..."
+                    placeholder='Add Bcc recipients...'
                     disabled={isSending}
                   />
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto h-6 px-1 text-xs text-muted-foreground"
+                    variant='ghost'
+                    size='sm'
+                    className='ml-auto h-6 px-1 text-xs text-muted-foreground'
                     onClick={() => {
                       setShowBcc(false)
                       setRecipients((prev) => ({ ...prev, BCC: [] }))
@@ -850,21 +852,21 @@ function ReplyComposeEditorComponent({
             {/* Subject Field */}
             {showSubject && (
               <>
-                <Separator className="mx-4 w-auto" />
-                <div className="flex items-center gap-2 px-4 py-2">
-                  <span className="shrink-0 text-sm text-muted-foreground">Subject:</span>
+                <Separator className='mx-4 w-auto' />
+                <div className='flex items-center gap-2 px-4 py-2'>
+                  <span className='shrink-0 text-sm text-muted-foreground'>Subject:</span>
                   <input
-                    type="text"
-                    className="w-full flex-1 bg-transparent text-sm outline-hidden placeholder:text-muted-foreground/50"
+                    type='text'
+                    className='w-full flex-1 bg-transparent text-sm outline-hidden placeholder:text-muted-foreground/50'
                     value={state.subject}
                     onChange={(e) => handleSubjectChange(e.target.value)}
-                    placeholder="Enter subject"
+                    placeholder='Enter subject'
                     disabled={isSending}
                   />
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto h-6 px-1 text-xs text-muted-foreground"
+                    variant='ghost'
+                    size='sm'
+                    className='ml-auto h-6 px-1 text-xs text-muted-foreground'
                     onClick={() => setShowSubject(false)}
                     disabled={isSending}>
                     Remove
@@ -875,11 +877,11 @@ function ReplyComposeEditorComponent({
           </div>
 
           {/* Editor Section */}
-          <div className="flex flex-col flex-1 min-h-[150px]">
+          <div className='flex flex-col flex-1 min-h-[150px]'>
             <LazyTiptapEditor
               content={content}
               onChange={handleContentChange}
-              placeholder="Type / to insert a snippet."
+              placeholder='Type / to insert a snippet.'
               editable={!aiToolsState.isProcessing}
             />
             <SignatureEditor
@@ -891,11 +893,11 @@ function ReplyComposeEditorComponent({
 
             {/* File Attachments Display - Persisted + In-Progress Uploads */}
             {(attachments.length > 0 || fileSelect.selectedItems.length > 0) && (
-              <div className="mx-4 mb-3 mt-2">
-                <div className="text-xs text-muted-foreground mb-2">
+              <div className='mx-4 mb-3 mt-2'>
+                <div className='text-xs text-muted-foreground mb-2'>
                   Attachments ({attachments.length + fileSelect.selectedItems.length})
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className='flex flex-wrap gap-2'>
                   {/* Persisted attachments */}
                   {attachments.map((attachment) => (
                     <MessageFile
@@ -909,7 +911,7 @@ function ReplyComposeEditorComponent({
                       }}
                       showRemoveButton={true}
                       onRemove={() => removeAttachment(attachment.id)}
-                      className="group"
+                      className='group'
                     />
                   ))}
                   {/* In-progress uploads */}
@@ -925,7 +927,7 @@ function ReplyComposeEditorComponent({
                       }}
                       showRemoveButton={true}
                       onRemove={() => fileSelect.removeItem(file.id)}
-                      className="group"
+                      className='group'
                     />
                   ))}
                 </div>
@@ -939,13 +941,13 @@ function ReplyComposeEditorComponent({
               />
             )}
             {!state.includePrev && messageForPrevComponent && (
-              <div className="px-2">
+              <div className='px-2'>
                 <Button
-                  variant="ghost"
-                  size="xs"
+                  variant='ghost'
+                  size='xs'
                   onClick={() => setState((prev) => ({ ...prev, includePrev: true }))}
-                  title="Add previous message"
-                  className="text-muted-foreground/50"
+                  title='Add previous message'
+                  className='text-muted-foreground/50'
                   disabled={isSending}>
                   <Plus />
                   Add previous message
@@ -955,8 +957,8 @@ function ReplyComposeEditorComponent({
           </div>
 
           {/* Toolbar with integrated AI Tools */}
-          <div className="editor-toolbar-wrapper px-2 py-1 ">
-            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar md:gap-2">
+          <div className='editor-toolbar-wrapper px-2 py-1 '>
+            <div className='flex items-center gap-1 overflow-x-auto no-scrollbar md:gap-2'>
               <EditorToolbar
                 editor={editor}
                 onSend={handleSendClick}

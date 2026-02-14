@@ -1,25 +1,17 @@
 // packages/lib/src/providers/google/labels/delete-label.ts
-import { gmail_v1 } from 'googleapis'
-import { UniversalThrottler } from '../../../utils/rate-limiter'
+
+import { createScopedLogger } from '@auxx/logger'
+import type { gmail_v1 } from 'googleapis'
+import type { UniversalThrottler } from '../../../utils/rate-limiter'
 import { handleGmailError } from '../shared/error-handler'
 import { executeWithThrottle } from '../shared/utils'
-import { createScopedLogger } from '@auxx/logger'
 
 const logger = createScopedLogger('google-delete-label')
 
 /**
  * System labels that cannot be deleted
  */
-const SYSTEM_LABELS = [
-  'INBOX',
-  'SPAM',
-  'TRASH',
-  'SENT',
-  'DRAFT',
-  'IMPORTANT',
-  'STARRED',
-  'UNREAD',
-]
+const SYSTEM_LABELS = ['INBOX', 'SPAM', 'TRASH', 'SENT', 'DRAFT', 'IMPORTANT', 'STARRED', 'UNREAD']
 
 /**
  * Input parameters for deleting a Gmail label

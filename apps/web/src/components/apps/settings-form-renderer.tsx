@@ -1,12 +1,11 @@
 // apps/web/src/components/apps/settings-form-renderer.tsx
 'use client'
 
-import { useForm, Controller } from 'react-hook-form'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { schemaToZod, type SettingsSchemaField } from '@auxx/services/app-settings/client'
+import { type SettingsSchemaField, schemaToZod } from '@auxx/services/app-settings/client'
+import { Button } from '@auxx/ui/components/button'
+import { Card } from '@auxx/ui/components/card'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
-import { Switch } from '@auxx/ui/components/switch'
 import {
   Select,
   SelectContent,
@@ -14,9 +13,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Card } from '@auxx/ui/components/card'
-import { Button } from '@auxx/ui/components/button'
+import { Switch } from '@auxx/ui/components/switch'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { useMemo } from 'react'
+import { Controller, useForm } from 'react-hook-form'
 
 /**
  * Props for SettingsFormRenderer component
@@ -65,7 +65,7 @@ export function SettingsFormRenderer({
 
   if (!zodSchema) {
     return (
-      <div className="text-center py-8 text-destructive">
+      <div className='text-center py-8 text-destructive'>
         <p>Error: Invalid settings schema</p>
       </div>
     )
@@ -73,7 +73,7 @@ export function SettingsFormRenderer({
 
   return (
     <form onSubmit={form.handleSubmit(handleSubmit)}>
-      <div className="p-6 pb-2 space-y-6">
+      <div className='p-6 pb-2 space-y-6'>
         {Object.entries(schema).map(([key, field]) => (
           <SettingField
             key={key}
@@ -87,21 +87,21 @@ export function SettingsFormRenderer({
 
       {/* Form actions - only show when form has changes */}
       {form.formState.isDirty && (
-        <div className="sticky py-2 px-4 bottom-0 flex justify-end gap-3  border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10">
+        <div className='sticky py-2 px-4 bottom-0 flex justify-end gap-3  border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10'>
           <Button
-            type="button"
-            size="sm"
-            variant="ghost"
+            type='button'
+            size='sm'
+            variant='ghost'
             onClick={() => form.reset()}
             disabled={isPending}>
             Reset
           </Button>
           <Button
-            type="submit"
-            size="sm"
-            variant="default"
+            type='submit'
+            size='sm'
+            variant='default'
             loading={isPending}
-            loadingText="Saving...">
+            loadingText='Saving...'>
             Save Settings
           </Button>
         </div>
@@ -131,10 +131,10 @@ function SettingField({ path, field, control, error }: SettingFieldProps) {
   // Handle struct (nested group)
   if (field.type === 'struct' && field.fields) {
     return (
-      <Card className="p-4">
-        <h3 className="text-sm font-semibold">{label}</h3>
-        {description && <p className="text-sm text-muted-foreground">{description}</p>}
-        <div className="space-y-4 pt-2">
+      <Card className='p-4'>
+        <h3 className='text-sm font-semibold'>{label}</h3>
+        {description && <p className='text-sm text-muted-foreground'>{description}</p>}
+        <div className='space-y-4 pt-2'>
           {Object.entries(field.fields).map(([nestedKey, nestedField]) => (
             <SettingField
               key={nestedKey}
@@ -151,12 +151,12 @@ function SettingField({ path, field, control, error }: SettingFieldProps) {
 
   // Render primitive fields with Controller
   return (
-    <div className="space-y-2">
+    <div className='space-y-2'>
       <Label htmlFor={path}>
         {label}
-        {field.is_optional && <span className="text-muted-foreground ml-1">(optional)</span>}
+        {field.is_optional && <span className='text-muted-foreground ml-1'>(optional)</span>}
       </Label>
-      {description && <p className="text-sm text-muted-foreground">{description}</p>}
+      {description && <p className='text-sm text-muted-foreground'>{description}</p>}
 
       <Controller
         name={path}
@@ -165,7 +165,7 @@ function SettingField({ path, field, control, error }: SettingFieldProps) {
       />
 
       {/* Display validation error */}
-      {error && <p className="text-sm text-destructive">{error.message}</p>}
+      {error && <p className='text-sm text-destructive'>{error.message}</p>}
     </div>
   )
 }
@@ -184,7 +184,7 @@ function renderInput(path: string, field: SettingsSchemaField, controllerField: 
   switch (field.type) {
     case 'boolean':
       return (
-        <div className="w-full">
+        <div className='w-full'>
           <Switch
             id={path}
             checked={controllerField.value ?? false}
@@ -198,7 +198,7 @@ function renderInput(path: string, field: SettingsSchemaField, controllerField: 
       return (
         <Input
           id={path}
-          type="number"
+          type='number'
           value={controllerField.value ?? ''}
           onChange={(e) => {
             const val = e.target.value
@@ -216,7 +216,7 @@ function renderInput(path: string, field: SettingsSchemaField, controllerField: 
       return (
         <Select value={controllerField.value ?? ''} onValueChange={controllerField.onChange}>
           <SelectTrigger id={path}>
-            <SelectValue placeholder="Select an option" />
+            <SelectValue placeholder='Select an option' />
           </SelectTrigger>
           <SelectContent>
             {metadata?.options?.map((option: string) => (
@@ -233,7 +233,7 @@ function renderInput(path: string, field: SettingsSchemaField, controllerField: 
       return (
         <Input
           id={path}
-          type="text"
+          type='text'
           value={controllerField.value ?? ''}
           onChange={controllerField.onChange}
           onBlur={controllerField.onBlur}

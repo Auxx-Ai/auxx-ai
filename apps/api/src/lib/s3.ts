@@ -1,11 +1,11 @@
 // apps/api/src/lib/s3.ts
 
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { type Result } from 'neverthrow'
+import type { Result } from 'neverthrow'
 import {
-  AWS_REGION,
   AWS_ACCESS_KEY_ID,
+  AWS_REGION,
   AWS_SECRET_ACCESS_KEY,
   S3_BUCKET_NAME as BUCKET_NAME,
 } from '../config'
@@ -22,12 +22,13 @@ export const S3_BUCKET_NAME = BUCKET_NAME
  */
 export const s3Client = new S3Client({
   region: AWS_REGION,
-  credentials: AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY
-    ? {
-        accessKeyId: AWS_ACCESS_KEY_ID,
-        secretAccessKey: AWS_SECRET_ACCESS_KEY,
-      }
-    : undefined, // Falls back to environment/IAM role if not provided
+  credentials:
+    AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY
+      ? {
+          accessKeyId: AWS_ACCESS_KEY_ID,
+          secretAccessKey: AWS_SECRET_ACCESS_KEY,
+        }
+      : undefined, // Falls back to environment/IAM role if not provided
 })
 
 /**

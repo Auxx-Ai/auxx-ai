@@ -1,16 +1,16 @@
 // ~/server/api/routers/integration-reauth.ts
 
+import { schema } from '@auxx/database'
+import {
+  FacebookOAuthService,
+  GoogleOAuthService,
+  InstagramOAuthService,
+  OutlookOAuthService,
+} from '@auxx/lib/providers'
+import { TRPCError } from '@trpc/server'
+import { and, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { schema } from '@auxx/database'
-import { eq, and, inArray } from 'drizzle-orm'
-import { TRPCError } from '@trpc/server'
-import {
-  GoogleOAuthService,
-  OutlookOAuthService,
-  FacebookOAuthService,
-  InstagramOAuthService,
-} from '@auxx/lib/providers'
 
 /**
  * Integration re-authentication router
@@ -31,12 +31,15 @@ export const integrationReauthRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
 
       // Verify integration exists and user has access
-      const [integration] = await ctx.db.select()
+      const [integration] = await ctx.db
+        .select()
         .from(schema.Integration)
-        .where(and(
-          eq(schema.Integration.id, input.integrationId),
-          eq(schema.Integration.organizationId, organizationId)
-        ))
+        .where(
+          and(
+            eq(schema.Integration.id, input.integrationId),
+            eq(schema.Integration.organizationId, organizationId)
+          )
+        )
         .limit(1)
 
       if (!integration) {
@@ -125,12 +128,15 @@ export const integrationReauthRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
 
       // Verify integration exists and user has access
-      const [integration] = await ctx.db.select()
+      const [integration] = await ctx.db
+        .select()
         .from(schema.Integration)
-        .where(and(
-          eq(schema.Integration.id, input.integrationId),
-          eq(schema.Integration.organizationId, organizationId)
-        ))
+        .where(
+          and(
+            eq(schema.Integration.id, input.integrationId),
+            eq(schema.Integration.organizationId, organizationId)
+          )
+        )
         .limit(1)
 
       if (!integration) {
@@ -142,7 +148,8 @@ export const integrationReauthRouter = createTRPCRouter({
 
       // Clear the requiresReauth flag to dismiss the banner
       // Keep the auth error details for debugging but hide the banner
-      await ctx.db.update(schema.Integration)
+      await ctx.db
+        .update(schema.Integration)
         .set({
           requiresReauth: false,
         })
@@ -167,24 +174,27 @@ export const integrationReauthRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
 
-      const [integration] = await ctx.db.select({
-        id: schema.Integration.id,
-        provider: schema.Integration.provider,
-        enabled: schema.Integration.enabled,
-        email: schema.Integration.email,
-        name: schema.Integration.name,
-        lastSyncedAt: schema.Integration.lastSyncedAt,
-        lastSuccessfulSync: schema.Integration.lastSuccessfulSync,
-        authStatus: schema.Integration.authStatus,
-        lastAuthError: schema.Integration.lastAuthError,
-        lastAuthErrorAt: schema.Integration.lastAuthErrorAt,
-        requiresReauth: schema.Integration.requiresReauth,
-      })
+      const [integration] = await ctx.db
+        .select({
+          id: schema.Integration.id,
+          provider: schema.Integration.provider,
+          enabled: schema.Integration.enabled,
+          email: schema.Integration.email,
+          name: schema.Integration.name,
+          lastSyncedAt: schema.Integration.lastSyncedAt,
+          lastSuccessfulSync: schema.Integration.lastSuccessfulSync,
+          authStatus: schema.Integration.authStatus,
+          lastAuthError: schema.Integration.lastAuthError,
+          lastAuthErrorAt: schema.Integration.lastAuthErrorAt,
+          requiresReauth: schema.Integration.requiresReauth,
+        })
         .from(schema.Integration)
-        .where(and(
-          eq(schema.Integration.id, input.integrationId),
-          eq(schema.Integration.organizationId, organizationId)
-        ))
+        .where(
+          and(
+            eq(schema.Integration.id, input.integrationId),
+            eq(schema.Integration.organizationId, organizationId)
+          )
+        )
         .limit(1)
 
       if (!integration) {
@@ -227,24 +237,27 @@ export const integrationReauthRouter = createTRPCRouter({
         ...(input.integrationIds && { id: { in: input.integrationIds } }),
       }
 
-      const integrations = await ctx.db.select({
-        id: schema.Integration.id,
-        provider: schema.Integration.provider,
-        enabled: schema.Integration.enabled,
-        email: schema.Integration.email,
-        name: schema.Integration.name,
-        lastSyncedAt: schema.Integration.lastSyncedAt,
-        lastSuccessfulSync: schema.Integration.lastSuccessfulSync,
-        authStatus: schema.Integration.authStatus,
-        lastAuthError: schema.Integration.lastAuthError,
-        lastAuthErrorAt: schema.Integration.lastAuthErrorAt,
-        requiresReauth: schema.Integration.requiresReauth,
-      })
+      const integrations = await ctx.db
+        .select({
+          id: schema.Integration.id,
+          provider: schema.Integration.provider,
+          enabled: schema.Integration.enabled,
+          email: schema.Integration.email,
+          name: schema.Integration.name,
+          lastSyncedAt: schema.Integration.lastSyncedAt,
+          lastSuccessfulSync: schema.Integration.lastSuccessfulSync,
+          authStatus: schema.Integration.authStatus,
+          lastAuthError: schema.Integration.lastAuthError,
+          lastAuthErrorAt: schema.Integration.lastAuthErrorAt,
+          requiresReauth: schema.Integration.requiresReauth,
+        })
         .from(schema.Integration)
-        .where(and(
-          eq(schema.Integration.organizationId, organizationId),
-          ...(input.integrationIds ? [inArray(schema.Integration.id, input.integrationIds)] : [])
-        ))
+        .where(
+          and(
+            eq(schema.Integration.organizationId, organizationId),
+            ...(input.integrationIds ? [inArray(schema.Integration.id, input.integrationIds)] : [])
+          )
+        )
 
       return integrations.map((integration) => ({
         id: integration.id,

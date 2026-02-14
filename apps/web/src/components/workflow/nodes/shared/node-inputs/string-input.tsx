@@ -1,12 +1,13 @@
 // apps/web/src/components/workflow/nodes/shared/node-inputs/string-input.tsx
 
-import React, { useState, useEffect } from 'react'
 import { AutosizeField } from '@auxx/ui/components/autosize-field'
 import { AutosizeInput } from '@auxx/ui/components/autosize-input'
-import { createNodeInput, type NodeInputProps } from './base-node-input'
 import { Input } from '@auxx/ui/components/input'
 import { cn } from '@auxx/ui/lib/utils'
+import type React from 'react'
+import { useEffect, useState } from 'react'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
+import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 /** AutoGrow options for text inputs */
 interface AutoGrowOptions {
@@ -97,7 +98,7 @@ export const StringInput = createNodeInput<StringInputProps>(
     if (multiline) {
       return (
         <AutosizeField
-          variant="transparent"
+          variant='transparent'
           className={cn(baseClassName, className)}
           id={inputId}
           value={localValue}
@@ -133,10 +134,10 @@ export const StringInput = createNodeInput<StringInputProps>(
 
     return (
       <Input
-        variant="transparent"
+        variant='transparent'
         className={cn(baseClassName, className)}
-        size="sm"
-        autoComplete="off"
+        size='sm'
+        autoComplete='off'
         id={inputId}
         type={getInputType(validationType)}
         value={localValue}
@@ -165,7 +166,7 @@ function isValidUrl(url: string): boolean {
 }
 
 function isValidPhone(phone: string): boolean {
-  return /^[\+]?[1-9][\d\s\-\(\)\.]{7,15}$/.test(phone.replace(/\s/g, ''))
+  return /^[+]?[1-9][\d\s\-().]{7,15}$/.test(phone.replace(/\s/g, ''))
 }
 
 function getInputType(validationType?: string): string {

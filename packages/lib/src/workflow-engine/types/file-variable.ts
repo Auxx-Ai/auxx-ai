@@ -1,5 +1,6 @@
 // packages/lib/src/workflow-engine/types/file-variable.ts
 import { formatBytes } from '@auxx/utils/file'
+
 // Define these types locally for now since the paths don't exist in the lib package
 interface UnifiedVariable {
   id: string
@@ -416,27 +417,32 @@ export function checkDateCondition(date: Date, operator: string, value?: any): b
       const targetDate = new Date(value)
       return date.toDateString() !== targetDate.toDateString()
     }
-    case 'within_days':
+    case 'within_days': {
       const daysAgo = new Date()
       daysAgo.setDate(daysAgo.getDate() - value)
       return date >= daysAgo
-    case 'older_than_days':
+    }
+    case 'older_than_days': {
       const cutoffDate = new Date()
       cutoffDate.setDate(cutoffDate.getDate() - value)
       return date < cutoffDate
+    }
     case 'today':
       return date.toDateString() === now.toDateString()
-    case 'yesterday':
+    case 'yesterday': {
       const yesterday = new Date()
       yesterday.setDate(yesterday.getDate() - 1)
       return date.toDateString() === yesterday.toDateString()
-    case 'this_week':
+    }
+    case 'this_week': {
       const weekStart = new Date(now)
       weekStart.setDate(now.getDate() - now.getDay())
       return date >= weekStart
-    case 'this_month':
+    }
+    case 'this_month': {
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
       return date >= monthStart
+    }
     default:
       return false
   }

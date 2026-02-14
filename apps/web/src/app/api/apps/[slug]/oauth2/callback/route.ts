@@ -1,11 +1,11 @@
 // apps/web/src/app/api/apps/[slug]/oauth2/callback/route.ts
 
-import { NextRequest, NextResponse } from 'next/server'
-import { getRedisClient } from '@auxx/redis'
-import { database as db } from '@auxx/database'
-import { saveAppConnection } from '@auxx/services/app-connections'
-import { createScopedLogger } from '@auxx/logger'
 import { WEBAPP_URL } from '@auxx/config/urls'
+import { database as db } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import { getRedisClient } from '@auxx/redis'
+import { saveAppConnection } from '@auxx/services/app-connections'
+import { type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('oauth-callback')
 
@@ -15,10 +15,7 @@ const logger = createScopedLogger('oauth-callback')
  *
  * Handles OAuth provider callback, exchanges code for tokens, saves connection
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const searchParams = request.nextUrl.searchParams
   const code = searchParams.get('code')
   const state = searchParams.get('state')
@@ -101,7 +98,7 @@ export async function GET(
     }
 
     // Use appropriate auth method
-    let tokenRequestHeaders: Record<string, string> = {
+    const tokenRequestHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
     }
 

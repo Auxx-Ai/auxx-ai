@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/answer/types.ts
 
-import { BaseNodeData, SpecificNode, ExecutionResult } from '../../../types'
+import type { BaseNodeData, ExecutionResult, SpecificNode } from '../../../types'
 
 /**
  * Node data for answer nodes with flattened structure

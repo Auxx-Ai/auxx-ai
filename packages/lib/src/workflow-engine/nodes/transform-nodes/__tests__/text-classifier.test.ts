@@ -1,9 +1,9 @@
 // packages/lib/src/workflow-engine/nodes/transform-nodes/__tests__/text-classifier.test.ts
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { TextClassifierProcessor } from '../text-classifier'
-import { WorkflowNodeType } from '../../../core/types'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkflowNode } from '../../../core/types'
+import { WorkflowNodeType } from '../../../core/types'
+import { TextClassifierProcessor } from '../text-classifier'
 
 /**
  * Test suite for TextClassifierProcessor
@@ -70,11 +70,7 @@ describe('TextClassifierProcessor', () => {
         },
       }
 
-      const messages = await (processor as any).buildMessages(
-        node,
-        node.data,
-        mockContextManager
-      )
+      const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
 
       expect(messages).toHaveLength(2)
       expect(messages[0].role).toBe('system')
@@ -100,11 +96,7 @@ describe('TextClassifierProcessor', () => {
         },
       }
 
-      const messages = await (processor as any).buildMessages(
-        node,
-        node.data,
-        mockContextManager
-      )
+      const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
 
       expect(messages[0].content).toContain('Focus on sentiment analysis')
     })
@@ -122,11 +114,7 @@ describe('TextClassifierProcessor', () => {
         },
       }
 
-      const messages = await (processor as any).buildMessages(
-        node,
-        node.data,
-        mockContextManager
-      )
+      const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
 
       expect(messages[1].content).toContain('Subject: Billing question')
       expect(messages[1].content).toContain('Body: I need help with my invoice')
@@ -150,11 +138,7 @@ describe('TextClassifierProcessor', () => {
         },
       }
 
-      const messages = await (processor as any).buildMessages(
-        node,
-        node.data,
-        mockContextManager
-      )
+      const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
 
       expect(messages[1].content).toContain('Questions about Billing question')
     })

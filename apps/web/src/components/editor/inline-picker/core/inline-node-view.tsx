@@ -2,8 +2,8 @@
 
 'use client'
 
-import React from 'react'
-import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
+import { type NodeViewProps, NodeViewWrapper } from '@tiptap/react'
+import type React from 'react'
 import type { InlineNodeBadgeProps } from '../types'
 
 /**
@@ -36,12 +36,11 @@ export function createInlineNodeView(
 
     return (
       <NodeViewWrapper
-        as="div"
-        data-slot="inline-node"
+        as='div'
+        data-slot='inline-node'
         data-selected={selected}
-        className="inline-block cursor-pointer align-baseline"
-        onClick={handleClick}
-      >
+        className='inline-block cursor-pointer align-baseline'
+        onClick={handleClick}>
         {renderBadge({ id, selected })}
       </NodeViewWrapper>
     )

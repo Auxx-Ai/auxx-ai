@@ -6,26 +6,28 @@
  */
 
 // Core infrastructure
-export { AppStore, type Surface, type SurfaceMap, type Asset, type RenderTree } from './app-store'
-export { MessageClient } from './message-client'
-export { EventBroker } from './event-broker'
-
-// React hooks
-export { useSurfaces } from './use-surfaces'
-export { useMessageClient } from './use-message-client'
-export { useWidget } from './use-widget'
-
+export { AppStore, type Asset, type RenderTree, type Surface, type SurfaceMap } from './app-store'
 // Component system (Plan 7)
-export { componentRegistry, getComponent, hasComponent, getAllComponentNames, type ComponentName } from './component-registry'
-export { reconstructReactTree } from './reconstruct-react-tree'
-
-// Instance management
-export { SurfaceInstanceExternalStore } from './surface-instance-external-store'
-
+export {
+  type ComponentName,
+  componentRegistry,
+  getAllComponentNames,
+  getComponent,
+  hasComponent,
+} from './component-registry'
+export { EventBroker } from './event-broker'
 // Platform hooks (Plan 7)
 export {
-  useExtensionSettings,
   useExtensionInstallation,
+  useExtensionSettings,
   useInstalledExtensions,
   useIsExtensionInstalled,
 } from './extension-hooks'
+export { MessageClient } from './message-client'
+export { reconstructReactTree } from './reconstruct-react-tree'
+// Instance management
+export { SurfaceInstanceExternalStore } from './surface-instance-external-store'
+export { useMessageClient } from './use-message-client'
+// React hooks
+export { useSurfaces } from './use-surfaces'
+export { useWidget } from './use-widget'

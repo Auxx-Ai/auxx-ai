@@ -5,8 +5,8 @@
  * These helpers replace direct column filtering on removed integrationType/messageType fields.
  */
 
-import { inArray, SQL, eq, exists, and } from 'drizzle-orm'
 import { schema } from '@auxx/database'
+import { and, eq, exists, inArray, type SQL } from 'drizzle-orm'
 import type { IntegrationProviderType, MessageType } from './types'
 
 /**

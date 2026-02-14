@@ -1,16 +1,16 @@
 // packages/lib/src/seed/entity-seeder/index.ts
 
 import { type Database, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
 import { SystemUserService } from '../../users/system-user-service'
-import { createEntityDefinitions } from './create-entity-defs'
-import { createAllFields } from './create-fields'
-import { linkRelationships } from './link-relationships'
-import { linkNameFields } from './link-name-fields'
-import { linkDisplayFields } from './link-display-fields'
 import { createDefaultViews } from './create-default-views'
+import { createEntityDefinitions } from './create-entity-defs'
 import { createFieldViews } from './create-field-views'
+import { createAllFields } from './create-fields'
+import { linkDisplayFields } from './link-display-fields'
+import { linkNameFields } from './link-name-fields'
+import { linkRelationships } from './link-relationships'
 
 const logger = createScopedLogger('entity-seeder')
 
@@ -95,4 +95,4 @@ export class EntitySeeder {
 }
 
 // Re-export types
-export type { EntityDefMap, FieldMap, EntityDefRecord, FieldRecord } from './types'
+export type { EntityDefMap, EntityDefRecord, FieldMap, FieldRecord } from './types'

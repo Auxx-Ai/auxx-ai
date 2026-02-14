@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/hooks/layout-algorithms.ts
 
 import dagre from 'dagre'
-import type { FlowNode, FlowEdge } from '../store/types'
+import type { FlowEdge, FlowNode } from '../store/types'
 import {
-  LAYOUT_CONFIG,
   CONTAINER_LAYOUT_CONFIG,
+  LAYOUT_CONFIG,
   LAYOUT_SPACING,
   NODE_CLASSIFICATIONS,
 } from './layout-constants'

@@ -1,7 +1,7 @@
 // packages/sdk/src/root/workflow/input-nodes.ts
 
-import { WorkflowFieldNode, type BaseWorkflowFieldOptions } from './base-node.js'
 import type { SelectOption } from '../schema/select-node.js'
+import { type BaseWorkflowFieldOptions, WorkflowFieldNode } from './base-node.js'
 import type { TransformationContext } from './values/types.js'
 
 // ============================================================================
@@ -97,7 +97,11 @@ export class WorkflowNumberNode extends WorkflowFieldNode<'number', number, Numb
 /**
  * Boolean input field node
  */
-export class WorkflowBooleanNode extends WorkflowFieldNode<'boolean', boolean, BooleanInputOptions> {
+export class WorkflowBooleanNode extends WorkflowFieldNode<
+  'boolean',
+  boolean,
+  BooleanInputOptions
+> {
   get type(): 'boolean' {
     return 'boolean'
   }
@@ -110,8 +114,9 @@ export class WorkflowBooleanNode extends WorkflowFieldNode<'boolean', boolean, B
 /**
  * Select input field node
  */
-export class WorkflowSelectNode<TOptions extends readonly SelectOption[] = readonly SelectOption[]>
-  extends WorkflowFieldNode<'select', string, SelectInputOptions> {
+export class WorkflowSelectNode<
+  TOptions extends readonly SelectOption[] = readonly SelectOption[],
+> extends WorkflowFieldNode<'select', string, SelectInputOptions> {
   get type(): 'select' {
     return 'select'
   }
@@ -135,8 +140,9 @@ export class WorkflowSelectNode<TOptions extends readonly SelectOption[] = reado
 /**
  * Array input field node
  */
-export class WorkflowArrayNode<TItem extends WorkflowFieldNode = WorkflowFieldNode>
-  extends WorkflowFieldNode<'array', any[], ArrayInputOptions> {
+export class WorkflowArrayNode<
+  TItem extends WorkflowFieldNode = WorkflowFieldNode,
+> extends WorkflowFieldNode<'array', any[], ArrayInputOptions> {
   get type(): 'array' {
     return 'array'
   }
@@ -184,8 +190,13 @@ export class WorkflowArrayNode<TItem extends WorkflowFieldNode = WorkflowFieldNo
 /**
  * Struct input field node (for nested objects)
  */
-export class WorkflowStructNode<TFields extends Record<string, WorkflowFieldNode> = Record<string, WorkflowFieldNode>>
-  extends WorkflowFieldNode<'struct', Record<string, any>, StructInputOptions<Record<string, any>>> {
+export class WorkflowStructNode<
+  TFields extends Record<string, WorkflowFieldNode> = Record<string, WorkflowFieldNode>,
+> extends WorkflowFieldNode<
+  'struct',
+  Record<string, any>,
+  StructInputOptions<Record<string, any>>
+> {
   constructor(fields: TFields, options?: Omit<StructInputOptions<Record<string, any>>, 'fields'>) {
     super({ ...options, fields } as StructInputOptions<Record<string, any>>)
   }

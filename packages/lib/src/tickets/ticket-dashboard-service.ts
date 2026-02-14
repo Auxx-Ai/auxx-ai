@@ -1,6 +1,6 @@
 // packages/lib/src/tickets/ticket-dashboard-service.ts
 
-import { schema, type Database } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { TicketStatus as TicketStatusEnum } from '@auxx/database/enums'
 import { and, asc, count, eq, gte, inArray, isNull, lt, lte, not } from 'drizzle-orm'
 
@@ -200,13 +200,10 @@ export class TicketDashboardService {
       now
     )
 
-    const ticketsByStatusRecord = ticketsByStatus.reduce<Record<string, number>>(
-      (acc, item) => {
-        acc[item.status ?? 'UNKNOWN'] = item.count
-        return acc
-      },
-      {}
-    )
+    const ticketsByStatusRecord = ticketsByStatus.reduce<Record<string, number>>((acc, item) => {
+      acc[item.status ?? 'UNKNOWN'] = item.count
+      return acc
+    }, {})
 
     const ticketsByPriorityRecord = ticketsByPriorityRows.reduce<Record<string, number>>(
       (acc, item) => {

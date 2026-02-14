@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/services/credential-testers/smtp-tester.ts
 
-import nodemailer from 'nodemailer'
 import type { CredentialTestResult } from '@auxx/workflow-nodes/types'
+import nodemailer from 'nodemailer'
 
 /**
  * SMTP credential testing implementation

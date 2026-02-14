@@ -7,13 +7,13 @@ export async function validateUserAndAiAccess(userId: string) {
   const userModel = new UserModel()
   const res = await userModel.findById(userId)
   const user = res.ok
-    ? (res.value && {
+    ? res.value && {
         id: res.value.id,
         email: (res.value as any).email,
         aiProvider: (res.value as any).aiProvider,
         aiModel: (res.value as any).aiModel,
         aiApiKey: (res.value as any).aiApiKey,
-      })
+      }
     : null
   if (!user) return { error: 'User not found' }
 

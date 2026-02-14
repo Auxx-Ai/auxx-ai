@@ -51,7 +51,7 @@ export class URLTemplateService {
         }
 
         const stringValue = String(sourceValue)
-        const transformedValue = this.applyTransform(transform, stringValue)
+        const transformedValue = URLTemplateService.applyTransform(transform, stringValue)
 
         // Replace the target placeholder with the transformed value
         result = result.replace(transform.target, transformedValue)
@@ -172,7 +172,7 @@ export class URLTemplateService {
    * @returns True if URL has no remaining placeholders
    */
   static isFullyResolved(url: string): boolean {
-    return this.getPlaceholders(url).length === 0
+    return URLTemplateService.getPlaceholders(url).length === 0
   }
 }
 

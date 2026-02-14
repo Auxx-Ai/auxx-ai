@@ -1,11 +1,11 @@
 // packages/services/src/app-versions/update-version-lifecycle-status.ts
 
-import { database, AppVersion } from '@auxx/database'
+import { AppVersion, database } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
+import type { Result } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { AppVersionError } from './errors'
-import type { Result } from 'neverthrow'
 
 /**
  * Valid lifecycle transitions for app versions

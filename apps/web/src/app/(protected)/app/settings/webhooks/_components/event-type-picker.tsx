@@ -1,13 +1,13 @@
 // apps/web/src/app/(protected)/app/settings/webhooks/_components/event-type-picker.tsx
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { eventTypesList } from '@auxx/lib/webhooks/types'
 import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { Badge } from '@auxx/ui/components/badge'
-import { X, Check, Search } from 'lucide-react'
 import { Label } from '@auxx/ui/components/label'
-import { eventTypesList } from '@auxx/lib/webhooks/types'
 import { cn } from '@auxx/ui/lib/utils'
+import { Check, Search, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 interface EventTypePickerProps {
   selectedEventTypes: string[]
@@ -254,7 +254,7 @@ export function EventTypePicker({
   }, [isFocused, selectedEventTypes])
 
   return (
-    <div className="space-y-2 relative">
+    <div className='space-y-2 relative'>
       {label && <Label>{label}</Label>}
 
       <div
@@ -268,7 +268,7 @@ export function EventTypePicker({
           {selectedEventTypes.map((type, index) => (
             <Badge
               key={type}
-              variant="user"
+              variant='user'
               tabIndex={0}
               onFocus={() => setHighlightedIndex(index)}
               onBlur={() => setHighlightedIndex(null)}
@@ -280,16 +280,16 @@ export function EventTypePicker({
                   : ''
               }`}
               aria-selected={highlightedIndex === index}
-              role="option"
+              role='option'
               aria-label={`Event type: ${getEventTypeLabel(type)}`}>
               {getEventTypeLabel(type)}
               <button
-                type="button"
+                type='button'
                 disabled={disabled}
                 onClick={(e) => handleRemoveEventType(e, type)}
-                className="ml-1 cursor-pointer focus:outline-hidden"
+                className='ml-1 cursor-pointer focus:outline-hidden'
                 aria-label={`Remove ${getEventTypeLabel(type)}`}>
-                <X className="h-3 w-3" />
+                <X className='h-3 w-3' />
               </button>
             </Badge>
           ))}
@@ -300,12 +300,12 @@ export function EventTypePicker({
             onKeyDown={handleKeyDown}
             onFocus={() => setIsFocused(true)}
             disabled={disabled}
-            aria-label="Add event type"
-            autoComplete="off"
+            aria-label='Add event type'
+            autoComplete='off'
             placeholder={selectedEventTypes.length === 0 ? placeholder : ''}
             minWidth={20}
             placeholderIsMinWidth
-            inputClassName="bg-transparent p-1 text-sm outline-hidden placeholder:text-muted-foreground/60"
+            inputClassName='bg-transparent p-1 text-sm outline-hidden placeholder:text-muted-foreground/60'
           />
         </div>
         {/* <div className={cn('', !isFocused && 'h-0')}></div> */}
@@ -314,28 +314,28 @@ export function EventTypePicker({
       {isFocused && filteredEventTypes.length > 0 && (
         <div
           ref={dropdownRef}
-          className="absolute left-0 right-0 z-50 rounded-2xl border border-border bg-background shadow-md"
+          className='absolute left-0 right-0 z-50 rounded-2xl border border-border bg-background shadow-md'
           style={{
             top: `${dropdownTop}px`,
             marginTop: '0.25rem',
           }}
           onClick={(e) => e.stopPropagation()} // Prevent clicks in dropdown from closing it
         >
-          <div className="relative px-3 py-1 border-b border-border">
-            <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
+          <div className='relative px-3 py-1 border-b border-border'>
+            <Search className='absolute left-3 top-2 h-4 w-4 text-muted-foreground' />
             <input
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              className="w-full border-none bg-transparent pl-6 text-sm outline-hidden"
-              placeholder="Search event types..."
+              className='w-full border-none bg-transparent pl-6 text-sm outline-hidden'
+              placeholder='Search event types...'
               onKeyDown={handleKeyDown} // Handle keyboard nav in search box too
             />
           </div>
 
-          <div className="max-h-[200px] overflow-y-auto py-1">
+          <div className='max-h-[200px] overflow-y-auto py-1'>
             {filteredEventTypes.map((group) => (
-              <div key={group.value} className="px-1 py-1.5">
-                <div className="mb-1 px-2 text-xs font-semibold text-muted-foreground">
+              <div key={group.value} className='px-1 py-1.5'>
+                <div className='mb-1 px-2 text-xs font-semibold text-muted-foreground'>
                   {group.label}
                 </div>
                 {group.items.map((item) => (
@@ -356,7 +356,7 @@ export function EventTypePicker({
                           : 'border-primary-200'
                       }`}>
                       {selectedEventTypes.includes(item.value) && (
-                        <Check className="size-3 text-foreground" />
+                        <Check className='size-3 text-foreground' />
                       )}
                     </div>
                     <span>{item.label}</span>

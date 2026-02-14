@@ -1,10 +1,10 @@
 // packages/lib/src/admin/index.ts
 
-export { AdminService } from './admin-service'
 export type {
-  OrganizationWithMetrics,
-  OrganizationDetails,
-  AppWithMetrics,
   AppDetails,
+  AppWithMetrics,
+  OrganizationDetails,
+  OrganizationWithMetrics,
 } from './admin-service'
+export { AdminService } from './admin-service'
 export { SuperAdminService } from './super-admin-service'

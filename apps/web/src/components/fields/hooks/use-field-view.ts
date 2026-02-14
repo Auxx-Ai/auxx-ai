@@ -1,10 +1,10 @@
 // apps/web/src/components/fields/hooks/use-field-view.ts
 'use client'
 
-import { useMemo, useCallback } from 'react'
-import type { ViewContextType, FieldViewConfig } from '@auxx/lib/conditions'
+import type { FieldViewConfig, ViewContextType } from '@auxx/lib/conditions'
 import { createDefaultFieldViewConfig } from '@auxx/lib/conditions'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import { useCallback, useMemo } from 'react'
 import {
   useOrgFieldView,
   useViewStoreInitialized,
@@ -46,10 +46,7 @@ export function useFieldView({
   fields,
 }: UseFieldViewOptions): UseFieldViewReturn {
   // Get field IDs for default config fallback
-  const fieldIds = useMemo(
-    () => fields.map((f) => f.resourceFieldId ?? f.id ?? f.key),
-    [fields]
-  )
+  const fieldIds = useMemo(() => fields.map((f) => f.resourceFieldId ?? f.id ?? f.key), [fields])
 
   // Check if store is initialized
   const initialized = useViewStoreInitialized()
@@ -72,9 +69,7 @@ export function useFieldView({
     const { fieldVisibility, fieldOrder } = config
 
     // Create a map of fields by their ID
-    const fieldMap = new Map(
-      fields.map((f) => [f.resourceFieldId ?? f.id ?? f.key, f])
-    )
+    const fieldMap = new Map(fields.map((f) => [f.resourceFieldId ?? f.id ?? f.key, f]))
 
     // Return fields in order, filtering by visibility
     const orderedFields: ResourceField[] = []
@@ -103,9 +98,7 @@ export function useFieldView({
     const { fieldOrder } = config
 
     // Create a map of fields by their ID
-    const fieldMap = new Map(
-      fields.map((f) => [f.resourceFieldId ?? f.id ?? f.key, f])
-    )
+    const fieldMap = new Map(fields.map((f) => [f.resourceFieldId ?? f.id ?? f.key, f]))
 
     const orderedFields: ResourceField[] = []
 

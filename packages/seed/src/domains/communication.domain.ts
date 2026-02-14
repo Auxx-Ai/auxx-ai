@@ -2,11 +2,16 @@
 // Communication domain refinements for support threads and messages with comprehensive seeding
 
 import { createId } from '@paralleldrive/cuid2'
-import { sql, and, eq } from 'drizzle-orm'
-import type { SeedingContext, SeedingScenario, ServiceIntegratorIntegration, ServiceIntegratorInbox } from '../types'
+import { and, eq, sql } from 'drizzle-orm'
+import { ContentEngine } from '../generators/content-engine'
+import type {
+  SeedingContext,
+  SeedingScenario,
+  ServiceIntegratorInbox,
+  ServiceIntegratorIntegration,
+} from '../types'
 import { BusinessDistributions } from '../utils/business-distributions'
 import { RelationshipEngine } from '../utils/relationship-engine'
-import { ContentEngine } from '../generators/content-engine'
 
 /** CommunicationDomain encapsulates support thread and message refinements. */
 export class CommunicationDomain {
@@ -83,8 +88,8 @@ export class CommunicationDomain {
       )
     }
     const userIds = new Set<string>()
-    context.auth.testUsers.forEach(user => userIds.add(user.id))
-    context.auth.randomUsers.forEach(user => userIds.add(user.id))
+    context.auth.testUsers.forEach((user) => userIds.add(user.id))
+    context.auth.randomUsers.forEach((user) => userIds.add(user.id))
     this.users = Array.from(userIds)
     if (this.users.length === 0) {
       throw new Error('CommunicationDomain requires at least one seeded user to assign threads')
@@ -111,14 +116,20 @@ export class CommunicationDomain {
 
     // Get all participants (customer + support) for thread creation
     const allParticipants = await db
-      .select({ id: schema.Participant.id, contactId: schema.Participant.contactId, identifier: schema.Participant.identifier })
+      .select({
+        id: schema.Participant.id,
+        contactId: schema.Participant.contactId,
+        identifier: schema.Participant.identifier,
+      })
       .from(schema.Participant)
       .where(sql`${schema.Participant.organizationId} = ${organizationId}`)
 
     const customerParticipants = allParticipants.filter((p: any) => p.contactId !== null)
     const supportParticipants = allParticipants.filter((p: any) => p.contactId === null)
 
-    console.log(`  📊 Participants: ${customerParticipants.length} customers, ${supportParticipants.length} support agents`)
+    console.log(
+      `  📊 Participants: ${customerParticipants.length} customers, ${supportParticipants.length} support agents`
+    )
 
     // Generate thread data
     console.log('💬 Generating thread data...')
@@ -148,9 +159,10 @@ export class CommunicationDomain {
       threadRows.push({
         id: ids[i],
         subject: subjects[i],
-        participantIds: customerParticipant && supportParticipant
-          ? [customerParticipant.id, supportParticipant.id]
-          : [],
+        participantIds:
+          customerParticipant && supportParticipant
+            ? [customerParticipant.id, supportParticipant.id]
+            : [],
         organizationId: organizationIds[i],
         integrationId: integrationIds[i],
         messageType: messageTypes[i],
@@ -171,7 +183,9 @@ export class CommunicationDomain {
     if (threadRows.length > 0) {
       console.log('📝 Thread rows to insert:')
       threadRows.forEach((row, i) => {
-        console.log(`  [${i}] id=${row.id}, subject="${row.subject?.substring(0, 50)}...", status=${row.status}`)
+        console.log(
+          `  [${i}] id=${row.id}, subject="${row.subject?.substring(0, 50)}...", status=${row.status}`
+        )
       })
 
       await db
@@ -203,7 +217,11 @@ export class CommunicationDomain {
    * @param schema - Database schema
    * @param organizationId - Organization ID
    */
-  private async seedSupportParticipants(db: any, schema: any, organizationId: string): Promise<void> {
+  private async seedSupportParticipants(
+    db: any,
+    schema: any,
+    organizationId: string
+  ): Promise<void> {
     console.log('👤 Creating support participants...')
 
     const { schema: dbSchema } = await import('@auxx/database')
@@ -212,7 +230,9 @@ export class CommunicationDomain {
     const users = await db
       .select({ id: dbSchema.User.id, email: dbSchema.User.email, name: dbSchema.User.name })
       .from(dbSchema.User)
-      .where(sql`${dbSchema.User.id} = ANY(${sql.raw(`ARRAY[${this.users.map(id => `'${id}'`).join(',')}]`)})`)
+      .where(
+        sql`${dbSchema.User.id} = ANY(${sql.raw(`ARRAY[${this.users.map((id) => `'${id}'`).join(',')}]`)})`
+      )
 
     const supportParticipants = []
 
@@ -378,7 +398,9 @@ export class CommunicationDomain {
     const users = await db
       .select({ id: dbSchema.User.id, email: dbSchema.User.email })
       .from(dbSchema.User)
-      .where(sql`${dbSchema.User.id} = ANY(${sql.raw(`ARRAY[${this.users.map(id => `'${id}'`).join(',')}]`)})`)
+      .where(
+        sql`${dbSchema.User.id} = ANY(${sql.raw(`ARRAY[${this.users.map((id) => `'${id}'`).join(',')}]`)})`
+      )
 
     const messages = []
     const messageParticipants = []
@@ -387,7 +409,9 @@ export class CommunicationDomain {
     const totalMessages = this.scenario.scales.messages
     const messagesPerThread = Math.min(5, Math.ceil(totalMessages / threads.length))
 
-    console.log(`  📊 Distribution: ${threads.length} threads × ~${messagesPerThread} messages = ~${threads.length * messagesPerThread} total`)
+    console.log(
+      `  📊 Distribution: ${threads.length} threads × ~${messagesPerThread} messages = ~${threads.length * messagesPerThread} total`
+    )
 
     threads.forEach((thread: any, threadIndex: number) => {
       // Vary message count per thread (1-5 messages) but respect the average
@@ -518,7 +542,9 @@ export class CommunicationDomain {
               lastModifiedTime: sql`excluded."lastModifiedTime"`,
             },
           })
-        console.log(`  ✓ Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(messages.length / BATCH_SIZE)} complete`)
+        console.log(
+          `  ✓ Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(messages.length / BATCH_SIZE)} complete`
+        )
       }
 
       console.log(`✅ Upserted ${messages.length} messages`)
@@ -527,15 +553,16 @@ export class CommunicationDomain {
     // Insert message participants in batches
     if (messageParticipants.length > 0) {
       const BATCH_SIZE = 2000 // Smaller record size, can use larger batches
-      console.log(`📦 Inserting ${messageParticipants.length} message participants in batches of ${BATCH_SIZE}...`)
+      console.log(
+        `📦 Inserting ${messageParticipants.length} message participants in batches of ${BATCH_SIZE}...`
+      )
 
       for (let i = 0; i < messageParticipants.length; i += BATCH_SIZE) {
         const batch = messageParticipants.slice(i, i + BATCH_SIZE)
-        await db
-          .insert(schema.MessageParticipant)
-          .values(batch)
-          .onConflictDoNothing()
-        console.log(`  ✓ Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(messageParticipants.length / BATCH_SIZE)} complete`)
+        await db.insert(schema.MessageParticipant).values(batch).onConflictDoNothing()
+        console.log(
+          `  ✓ Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(messageParticipants.length / BATCH_SIZE)} complete`
+        )
       }
 
       console.log(`✅ Upserted ${messageParticipants.length} message participants`)
@@ -551,18 +578,18 @@ export class CommunicationDomain {
     if (isInbound) {
       const inboundMessages = [
         'Hello, I have a question about my recent order. Can you help me?',
-        'I\'d like to inquire about the shipping status of order #12345.',
+        "I'd like to inquire about the shipping status of order #12345.",
         'I need to process a refund for my recent purchase. Please advise.',
         'Can you provide more information about your products?',
-        'I\'m experiencing an issue with my account. Please help.',
+        "I'm experiencing an issue with my account. Please help.",
       ]
       return inboundMessages[index % inboundMessages.length]!
     } else {
       const outboundMessages = [
-        'Thank you for contacting us! We\'re here to help.',
-        'I\'ve checked on your order status. Here\'s what I found...',
-        'I\'d be happy to assist you with that refund.',
-        'Here\'s the information you requested about our products.',
+        "Thank you for contacting us! We're here to help.",
+        "I've checked on your order status. Here's what I found...",
+        "I'd be happy to assist you with that refund.",
+        "Here's the information you requested about our products.",
         'Let me help you resolve that account issue.',
       ]
       return outboundMessages[index % outboundMessages.length]!
@@ -648,7 +675,7 @@ export class CommunicationDomain {
   /** generateThreadSubjects creates realistic support thread subjects. */
   private generateThreadSubjects(): string[] {
     const emails = this.content.generateRealisticEmails(this.scenario.scales.threads)
-    return emails.map(email => email.subject)
+    return emails.map((email) => email.subject)
   }
 
   /** generateIntegrationTypes creates realistic integration types. */
@@ -707,7 +734,7 @@ export class CommunicationDomain {
 
   /** generateParticipantCounts creates realistic participant counts. */
   private generateParticipantCounts(): number[] {
-    return this.generateThreadParticipantSets().map(participants => participants.length)
+    return this.generateThreadParticipantSets().map((participants) => participants.length)
   }
 
   // ---- Message Generator Methods ----
@@ -715,7 +742,7 @@ export class CommunicationDomain {
   /** generateMessageSubjects creates realistic message subjects. */
   private generateMessageSubjects(): string[] {
     const emails = this.content.generateRealisticEmails(this.scenario.scales.messages)
-    return emails.map(email => email.subject)
+    return emails.map((email) => email.subject)
   }
 
   /** generateHTMLContent creates realistic HTML email content. */
@@ -736,13 +763,13 @@ export class CommunicationDomain {
   /** generatePlainTextContent creates plain text message content. */
   private generatePlainTextContent(): string[] {
     const emails = this.content.generateRealisticEmails(this.scenario.scales.messages)
-    return emails.map(email => email.body)
+    return emails.map((email) => email.body)
   }
 
   /** generateSnippets creates message preview snippets. */
   private generateSnippets(): string[] {
     const emails = this.content.generateRealisticEmails(this.scenario.scales.messages)
-    return emails.map(email =>
+    return emails.map((email) =>
       email.body.length > 150 ? email.body.substring(0, 150) + '...' : email.body
     )
   }
@@ -786,8 +813,17 @@ export class CommunicationDomain {
   /** generateKeywords creates message keywords for categorization. */
   private generateKeywords(): string[][] {
     const availableKeywords = [
-      'order', 'shipping', 'return', 'refund', 'billing', 'technical',
-      'complaint', 'compliment', 'urgent', 'question', 'support'
+      'order',
+      'shipping',
+      'return',
+      'refund',
+      'billing',
+      'technical',
+      'complaint',
+      'compliment',
+      'urgent',
+      'question',
+      'support',
     ]
     const keywordSets: string[][] = []
     for (let i = 0; i < this.scenario.scales.messages; i++) {
@@ -820,15 +856,17 @@ export class CommunicationDomain {
     if (!this.services.organizations || this.services.organizations.length === 0) {
       throw new Error('CommunicationDomain requires organization references in the seeding context')
     }
-    return Array.from({ length: this.scenario.scales.threads }, (_, index) =>
-      this.services.organizations[index % this.services.organizations.length]!.id
+    return Array.from(
+      { length: this.scenario.scales.threads },
+      (_, index) => this.services.organizations[index % this.services.organizations.length]!.id
     )
   }
 
   /** generateThreadIntegrationIds selects integration IDs for each thread. */
   private generateThreadIntegrationIds(): string[] {
-    return Array.from({ length: this.scenario.scales.threads }, (_, index) =>
-      this.services.integrations[index % this.services.integrations.length]!.id
+    return Array.from(
+      { length: this.scenario.scales.threads },
+      (_, index) => this.services.integrations[index % this.services.integrations.length]!.id
     )
   }
 
@@ -866,8 +904,9 @@ export class CommunicationDomain {
       return this.threadCreatedAt
     }
     const base = Date.now() - this.scenario.scales.threads * 120000
-    this.threadCreatedAt = Array.from({ length: this.scenario.scales.threads }, (_, index) =>
-      new Date(base + index * 120000)
+    this.threadCreatedAt = Array.from(
+      { length: this.scenario.scales.threads },
+      (_, index) => new Date(base + index * 120000)
     )
     return this.threadCreatedAt
   }
@@ -878,7 +917,7 @@ export class CommunicationDomain {
       return this.threadFirstMessageAt
     }
     const created = this.generateThreadCreatedAt()
-    this.threadFirstMessageAt = created.map(date => new Date(date))
+    this.threadFirstMessageAt = created.map((date) => new Date(date))
     return this.threadFirstMessageAt
   }
 
@@ -888,7 +927,9 @@ export class CommunicationDomain {
       return this.threadLastMessageAt
     }
     const first = this.generateThreadFirstMessageAt()
-    this.threadLastMessageAt = first.map((date, index) => new Date(date.getTime() + (index % 10) * 60000))
+    this.threadLastMessageAt = first.map(
+      (date, index) => new Date(date.getTime() + (index % 10) * 60000)
+    )
     return this.threadLastMessageAt
   }
 

@@ -1,21 +1,21 @@
 // apps/web/src/components/workflow/ui/input-editor/get-input-component.ts
 
-import { BaseType } from '~/components/workflow/types'
 import {
-  StringInput,
-  NumberInput,
-  BooleanInput,
+  AddressInput,
   ArrayInput,
-  ObjectInput,
+  BooleanInput,
+  CurrencyInput,
   DateTimeInput,
   EnumInput,
   FileInput,
-  RelationInput,
-  CurrencyInput,
-  AddressInput,
-  TagsInput,
+  NumberInput,
+  ObjectInput,
   PhoneInput,
+  RelationInput,
+  StringInput,
+  TagsInput,
 } from '~/components/workflow/nodes/shared/node-inputs'
+import { BaseType } from '~/components/workflow/types'
 
 /**
  * Map BaseType to appropriate input component

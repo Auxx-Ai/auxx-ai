@@ -2,8 +2,8 @@
 
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import type { ExecutionProgress, SSEResolutionProgress, PlanPreviewRow } from '../types'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { ExecutionProgress, PlanPreviewRow, SSEResolutionProgress } from '../types'
 
 /** Planning progress from SSE */
 interface PlanningProgress {
@@ -256,7 +256,19 @@ export function useImportSSE({
         setTimeout(connect, 2000)
       }
     }
-  }, [enabled, jobId, onComplete, onError, onResolutionComplete, onResolutionProgress, onPlanningRow, onPlanningProgress, onPlanningComplete, progress.created, progress.updated])
+  }, [
+    enabled,
+    jobId,
+    onComplete,
+    onError,
+    onResolutionComplete,
+    onResolutionProgress,
+    onPlanningRow,
+    onPlanningProgress,
+    onPlanningComplete,
+    progress.created,
+    progress.updated,
+  ])
 
   useEffect(() => {
     connect()

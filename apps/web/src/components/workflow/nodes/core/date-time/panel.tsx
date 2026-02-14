@@ -2,10 +2,8 @@
 
 'use client'
 
-import { memo, useCallback, useMemo } from 'react'
-import { produce } from 'immer'
-import { Label } from '@auxx/ui/components/label'
 import { Input } from '@auxx/ui/components/input'
+import { Label } from '@auxx/ui/components/label'
 import {
   Select,
   SelectContent,
@@ -13,31 +11,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
-import Section from '~/components/workflow/ui/section'
+import { produce } from 'immer'
+import { memo, useCallback, useMemo } from 'react'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import { BaseType, VAR_MODE, type UnifiedVariable } from '~/components/workflow/types'
+import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
+import { BaseType, type UnifiedVariable, VAR_MODE } from '~/components/workflow/types'
+import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import Section from '~/components/workflow/ui/section'
 import {
-  type DateTimeNodeData,
-  DateTimeOperation,
-  TimeUnit,
-  DateFormatType,
-  ParseDateFormatType,
-} from './types'
-import {
-  OPERATION_OPTIONS,
-  TIME_UNIT_OPTIONS,
-  DATE_FORMAT_OPTIONS,
   ACTION_OPTIONS,
-  ROUND_DIRECTION_OPTIONS,
+  DATE_FORMAT_OPTIONS,
   DEFAULT_DURATION,
   DEFAULT_FORMAT_TYPE,
-  PARSE_DATE_FORMAT_OPTIONS,
   DEFAULT_PARSE_FORMAT_TYPE,
+  OPERATION_OPTIONS,
+  PARSE_DATE_FORMAT_OPTIONS,
+  ROUND_DIRECTION_OPTIONS,
+  TIME_UNIT_OPTIONS,
 } from './constants'
-import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import { dateTimeNodeDefinition } from './schema'
-import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import {
+  DateFormatType,
+  type DateTimeNodeData,
+  DateTimeOperation,
+  ParseDateFormatType,
+  TimeUnit,
+} from './types'
 
 interface DateTimePanelProps {
   nodeId: string
@@ -108,11 +108,11 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
     <BasePanel nodeId={nodeId} data={data}>
       {/* Operation Selection Section */}
       <Section
-        title="Operation"
-        description="Select the date/time operation to perform."
+        title='Operation'
+        description='Select the date/time operation to perform.'
         actions={
           <Select value={nodeData.operation} onValueChange={handleOperationChange}>
-            <SelectTrigger variant="ghost" size="xs" disabled={isReadOnly}>
+            <SelectTrigger variant='ghost' size='xs' disabled={isReadOnly}>
               <SelectValue>
                 {OPERATION_OPTIONS.find((option) => option.value === nodeData.operation)?.label ||
                   nodeData.operation}
@@ -122,9 +122,9 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
               {OPERATION_OPTIONS.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   <div>
-                    <div className="font-medium">{option.label}</div>
+                    <div className='font-medium'>{option.label}</div>
                     {option.description && (
-                      <div className="text-xs text-muted-foreground">{option.description}</div>
+                      <div className='text-xs text-muted-foreground'>{option.description}</div>
                     )}
                   </div>
                 </SelectItem>
@@ -133,10 +133,10 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
           </Select>
         }
         isRequired>
-        <VarEditorField className="p-0">
+        <VarEditorField className='p-0'>
           {/* <div className="grow rounded-lg bg-primary-100 border flex flex-col"> */}
           {/* Input Date (shared by all operations) */}
-          <div className="flex items-center gap-1 p-1">
+          <div className='flex items-center gap-1 p-1'>
             {/* <VarEditorField> */}
             <VarEditor
               value={nodeData.inputDate || ''}
@@ -148,7 +148,7 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                   ? [BaseType.STRING]
                   : [BaseType.DATE, BaseType.DATETIME]
               }
-              className=""
+              className=''
               placeholder={
                 nodeData.operation === DateTimeOperation.TIME_BETWEEN
                   ? 'Start date'
@@ -185,8 +185,8 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                 nodeId={nodeId}
                 mode={VAR_MODE.PICKER}
                 varType={[BaseType.DATE, BaseType.DATETIME]}
-                className=""
-                placeholder="End date"
+                className=''
+                placeholder='End date'
                 isConstantMode={nodeData.timeBetween.isEndDateConstant}
                 onConstantModeChange={(isConstant) => {
                   const newData = produce(nodeData, (draft) => {
@@ -212,10 +212,10 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                     setInputs(newData)
                   }}>
                   <SelectTrigger
-                    variant="outline"
-                    size="sm"
+                    variant='outline'
+                    size='sm'
                     disabled={isReadOnly}
-                    className="rounded-xl">
+                    className='rounded-xl'>
                     <SelectValue>
                       {DATE_FORMAT_OPTIONS.find((option) => option.value === nodeData.format?.type)
                         ?.label || nodeData.format?.type}
@@ -225,9 +225,9 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                     {DATE_FORMAT_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         <div>
-                          <div className="font-medium">{option.label}</div>
+                          <div className='font-medium'>{option.label}</div>
                           {option.description && (
-                            <div className="text-xs text-muted-foreground">
+                            <div className='text-xs text-muted-foreground'>
                               {option.description}
                             </div>
                           )}
@@ -251,10 +251,10 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                     setInputs(newData)
                   }}>
                   <SelectTrigger
-                    variant="outline"
-                    size="sm"
+                    variant='outline'
+                    size='sm'
                     disabled={isReadOnly}
-                    className="rounded-xl">
+                    className='rounded-xl'>
                     <SelectValue>
                       {PARSE_DATE_FORMAT_OPTIONS.find(
                         (option) => option.value === nodeData.parseDate?.formatType
@@ -265,9 +265,9 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                     {PARSE_DATE_FORMAT_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         <div>
-                          <div className="font-medium">{option.label}</div>
+                          <div className='font-medium'>{option.label}</div>
                           {option.description && (
-                            <div className="text-xs text-muted-foreground">
+                            <div className='text-xs text-muted-foreground'>
                               {option.description}
                             </div>
                           )}
@@ -283,8 +283,8 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
 
           {/* Add/Subtract Operation */}
           {nodeData.operation === DateTimeOperation.ADD_SUBTRACT && data?.addSubtract && (
-            <div className="border-t p-1">
-              <div className="flex items-center gap-2">
+            <div className='border-t p-1'>
+              <div className='flex items-center gap-2'>
                 {/* Action Selector */}
                 <Select
                   value={nodeData.addSubtract?.action}
@@ -297,9 +297,9 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                     setInputs(newData)
                   }}>
                   <SelectTrigger
-                    variant="transparent"
+                    variant='transparent'
                     disabled={isReadOnly}
-                    className="w-[120px] px-2 h-6 text-sm font-medium">
+                    className='w-[120px] px-2 h-6 text-sm font-medium'>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -313,7 +313,7 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
 
                 {/* Duration Input */}
                 <Input
-                  type="number"
+                  type='number'
                   value={nodeData.addSubtract?.duration || ''}
                   onChange={(e) => {
                     const newData = produce(data, (draft) => {
@@ -324,7 +324,7 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                     setInputs(newData)
                   }}
                   min={0}
-                  className="w-[100px] h-6"
+                  className='w-[100px] h-6'
                   disabled={isReadOnly}
                 />
 
@@ -340,8 +340,8 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                     setInputs(newData)
                   }}>
                   <SelectTrigger
-                    variant="transparent"
-                    className="px-2 h-6 text-sm font-medium"
+                    variant='transparent'
+                    className='px-2 h-6 text-sm font-medium'
                     disabled={isReadOnly}>
                     <SelectValue />
                   </SelectTrigger>
@@ -361,11 +361,11 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
           {nodeData.operation === DateTimeOperation.FORMAT &&
             data?.format &&
             nodeData.format?.type === DateFormatType.CUSTOM && (
-              <div className="border-t p-1 px-2">
+              <div className='border-t p-1 px-2'>
                 <Input
-                  id="custom-format"
-                  className="h-6.5 "
-                  variant="transparent"
+                  id='custom-format'
+                  className='h-6.5 '
+                  variant='transparent'
                   value={nodeData.format?.customFormat || ''}
                   onChange={(e) => {
                     const newData = produce(data, (draft) => {
@@ -375,7 +375,7 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                     })
                     setInputs(newData)
                   }}
-                  placeholder="e.g., YYYY-MM-DD HH:mm:ss"
+                  placeholder='e.g., YYYY-MM-DD HH:mm:ss'
                   disabled={isReadOnly}
                 />
                 {/* <p className="text-xs text-muted-foreground mt-1 ps-1">
@@ -388,11 +388,11 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
           {nodeData.operation === DateTimeOperation.PARSE_DATE &&
             data?.parseDate &&
             nodeData.parseDate?.formatType === ParseDateFormatType.CUSTOM && (
-              <div className="border-t p-1 px-2">
+              <div className='border-t p-1 px-2'>
                 <Input
-                  id="custom-parse-format"
-                  className="h-6.5"
-                  variant="transparent"
+                  id='custom-parse-format'
+                  className='h-6.5'
+                  variant='transparent'
                   value={nodeData.parseDate?.customFormat || ''}
                   onChange={(e) => {
                     const newData = produce(data, (draft) => {
@@ -402,7 +402,7 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                     })
                     setInputs(newData)
                   }}
-                  placeholder="e.g., yyyy-MM-dd HH:mm:ss"
+                  placeholder='e.g., yyyy-MM-dd HH:mm:ss'
                   disabled={isReadOnly}
                 />
                 {/* <p className="text-xs text-muted-foreground mt-1 ps-1">
@@ -413,7 +413,7 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
 
           {/* Time Between Operation */}
           {nodeData.operation === DateTimeOperation.TIME_BETWEEN && data?.timeBetween && (
-            <div className="p-1 border-t">
+            <div className='p-1 border-t'>
               <Select
                 value={nodeData.timeBetween?.unit}
                 onValueChange={(value: TimeUnit) => {
@@ -425,8 +425,8 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                   setInputs(newData)
                 }}>
                 <SelectTrigger
-                  variant="transparent"
-                  className="px-2 h-6 text-sm font-medium"
+                  variant='transparent'
+                  className='px-2 h-6 text-sm font-medium'
                   disabled={isReadOnly}>
                   <SelectValue />
                 </SelectTrigger>
@@ -443,7 +443,7 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
 
           {/* Round Operation */}
           {nodeData.operation === DateTimeOperation.ROUND && data?.round && (
-            <div className="flex items-center gap-2 py-1 border-t px-2">
+            <div className='flex items-center gap-2 py-1 border-t px-2'>
               {/* Direction Selector */}
               <Select
                 value={nodeData.round?.direction}
@@ -456,8 +456,8 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                   setInputs(newData)
                 }}>
                 <SelectTrigger
-                  className="w-[140px] px-0 font-medium h-6"
-                  variant="transparent"
+                  className='w-[140px] px-0 font-medium h-6'
+                  variant='transparent'
                   disabled={isReadOnly}>
                   <SelectValue>
                     {ROUND_DIRECTION_OPTIONS.find(
@@ -474,7 +474,7 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                 </SelectContent>
               </Select>
 
-              <span className="text-sm text-muted-foreground font-medium">to</span>
+              <span className='text-sm text-muted-foreground font-medium'>to</span>
 
               {/* Time Unit Selector */}
               <Select
@@ -488,8 +488,8 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                   setInputs(newData)
                 }}>
                 <SelectTrigger
-                  className="flex-1 px-0 font-medium h-6"
-                  variant="transparent"
+                  className='flex-1 px-0 font-medium h-6'
+                  variant='transparent'
                   disabled={isReadOnly}>
                   <SelectValue />
                 </SelectTrigger>
@@ -507,37 +507,37 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
       </Section>
       {/* Advanced Settings Section */}
       <Section
-        title="Advanced Settings"
-        description="Additional nodeDatauration options."
+        title='Advanced Settings'
+        description='Additional nodeDatauration options.'
         initialOpen={false}>
-        <div className="space-y-4">
+        <div className='space-y-4'>
           <div>
-            <Label htmlFor="timezone">Timezone</Label>
+            <Label htmlFor='timezone'>Timezone</Label>
             <Input
-              id="timezone"
+              id='timezone'
               value={nodeData.timezone || ''}
               onChange={(e) => setInputs({ ...data, timezone: e.target.value })}
-              placeholder="e.g., America/New_York"
-              className="mt-1"
+              placeholder='e.g., America/New_York'
+              className='mt-1'
               disabled={isReadOnly}
             />
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className='text-xs text-muted-foreground mt-1'>
               Leave empty to use user's local timezone
             </p>
           </div>
 
           {nodeData.operation === DateTimeOperation.FORMAT && (
             <div>
-              <Label htmlFor="locale">Locale</Label>
+              <Label htmlFor='locale'>Locale</Label>
               <Input
-                id="locale"
+                id='locale'
                 value={nodeData.locale || ''}
                 onChange={(e) => setInputs({ ...data, locale: e.target.value })}
-                placeholder="e.g., en-US"
-                className="mt-1"
+                placeholder='e.g., en-US'
+                className='mt-1'
                 disabled={isReadOnly}
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className='text-xs text-muted-foreground mt-1'>
                 For localized date formatting (month names, etc.)
               </p>
             </div>

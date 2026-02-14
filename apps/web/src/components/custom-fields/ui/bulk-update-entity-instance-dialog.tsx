@@ -1,27 +1,27 @@
 // apps/web/src/components/custom-fields/ui/bulk-update-entity-instance-dialog.tsx
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
-import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
-import { FieldInputRow } from './field-input-row'
-import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
-import { useDirtyCheck } from '~/hooks/use-dirty-state'
-import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
-import { useResource } from '~/components/resources'
-import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
+import { Button } from '@auxx/ui/components/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@auxx/ui/components/dialog'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useResource } from '~/components/resources'
+import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import { useDirtyCheck } from '~/hooks/use-dirty-state'
+import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
+import { FieldInputRow } from './field-input-row'
 
 interface BulkUpdateEntityInstanceDialogProps {
   open: boolean
@@ -203,7 +203,7 @@ export function BulkUpdateEntityInstanceDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent size="md" position="tc" {...guardProps}>
+        <DialogContent size='md' position='tc' {...guardProps}>
           <DialogHeader>
             <DialogTitle>
               Edit {instanceCount} {instanceCount === 1 ? resourceLabel : resourcePlural}
@@ -215,7 +215,7 @@ export function BulkUpdateEntityInstanceDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <VarEditorField className="p-0">
+          <VarEditorField className='p-0'>
             {editableFields.map((field) => {
               // Disable unique fields when editing multiple instances (would violate uniqueness)
               const isUniqueDisabled = field.isUnique && instanceCount > 1
@@ -237,22 +237,22 @@ export function BulkUpdateEntityInstanceDialog({
           </VarEditorField>
 
           {editableFields.length === 0 && (
-            <div className="text-sm text-muted-foreground text-center py-8">
+            <div className='text-sm text-muted-foreground text-center py-8'>
               No fields defined for this entity type.
             </div>
           )}
 
           <DialogFooter>
-            <Button type="button" size="sm" variant="ghost" onClick={guardedClose}>
-              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+            <Button type='button' size='sm' variant='ghost' onClick={guardedClose}>
+              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
             <Button
-              size="sm"
-              variant="outline"
+              size='sm'
+              variant='outline'
               onClick={handleSubmit}
               disabled={editableFields.length === 0 || modifiedFields.size === 0}>
               Update {instanceCount} {instanceCount === 1 ? resourceLabel : resourcePlural}{' '}
-              <KbdSubmit variant="outline" size="sm" />
+              <KbdSubmit variant='outline' size='sm' />
             </Button>
           </DialogFooter>
         </DialogContent>

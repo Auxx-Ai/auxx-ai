@@ -1,15 +1,15 @@
 // app/(protected)/app/settings/plans/_components/payment-methods-card.tsx
 'use client'
 
-import { useState } from 'react'
-import { api } from '~/trpc/react'
-import { Button } from '@auxx/ui/components/button'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { CreditCard, Plus, Trash2 } from 'lucide-react'
-import { AddPaymentMethodDialog } from './add-payment-method-dialog'
 import { toastError } from '@auxx/ui/components/toast'
+import { CreditCard, Plus, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
+import { AddPaymentMethodDialog } from './add-payment-method-dialog'
 
 /** Card component displaying payment methods with add/delete functionality */
 export function PaymentMethodsCard() {
@@ -66,18 +66,18 @@ export function PaymentMethodsCard() {
 
   return (
     <>
-      <div className="rounded-2xl border p-3 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground">
-              <CreditCard className="size-4" /> Payment
+      <div className='rounded-2xl border p-3 space-y-4'>
+        <div className='flex items-center justify-between'>
+          <div className='space-y-1'>
+            <div className='flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground'>
+              <CreditCard className='size-4' /> Payment
             </div>
-            <p className="text-sm text-muted-foreground">Manage your payment methods</p>
+            <p className='text-sm text-muted-foreground'>Manage your payment methods</p>
           </div>
           <Button
-            variant="outline"
-            size="icon-sm"
-            className="-mt-7 -mr-2 rounded-full"
+            variant='outline'
+            size='icon-sm'
+            className='-mt-7 -mr-2 rounded-full'
             onClick={() => setDialogOpen(true)}
             disabled={isLoading}>
             <Plus />
@@ -85,60 +85,60 @@ export function PaymentMethodsCard() {
         </div>
 
         {isLoading ? (
-          <div className="space-y-3">
+          <div className='space-y-3'>
             {[1, 2].map((i) => (
-              <div key={i} className="flex items-center justify-between rounded-lg border p-3">
-                <div className="flex items-center gap-3">
-                  <Skeleton className="size-10 rounded" />
-                  <div className="space-y-2">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-3 w-20" />
+              <div key={i} className='flex items-center justify-between rounded-lg border p-3'>
+                <div className='flex items-center gap-3'>
+                  <Skeleton className='size-10 rounded' />
+                  <div className='space-y-2'>
+                    <Skeleton className='h-4 w-32' />
+                    <Skeleton className='h-3 w-20' />
                   </div>
                 </div>
-                <Skeleton className="h-8 w-20" />
+                <Skeleton className='h-8 w-20' />
               </div>
             ))}
           </div>
         ) : paymentMethods && paymentMethods.length > 0 ? (
-          <div className="space-y-3">
+          <div className='space-y-3'>
             {paymentMethods.map((pm) => (
               <div
                 key={pm.id}
-                className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="size-10 rounded bg-muted flex items-center justify-center">
-                    <CreditCard className="size-5 text-muted-foreground" />
+                className='flex items-center justify-between rounded-lg border p-3 hover:bg-muted transition-colors'>
+                <div className='flex items-center gap-3'>
+                  <div className='size-10 rounded bg-muted flex items-center justify-center'>
+                    <CreditCard className='size-5 text-muted-foreground' />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">
+                    <div className='flex items-center gap-2'>
+                      <span className='text-sm font-medium'>
                         {getCardBrand(pm.brand)} •••• {pm.last4}
                       </span>
                       {pm.isDefault && (
-                        <Badge size="xs" variant="secondary">
+                        <Badge size='xs' variant='secondary'>
                           Default
                         </Badge>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
+                    <p className='text-xs text-muted-foreground'>
                       Expires {pm.expMonth}/{pm.expYear}
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className='flex items-center gap-2'>
                   {!pm.isDefault && (
                     <Button
-                      variant="ghost"
-                      size="sm"
+                      variant='ghost'
+                      size='sm'
                       onClick={() => setDefault.mutate({ paymentMethodId: pm.id })}
                       disabled={setDefault.isPending}>
                       Set Default
                     </Button>
                   )}
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-8 text-destructive hover:text-destructive"
+                    variant='ghost'
+                    size='icon'
+                    className='size-8 text-destructive hover:text-destructive'
                     onClick={() => handleDelete(pm.id)}
                     disabled={deleteMethod.isPending}>
                     <Trash2 />
@@ -148,7 +148,7 @@ export function PaymentMethodsCard() {
             ))}
           </div>
         ) : (
-          <div className="text-center py-8 text-sm text-muted-foreground">
+          <div className='text-center py-8 text-sm text-muted-foreground'>
             No payment methods added yet
           </div>
         )}

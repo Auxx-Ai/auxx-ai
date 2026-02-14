@@ -1,24 +1,24 @@
 // apps/web/src/components/tags/ui/tag-picker.tsx
 'use client'
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   Command,
-  CommandInput,
-  CommandList,
+  CommandBreadcrumb,
   CommandEmpty,
   CommandGroup,
-  CommandNavigation,
-  CommandBreadcrumb,
+  CommandInput,
+  CommandList,
   CommandNavigableItem,
-  useCommandNavigation,
+  CommandNavigation,
   type NavigationItem,
+  useCommandNavigation,
 } from '@auxx/ui/components/command'
-import { Checkbox } from '@auxx/ui/components/checkbox'
-import { cn } from '@auxx/ui/lib/utils'
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { toRecordId, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { cn } from '@auxx/ui/lib/utils'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTagHierarchy } from '../hooks/use-tag-hierarchy'
 import type { TagNode } from '../types'
 
@@ -102,7 +102,7 @@ function TagList({
   enableKeyboardNavigation: boolean
 }) {
   return (
-    <ScrollArea className="max-h-[300px]">
+    <ScrollArea className='max-h-[300px]'>
       <CommandGroup>
         {tags.map((tag, index) => {
           if (!tag) return null
@@ -121,12 +121,12 @@ function TagList({
                 'px-2 rounded-full',
                 isKeyboardSelected && 'bg-accent text-accent-foreground'
               )}>
-              <div className="flex items-center">
+              <div className='flex items-center'>
                 {tag.tag_emoji ? (
-                  <span className="mr-2">{tag.tag_emoji}</span>
+                  <span className='mr-2'>{tag.tag_emoji}</span>
                 ) : (
                   <div
-                    className="mr-2 size-3 rounded-full"
+                    className='mr-2 size-3 rounded-full'
                     style={{ backgroundColor: tag.tag_color || '#94a3b8' }}
                   />
                 )}
@@ -136,7 +136,7 @@ function TagList({
                 <Checkbox
                   checked={isSelected}
                   aria-label={`Select ${tag.title}`}
-                  className="ml-auto pointer-events-none"
+                  className='ml-auto pointer-events-none'
                 />
               )}
             </CommandNavigableItem>
@@ -301,7 +301,15 @@ function TagPickerContent({
         }
       }
     },
-    [selectedTagIds, onChange, allowMultiple, onOpenChange, onlyLeafSelection, navigateToTag, toTagRecordId]
+    [
+      selectedTagIds,
+      onChange,
+      allowMultiple,
+      onOpenChange,
+      onlyLeafSelection,
+      navigateToTag,
+      toTagRecordId,
+    ]
   )
 
   // Get selected item for keyboard navigation
@@ -353,16 +361,16 @@ function TagPickerContent({
     <Command shouldFilter={false} onKeyDown={handleKeyDown}>
       <CommandList>
         <CommandInput
-          placeholder="Search tags..."
+          placeholder='Search tags...'
           value={search}
           onValueChange={setSearch}
           autoFocus
         />
 
-        <CommandBreadcrumb rootLabel="All Tags" />
+        <CommandBreadcrumb rootLabel='All Tags' />
 
         {isLoading ? (
-          <div className="py-6 text-center text-sm text-muted-foreground">Loading tags...</div>
+          <div className='py-6 text-center text-sm text-muted-foreground'>Loading tags...</div>
         ) : !Array.isArray(tagsToDisplay) ? (
           <CommandEmpty>Error loading tags or invalid data.</CommandEmpty>
         ) : tagsToDisplay.length === 0 ? (

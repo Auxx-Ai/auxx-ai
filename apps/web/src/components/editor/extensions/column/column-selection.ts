@@ -1,10 +1,10 @@
-import { ResolvedPos, Node } from 'prosemirror-model'
+import type { Node, ResolvedPos } from 'prosemirror-model'
 import { Selection, SelectionRange, TextSelection } from 'prosemirror-state'
 
 import { Column } from './column'
 import { ColumnBlock } from './column-block'
-import { findParentNodeClosestToPos } from './utils'
 import type { Predicate } from './utils'
+import { findParentNodeClosestToPos } from './utils'
 
 type Mutable<T> = { -readonly [k in keyof T]: T[k] }
 

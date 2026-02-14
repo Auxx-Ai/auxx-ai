@@ -1,10 +1,10 @@
 // packages/sdk/src/runtime/reconciler/tags/form-tag.ts
 
-import { BaseTag } from './base-tag.js'
-import { registerEventHandler } from '../../register-event-handler.js'
+import type { FormSchema } from '../../../client/forms/types.js'
 import { serializeSchema } from '../../../client/forms/utils/serialize.js'
 import { validateFormFields } from '../../../client/forms/utils/validation.js'
-import type { FormSchema } from '../../../client/forms/types.js'
+import { registerEventHandler } from '../../register-event-handler.js'
+import { BaseTag } from './base-tag.js'
 
 /**
  * Tag for Form component.

@@ -7,33 +7,30 @@
 
 // Import all shared types at once for cleaner usage
 import type {
-  // Upload types
-  UploadStatus,
-  StageStatus,
-  ProcessingStage,
-  UploadProgress,
-  UploadResult,
   BatchUploadResult,
-  QueuedFile,
-  QueueStats,
-  QueueConfig,
-  UploadFile,
-  MultiFileProgress,
-  UploadCallbacks,
-
-  // Session types
-  SessionStatus,
-  SessionInfo,
-  UploadSessionOptions,
-  FileInfo,
-
+  ConnectionStatus,
+  EntityType,
   // Entity types
   EntityUploadConfig,
-  EntityType,
-
+  FileInfo,
   // SSE types
   FileUploadEvent,
-  ConnectionStatus,
+  MultiFileProgress,
+  ProcessingStage,
+  QueueConfig,
+  QueuedFile,
+  QueueStats,
+  SessionInfo,
+  // Session types
+  SessionStatus,
+  StageStatus,
+  UploadCallbacks,
+  UploadFile,
+  UploadProgress,
+  UploadResult,
+  UploadSessionOptions,
+  // Upload types
+  UploadStatus,
 } from '@auxx/lib/files/types'
 
 // Re-export all shared types

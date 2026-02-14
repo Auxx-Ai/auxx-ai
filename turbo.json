@@ -20,7 +20,7 @@
       "cache": false,
       "persistent": true
     },
-    "lint": { "dependsOn": ["^lint"] },
+    "lint": {},
     "dev": {
       "env": ["*"],
       "dependsOn": ["^build"],

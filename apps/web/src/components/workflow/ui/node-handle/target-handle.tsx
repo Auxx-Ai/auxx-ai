@@ -1,16 +1,16 @@
 // apps/web/src/components/workflow/ui/node-handle/target-handle.tsx
 
-import React, { memo } from 'react'
-import { Handle } from '@xyflow/react'
-import { type NodeHandleProps, NodeRunningStatus } from './types'
-import { useReadOnly, useAvailableBlocks } from '~/components/workflow/hooks'
 import { cn } from '@auxx/ui/lib/utils'
+import { Handle } from '@xyflow/react'
+import React, { memo } from 'react'
+import { useAvailableBlocks, useReadOnly } from '~/components/workflow/hooks'
 import {
+  getIndicatorClass,
+  getPositionClass,
   type HandlePosition,
   mapPosition,
-  getPositionClass,
-  getIndicatorClass,
 } from './handle-position-utils'
+import { type NodeHandleProps, NodeRunningStatus } from './types'
 
 export const NodeTargetHandle = memo(
   ({
@@ -42,7 +42,7 @@ export const NodeTargetHandle = memo(
       <div className={cn('node-handle absolute z-[1]', getPositionClass(position))}>
         <Handle
           id={handleId}
-          type="target"
+          type='target'
           position={mapPosition(position)}
           className={cn(
             'group/handle z-[1] !h-4 !w-4 !rounded-none !border-none !bg-transparent !outline-none',

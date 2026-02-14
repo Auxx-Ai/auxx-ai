@@ -2,16 +2,17 @@
 
 'use client'
 
-import React, { createContext, useContext, useCallback, useMemo } from 'react'
-import {
-  InformationExtractorNodeData,
-  InformationExtractorContextValue,
-  InformationExtractorModel,
-} from './types'
-import { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
+import type React from 'react'
+import { createContext, useCallback, useContext, useMemo } from 'react'
 import { useAvailableVariables } from '~/components/workflow/hooks'
 import { schemaToOutputVars } from '~/components/workflow/ui/structured-output-generator/schema-to-vars'
-import { UnifiedVariable } from '../if-else'
+import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
+import type { UnifiedVariable } from '../if-else'
+import type {
+  InformationExtractorContextValue,
+  InformationExtractorModel,
+  InformationExtractorNodeData,
+} from './types'
 
 const InformationExtractorContext = createContext<InformationExtractorContextValue | null>(null)
 

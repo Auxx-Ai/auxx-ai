@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/utils/node-layout/edge-manager.ts
 
 import { produce } from 'immer'
-import type { FlowNode, FlowEdge, EdgeData } from '~/components/workflow/types'
+import type { EdgeData, FlowEdge, FlowNode } from '~/components/workflow/types'
 import { NodeType } from '~/components/workflow/types'
-import { getNodesConnectedSourceOrTargetHandleIdsMap, calculateEdgeZIndex } from '../edge-utils'
 import { LOOP_HANDLES } from '../../nodes/core/loop/constants'
 import { unifiedNodeRegistry } from '../../nodes/unified-registry'
+import { calculateEdgeZIndex, getNodesConnectedSourceOrTargetHandleIdsMap } from '../edge-utils'
 
 export interface EdgeCreationParams {
   source: string
@@ -132,15 +132,16 @@ export class EdgeManager {
         if (anchorNode) {
           // Use provided handle or determine based on node type
           const sourceHandle =
-            anchorNode.sourceHandle || this.getNodeHandle(anchorNode.type || '', 'source', 'after')
+            anchorNode.sourceHandle ||
+            EdgeManager.getNodeHandle(anchorNode.type || '', 'source', 'after')
 
           edges.push(
-            this.createEdge(
+            EdgeManager.createEdge(
               {
                 source: anchorNode.id,
                 sourceHandle,
                 target: newNodeId,
-                targetHandle: this.getNodeHandle(newNodeType, 'target'),
+                targetHandle: EdgeManager.getNodeHandle(newNodeType, 'target'),
                 sourceType: anchorNode.type || '',
                 targetType: newNodeType,
                 isInLoop: loopContext?.isInLoop,
@@ -156,13 +157,14 @@ export class EdgeManager {
         if (anchorNode) {
           // Use provided handle or determine based on node type
           const targetHandle =
-            anchorNode.targetHandle || this.getNodeHandle(anchorNode.type || '', 'target', 'before')
+            anchorNode.targetHandle ||
+            EdgeManager.getNodeHandle(anchorNode.type || '', 'target', 'before')
 
           edges.push(
-            this.createEdge(
+            EdgeManager.createEdge(
               {
                 source: newNodeId,
-                sourceHandle: this.getNodeHandle(newNodeType, 'source'),
+                sourceHandle: EdgeManager.getNodeHandle(newNodeType, 'source'),
                 target: anchorNode.id,
                 targetHandle,
                 sourceType: newNodeType,
@@ -181,15 +183,15 @@ export class EdgeManager {
           // Create edge from source to new node
           const sourceHandle =
             anchorNode.sourceHandle ||
-            this.getNodeHandle(anchorNode.type || '', 'source', 'between')
+            EdgeManager.getNodeHandle(anchorNode.type || '', 'source', 'between')
 
           edges.push(
-            this.createEdge(
+            EdgeManager.createEdge(
               {
                 source: anchorNode.id,
                 sourceHandle,
                 target: newNodeId,
-                targetHandle: this.getNodeHandle(newNodeType, 'target'),
+                targetHandle: EdgeManager.getNodeHandle(newNodeType, 'target'),
                 sourceType: anchorNode.type || '',
                 targetType: newNodeType,
                 isInLoop: loopContext?.isInLoop,
@@ -200,13 +202,13 @@ export class EdgeManager {
           )
 
           // Create edge from new node to target
-          const newNodeSourceHandle = this.getNodeHandle(newNodeType, 'source')
+          const newNodeSourceHandle = EdgeManager.getNodeHandle(newNodeType, 'source')
           const targetHandle =
             targetNode.targetHandle ||
-            this.getNodeHandle(targetNode.type || '', 'target', 'between')
+            EdgeManager.getNodeHandle(targetNode.type || '', 'target', 'between')
 
           edges.push(
-            this.createEdge(
+            EdgeManager.createEdge(
               {
                 source: newNodeId,
                 sourceHandle: newNodeSourceHandle,
@@ -227,15 +229,15 @@ export class EdgeManager {
         if (anchorNode) {
           const sourceHandle =
             anchorNode.sourceHandle ||
-            this.getNodeHandle(anchorNode.type || '', 'source', 'parallel')
+            EdgeManager.getNodeHandle(anchorNode.type || '', 'source', 'parallel')
 
           edges.push(
-            this.createEdge(
+            EdgeManager.createEdge(
               {
                 source: anchorNode.id,
                 sourceHandle,
                 target: newNodeId,
-                targetHandle: this.getNodeHandle(newNodeType, 'target'),
+                targetHandle: EdgeManager.getNodeHandle(newNodeType, 'target'),
                 sourceType: anchorNode.type || '',
                 targetType: newNodeType,
                 isInLoop: loopContext?.isInLoop,
@@ -282,7 +284,7 @@ export class EdgeManager {
   ): FlowEdge[] {
     return edges.map((edge) => {
       if (edge.source === oldNodeId) {
-        return this.createEdge(
+        return EdgeManager.createEdge(
           {
             source: newNodeId,
             sourceHandle: edge.sourceHandle,
@@ -298,7 +300,7 @@ export class EdgeManager {
       }
 
       if (edge.target === oldNodeId) {
-        return this.createEdge(
+        return EdgeManager.createEdge(
           {
             source: edge.source,
             sourceHandle: edge.sourceHandle,

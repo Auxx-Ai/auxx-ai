@@ -1,9 +1,9 @@
 // apps/worker/src/workers/worker-definitions/document-processing-worker.ts
 
 import * as jobs from '@auxx/lib/jobs/definitions'
-import { createWorker } from '../utils/createWorker'
-import { Queues } from '@auxx/lib/jobs/queues/types'
 import { DocumentFlowJobs } from '@auxx/lib/jobs/flows'
+import { Queues } from '@auxx/lib/jobs/queues/types'
+import { createWorker } from '../utils/createWorker'
 
 const jobMappings = {
   'process-document': jobs.processDocumentJob,

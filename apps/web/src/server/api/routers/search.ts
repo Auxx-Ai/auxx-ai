@@ -1,16 +1,16 @@
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { ParticipantRole } from '@auxx/database/enums'
 import {
-  SearchHistoryModel,
   accountModel,
   OrganizationMemberModel,
   ParticipantModel,
+  SearchHistoryModel,
 } from '@auxx/database/models'
-import { listAll } from '@auxx/lib/resources'
 import { InboxService } from '@auxx/lib/inboxes'
-import { SearchOperator, IsOperatorValue } from '@auxx/lib/mail-query'
+import { IsOperatorValue, SearchOperator } from '@auxx/lib/mail-query'
+import { listAll } from '@auxx/lib/resources'
 import { createScopedLogger } from '@auxx/logger'
-import { ParticipantRole } from '@auxx/database/enums'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('search-router')
 

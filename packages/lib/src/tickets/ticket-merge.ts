@@ -1,7 +1,8 @@
 // src/server/services/ticketMergeService.ts
 // import { db } from '@/server/db'
-import { TRPCError } from '@trpc/server'
+
 import { database as db, schema, type Transaction } from '@auxx/database'
+import { TRPCError } from '@trpc/server'
 import { and, eq, inArray } from 'drizzle-orm'
 
 /**

@@ -2,30 +2,30 @@
 
 'use client'
 
+import type { ResourceField } from '@auxx/lib/resources/client'
+import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
+import type { FieldPath } from '@auxx/types/field'
 import {
   Calendar,
   CalendarClock,
-  Clock,
-  Mail,
-  Phone,
-  Link2,
-  Hash,
   CheckSquare,
-  Type,
-  MapPin,
-  FileText,
-  List,
-  Paperclip,
-  Tag,
-  Link,
+  Clock,
   DollarSign,
+  FileText,
+  Hash,
+  Link,
+  Link2,
+  List,
+  Mail,
+  MapPin,
+  Paperclip,
+  Phone,
+  Tag,
+  Type,
 } from 'lucide-react'
+import { toRecordId } from '~/components/resources'
 import { CustomFieldCell } from './components/custom-field-cell'
 import type { ExtendedColumnDef } from './types'
-import type { ResourceField } from '@auxx/lib/resources/client'
-import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
-import { toRecordId } from '~/components/resources'
-import type { FieldPath } from '@auxx/types/field'
 import { encodeDirectFieldColumnId, encodeFieldPathColumnId } from './utils/column-id'
 
 // ─────────────────────────────────────────────────────────────────
@@ -116,74 +116,76 @@ export function createCustomFieldColumns<T extends { id: string }>(
 ): ExtendedColumnDef<T>[] {
   const { entityDefinitionId } = options
 
-  return fields.map((item) => {
-    let columnId: string
-    let fieldType: string | undefined
-    let label: string
-    let isPath = false
-    let cellOptions: unknown = undefined
-    let canSort = true
-    let canFilter = true
-    let isCustomField = true
-    let fieldId: string | undefined = undefined
+  return fields
+    .map((item) => {
+      let columnId: string
+      let fieldType: string | undefined
+      let label: string
+      let isPath = false
+      let cellOptions: unknown
+      let canSort = true
+      let canFilter = true
+      let isCustomField = true
+      let fieldId: string | undefined
 
-    // Check if this is a field path or a direct field
-    if ('fieldPath' in item) {
-      // Field path - encode with :: separator
-      const fieldPath = item.fieldPath
-      columnId = encodeFieldPathColumnId(fieldPath)
-      isPath = true
-      // Label will be rendered as breadcrumb in HeaderCellWrapper
-      label = ''
-      fieldType = undefined
-      canSort = false // Disable sorting for paths (no backend support)
-      canFilter = false // Disable filtering for paths (no backend support)
-      isCustomField = false
-    } else {
-      // Direct field - use ResourceFieldId as columnId
-      const field = item
-      if (!field.id || !field.resourceFieldId) {
-        // Skip fields without IDs
-        return null as unknown as ExtendedColumnDef<T>
+      // Check if this is a field path or a direct field
+      if ('fieldPath' in item) {
+        // Field path - encode with :: separator
+        const fieldPath = item.fieldPath
+        columnId = encodeFieldPathColumnId(fieldPath)
+        isPath = true
+        // Label will be rendered as breadcrumb in HeaderCellWrapper
+        label = ''
+        fieldType = undefined
+        canSort = false // Disable sorting for paths (no backend support)
+        canFilter = false // Disable filtering for paths (no backend support)
+        isCustomField = false
+      } else {
+        // Direct field - use ResourceFieldId as columnId
+        const field = item
+        if (!field.id || !field.resourceFieldId) {
+          // Skip fields without IDs
+          return null as unknown as ExtendedColumnDef<T>
+        }
+
+        columnId = encodeDirectFieldColumnId(field.resourceFieldId)
+        fieldType = mapBaseTypeToFieldType(field.type)
+        label = field.label
+
+        // Pass field.options directly (contains options array and display options)
+        cellOptions = field.options
+
+        canSort = field.capabilities?.sortable ?? true
+        canFilter = field.capabilities?.filterable ?? true
+        fieldId = field.id
       }
 
-      columnId = encodeDirectFieldColumnId(field.resourceFieldId)
-      fieldType = mapBaseTypeToFieldType(field.type)
-      label = field.label
-
-      // Pass field.options directly (contains options array and display options)
-      cellOptions = field.options
-
-      canSort = field.capabilities?.sortable ?? true
-      canFilter = field.capabilities?.filterable ?? true
-      fieldId = field.id
-    }
-
-    return {
-      id: columnId,
-      // accessorFn not used for display - cells read from store directly
-      accessorFn: () => undefined,
-      header: label,
-      fieldType,
-      icon: fieldType ? getIconForFieldType(fieldType) : undefined,
-      enableSorting: canSort,
-      enableFiltering: canFilter,
-      enableResizing: true,
-      enableReorder: true,
-      defaultVisible: false,
-      minSize: 100,
-      size: 150,
-      meta: {
-        isCustomField,
-        fieldId,
-      },
-      cell: ({ row }) => (
-        <CustomFieldCell
-          recordId={toRecordId(entityDefinitionId, row.original.id)}
-          columnId={columnId}
-          options={cellOptions}
-        />
-      ),
-    } satisfies ExtendedColumnDef<T>
-  }).filter((col): col is ExtendedColumnDef<T> => col !== null)
+      return {
+        id: columnId,
+        // accessorFn not used for display - cells read from store directly
+        accessorFn: () => undefined,
+        header: label,
+        fieldType,
+        icon: fieldType ? getIconForFieldType(fieldType) : undefined,
+        enableSorting: canSort,
+        enableFiltering: canFilter,
+        enableResizing: true,
+        enableReorder: true,
+        defaultVisible: false,
+        minSize: 100,
+        size: 150,
+        meta: {
+          isCustomField,
+          fieldId,
+        },
+        cell: ({ row }) => (
+          <CustomFieldCell
+            recordId={toRecordId(entityDefinitionId, row.original.id)}
+            columnId={columnId}
+            options={cellOptions}
+          />
+        ),
+      } satisfies ExtendedColumnDef<T>
+    })
+    .filter((col): col is ExtendedColumnDef<T> => col !== null)
 }

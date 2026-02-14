@@ -1,12 +1,13 @@
 'use client'
 
-import * as React from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import type * as React from 'react'
 import { DayPicker } from 'react-day-picker'
+
 // import 'react-day-picker/style.css'
 
-import { cn } from '@auxx/ui/lib/utils'
 import { buttonVariants } from '@auxx/ui/components/button'
+import { cn } from '@auxx/ui/lib/utils'
 
 function Calendar({
   className,

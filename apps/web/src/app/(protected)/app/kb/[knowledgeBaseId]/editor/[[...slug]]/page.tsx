@@ -2,9 +2,9 @@
 // import KBEditorView from '../../../_components/kb-editor-view'
 
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import KBEditorView, { KBEditorContent } from '../../../_components/kb-content'
 import { KBProvider } from '../../../_components/kb-context'
 import { KBSidebar } from '../../../_components/kb-sidebar'
-import KBEditorView, { KBEditorContent } from '../../../_components/kb-content'
 
 // type KBEditorParams = {
 //   params: Promise<{ knowledgeBaseId: string; slug: string[] }>

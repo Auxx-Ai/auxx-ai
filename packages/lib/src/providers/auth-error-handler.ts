@@ -1,8 +1,10 @@
 // ~/lib/src/providers/auth-error-handler.ts
-import { createScopedLogger } from '@auxx/logger'
+
 import { database as db, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
 import { IntegrationAuthStatus } from '@auxx/database/enums'
+import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
+
 const logger = createScopedLogger('auth-error-handler')
 /**
  * Standardized authentication error types across all OAuth providers
@@ -243,7 +245,8 @@ export class AuthErrorHandler {
       logger.info(`[${this.providerId}] Updated integration status in database`, {
         integrationId: this.integrationId,
         requiresReauth: errorDetails.requiresReauth,
-        disabled: errorDetails.requiresReauth && newFailureCount >= AuthErrorHandler.DISABLE_THRESHOLD,
+        disabled:
+          errorDetails.requiresReauth && newFailureCount >= AuthErrorHandler.DISABLE_THRESHOLD,
         consecutiveFailures: newFailureCount,
       })
     } catch (dbError) {

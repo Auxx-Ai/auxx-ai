@@ -1,12 +1,19 @@
 'use client'
-import { KBarProvider, KBarPortal, KBarPositioner, KBarAnimator, KBarSearch } from 'kbar'
-import { type Action } from 'kbar'
-import React from 'react'
+import {
+  type Action,
+  KBarAnimator,
+  KBarPortal,
+  KBarPositioner,
+  KBarProvider,
+  KBarSearch,
+} from 'kbar'
+import { InboxIcon } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import type React from 'react'
+import useKbarSettings, { useKbarAdminSettings } from './kbar-settings'
 import RenderResults from './render-results'
 import useThemeSwitching from './use-theme-switching'
-import useKbarSettings, { useKbarAdminSettings } from './kbar-settings'
-import { useRouter } from 'next/navigation'
-import { InboxIcon } from 'lucide-react'
+
 // import { useTheme } from 'next-themes'
 
 type Props = { children: React.ReactNode }
@@ -356,11 +363,11 @@ const ActualComponent = ({ children }: Props) => {
   return (
     <>
       <KBarPortal>
-        <KBarPositioner className="scrollbar-hide fixed inset-0 z-99999 backdrop-blur-sm transition-all duration-100 p-0!">
-          <KBarAnimator className="relative mt-64! w-full max-w-[600px] -translate-y-12! overflow-hidden rounded-lg border bg-white text-foreground shadow-lg dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
-            <div className="bg-white dark:bg-gray-800">
-              <div className="border-x-0 border-b-2 dark:border-gray-700">
-                <KBarSearch className="w-full border-none bg-white px-3 py-3 text-base outline-hidden focus:outline-hidden focus:ring-0 focus:ring-offset-0 dark:bg-gray-800" />
+        <KBarPositioner className='scrollbar-hide fixed inset-0 z-99999 backdrop-blur-sm transition-all duration-100 p-0!'>
+          <KBarAnimator className='relative mt-64! w-full max-w-[600px] -translate-y-12! overflow-hidden rounded-lg border bg-white text-foreground shadow-lg dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200'>
+            <div className='bg-white dark:bg-gray-800'>
+              <div className='border-x-0 border-b-2 dark:border-gray-700'>
+                <KBarSearch className='w-full border-none bg-white px-3 py-3 text-base outline-hidden focus:outline-hidden focus:ring-0 focus:ring-offset-0 dark:bg-gray-800' />
               </div>
               <RenderResults />
             </div>

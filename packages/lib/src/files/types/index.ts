@@ -6,125 +6,124 @@
  * Contains no server-side dependencies or logic
  */
 
+export type { UploadInitConfig } from '../upload/init-types'
+export type {
+  ArticleFileMetadata,
+  BaseEntityMetadata,
+  DatasetFileMetadata,
+  EntityCapabilities,
+  EntityFileMetadata,
+  EntityUploadConfig,
+  FileStatus,
+  FileVisibility,
+  KnowledgeBaseFileMetadata,
+  StageConfig,
+  TicketFileMetadata,
+  ValidationConfig,
+  WorkflowFileMetadata,
+} from './entities'
+// Entity types
+export {
+  ENTITY_CONFIGS,
+  ENTITY_TYPES,
+  type EntityType,
+  getEntityCapabilities,
+  getEntityConfig,
+} from './entities'
 // Event types
 export type {
   BaseFileUploadEvent,
-  UploadProgressData,
-  ProcessingProgressData,
-  JobUpdateData,
   ErrorData,
-  SessionEventData,
-  UploadStartedEvent,
-  UploadProgressEvent,
-  UploadCompletedEvent,
-  ProcessingStartedEvent,
-  ProcessingProgressEvent,
-  ProcessingCompletedEvent,
-  JobUpdateEvent,
   ErrorEvent,
-  SessionConnectedEvent,
-  FileUploadEvent,
-  FileUploadEventData,
   EventHandler,
   EventHandlers,
+  FileUploadEvent,
+  FileUploadEventData,
+  JobUpdateData,
+  JobUpdateEvent,
+  ProcessingCompletedEvent,
+  ProcessingProgressData,
+  ProcessingProgressEvent,
+  ProcessingStartedEvent,
+  SessionConnectedEvent,
+  SessionEventData,
+  UploadCompletedEvent,
+  UploadProgressData,
+  UploadProgressEvent,
+  UploadStartedEvent,
 } from './events'
-
-export { FileUploadEventType, FileUploadChannels, FileUploadEventValidator } from './events'
-
+export { FileUploadChannels, FileUploadEventType, FileUploadEventValidator } from './events'
 // Session types
 export type {
-  SessionStatus,
+  CreateSessionOptions,
   FileInfo,
+  SessionCleanupResult,
   SessionConfig,
   SessionData,
-  CreateSessionOptions,
-  SessionUpdate,
+  SessionInfo,
+  SessionProgress,
   SessionQueryOptions,
   SessionStats,
-  SessionCleanupResult,
-  SessionProgress,
-  SessionInfo,
+  SessionStatus,
+  SessionUpdate,
   UploadSessionOptions,
 } from './sessions'
-
-export type { UploadInitConfig } from '../upload/init-types'
-
 // Upload types
 export type {
-  UploadStatus,
-  StageStatus,
-  ProcessingStage,
-  UploadResult,
+  BatchProgressCallback,
   BatchUploadResult,
+  CompletionCallback,
+  ConnectionConfig,
+  ErrorCallback,
+  FileValidationResult,
+  MultiFileProgress,
+  ProcessingStage,
+  ProgressCallback,
+  QueueConfig,
   QueuedFile,
   QueueStats,
-  QueueConfig,
-  FileValidationResult,
-  UploadFile,
-  MultiFileProgress,
-  UploadMetrics,
-  ProgressCallback,
-  BatchProgressCallback,
-  CompletionCallback,
-  ErrorCallback,
+  StageStatus,
   UploadCallbacks,
-  ConnectionConfig,
+  UploadFile,
+  UploadMetrics,
+  UploadResult,
+  UploadStatus,
 } from './uploads'
-
-// Entity types
-export { ENTITY_TYPES, type EntityType } from './entities'
-export type {
-  FileVisibility,
-  FileStatus,
-  StageConfig,
-  ValidationConfig,
-  EntityUploadConfig,
-  BaseEntityMetadata,
-  DatasetFileMetadata,
-  TicketFileMetadata,
-  ArticleFileMetadata,
-  KnowledgeBaseFileMetadata,
-  WorkflowFileMetadata,
-  EntityFileMetadata,
-  EntityCapabilities,
-} from './entities'
-
-export { ENTITY_CONFIGS, getEntityConfig, getEntityCapabilities } from './entities'
 
 // No more processor type exports - EntityType is used directly
 
 // Common types
 export type {
   APIResponse,
-  ErrorResponse,
-  PaginationOptions,
-  PaginationMeta,
-  PaginatedResponse,
-  SortOptions,
-  FilterOptions,
-  QueryOptions,
-  TimestampedRecord,
-  IdentifiableRecord,
-  BaseRecord,
-  OrganizationScopedRecord,
-  UserAttributedRecord,
   BaseEntity,
+  BaseRecord,
+  CacheConfig,
   ConnectionState,
   ConnectionStatus,
-  SSEConfig,
-  RateLimitConfig,
-  CacheConfig,
-  RetryConfig,
-  HealthStatus,
-  FeatureFlag,
-  EnvironmentInfo,
-  PartialBy,
-  RequireBy,
   DeepPartial,
+  EnvironmentInfo,
+  ErrorResponse,
+  FeatureFlag,
+  FilterOptions,
+  HealthStatus,
+  IdentifiableRecord,
   OmitNested,
+  OrganizationScopedRecord,
+  PaginatedResponse,
+  PaginationMeta,
+  PaginationOptions,
+  PartialBy,
+  QueryOptions,
+  RateLimitConfig,
+  RequireBy,
+  RetryConfig,
+  SortOptions,
+  SSEConfig,
+  TimestampedRecord,
+  UserAttributedRecord,
 } from './common'
 
-export { TypeGuards, DataTransforms } from './common'
+export { DataTransforms, TypeGuards } from './common'
 
 // Version information
 export const SHARED_TYPES_VERSION = '1.0.0'

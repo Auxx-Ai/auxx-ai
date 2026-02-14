@@ -1,19 +1,19 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/answer.ts
 
-import { BaseNodeProcessor } from '../base-node'
-import type { WorkflowNode, NodeExecutionResult, ValidationResult } from '../../core/types'
-import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
-import { MessageSenderService } from '@auxx/lib/messages'
-import { ProviderRegistryService } from '@auxx/lib/providers'
-import { executeResourceQuery } from '../../../resources/resource-fetcher'
-import { eq } from 'drizzle-orm'
 import { schema } from '@auxx/database'
 import { IdentifierType } from '@auxx/database/enums'
+import { MessageSenderService } from '@auxx/lib/messages'
+import { ProviderRegistryService } from '@auxx/lib/providers'
+import { eq } from 'drizzle-orm'
 import type {
-  SendMessageInput,
   ParticipantInput,
+  SendMessageInput,
 } from '../../../messages/types/message-sending.types'
+import { executeResourceQuery } from '../../../resources/resource-fetcher'
+import type { ExecutionContextManager } from '../../core/execution-context'
+import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
+import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { BaseNodeProcessor } from '../base-node'
 
 /**
  * Configuration interface for Answer node

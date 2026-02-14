@@ -1,16 +1,16 @@
 // packages/lib/src/ai/providers/google/google-client.ts
 
+import { GoogleGenerativeAI } from '@google/generative-ai'
+import type { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
 import { ProviderClient } from '../base/provider-client'
 import {
-  type ValidationResult,
   type ConnectionTestResult,
-  type ProviderCredentials,
   CredentialValidationError,
+  type ProviderCredentials,
+  type ValidationResult,
 } from '../base/types'
 import { type ModelCapabilities, ModelType } from '../types'
-import { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
 import { GOOGLE_CAPABILITIES, GOOGLE_MODELS } from './google-defaults'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { GoogleTextEmbeddingClient } from './google-embedding-client'
 
 /**

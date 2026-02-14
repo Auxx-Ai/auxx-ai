@@ -1,4 +1,3 @@
-import { createAuthClient } from 'better-auth/react'
 import { WEBAPP_URL } from '@auxx/config/client'
 // import { passkeyClient } from 'better-auth/client/plugins'
 import {
@@ -12,6 +11,7 @@ import {
   // oidcClient,
   // genericOAuthClient,
 } from 'better-auth/client/plugins'
+import { createAuthClient } from 'better-auth/react'
 
 export const client = createAuthClient({
   baseURL: WEBAPP_URL,

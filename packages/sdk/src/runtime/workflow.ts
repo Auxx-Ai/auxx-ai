@@ -1,11 +1,11 @@
 // packages/sdk/src/runtime/workflow.ts
 
+import React, { useCallback, useEffect, useState } from 'react'
+// import { WorkflowNodeContext } from '../client/workflow/hooks/use-workflow-node.js'
+import { WorkflowContext } from '../client/workflow/hooks/use-workflow-context.js'
 import { Host } from './host.js'
 import { render } from './reconciler/reconciler.js'
 import { SURFACES } from './surfaces.js'
-import React, { useState, useEffect, useCallback } from 'react'
-// import { WorkflowNodeContext } from '../client/workflow/hooks/use-workflow-node.js'
-import { WorkflowContext } from '../client/workflow/hooks/use-workflow-context.js'
 
 /**
  * Runtime representation of a workflow block (serialized format).
@@ -219,10 +219,11 @@ function serializeFields(
 
     // Runtime validation: ensure type is always set
     if (!field.type) {
-      console.error(
-        `[Workflow Serialization] Field "${key}" (${kind}) missing type!`,
-        { fieldNode, json, metadata }
-      )
+      console.error(`[Workflow Serialization] Field "${key}" (${kind}) missing type!`, {
+        fieldNode,
+        json,
+        metadata,
+      })
       // Fallback to 'any' type to prevent crashes
       field.type = 'any'
     }
@@ -230,7 +231,9 @@ function serializeFields(
     // Runtime validation: warn if output fields have input-only properties
     if (kind === 'output') {
       if (field.placeholder) {
-        console.warn(`[Workflow] Output field "${key}" has placeholder (will be ignored by platform)`)
+        console.warn(
+          `[Workflow] Output field "${key}" has placeholder (will be ignored by platform)`
+        )
       }
       if (field.acceptsVariables) {
         console.warn(
@@ -320,10 +323,10 @@ function serializeFieldsFromJSON(
 
     // Runtime validation: ensure type is always set
     if (!field.type) {
-      console.error(
-        `[Workflow Serialization] Nested field "${key}" (${kind}) missing type!`,
-        { fieldJson, metadata }
-      )
+      console.error(`[Workflow Serialization] Nested field "${key}" (${kind}) missing type!`, {
+        fieldJson,
+        metadata,
+      })
       // Fallback to 'any' type to prevent crashes
       field.type = 'any'
     }
@@ -369,10 +372,10 @@ function serializeNestedField(fieldJson: any, kind: 'input' | 'output'): any {
 
   // Runtime validation: ensure type is always set
   if (!field.type) {
-    console.error(
-      `[Workflow Serialization] Nested field (${kind}) missing type!`,
-      { fieldJson, metadata }
-    )
+    console.error(`[Workflow Serialization] Nested field (${kind}) missing type!`, {
+      fieldJson,
+      metadata,
+    })
     // Fallback to 'any' type to prevent crashes
     field.type = 'any'
   }

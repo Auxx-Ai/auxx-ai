@@ -4,7 +4,7 @@
 import { Command } from 'commander'
 import { config as loadEnv } from 'dotenv'
 import { DrizzleSeeder } from '../src/engine/drizzle-seeder'
-import type { SeedingScenarioName, ScenarioScales } from '../src/types'
+import type { ScenarioScales, SeedingScenarioName } from '../src/types'
 
 loadEnv()
 
@@ -37,7 +37,11 @@ async function runCli(): Promise<void> {
     .option('--orders <count>', 'Override order count')
     .option('--threads <count>', 'Override thread count')
     .option('--messages <count>', 'Override message count')
-    .option('--billing-plans-only', 'Only seed billing plans with Stripe resources (skip other domains)', false)
+    .option(
+      '--billing-plans-only',
+      'Only seed billing plans with Stripe resources (skip other domains)',
+      false
+    )
 
   program.action(async (options) => {
     const scenario = options.scenario as SeedingScenarioName

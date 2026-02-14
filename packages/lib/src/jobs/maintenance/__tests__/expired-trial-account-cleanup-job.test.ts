@@ -1,8 +1,8 @@
 // packages/lib/src/jobs/maintenance/__tests__/expired-trial-account-cleanup-job.test.ts
 
-import { describe, it, expect, vi, beforeEach, type MockedFunction } from 'vitest'
-import { subDays } from 'date-fns'
 import type { Job } from 'bullmq'
+import { subDays } from 'date-fns'
+import { beforeEach, describe, expect, it, type MockedFunction, vi } from 'vitest'
 
 // Mock the job data
 const mockJobData = {
@@ -31,7 +31,7 @@ const mockExpiredTrials = [
     ownerEmail: 'owner1@test.com',
   },
   {
-    organizationId: 'org-2', 
+    organizationId: 'org-2',
     trialEnd: subDays(new Date(), 8), // 8 days ago - needs warning
     trialConversionStatus: 'EXPIRED_WITHOUT_CONVERSION',
     hasTrialEnded: true,
@@ -41,7 +41,7 @@ const mockExpiredTrials = [
   },
   {
     organizationId: 'org-3',
-    trialEnd: subDays(new Date(), 14), // 14 days ago exactly - needs final notice 
+    trialEnd: subDays(new Date(), 14), // 14 days ago exactly - needs final notice
     trialConversionStatus: 'CANCELED_DURING_TRIAL',
     hasTrialEnded: true,
     lastNotificationSent: 'WARNING',
@@ -108,7 +108,7 @@ describe('ExpiredTrialAccountCleanupJob', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
-    
+
     // Import the job handler
     const module = await import('../expired-trial-account-cleanup-job')
     expiredTrialAccountCleanupJob = module.expiredTrialAccountCleanupJob
@@ -117,7 +117,7 @@ describe('ExpiredTrialAccountCleanupJob', () => {
   describe('Job Configuration Validation', () => {
     it('should validate job payload schema', async () => {
       const result = await expiredTrialAccountCleanupJob(mockJob)
-      
+
       expect(result).toBeDefined()
       expect(result.scanned).toBeGreaterThanOrEqual(0)
       expect(result.deleted).toBeGreaterThanOrEqual(0)
@@ -132,7 +132,7 @@ describe('ExpiredTrialAccountCleanupJob', () => {
       } as Job
 
       const result = await expiredTrialAccountCleanupJob(dryRunJob)
-      
+
       // In dry run mode, everything should be skipped
       expect(result.skipped).toBeGreaterThan(0)
       expect(result.deleted).toBe(0)
@@ -141,9 +141,9 @@ describe('ExpiredTrialAccountCleanupJob', () => {
     it('should handle empty data correctly', async () => {
       // Mock empty database response
       vi.mocked(require('../../db').db.where).mockResolvedValueOnce([])
-      
+
       const result = await expiredTrialAccountCleanupJob(mockJob)
-      
+
       expect(result.scanned).toBe(0)
       expect(result.deleted).toBe(0)
       expect(result.skipped).toBe(0)
@@ -153,7 +153,7 @@ describe('ExpiredTrialAccountCleanupJob', () => {
   describe('Organization Categorization', () => {
     it('should correctly identify organizations ready for deletion', async () => {
       const result = await expiredTrialAccountCleanupJob(mockJob)
-      
+
       // Should identify organizations past grace period
       expect(result.scanned).toBeGreaterThan(0)
     })
@@ -165,7 +165,7 @@ describe('ExpiredTrialAccountCleanupJob', () => {
       } as Job
 
       const result = await expiredTrialAccountCleanupJob(shortGracePeriodJob)
-      
+
       // With shorter grace period, more orgs should be eligible
       expect(result).toBeDefined()
     })
@@ -173,10 +173,12 @@ describe('ExpiredTrialAccountCleanupJob', () => {
 
   describe('Notification Handling', () => {
     it('should skip notifications in dry run mode', async () => {
-      const { sendDeletionWarningEmail, sendFinalDeletionNotice } = await import('../notifications/trial-expiry-notifications')
-      
+      const { sendDeletionWarningEmail, sendFinalDeletionNotice } = await import(
+        '../notifications/trial-expiry-notifications'
+      )
+
       await expiredTrialAccountCleanupJob(mockJob)
-      
+
       // Should not send notifications in dry run
       expect(sendDeletionWarningEmail).not.toHaveBeenCalled()
       expect(sendFinalDeletionNotice).not.toHaveBeenCalled()
@@ -188,10 +190,12 @@ describe('ExpiredTrialAccountCleanupJob', () => {
         data: { ...mockJobData, dryRun: false, sendNotifications: true },
       } as Job
 
-      const { sendDeletionWarningEmail, sendFinalDeletionNotice } = await import('../notifications/trial-expiry-notifications')
-      
+      const { sendDeletionWarningEmail, sendFinalDeletionNotice } = await import(
+        '../notifications/trial-expiry-notifications'
+      )
+
       await expiredTrialAccountCleanupJob(notificationJob)
-      
+
       // Should attempt to send notifications based on mock data
       // Note: Actual calls depend on the organization categorization logic
       expect(sendDeletionWarningEmail).toHaveBeenCalledTimes(expect.any(Number))
@@ -202,9 +206,13 @@ describe('ExpiredTrialAccountCleanupJob', () => {
   describe('Error Handling', () => {
     it('should handle database errors gracefully', async () => {
       // Mock database error
-      vi.mocked(require('../../db').db.where).mockRejectedValueOnce(new Error('Database connection failed'))
-      
-      await expect(expiredTrialAccountCleanupJob(mockJob)).rejects.toThrow('Database connection failed')
+      vi.mocked(require('../../db').db.where).mockRejectedValueOnce(
+        new Error('Database connection failed')
+      )
+
+      await expect(expiredTrialAccountCleanupJob(mockJob)).rejects.toThrow(
+        'Database connection failed'
+      )
     })
 
     it('should handle deletion errors without stopping the job', async () => {
@@ -219,7 +227,7 @@ describe('ExpiredTrialAccountCleanupJob', () => {
       } as Job
 
       const result = await expiredTrialAccountCleanupJob(deletionJob)
-      
+
       // Job should complete even with deletion errors
       expect(result).toBeDefined()
       expect(result.errors).toBeGreaterThanOrEqual(0)
@@ -234,14 +242,14 @@ describe('ExpiredTrialAccountCleanupJob', () => {
       } as Job
 
       const result = await expiredTrialAccountCleanupJob(batchJob)
-      
+
       // Should complete regardless of batch size
       expect(result).toBeDefined()
     })
 
     it('should update job progress during execution', async () => {
       await expiredTrialAccountCleanupJob(mockJob)
-      
+
       // Should call updateProgress at least once during batch processing
       expect(mockJob.updateProgress).toHaveBeenCalledWith(expect.any(Number))
     })
@@ -255,11 +263,11 @@ describe('ExpiredTrialAccountCleanupJob', () => {
           trialEnd: null,
         },
       ]
-      
+
       vi.mocked(require('../../db').db.where).mockResolvedValueOnce(invalidData)
-      
+
       const result = await expiredTrialAccountCleanupJob(mockJob)
-      
+
       // Should handle null dates gracefully
       expect(result).toBeDefined()
     })
@@ -277,11 +285,11 @@ describe('ExpiredTrialAccountCleanupJob', () => {
           ownerEmail: 'active@test.com',
         },
       ]
-      
+
       vi.mocked(require('../../db').db.where).mockResolvedValueOnce(mixedData)
-      
+
       const result = await expiredTrialAccountCleanupJob(mockJob)
-      
+
       // Should only process eligible organizations
       expect(result).toBeDefined()
     })

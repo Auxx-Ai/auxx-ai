@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/ai/types.ts
 
 import type { Node } from '@xyflow/react'
-import { BaseNodeData, SpecificNode } from '~/components/workflow/types'
+import type { BaseNodeData, SpecificNode } from '~/components/workflow/types'
 
 /**
  * Prompt roles for AI conversation

@@ -1,7 +1,8 @@
 // packages/redis/src/providers/upstash-provider.ts
-import { Redis } from '@upstash/redis'
-import { type RedisClient, logger } from '../types'
+
 import { env } from '@auxx/config/server'
+import { Redis } from '@upstash/redis'
+import { logger, type RedisClient } from '../types'
 
 /**
  * Enhanced Upstash provider with additional operations for polling-based pub/sub
@@ -23,7 +24,7 @@ export function createUpstashClient(): RedisClient {
     // Add retry configuration
     retry: {
       retries: 3,
-      backoff: (retryCount) => Math.min(1000 * Math.pow(2, retryCount), 10000),
+      backoff: (retryCount) => Math.min(1000 * 2 ** retryCount, 10000),
     },
   })
 

@@ -1,9 +1,10 @@
 // apps/web/src/app/(protected)/app/onboarding/_components/onboarding-provider.tsx
 'use client'
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
 import { OrganizationRole as OrganizationRoleEnum } from '@auxx/database/enums'
 import type { OrganizationRole } from '@auxx/database/types'
+import { usePathname, useRouter } from 'next/navigation'
+import { createContext, type ReactNode, useContext, useEffect, useState } from 'react'
+
 /**
  * Team invite interface
  */

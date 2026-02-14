@@ -3,26 +3,26 @@
 import {
   AirtableApi,
   AirtableOAuth2Api,
+  CrateDb,
+  DropboxOAuth2,
+  FacebookOAuth2Api,
+  GoogleOAuth2Api,
   HttpBasicAuth,
   HttpHeaderAuth,
-  OAuth2Api,
-  GoogleOAuth2Api,
-  OutlookOAuth2Api,
-  FacebookOAuth2Api,
-  InstagramOAuth2Api,
-  ShopifyOAuth2Api,
-  DropboxOAuth2,
-  Postgres,
-  CrateDb,
   Imap,
-  SmtpCredentials,
+  InstagramOAuth2Api,
+  OAuth2Api,
+  OutlookOAuth2Api,
+  Postgres,
   PostgresWithTesting,
+  ShopifyOAuth2Api,
+  SmtpCredentials,
 } from '@auxx/workflow-nodes/credentials'
-import { type ICredentialType } from '@auxx/workflow-nodes/types'
-import { PROVIDER_ICONS } from '~/constants/icons'
-import { Shield, Hash, Key, Table, Database, Inbox } from 'lucide-react'
-import type { SVGProps } from 'react'
+import type { ICredentialType } from '@auxx/workflow-nodes/types'
 import type { LucideIcon } from 'lucide-react'
+import { Database, Hash, Inbox, Key, Shield, Table } from 'lucide-react'
+import type { SVGProps } from 'react'
+import { PROVIDER_ICONS } from '~/constants/icons'
 
 /**
  * Credential type metadata for UI display

@@ -1,7 +1,4 @@
 'use client'
-import { toastError } from '@/components/global/toast'
-import { SimpleLayout } from '@/components/layouts/simple-layout'
-import { api } from '@/trpc/react'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
@@ -12,12 +9,15 @@ import {
   FieldSet,
 } from '@auxx/ui/components/field'
 import { Input } from '@auxx/ui/components/input'
-import { InputGroup, InputGroupInput, InputGroupAddon } from '@auxx/ui/components/input-group'
-
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
 import { Spinner } from '@auxx/ui/components/spinner'
-import { useRouter, useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { toastError } from '@/components/global/toast'
+import { SimpleLayout } from '@/components/layouts/simple-layout'
+import { api } from '@/trpc/react'
 import { useAddApp } from '~/components/providers/dehydrated-state-provider'
+
 // import { AccountsCard } from './_components/accounts-card'
 /** Slugify helper function */
 function slugify(text: string): string {
@@ -106,36 +106,36 @@ export default function OnboardingAppPage() {
 
   // return <div>Lalala</div>
   return (
-    <SimpleLayout title="Create App">
-      <div className="flex items-center flex-col flex-1 min-h-0 h-full">
+    <SimpleLayout title='Create App'>
+      <div className='flex items-center flex-col flex-1 min-h-0 h-full'>
         <form onSubmit={handleSubmit}>
-          <div className="mx-auto min-w-md max-w-xl p-6 space-y-3">
-            <Card className="shadow-md shadow-black/20 border-transparent">
+          <div className='mx-auto min-w-md max-w-xl p-6 space-y-3'>
+            <Card className='shadow-md shadow-black/20 border-transparent'>
               <CardHeader>
-                <CardTitle className="text-2xl mb-0">Create app</CardTitle>
+                <CardTitle className='text-2xl mb-0'>Create app</CardTitle>
               </CardHeader>
-              <CardContent className="">
-                <div className="w-full max-w-md">
+              <CardContent className=''>
+                <div className='w-full max-w-md'>
                   <FieldGroup>
                     <FieldSet>
                       <FieldGroup>
                         <Field>
-                          <FieldLabel htmlFor="app-name">App name</FieldLabel>
+                          <FieldLabel htmlFor='app-name'>App name</FieldLabel>
                           <Input
-                            id="app-name"
-                            placeholder="Evil Rabbit"
+                            id='app-name'
+                            placeholder='Evil Rabbit'
                             required
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
                           />
                         </Field>
                         <Field>
-                          <FieldLabel htmlFor="slug">Slug</FieldLabel>
+                          <FieldLabel htmlFor='slug'>Slug</FieldLabel>
                           <InputGroup>
                             <InputGroupInput
-                              id="slug"
-                              placeholder="evil-rabbit"
-                              className=""
+                              id='slug'
+                              placeholder='evil-rabbit'
+                              className=''
                               value={slug}
                               onChange={(e) => {
                                 setSlug(slugify(e.target.value))
@@ -144,18 +144,18 @@ export default function OnboardingAppPage() {
                               required
                             />
                             {slug.length >= 3 && (
-                              <InputGroupAddon align="inline-end">
+                              <InputGroupAddon align='inline-end'>
                                 {isCheckingSlug ? (
                                   <Spinner />
                                 ) : slugValid ? (
-                                  <span className="text-green-600">✓</span>
+                                  <span className='text-green-600'>✓</span>
                                 ) : slugError ? (
-                                  <span className="text-red-600">✗</span>
+                                  <span className='text-red-600'>✗</span>
                                 ) : null}
                               </InputGroupAddon>
                             )}
                           </InputGroup>
-                          {slugError && <p className="text-sm text-red-600 mt-1">{slugError}</p>}
+                          {slugError && <p className='text-sm text-red-600 mt-1'>{slugError}</p>}
                           <FieldDescription>
                             Slug is a unique identifier for your app
                           </FieldDescription>
@@ -167,12 +167,12 @@ export default function OnboardingAppPage() {
               </CardContent>
             </Card>
 
-            <div className="flex items-center justify-between w-full">
+            <div className='flex items-center justify-between w-full'>
               <Button
-                type="submit"
-                className="w-full"
+                type='submit'
+                className='w-full'
                 loading={createApp.isPending}
-                loadingText="Creating..."
+                loadingText='Creating...'
                 disabled={
                   !title || !slug || slug.length < 3 || slugCheck?.exists || isCheckingSlug
                 }>

@@ -1,20 +1,21 @@
 // apps/web/src/components/fields/entity-fields-content.tsx
 'use client'
 
-import React, { useRef, useCallback, useEffect } from 'react'
-import { Pencil, X } from 'lucide-react'
-import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core'
-import type { SensorDescriptor, SensorOptions } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-import { Button } from '@auxx/ui/components/button'
-import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
-import { SortablePropertyRow } from './sortable-property-row'
-import { AddFieldRow } from './add-field-row'
-import { cn } from '@auxx/ui/lib/utils'
-import { useFieldNavigation } from './field-navigation-context'
-import { parseRecordId, type ResourceField, type RecordId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId, type ResourceField } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
+import { Button } from '@auxx/ui/components/button'
+import { cn } from '@auxx/ui/lib/utils'
+import type { SensorDescriptor, SensorOptions } from '@dnd-kit/core'
+import { closestCenter, DndContext, type DragEndEvent } from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { Pencil, X } from 'lucide-react'
+import type React from 'react'
+import { useCallback, useEffect, useRef } from 'react'
+import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
+import { AddFieldRow } from './add-field-row'
+import { useFieldNavigation } from './field-navigation-context'
+import { SortablePropertyRow } from './sortable-property-row'
 
 /**
  * Props for EntityFieldsContent component (unified version)
@@ -176,7 +177,7 @@ export function EntityFieldsContent({
           'group/entity-card bg-primary-100/50 dark:bg-[#23272e]/50 border rounded-2xl relative outline-none focus:outline-none',
           className
         )}>
-        <div className="flex rounded-md gap-0 p-3 pe-2 self-stretch flex-col">
+        <div className='flex rounded-md gap-0 p-3 pe-2 self-stretch flex-col'>
           {/* Edit mode header */}
           {canEdit && (
             <div
@@ -185,8 +186,8 @@ export function EntityFieldsContent({
                 isEditMode ? 'opacity-100' : 'opacity-0 group-hover/entity-card:opacity-100'
               )}>
               <Button
-                variant="ghost"
-                size="icon-xs"
+                variant='ghost'
+                size='icon-xs'
                 onClick={() => setIsEditMode(!isEditMode)}
                 className={cn(
                   'cursor-pointer',
@@ -242,7 +243,9 @@ export function EntityFieldsContent({
                     readOnly={readOnly}
                     showTitle={showTitle}
                     onToggleVisibility={isEditMode ? onToggleVisibility : undefined}
-                    isVisible={isFieldVisible?.(field.resourceFieldId ?? field.id ?? field.key) ?? true}
+                    isVisible={
+                      isFieldVisible?.(field.resourceFieldId ?? field.id ?? field.key) ?? true
+                    }
                   />
                 )
               })}

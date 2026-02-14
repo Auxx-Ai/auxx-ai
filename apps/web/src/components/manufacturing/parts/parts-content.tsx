@@ -1,21 +1,14 @@
 // apps/web/src/components/manufacturing/parts/parts-content.tsx
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
-import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
-import { api } from '~/trpc/react'
+import type { PartEntity as Part } from '@auxx/database/models'
 import { Button } from '@auxx/ui/components/button'
-import { Plus, Trash2, Package, Calculator, Upload, PackagePlus } from 'lucide-react'
-import { useConfirm } from '~/hooks/use-confirm'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { DynamicTable, DynamicTableFooter } from '~/components/dynamic-table'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { EmptyState } from '~/components/global/empty-state'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -23,14 +16,21 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { Calculator, Package, PackagePlus, Plus, Trash2, Upload } from 'lucide-react'
+import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
+import { useCallback, useMemo, useState } from 'react'
+import { CSVColumnMapper } from '~/app/(protected)/app/parts/_components/column-mapper'
+import { DynamicTable, DynamicTableFooter } from '~/components/dynamic-table'
+import { EmptyState } from '~/components/global/empty-state'
+import { toRecordId } from '~/components/resources'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
-import { toRecordId } from '~/components/resources'
-import { PartsDrawer } from './parts-drawer'
+import { api } from '~/trpc/react'
 import { PartFormDialog } from './part-form-dialog'
 import { createPartColumns, type PartRow } from './parts-columns'
-import { CSVColumnMapper } from '~/app/(protected)/app/parts/_components/column-mapper'
-import type { PartEntity as Part } from '@auxx/database/models'
+import { PartsDrawer } from './parts-drawer'
 
 /** Parts content main component */
 export function PartsContent() {
@@ -246,13 +246,13 @@ export function PartsContent() {
   /** Empty state component */
   const EmptyStateComponent = useCallback(
     () => (
-      <div className="flex h-full items-center justify-center">
+      <div className='flex h-full items-center justify-center'>
         <EmptyState
           icon={Package}
-          title="No parts found"
-          description="Create your first part to get started"
+          title='No parts found'
+          description='Create your first part to get started'
           button={
-            <Button size="sm" variant="outline" onClick={() => setIsCreateDialogOpen(true)}>
+            <Button size='sm' variant='outline' onClick={() => setIsCreateDialogOpen(true)}>
               <Plus />
               Create Part
             </Button>
@@ -283,14 +283,14 @@ export function PartsContent() {
       <MainPage>
         <MainPageHeader
           action={
-            <div className="flex items-center gap-2">
+            <div className='flex items-center gap-2'>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button size="sm">
+                  <Button size='sm'>
                     <PackagePlus /> Create Part
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align='end'>
                   <DropdownMenuItem onClick={() => setIsCreateDialogOpen(true)}>
                     <PackagePlus />
                     Create Part
@@ -311,9 +311,9 @@ export function PartsContent() {
           }>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem
-              title="Parts"
-              href="/app/parts"
-              icon={<Package className="size-4" />}
+              title='Parts'
+              href='/app/parts'
+              icon={<Package className='size-4' />}
               last
             />
           </MainPageBreadcrumb>
@@ -324,12 +324,12 @@ export function PartsContent() {
           onDockedPanelWidthChange={setDockedWidth}
           dockedPanelMinWidth={minWidth}
           dockedPanelMaxWidth={maxWidth}>
-          <div className="flex-1 overflow-hidden rounded-lg bg-white dark:bg-muted/10">
+          <div className='flex-1 overflow-hidden rounded-lg bg-white dark:bg-muted/10'>
             <DynamicTable
               data={rows}
-              className="h-full flex-1"
-              tableId="parts-table"
-              entityLabel="Part"
+              className='h-full flex-1'
+              tableId='parts-table'
+              entityLabel='Part'
               bulkActions={bulkActions}
               enableSearch
               columns={columns}
@@ -342,7 +342,7 @@ export function PartsContent() {
               onAddNew={() => setIsCreateDialogOpen(true)}
               emptyState={<EmptyStateComponent />}>
               <DynamicTableFooter>
-                <div className="flex items-center justify-between px-4 py-2 text-sm">
+                <div className='flex items-center justify-between px-4 py-2 text-sm'>
                   <div>
                     {rows.length} {rows.length === 1 ? 'part' : 'parts'}
                   </div>

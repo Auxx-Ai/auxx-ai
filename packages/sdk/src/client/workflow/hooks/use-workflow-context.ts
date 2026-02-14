@@ -52,9 +52,7 @@ export function useWorkflowContext<TData = any>(): WorkflowContextData<TData> {
   const context = useContext(WorkflowContext)
 
   if (!context) {
-    throw new Error(
-      'useWorkflowContext must be used within a WorkflowContext.Provider'
-    )
+    throw new Error('useWorkflowContext must be used within a WorkflowContext.Provider')
   }
 
   return context as WorkflowContextData<TData>

@@ -2,9 +2,9 @@
 
 import { database } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import { mergeSettingsWithDefaults, type FormSchema } from './merge-with-defaults'
+import { type FormSchema, mergeSettingsWithDefaults } from './merge-with-defaults'
 
 /**
  * Get all settings for an app installation, merged with schema defaults

@@ -1,5 +1,5 @@
 import React from 'react'
-import { RouterOutputs } from '~/trpc/react'
+import type { RouterOutputs } from '~/trpc/react'
 
 /**
  * Types ------------------------------------------------------------------

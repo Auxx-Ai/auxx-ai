@@ -62,9 +62,7 @@ interface TriggerPromise {
 /**
  * Predicate function for evaluating surface visibility.
  */
-interface PredicateFunction {
-  (context: any): boolean
-}
+type PredicateFunction = (context: any) => boolean
 
 /**
  * Options for triggering a surface.

@@ -1,13 +1,13 @@
 // packages/lib/src/import/execution/execute-plan.ts
 
-import { eq, asc } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import type { ImportPlan, ImportPlanStrategy } from '../types/plan'
+import { asc, eq } from 'drizzle-orm'
+import type { ExecutionProgress, ExecutionResult } from '../types/execution'
 import type { ImportMappingProperty } from '../types/mapping'
+import type { ImportPlan, ImportPlanStrategy } from '../types/plan'
 import type { ValueResolution } from '../types/resolution'
-import type { ExecutionResult, ExecutionProgress } from '../types/execution'
-import { executeStrategy, type ExecuteStrategyContext } from './execute-strategy'
+import { type ExecuteStrategyContext, executeStrategy } from './execute-strategy'
 
 /** Options for executing a plan */
 export interface ExecutePlanOptions {

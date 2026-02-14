@@ -1,10 +1,8 @@
 // components/settings/organization/appearance-settings-form.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useForm } from 'react-hook-form'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { Button } from '@auxx/ui/components/button'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   Form,
   FormControl,
@@ -15,7 +13,6 @@ import {
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   Select,
   SelectContent,
@@ -24,9 +21,12 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { Separator } from '@auxx/ui/components/separator'
-import { useSettings } from '~/hooks/use-settings'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { toastSuccess } from '@auxx/ui/components/toast'
 import { Loader2, RefreshCcw, Upload } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 
 interface AppearanceSettingsFormProps {
@@ -77,28 +77,31 @@ export function AppearanceSettingsForm({ organizationId }: AppearanceSettingsFor
   // Load settings from the server
   useEffect(() => {
     if (orgSettingsWithMetadata && !isLoading) {
-      const settings = orgSettingsWithMetadata.reduce((acc, setting) => {
-        const { key, value, allowUserOverride } = setting
+      const settings = orgSettingsWithMetadata.reduce(
+        (acc, setting) => {
+          const { key, value, allowUserOverride } = setting
 
-        if (key === 'appearance.primaryColor') {
-          acc.primaryColor = value as string
-          acc.allowPrimaryColorOverride = allowUserOverride
-        } else if (key === 'appearance.secondaryColor') {
-          acc.secondaryColor = value as string
-          acc.allowSecondaryColorOverride = allowUserOverride
-        } else if (key === 'appearance.font') {
-          acc.font = value as string
-          acc.allowFontOverride = allowUserOverride
-        } else if (key === 'appearance.logo') {
-          acc.logoUrl = value as string | null
-          acc.allowLogoOverride = allowUserOverride
-          if (value) {
-            setLogoPreview(value as string)
+          if (key === 'appearance.primaryColor') {
+            acc.primaryColor = value as string
+            acc.allowPrimaryColorOverride = allowUserOverride
+          } else if (key === 'appearance.secondaryColor') {
+            acc.secondaryColor = value as string
+            acc.allowSecondaryColorOverride = allowUserOverride
+          } else if (key === 'appearance.font') {
+            acc.font = value as string
+            acc.allowFontOverride = allowUserOverride
+          } else if (key === 'appearance.logo') {
+            acc.logoUrl = value as string | null
+            acc.allowLogoOverride = allowUserOverride
+            if (value) {
+              setLogoPreview(value as string)
+            }
           }
-        }
 
-        return acc
-      }, {} as Partial<AppearanceFormValues>)
+          return acc
+        },
+        {} as Partial<AppearanceFormValues>
+      )
 
       form.reset({ ...form.getValues(), ...settings })
     }
@@ -155,16 +158,16 @@ export function AppearanceSettingsForm({ organizationId }: AppearanceSettingsFor
 
   // Preview component for seeing changes in real-time
   const ThemePreview = () => (
-    <div className="rounded-lg border p-6">
-      <h3 className="mb-4 text-lg font-medium">Theme Preview</h3>
-      <div className="space-y-4">
-        <div className="flex space-x-4">
+    <div className='rounded-lg border p-6'>
+      <h3 className='mb-4 text-lg font-medium'>Theme Preview</h3>
+      <div className='space-y-4'>
+        <div className='flex space-x-4'>
           <div
-            className="h-16 w-16 rounded-lg"
+            className='h-16 w-16 rounded-lg'
             style={{ backgroundColor: form.watch('primaryColor') }}
           />
           <div
-            className="h-16 w-16 rounded-lg"
+            className='h-16 w-16 rounded-lg'
             style={{ backgroundColor: form.watch('secondaryColor') }}
           />
         </div>
@@ -175,15 +178,15 @@ export function AppearanceSettingsForm({ organizationId }: AppearanceSettingsFor
         </div>
         {logoPreview && (
           <div>
-            <p className="mb-2 text-sm text-gray-500">Logo Preview:</p>
+            <p className='mb-2 text-sm text-gray-500'>Logo Preview:</p>
             <img
               src={logoPreview}
-              alt="Logo preview"
-              className="max-h-[100px] max-w-[200px] rounded border object-contain p-2"
+              alt='Logo preview'
+              className='max-h-[100px] max-w-[200px] rounded border object-contain p-2'
             />
           </div>
         )}
-        <div className="flex space-x-4">
+        <div className='flex space-x-4'>
           <Button style={{ backgroundColor: form.watch('primaryColor'), color: 'white' }}>
             Primary Button
           </Button>
@@ -197,45 +200,45 @@ export function AppearanceSettingsForm({ organizationId }: AppearanceSettingsFor
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      <div className='flex items-center justify-center py-8'>
+        <Loader2 className='h-8 w-8 animate-spin text-gray-400' />
       </div>
     )
   }
 
   return (
-    <div className="space-y-8">
+    <div className='space-y-8'>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-          <Tabs defaultValue="colors" className="w-full">
+        <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-8'>
+          <Tabs defaultValue='colors' className='w-full'>
             <TabsList>
-              <TabsTrigger value="colors">Colors</TabsTrigger>
-              <TabsTrigger value="typography">Typography</TabsTrigger>
-              <TabsTrigger value="branding">Branding</TabsTrigger>
+              <TabsTrigger value='colors'>Colors</TabsTrigger>
+              <TabsTrigger value='typography'>Typography</TabsTrigger>
+              <TabsTrigger value='branding'>Branding</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="colors" className="space-y-4 pt-4">
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <TabsContent value='colors' className='space-y-4 pt-4'>
+              <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
                 <FormField
                   control={form.control}
-                  name="primaryColor"
+                  name='primaryColor'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Primary Color</FormLabel>
-                      <div className="flex items-center space-x-2">
+                      <div className='flex items-center space-x-2'>
                         <div
-                          className="h-8 w-8 rounded-full border"
+                          className='h-8 w-8 rounded-full border'
                           style={{ backgroundColor: field.value }}
                         />
                         <FormControl>
-                          <Input type="color" {...field} className="h-10 w-16" />
+                          <Input type='color' {...field} className='h-10 w-16' />
                         </FormControl>
                         <FormControl>
                           <Input
                             {...field}
-                            className="w-32"
+                            className='w-32'
                             maxLength={7}
-                            pattern="^#[0-9A-Fa-f]{6}$"
+                            pattern='^#[0-9A-Fa-f]{6}$'
                           />
                         </FormControl>
                       </div>
@@ -249,13 +252,13 @@ export function AppearanceSettingsForm({ organizationId }: AppearanceSettingsFor
 
                 <FormField
                   control={form.control}
-                  name="allowPrimaryColorOverride"
+                  name='allowPrimaryColorOverride'
                   render={({ field }) => (
-                    <FormItem className="mt-8 flex flex-row items-start space-x-3 space-y-0">
+                    <FormItem className='mt-8 flex flex-row items-start space-x-3 space-y-0'>
                       <FormControl>
                         <Checkbox checked={field.value} onCheckedChange={field.onChange} />
                       </FormControl>
-                      <div className="space-y-1 leading-none">
+                      <div className='space-y-1 leading-none'>
                         <FormLabel>Allow User Override</FormLabel>
                         <FormDescription>
                           Let users customize this setting for their own account.
@@ -266,29 +269,29 @@ export function AppearanceSettingsForm({ organizationId }: AppearanceSettingsFor
                 />
               </div>
 
-              <Separator className="my-4" />
+              <Separator className='my-4' />
 
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
                 <FormField
                   control={form.control}
-                  name="secondaryColor"
+                  name='secondaryColor'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Secondary Color</FormLabel>
-                      <div className="flex items-center space-x-2">
+                      <div className='flex items-center space-x-2'>
                         <div
-                          className="h-8 w-8 rounded-full border"
+                          className='h-8 w-8 rounded-full border'
                           style={{ backgroundColor: field.value }}
                         />
                         <FormControl>
-                          <Input type="color" {...field} className="h-10 w-16" />
+                          <Input type='color' {...field} className='h-10 w-16' />
                         </FormControl>
                         <FormControl>
                           <Input
                             {...field}
-                            className="w-32"
+                            className='w-32'
                             maxLength={7}
-                            pattern="^#[0-9A-Fa-f]{6}$"
+                            pattern='^#[0-9A-Fa-f]{6}$'
                           />
                         </FormControl>
                       </div>
@@ -302,13 +305,13 @@ export function AppearanceSettingsForm({ organizationId }: AppearanceSettingsFor
 
                 <FormField
                   control={form.control}
-                  name="allowSecondaryColorOverride"
+                  name='allowSecondaryColorOverride'
                   render={({ field }) => (
-                    <FormItem className="mt-8 flex flex-row items-start space-x-3 space-y-0">
+                    <FormItem className='mt-8 flex flex-row items-start space-x-3 space-y-0'>
                       <FormControl>
                         <Checkbox checked={field.value} onCheckedChange={field.onChange} />
                       </FormControl>
-                      <div className="space-y-1 leading-none">
+                      <div className='space-y-1 leading-none'>
                         <FormLabel>Allow User Override</FormLabel>
                         <FormDescription>
                           Let users customize this setting for their own account.
@@ -320,25 +323,25 @@ export function AppearanceSettingsForm({ organizationId }: AppearanceSettingsFor
               </div>
             </TabsContent>
 
-            <TabsContent value="typography" className="space-y-4 pt-4">
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <TabsContent value='typography' className='space-y-4 pt-4'>
+              <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
                 <FormField
                   control={form.control}
-                  name="font"
+                  name='font'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Font Family</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select a font" />
+                            <SelectValue placeholder='Select a font' />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="Inter">Inter</SelectItem>
-                          <SelectItem value="Roboto">Roboto</SelectItem>
-                          <SelectItem value="Open Sans">Open Sans</SelectItem>
-                          <SelectItem value="Montserrat">Montserrat</SelectItem>
+                          <SelectItem value='Inter'>Inter</SelectItem>
+                          <SelectItem value='Roboto'>Roboto</SelectItem>
+                          <SelectItem value='Open Sans'>Open Sans</SelectItem>
+                          <SelectItem value='Montserrat'>Montserrat</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormDescription>
@@ -351,13 +354,13 @@ export function AppearanceSettingsForm({ organizationId }: AppearanceSettingsFor
 
                 <FormField
                   control={form.control}
-                  name="allowFontOverride"
+                  name='allowFontOverride'
                   render={({ field }) => (
-                    <FormItem className="mt-8 flex flex-row items-start space-x-3 space-y-0">
+                    <FormItem className='mt-8 flex flex-row items-start space-x-3 space-y-0'>
                       <FormControl>
                         <Checkbox checked={field.value} onCheckedChange={field.onChange} />
                       </FormControl>
-                      <div className="space-y-1 leading-none">
+                      <div className='space-y-1 leading-none'>
                         <FormLabel>Allow User Override</FormLabel>
                         <FormDescription>
                           Let users customize this setting for their own account.
@@ -369,78 +372,78 @@ export function AppearanceSettingsForm({ organizationId }: AppearanceSettingsFor
               </div>
             </TabsContent>
 
-            <TabsContent value="branding" className="space-y-4 pt-4">
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <TabsContent value='branding' className='space-y-4 pt-4'>
+              <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
                 <div>
-                  <FormLabel htmlFor="logo">Organization Logo</FormLabel>
-                  <div className="mt-2 flex items-center">
-                    <div className="w-full rounded border p-4">
+                  <FormLabel htmlFor='logo'>Organization Logo</FormLabel>
+                  <div className='mt-2 flex items-center'>
+                    <div className='w-full rounded border p-4'>
                       {logoPreview ? (
-                        <div className="flex flex-col items-center">
+                        <div className='flex flex-col items-center'>
                           <img
                             src={logoPreview}
-                            alt="Logo preview"
-                            className="max-h-[100px] max-w-[200px] object-contain"
+                            alt='Logo preview'
+                            className='max-h-[100px] max-w-[200px] object-contain'
                           />
-                          <div className="mt-4 flex space-x-2">
+                          <div className='mt-4 flex space-x-2'>
                             <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
+                              type='button'
+                              variant='outline'
+                              size='sm'
                               onClick={() => document.getElementById('logo-upload')?.click()}>
-                              <RefreshCcw className="mr-1 h-4 w-4" />
+                              <RefreshCcw className='mr-1 h-4 w-4' />
                               Change
                             </Button>
                             <Button
-                              type="button"
-                              variant="destructive"
-                              size="sm"
+                              type='button'
+                              variant='destructive'
+                              size='sm'
                               onClick={removeLogo}>
                               Remove
                             </Button>
                           </div>
                         </div>
                       ) : (
-                        <div className="flex flex-col items-center">
-                          <div className="flex h-32 w-32 items-center justify-center rounded-lg border-2 border-dashed text-gray-400">
-                            <div className="flex flex-col items-center">
-                              <Upload className="mb-2 h-8 w-8" />
+                        <div className='flex flex-col items-center'>
+                          <div className='flex h-32 w-32 items-center justify-center rounded-lg border-2 border-dashed text-gray-400'>
+                            <div className='flex flex-col items-center'>
+                              <Upload className='mb-2 h-8 w-8' />
                               <span>No logo</span>
                             </div>
                           </div>
                           <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="mt-4"
+                            type='button'
+                            variant='outline'
+                            size='sm'
+                            className='mt-4'
                             onClick={() => document.getElementById('logo-upload')?.click()}>
                             Upload Logo
                           </Button>
                         </div>
                       )}
                       <input
-                        id="logo-upload"
-                        type="file"
-                        className="hidden"
-                        accept="image/*"
+                        id='logo-upload'
+                        type='file'
+                        className='hidden'
+                        accept='image/*'
                         onChange={handleLogoChange}
                       />
                     </div>
                   </div>
-                  <FormDescription className="mt-2">
+                  <FormDescription className='mt-2'>
                     Upload your organization logo (PNG, JPG, SVG). Recommended size: 200x100px.
                   </FormDescription>
                 </div>
 
                 <FormField
                   control={form.control}
-                  name="allowLogoOverride"
+                  name='allowLogoOverride'
                   render={({ field }) => (
-                    <FormItem className="mt-8 flex flex-row items-start space-x-3 space-y-0">
+                    <FormItem className='mt-8 flex flex-row items-start space-x-3 space-y-0'>
                       <FormControl>
                         <Checkbox checked={field.value} onCheckedChange={field.onChange} />
                       </FormControl>
-                      <div className="space-y-1 leading-none">
+                      <div className='space-y-1 leading-none'>
                         <FormLabel>Allow User Override</FormLabel>
                         <FormDescription>
                           Let users set their own logo. (Not recommended)
@@ -455,13 +458,13 @@ export function AppearanceSettingsForm({ organizationId }: AppearanceSettingsFor
 
           <ThemePreview />
 
-          <div className="flex justify-start">
+          <div className='flex justify-start'>
             <Button
-              type="submit"
-              variant="outline"
+              type='submit'
+              variant='outline'
               disabled={isBatchUpdatingOrgSettings}
-              className="w-full sm:w-auto">
-              {isBatchUpdatingOrgSettings && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              className='w-full sm:w-auto'>
+              {isBatchUpdatingOrgSettings && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
               Save Changes
             </Button>
           </div>

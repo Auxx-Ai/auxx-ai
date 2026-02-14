@@ -2,8 +2,8 @@
 
 'use client'
 
-import { useCallback } from 'react'
-import { Calendar, Clock, User, Flag, Type, CheckCircle, ArrowUp, ArrowDown } from 'lucide-react'
+import { TASK_SORT_OPTIONS, type TaskSortConfig, type TaskSortField } from '@auxx/lib/tasks/client'
+import { Button } from '@auxx/ui/components/button'
 import {
   Select,
   SelectContent,
@@ -11,8 +11,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Button } from '@auxx/ui/components/button'
-import { TASK_SORT_OPTIONS, type TaskSortConfig, type TaskSortField } from '@auxx/lib/tasks/client'
+import { ArrowDown, ArrowUp, Calendar, CheckCircle, Clock, Flag, Type, User } from 'lucide-react'
+import { useCallback } from 'react'
 
 /** Icon mapping for sort fields */
 const SORT_ICONS: Record<TaskSortField, typeof Calendar> = {
@@ -60,9 +60,9 @@ export function TaskSortSelect({ value, onChange, disabled = false }: TaskSortSe
   }, [value, onChange])
 
   return (
-    <div className="flex items-center">
+    <div className='flex items-center'>
       <Select value={value.field} onValueChange={handleFieldChange} disabled={disabled}>
-        <SelectTrigger className="w-[140px]" size="sm" variant="outline">
+        <SelectTrigger className='w-[140px]' size='sm' variant='outline'>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -70,8 +70,8 @@ export function TaskSortSelect({ value, onChange, disabled = false }: TaskSortSe
             const OptionIcon = SORT_ICONS[option.field]
             return (
               <SelectItem key={option.field} value={option.field}>
-                <div className="flex items-center gap-2">
-                  <OptionIcon className="size-4 text-muted-foreground" />
+                <div className='flex items-center gap-2'>
+                  <OptionIcon className='size-4 text-muted-foreground' />
                   {option.label}
                 </div>
               </SelectItem>
@@ -81,16 +81,15 @@ export function TaskSortSelect({ value, onChange, disabled = false }: TaskSortSe
       </Select>
 
       <Button
-        variant="ghost"
-        size="icon-sm"
+        variant='ghost'
+        size='icon-sm'
         onClick={handleDirectionToggle}
         disabled={disabled}
-        className="h-8 w-8"
-      >
+        className='h-8 w-8'>
         {value.direction === 'asc' ? (
-          <ArrowUp className="size-4" />
+          <ArrowUp className='size-4' />
         ) : (
-          <ArrowDown className="size-4" />
+          <ArrowDown className='size-4' />
         )}
       </Button>
     </div>

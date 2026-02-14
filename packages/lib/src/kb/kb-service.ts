@@ -1,10 +1,11 @@
 // @auxx/lib/kb/kb-service.ts
-import { database as db, schema, type Database } from '@auxx/database'
-import { eq, and, desc, asc, ne, gte, gt, sql, isNull } from 'drizzle-orm'
-import { TRPCError } from '@trpc/server'
-import { createScopedLogger } from '@auxx/logger'
+import { type Database, database as db, schema } from '@auxx/database'
 import { ArticleStatus } from '@auxx/database/enums'
 import type { ArticleStatus as ArticleStatusType } from '@auxx/database/types'
+import { createScopedLogger } from '@auxx/logger'
+import { TRPCError } from '@trpc/server'
+import { and, asc, desc, eq, gt, gte, isNull, ne, sql } from 'drizzle-orm'
+
 // Local model types inferred from Drizzle schema
 type KnowledgeBase = typeof schema.KnowledgeBase.$inferSelect
 type Article = typeof schema.Article.$inferSelect

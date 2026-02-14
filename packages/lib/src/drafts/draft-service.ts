@@ -1,17 +1,17 @@
 // packages/lib/src/drafts/draft-service.ts
 
 import { type Database, schema } from '@auxx/database'
-import { eq, and, inArray, isNull } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
 import {
+  type CreateDraftInput,
+  DEFAULT_DRAFT_CONTENT,
   type Draft,
   type DraftContent,
-  type CreateDraftInput,
+  type StandaloneDraftMeta,
   type UpdateDraftInput,
   type UpsertDraftInput,
-  type StandaloneDraftMeta,
-  DEFAULT_DRAFT_CONTENT,
 } from '@auxx/types/draft'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 
 const logger = createScopedLogger('draft-service')
 

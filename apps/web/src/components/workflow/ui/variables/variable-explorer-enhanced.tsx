@@ -2,35 +2,36 @@
 
 'use client'
 
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-import { useDebounce } from '~/components/workflow/hooks/use-variable-performance'
-import { Button } from '@auxx/ui/components/button'
+import type { BaseType } from '@auxx/lib/workflow-engine/client'
 import { Badge } from '@auxx/ui/components/badge'
-import type { UnifiedVariable, VariableGroup } from '~/components/workflow/types'
-import { useAvailableVariables } from '~/components/workflow/hooks'
+import { Button } from '@auxx/ui/components/button'
 import {
   Command,
-  CommandInput,
-  CommandList,
   CommandEmpty,
   CommandGroup,
+  CommandInput,
   CommandItem,
+  CommandList,
 } from '@auxx/ui/components/command'
-import { Variable, ChevronRight, ChevronLeft, Copy, Star, Search } from 'lucide-react'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
+import { useStore } from '@xyflow/react'
+import { ChevronLeft, ChevronRight, Copy, Search, Star, Variable } from 'lucide-react'
+import type React from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TooltipExplanation } from '~/components/global/tooltip'
+import { useResourceStore } from '~/components/resources/store/resource-store'
+import { useAvailableVariables } from '~/components/workflow/hooks'
+import { useDebounce } from '~/components/workflow/hooks/use-variable-performance'
+import type { UnifiedVariable, VariableGroup } from '~/components/workflow/types'
+import { isNavigableVariable } from '~/components/workflow/utils/variable-conversion'
 import {
   getPathFromVariableId,
-  isVariableTypeCompatible,
-  hasCompatibleChildPath,
   getVariableDisplayType,
   getVariableRelationship,
+  hasCompatibleChildPath,
+  isVariableTypeCompatible,
 } from '~/components/workflow/utils/variable-utils'
-import { isNavigableVariable } from '~/components/workflow/utils/variable-conversion'
-import { BaseType } from '@auxx/lib/workflow-engine/client'
-import { useStore } from '@xyflow/react'
-import { useResourceStore } from '~/components/resources/store/resource-store'
 
 // Constants
 const CONSTANTS = {
@@ -248,7 +249,7 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
   // Handle variable selection
   const handleVariableSelect = useCallback(
     (variable: UnifiedVariable) => {
-      let finalVariable = variable
+      const finalVariable = variable
 
       // Try to convert array[*] notation to loop.item if inside a loop
       // const convertedVariable = convertArrayWildcardToLoopItem(variable, nodeId, nodes)
@@ -492,27 +493,27 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
         />
 
         {search ? (
-          <div className="h-9 bg-neutral-50 dark:bg-primary-500/50 flex items-center px-1 border-b shrink-0 backdrop-blur-sm">
-            <Button variant="ghost" size="xs" onClick={() => setSearch('')}>
+          <div className='h-9 bg-neutral-50 dark:bg-primary-500/50 flex items-center px-1 border-b shrink-0 backdrop-blur-sm'>
+            <Button variant='ghost' size='xs' onClick={() => setSearch('')}>
               Clear search
             </Button>
           </div>
         ) : (
-          <div className="flex items-center border-b px-1 py-1 bg-neutral-100/50 dark:bg-primary-200/50 h-9 backdrop-blur-sm">
+          <div className='flex items-center border-b px-1 py-1 bg-neutral-100/50 dark:bg-primary-200/50 h-9 backdrop-blur-sm'>
             <Button
-              variant="ghost"
-              size="icon-xs"
+              variant='ghost'
+              size='icon-xs'
               disabled={navigationStack.length === 0}
               onClick={() => {
                 navigateBack()
               }}>
-              <ChevronLeft className="size-4!" />
+              <ChevronLeft className='size-4!' />
             </Button>
 
-            <div className="flex items-center overflow-x-auto no-scrollbar">
+            <div className='flex items-center overflow-x-auto no-scrollbar'>
               <Button
-                variant="ghost"
-                size="sm"
+                variant='ghost'
+                size='sm'
                 onClick={() => {
                   setNavigationStack([])
                   setHasManuallyNavigated(true)
@@ -521,17 +522,17 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
               </Button>
 
               {navigationStack.map((item, index) => (
-                <div key={item.id} className="flex items-center shrink-0">
-                  <ChevronRight className="mx-[2px] size-3.5 shrink-0 opacity-50" />
+                <div key={item.id} className='flex items-center shrink-0'>
+                  <ChevronRight className='mx-[2px] size-3.5 shrink-0 opacity-50' />
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    type="button"
+                    variant='ghost'
+                    size='sm'
+                    type='button'
                     onClick={() => {
                       navigateToBreadcrumb(index)
                     }}
-                    className=" dark:hover:bg-primary-300">
-                    {item.icon && <span className="mr-1">{item.icon}</span>}
+                    className=' dark:hover:bg-primary-300'>
+                    {item.icon && <span className='mr-1'>{item.icon}</span>}
                     {item.label}
                   </Button>
                 </div>
@@ -541,15 +542,15 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
         )}
 
         {/* Variable List */}
-        <CommandList className="flex-1 overflow-y-auto" style={{ maxHeight }}>
+        <CommandList className='flex-1 overflow-y-auto' style={{ maxHeight }}>
           {getCurrentLevelItems.length === 0 ? (
-            <CommandEmpty className="py-8 flex flex-col items-center">
-              <Search className="size-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">
+            <CommandEmpty className='py-8 flex flex-col items-center'>
+              <Search className='size-8 mx-auto mb-2 opacity-50' />
+              <p className='text-sm'>
                 {search ? 'No variables found' : 'No variables at this level'}
               </p>
               {search && (
-                <p className="text-xs mt-1 text-muted-foreground">Try adjusting your search</p>
+                <p className='text-xs mt-1 text-muted-foreground'>Try adjusting your search</p>
               )}
             </CommandEmpty>
           ) : (
@@ -594,26 +595,26 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
         </CommandList>
 
         {/* Keyboard Navigation Hints */}
-        <div className="border-t px-3 py-2 text-xs text-muted-foreground bg-neutral-50 dark:bg-neutral-800">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <span className="flex items-center gap-1">
+        <div className='border-t px-3 py-2 text-xs text-muted-foreground bg-neutral-50 dark:bg-neutral-800'>
+          <div className='flex items-center justify-between gap-4'>
+            <div className='flex items-center gap-3'>
+              <span className='flex items-center gap-1'>
                 <span>Select</span>
 
-                <kbd className="px-1.5 py-0.5 bg-white dark:bg-neutral-700 border rounded text-[10px] font-mono">
+                <kbd className='px-1.5 py-0.5 bg-white dark:bg-neutral-700 border rounded text-[10px] font-mono'>
                   ↵
                 </kbd>
               </span>
-              <span className="flex items-center gap-1">
+              <span className='flex items-center gap-1'>
                 <span>Go properties</span>
-                <kbd className="px-1.5 py-0.5 bg-white dark:bg-neutral-700 border rounded text-[10px] font-mono">
+                <kbd className='px-1.5 py-0.5 bg-white dark:bg-neutral-700 border rounded text-[10px] font-mono'>
                   →
                 </kbd>
               </span>
-              <span className="flex items-center gap-1">
+              <span className='flex items-center gap-1'>
                 <span>Back</span>
 
-                <kbd className="px-1.5 py-0.5 bg-white dark:bg-neutral-700 border rounded text-[10px] font-mono">
+                <kbd className='px-1.5 py-0.5 bg-white dark:bg-neutral-700 border rounded text-[10px] font-mono'>
                   ←
                 </kbd>
               </span>
@@ -678,8 +679,8 @@ const VariableCommandItem: React.FC<VariableCommandItemProps> = ({
         isSelectable ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
       )}>
       {/* Main Content */}
-      <div className="flex-1 min-w-0 h-full flex items-center ps-1">
-        <div className="flex items-center gap-2">
+      <div className='flex-1 min-w-0 h-full flex items-center ps-1'>
+        <div className='flex items-center gap-2'>
           {isGroup && (
             <span
               className={cn('rounded-full size-6 flex items-center justify-center shrink-0 border')}
@@ -698,20 +699,20 @@ const VariableCommandItem: React.FC<VariableCommandItemProps> = ({
 
           {/* Show label path in search mode */}
           {showPath && labelPath && (
-            <span className="text-[10px] text-muted-foreground truncate">{labelPath}</span>
+            <span className='text-[10px] text-muted-foreground truncate'>{labelPath}</span>
           )}
 
           {!isGroup && (
             <>
               <TooltipExplanation text={(item as UnifiedVariable).description || ''} />
-              <Badge variant="purple" size="xs">
+              <Badge variant='purple' size='xs'>
                 {displayType}
               </Badge>
             </>
           )}
 
           {isGroup && (
-            <Badge variant="pill" size="xs">
+            <Badge variant='pill' size='xs'>
               {(item as VariableGroup).variables.length}
             </Badge>
           )}
@@ -719,24 +720,24 @@ const VariableCommandItem: React.FC<VariableCommandItemProps> = ({
       </div>
 
       {/* Actions */}
-      <div className="flex h-full">
+      <div className='flex h-full'>
         {!isGroup && (
-          <div className="flex p-1 gap-1 items-center opacity-0 group-hover:opacity-100 group-data-[selected=true]:opacity-100">
+          <div className='flex p-1 gap-1 items-center opacity-0 group-hover:opacity-100 group-data-[selected=true]:opacity-100'>
             <Button
-              size="icon-sm"
-              variant="ghost"
-              className="h-full hover:bg-primary-200"
+              size='icon-sm'
+              variant='ghost'
+              className='h-full hover:bg-primary-200'
               onClick={(e) => onCopy(item as UnifiedVariable, e)}>
               <Copy />
             </Button>
           </div>
         )}
-        <div className="h-full p-1 ps-0">
+        <div className='h-full p-1 ps-0'>
           {isNav ? (
             <Button
-              size="icon-sm"
-              variant="ghost"
-              className="h-full rounded-full border border-transparent group-data-[selected=true]:bg-neutral-200 dark:group-data-[selected=true]:bg-white/10 group-data-[selected=true]:border-neutral-300 dark:group-data-[selected=true]:border-neutral-700"
+              size='icon-sm'
+              variant='ghost'
+              className='h-full rounded-full border border-transparent group-data-[selected=true]:bg-neutral-200 dark:group-data-[selected=true]:bg-white/10 group-data-[selected=true]:border-neutral-300 dark:group-data-[selected=true]:border-neutral-700'
               onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
@@ -749,7 +750,7 @@ const VariableCommandItem: React.FC<VariableCommandItemProps> = ({
               <ChevronRight />
             </Button>
           ) : (
-            <div className="size-7"></div>
+            <div className='size-7'></div>
           )}
         </div>
       </div>

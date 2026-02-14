@@ -121,4 +121,8 @@ export enum EntityInstanceEventType {
 }
 
 /** All timeline event types (expandable for other entities) */
-export type TimelineEventType = ContactEventType | TicketEventType | EntityInstanceEventType | string
+export type TimelineEventType =
+  | ContactEventType
+  | TicketEventType
+  | EntityInstanceEventType
+  | string

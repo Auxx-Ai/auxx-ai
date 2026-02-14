@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/ui/empty-trigger-button.tsx
 
+import { Button } from '@auxx/ui/components/button'
 import { Panel } from '@xyflow/react'
 import { Plus } from 'lucide-react'
-import { useState, memo } from 'react'
-import { Button } from '@auxx/ui/components/button'
+import { memo, useState } from 'react'
+import { useTriggerDefinitions, useWorkflowTrigger } from '~/components/workflow/hooks'
 import { AddNodeTrigger } from './add-node-trigger'
-import { useWorkflowTrigger, useTriggerDefinitions } from '~/components/workflow/hooks'
 
 /**
  * Empty trigger button shown when workflow has no trigger
@@ -22,15 +22,15 @@ export const EmptyTriggerButton = memo(function EmptyTriggerButton() {
   if (hasTrigger) return null
 
   return (
-    <div className="bg-background/50 backdrop-blur-sm border rounded-lg p-2">
+    <div className='bg-background/50 backdrop-blur-sm border rounded-lg p-2'>
       {/* <p className="text-sm text-muted-foreground mb-2">Add</p> */}
       <AddNodeTrigger
-        position="standalone"
+        position='standalone'
         allowedNodeTypes={triggerTypes}
         open={open}
         onOpenChange={setOpen}
         onNodeAdded={() => setOpen(false)}>
-        <Button variant="default" size="xs">
+        <Button variant='default' size='xs'>
           <Plus />
           Add Trigger
         </Button>

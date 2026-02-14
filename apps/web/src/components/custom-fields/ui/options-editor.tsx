@@ -1,12 +1,12 @@
 // apps/web/src/components/custom-fields/ui/options-editor.tsx
 'use client'
 
-import { useState, useEffect, forwardRef } from 'react'
-import { Button } from '@auxx/ui/components/button'
-import { PlusCircle, GripVertical, Trash2 } from 'lucide-react'
 import { DEFAULT_SELECT_OPTION_COLOR, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
-import { OptionColorPicker } from './option-color-picker'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
+import { Button } from '@auxx/ui/components/button'
+import { GripVertical, PlusCircle, Trash2 } from 'lucide-react'
+import { forwardRef, useEffect, useState } from 'react'
+import { OptionColorPicker } from './option-color-picker'
 
 /** Select option type for editor state (without internal id) */
 export type SelectOption = { label: string; value: string; color?: SelectOptionColor }
@@ -42,17 +42,26 @@ export function parseSelectOptions(fieldOptions?: FieldOptions): SelectOption[] 
 export function formatSelectOptions(options: SelectOption[]): { options: SelectOption[] } {
   return { options }
 }
+
 import {
-  DndContext,
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@auxx/ui/components/input-group'
+import { cn } from '@auxx/ui/lib/utils'
+import {
   closestCenter,
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
+  type SyntheticListenerMap,
   useSensor,
   useSensors,
-  type DragEndEvent,
-  type SyntheticListenerMap,
-  DragOverlay,
 } from '@dnd-kit/core'
+import { restrictToParentElement, restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import {
   arrayMove,
   SortableContext,
@@ -60,15 +69,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { restrictToParentElement, restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { CSS } from '@dnd-kit/utilities'
-import { cn } from '@auxx/ui/lib/utils'
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from '@auxx/ui/components/input-group'
 
 interface Option {
   label: string
@@ -125,7 +126,7 @@ const OptionItem = forwardRef<HTMLDivElement, OptionItemProps>(
           isDragging && !isOverlay && 'bg-accent rounded-md'
         )}>
         <InputGroup className={cn(isDragging && !isOverlay && 'opacity-20')}>
-          <InputGroupAddon align="inline-start" className="pl-0!">
+          <InputGroupAddon align='inline-start' className='pl-0!'>
             <div
               {...attributes}
               {...listeners}
@@ -133,10 +134,10 @@ const OptionItem = forwardRef<HTMLDivElement, OptionItemProps>(
                 'cursor-grab h-8 flex items-center ps-1.5 pe-2',
                 isOverlay && 'cursor-grabbing'
               )}>
-              <GripVertical className="size-3 text-muted-foreground group-hover/input-group:text-primary-600" />
+              <GripVertical className='size-3 text-muted-foreground group-hover/input-group:text-primary-600' />
             </div>
           </InputGroupAddon>
-          <InputGroupAddon align="inline-start" className="pl-0!">
+          <InputGroupAddon align='inline-start' className='pl-0!'>
             <OptionColorPicker
               value={option.color}
               onChange={(color) => onColorChange?.(color)}
@@ -146,18 +147,18 @@ const OptionItem = forwardRef<HTMLDivElement, OptionItemProps>(
           <InputGroupInput
             value={option.label}
             onChange={(e) => onChange?.(e.target.value)}
-            placeholder="Option"
-            className="flex-1"
+            placeholder='Option'
+            className='flex-1'
             readOnly={isOverlay}
           />
-          <InputGroupAddon align="inline-end">
+          <InputGroupAddon align='inline-end'>
             <InputGroupButton
-              type="button"
-              variant="destructive-hover"
-              className="rounded-lg me-0.5"
-              aria-label="Remove item"
-              title="Remove"
-              size="icon-xs"
+              type='button'
+              variant='destructive-hover'
+              className='rounded-lg me-0.5'
+              aria-label='Remove item'
+              title='Remove'
+              size='icon-xs'
               onClick={onRemove}
               disabled={isOverlay}>
               <Trash2 />
@@ -306,22 +307,22 @@ export function OptionsEditor({ options, onChange }: OptionsEditorProps) {
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
       modifiers={[restrictToVerticalAxis]}>
-      <div className="mb-0 rounded-xl border pt-1 pb-3 px-1 bg-primary-50 relative">
-        <div className="flex items-center justify-between pb-1">
-          <h4 className="ps-1 text-sm font-medium leading-none">Options</h4>
-          <Button type="button" variant="ghost" size="sm" onClick={addOption}>
+      <div className='mb-0 rounded-xl border pt-1 pb-3 px-1 bg-primary-50 relative'>
+        <div className='flex items-center justify-between pb-1'>
+          <h4 className='ps-1 text-sm font-medium leading-none'>Options</h4>
+          <Button type='button' variant='ghost' size='sm' onClick={addOption}>
             <PlusCircle />
             Add Option
           </Button>
         </div>
 
         {internalOptions.length === 0 ? (
-          <p className="ps-2 h-8 flex items-center text-sm text-muted-foreground">
+          <p className='ps-2 h-8 flex items-center text-sm text-muted-foreground'>
             No options added yet.
           </p>
         ) : (
           <>
-            <div className=" space-y-1">
+            <div className=' space-y-1'>
               <SortableContext
                 items={internalOptions.map((option) => option.id)}
                 strategy={verticalListSortingStrategy}>

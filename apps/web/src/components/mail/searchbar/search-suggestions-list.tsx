@@ -2,18 +2,18 @@
 
 'use client'
 
-import React from 'react'
+import type { MailViewFieldDefinition } from '@auxx/lib/mail-views/client'
+import { BaseType } from '@auxx/lib/workflow-engine/types'
 import {
   Command,
-  CommandInput,
-  CommandList,
-  CommandGroup,
-  CommandItem,
   CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { BaseType } from '@auxx/lib/workflow-engine/types'
-import type { MailViewFieldDefinition } from '@auxx/lib/mail-views/client'
+import React from 'react'
 import type { SearchCondition } from './store'
 
 /**
@@ -144,7 +144,7 @@ export function SearchSuggestionsList({
   const typeOrder: SearchSuggestionType[] = ['recent', 'field']
 
   return (
-    <Command className="bg-transparent">
+    <Command className='bg-transparent'>
       {/* <CommandInput
         value={inputValue}
         onValueChange={onInputChange}
@@ -153,7 +153,7 @@ export function SearchSuggestionsList({
       <CommandList>
         {suggestions.length === 0 ? (
           <CommandEmpty>
-            <div className="px-2 py-3 text-xs text-muted-foreground">
+            <div className='px-2 py-3 text-xs text-muted-foreground'>
               <p>{emptyMessage}</p>
             </div>
           </CommandEmpty>
@@ -163,23 +163,23 @@ export function SearchSuggestionsList({
             if (!items || items.length === 0) return null
 
             return (
-              <CommandGroup key={type} heading={GROUP_LABELS[type]} className="">
+              <CommandGroup key={type} heading={GROUP_LABELS[type]} className=''>
                 {items.map((suggestion, index) => (
                   <CommandItem
                     key={`${type}-${suggestion.value}-${index}`}
                     value={`${type}-${suggestion.value}-${index}`}
                     onSelect={() => onSelect(suggestion)}>
-                    <div className="flex items-center gap-2 w-full">
-                      <div className="border bg-primary-50 rounded-md size-6 flex items-center justify-center relative">
-                        <EntityIcon size="sm" iconId={getSuggestionIcon(suggestion)} />
+                    <div className='flex items-center gap-2 w-full'>
+                      <div className='border bg-primary-50 rounded-md size-6 flex items-center justify-center relative'>
+                        <EntityIcon size='sm' iconId={getSuggestionIcon(suggestion)} />
                       </div>
 
                       {/* Main content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1">
-                          <span className="truncate text-primary-700">{suggestion.label}</span>
+                      <div className='flex-1 min-w-0'>
+                        <div className='flex items-center gap-1'>
+                          <span className='truncate text-primary-700'>{suggestion.label}</span>
                           {suggestion.description && (
-                            <span className="text-xs text-primary-400 truncate">
+                            <span className='text-xs text-primary-400 truncate'>
                               {suggestion.description}
                             </span>
                           )}

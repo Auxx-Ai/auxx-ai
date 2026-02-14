@@ -8,5 +8,5 @@ import { Badge } from '@auxx/ui/components/badge'
  * Shows a simple badge - JSON content is not displayed to users.
  */
 export function DisplayJson() {
-  return <Badge variant="secondary">JSON</Badge>
+  return <Badge variant='secondary'>JSON</Badge>
 }

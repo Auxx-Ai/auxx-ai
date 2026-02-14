@@ -1,7 +1,7 @@
 // packages/lib/src/custom-fields/field-options.ts
 
-import type { CurrencyOptions, RelationshipConfig, ActorOptions } from '@auxx/types/custom-field'
 import type { FieldType } from '@auxx/database/types'
+import type { ActorOptions, CurrencyOptions, RelationshipConfig } from '@auxx/types/custom-field'
 
 /**
  * Unified field options interface.
@@ -157,7 +157,10 @@ export type NumberFieldOptions = Pick<
 >
 
 /** Options for DATE/DATETIME/TIME fields */
-export type DateFieldOptions = Pick<FieldOptions, 'format' | 'timeFormat' | 'includeTime' | 'timeZone'>
+export type DateFieldOptions = Pick<
+  FieldOptions,
+  'format' | 'timeFormat' | 'includeTime' | 'timeZone'
+>
 
 /** Options for CHECKBOX fields */
 export type BooleanFieldOptions = Pick<FieldOptions, 'checkboxStyle' | 'trueLabel' | 'falseLabel'>

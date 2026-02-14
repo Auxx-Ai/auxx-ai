@@ -1,6 +1,6 @@
 // packages/lib/src/import/resolution/resolve-value.ts
 
-import type { ResolvedValue, ResolutionConfig, ResolutionType } from '../types/resolution'
+import type { ResolutionConfig, ResolutionType, ResolvedValue } from '../types/resolution'
 import { getResolver } from './resolver-registry'
 
 /**

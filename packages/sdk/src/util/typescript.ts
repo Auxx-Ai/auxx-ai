@@ -1,11 +1,11 @@
 // packages/sdk/src/util/typescript.ts
 
+import chalk from 'chalk'
 import { createReadStream, existsSync } from 'fs'
 import { createInterface } from 'readline'
-import chalk from 'chalk'
 import { default as ts } from 'typescript'
 import { z } from 'zod'
-import { type JsError } from '../errors.js'
+import type { JsError } from '../errors.js'
 
 /**
  * Reads and returns the zero-indexed line content from the provided file path.

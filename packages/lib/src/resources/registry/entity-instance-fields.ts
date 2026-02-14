@@ -1,8 +1,8 @@
 // packages/lib/src/resources/registry/entity-instance-fields.ts
 
 import { FieldType } from '@auxx/database/enums'
-import { BaseType } from '../../workflow-engine/core/types'
 import { toFieldId } from '@auxx/types/field'
+import { BaseType } from '../../workflow-engine/core/types'
 import type { ResourceField } from './field-types'
 
 /**

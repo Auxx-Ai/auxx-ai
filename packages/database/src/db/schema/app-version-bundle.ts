@@ -1,15 +1,8 @@
 // packages/database/src/db/schema/app-version-bundle.ts
 // Drizzle table for app version bundle
 
-import {
-  pgTable,
-  text,
-  timestamp,
-  boolean,
-  index,
-  type AnyPgColumn,
-} from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, boolean, index, pgTable, text, timestamp } from './_shared'
 import { AppVersion } from './app-version'
 
 /** Drizzle table for AppVersionBundle */
@@ -50,13 +43,7 @@ export const AppVersionBundle = pgTable(
     updatedAt: timestamp({ precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
-    index('AppVersionBundle_appVersionId_idx').using(
-      'btree',
-      table.appVersionId.asc().nullsLast()
-    ),
-    index('AppVersionBundle_versionType_idx').using(
-      'btree',
-      table.versionType.asc().nullsLast()
-    ),
+    index('AppVersionBundle_appVersionId_idx').using('btree', table.appVersionId.asc().nullsLast()),
+    index('AppVersionBundle_versionType_idx').using('btree', table.versionType.asc().nullsLast()),
   ]
 )

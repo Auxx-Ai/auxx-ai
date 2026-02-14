@@ -322,7 +322,7 @@ export interface WorkflowTrigger<TSchema extends WorkflowSchema = WorkflowSchema
  * Infer the TypeScript type from a field node
  * This will be expanded as we implement field nodes
  */
-// @ts-ignore - Placeholder type parameter
+// @ts-expect-error - Placeholder type parameter
 export type InferFieldType<T> = any // Placeholder - will be refined with field node types
 
 /**

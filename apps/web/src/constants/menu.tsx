@@ -45,7 +45,7 @@ export type SidebarProps = {
   preventNavigation?: boolean
 } & FieldProps
 
-import * as React from 'react'
+import type * as React from 'react'
 import { ShopifyIcon } from './icons'
 
 // {

@@ -2,13 +2,13 @@
 
 'use client'
 
-import { useCallback, useState, memo } from 'react'
-import { Plus } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
+import { Plus } from 'lucide-react'
+import { memo, useCallback, useState } from 'react'
 import { useConditionContext } from '../condition-context'
 import type { ConditionAddProps } from '../types'
-import VariableFieldSelector from './variable-field-selector'
 import ResourceFieldSelector from './resource-field-selector'
+import VariableFieldSelector from './variable-field-selector'
 
 /**
  * Generic condition add component that can work with both variable and resource-based systems
@@ -37,7 +37,12 @@ const ConditionAdd = memo(
     /** Shared trigger button for both field selector modes */
     const renderTrigger = useCallback(
       ({ onClick }: { onClick: () => void }) => (
-        <Button size="sm" variant="outline" className={className} disabled={disabled} onClick={onClick}>
+        <Button
+          size='sm'
+          variant='outline'
+          className={className}
+          disabled={disabled}
+          onClick={onClick}>
           {buttonIcon}
           {buttonText}
         </Button>
@@ -49,7 +54,7 @@ const ConditionAdd = memo(
     if (config.mode === 'variable' && nodeId) {
       return (
         <VariableFieldSelector
-          value=""
+          value=''
           onChange={handleFieldSelect}
           nodeId={nodeId}
           renderTrigger={renderTrigger}
@@ -61,7 +66,7 @@ const ConditionAdd = memo(
     if (config.mode === 'resource') {
       return (
         <ResourceFieldSelector
-          value=""
+          value=''
           onChange={handleFieldSelect}
           availableFields={getAvailableFields()}
           disabled={disabled || getAvailableFields().length === 0}

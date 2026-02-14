@@ -140,12 +140,54 @@ export const ModelTypeMeta: Record<
   ModelType,
   { label: string; plural: string; icon: string; color: string; apiSlug: string; dbTable: string }
 > = {
-  contact: { label: 'Contact', plural: 'Contacts', icon: 'user', color: 'indigo', apiSlug: 'contacts', dbTable: 'Contact' },
-  ticket: { label: 'Ticket', plural: 'Tickets', icon: 'ticket', color: 'blue', apiSlug: 'tickets', dbTable: 'Ticket' },
-  thread: { label: 'Thread', plural: 'Threads', icon: 'message-square', color: 'purple', apiSlug: 'threads', dbTable: 'Thread' },
-  user: { label: 'User', plural: 'Users', icon: 'users', color: 'green', apiSlug: 'users', dbTable: 'User' },
-  inbox: { label: 'Inbox', plural: 'Inboxes', icon: 'inbox', color: 'indigo', apiSlug: 'inboxes', dbTable: 'Inbox' },
-  message: { label: 'Message', plural: 'Messages', icon: 'mail', color: 'teal', apiSlug: 'messages', dbTable: 'Message' },
+  contact: {
+    label: 'Contact',
+    plural: 'Contacts',
+    icon: 'user',
+    color: 'indigo',
+    apiSlug: 'contacts',
+    dbTable: 'Contact',
+  },
+  ticket: {
+    label: 'Ticket',
+    plural: 'Tickets',
+    icon: 'ticket',
+    color: 'blue',
+    apiSlug: 'tickets',
+    dbTable: 'Ticket',
+  },
+  thread: {
+    label: 'Thread',
+    plural: 'Threads',
+    icon: 'message-square',
+    color: 'purple',
+    apiSlug: 'threads',
+    dbTable: 'Thread',
+  },
+  user: {
+    label: 'User',
+    plural: 'Users',
+    icon: 'users',
+    color: 'green',
+    apiSlug: 'users',
+    dbTable: 'User',
+  },
+  inbox: {
+    label: 'Inbox',
+    plural: 'Inboxes',
+    icon: 'inbox',
+    color: 'indigo',
+    apiSlug: 'inboxes',
+    dbTable: 'Inbox',
+  },
+  message: {
+    label: 'Message',
+    plural: 'Messages',
+    icon: 'mail',
+    color: 'teal',
+    apiSlug: 'messages',
+    dbTable: 'Message',
+  },
   participant: {
     label: 'Participant',
     plural: 'Participants',
@@ -154,9 +196,30 @@ export const ModelTypeMeta: Record<
     apiSlug: 'participants',
     dbTable: 'Participant',
   },
-  dataset: { label: 'Dataset', plural: 'Datasets', icon: 'database', color: 'purple', apiSlug: 'datasets', dbTable: 'Dataset' },
-  entity: { label: 'Entity', plural: 'Entities', icon: 'box', color: 'gray', apiSlug: 'entities', dbTable: 'EntityInstance' },
-  part: { label: 'Part', plural: 'Parts', icon: 'package', color: 'orange', apiSlug: 'parts', dbTable: 'Part' },
+  dataset: {
+    label: 'Dataset',
+    plural: 'Datasets',
+    icon: 'database',
+    color: 'purple',
+    apiSlug: 'datasets',
+    dbTable: 'Dataset',
+  },
+  entity: {
+    label: 'Entity',
+    plural: 'Entities',
+    icon: 'box',
+    color: 'gray',
+    apiSlug: 'entities',
+    dbTable: 'EntityInstance',
+  },
+  part: {
+    label: 'Part',
+    plural: 'Parts',
+    icon: 'package',
+    color: 'orange',
+    apiSlug: 'parts',
+    dbTable: 'Part',
+  },
 }
 
 export const DatasetStatusValues = ['ACTIVE', 'INACTIVE', 'PROCESSING', 'ERROR'] as const
@@ -597,7 +660,14 @@ export const WorkflowTriggerSourceValues = [
 export const WorkflowShareAccessModeValues = ['public', 'organization'] as const
 
 // EntityDefinition string constants (not database enums - stored as text)
-export const EntityTypeValues = ['standard', 'contact', 'user', 'thread', 'ticket', 'entity_group'] as const
+export const EntityTypeValues = [
+  'standard',
+  'contact',
+  'user',
+  'thread',
+  'ticket',
+  'entity_group',
+] as const
 
 export const StandardTypeValues = ['company', 'task', 'deal', 'custom'] as const
 
@@ -1353,7 +1423,13 @@ export const GroupVisibility = {
  *
  * Custom entities use their actual EntityDefinition.id (CUID) instead.
  */
-export const BuiltInEntityTypeValues = ['inbox', 'snippet', 'folder', 'workflow', 'document'] as const
+export const BuiltInEntityTypeValues = [
+  'inbox',
+  'snippet',
+  'folder',
+  'workflow',
+  'document',
+] as const
 export type BuiltInEntityType = (typeof BuiltInEntityTypeValues)[number]
 
 export const BuiltInEntityType = {

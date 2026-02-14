@@ -19,8 +19,8 @@ type PlainObject<T> = T extends object
   ? T extends any[]
     ? false
     : T extends (...args: any) => any
-    ? false
-    : true
+      ? false
+      : true
   : false
 
 /**
@@ -41,10 +41,10 @@ type PathToInner<T, TType extends string, D extends Depth> = {
   [K in Extract<keyof T, string>]: IsFieldOfType<T[K], TType> extends true
     ? K
     : D extends 0
-    ? never
-    : PlainObject<T[K]> extends true
-    ? `${K}.${PathToInner<T[K], TType, PrevDepth[D]>}`
-    : never
+      ? never
+      : PlainObject<T[K]> extends true
+        ? `${K}.${PathToInner<T[K], TType, PrevDepth[D]>}`
+        : never
 }[Extract<keyof T, string>]
 
 /**
@@ -80,17 +80,14 @@ export type PathTo<T, TType extends string, MaxDepth extends Depth = 5> = PathTo
  * Check if a value is a WorkflowFieldNode of a specific type.
  * Uses the generic type parameter from the base class.
  */
-type IsFieldNodeOfType<V, TT extends string> = V extends WorkflowFieldNode<
-  infer U,
-  any,
-  any
->
-  ? U extends TT
-    ? TT extends U
-      ? true
+type IsFieldNodeOfType<V, TT extends string> =
+  V extends WorkflowFieldNode<infer U, any, any>
+    ? U extends TT
+      ? TT extends U
+        ? true
+        : false
       : false
     : false
-  : false
 
 /**
  * Internal recursive type for PathToField.
@@ -100,10 +97,10 @@ type PathToFieldInner<T, TType extends string, D extends Depth> = {
   [K in Extract<keyof T, string>]: IsFieldNodeOfType<T[K], TType> extends true
     ? K
     : D extends 0
-    ? never
-    : PlainObject<T[K]> extends true
-    ? `${K}.${PathToFieldInner<T[K], TType, PrevDepth[D]>}`
-    : never
+      ? never
+      : PlainObject<T[K]> extends true
+        ? `${K}.${PathToFieldInner<T[K], TType, PrevDepth[D]>}`
+        : never
 }[Extract<keyof T, string>]
 
 /**
@@ -146,5 +143,5 @@ export type ValueAtPath<T, TPath extends string> = TPath extends `${infer K}.${i
     ? ValueAtPath<T[K], Rest>
     : never
   : TPath extends keyof T
-  ? T[TPath]
-  : never
+    ? T[TPath]
+    : never

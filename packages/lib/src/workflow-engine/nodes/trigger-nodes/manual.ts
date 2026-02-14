@@ -1,24 +1,21 @@
 // packages/lib/src/workflow-engine/nodes/trigger-nodes/manual.ts
 
-import { BaseNodeProcessor } from '../base-node'
-import type { WorkflowNode, NodeExecutionResult, ValidationResult } from '../../core/types'
-import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
 import { createScopedLogger } from '../../../logger'
+import type { ExecutionContextManager } from '../../core/execution-context'
+import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
+import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import {
   createFileVariable,
   createMultipleFilesVariable,
   type WorkflowFileData,
 } from '../../types/file-variable'
+import { BaseNodeProcessor } from '../base-node'
 
 // Use WorkflowFileData from file-variable types
 
 const logger = createScopedLogger('manual-trigger-processor')
 
-interface ManualTriggerConfig {
-  // Manual trigger doesn't need specific config
-  // It's triggered directly by user action
-}
+type ManualTriggerConfig = {}
 
 /**
  * Manual trigger node processor
@@ -120,11 +117,7 @@ export class ManualTriggerProcessor extends BaseNodeProcessor {
   private isFileObject(value: unknown): boolean {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false
     const obj = value as Record<string, unknown>
-    return (
-      typeof obj.url === 'string' &&
-      typeof obj.filename === 'string' &&
-      obj.url.length > 0
-    )
+    return typeof obj.url === 'string' && typeof obj.filename === 'string' && obj.url.length > 0
   }
 
   /**
@@ -142,7 +135,9 @@ export class ManualTriggerProcessor extends BaseNodeProcessor {
       url: file.url,
       nodeId: file.nodeId || nodeId,
       uploadedAt:
-        typeof file.uploadedAt === 'string' ? new Date(file.uploadedAt) : file.uploadedAt || new Date(),
+        typeof file.uploadedAt === 'string'
+          ? new Date(file.uploadedAt)
+          : file.uploadedAt || new Date(),
       expiresAt: file.expiresAt
         ? typeof file.expiresAt === 'string'
           ? new Date(file.expiresAt)

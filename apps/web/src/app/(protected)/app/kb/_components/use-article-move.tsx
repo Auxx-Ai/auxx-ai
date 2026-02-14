@@ -1,21 +1,22 @@
 // src/app/(protected)/app/kb/_components/use-article-move.tsx
 'use client'
 
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import { api } from '~/trpc/react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cloneDeep } from '@auxx/utils/objects'
-import { useKnowledgeBase } from './kb-context'
 import {
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
-  PointerSensor,
   KeyboardSensor,
+  PointerSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
 import { useRouter } from 'next/navigation'
+import type React from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { api } from '~/trpc/react'
+import { useKnowledgeBase } from './kb-context'
 
 // Action types based on drop detection
 export const DROP_ACTION_TYPE = {

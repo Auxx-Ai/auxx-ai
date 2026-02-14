@@ -2,7 +2,6 @@
 
 'use client'
 
-import { Check, ChevronsUpDown, Trash2, X } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import {
   Command,
@@ -13,8 +12,9 @@ import {
   CommandList,
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { useState } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
+import { Check, ChevronsUpDown, Trash2, X } from 'lucide-react'
+import { useState } from 'react'
 import type { ImportableField } from '../types'
 
 interface FieldSelectorProps {
@@ -44,14 +44,14 @@ export function FieldSelector({ value, fields, usedFieldKeys, onChange }: FieldS
   )
 
   return (
-    <div className="flex items-center gap-0">
-      <div className="flex-1">
+    <div className='flex items-center gap-0'>
+      <div className='flex-1'>
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <Button
-              variant="outline"
-              size="sm"
-              role="combobox"
+              variant='outline'
+              size='sm'
+              role='combobox'
               aria-expanded={open}
               className={cn(
                 'w-full justify-between',
@@ -59,12 +59,12 @@ export function FieldSelector({ value, fields, usedFieldKeys, onChange }: FieldS
                 !value && 'text-muted-foreground'
               )}>
               {selectedField?.label ?? 'Select field...'}
-              <ChevronsUpDown className=" opacity-50" />
+              <ChevronsUpDown className=' opacity-50' />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-64 p-0">
+          <PopoverContent className='w-64 p-0'>
             <Command>
-              <CommandInput placeholder="Search fields..." />
+              <CommandInput placeholder='Search fields...' />
               <CommandList>
                 <CommandEmpty>No field found.</CommandEmpty>
                 {Object.entries(groupedFields).map(([group, groupFields]) => (
@@ -84,7 +84,7 @@ export function FieldSelector({ value, fields, usedFieldKeys, onChange }: FieldS
                           />
                           {field.label}
                           {isUsed && (
-                            <span className="ml-auto text-xs text-muted-foreground">
+                            <span className='ml-auto text-xs text-muted-foreground'>
                               will replace
                             </span>
                           )}
@@ -101,9 +101,9 @@ export function FieldSelector({ value, fields, usedFieldKeys, onChange }: FieldS
       {/* Clear button */}
       {value && (
         <Button
-          variant="outline"
-          size="icon-sm"
-          className="rounded-l-none bg-linear-0 hover:to-destructive/5 hover:from-destructive/5 hover:inset-shadow-none hover:text-destructive hover:border-destructive/20 shadow-none hover:shadow-xs"
+          variant='outline'
+          size='icon-sm'
+          className='rounded-l-none bg-linear-0 hover:to-destructive/5 hover:from-destructive/5 hover:inset-shadow-none hover:text-destructive hover:border-destructive/20 shadow-none hover:shadow-xs'
           onClick={() => onChange(null)}>
           <Trash2 />
         </Button>

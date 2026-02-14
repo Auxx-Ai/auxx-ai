@@ -1,5 +1,5 @@
 import { WebhookModel } from '@auxx/database/models'
-import { type WebhookDeliveryCreatedEvent } from '../types'
+import type { WebhookDeliveryCreatedEvent } from '../types'
 
 export async function updateWebhookLastTriggeredAt({
   data,

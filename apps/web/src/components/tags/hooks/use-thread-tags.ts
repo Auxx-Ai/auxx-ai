@@ -1,13 +1,13 @@
 // apps/web/src/components/tags/hooks/use-thread-tags.ts
 
-import { useCallback } from 'react'
+import { toRecordId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/types/resource'
 import { toastError } from '@auxx/ui/components/toast'
+import { useCallback } from 'react'
 import { useResource, useSystemField } from '~/components/resources/hooks'
 import { useThread } from '~/components/threads/hooks'
 import { useThreadStore } from '~/components/threads/store'
-import { toRecordId } from '@auxx/lib/resources/client'
 import { api } from '~/trpc/react'
-import type { RecordId } from '@auxx/types/resource'
 
 /**
  * Hook for managing thread tags with optimistic updates to ThreadStore.

@@ -1,8 +1,8 @@
 // lib/settings/settings-initializer.ts
-import { database as db, schema, type Database } from '@auxx/database'
-import { eq } from 'drizzle-orm'
-import { SettingsService, SETTINGS_CATALOG } from './settings-service'
+import { type Database, database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
+import { SETTINGS_CATALOG, SettingsService } from './settings-service'
 
 const logger = createScopedLogger('settings-initializer')
 

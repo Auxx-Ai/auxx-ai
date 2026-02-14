@@ -1,7 +1,19 @@
 // apps/web/src/lib/extensions/component-registry.ts
 
-import React from 'react'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button as ShadcnButton } from '@auxx/ui/components/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@auxx/ui/components/card'
+import { Checkbox } from '@auxx/ui/components/checkbox'
+import { Dialog } from '@auxx/ui/components/dialog'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
 import {
@@ -11,48 +23,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Checkbox } from '@auxx/ui/components/checkbox'
-import { Textarea } from '@auxx/ui/components/textarea'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@auxx/ui/components/card'
-import { Badge } from '@auxx/ui/components/badge'
 import { Separator as ShadcnSeparator } from '@auxx/ui/components/separator'
 import { Switch } from '@auxx/ui/components/switch'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-import { Dialog } from '@auxx/ui/components/dialog'
-import { Form as FormComponent } from './forms/form-reconstructor'
-
+import { Textarea } from '@auxx/ui/components/textarea'
+import type React from 'react'
 // Workflow components
 import {
   WorkflowNode,
+  WorkflowNodeHandle,
   WorkflowNodeRow,
   WorkflowNodeText,
-  WorkflowNodeHandle,
   WorkflowPanel,
 } from './components/workflow'
+import { BooleanInput, NumberInput, SelectInput, StringInput } from './components/workflow/inputs'
 import {
-  StringInput,
-  NumberInput,
-  BooleanInput,
-  SelectInput,
-} from './components/workflow/inputs'
-import {
-  Section,
   InputGroup,
+  Section,
   Separator as WorkflowSeparatorComponent,
 } from './components/workflow/layout'
 import { WorkflowAlert } from './components/workflow/utility/alert'
 import { WorkflowBadge } from './components/workflow/utility/badge'
 import { ConditionalRender } from './components/workflow/utility/conditional-render'
-import { VariableInput } from './components/workflow/variables/variable-input'
 import { InputEditor } from './components/workflow/variables/input-editor'
+import { VariableInput } from './components/workflow/variables/variable-input'
+import { Form as FormComponent } from './forms/form-reconstructor'
 
 /**
  * FormField placeholder component.
@@ -96,7 +90,7 @@ const Button = ({ __instanceId, __onCallHandler, __hasOnClick, label, onClick, .
  * Separator wrapper with mandatory margin styles.
  */
 const Separator = (props: any) => {
-  return <ShadcnSeparator className="my-3" {...props} />
+  return <ShadcnSeparator className='my-3' {...props} />
 }
 
 /**

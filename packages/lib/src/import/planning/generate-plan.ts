@@ -1,20 +1,20 @@
 // packages/lib/src/import/planning/generate-plan.ts
 
-import { eq } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { ImportPlan, ImportPlanStrategy, PlanEstimates, StrategyType } from '../types/plan'
+import { eq } from 'drizzle-orm'
+import type { ResourceField } from '../../resources'
+import { ResourceRegistryService } from '../../resources'
 import type { ImportMappingProperty } from '../types/mapping'
+import type { ImportPlan, ImportPlanStrategy, PlanEstimates, StrategyType } from '../types/plan'
 import type { ValueResolution } from '../types/resolution'
+import { type AnalyzeRowContext, analyzeRow } from './analyze-row'
+import { type AssignRowInput, batchAssignRows } from './assign-row-to-strategy'
+import { calculateEstimatesFromCounts } from './calculate-estimates'
 import { createPlan } from './create-plan'
 import { createDefaultStrategies } from './create-strategy'
-import { analyzeRow, type AnalyzeRowContext } from './analyze-row'
-import { batchAssignRows, type AssignRowInput } from './assign-row-to-strategy'
-import { calculateEstimatesFromCounts } from './calculate-estimates'
 import { createFindExistingRecord } from './find-existing-record'
-import { ResourceRegistryService } from '../../resources'
-import type { ResourceField } from '../../resources'
 
 const logger = createScopedLogger('generate-plan')
 
@@ -40,7 +40,11 @@ export interface GeneratePlanOptions {
   /** Called for each analyzed row (for real-time SSE streaming) */
   onRowAnalyzed?: (row: AnalyzedRow) => Promise<void> | void
   /** Progress callback: (phase, processed, total) */
-  onProgress?: (phase: 'analyzing' | 'assigning', processed: number, total: number) => Promise<void> | void
+  onProgress?: (
+    phase: 'analyzing' | 'assigning',
+    processed: number,
+    total: number
+  ) => Promise<void> | void
 }
 
 /** Result of plan generation */

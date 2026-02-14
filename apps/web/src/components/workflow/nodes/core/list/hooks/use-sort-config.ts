@@ -8,7 +8,7 @@ import type { ListNodeData, SortDirection } from '../types'
  */
 export function useSortConfig(
   nodeData: ListNodeData,
-  setNodeData: (data: Partial<ListNodeData>) => void,
+  setNodeData: (data: Partial<ListNodeData>) => void
 ) {
   /**
    * Get current sort field
@@ -41,7 +41,7 @@ export function useSortConfig(
         })
       }
     },
-    [nodeData.sortConfig, setNodeData, currentDirection],
+    [nodeData.sortConfig, setNodeData, currentDirection]
   )
 
   /**
@@ -58,7 +58,7 @@ export function useSortConfig(
         },
       })
     },
-    [nodeData.sortConfig, setNodeData, currentField],
+    [nodeData.sortConfig, setNodeData, currentField]
   )
 
   /**
@@ -75,7 +75,7 @@ export function useSortConfig(
         },
       })
     },
-    [nodeData.sortConfig, setNodeData],
+    [nodeData.sortConfig, setNodeData]
   )
 
   return {

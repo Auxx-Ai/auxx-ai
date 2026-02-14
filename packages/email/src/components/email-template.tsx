@@ -6,12 +6,12 @@ import {
   Html,
   Img,
   Link,
+  pixelBasedPreset,
   Section,
   Tailwind,
   Text,
-  pixelBasedPreset,
 } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { Logo } from './email-logo'
 
 const fbLogoUrl =
@@ -36,48 +36,48 @@ export async function EmailTemplate({
           presets: [pixelBasedPreset],
         }}>
         <Body
-          className="m-0 h-full w-full justify-center bg-slate-50 py-6 text-center text-base font-medium text-slate-800"
+          className='m-0 h-full w-full justify-center bg-slate-50 py-6 text-center text-base font-medium text-slate-800'
           style={{
             fontFamily: "'Jost', 'Helvetica Neue', 'Segoe UI', 'Helvetica', 'sans-serif'",
           }}>
           <Section>
             {isDefaultLogo ? (
-              <Link href={logoLink} target="_blank">
-                <Logo className="mx-auto w-60" />
+              <Link href={logoLink} target='_blank'>
+                <Logo className='mx-auto w-60' />
               </Link>
             ) : (
               <Img
-                data-testid="logo-image"
-                alt="Logo"
-                className="mx-auto max-h-[100px] w-80 object-contain"
+                data-testid='logo-image'
+                alt='Logo'
+                className='mx-auto max-h-[100px] w-80 object-contain'
                 src={logoUrl}
               />
             )}
           </Section>
-          <Container className="mx-auto my-8 max-w-xl rounded-md bg-white p-4 text-left">
+          <Container className='mx-auto my-8 max-w-xl rounded-md bg-white p-4 text-left'>
             {children}
           </Container>
 
-          <Section className="mt-4 text-center text-sm">
+          <Section className='mt-4 text-center text-sm'>
             <Link
-              className="m-0 font-normal text-slate-500"
-              href="https://dev.auxx.ai/?utm_source=email_header&utm_medium=email"
-              target="_blank"
-              rel="noopener noreferrer">
+              className='m-0 font-normal text-slate-500'
+              href='https://dev.auxx.ai/?utm_source=email_header&utm_medium=email'
+              target='_blank'
+              rel='noopener noreferrer'>
               This email was sent via Auxx.ai.
             </Link>
             {constants.IMPRINT_ADDRESS && (
-              <Text className="m-0 font-normal text-slate-500 opacity-50">
+              <Text className='m-0 font-normal text-slate-500 opacity-50'>
                 {constants.IMPRINT_ADDRESS}
               </Text>
             )}
-            <Text className="m-0 font-normal text-slate-500 opacity-50">
+            <Text className='m-0 font-normal text-slate-500 opacity-50'>
               {constants.IMPRINT_URL && (
                 <Link
                   href={constants.IMPRINT_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-slate-500">
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  className='text-slate-500'>
                   Imprint
                 </Link>
               )}
@@ -85,9 +85,9 @@ export async function EmailTemplate({
               {constants.PRIVACY_URL && (
                 <Link
                   href={constants.PRIVACY_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-slate-500">
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  className='text-slate-500'>
                   Privacy Policy
                 </Link>
               )}

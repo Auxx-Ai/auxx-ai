@@ -1,16 +1,16 @@
 // apps/web/src/app/(protected)/app/settings/aiModels/_components/provider-actions.tsx
 
 'use client'
-import React from 'react'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
   DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { Settings, Plus, MoreVertical, Star, Zap, Trash2 } from 'lucide-react'
+import { MoreVertical, Plus, Settings, Star, Trash2, Zap } from 'lucide-react'
+import type React from 'react'
 
 interface ProviderActionsProps {
   provider: string
@@ -75,8 +75,8 @@ export const ProviderActions: React.FC<ProviderActionsProps> = ({
   if (!configured || configStatus === 'not_configured') {
     return (
       <Button
-        variant="outline"
-        size="xs"
+        variant='outline'
+        size='xs'
         onClick={handleSetupClick}
         disabled={disabled}
         className={className}>
@@ -88,14 +88,14 @@ export const ProviderActions: React.FC<ProviderActionsProps> = ({
 
   // Show action buttons if configured
   return (
-    <div className="flex">
+    <div className='flex'>
       {/* Add Model Button */}
       <Button
-        variant="outline"
-        size="xs"
+        variant='outline'
+        size='xs'
         disabled={disabled}
         onClick={handleAddModelClick}
-        className="rounded-r-none">
+        className='rounded-r-none'>
         <Plus />
         Add Model
       </Button>
@@ -104,14 +104,14 @@ export const ProviderActions: React.FC<ProviderActionsProps> = ({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="outline"
-            size="xs"
+            variant='outline'
+            size='xs'
             disabled={disabled}
-            className="rounded-l-none border-l-0 w-6">
+            className='rounded-l-none border-l-0 w-6'>
             <MoreVertical />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align='end'>
           <DropdownMenuItem onClick={handleEditClick}>
             <Settings />
             Edit
@@ -130,7 +130,7 @@ export const ProviderActions: React.FC<ProviderActionsProps> = ({
             Create Custom Model
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleRemoveProviderClick} variant="destructive">
+          <DropdownMenuItem onClick={handleRemoveProviderClick} variant='destructive'>
             <Trash2 />
             Remove Provider
           </DropdownMenuItem>

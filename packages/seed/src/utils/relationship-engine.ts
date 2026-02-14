@@ -227,7 +227,7 @@ export class RelationshipEngine {
     productCategory: string
   ): string[] {
     const relatedCount = Math.min(5, Math.floor(allProductIds.length * 0.1))
-    const availableProducts = allProductIds.filter(id => id !== productId)
+    const availableProducts = allProductIds.filter((id) => id !== productId)
 
     // Shuffle and take first N products for related products
     const shuffled = [...availableProducts].sort(() => Math.random() - 0.5)
@@ -235,9 +235,11 @@ export class RelationshipEngine {
   }
 
   /** determineCustomerType classifies customers into behavioral segments. */
-  private determineCustomerType(customerIndex: number): 'occasional' | 'regular' | 'frequent' | 'vip' {
-    const typeDistribution = [0.4, 0.35, 0.20, 0.05] // Realistic customer distribution
-    const random = (customerIndex * 17) % 100 / 100 // Deterministic but distributed
+  private determineCustomerType(
+    customerIndex: number
+  ): 'occasional' | 'regular' | 'frequent' | 'vip' {
+    const typeDistribution = [0.4, 0.35, 0.2, 0.05] // Realistic customer distribution
+    const random = ((customerIndex * 17) % 100) / 100 // Deterministic but distributed
 
     if (random < typeDistribution[0]) return 'occasional'
     if (random < typeDistribution[0] + typeDistribution[1]) return 'regular'
@@ -278,9 +280,9 @@ export class RelationshipEngine {
   private getOrderFrequency(customerType: string): number {
     const frequencies = {
       occasional: 180, // Every 6 months
-      regular: 60,     // Every 2 months
-      frequent: 30,    // Monthly
-      vip: 14,         // Bi-weekly
+      regular: 60, // Every 2 months
+      frequent: 30, // Monthly
+      vip: 14, // Bi-weekly
     }
 
     return frequencies[customerType as keyof typeof frequencies] || 180
@@ -289,8 +291,14 @@ export class RelationshipEngine {
   /** getPreferredCategories returns realistic category preferences. */
   private getPreferredCategories(customerType: string): string[] {
     const allCategories = [
-      'Electronics', 'Clothing & Apparel', 'Home & Garden', 'Sports & Outdoor',
-      'Books & Media', 'Health & Beauty', 'Automotive', 'Pet Supplies'
+      'Electronics',
+      'Clothing & Apparel',
+      'Home & Garden',
+      'Sports & Outdoor',
+      'Books & Media',
+      'Health & Beauty',
+      'Automotive',
+      'Pet Supplies',
     ]
 
     const categoryCount = customerType === 'vip' ? 4 : customerType === 'frequent' ? 3 : 2
@@ -300,9 +308,9 @@ export class RelationshipEngine {
   /** getMessageCountForThreadType returns realistic conversation lengths. */
   private getMessageCountForThreadType(threadType: string): number {
     const messageCounts = {
-      simple: [2, 3, 4],     // Quick resolution
-      moderate: [4, 6, 8],   // Back and forth
-      complex: [8, 12, 16],  // Extended troubleshooting
+      simple: [2, 3, 4], // Quick resolution
+      moderate: [4, 6, 8], // Back and forth
+      complex: [8, 12, 16], // Extended troubleshooting
     }
 
     const counts = messageCounts[threadType as keyof typeof messageCounts] || [2, 3, 4]
@@ -319,13 +327,13 @@ export class RelationshipEngine {
       ],
       moderate: [
         'I received my order but there seems to be an issue with one of the items.',
-        'I\'m having trouble with the product I purchased last week.',
-        'The item I received doesn\'t match what I ordered.',
+        "I'm having trouble with the product I purchased last week.",
+        "The item I received doesn't match what I ordered.",
       ],
       complex: [
-        'I\'ve been having ongoing issues with my account and need comprehensive help.',
+        "I've been having ongoing issues with my account and need comprehensive help.",
         'This is a complicated situation involving multiple orders and billing issues.',
-        'I\'ve tried everything suggested in your FAQ but the problem persists.',
+        "I've tried everything suggested in your FAQ but the problem persists.",
       ],
     }
 
@@ -345,13 +353,17 @@ export class RelationshipEngine {
   }
 
   /** generateAgentResponse creates realistic agent responses. */
-  private generateAgentResponse(threadType: string, messageIndex: number, totalMessages: number): string {
+  private generateAgentResponse(
+    threadType: string,
+    messageIndex: number,
+    totalMessages: number
+  ): string {
     const isLast = messageIndex === totalMessages - 1
 
     if (isLast) {
-      return 'I\'m glad we could resolve this issue for you. Please don\'t hesitate to reach out if you need any additional assistance.'
+      return "I'm glad we could resolve this issue for you. Please don't hesitate to reach out if you need any additional assistance."
     } else if (messageIndex === 1) {
-      return 'Thank you for contacting us. I\'d be happy to help you with this issue.'
+      return "Thank you for contacting us. I'd be happy to help you with this issue."
     } else {
       return 'I understand your concern. Let me look into that for you and provide some additional information.'
     }
@@ -360,9 +372,9 @@ export class RelationshipEngine {
   /** getMessageInterval returns realistic time between messages in milliseconds. */
   private getMessageInterval(threadType: string): number {
     const intervals = {
-      simple: 15 * 60 * 1000,    // 15 minutes
-      moderate: 30 * 60 * 1000,  // 30 minutes
-      complex: 60 * 60 * 1000,   // 1 hour
+      simple: 15 * 60 * 1000, // 15 minutes
+      moderate: 30 * 60 * 1000, // 30 minutes
+      complex: 60 * 60 * 1000, // 1 hour
     }
 
     return intervals[threadType as keyof typeof intervals] || intervals.simple
@@ -383,7 +395,7 @@ export class RelationshipEngine {
   /** getVariantCount returns appropriate variant count per product category. */
   private getVariantCount(productCategory: string): number {
     const variantCounts = {
-      'Electronics': [1, 2, 3],
+      Electronics: [1, 2, 3],
       'Clothing & Apparel': [3, 5, 8],
       'Home & Garden': [1, 2, 3],
       'Sports & Outdoor': [2, 3, 4],
@@ -394,9 +406,12 @@ export class RelationshipEngine {
   }
 
   /** generateVariantAttributes creates appropriate attributes per category. */
-  private generateVariantAttributes(productCategory: string, variantIndex: number): Record<string, string> {
+  private generateVariantAttributes(
+    productCategory: string,
+    variantIndex: number
+  ): Record<string, string> {
     const attributeMap = {
-      'Electronics': [
+      Electronics: [
         { color: 'Black', storage: '64GB' },
         { color: 'White', storage: '128GB' },
         { color: 'Blue', storage: '256GB' },
@@ -415,13 +430,17 @@ export class RelationshipEngine {
       ],
     }
 
-    const attributes = attributeMap[productCategory as keyof typeof attributeMap] || [{ variant: `Option ${variantIndex + 1}` }]
+    const attributes = attributeMap[productCategory as keyof typeof attributeMap] || [
+      { variant: `Option ${variantIndex + 1}` },
+    ]
     return attributes[variantIndex % attributes.length] || attributes[0]!
   }
 
   /** generateVariantTitle creates descriptive variant names. */
   private generateVariantTitle(attributes: Record<string, string>): string {
-    const attributeStrings = Object.entries(attributes).map(([key, value]) => `${value}`).join(' ')
+    const attributeStrings = Object.entries(attributes)
+      .map(([key, value]) => `${value}`)
+      .join(' ')
     return attributeStrings || 'Standard'
   }
 
@@ -446,8 +465,8 @@ export class RelationshipEngine {
   /** generateVariantInventory creates realistic inventory levels. */
   private generateVariantInventory(): number {
     const inventoryRanges = [
-      { min: 0, max: 5, weight: 0.1 },    // Low stock
-      { min: 5, max: 25, weight: 0.3 },   // Medium stock
+      { min: 0, max: 5, weight: 0.1 }, // Low stock
+      { min: 5, max: 25, weight: 0.3 }, // Medium stock
       { min: 25, max: 100, weight: 0.5 }, // Good stock
       { min: 100, max: 500, weight: 0.1 }, // High stock
     ]
@@ -466,7 +485,10 @@ export class RelationshipEngine {
   }
 
   /** createDepartments builds realistic organizational departments. */
-  private createDepartments(agents: string[], regularUsers: string[]): Array<{
+  private createDepartments(
+    agents: string[],
+    regularUsers: string[]
+  ): Array<{
     name: string
     members: string[]
     lead: string

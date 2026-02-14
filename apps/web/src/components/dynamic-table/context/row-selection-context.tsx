@@ -1,11 +1,11 @@
 // apps/web/src/components/dynamic-table/context/row-selection-context.tsx
 'use client'
 
+import type { RowSelectionState } from '@tanstack/react-table'
 import { useCallback, useMemo } from 'react'
 import { useSelectionStore } from '../stores/selection-store'
-import { useTableConfig } from './table-config-context'
 import type { BulkAction } from '../types'
-import type { RowSelectionState } from '@tanstack/react-table'
+import { useTableConfig } from './table-config-context'
 
 // ============================================================================
 // CONSTANTS
@@ -51,13 +51,17 @@ interface RowSelectionContextValue<TData = any> {
  * Replaces the old React Context pattern with direct Zustand store access.
  * Uses proper selectors to avoid unnecessary re-renders.
  */
-export function useRowSelection<TData = any>(allRowIds?: string[]): RowSelectionContextValue<TData> {
+export function useRowSelection<TData = any>(
+  allRowIds?: string[]
+): RowSelectionContextValue<TData> {
   const config = useTableConfig<TData>()
   const { tableId, enableCheckbox, bulkActions, onRowSelectionChange } = config
 
   // ─── ROW SELECTION STATE ────────────────────────────────────────────────────
   // Use proper selectors to avoid re-renders
-  const rowSelection = useSelectionStore((state) => state.tables[tableId]?.rowSelection ?? EMPTY_ROW_SELECTION)
+  const rowSelection = useSelectionStore(
+    (state) => state.tables[tableId]?.rowSelection ?? EMPTY_ROW_SELECTION
+  )
   const toggleRow = useSelectionStore((state) => state.toggleRow)
   const setLastClickedRowId = useSelectionStore((state) => state.setLastClickedRowId)
   const setLastSelectedIndex = useSelectionStore((state) => state.setLastSelectedIndex)

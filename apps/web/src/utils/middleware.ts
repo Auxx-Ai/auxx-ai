@@ -1,9 +1,10 @@
-import { ZodError } from 'zod'
-import { type NextRequest, NextResponse } from 'next/server'
-import { captureException, checkCommonErrors, logErrorToPosthog, SafeError } from '~/utils/error'
 import { env } from '@auxx/config/server'
 // import { logErrorToPosthog } from '@/utils/error.server'
 import { createScopedLogger } from '@auxx/logger'
+import { type NextRequest, NextResponse } from 'next/server'
+import { ZodError } from 'zod'
+import { captureException, checkCommonErrors, logErrorToPosthog, SafeError } from '~/utils/error'
+
 // import { auth } from '~/auth/server'
 // import { auth } from '~/app/api/auth/[...nextauth]/auth'
 

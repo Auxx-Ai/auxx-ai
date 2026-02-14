@@ -3,10 +3,9 @@
  * Plan operations service for billing.
  */
 
-import type { Database } from '@auxx/database'
-import { schema } from '@auxx/database'
-import type { BillingPlan, PlanLookupOptions } from '../types'
+import type { Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import type { BillingPlan, PlanLookupOptions } from '../types'
 
 /**
  * Provides helpers for retrieving and mapping billing plans from the persistence layer so downstream

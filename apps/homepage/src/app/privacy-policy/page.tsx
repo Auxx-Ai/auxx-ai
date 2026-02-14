@@ -1,9 +1,10 @@
 // apps/homepage/src/app/privacy-policy/page.tsx
-import React from 'react'
+
 import type { Metadata } from 'next'
-import Header from '../_components/main/header'
-import FooterSection from '../_components/main/footer-section'
+import React from 'react'
 import { config } from '~/lib/config'
+import FooterSection from '../_components/main/footer-section'
+import Header from '../_components/main/header'
 
 export const metadata: Metadata = {
   title: `Privacy Policy | ${config.shortName}`,
@@ -12,24 +13,24 @@ export const metadata: Metadata = {
 
 export default function PrivacyPolicyPage() {
   return (
-    <div id="root" className="relative overflow-y-auto h-screen">
+    <div id='root' className='relative overflow-y-auto h-screen'>
       <Header />
-      <main className="mt-20">
-        <section className="relative border-foreground/10 border-y">
-          <div className="relative z-10 mx-auto max-w-6xl border-x px-3">
-            <div className="border-x">
+      <main className='mt-20'>
+        <section className='relative border-foreground/10 border-y'>
+          <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
+            <div className='border-x'>
               <div
                 aria-hidden
-                className="h-3 w-full bg-[repeating-linear-gradient(-45deg,var(--color-black),var(--color-black)_1px,transparent_1px,transparent_4px)] opacity-5 border-b border-foreground"
+                className='h-3 w-full bg-[repeating-linear-gradient(-45deg,var(--color-black),var(--color-black)_1px,transparent_1px,transparent_4px)] opacity-5 border-b border-foreground'
               />
 
-              <div className="container  max-w-xl px-6 py-12">
-                <h1 className="mb-8 text-4xl font-bold">Privacy Policy</h1>
+              <div className='container  max-w-xl px-6 py-12'>
+                <h1 className='mb-8 text-4xl font-bold'>Privacy Policy</h1>
 
-                <div className="prose prose-gray dark:prose-invert max-w-none space-y-8">
+                <div className='prose prose-gray dark:prose-invert max-w-none space-y-8'>
                   <section>
-                    <p className="text-sm text-gray-500">Last updated: May 6, 2025</p>
-                    <p className="mt-4">
+                    <p className='text-sm text-gray-500'>Last updated: May 6, 2025</p>
+                    <p className='mt-4'>
                       This Privacy Policy describes how {config.shortName} ("we," "us," or "our")
                       collects, uses, and shares your personal information when you use our website
                       and services. We are committed to protecting your personal information and
@@ -38,11 +39,11 @@ export default function PrivacyPolicyPage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">1. Information We Collect</h2>
+                    <h2 className='text-2xl font-semibold'>1. Information We Collect</h2>
                     <p>
                       We collect several types of information from and about users of our Service:
                     </p>
-                    <ul className="list-disc pl-6">
+                    <ul className='list-disc pl-6'>
                       <li>
                         <strong>Account Information:</strong> When you register, we collect your
                         name, email address, and password.
@@ -70,9 +71,9 @@ export default function PrivacyPolicyPage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">2. How We Use Your Information</h2>
+                    <h2 className='text-2xl font-semibold'>2. How We Use Your Information</h2>
                     <p>We use the information we collect to:</p>
-                    <ul className="list-disc pl-6">
+                    <ul className='list-disc pl-6'>
                       <li>Provide, maintain, and improve our Service</li>
                       <li>Process and respond to customer support tickets</li>
                       <li>Generate AI-powered responses to customer inquiries</li>
@@ -90,7 +91,7 @@ export default function PrivacyPolicyPage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">3. Data Storage and Processing</h2>
+                    <h2 className='text-2xl font-semibold'>3. Data Storage and Processing</h2>
                     <p>
                       Your data is stored securely on cloud servers located in the United States. We
                       use industry-standard security measures to protect your information. We retain
@@ -101,7 +102,7 @@ export default function PrivacyPolicyPage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">4. Email Content Processing</h2>
+                    <h2 className='text-2xl font-semibold'>4. Email Content Processing</h2>
                     <p>
                       Our AI-powered system processes email content from your connected accounts to
                       provide customer support services. This includes analyzing email content,
@@ -112,7 +113,7 @@ export default function PrivacyPolicyPage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">5. Shopify Integration</h2>
+                    <h2 className='text-2xl font-semibold'>5. Shopify Integration</h2>
                     <p>
                       When you connect your Shopify store, we access customer, order, and product
                       data to provide our services. This information is used solely for providing
@@ -122,9 +123,9 @@ export default function PrivacyPolicyPage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">6. Sharing Your Information</h2>
+                    <h2 className='text-2xl font-semibold'>6. Sharing Your Information</h2>
                     <p>We may share your information in the following situations:</p>
-                    <ul className="list-disc pl-6">
+                    <ul className='list-disc pl-6'>
                       <li>
                         <strong>With Service Providers:</strong> We may share your information with
                         third-party vendors and service providers that perform services for us or on
@@ -148,12 +149,12 @@ export default function PrivacyPolicyPage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">7. Your Rights and Choices</h2>
+                    <h2 className='text-2xl font-semibold'>7. Your Rights and Choices</h2>
                     <p>
                       Depending on your location, you may have certain rights regarding your
                       personal information:
                     </p>
-                    <ul className="list-disc pl-6">
+                    <ul className='list-disc pl-6'>
                       <li>Access your personal data</li>
                       <li>Correct inaccuracies in your personal data</li>
                       <li>Delete your personal data</li>
@@ -162,14 +163,14 @@ export default function PrivacyPolicyPage() {
                       <li>Request transfer of your personal data</li>
                       <li>Withdraw consent</li>
                     </ul>
-                    <p className="mt-4">
+                    <p className='mt-4'>
                       To exercise these rights, please contact us using the information provided at
                       the end of this policy.
                     </p>
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">8. Data Security</h2>
+                    <h2 className='text-2xl font-semibold'>8. Data Security</h2>
                     <p>
                       We have implemented appropriate technical and organizational security measures
                       designed to protect the security of any personal information we process.
@@ -179,7 +180,7 @@ export default function PrivacyPolicyPage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">9. Children's Privacy</h2>
+                    <h2 className='text-2xl font-semibold'>9. Children's Privacy</h2>
                     <p>
                       Our Service is not directed to children under 18, and we do not knowingly
                       collect personal information from children under 18. If you are a parent or
@@ -189,7 +190,7 @@ export default function PrivacyPolicyPage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">10. Changes to This Privacy Policy</h2>
+                    <h2 className='text-2xl font-semibold'>10. Changes to This Privacy Policy</h2>
                     <p>
                       We may update our Privacy Policy from time to time. We will notify you of any
                       changes by posting the new Privacy Policy on this page and updating the "Last
@@ -199,11 +200,11 @@ export default function PrivacyPolicyPage() {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold">11. Contact Us</h2>
+                    <h2 className='text-2xl font-semibold'>11. Contact Us</h2>
                     <p>
                       If you have any questions about this Privacy Policy, please contact us at:
                     </p>
-                    <p className="mt-2">
+                    <p className='mt-2'>
                       <strong>Email:</strong> {config.emails.privacy}
                     </p>
                     <p>

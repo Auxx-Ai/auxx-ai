@@ -1,10 +1,10 @@
 // packages/services/src/field-values/get-existing-value.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { GetExistingValueInput, ExistingFieldValueRow } from './types'
+import type { ExistingFieldValueRow, GetExistingValueInput } from './types'
 
 /**
  * Check if a field value already exists for the given entity and field.

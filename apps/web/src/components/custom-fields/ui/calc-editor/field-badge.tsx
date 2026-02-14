@@ -3,8 +3,8 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
-import { AlertTriangle } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
+import { AlertTriangle } from 'lucide-react'
 
 /** Props for FieldBadge component */
 interface FieldBadgeProps {
@@ -23,10 +23,12 @@ export function FieldBadge({ id, selected, availableFields }: FieldBadgeProps) {
   if (!field) {
     return (
       <Badge
-        variant="destructive"
-        className={cn('gap-1 text-xs font-normal', selected && 'ring-2 ring-primary ring-offset-1')}
-      >
-        <AlertTriangle className="h-3 w-3" />
+        variant='destructive'
+        className={cn(
+          'gap-1 text-xs font-normal',
+          selected && 'ring-2 ring-primary ring-offset-1'
+        )}>
+        <AlertTriangle className='h-3 w-3' />
         {id}
       </Badge>
     )
@@ -34,9 +36,8 @@ export function FieldBadge({ id, selected, availableFields }: FieldBadgeProps) {
 
   return (
     <Badge
-      variant="secondary"
-      className={cn('text-xs font-normal', selected && 'ring-2 ring-primary ring-offset-1')}
-    >
+      variant='secondary'
+      className={cn('text-xs font-normal', selected && 'ring-2 ring-primary ring-offset-1')}>
       {field.label}
     </Badge>
   )

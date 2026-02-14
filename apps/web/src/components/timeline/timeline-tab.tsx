@@ -1,11 +1,11 @@
 // apps/web/src/components/timeline/timeline-tab.tsx
 'use client'
 
-import { api } from '~/trpc/react'
-import { Clock, History } from 'lucide-react'
-import { Timeline } from './timeline'
-import { EmptyState } from '~/components/global/empty-state'
 import { getDefinitionId, isSystemModelType, type RecordId } from '@auxx/types/resource'
+import { Clock, History } from 'lucide-react'
+import { EmptyState } from '~/components/global/empty-state'
+import { api } from '~/trpc/react'
+import { Timeline } from './timeline'
 
 /** Props for TimelineTab component */
 interface TimelineTabProps {
@@ -84,11 +84,7 @@ const EMPTY_STATE_CONFIG: Record<
 /** Default empty state for custom entities */
 const DEFAULT_CUSTOM_ENTITY_EMPTY_STATE = {
   title: 'No timeline events yet',
-  description: (
-    <>
-      Timeline events will appear as this record is updated
-    </>
-  ),
+  description: <>Timeline events will appear as this record is updated</>,
 }
 
 /**
@@ -120,13 +116,13 @@ export function TimelineTab({
 
   if (isLoading) {
     return (
-    <EmptyState
-      icon={Clock}
-      iconClassName="animate-spin"
-      title="Loading timeline..."
-      description={<>Hang on while we load the timeline events...</>}
-    />
-  )
+      <EmptyState
+        icon={Clock}
+        iconClassName='animate-spin'
+        title='Loading timeline...'
+        description={<>Hang on while we load the timeline events...</>}
+      />
+    )
   }
 
   if (events.length === 0) {
@@ -148,7 +144,6 @@ export function TimelineTab({
     />
   )
 }
-
 
 /**
  * Empty state component

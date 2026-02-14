@@ -1,32 +1,33 @@
 // ~/components/mail/chat-interface.tsx
 'use client'
-import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Channel } from 'pusher-js' // Import Pusher types
-import { api } from '~/trpc/react'
-import { ScrollArea } from '@auxx/ui/components/scroll-area' // Import ScrollBar if needed
+import { ThreadStatus } from '@auxx/database/enums'
+import { getPusherClient } from '@auxx/lib/realtime/client' // Import Pusher client helper
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { ScrollArea } from '@auxx/ui/components/scroll-area' // Import ScrollBar if needed
+import { Separator } from '@auxx/ui/components/separator'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { format } from 'date-fns'
 import {
+  AlertCircle,
+  Archive,
+  CircleCheck,
+  Loader2,
   Paperclip,
   SendHorizonal,
-  Loader2,
   Settings2,
-  CircleCheck,
-  Archive,
-  AlertCircle,
   User,
 } from 'lucide-react'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-import { format } from 'date-fns'
-import { getPusherClient } from '@auxx/lib/realtime/client' // Import Pusher client helper
-import { Separator } from '@auxx/ui/components/separator'
-import { Badge } from '@auxx/ui/components/badge'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { ChatMessageBubble } from './chat-message-bubble'
+import type { Channel } from 'pusher-js' // Import Pusher types
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useSession } from '~/auth/auth-client'
-import { ThreadStatus } from '@auxx/database/enums'
+import { api } from '~/trpc/react'
+import { ChatMessageBubble } from './chat-message-bubble'
+
 // --- Define Types (Align with chat-service.ts and API responses) ---
 // Consider centralizing these types if used elsewhere
 interface AgentInfo {
@@ -313,46 +314,46 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
   if (isLoading && !queryError) {
     // Show skeleton only on initial load without errors
     return (
-      <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between border-b p-3">
-          <Skeleton className="h-6 w-1/3" />
-          <div className="flex gap-2">
+      <div className='flex h-full flex-col'>
+        <div className='flex items-center justify-between border-b p-3'>
+          <Skeleton className='h-6 w-1/3' />
+          <div className='flex gap-2'>
             {' '}
-            <Skeleton className="h-8 w-20" /> <Skeleton className="h-8 w-8" />{' '}
+            <Skeleton className='h-8 w-20' /> <Skeleton className='h-8 w-8' />{' '}
           </div>
         </div>
-        <div className="flex grow overflow-hidden">
-          <div className="grow space-y-4 border-r p-4">
-            <Skeleton className="h-10 w-3/4" />
-            <Skeleton className="ml-auto h-10 w-1/2" />
-            <Skeleton className="h-8 w-2/3" />
+        <div className='flex grow overflow-hidden'>
+          <div className='grow space-y-4 border-r p-4'>
+            <Skeleton className='h-10 w-3/4' />
+            <Skeleton className='ml-auto h-10 w-1/2' />
+            <Skeleton className='h-8 w-2/3' />
           </div>
-          <div className="w-64 shrink-0 space-y-3 border-l p-4">
-            <Skeleton className="h-4 w-20" />
-            <Skeleton className="h-3 w-full" />
-            <Skeleton className="h-3 w-full" />
-            <Skeleton className="h-3 w-4/5" />
+          <div className='w-64 shrink-0 space-y-3 border-l p-4'>
+            <Skeleton className='h-4 w-20' />
+            <Skeleton className='h-3 w-full' />
+            <Skeleton className='h-3 w-full' />
+            <Skeleton className='h-3 w-4/5' />
           </div>
         </div>
-        <div className="border-t p-3">
-          <Skeleton className="h-20 w-full" />
+        <div className='border-t p-3'>
+          <Skeleton className='h-20 w-full' />
         </div>
       </div>
     )
   }
   if (queryError) {
     return (
-      <div className="p-4">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
+      <div className='p-4'>
+        <Alert variant='destructive'>
+          <AlertCircle className='h-4 w-4' />
           <AlertTitle>Error Loading Chat</AlertTitle>
           <AlertDescription>
             {queryError?.message || 'An unexpected error occurred.'}
             <Button
-              variant="outline"
-              size="sm"
+              variant='outline'
+              size='sm'
               onClick={() => window.location.reload()}
-              className="ml-2">
+              className='ml-2'>
               Reload
             </Button>
           </AlertDescription>
@@ -363,7 +364,7 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
   // Ensure data is available after loading and error checks
   if (!sessionData) {
     return (
-      <div className="p-4 text-center text-muted-foreground">
+      <div className='p-4 text-center text-muted-foreground'>
         Chat data not available. Please try reloading.
       </div>
     )
@@ -372,74 +373,74 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
   const isResolved = false
 
   return (
-    <div className="flex h-full flex-col bg-card">
+    <div className='flex h-full flex-col bg-card'>
       {/* Chat Header */}
-      <div className="flex items-center justify-between border-b p-3">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold">Subject</h2>
+      <div className='flex items-center justify-between border-b p-3'>
+        <div className='flex items-center gap-2'>
+          <h2 className='text-sm font-semibold'>Subject</h2>
           {/* Status Badges */}
           {isResolved && (
             <Badge
-              variant="outline"
-              className="border-green-300 bg-green-100 text-xs text-green-800 dark:border-green-700 dark:bg-green-900/50 dark:text-green-300">
+              variant='outline'
+              className='border-green-300 bg-green-100 text-xs text-green-800 dark:border-green-700 dark:bg-green-900/50 dark:text-green-300'>
               Resolved
             </Badge>
           )}
           <Badge
-            variant="outline"
-            className="border-blue-300 bg-blue-100 text-xs text-blue-800 dark:border-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+            variant='outline'
+            className='border-blue-300 bg-blue-100 text-xs text-blue-800 dark:border-blue-700 dark:bg-blue-900/50 dark:text-blue-300'>
             Open
           </Badge>
 
           {/* Add more statuses as needed */}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs italic text-muted-foreground">Unassigned</span>
+        <div className='flex items-center gap-2'>
+          <span className='text-xs italic text-muted-foreground'>Unassigned</span>
           {!isResolved && (
             <Button
-              size="sm"
-              variant="outline"
+              size='sm'
+              variant='outline'
               onClick={handleResolveChat}
               disabled={closeSessionMutation.isPending}>
               {closeSessionMutation.isPending ? (
-                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                <Loader2 className='mr-1 h-4 w-4 animate-spin' />
               ) : (
-                <CircleCheck className="mr-1 h-4 w-4" />
+                <CircleCheck className='mr-1 h-4 w-4' />
               )}
               Resolve
             </Button>
           )}
           {isResolved && (
-            <Button size="sm" variant="outline" disabled>
+            <Button size='sm' variant='outline' disabled>
               {' '}
               {/* TODO: Implement Reopen */}
-              <Archive className="mr-1 h-4 w-4" /> Reopen
+              <Archive className='mr-1 h-4 w-4' /> Reopen
             </Button>
           )}
-          <Button size="icon" variant="ghost" title="Settings (coming soon)" disabled>
-            <Settings2 className="h-4 w-4" />
+          <Button size='icon' variant='ghost' title='Settings (coming soon)' disabled>
+            <Settings2 className='h-4 w-4' />
           </Button>
         </div>
       </div>
 
       {/* Main Content Area (Split View) */}
-      <div className="flex grow overflow-hidden">
+      <div className='flex grow overflow-hidden'>
         {/* Message Area */}
-        <div className="flex grow flex-col border-r">
+        <div className='flex grow flex-col border-r'>
           {/* Message List - use ref for ScrollArea */}
-          <ScrollArea className="grow" ref={scrollAreaRef}>
-            <div className="space-y-1 p-4">
+          <ScrollArea className='grow' ref={scrollAreaRef}>
+            <div className='space-y-1 p-4'>
               {' '}
               {/* Add space-y for bubbles */}
               {/* Load Older Button */}
               {hasNextPage && (
-                <div className="pb-4 text-center">
+                <div className='pb-4 text-center'>
                   <Button
-                    variant="link"
-                    size="sm"
+                    variant='link'
+                    size='sm'
                     onClick={handleLoadOlder}
                     disabled={isFetchingNextPage}>
-                    {isFetchingNextPage ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{' '}
+                    {isFetchingNextPage ? <Loader2 className='mr-2 h-4 w-4 animate-spin' /> : null}{' '}
                     Load Older Messages
                   </Button>
                 </div>
@@ -450,18 +451,18 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
               ))}
               {/* Typing Indicator */}
               {isUserTyping && (
-                <div className="mb-3 flex items-end justify-start">
-                  <Avatar className="order-1 mr-2 h-6 w-6 shrink-0">
-                    <AvatarFallback className="text-xs">U</AvatarFallback>
+                <div className='mb-3 flex items-end justify-start'>
+                  <Avatar className='order-1 mr-2 h-6 w-6 shrink-0'>
+                    <AvatarFallback className='text-xs'>U</AvatarFallback>
                   </Avatar>
-                  <div className="order-2 animate-pulse rounded-lg bg-muted p-2 px-3">
-                    <span className="text-sm">...</span>
+                  <div className='order-2 animate-pulse rounded-lg bg-muted p-2 px-3'>
+                    <span className='text-sm'>...</span>
                   </div>
                 </div>
               )}
               {/* No Messages Placeholder */}
               {messages.length === 0 && !isLoadingMessages && !isFetchingNextPage && (
-                <p className="py-10 text-center text-sm text-muted-foreground">
+                <p className='py-10 text-center text-sm text-muted-foreground'>
                   No messages in this conversation yet.
                 </p>
               )}
@@ -472,12 +473,12 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
 
           {/* Message Input */}
           {!isResolved && (
-            <div className="border-t bg-background p-3">
-              <div className="relative">
+            <div className='border-t bg-background p-3'>
+              <div className='relative'>
                 <Textarea
-                  placeholder="Type your message as agent..."
+                  placeholder='Type your message as agent...'
                   rows={3}
-                  className="resize-none pr-28 focus-visible:ring-1 focus-visible:ring-ring" // Standard focus style
+                  className='resize-none pr-28 focus-visible:ring-1 focus-visible:ring-ring' // Standard focus style
                   value={newMessage}
                   onChange={(e) => {
                     setNewMessage(e.target.value)
@@ -505,18 +506,18 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
                   }}
                   disabled={isSending} // Disable while sending
                 />
-                <div className="absolute bottom-2 right-2 flex items-center gap-1">
-                  <Button size="icon" variant="ghost" title="Attach File (coming soon)" disabled>
-                    <Paperclip className="h-4 w-4" />
+                <div className='absolute bottom-2 right-2 flex items-center gap-1'>
+                  <Button size='icon' variant='ghost' title='Attach File (coming soon)' disabled>
+                    <Paperclip className='h-4 w-4' />
                   </Button>
                   <Button
-                    size="sm"
+                    size='sm'
                     onClick={handleSendMessage}
                     disabled={!newMessage.trim() || isSending}>
                     {isSending ? (
-                      <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                      <Loader2 className='mr-1 h-4 w-4 animate-spin' />
                     ) : (
-                      <SendHorizonal className="mr-1 h-4 w-4" />
+                      <SendHorizonal className='mr-1 h-4 w-4' />
                     )}
                     Send
                   </Button>
@@ -525,62 +526,62 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
             </div>
           )}
           {isResolved && (
-            <div className="border-t bg-muted p-3 text-center text-sm italic text-muted-foreground">
+            <div className='border-t bg-muted p-3 text-center text-sm italic text-muted-foreground'>
               This chat has been resolved.
             </div>
           )}
         </div>
 
         {/* Visitor Info Sidebar */}
-        <div className="w-64 shrink-0 space-y-4 overflow-y-auto border-l bg-muted/30 p-4">
-          <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+        <div className='w-64 shrink-0 space-y-4 overflow-y-auto border-l bg-muted/30 p-4'>
+          <h3 className='flex items-center gap-1.5 text-sm font-semibold'>
             <User size={16} /> Visitor Details
           </h3>
-          <div className="space-y-1.5 text-xs">
+          <div className='space-y-1.5 text-xs'>
             {/* Session details */}
             <p title={sessionData.visitorId}>
-              <strong className="font-medium">Visitor ID:</strong>{' '}
-              <span className="font-mono text-muted-foreground">
+              <strong className='font-medium'>Visitor ID:</strong>{' '}
+              <span className='font-mono text-muted-foreground'>
                 {sessionData.visitorId.substring(0, 8)}...
               </span>
             </p>
             <p>
-              <strong className="font-medium">Name:</strong>{' '}
+              <strong className='font-medium'>Name:</strong>{' '}
               {sessionData.visitorName || (
-                <span className="italic text-muted-foreground">Not Provided</span>
+                <span className='italic text-muted-foreground'>Not Provided</span>
               )}
             </p>
             <p>
-              <strong className="font-medium">Email:</strong>{' '}
+              <strong className='font-medium'>Email:</strong>{' '}
               {sessionData.visitorEmail ? (
                 <a
                   href={`mailto:${sessionData.visitorEmail}`}
-                  className="text-primary-500 hover:underline">
+                  className='text-primary-500 hover:underline'>
                   {sessionData.visitorEmail}
                 </a>
               ) : (
-                <span className="italic text-muted-foreground">Not Provided</span>
+                <span className='italic text-muted-foreground'>Not Provided</span>
               )}
             </p>
 
-            <Separator className="my-3" />
+            <Separator className='my-3' />
 
             <p>
-              <strong className="font-medium">Started:</strong>{' '}
+              <strong className='font-medium'>Started:</strong>{' '}
               {format(new Date(sessionData.createdAt), 'Pp')}
             </p>
             <p>
-              <strong className="font-medium">Last Activity:</strong>{' '}
+              <strong className='font-medium'>Last Activity:</strong>{' '}
               {format(new Date(sessionData.lastActivityAt), 'Pp')}
             </p>
             {sessionData.url && (
               <p>
-                <strong className="font-medium">Page:</strong>{' '}
+                <strong className='font-medium'>Page:</strong>{' '}
                 <a
                   href={sessionData.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block truncate text-primary hover:underline"
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  className='block truncate text-primary hover:underline'
                   title={sessionData.url}>
                   {sessionData.url}
                 </a>
@@ -588,9 +589,9 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
             )}
             {sessionData.referrer && (
               <p>
-                <strong className="font-medium">Referrer:</strong>{' '}
+                <strong className='font-medium'>Referrer:</strong>{' '}
                 <span
-                  className="truncate text-muted-foreground"
+                  className='truncate text-muted-foreground'
                   title={sessionData.referrer ?? undefined}>
                   {sessionData.referrer}
                 </span>

@@ -1,9 +1,9 @@
 // apps/web/src/app/api/workflows/oauth2/callback/route.ts
 
-import { NextRequest, NextResponse } from 'next/server'
+import { WEBAPP_URL } from '@auxx/config/server'
 import { OAuth2WorkflowService } from '@auxx/lib/workflows'
 import { createScopedLogger } from '@auxx/logger'
-import { WEBAPP_URL } from '@auxx/config/server'
+import { type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('oauth2-callback')
 

@@ -1,11 +1,12 @@
 // apps/web/src/components/mail/send-status-indicator.tsx
 'use client'
+import { SendStatus } from '@auxx/database/enums'
 import { Button } from '@auxx/ui/components/button'
-import { RefreshCw } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
+import { RefreshCw } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import { sendStatusConfig } from './mail-status-config'
-import { SendStatus } from '@auxx/database/enums'
+
 interface SendStatusIndicatorProps {
   status?: SendStatus | null
   error?: string | null
@@ -35,11 +36,11 @@ export function SendStatusIndicator({
   // Build tooltip content for additional details
   const tooltipContent =
     error || (attempts && attempts > 1) ? (
-      <div className="max-w-xs">
-        <p className="font-medium">{config.description}</p>
-        {error && <p className="mt-1 text-xs text-muted-foreground">{error}</p>}
+      <div className='max-w-xs'>
+        <p className='font-medium'>{config.description}</p>
+        {error && <p className='mt-1 text-xs text-muted-foreground'>{error}</p>}
         {attempts && attempts > 1 && (
-          <p className="mt-1 text-xs text-muted-foreground">Attempted {attempts} times</p>
+          <p className='mt-1 text-xs text-muted-foreground'>Attempted {attempts} times</p>
         )}
       </div>
     ) : undefined
@@ -60,9 +61,9 @@ export function SendStatusIndicator({
           <Icon className={cn('h-3 w-3', config.animate && 'animate-spin')} />
           {status === SendStatus.FAILED && onRetry && (
             <Button
-              size="xs"
-              variant="ghost"
-              className="rounded-l-none py-0 hover:bg-black/10"
+              size='xs'
+              variant='ghost'
+              className='rounded-l-none py-0 hover:bg-black/10'
               onClick={onRetry}>
               Retry
             </Button>

@@ -1,9 +1,9 @@
 // packages/lib/src/tickets/ticket-relations.ts
 
-import { database, type Database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import { TRPCError } from '@trpc/server'
+import { type Database, database, schema } from '@auxx/database'
 import { publisher } from '@auxx/lib/events'
+import { TRPCError } from '@trpc/server'
+import { and, eq } from 'drizzle-orm'
 
 /**
  * Input for adding a relation between tickets

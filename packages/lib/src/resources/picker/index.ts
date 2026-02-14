@@ -1,12 +1,12 @@
 // packages/lib/src/resources/picker/index.ts
 
-export { RecordPickerService } from './record-picker-service'
 export { RecordPickerCacheService } from './record-picker-cache'
+export { RecordPickerService } from './record-picker-service'
 export type {
-  GetResourcesInput,
-  RecordPickerItem,
-  PaginatedResourcesResult,
   GetResourceByIdInput,
+  GetResourcesInput,
   GlobalSearchParams,
   GlobalSearchResult,
+  PaginatedResourcesResult,
+  RecordPickerItem,
 } from './types'

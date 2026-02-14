@@ -1,29 +1,8 @@
 // ~/app/(protected)/app/contacts/page.tsx
 'use client'
-import { useMemo, useState, useCallback, useRef } from 'react'
-import { useSearchParams } from 'next/navigation'
-import { type VisibilityState } from '@tanstack/react-table'
+import type { CustomerStatus } from '@auxx/database/types'
+import type { Condition, ConditionGroup } from '@auxx/lib/conditions/client'
 import { Button } from '@auxx/ui/components/button'
-import { Plus, Ban, Users, Trash2, Play } from 'lucide-react'
-import NewCustomerForm from './_components/new-customer-form'
-import { useContactMutations } from './_components/use-contact-mutations'
-import { useConfirm } from '~/hooks/use-confirm'
-import GroupManagementDialog from './_components/groups/group-management-dialog'
-import { ContactDrawer } from '~/components/contacts/drawer/contact-drawer'
-import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
-import { useDebouncedValue } from '~/hooks/use-debounced-value'
-import {
-  DynamicTable,
-  DynamicTableFooter,
-  createCustomFieldColumns,
-} from '~/components/dynamic-table'
-import { useCombinedFilters } from '~/components/dynamic-table/hooks/use-combined-filters'
-import { useActiveViewConfig } from '~/components/dynamic-table/stores/store-selectors'
-import type { ExtendedColumnDef } from '~/components/dynamic-table'
-import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
-import { EmptyState } from '~/components/global/empty-state'
-import { useResources, useRecordList, toRecordId } from '~/components/resources'
-import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -31,15 +10,36 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { type CustomerStatus } from '@auxx/database/types'
+import type { VisibilityState } from '@tanstack/react-table'
+import { Ban, Play, Plus, Trash2, Users } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
+import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { ContactDrawer } from '~/components/contacts/drawer/contact-drawer'
+import type { ExtendedColumnDef } from '~/components/dynamic-table'
+import {
+  createCustomFieldColumns,
+  DynamicTable,
+  DynamicTableFooter,
+} from '~/components/dynamic-table'
+import { useCombinedFilters } from '~/components/dynamic-table/hooks/use-combined-filters'
+import { useActiveViewConfig } from '~/components/dynamic-table/stores/store-selectors'
+import { EmptyState } from '~/components/global/empty-state'
+import { toRecordId, useRecordList, useResources } from '~/components/resources'
+import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
+import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
+import { useConfirm } from '~/hooks/use-confirm'
+import { useDebouncedValue } from '~/hooks/use-debounced-value'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import {
-  createContactColumns,
   type Contact,
   type ContactColumnActions,
+  createContactColumns,
 } from './_components/contact-columns'
-import type { ConditionGroup, Condition } from '@auxx/lib/conditions/client'
+import GroupManagementDialog from './_components/groups/group-management-dialog'
+import NewCustomerForm from './_components/new-customer-form'
+import { useContactMutations } from './_components/use-contact-mutations'
 
 /** Stable filter IDs to prevent reference changes */
 const SEARCH_FILTER_ID = 'page-search-filter'
@@ -374,13 +374,13 @@ export default function CustomerListPage() {
 
   // Empty state component
   const EmptyStateComponent = () => (
-    <div className="flex h-full items-center justify-center">
+    <div className='flex h-full items-center justify-center'>
       <EmptyState
         icon={Users}
-        title="No contacts found "
+        title='No contacts found '
         description={<>Create your first contact</>}
         button={
-          <Button size="sm" variant="outline" onClick={() => setIsNewCustomerOpen(true)}>
+          <Button size='sm' variant='outline' onClick={() => setIsNewCustomerOpen(true)}>
             <Plus />
             Create Contact
           </Button>
@@ -404,13 +404,13 @@ export default function CustomerListPage() {
       <MainPage>
         <MainPageHeader
           action={
-            <Button size="sm" className="h-7 rounded-lg" onClick={() => setIsNewCustomerOpen(true)}>
-              <Plus className="size-4" />
+            <Button size='sm' className='h-7 rounded-lg' onClick={() => setIsNewCustomerOpen(true)}>
+              <Plus className='size-4' />
               Create Contact
             </Button>
           }>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title="Contacts" href="/app/contacts" last />
+            <MainPageBreadcrumbItem title='Contacts' href='/app/contacts' last />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent
@@ -419,14 +419,14 @@ export default function CustomerListPage() {
           onDockedPanelWidthChange={setDockedWidth}
           dockedPanelMinWidth={minWidth}
           dockedPanelMaxWidth={maxWidth}>
-          <div className="flex-1 overflow-hidden bg-white dark:bg-muted/10 rounded-lg">
+          <div className='flex-1 overflow-hidden bg-white dark:bg-muted/10 rounded-lg'>
             {/* Dynamic Table Component */}
             <DynamicTable
               data={records}
-              className="h-full flex-1"
-              entityDefinitionId="contact"
+              className='h-full flex-1'
+              entityDefinitionId='contact'
               tableId={TABLE_ID}
-              entityLabel="Contact"
+              entityLabel='Contact'
               bulkActions={bulkActions}
               enableSearch
               columns={columns}
@@ -436,20 +436,20 @@ export default function CustomerListPage() {
               onRowSelectionChange={handleRowSelectionChange}
               onScrollToBottom={handleScrollToBottom}
               showRowNumbers={false}
-              importHref="/app/contacts/import"
+              importHref='/app/contacts/import'
               onColumnVisibilityChange={setColumnVisibility}
               onAddNew={() => setIsNewCustomerOpen(true)}
               emptyState={<EmptyStateComponent />}>
               {/* Custom footer to show loading state */}
               <DynamicTableFooter>
-                <div className="flex items-center justify-between px-4 py-2 text-sm">
+                <div className='flex items-center justify-between px-4 py-2 text-sm'>
                   <div>
                     {records.length} contacts loaded
-                    {hasNextPage && <span className="ml-2">(more available)</span>}
+                    {hasNextPage && <span className='ml-2'>(more available)</span>}
                   </div>
                   {isFetchingNextPage && (
-                    <div className="flex items-center gap-2">
-                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    <div className='flex items-center gap-2'>
+                      <div className='h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent' />
                       <span>Loading more...</span>
                     </div>
                   )}

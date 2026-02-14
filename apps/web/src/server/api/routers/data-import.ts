@@ -1,36 +1,36 @@
 // apps/web/src/server/api/routers/data-import.ts
 
-import { z } from 'zod'
-import { eq, desc } from 'drizzle-orm'
 import { schema } from '@auxx/database'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { TRPCError } from '@trpc/server'
-import { ResourceRegistryService } from '@auxx/lib/resources'
-import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import {
-  getImportableFields,
   createImportJob,
+  deleteJob,
+  finalizeUpload,
+  getImportableFields,
   getJobByOrg,
   getJobWithMapping,
-  storeRawDataChunk,
-  incrementReceivedChunks,
-  finalizeUpload,
-  saveMappingProperty,
-  runAutoMap,
-  getUniqueValuesWithResolution,
-  updateValueResolution,
-  getResolutionProgress,
-  markJobPlanning,
-  getPlanWithEstimates,
+  getMappablePropertiesWithSamples,
+  getMappedColumnsWithStats,
   getPlanErrors,
   getPlanPreviewRows,
-  markJobExecuting,
-  getMappedColumnsWithStats,
-  updateMappingTitle,
+  getPlanWithEstimates,
+  getResolutionProgress,
+  getUniqueValuesWithResolution,
+  incrementReceivedChunks,
   listJobsByOrg,
-  deleteJob,
-  getMappablePropertiesWithSamples,
+  markJobExecuting,
+  markJobPlanning,
+  runAutoMap,
+  saveMappingProperty,
+  storeRawDataChunk,
+  updateMappingTitle,
+  updateValueResolution,
 } from '@auxx/lib/import'
+import { getQueue, Queues } from '@auxx/lib/jobs/queues'
+import { ResourceRegistryService } from '@auxx/lib/resources'
+import { TRPCError } from '@trpc/server'
+import { desc, eq } from 'drizzle-orm'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 /**
  * Data import tRPC router.
@@ -474,17 +474,19 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get import plan with estimates.
    */
-  getPlan: protectedProcedure.input(z.object({ jobId: z.string() })).query(async ({ ctx, input }) => {
-    const { organizationId } = ctx.session
+  getPlan: protectedProcedure
+    .input(z.object({ jobId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
 
-    const job = await getJobByOrg(ctx.db, organizationId, input.jobId)
+      const job = await getJobByOrg(ctx.db, organizationId, input.jobId)
 
-    if (!job) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
-    }
+      if (!job) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
+      }
 
-    return getPlanWithEstimates(ctx.db, input.jobId, job.rowCount)
-  }),
+      return getPlanWithEstimates(ctx.db, input.jobId, job.rowCount)
+    }),
 
   /**
    * Get plan errors.

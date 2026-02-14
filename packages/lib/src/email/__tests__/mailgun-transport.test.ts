@@ -1,6 +1,7 @@
 // packages/lib/src/email/__tests__/mailgun-transport.test.ts
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+
 import type Mail from 'nodemailer/lib/mailer'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock helpers used to capture Mailgun interactions.
 const messagesCreateMock = vi.fn()

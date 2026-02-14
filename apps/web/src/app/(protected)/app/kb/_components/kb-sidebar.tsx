@@ -1,18 +1,17 @@
 'use client'
 
-import { useState, useRef } from 'react'
-import { Book, Cog, Layout, Loader2 } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
-import { KBSwitcher } from './kb-switcher'
+import { Button } from '@auxx/ui/components/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import KBTabGeneral, { type KBTabGeneralRef } from './kb-tab-general'
-import KBTabLayout, { type KBTabLayoutRef } from './kb-tab-layout'
+import { cn } from '@auxx/ui/lib/utils'
+import { Book, Cog, Layout, Loader2 } from 'lucide-react'
+import { useQueryState } from 'nuqs'
+import { useRef, useState } from 'react'
 // import KBTabArticles from './kb-tab-articles'
 import { api, type RouterOutputs } from '~/trpc/react'
-import { Button } from '@auxx/ui/components/button'
+import { KBSwitcher } from './kb-switcher'
 import KBTabArticles from './kb-tab-articles'
-
-import { useQueryState } from 'nuqs'
+import KBTabGeneral, { type KBTabGeneralRef } from './kb-tab-general'
+import KBTabLayout, { type KBTabLayoutRef } from './kb-tab-layout'
 
 // Types
 export interface Article {
@@ -97,39 +96,39 @@ export function KBSidebar({ knowledgeBaseId, knowledgeBase }: KBSidebarProps) {
           'lg:max-w-lg': activeTab !== 'articles', // Default width for other tabs
         }
       )}>
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+      <div className='flex min-h-0 flex-1 flex-col overflow-auto'>
         <Tabs
-          defaultValue="general"
+          defaultValue='general'
           value={activeTab} // Control the active tab
           onValueChange={setActiveTab} // Update state when tab changes
         >
-          <div className="sticky top-0 z-50 bg-background">
-            <div className="p-2">
+          <div className='sticky top-0 z-50 bg-background'>
+            <div className='p-2'>
               <KBSwitcher />
             </div>
 
-            <TabsList className="z-10 h-auto w-full gap-2 rounded-none border-b bg-transparent px-0 py-1 text-foreground">
+            <TabsList className='z-10 h-auto w-full gap-2 rounded-none border-b bg-transparent px-0 py-1 text-foreground'>
               <TabsTrigger
-                value="general"
-                className="relative after:absolute after:inset-x-0 after:bottom-0 after:-mb-1 after:h-0.5 hover:bg-accent hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-blue-500 data-[state=active]:shadow-none data-[state=active]:after:bg-blue-500 data-[state=active]:hover:bg-transparent">
-                <Cog className="-ms-0.5 me-1.5 opacity-60" size={16} aria-hidden="true" />
+                value='general'
+                className='relative after:absolute after:inset-x-0 after:bottom-0 after:-mb-1 after:h-0.5 hover:bg-accent hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-blue-500 data-[state=active]:shadow-none data-[state=active]:after:bg-blue-500 data-[state=active]:hover:bg-transparent'>
+                <Cog className='-ms-0.5 me-1.5 opacity-60' size={16} aria-hidden='true' />
                 General
               </TabsTrigger>
               <TabsTrigger
-                value="layout"
-                className="relative after:absolute after:inset-x-0 after:bottom-0 after:-mb-1 after:h-0.5 hover:bg-accent hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-blue-500 data-[state=active]:shadow-none data-[state=active]:after:bg-blue-500 data-[state=active]:hover:bg-transparent">
-                <Layout className="-ms-0.5 me-1.5 opacity-60" size={16} aria-hidden="true" />
+                value='layout'
+                className='relative after:absolute after:inset-x-0 after:bottom-0 after:-mb-1 after:h-0.5 hover:bg-accent hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-blue-500 data-[state=active]:shadow-none data-[state=active]:after:bg-blue-500 data-[state=active]:hover:bg-transparent'>
+                <Layout className='-ms-0.5 me-1.5 opacity-60' size={16} aria-hidden='true' />
                 Layout
               </TabsTrigger>
               <TabsTrigger
-                value="articles"
-                className="relative after:absolute after:inset-x-0 after:bottom-0 after:-mb-1 after:h-0.5 hover:bg-accent hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-blue-500 data-[state=active]:shadow-none data-[state=active]:after:bg-blue-500 data-[state=active]:hover:bg-transparent">
-                <Book className="-ms-0.5 me-1.5 opacity-60" size={16} aria-hidden="true" />
+                value='articles'
+                className='relative after:absolute after:inset-x-0 after:bottom-0 after:-mb-1 after:h-0.5 hover:bg-accent hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-blue-500 data-[state=active]:shadow-none data-[state=active]:after:bg-blue-500 data-[state=active]:hover:bg-transparent'>
+                <Book className='-ms-0.5 me-1.5 opacity-60' size={16} aria-hidden='true' />
                 Articles
               </TabsTrigger>
             </TabsList>
           </div>
-          <TabsContent value="general" className="">
+          <TabsContent value='general' className=''>
             {knowledgeBase && (
               <KBTabGeneral
                 ref={generalTabRef}
@@ -138,28 +137,28 @@ export function KBSidebar({ knowledgeBaseId, knowledgeBase }: KBSidebarProps) {
               />
             )}
           </TabsContent>
-          <TabsContent value="layout">
+          <TabsContent value='layout'>
             <KBTabLayout
               ref={layoutTabRef}
               knowledgeBase={knowledgeBase}
               knowledgeBaseId={knowledgeBaseId}
             />
           </TabsContent>
-          <TabsContent value="articles">
+          <TabsContent value='articles'>
             <KBTabArticles knowledgeBase={knowledgeBase} knowledgeBaseId={knowledgeBaseId} />
           </TabsContent>
         </Tabs>
       </div>
-      <div className="absolute bottom-4 right-4">
+      <div className='absolute bottom-4 right-4'>
         {/* Use sticky positioning */}
         <Button
-          className="" // Make button full width or adjust as needed
-          size="sm"
-          variant="info"
+          className='' // Make button full width or adjust as needed
+          size='sm'
+          variant='info'
           onClick={handleGlobalSave}
           disabled={isSaving} // Disable button while saving
         >
-          {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          {isSaving ? <Loader2 className='mr-2 h-4 w-4 animate-spin' /> : null}
           Save Changes
         </Button>
       </div>

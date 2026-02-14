@@ -1,15 +1,17 @@
 // apps/web/src/server/api/routers/task.ts
 
+import { createTaskService, type TaskPriority } from '@auxx/lib/tasks'
+import { type ActorId, isActorId } from '@auxx/types/actor'
+import { recordIdSchema } from '@auxx/types/resource'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { createTaskService, type TaskPriority } from '@auxx/lib/tasks'
-import { recordIdSchema } from '@auxx/types/resource'
-import { isActorId, type ActorId } from '@auxx/types/actor'
 
 /**
  * Schema for ActorId validation (e.g., "user:abc123" or "group:xyz789")
  */
-const actorIdSchema = z.string().refine(isActorId, 'Invalid ActorId format') as unknown as z.ZodType<ActorId>
+const actorIdSchema = z
+  .string()
+  .refine(isActorId, 'Invalid ActorId format') as unknown as z.ZodType<ActorId>
 
 /**
  * Schema for relative date (days, weeks, months, years offset)

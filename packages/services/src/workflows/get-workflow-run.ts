@@ -1,10 +1,9 @@
 // packages/services/src/workflows/get-workflow-run.ts
 
 import { database } from '@auxx/database'
+import type { WorkflowEntity, WorkflowRunEntity } from '@auxx/database/models'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { WorkflowRunEntity } from '@auxx/database/models'
-import type { WorkflowEntity } from '@auxx/database/models'
 
 /**
  * Get a workflow run with its related workflow
@@ -13,10 +12,7 @@ import type { WorkflowEntity } from '@auxx/database/models'
  * @param params - Object containing runId and optional workflowId for validation
  * @returns Result with workflow run and workflow data
  */
-export async function getWorkflowRun(params: {
-  runId: string
-  workflowId?: string
-}) {
+export async function getWorkflowRun(params: { runId: string; workflowId?: string }) {
   const { runId, workflowId } = params
 
   const dbResult = await fromDatabase(

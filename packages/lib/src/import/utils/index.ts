@@ -2,8 +2,8 @@
 
 export { chunkArray } from './chunk-array'
 export {
-  createThrottledProgress,
   createPercentageProgress,
+  createThrottledProgress,
   type ProgressCallback,
 } from './progress-reporter'
-export { retryWithBackoff, type RetryOptions } from './retry-with-backoff'
+export { type RetryOptions, retryWithBackoff } from './retry-with-backoff'

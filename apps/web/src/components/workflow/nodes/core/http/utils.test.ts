@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/nodes/core/http/utils.test.ts
 
-import { describe, it, expect } from 'vitest'
-import { parseHeadersToKeyValue, keyValueToString } from './utils'
+import { describe, expect, it } from 'vitest'
 import type { KeyValue } from './types'
+import { keyValueToString, parseHeadersToKeyValue } from './utils'
 
 describe('HTTP utils serialization', () => {
   it('should handle plain text key-value pairs', () => {

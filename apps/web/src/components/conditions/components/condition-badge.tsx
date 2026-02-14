@@ -2,16 +2,16 @@
 
 'use client'
 
-import { useCallback, useState, useEffect, useMemo } from 'react'
-import { X } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
+import { FieldInputMode, resolveFieldInputConfig } from '@auxx/lib/conditions/client'
 import { Button } from '@auxx/ui/components/button'
+import { cn } from '@auxx/ui/lib/utils'
+import { X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useConditionContext } from '../condition-context'
+import { ResourceInput } from '../inputs/resource-input'
+import type { ConditionItemProps, Operator } from '../types'
 import ConditionOperator from './condition-operator'
 import ResourceFieldSelector from './resource-field-selector'
-import { ResourceInput } from '../inputs/resource-input'
-import { resolveFieldInputConfig, FieldInputMode } from '@auxx/lib/conditions/client'
-import type { ConditionItemProps, Operator } from '../types'
 
 /**
  * Extended props for ConditionBadge with searchbar support
@@ -144,7 +144,7 @@ export const ConditionBadge = ({
 
   return (
     <div
-      data-slot="condition-badge"
+      data-slot='condition-badge'
       className={cn(
         'flex flex-row h-6 items-center rounded-xl bg-primary-200/30 border shrink-0',
         isHighlighted && 'ring-2 ring-info',
@@ -156,11 +156,11 @@ export const ConditionBadge = ({
         value={condition.fieldId}
         onChange={handleFieldChange}
         disabled={readOnly}
-        placeholder="Field"
+        placeholder='Field'
         availableFields={getAvailableFields()}
         renderTrigger={() => (
           <Button
-            variant="transparent"
+            variant='transparent'
             className={cn(
               'h-6 hover:bg-primary-200/50 px-1.5 text-xs rounded-r-none border-r',
               isHovered && 'border-destructive/20'
@@ -206,7 +206,7 @@ export const ConditionBadge = ({
         value={condition.value}
         onChange={handleValueChange}
         disabled={readOnly}
-        inputClassName="text-xs px-1"
+        inputClassName='text-xs px-1'
         autoGrow={{ minWidth: 30, placeholderIsMinWidth: true }}
         triggerProps={{
           size: 'sm',
@@ -229,8 +229,8 @@ export const ConditionBadge = ({
             'text-muted-foreground hover:text-destructive hover:bg-destructive/10 hover:border-destructive/20',
             hasInput ? 'border-l' : ''
           )}
-          aria-label="Remove condition">
-          <X className="size-3.5 shrink-0" />
+          aria-label='Remove condition'>
+          <X className='size-3.5 shrink-0' />
         </div>
       )}
     </div>

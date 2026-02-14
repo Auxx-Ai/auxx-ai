@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/core/loop-memory-manager.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { type LoopExecutionState } from './loop-context-extensions'
+import type { LoopExecutionState } from './loop-context-extensions'
 
 const logger = createScopedLogger('loop-memory-manager')
 

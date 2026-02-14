@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/utils/variable-conversion.ts
 
+import type { BaseType } from '~/components/workflow/types/unified-types'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
-import { BaseType } from '~/components/workflow/types/unified-types'
 import { buildVariableId, getLabelFromVariableId } from './variable-utils'
 
 /**

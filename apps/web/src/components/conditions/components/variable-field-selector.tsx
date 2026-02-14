@@ -2,9 +2,9 @@
 
 'use client'
 
+import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import VariableInput from '~/components/workflow/ui/variables/variable-input'
 import { VariablePicker } from '~/components/workflow/ui/variables/variable-picker'
-import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import type { FieldSelectorProps } from '../types'
 
 /**

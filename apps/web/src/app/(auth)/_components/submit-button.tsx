@@ -1,8 +1,8 @@
 'use client'
-import React, { type ReactNode, useState } from 'react'
+import { Button } from '@auxx/ui/components/button'
 // import { useFormStatus } from "react-dom";
 import { Heart, Loader2 } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
+import React, { type ReactNode, useState } from 'react'
 
 interface GeneralSubmitButtonProps {
   text: string
@@ -23,13 +23,13 @@ export function GeneralSubmitButton({
   const [isPending, _setIsPending] = useState(false)
   return (
     <Button
-      type="button"
+      type='button'
       variant={variant}
       className={width}
       disabled={isPending}
       onClick={onClick}
       loading={isPending}
-      loadingText="Submitting...">
+      loadingText='Submitting...'>
       <>
         {icon && <div>{icon}</div>}
         <span>{text}</span>
@@ -44,11 +44,11 @@ export function SaveJobButton({ savedJob }: { savedJob: boolean }) {
 
   return (
     <Button
-      variant="outline"
+      variant='outline'
       loading={isPending}
-      loadingText="Saving..."
-      type="button"
-      className="flex items-center gap-2">
+      loadingText='Saving...'
+      type='button'
+      className='flex items-center gap-2'>
       <Heart
         className={`size-4 transition-colors ${savedJob ? 'fill-current text-red-500' : ''}`}
       />

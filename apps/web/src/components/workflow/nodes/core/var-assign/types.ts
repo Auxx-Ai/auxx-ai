@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/var-assign/types.ts
 
-import { BaseType } from '~/components/workflow/types/unified-types'
-import { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
+import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
+import type { BaseType } from '~/components/workflow/types/unified-types'
 
 /**
  * Single variable assignment configuration

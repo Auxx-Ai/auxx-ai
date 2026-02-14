@@ -1,11 +1,11 @@
 // app/(protected)/subscription/success/page.tsx
 'use client'
 
-import { useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { api } from '~/trpc/react'
-import { CheckCircle2, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { CheckCircle2, Loader2 } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useEffect } from 'react'
+import { api } from '~/trpc/react'
 
 /**
  * Success callback page after Stripe checkout completion.
@@ -33,20 +33,20 @@ export default function SubscriptionSuccessPage() {
   }, [callbackURL, router, utils])
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <Card className="w-full max-w-md">
+    <div className='flex min-h-screen items-center justify-center p-4'>
+      <Card className='w-full max-w-md'>
         <CardHeader>
-          <CardTitle className="flex items-center justify-center text-center">
-            <CheckCircle2 className="mr-2 h-6 w-6 text-green-500" />
+          <CardTitle className='flex items-center justify-center text-center'>
+            <CheckCircle2 className='mr-2 h-6 w-6 text-green-500' />
             Subscription Activated!
           </CardTitle>
         </CardHeader>
-        <CardContent className="text-center">
-          <p className="mb-4 text-muted-foreground">
+        <CardContent className='text-center'>
+          <p className='mb-4 text-muted-foreground'>
             Your subscription has been successfully activated.
           </p>
-          <div className="flex items-center justify-center text-sm text-muted-foreground">
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          <div className='flex items-center justify-center text-sm text-muted-foreground'>
+            <Loader2 className='mr-2 h-4 w-4 animate-spin' />
             Redirecting you back...
           </div>
         </CardContent>

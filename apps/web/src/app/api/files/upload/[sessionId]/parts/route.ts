@@ -1,7 +1,7 @@
 // apps/web/src/app/api/files/upload/[sessionId]/parts/route.ts
 
-import { NextRequest, NextResponse } from 'next/server'
-import { SessionManager, createStorageManager, UploadErrorHandler } from '@auxx/lib/files/server'
+import { createStorageManager, SessionManager, UploadErrorHandler } from '@auxx/lib/files/server'
+import { type NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
 const PartRequestSchema = z.object({
@@ -19,16 +19,15 @@ interface RouteParams {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { sessionId } = await params
-    
+
     let body, partRequest
     try {
       body = await request.json()
       partRequest = PartRequestSchema.parse(body)
     } catch (validationError) {
-      return UploadErrorHandler.validationError(
-        'Invalid part request format',
-        { validationErrors: validationError }
-      )
+      return UploadErrorHandler.validationError('Invalid part request format', {
+        validationErrors: validationError,
+      })
     }
 
     const { partNumber, size } = partRequest
@@ -39,17 +38,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     if (!session.isMultipart || !session.uploadId) {
-      return UploadErrorHandler.validationError(
-        'Not a multipart upload session',
-        { isMultipart: session.isMultipart, hasUploadId: !!session.uploadId }
-      )
+      return UploadErrorHandler.validationError('Not a multipart upload session', {
+        isMultipart: session.isMultipart,
+        hasUploadId: !!session.uploadId,
+      })
     }
 
     // Touch session to extend TTL during active upload
     await SessionManager.touchSession(sessionId)
 
     const storageManager = createStorageManager(session.organizationId)
-    
+
     try {
       const presigned = await storageManager.generatePartUploadUrl({
         provider: session.provider,
@@ -76,10 +75,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
   } catch (error) {
     const { sessionId } = await params
-    return await UploadErrorHandler.handleUploadError(
-      error,
-      sessionId,
-      'part-request-processing'
-    )
+    return await UploadErrorHandler.handleUploadError(error, sessionId, 'part-request-processing')
   }
 }

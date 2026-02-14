@@ -1,10 +1,10 @@
 // packages/lib/src/workflow-engine/services/approval-query-service.ts
-import { schema, type Database } from '@auxx/database'
-import type { ApprovalStatus as ApprovalStatusType } from '@auxx/database/types'
-import { eq, and, or, gt, lt, gte, lte, sql, inArray, desc, count } from 'drizzle-orm'
-import { createScopedLogger } from '@auxx/logger'
-import { NotificationService } from '../../notifications/notification-service'
+import { type Database, schema } from '@auxx/database'
 import { ApprovalStatus, MemberType } from '@auxx/database/enums'
+import type { ApprovalStatus as ApprovalStatusType } from '@auxx/database/types'
+import { createScopedLogger } from '@auxx/logger'
+import { and, count, desc, eq, gt, gte, inArray, lt, lte, or, sql } from 'drizzle-orm'
+import { NotificationService } from '../../notifications/notification-service'
 
 const logger = createScopedLogger('approval-query-service')
 /**
@@ -21,7 +21,10 @@ export class ApprovalQueryService {
     const userGroupMemberships = await this.db
       .select({ groupId: schema.EntityGroupMember.groupInstanceId })
       .from(schema.EntityGroupMember)
-      .innerJoin(schema.EntityInstance, eq(schema.EntityGroupMember.groupInstanceId, schema.EntityInstance.id))
+      .innerJoin(
+        schema.EntityInstance,
+        eq(schema.EntityGroupMember.groupInstanceId, schema.EntityInstance.id)
+      )
       .where(
         and(
           eq(schema.EntityGroupMember.memberType, MemberType.user),
@@ -78,7 +81,10 @@ export class ApprovalQueryService {
     const userGroupMemberships = await this.db
       .select({ groupId: schema.EntityGroupMember.groupInstanceId })
       .from(schema.EntityGroupMember)
-      .innerJoin(schema.EntityInstance, eq(schema.EntityGroupMember.groupInstanceId, schema.EntityInstance.id))
+      .innerJoin(
+        schema.EntityInstance,
+        eq(schema.EntityGroupMember.groupInstanceId, schema.EntityInstance.id)
+      )
       .where(
         and(
           eq(schema.EntityGroupMember.memberType, MemberType.user),
@@ -135,7 +141,10 @@ export class ApprovalQueryService {
     const userGroupMemberships = await this.db
       .select({ groupId: schema.EntityGroupMember.groupInstanceId })
       .from(schema.EntityGroupMember)
-      .innerJoin(schema.EntityInstance, eq(schema.EntityGroupMember.groupInstanceId, schema.EntityInstance.id))
+      .innerJoin(
+        schema.EntityInstance,
+        eq(schema.EntityGroupMember.groupInstanceId, schema.EntityInstance.id)
+      )
       .where(
         and(
           eq(schema.EntityGroupMember.memberType, MemberType.user),

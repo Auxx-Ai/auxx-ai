@@ -1,9 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/http/components/key-value-item.tsx
 
-import React, { type FC, useCallback, useRef, useEffect, useState } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
-import { InputEditor } from '~/components/workflow/ui/input-editor'
-import { VariablePicker } from '~/components/workflow/ui/variables/variable-picker'
+import { Button } from '@auxx/ui/components/button'
 import {
   Select,
   SelectContent,
@@ -11,9 +8,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Button } from '@auxx/ui/components/button'
+import { cn } from '@auxx/ui/lib/utils'
 import { Trash2 } from 'lucide-react'
+import React, { type FC, useCallback, useEffect, useRef, useState } from 'react'
 import { BaseType } from '~/components/workflow/types/variable-types'
+import { InputEditor } from '~/components/workflow/ui/input-editor'
+import { VariablePicker } from '~/components/workflow/ui/variables/variable-picker'
 import type { KeyValue } from '../types'
 
 type Props = {
@@ -156,12 +156,12 @@ const KeyValueItem: FC<Props> = ({
             onChange={handleLocalChange('key')}
             onBlur={syncToParent}
             placeholder="type '{' to insert variable..."
-            className="p-1 h-full focus-within:bg-primary-150/60 focus-within:hover:bg-primary-150/60 hover:bg-primary-100"
+            className='p-1 h-full focus-within:bg-primary-150/60 focus-within:hover:bg-primary-150/60 hover:bg-primary-100'
             disabled={readonly}
           />
         ) : (
           <input
-            className="text-sm w-full px-3 py-1.5 appearance-none rounded-none border-none bg-transparent outline-none hover:bg-gray-50 focus:bg-gray-100 focus:ring-0"
+            className='text-sm w-full px-3 py-1.5 appearance-none rounded-none border-none bg-transparent outline-none hover:bg-gray-50 focus:bg-gray-100 focus:ring-0'
             value={localKey}
             onChange={(e) => handleLocalChange('key')(e.target.value)}
             onBlur={syncToParent}
@@ -179,23 +179,23 @@ const KeyValueItem: FC<Props> = ({
                 }
               }
             }}
-            placeholder="Enter key..."
+            placeholder='Enter key...'
             disabled={readonly}
           />
         )}
       </div>
       {isSupportFile && (
-        <div className="w-[70px] shrink-0 border-r border-primary-200 focus-within:bg-primary-150/60 focus-within:hover:bg-primary-150/60 hover:bg-primary-100">
+        <div className='w-[70px] shrink-0 border-r border-primary-200 focus-within:bg-primary-150/60 focus-within:hover:bg-primary-150/60 hover:bg-primary-100'>
           <Select
             value={localType}
             onValueChange={(value) => handleImmediateChange('type')(value)}
             disabled={readonly}>
-            <SelectTrigger className="rounded-none h-7 text-primary-500 border-none focus:ring-0">
+            <SelectTrigger className='rounded-none h-7 text-primary-500 border-none focus:ring-0'>
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="w-[80px]">
-              <SelectItem value="text">text</SelectItem>
-              <SelectItem value="file">file</SelectItem>
+            <SelectContent className='w-[80px]'>
+              <SelectItem value='text'>text</SelectItem>
+              <SelectItem value='file'>file</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -210,9 +210,9 @@ const KeyValueItem: FC<Props> = ({
               handleImmediateChange('file')(['sys', variable.id])
             }}
             allowedTypes={[BaseType.FILE, BaseType.ARRAY]}
-            placeholder="Select file variable..."
+            placeholder='Select file variable...'
             disabled={readonly}
-            className="rounded-none border-none"
+            className='rounded-none border-none'
           />
         ) : (
           <InputEditor
@@ -233,13 +233,13 @@ const KeyValueItem: FC<Props> = ({
         {/* Remove button - shows on hover if canRemove is true */}
         {canRemove && !readonly && (
           <Button
-            variant="ghost"
-            size="icon-sm"
+            variant='ghost'
+            size='icon-sm'
             onClick={(e) => {
               e.stopPropagation()
               onRemove()
             }}
-            className="absolute hover:text-destructive hover:bg-destructive/10 right-0.5 top-0.5 opacity-0 group-hover:opacity-100 transition-opacity size-6">
+            className='absolute hover:text-destructive hover:bg-destructive/10 right-0.5 top-0.5 opacity-0 group-hover:opacity-100 transition-opacity size-6'>
             <Trash2 />
           </Button>
         )}

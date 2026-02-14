@@ -1,8 +1,8 @@
 // apps/web/src/components/mail/email-editor/hooks/use-ai-tools-state.ts
 'use client'
 
-import { useState, useCallback } from 'react'
 import type { Editor } from '@tiptap/react'
+import { useCallback, useState } from 'react'
 
 export interface AIToolsState {
   isProcessing: boolean
@@ -38,13 +38,13 @@ export function useAIToolsState(editor: Editor | null) {
     setState((prev) => {
       // Remove any redo history when new change is made
       const newHistory = prev.history.slice(0, prev.currentHistoryIndex + 1)
-      
+
       // Limit history size to prevent memory issues
       const MAX_HISTORY_SIZE = 20
       if (newHistory.length >= MAX_HISTORY_SIZE) {
         newHistory.shift() // Remove oldest
       }
-      
+
       newHistory.push({
         content,
         format: 'html',

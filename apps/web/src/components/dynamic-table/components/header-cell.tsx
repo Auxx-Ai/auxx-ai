@@ -2,20 +2,9 @@
 
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
-import {
-  ChevronDown,
-  Filter,
-  EyeOff,
-  ArrowUpDown,
-  Pin,
-  PinOff,
-  Pencil,
-  Settings2,
-  Plus,
-} from 'lucide-react'
+import type { FieldType } from '@auxx/database/types'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { Button } from '@auxx/ui/components/button'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@auxx/ui/components/tooltip'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,34 +12,44 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { SmartBreadcrumb, type BreadcrumbSegment } from '@auxx/ui/components/smart-breadcrumb'
+import { type BreadcrumbSegment, SmartBreadcrumb } from '@auxx/ui/components/smart-breadcrumb'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
-import { getSortOptionsForFieldType, SORT_OPTIONS } from '../utils/constants'
+import type { Header } from '@tanstack/react-table'
+import {
+  ArrowUpDown,
+  ChevronDown,
+  EyeOff,
+  Filter,
+  Pencil,
+  Pin,
+  PinOff,
+  Plus,
+  Settings2,
+} from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { useField, useFields } from '~/components/resources/hooks/use-field'
 import { useTableConfig } from '../context/table-config-context'
 import { useViewMetadata } from '../context/view-metadata-context'
-import {
-  useTableFilters,
-  useColumnLabels,
-  useColumnFormatting,
-  useColumnPinning,
-} from '../stores/store-selectors'
-import {
-  useSetFilters,
-  useSetColumnLabel,
-  useSetSingleColumnFormatting,
-  useSetPinnedColumn,
-} from '../stores/store-actions'
-import { EditColumnLabelDialog } from './dialogs/edit-column-label-dialog'
-import { EditColumnFormattingDialog } from './dialogs/edit-column-formatting-dialog'
-import { decodeColumnId } from '../utils/column-id'
-import { useField, useFields } from '~/components/resources/hooks/use-field'
-import type { Header } from '@tanstack/react-table'
-import type { ExtendedColumnDef, ColumnFormatting, FormattableFieldType } from '../types'
-import { FORMATTABLE_FIELD_TYPES } from '../types'
-
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import type { FieldType } from '@auxx/database/types'
 import { getIconForFieldType } from '../custom-field-column-factory'
+import {
+  useSetColumnLabel,
+  useSetFilters,
+  useSetPinnedColumn,
+  useSetSingleColumnFormatting,
+} from '../stores/store-actions'
+import {
+  useColumnFormatting,
+  useColumnLabels,
+  useColumnPinning,
+  useTableFilters,
+} from '../stores/store-selectors'
+import type { ColumnFormatting, ExtendedColumnDef, FormattableFieldType } from '../types'
+import { FORMATTABLE_FIELD_TYPES } from '../types'
+import { decodeColumnId } from '../utils/column-id'
+import { getSortOptionsForFieldType, type SORT_OPTIONS } from '../utils/constants'
+import { EditColumnFormattingDialog } from './dialogs/edit-column-formatting-dialog'
+import { EditColumnLabelDialog } from './dialogs/edit-column-label-dialog'
 
 interface HeaderCellProps<TData> {
   header: Header<TData, unknown>
@@ -117,17 +116,17 @@ function HeaderCellOptionsDropdown<TData>({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="ghost"
-          size="icon"
+          variant='ghost'
+          size='icon'
           className={cn(
             'flex-none inline-flex items-center justify-center rounded-md text-sm transition-colors font-medium disabled:pointer-events-none disabled:opacity-60 disabled:bg-primary-50 gap-2 relative bg-primary-100 dark:bg-background dark:text-sidebar-foreground hover:bg-primary-200 p-0 size-5'
           )}
           aria-label={`Sort options for ${headerContent}`}>
-          <ChevronDown className="size-3 flex-none" />
+          <ChevronDown className='size-3 flex-none' />
         </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="start" className="w-[180px]">
+      <DropdownMenuContent align='start' className='w-[180px]'>
         {canSort && (
           <>
             {sortOptions!.map((option) => {
@@ -372,7 +371,7 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
       )}>
       {/* Sort menu (visible on hover) */}
       {(canSort || canFilter || canHide) && (
-        <div className="pointer-events-auto absolute inset-y-0 right-1 z-20 flex items-start pt-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className='pointer-events-auto absolute inset-y-0 right-1 z-20 flex items-start pt-0.5 opacity-0 transition-opacity group-hover:opacity-100'>
           <HeaderCellOptionsDropdown
             column={column}
             columnDef={columnDef}
@@ -396,21 +395,21 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
           />
         </div>
       )}
-      <div className="font-medium text-xs pl-3 flex text-zinc-600 dark:text-sidebar-foreground select-none z-10">
-        <div className="header-title w-full truncate flex items-center gap-1">
+      <div className='font-medium text-xs pl-3 flex text-zinc-600 dark:text-sidebar-foreground select-none z-10'>
+        <div className='header-title w-full truncate flex items-center gap-1'>
           {/* Column type icon */}
-          {Icon && <Icon className="mr-1 inline-block size-3 text-zinc-400" />}
+          {Icon && <Icon className='mr-1 inline-block size-3 text-zinc-400' />}
 
           {/* SmartBreadcrumb for paths, text for direct fields */}
           {showBreadcrumb ? (
             <SmartBreadcrumb
               segments={breadcrumbSegments}
-              mode="display"
-              size="sm"
-              className="flex-1 min-w-0"
+              mode='display'
+              size='sm'
+              className='flex-1 min-w-0'
             />
           ) : (
-            <span className="font-medium text-xs">{headerContent}</span>
+            <span className='font-medium text-xs'>{headerContent}</span>
           )}
 
           {/* New button (only for primary column with onAddNew) */}
@@ -418,18 +417,18 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="ml-1 bg-primary-100 dark:bg-background hover:bg-primary-200 size-5 rounded-md"
+                  variant='ghost'
+                  size='icon-xs'
+                  className='ml-1 bg-primary-100 dark:bg-background hover:bg-primary-200 size-5 rounded-md'
                   onClick={(e) => {
                     e.stopPropagation()
                     onAddNew()
                   }}
                   aria-label={`New ${entityLabel || ''}`}>
-                  <Plus className="size-3" />
+                  <Plus className='size-3' />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">
+              <TooltipContent side='top'>
                 <p>New {entityLabel || ''}</p>
               </TooltipContent>
             </Tooltip>

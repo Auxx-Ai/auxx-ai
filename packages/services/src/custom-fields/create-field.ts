@@ -1,33 +1,32 @@
 // packages/services/src/custom-fields/create-field.ts
 
-import { database, schema, type Database, type Transaction } from '@auxx/database'
-import { eq, and, desc } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
-import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
-import { getInverseCardinality } from '@auxx/utils'
-import { getModelType } from '@auxx/types/resource'
+import { type Database, database, schema, type Transaction } from '@auxx/database'
+import { FieldType as FieldTypeEnum, ModelTypeValues } from '@auxx/database/enums'
+import type { CustomFieldEntity } from '@auxx/database/models'
+import type { FieldType } from '@auxx/database/types'
+import type { ActorOptions, CalcOptions } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
+import { getModelType } from '@auxx/types/resource'
+import { getInverseCardinality } from '@auxx/utils'
+import { validateCalcExpression } from '@auxx/utils/calc-expression'
+import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
+import { and, desc, eq } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
+import { fromDatabase } from '../shared/utils'
 import {
-  ModelTypes,
+  type CurrencyOptions,
+  canFieldBeUnique,
+  type DisplayOptions,
+  type FileOptions,
+  isDisplayOptions,
   type ModelType,
+  ModelTypes,
+  mergeDisplayOptions,
   type RelationshipConfig,
   type RelationshipOptions,
-  canFieldBeUnique,
   type SelectOption,
-  type CurrencyOptions,
-  type FileOptions,
-  type DisplayOptions,
   supportsDisplayOptions,
-  isDisplayOptions,
-  mergeDisplayOptions,
 } from './types'
-import { FieldType as FieldTypeEnum, ModelTypeValues } from '@auxx/database/enums'
-import { validateCalcExpression } from '@auxx/utils/calc-expression'
-import type { CalcOptions } from '@auxx/types/custom-field'
-import type { ActorOptions } from '@auxx/types/custom-field'
-import type { FieldType } from '@auxx/database/types'
-import type { CustomFieldEntity } from '@auxx/database/models'
 
 /**
  * Input for creating a custom field
@@ -41,7 +40,13 @@ export interface CreateCustomFieldInput {
   required?: boolean
   defaultValue?: string
   /** Field options - select options, file config, currency config, or flat display options */
-  options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions } | { actor: ActorOptions } | { calc: CalcOptions } | DisplayOptions
+  options?:
+    | SelectOption[]
+    | { file: FileOptions }
+    | { currency: CurrencyOptions }
+    | { actor: ActorOptions }
+    | { calc: CalcOptions }
+    | DisplayOptions
   addressComponents?: string[]
   icon?: string
   isCustom?: boolean

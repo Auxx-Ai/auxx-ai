@@ -1,14 +1,17 @@
 // apps/web/src/server/api/routers/actor.ts
 
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { ActorService, GroupMemberService } from '@auxx/lib/actors'
 import type { ActorContext, ActorId } from '@auxx/types/actor'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 /**
  * Helper to create ActorContext from tRPC context
  */
-function toActorContext(ctx: { db: any; session: { organizationId: string; userId: string } }): ActorContext {
+function toActorContext(ctx: {
+  db: any
+  session: { organizationId: string; userId: string }
+}): ActorContext {
   return {
     db: ctx.db,
     organizationId: ctx.session.organizationId,

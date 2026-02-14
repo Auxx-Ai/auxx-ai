@@ -1,10 +1,10 @@
 // src/app/api/instagram/oauth2/callback/route.ts
 
-import { type NextRequest } from 'next/server'
 import { env, WEBAPP_URL } from '@auxx/config/server'
-import { InstagramOAuthService } from '@auxx/lib/providers'
 import type { InstagramIntegrationMetadata } from '@auxx/lib/providers'
+import { InstagramOAuthService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
+import type { NextRequest } from 'next/server'
 
 const logger = createScopedLogger('instagram-oauth-callback')
 

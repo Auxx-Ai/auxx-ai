@@ -1,27 +1,27 @@
 // apps/web/src/components/mail/bulk-action-toolbar.tsx
 'use client'
 
-import React, { useCallback, useMemo, useState } from 'react'
-import { api } from '~/trpc/react'
-import { Archive, Trash2, Ban, Tags, Play, UserPlus, Trash } from 'lucide-react'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { useMailFilter } from './mail-filter-context'
-import { useConfirm } from '~/hooks/use-confirm'
+import type { ActorId } from '@auxx/types/actor'
 import { ActionBar, type ActionBarAction } from '@auxx/ui/components/action-bar'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { Archive, Ban, Play, Tags, Trash, Trash2, UserPlus } from 'lucide-react'
+import React, { useCallback, useMemo, useState } from 'react'
 import { ActorPicker } from '~/components/pickers/actor-picker'
 import { TagPicker } from '~/components/pickers/tag-picker'
-import type { ActorId } from '@auxx/types/actor'
-import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { toRecordId } from '~/components/resources'
+import { useKeyboard } from '~/components/threads/context/keyboard-context'
+import { useThreadMutation } from '~/components/threads/hooks'
 import {
+  useHasMultipleSelected,
   useSelectedThreadIds,
   useSelectionCount,
-  useHasMultipleSelected,
   useThreadSelectionStore,
   useViewMode,
 } from '~/components/threads/store'
-import { useKeyboard } from '~/components/threads/context/keyboard-context'
-import { useThreadMutation } from '~/components/threads/hooks'
+import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
+import { useMailFilter } from './mail-filter-context'
 
 /**
  * A toolbar component that appears when multiple threads are selected,
@@ -231,7 +231,7 @@ export default function BulkActionToolbar() {
           if (!isOpen) clearSelection()
         }}
         selectedCount={selectionCount}
-        selectedLabel="selected"
+        selectedLabel='selected'
         actions={actions}
         showClose
       />

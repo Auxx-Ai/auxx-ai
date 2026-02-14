@@ -11,7 +11,7 @@ export default function RenderResults() {
         typeof item === 'string' ? (
           <div
             key={item}
-            className="px-4 py-2 text-sm uppercase text-gray-600 opacity-50 dark:text-gray-400">
+            className='px-4 py-2 text-sm uppercase text-gray-600 opacity-50 dark:text-gray-400'>
             {item}
           </div>
         ) : (

@@ -1,7 +1,7 @@
 // packages/services/src/entity-definitions/get-entity-definition-by-slug.ts
 
 import { database } from '@auxx/database'
-import { ok, err } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 
 /**
@@ -14,7 +14,11 @@ export async function getEntityDefinitionBySlug(params: { slug: string; organiza
   const dbResult = await fromDatabase(
     database.query.EntityDefinition.findFirst({
       where: (defs, { eq, and, isNull }) =>
-        and(eq(defs.apiSlug, slug), eq(defs.organizationId, organizationId), isNull(defs.archivedAt)),
+        and(
+          eq(defs.apiSlug, slug),
+          eq(defs.organizationId, organizationId),
+          isNull(defs.archivedAt)
+        ),
     }),
     'get-entity-definition-by-slug'
   )

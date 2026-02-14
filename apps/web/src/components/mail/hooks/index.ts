@@ -1,7 +1,7 @@
 // apps/web/src/components/mail/hooks/index.ts
 
 export {
-  useCountUpdates,
   type ThreadCountContext,
+  useCountUpdates,
   type ViewDefinition,
 } from './use-count-updates'

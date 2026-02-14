@@ -1,15 +1,15 @@
 // apps/web/src/components/merge/use-merge-preview.ts
 'use client'
 
-import { useMemo } from 'react'
-import { mergeFieldValue } from '@auxx/lib/resources/merge/client'
-import {
-  useFieldValueStore,
-  buildFieldValueKey,
-} from '~/components/resources/store/field-value-store'
+import type { FieldType } from '@auxx/database/types'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/lib/resources/client'
-import type { FieldType } from '@auxx/database/types'
+import { mergeFieldValue } from '@auxx/lib/resources/merge/client'
+import { useMemo } from 'react'
+import {
+  buildFieldValueKey,
+  useFieldValueStore,
+} from '~/components/resources/store/field-value-store'
 
 /**
  * Hook to preview merge results by computing merged field values

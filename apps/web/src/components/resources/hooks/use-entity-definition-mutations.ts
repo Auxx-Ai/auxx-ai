@@ -1,9 +1,9 @@
 // apps/web/src/components/resources/hooks/use-entity-definition-mutations.ts
 
-import { api } from '~/trpc/react'
-import { getResourceStoreState } from '~/components/resources/store/resource-store'
-import { toastError } from '@auxx/ui/components/toast'
 import type { CustomResource, DisplayFieldConfig } from '@auxx/lib/resources/client'
+import { toastError } from '@auxx/ui/components/toast'
+import { getResourceStoreState } from '~/components/resources/store/resource-store'
+import { api } from '~/trpc/react'
 
 /**
  * Hook that provides entity definition mutations with optimistic updates.
@@ -85,7 +85,9 @@ export function useEntityDefinitionMutations() {
 
       if (hasDisplayFieldUpdate) {
         // Helper to build DisplayFieldConfig from field ID
-        const buildDisplayFieldConfig = (fieldId: string | null | undefined): DisplayFieldConfig | null => {
+        const buildDisplayFieldConfig = (
+          fieldId: string | null | undefined
+        ): DisplayFieldConfig | null => {
           if (fieldId === null || fieldId === undefined) return null
           const field = resource.fields.find((f) => f.id === fieldId)
           if (!field) return null

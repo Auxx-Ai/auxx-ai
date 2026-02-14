@@ -1,7 +1,8 @@
 // packages/lib/src/browser/index.ts
+
+import { env } from '@auxx/config/server'
 import { jwtVerify } from 'jose'
 import { Result } from '../result'
-import { env } from '@auxx/config/server'
 
 export const TOKEN_TYPES = { websocket: 'websocket', websocketRefresh: 'websocketRefresh' }
 

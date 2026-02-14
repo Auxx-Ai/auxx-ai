@@ -1,23 +1,22 @@
 // packages/database/src/db/schema/draft.ts
 // Drizzle table: draft
 
+import { createId } from '@paralleldrive/cuid2'
 import {
-  pgTable,
-  uniqueIndex,
+  type AnyPgColumn,
   index,
+  jsonb,
+  pgTable,
+  sql,
   text,
   timestamp,
-  jsonb,
-  sql,
-  type AnyPgColumn,
+  uniqueIndex,
 } from './_shared'
-import { createId } from '@paralleldrive/cuid2'
-
-import { User } from './user'
+import { Integration } from './integration'
+import { Message } from './message'
 import { Organization } from './organization'
 import { Thread } from './thread'
-import { Message } from './message'
-import { Integration } from './integration'
+import { User } from './user'
 
 /**
  * Draft table for storing in-progress email drafts.

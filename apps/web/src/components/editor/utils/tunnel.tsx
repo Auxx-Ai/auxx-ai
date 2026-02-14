@@ -1,5 +1,5 @@
-import React, { ReactNode } from 'react'
 import { atom, useAtomValue, useSetAtom } from 'jotai' // Import Jotai hooks
+import React, { type ReactNode } from 'react'
 
 /**
  * An SSR-friendly useLayoutEffect.

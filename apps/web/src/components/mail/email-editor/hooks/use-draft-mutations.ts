@@ -1,13 +1,13 @@
 // apps/web/src/components/mail/email-editor/hooks/use-draft-mutations.ts
 'use client'
 
-import { useCallback, useRef } from 'react'
-import { toastError } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
-import { useThreadStore, getThreadStoreState } from '~/components/threads/store/thread-store'
-import { useCountUpdates } from '~/components/mail/hooks'
-import type { DraftPayload, DraftMessage } from '../types'
 import type { StandaloneDraftMeta } from '@auxx/types/draft'
+import { toastError } from '@auxx/ui/components/toast'
+import { useCallback, useRef } from 'react'
+import { useCountUpdates } from '~/components/mail/hooks'
+import { getThreadStoreState, useThreadStore } from '~/components/threads/store/thread-store'
+import { api } from '~/trpc/react'
+import type { DraftMessage, DraftPayload } from '../types'
 
 /**
  * Options for useDraftMutations hook

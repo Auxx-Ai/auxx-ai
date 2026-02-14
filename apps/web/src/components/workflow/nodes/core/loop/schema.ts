@@ -2,16 +2,16 @@
 
 import { z } from 'zod'
 import {
-  type NodeDefinition,
   NodeCategory,
+  type NodeDefinition,
   type ValidationResult,
 } from '~/components/workflow/types'
-import { type LoopNodeData } from './types'
-import { LoopPanel } from './panel'
 import { NodeType } from '~/components/workflow/types/node-types'
-import { LOOP_CONSTANTS } from './constants'
-import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
+import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
+import { LOOP_CONSTANTS } from './constants'
+import { LoopPanel } from './panel'
+import type { LoopNodeData } from './types'
 
 /**
  * Zod schema for loop configuration

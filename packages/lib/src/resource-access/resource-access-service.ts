@@ -1,28 +1,31 @@
 // packages/lib/src/resource-access/resource-access-service.ts
 
-import { and, eq, inArray, or, desc, isNull } from 'drizzle-orm'
 import { schema } from '@auxx/database'
-import { ResourceGranteeType, ResourcePermission, MemberType } from '@auxx/database/enums'
-import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { MemberType, ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import type { RecordId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
+import { satisfiesPermission } from './constants'
 import type {
-  ResourceAccessContext,
-  GrantInstanceAccessInput,
-  GrantTypeAccessInput,
-  RevokeInstanceAccessInput,
-  RevokeTypeAccessInput,
+  AccessCheckResult,
   CheckAccessInput,
   CheckTypeAccessInput,
-  AccessCheckResult,
-  ResourceAccessInfo,
+  GrantInstanceAccessInput,
+  GrantTypeAccessInput,
   InstanceAccess,
+  ResourceAccessContext,
+  ResourceAccessInfo,
+  RevokeInstanceAccessInput,
+  RevokeTypeAccessInput,
 } from './types'
-import { satisfiesPermission } from './constants'
 
 /**
  * Grant access to a specific entity instance.
  */
-export async function grantInstanceAccess(ctx: ResourceAccessContext, input: GrantInstanceAccessInput): Promise<void> {
+export async function grantInstanceAccess(
+  ctx: ResourceAccessContext,
+  input: GrantInstanceAccessInput
+): Promise<void> {
   const { db, organizationId, userId } = ctx
   const { entityDefinitionId, entityInstanceId } = parseRecordId(input.recordId)
 
@@ -56,7 +59,10 @@ export async function grantInstanceAccess(ctx: ResourceAccessContext, input: Gra
 /**
  * Grant type-level access (access to ALL instances of an entity type).
  */
-export async function grantTypeAccess(ctx: ResourceAccessContext, input: GrantTypeAccessInput): Promise<void> {
+export async function grantTypeAccess(
+  ctx: ResourceAccessContext,
+  input: GrantTypeAccessInput
+): Promise<void> {
   const { db, organizationId, userId } = ctx
 
   await db
@@ -89,7 +95,10 @@ export async function grantTypeAccess(ctx: ResourceAccessContext, input: GrantTy
 /**
  * Revoke access to a specific entity instance.
  */
-export async function revokeInstanceAccess(ctx: ResourceAccessContext, input: RevokeInstanceAccessInput): Promise<boolean> {
+export async function revokeInstanceAccess(
+  ctx: ResourceAccessContext,
+  input: RevokeInstanceAccessInput
+): Promise<boolean> {
   const { db, organizationId } = ctx
   const { entityDefinitionId, entityInstanceId } = parseRecordId(input.recordId)
 
@@ -112,7 +121,10 @@ export async function revokeInstanceAccess(ctx: ResourceAccessContext, input: Re
 /**
  * Revoke type-level access.
  */
-export async function revokeTypeAccess(ctx: ResourceAccessContext, input: RevokeTypeAccessInput): Promise<boolean> {
+export async function revokeTypeAccess(
+  ctx: ResourceAccessContext,
+  input: RevokeTypeAccessInput
+): Promise<boolean> {
   const { db, organizationId } = ctx
 
   const result = await db
@@ -218,7 +230,10 @@ export async function setTypeAccess(
  * Check if a user has access to a specific entity instance.
  * Checks both instance-level and type-level grants.
  */
-export async function checkAccess(ctx: ResourceAccessContext, input: CheckAccessInput): Promise<AccessCheckResult> {
+export async function checkAccess(
+  ctx: ResourceAccessContext,
+  input: CheckAccessInput
+): Promise<AccessCheckResult> {
   const { db, organizationId } = ctx
   const { entityDefinitionId, entityInstanceId } = parseRecordId(input.recordId)
   const targetUserId = input.userId
@@ -281,7 +296,10 @@ export async function checkAccess(ctx: ResourceAccessContext, input: CheckAccess
       eq(schema.ResourceAccess.organizationId, organizationId),
       eq(schema.ResourceAccess.entityDefinitionId, entityDefinitionId),
       // Match either this specific instance OR type-level (null instance)
-      or(eq(schema.ResourceAccess.entityInstanceId, entityInstanceId), isNull(schema.ResourceAccess.entityInstanceId)),
+      or(
+        eq(schema.ResourceAccess.entityInstanceId, entityInstanceId),
+        isNull(schema.ResourceAccess.entityInstanceId)
+      ),
       or(...granteeConditions)
     ),
   })
@@ -446,7 +464,10 @@ export async function hasPermission(
 /**
  * Get all access grants for a specific instance.
  */
-export async function getInstanceAccess(ctx: ResourceAccessContext, recordId: RecordId): Promise<ResourceAccessInfo[]> {
+export async function getInstanceAccess(
+  ctx: ResourceAccessContext,
+  recordId: RecordId
+): Promise<ResourceAccessInfo[]> {
   const { db, organizationId } = ctx
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
@@ -473,7 +494,10 @@ export async function getInstanceAccess(ctx: ResourceAccessContext, recordId: Re
 /**
  * Get all type-level access grants for an entity type.
  */
-export async function getTypeAccess(ctx: ResourceAccessContext, entityDefinitionId: string): Promise<ResourceAccessInfo[]> {
+export async function getTypeAccess(
+  ctx: ResourceAccessContext,
+  entityDefinitionId: string
+): Promise<ResourceAccessInfo[]> {
   const { db, organizationId } = ctx
 
   const grants = await db.query.ResourceAccess.findMany({

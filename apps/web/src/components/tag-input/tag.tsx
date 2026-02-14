@@ -1,14 +1,10 @@
-import React from 'react'
-import {
-  type TagInputProps,
-  type TagInputStyleClassesProps,
-  type Tag as TagType,
-} from './tag-input'
+import { Button } from '@auxx/ui/components/button'
+import { cn } from '@auxx/ui/lib/utils'
 
 import { cva } from 'class-variance-authority'
-import { cn } from '@auxx/ui/lib/utils'
-import { Button } from '@auxx/ui/components/button'
 import { X } from 'lucide-react'
+import type React from 'react'
+import type { TagInputProps, TagInputStyleClassesProps, Tag as TagType } from './tag-input'
 
 export const tagVariants = cva(
   'transition-all border inline-flex items-center text-sm pl-2 rounded-md',
@@ -62,9 +58,9 @@ export const Tag: React.FC<TagProps> = ({
       onClick={() => onTagClick?.(tagObj)}>
       {tagObj.text}
       <Button
-        type="button"
-        variant="ghost"
-        size="sm"
+        type='button'
+        variant='ghost'
+        size='sm'
         onClick={(e) => {
           e.stopPropagation() // Prevent event from bubbling up to the tag span
           onRemoveTag(tagObj.id)

@@ -103,7 +103,7 @@ export const mockApi = {
  */
 export function createMockStore<T>(initialState: T) {
   let state = { ...initialState }
-  
+
   return {
     getState: () => state,
     setState: (partial: Partial<T>) => {
@@ -163,9 +163,9 @@ export const mockExternalApis = {
       get: vi.fn().mockResolvedValue({ id: 123, email: 'customer@shopify.com' }),
     },
     orders: {
-      list: vi.fn().mockResolvedValue([
-        { id: 1001, total_price: '29.99', financial_status: 'paid' },
-      ]),
+      list: vi
+        .fn()
+        .mockResolvedValue([{ id: 1001, total_price: '29.99', financial_status: 'paid' }]),
     },
   },
 }
@@ -260,29 +260,29 @@ export const mockFormValidation = {
 export function setupMocks() {
   // Mock global fetch
   global.fetch = mockBrowserApis.fetch
-  
+
   // Mock WebSocket
   global.WebSocket = MockWebSocket as any
-  
+
   // Mock tRPC
   vi.mock('~/trpc/react', () => ({
     api: mockApi,
   }))
-  
+
   // Mock external services
   vi.mock('openai', () => ({
     default: class MockOpenAI {
       chat = mockExternalApis.openai.chat
     },
   }))
-  
+
   vi.mock('stripe', () => ({
     default: class MockStripe {
       customers = mockExternalApis.stripe.customers
       subscriptions = mockExternalApis.stripe.subscriptions
     },
   }))
-  
+
   // Mock Pusher
   vi.mock('pusher-js', () => ({
     default: class MockPusherClient {
@@ -298,8 +298,8 @@ export function setupMocks() {
  */
 export function resetMocks() {
   vi.clearAllMocks()
-  Object.values(mockApi).forEach(router => {
-    Object.values(router).forEach(procedure => {
+  Object.values(mockApi).forEach((router) => {
+    Object.values(router).forEach((procedure) => {
       if ('useQuery' in procedure) procedure.useQuery.mockClear()
       if ('useMutation' in procedure) procedure.useMutation.mockClear()
     })

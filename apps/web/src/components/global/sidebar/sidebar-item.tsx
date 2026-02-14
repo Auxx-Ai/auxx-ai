@@ -1,12 +1,7 @@
 // components/global/sidebar/sidebar-item.tsx
 'use client'
 
-import { SidebarMenuButton, SidebarMenuSubButton } from '@auxx/ui/components/sidebar'
-import Link from 'next/link'
-import { type ReactNode, useState } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
 import { Button } from '@auxx/ui/components/button'
-import { MoreVertical, Pencil } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,6 +9,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { SidebarMenuButton, SidebarMenuSubButton } from '@auxx/ui/components/sidebar'
+import { cn } from '@auxx/ui/lib/utils'
+import { MoreVertical, Pencil } from 'lucide-react'
+import Link from 'next/link'
+import { type ReactNode, useState } from 'react'
 
 interface SidebarItemProps {
   id: string
@@ -51,7 +51,7 @@ export function SidebarItem({
   const hasDropdownContent = editItems || onToggleEditMode
 
   return (
-    <Component asChild className="h-7 py-0 pe-[3px]" tooltip={name}>
+    <Component asChild className='h-7 py-0 pe-[3px]' tooltip={name}>
       <Link
         href={href}
         className={cn(`group/item flex h-7 w-full items-center justify-between ${className}`, {
@@ -59,17 +59,17 @@ export function SidebarItem({
             isActive,
           'bg-sidebar-accent': popoverOpen,
         })}>
-        <div className="flex items-center">
+        <div className='flex items-center'>
           {color && !icon && (
             <div
-              className="mr-2 size-2 rounded-full group-data-[collapsible=icon]:hidden"
+              className='mr-2 size-2 rounded-full group-data-[collapsible=icon]:hidden'
               style={{ backgroundColor: color }}
             />
           )}
-          {icon && <span className="[&_svg]:size-4 mr-2">{icon}</span>}
-          <span className="group-data-[collapsible=icon]:hidden">{name}</span>
+          {icon && <span className='[&_svg]:size-4 mr-2'>{icon}</span>}
+          <span className='group-data-[collapsible=icon]:hidden'>{name}</span>
         </div>
-        <div className="flex items-center group-data-[collapsible=icon]:hidden">
+        <div className='flex items-center group-data-[collapsible=icon]:hidden'>
           {hasDropdownContent && (
             <div
               onClick={(e) => {
@@ -79,8 +79,8 @@ export function SidebarItem({
               <DropdownMenu open={popoverOpen} onOpenChange={setPopoverOpen}>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    variant="ghost"
-                    size="icon"
+                    variant='ghost'
+                    size='icon'
                     className={cn(
                       'size-6 rounded-md opacity-0 hover:bg-primary/10 hover:text-foreground/50 focus-visible:ring-primary/10 hover:bg-primary-200/50',
                       {
@@ -93,11 +93,11 @@ export function SidebarItem({
                       e.preventDefault()
                       setPopoverOpen(!popoverOpen)
                     }}>
-                    <MoreVertical className="size-3.5" />
-                    <span className="sr-only">Options</span>
+                    <MoreVertical className='size-3.5' />
+                    <span className='sr-only'>Options</span>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-40" align="start">
+                <DropdownMenuContent className='w-40' align='start'>
                   <DropdownMenuGroup>
                     {editItems}
                     {onToggleEditMode && (
@@ -112,7 +112,7 @@ export function SidebarItem({
             </div>
           )}
           {!popoverOpen && (
-            <div className="pointer-events-none absolute right-[11px] top-1/2 flex -translate-y-1/2 text-right text-xs group-hover/item:opacity-0">
+            <div className='pointer-events-none absolute right-[11px] top-1/2 flex -translate-y-1/2 text-right text-xs group-hover/item:opacity-0'>
               {typeof count === 'number' && count}
             </div>
           )}

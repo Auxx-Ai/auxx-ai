@@ -1,18 +1,18 @@
 // packages/lib/src/workflow-engine/nodes/dataset/knowledge-retrieval.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { BaseNodeProcessor } from '../base-node'
-import type {
-  WorkflowNode,
-  NodeExecutionResult,
-  ValidationResult,
-  PreprocessedNodeData,
-} from '../../core/types'
-import { NodeRunningStatus, WorkflowActionType } from '../../core/types'
-import type { ExecutionContextManager } from '../../core/execution-context'
 import { z } from 'zod'
 import { SearchService } from '../../../datasets/services/search.service'
-import type { SearchQuery, SearchType, SearchResult } from '../../../datasets/types/search.types'
+import type { SearchQuery, SearchResult, SearchType } from '../../../datasets/types/search.types'
+import type { ExecutionContextManager } from '../../core/execution-context'
+import type {
+  NodeExecutionResult,
+  PreprocessedNodeData,
+  ValidationResult,
+  WorkflowNode,
+} from '../../core/types'
+import { NodeRunningStatus, WorkflowActionType } from '../../core/types'
+import { BaseNodeProcessor } from '../base-node'
 
 const logger = createScopedLogger('knowledge-retrieval-processor')
 
@@ -247,10 +247,7 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
     const userId = (await contextManager.getVariable('sys.userId')) as string | undefined
 
     if (!organizationId) {
-      throw this.createProcessingError(
-        'Organization ID not available in execution context',
-        node
-      )
+      throw this.createProcessingError('Organization ID not available in execution context', node)
     }
 
     return {
@@ -292,12 +289,17 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
       // Use preprocessed data if available
       if (preprocessedData?.inputs) {
         inputs = preprocessedData.inputs
-        contextManager.log('INFO', node.name, 'Executing knowledge retrieval with preprocessed data', {
-          query: inputs.query.substring(0, 100) + (inputs.query.length > 100 ? '...' : ''),
-          datasetCount: inputs.datasetIds.length,
-          searchType: inputs.searchType,
-          limit: inputs.limit,
-        })
+        contextManager.log(
+          'INFO',
+          node.name,
+          'Executing knowledge retrieval with preprocessed data',
+          {
+            query: inputs.query.substring(0, 100) + (inputs.query.length > 100 ? '...' : ''),
+            datasetCount: inputs.datasetIds.length,
+            searchType: inputs.searchType,
+            limit: inputs.limit,
+          }
+        )
       } else {
         // Fallback: process configuration directly (should not happen in normal flow)
         throw this.createExecutionError('Preprocessed data is required', node)
@@ -447,7 +449,10 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
     }
 
     // Extract from similarityThreshold (if variable mode)
-    if (config.similarityThreshold !== undefined && config.fieldModes?.similarityThreshold === false) {
+    if (
+      config.similarityThreshold !== undefined &&
+      config.fieldModes?.similarityThreshold === false
+    ) {
       const thresholdStr = String(config.similarityThreshold)
       this.extractVariableIds(thresholdStr).forEach((v) => variables.add(v))
     }

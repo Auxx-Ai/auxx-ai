@@ -4,12 +4,11 @@
 
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { LucideIcon } from 'lucide-react'
-import * as Icons from 'lucide-react'
-import { RefreshCw, AlertCircle, CheckCircle } from 'lucide-react'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import type { OAuth2CredentialData } from '@auxx/workflow-nodes/types'
+import * as Icons from 'lucide-react'
+import { AlertCircle, CheckCircle, type LucideIcon, RefreshCw } from 'lucide-react'
+import { api } from '~/trpc/react'
 
 interface OAuth2StatusProps {
   /** Credential ID */
@@ -107,33 +106,33 @@ export function OAuth2Status({
   const StatusIcon = status.icon
 
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       {/* Connection Status */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <IconComponent className="w-5 h-5 text-muted-foreground" />
+      <div className='flex items-center justify-between'>
+        <div className='flex items-center space-x-3'>
+          <IconComponent className='w-5 h-5 text-muted-foreground' />
           <div>
-            <div className="flex items-center space-x-2">
-              <span className="font-medium">{providerName}</span>
-              <Badge variant={status.variant} className="flex items-center space-x-1">
-                <StatusIcon className="w-3 h-3" />
+            <div className='flex items-center space-x-2'>
+              <span className='font-medium'>{providerName}</span>
+              <Badge variant={status.variant} className='flex items-center space-x-1'>
+                <StatusIcon className='w-3 h-3' />
                 <span>{status.text}</span>
               </Badge>
             </div>
-            <p className="text-sm text-muted-foreground mt-1">{status.description}</p>
+            <p className='text-sm text-muted-foreground mt-1'>{status.description}</p>
           </div>
         </div>
 
         {/* Refresh Button */}
         {credentialData.refreshToken && (
           <Button
-            variant="outline"
-            size="sm"
+            variant='outline'
+            size='sm'
             onClick={handleRefresh}
             disabled={refreshTokens.isPending || isRefreshing}
             loading={refreshTokens.isPending || isRefreshing}
-            loadingText="Refreshing...">
-            <RefreshCw className="w-4 h-4 mr-2" />
+            loadingText='Refreshing...'>
+            <RefreshCw className='w-4 h-4 mr-2' />
             Refresh
           </Button>
         )}
@@ -141,10 +140,10 @@ export function OAuth2Status({
 
       {/* User Information */}
       {credentialData.metadata?.email && (
-        <div className="bg-muted/50 rounded-lg p-3">
-          <div className="text-sm">
-            <div className="font-medium text-muted-foreground mb-1">Connected Account</div>
-            <div className="text-foreground">{credentialData.metadata.email}</div>
+        <div className='bg-muted/50 rounded-lg p-3'>
+          <div className='text-sm'>
+            <div className='font-medium text-muted-foreground mb-1'>Connected Account</div>
+            <div className='text-foreground'>{credentialData.metadata.email}</div>
           </div>
         </div>
       )}
@@ -152,10 +151,10 @@ export function OAuth2Status({
       {/* Scopes Information */}
       {credentialData.scopes && credentialData.scopes.length > 0 && (
         <div>
-          <div className="text-sm font-medium text-muted-foreground mb-2">Permissions</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className='text-sm font-medium text-muted-foreground mb-2'>Permissions</div>
+          <div className='grid grid-cols-1 sm:grid-cols-2 gap-2'>
             {credentialData.scopes.map((scope, index) => (
-              <div key={index} className="text-xs bg-muted/30 rounded px-2 py-1">
+              <div key={index} className='text-xs bg-muted/30 rounded px-2 py-1'>
                 {getScopeDisplayName(scope)}
               </div>
             ))}
@@ -165,8 +164,8 @@ export function OAuth2Status({
 
       {/* Expiration Information */}
       {credentialData.expiresAt && (
-        <div className="text-xs text-muted-foreground">
-          <span className="font-medium">Expires:</span>{' '}
+        <div className='text-xs text-muted-foreground'>
+          <span className='font-medium'>Expires:</span>{' '}
           {new Date(credentialData.expiresAt).toLocaleString()}
         </div>
       )}

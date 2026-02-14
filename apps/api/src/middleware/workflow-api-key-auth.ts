@@ -1,8 +1,8 @@
 // apps/api/src/middleware/workflow-api-key-auth.ts
 
-import { createMiddleware } from 'hono/factory'
-import { validateWorkflowApiKey } from '@auxx/services/workflow-share'
 import { createScopedLogger } from '@auxx/logger'
+import { validateWorkflowApiKey } from '@auxx/services/workflow-share'
+import { createMiddleware } from 'hono/factory'
 import { errorResponse } from '../lib/response'
 
 const logger = createScopedLogger('workflow-api-key-auth')

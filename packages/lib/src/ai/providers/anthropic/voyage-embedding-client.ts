@@ -1,15 +1,15 @@
 // packages/lib/src/ai/providers/anthropic/voyage-embedding-client.ts
 
+import { createScopedLogger, type Logger } from '../../../logger'
 import { TextEmbeddingClient } from '../../clients/base/text-embedding-client'
 import type {
+  BatchEmbeddingParams,
+  BatchEmbeddingResponse,
   ClientConfig,
   EmbeddingParams,
   EmbeddingResponse,
-  BatchEmbeddingParams,
-  BatchEmbeddingResponse,
   UsageMetrics,
 } from '../../clients/base/types'
-import { createScopedLogger, Logger } from '../../../logger'
 
 /**
  * Voyage AI embedding client (accessed via Anthropic provider)
@@ -18,20 +18,16 @@ export class VoyageEmbeddingClient extends TextEmbeddingClient {
   private apiKey: string
   private baseUrl = 'https://api.voyageai.com/v1'
 
-  constructor(
-    credentials: { apiKey: string },
-    config: ClientConfig,
-    logger?: Logger
-  ) {
+  constructor(credentials: { apiKey: string }, config: ClientConfig, logger?: Logger) {
     super(config, 'Voyage-Embedding', logger)
     this.apiKey = credentials.apiKey
   }
 
   async invoke(params: EmbeddingParams): Promise<EmbeddingResponse> {
     this.validateEmbeddingParams(params)
-    
+
     const startTime = this.getTimestamp()
-    
+
     this.logOperationStart('Voyage embedding invoke', {
       model: params.model,
       textType: typeof params.text,
@@ -39,48 +35,51 @@ export class VoyageEmbeddingClient extends TextEmbeddingClient {
     })
 
     try {
-      return await this.withRetryAndCircuitBreaker(async () => {
-        const texts = Array.isArray(params.text) ? params.text : [params.text]
-        
-        const requestBody = {
-          input: texts,
+      return await this.withRetryAndCircuitBreaker(
+        async () => {
+          const texts = Array.isArray(params.text) ? params.text : [params.text]
+
+          const requestBody = {
+            input: texts,
+            model: params.model,
+            input_type: this.getInputType(params.purpose),
+          }
+
+          // Add truncate option for better handling of long texts
+          if (this.shouldTruncate(params.model)) {
+            requestBody.truncate = true
+          }
+
+          const response = await fetch(`${this.baseUrl}/embeddings`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${this.apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+          })
+
+          if (!response.ok) {
+            const errorData = await response.text()
+            throw new Error(`Voyage API error: ${response.status} - ${errorData}`)
+          }
+
+          const data = await response.json()
+
+          const embeddings = data.data.map((item: any) => item.embedding)
+          const usage = this.convertVoyageUsage(data.usage)
+
+          return {
+            embeddings,
+            model: data.model || params.model,
+            usage,
+          }
+        },
+        {
+          operation: 'voyage_embedding_invoke',
           model: params.model,
-          input_type: this.getInputType(params.purpose),
         }
-
-        // Add truncate option for better handling of long texts
-        if (this.shouldTruncate(params.model)) {
-          requestBody.truncate = true
-        }
-
-        const response = await fetch(`${this.baseUrl}/embeddings`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody),
-        })
-
-        if (!response.ok) {
-          const errorData = await response.text()
-          throw new Error(`Voyage API error: ${response.status} - ${errorData}`)
-        }
-
-        const data = await response.json()
-
-        const embeddings = data.data.map((item: any) => item.embedding)
-        const usage = this.convertVoyageUsage(data.usage)
-
-        return {
-          embeddings,
-          model: data.model || params.model,
-          usage,
-        }
-      }, {
-        operation: 'voyage_embedding_invoke',
-        model: params.model,
-      })
+      )
     } catch (error) {
       this.handleApiError(error, 'invoke')
     } finally {
@@ -93,14 +92,14 @@ export class VoyageEmbeddingClient extends TextEmbeddingClient {
   async batchInvoke(params: BatchEmbeddingParams): Promise<BatchEmbeddingResponse> {
     const { texts, batchSize, ...singleParams } = params
     const effectiveBatchSize = batchSize || this.getVoyageBatchSize(params.model)
-    
+
     if (texts.length <= effectiveBatchSize) {
       // Single request can handle all texts
       const response = await this.invoke({
         ...singleParams,
         text: texts,
       })
-      
+
       return {
         embeddings: response.embeddings,
         model: response.model,
@@ -173,12 +172,7 @@ export class VoyageEmbeddingClient extends TextEmbeddingClient {
    * Get supported embedding models
    */
   getSupportedModels(): string[] {
-    return [
-      'voyage-2',
-      'voyage-large-2',
-      'voyage-code-2',
-      'voyage-large-2-instruct',
-    ]
+    return ['voyage-2', 'voyage-large-2', 'voyage-code-2', 'voyage-large-2-instruct']
   }
 
   /**
@@ -239,7 +233,7 @@ export class VoyageEmbeddingClient extends TextEmbeddingClient {
     // Check input length
     const maxLength = this.getMaxInputLength(params.model)
     const texts = Array.isArray(params.text) ? params.text : [params.text]
-    
+
     for (const text of texts) {
       const estimatedTokens = Math.ceil(text.length / 4) // Rough estimation
       if (estimatedTokens > maxLength) {

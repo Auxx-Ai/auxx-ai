@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState, useEffect, useCallback, useRef, type ReactNode, type RefObject } from 'react'
+import type { ActorId } from '@auxx/types/actor'
 import {
   Popover,
   PopoverAnchor,
@@ -10,11 +10,11 @@ import {
   PopoverTrigger,
 } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { ActorPickerContent, type ActorPickerContentProps } from './actor-picker-content'
+import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { ItemsListView } from '~/components/ui/items-list-view'
 import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
-import type { ActorId } from '@auxx/types/actor'
+import { ActorPickerContent, type ActorPickerContentProps } from './actor-picker-content'
 
 /**
  * Props for ActorPicker component

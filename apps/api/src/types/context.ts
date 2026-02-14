@@ -1,7 +1,7 @@
 // apps/api/src/types/context.ts
 
-import type { ValidatedToken } from '../lib/jwt-validator'
 import type { UserEntity } from '@auxx/database'
+import type { ValidatedToken } from '../lib/jwt-validator'
 
 /**
  * Extended Hono context with authentication data

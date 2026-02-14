@@ -1,56 +1,56 @@
 // apps/web/src/components/custom-fields/ui/entity-instance-dialog.tsx
 'use client'
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button, buttonVariants } from '@auxx/ui/components/button'
-import { Switch } from '@auxx/ui/components/switch'
-import { cn } from '@auxx/ui/lib/utils'
-import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
-import { FieldInputRow } from './field-input-row'
-import { DialogFieldConfigRow } from './dialog-field-config-row'
-import { toastError } from '@auxx/ui/components/toast'
-import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { api } from '~/trpc/react'
-import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
-import { useDirtyCheck } from '~/hooks/use-dirty-state'
-import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
-import { useResource } from '~/components/resources'
-import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
-import { formatToRawValue } from '@auxx/lib/field-values/client'
-import { toRecordId, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import {
   createDefaultFieldViewConfig,
   type FieldViewConfig,
   type ViewContextType,
 } from '@auxx/lib/conditions'
-import { useFieldView } from '~/components/fields/hooks/use-field-view'
-import { useOrgFieldView } from '~/components/dynamic-table/stores/store-selectors'
-import { useDynamicTableStore } from '~/components/dynamic-table/stores/dynamic-table-store'
-import { Pencil, X } from 'lucide-react'
+import { formatToRawValue } from '@auxx/lib/field-values/client'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import { Button, buttonVariants } from '@auxx/ui/components/button'
 import {
-  DndContext,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@auxx/ui/components/dialog'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
+import { Switch } from '@auxx/ui/components/switch'
+import { toastError } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
+import {
   closestCenter,
-  PointerSensor,
+  DndContext,
+  type DragEndEvent,
   KeyboardSensor,
+  PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
 } from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import {
   SortableContext,
-  verticalListSortingStrategy,
   sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import { Pencil, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useDynamicTableStore } from '~/components/dynamic-table/stores/dynamic-table-store'
+import { useOrgFieldView } from '~/components/dynamic-table/stores/store-selectors'
+import { useFieldView } from '~/components/fields/hooks/use-field-view'
+import { useResource } from '~/components/resources'
+import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import { useDirtyCheck } from '~/hooks/use-dirty-state'
+import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
+import { api } from '~/trpc/react'
+import { DialogFieldConfigRow } from './dialog-field-config-row'
+import { FieldInputRow } from './field-input-row'
 
 interface EntityInstanceDialogProps {
   open: boolean
@@ -578,7 +578,7 @@ export function EntityInstanceDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent size="md" position="tc" {...guardProps}>
+        <DialogContent size='md' position='tc' {...guardProps}>
           <DialogHeader>
             <DialogTitle>
               {isConfigMode
@@ -597,7 +597,7 @@ export function EntityInstanceDialog({
           </DialogHeader>
 
           {/* Field card area — floating edit button anchored to its top-right corner */}
-          <div className="relative group/field-card">
+          <div className='relative group/field-card'>
             {/* Floating edit button — matches entity-fields panel placement */}
             <div
               className={cn(
@@ -605,8 +605,8 @@ export function EntityInstanceDialog({
                 isConfigMode ? 'opacity-100' : 'opacity-0 group-hover/field-card:opacity-100'
               )}>
               <Button
-                variant="ghost"
-                size="icon-xs"
+                variant='ghost'
+                size='icon-xs'
                 onClick={() => (isConfigMode ? handleCancelConfig() : enterConfigMode())}
                 className={cn(
                   'cursor-pointer',
@@ -620,7 +620,7 @@ export function EntityInstanceDialog({
 
             {isConfigMode ? (
               /* Config mode: sortable field list with visibility switches */
-              <VarEditorField className="p-0">
+              <VarEditorField className='p-0'>
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -646,7 +646,7 @@ export function EntityInstanceDialog({
               /* Normal mode: form inputs */
               <>
                 <div ref={formRef}>
-                  <VarEditorField className="p-0">
+                  <VarEditorField className='p-0'>
                     {editableFields.map((field) => (
                       <FieldInputRow
                         key={field.id}
@@ -658,7 +658,7 @@ export function EntityInstanceDialog({
                             ? errors[field.id]
                             : undefined
                         }
-                        validationType="error"
+                        validationType='error'
                         disabled={isPending}
                       />
                     ))}
@@ -666,7 +666,7 @@ export function EntityInstanceDialog({
                 </div>
 
                 {editableFields.length === 0 && (
-                  <div className="text-sm text-muted-foreground text-center py-8">
+                  <div className='text-sm text-muted-foreground text-center py-8'>
                     No fields defined for this entity type.
                     <br />
                     Add custom fields in the entity definition settings.
@@ -677,44 +677,43 @@ export function EntityInstanceDialog({
           </div>
 
           {isConfigMode ? (
-            <DialogFooter className="sm:justify-between">
+            <DialogFooter className='sm:justify-between'>
               {/* Left side: Context type toggle (Create / Edit) */}
               <RadioTab
                 value={configContextType}
                 onValueChange={switchConfigContext}
-                size="sm"
-                radioGroupClassName="rounded-xl"
-                className="h-7"
-              >
-                <RadioTabItem value="dialog_create" disabled={isSavingView}>
+                size='sm'
+                radioGroupClassName='rounded-xl'
+                className='h-7'>
+                <RadioTabItem value='dialog_create' disabled={isSavingView}>
                   Create
                 </RadioTabItem>
-                <RadioTabItem value="dialog_edit" disabled={isSavingView}>
+                <RadioTabItem value='dialog_edit' disabled={isSavingView}>
                   Edit
                 </RadioTabItem>
               </RadioTab>
 
               {/* Right side: Cancel + Save View */}
-              <div className="flex items-center gap-2">
+              <div className='flex items-center gap-2'>
                 <Button
-                  size="sm"
-                  variant="ghost"
+                  size='sm'
+                  variant='ghost'
                   onClick={handleCancelConfig}
                   disabled={isSavingView}>
                   Cancel
                 </Button>
                 <Button
-                  size="sm"
-                  variant="outline"
+                  size='sm'
+                  variant='outline'
                   onClick={handleSaveView}
                   loading={isSavingView}
-                  loadingText="Saving...">
+                  loadingText='Saving...'>
                   Save View
                 </Button>
               </div>
             </DialogFooter>
           ) : (
-            <DialogFooter className="sm:justify-between">
+            <DialogFooter className='sm:justify-between'>
               {/* Left side: Create more toggle (only in create mode) */}
               <div>
                 {!isEditing && (
@@ -723,9 +722,9 @@ export function EntityInstanceDialog({
                       buttonVariants({ variant: 'ghost', size: 'sm' }),
                       'gap-2 cursor-pointer'
                     )}>
-                    <span className="text-muted-foreground text-xs">Create more</span>
+                    <span className='text-muted-foreground text-xs'>Create more</span>
                     <Switch
-                      size="sm"
+                      size='sm'
                       checked={createMore}
                       onCheckedChange={setCreateMore}
                       disabled={isPending}
@@ -735,25 +734,25 @@ export function EntityInstanceDialog({
               </div>
 
               {/* Right side: Action buttons */}
-              <div className="flex items-center gap-2">
+              <div className='flex items-center gap-2'>
                 <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
+                  type='button'
+                  size='sm'
+                  variant='ghost'
                   onClick={guardedClose}
                   disabled={isPending}>
-                  Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+                  Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
                 </Button>
                 <Button
-                  size="sm"
-                  variant="outline"
+                  size='sm'
+                  variant='outline'
                   onClick={handleSubmit}
                   loading={isPending}
                   loadingText={isEditing ? 'Saving...' : 'Creating...'}
                   disabled={editableFields.length === 0}
                   data-dialog-submit>
                   {isEditing ? 'Save Changes' : `Create ${resourceLabel}`}{' '}
-                  <KbdSubmit variant="outline" size="sm" />
+                  <KbdSubmit variant='outline' size='sm' />
                 </Button>
               </div>
             </DialogFooter>

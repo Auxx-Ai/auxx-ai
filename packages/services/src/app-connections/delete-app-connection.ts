@@ -1,13 +1,13 @@
 // packages/services/src/app-connections/delete-app-connection.ts
 
-import { database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
 import { CredentialService } from '@auxx/credentials'
+import { database, schema } from '@auxx/database'
+import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
 import { triggerAppEvent } from '../app-events'
-import { logger, safeSerializeMetadata } from './utils'
+import { fromDatabase } from '../shared/utils'
 import type { DecryptedConnectionData } from './types'
+import { logger, safeSerializeMetadata } from './utils'
 
 /**
  * Delete app connection

@@ -6,12 +6,12 @@ import { BaseSchemaNode, type BaseSchemaOptions } from './base-node.js'
  * Supported string formats following JSON Schema spec
  */
 export type StringFormat =
-  | 'date'      // Date without time (YYYY-MM-DD)
-  | 'datetime'  // Date with time (ISO 8601)
-  | 'time'      // Time without date (HH:mm:ss)
-  | 'email'     // Email address
-  | 'url'       // URL
-  | 'uri'       // URI
+  | 'date' // Date without time (YYYY-MM-DD)
+  | 'datetime' // Date with time (ISO 8601)
+  | 'time' // Time without date (HH:mm:ss)
+  | 'email' // Email address
+  | 'url' // URL
+  | 'uri' // URI
 
 /**
  * Options for string schema fields

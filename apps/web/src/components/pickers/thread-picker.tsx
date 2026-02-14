@@ -2,8 +2,8 @@
 
 'use client'
 
-import React, { useState } from 'react'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   Command,
   CommandEmpty,
@@ -12,11 +12,12 @@ import {
   CommandItem,
   CommandList,
 } from '@auxx/ui/components/command'
-import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { Check, MessageSquare, Users, Clock } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
+import { Check, Clock, MessageSquare, Users } from 'lucide-react'
+import type React from 'react'
+import { useState } from 'react'
 
 export interface ThreadData {
   id: string
@@ -108,16 +109,16 @@ export function ThreadPicker({
       <PopoverTrigger asChild>
         {children || (
           <Button
-            variant="outline"
+            variant='outline'
             disabled={disabled}
             className={cn('w-full justify-start', className)}>
             {selectedThread ? (
-              <div className="flex items-center gap-2 truncate">
-                <MessageSquare className="h-4 w-4 shrink-0" />
-                <span className="truncate">{getThreadDisplay(selectedThread).subject}</span>
+              <div className='flex items-center gap-2 truncate'>
+                <MessageSquare className='h-4 w-4 shrink-0' />
+                <span className='truncate'>{getThreadDisplay(selectedThread).subject}</span>
               </div>
             ) : (
-              <span className="text-muted-foreground">{placeholder}</span>
+              <span className='text-muted-foreground'>{placeholder}</span>
             )}
           </Button>
         )}
@@ -125,13 +126,13 @@ export function ThreadPicker({
       <PopoverContent className={cn('w-[400px] p-0', className)} {...props}>
         <Command>
           <CommandInput
-            placeholder="Search threads..."
+            placeholder='Search threads...'
             value={searchValue}
             onValueChange={setSearchValue}
           />
           <CommandList>
             <CommandEmpty>No threads found.</CommandEmpty>
-            <CommandGroup heading="Threads">
+            <CommandGroup heading='Threads'>
               {filteredThreads.map((thread) => {
                 const display = getThreadDisplay(thread)
                 const isSelected = thread.id === selectedId
@@ -141,24 +142,24 @@ export function ThreadPicker({
                     key={thread.id}
                     value={thread.id}
                     onSelect={() => handleThreadSelect(thread.id)}
-                    className="flex items-start justify-between py-3">
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        <span className="font-medium truncate">{display.subject}</span>
+                    className='flex items-start justify-between py-3'>
+                    <div className='flex-1 space-y-1'>
+                      <div className='flex items-center gap-2'>
+                        <MessageSquare className='h-4 w-4 shrink-0 text-muted-foreground' />
+                        <span className='font-medium truncate'>{display.subject}</span>
                       </div>
 
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Users className="h-3 w-3" />
+                      <div className='flex items-center gap-3 text-xs text-muted-foreground'>
+                        <div className='flex items-center gap-1'>
+                          <Users className='h-3 w-3' />
                           <span>{display.participants}</span>
                         </div>
 
                         {display.messageCount > 0 && <span>{display.messageCount} messages</span>}
 
                         {display.lastMessageAt && (
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
+                          <div className='flex items-center gap-1'>
+                            <Clock className='h-3 w-3' />
                             <span>
                               {formatDistanceToNow(new Date(display.lastMessageAt), {
                                 addSuffix: true,
@@ -171,13 +172,13 @@ export function ThreadPicker({
                       {thread.status && thread.status !== 'open' && (
                         <Badge
                           variant={thread.status === 'closed' ? 'secondary' : 'outline'}
-                          className="text-xs">
+                          className='text-xs'>
                           {thread.status}
                         </Badge>
                       )}
                     </div>
 
-                    {isSelected && <Check className="ml-2 h-4 w-4 shrink-0" />}
+                    {isSelected && <Check className='ml-2 h-4 w-4 shrink-0' />}
                   </CommandItem>
                 )
               })}

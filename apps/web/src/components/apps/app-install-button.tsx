@@ -2,19 +2,19 @@
 
 'use client'
 
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { api } from '~/trpc/react'
-import { toastError } from '@auxx/ui/components/toast'
-import { useRouter } from 'next/navigation'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { ChevronDown, Code } from 'lucide-react'
-import { Badge } from '@auxx/ui/components/badge'
+import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
+import { ChevronDown, Code } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { api } from '~/trpc/react'
 
 /**
  * Props for AppInstallButton component
@@ -94,11 +94,11 @@ export default function AppInstallButton({
   if (isInstalled) {
     return (
       <Button
-        variant="destructive"
-        size="sm"
+        variant='destructive'
+        size='sm'
         onClick={handleUninstall}
         loading={isPending}
-        loadingText="Uninstalling...">
+        loadingText='Uninstalling...'>
         Uninstall
       </Button>
     )
@@ -109,16 +109,16 @@ export default function AppInstallButton({
 
   // Not installed - show split button with dropdown
   return (
-    <div className="flex">
+    <div className='flex'>
       {/* Main install button */}
       <Button
-        variant="default"
-        size="sm"
+        variant='default'
+        size='sm'
         onClick={() => recommendedVersion && handleInstall(recommendedVersion.id)}
         loading={isPending}
-        loadingText="Installing..."
+        loadingText='Installing...'
         disabled={!recommendedVersion}
-        className="rounded-r-none border-r-0">
+        className='rounded-r-none border-r-0'>
         Install
       </Button>
 
@@ -126,37 +126,37 @@ export default function AppInstallButton({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="default"
-            size="icon-sm"
-            className="rounded-l-none border-l focus:ring-0 focus-visible:ring-offset-0"
+            variant='default'
+            size='icon-sm'
+            className='rounded-l-none border-l focus:ring-0 focus-visible:ring-offset-0'
             disabled={isPending}>
-            <ChevronDown className="size-4" />
+            <ChevronDown className='size-4' />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-[250px]">
+        <DropdownMenuContent align='end' className='w-[250px]'>
           {availableVersions.map((version) => (
             <DropdownMenuItem
               key={version.id}
               onClick={() => handleInstall(version.id)}
               disabled={version.status !== 'active'}
-              className="">
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">v{version.versionString}</span>
+              className=''>
+              <div className='flex items-center justify-between w-full'>
+                <div className='flex items-center gap-2'>
+                  <span className='font-medium'>v{version.versionString}</span>
                   {version.status !== 'active' && (
-                    <Badge variant="outline" className="text-xs">
+                    <Badge variant='outline' className='text-xs'>
                       {version.status}
                     </Badge>
                   )}
-                  <div className="text-xs text-muted-foreground">
+                  <div className='text-xs text-muted-foreground'>
                     {version.releasedAt
                       ? format(new Date(version.releasedAt), 'MMM d, yyyy')
                       : 'Not released'}
                   </div>
                 </div>
                 {version.versionType === 'dev' && (
-                  <Badge variant="secondary" className="text-xs">
-                    <Code className="size-3" />
+                  <Badge variant='secondary' className='text-xs'>
+                    <Code className='size-3' />
                     Dev
                   </Badge>
                 )}

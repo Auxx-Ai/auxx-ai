@@ -215,7 +215,7 @@ function AutosizeInput({
     <div className={className} style={combinedWrapperStyle}>
       <input
         ref={inputRef}
-        type="text"
+        type='text'
         value={value}
         defaultValue={defaultValue}
         placeholder={placeholder}
@@ -225,13 +225,13 @@ function AutosizeInput({
       />
 
       {/* Hidden sizer for content width measurement */}
-      <div ref={sizerRef} style={sizerStyle} aria-hidden="true">
+      <div ref={sizerRef} style={sizerStyle} aria-hidden='true'>
         {sizerValue}
       </div>
 
       {/* Hidden sizer for placeholder width measurement */}
       {placeholder && (
-        <div ref={placeholderSizerRef} style={sizerStyle} aria-hidden="true">
+        <div ref={placeholderSizerRef} style={sizerStyle} aria-hidden='true'>
           {placeholder}
         </div>
       )}

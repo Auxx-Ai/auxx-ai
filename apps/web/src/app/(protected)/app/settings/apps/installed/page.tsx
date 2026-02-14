@@ -1,10 +1,10 @@
 'use client'
+import { Input } from '@auxx/ui/components/input'
 // apps/web/src/app/(protected)/app/settings/apps/installed/page.tsx
 import React, { useState } from 'react'
-import SettingsPage from '~/components/global/settings-page'
-import { Input } from '@auxx/ui/components/input'
-import { api } from '~/trpc/react'
 import { AppListCard } from '~/components/apps/app-list-card'
+import SettingsPage from '~/components/global/settings-page'
+import { api } from '~/trpc/react'
 
 /**
  * AppsInstalledListPage component
@@ -48,34 +48,34 @@ export default function AppsInstalledListPage() {
 
   return (
     <SettingsPage
-      title="Installed Apps"
-      description="Manage your installed applications"
+      title='Installed Apps'
+      description='Manage your installed applications'
       breadcrumbs={[
         { title: 'Settings', href: '/app/settings' },
         { title: 'Apps', href: '/app/settings/apps' },
         { title: 'Installed' },
       ]}
       button={<></>}>
-      <div className="flex flex-col flex-1 p-6 space-y-6 @container">
+      <div className='flex flex-col flex-1 p-6 space-y-6 @container'>
         <Input
-          placeholder="Search installed apps"
+          placeholder='Search installed apps'
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
 
         {filteredInstalledApps.length === 0 && searchQuery.trim() ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <div className="text-base font-medium mb-2">No apps found</div>
-            <div className="text-sm">
+          <div className='text-center py-12 text-muted-foreground'>
+            <div className='text-base font-medium mb-2'>No apps found</div>
+            <div className='text-sm'>
               Try adjusting your search query to find what you're looking for
             </div>
           </div>
         ) : filteredInstalledApps.length === 0 ? (
-          <div className="border bg-primary-50 w-full p-6 rounded-2xl text-center text-sm text-muted-foreground">
+          <div className='border bg-primary-50 w-full p-6 rounded-2xl text-center text-sm text-muted-foreground'>
             No apps installed yet
           </div>
         ) : (
-          <div className="grid w-full gap-2 @sm:grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3">
+          <div className='grid w-full gap-2 @sm:grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3'>
             {filteredInstalledApps.map(({ app }) => (
               <AppListCard
                 key={app.id}

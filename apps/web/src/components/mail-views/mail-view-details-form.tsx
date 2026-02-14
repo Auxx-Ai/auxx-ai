@@ -1,32 +1,32 @@
 // components/mail/mail-views/mail-view-details-form.tsx
 'use client'
 
-import { useFormContext } from 'react-hook-form'
-import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
 import {
+  FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
-  FormControl,
-  FormDescription,
   FormMessage,
 } from '@auxx/ui/components/form'
-import { MailViewFormValues } from './mail-view-dialog'
+import { Input } from '@auxx/ui/components/input'
+import { Textarea } from '@auxx/ui/components/textarea'
+import { useFormContext } from 'react-hook-form'
+import type { MailViewFormValues } from './mail-view-dialog'
 
 export function MailViewDetailsForm() {
   const { control } = useFormContext<MailViewFormValues>()
 
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       <FormField
         control={control}
-        name="name"
+        name='name'
         render={({ field }) => (
           <FormItem>
             <FormLabel>Name</FormLabel>
             <FormControl>
-              <Input placeholder="My Mail View" {...field} />
+              <Input placeholder='My Mail View' {...field} />
             </FormControl>
             <FormDescription>A name to identify this view</FormDescription>
             <FormMessage />
@@ -36,12 +36,12 @@ export function MailViewDetailsForm() {
 
       <FormField
         control={control}
-        name="description"
+        name='description'
         render={({ field }) => (
           <FormItem>
             <FormLabel>Description</FormLabel>
             <FormControl>
-              <Textarea placeholder="Optional description..." {...field} />
+              <Textarea placeholder='Optional description...' {...field} />
             </FormControl>
             <FormDescription>Briefly describe what this view shows</FormDescription>
             <FormMessage />

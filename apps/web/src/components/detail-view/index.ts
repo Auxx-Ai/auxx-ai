@@ -1,17 +1,15 @@
 // apps/web/src/components/detail-view/index.ts
 
-// Main component
-export { DetailView } from './detail-view'
-
-// Sub-components
-export { DetailViewSidebar } from './detail-view-sidebar'
-export { DetailViewMainTabs } from './detail-view-main-tabs'
-export { DetailViewSkeleton } from './detail-view-skeleton'
-export { DetailViewNotFound } from './detail-view-not-found'
-
+export { DetailViewActions } from './components/detail-view-actions'
 // Component sub-components
 export { DetailViewCardHeader } from './components/detail-view-card-header'
-export { DetailViewActions } from './components/detail-view-actions'
+// Main component
+export { DetailView } from './detail-view'
+export { DetailViewMainTabs } from './detail-view-main-tabs'
+export { DetailViewNotFound } from './detail-view-not-found'
+// Sub-components
+export { DetailViewSidebar } from './detail-view-sidebar'
+export { DetailViewSkeleton } from './detail-view-skeleton'
 
 // Tab registry
 export {
@@ -19,22 +17,20 @@ export {
   getDetailViewTabComponent,
   hasDetailViewTabComponent,
 } from './detail-view-tab-registry'
-
-// Utilities
-export { getIconComponent } from './utils'
-
 // Types
 export type {
-  DetailViewProps,
-  DetailViewTabProps,
-  DetailViewSidebarProps,
-  DetailViewMainTabsProps,
-  DetailViewCardHeaderProps,
   DetailViewActionsProps,
-  DetailViewSkeletonProps,
-  DetailViewNotFoundProps,
-  TabComponentLoader,
+  DetailViewCardHeaderProps,
   DetailViewConfig,
+  DetailViewMainTabsProps,
+  DetailViewNotFoundProps,
+  DetailViewProps,
+  DetailViewSidebarProps,
+  DetailViewSkeletonProps,
+  DetailViewTabProps,
   MainTabDefinition,
   SidebarTabDefinition,
+  TabComponentLoader,
 } from './types'
+// Utilities
+export { getIconComponent } from './utils'

@@ -77,8 +77,7 @@ export interface HydrationStoreActions<TValue> {
 /**
  * Combined state and actions for a hydration store
  */
-export type HydrationStore<TValue> = HydrationStoreState<TValue> &
-  HydrationStoreActions<TValue>
+export type HydrationStore<TValue> = HydrationStoreState<TValue> & HydrationStoreActions<TValue>
 
 /**
  * Initial state factory
@@ -109,9 +108,7 @@ function createInitialState<TValue>(): HydrationStoreState<TValue> {
  * })
  * ```
  */
-export function createHydrationStore<TValue>(
-  options: HydrationStoreOptions<TValue>
-) {
+export function createHydrationStore<TValue>(options: HydrationStoreOptions<TValue>) {
   const initialState = createInitialState<TValue>()
 
   const store = create<HydrationStore<TValue>>()(
@@ -170,9 +167,7 @@ export function createHydrationStore<TValue>(
           // Add found items
           for (const [key, value] of Object.entries(items)) {
             // If getKeyFromValue is provided, use it to determine the actual key
-            const actualKey = options.getKeyFromValue
-              ? options.getKeyFromValue(value)
-              : key
+            const actualKey = options.getKeyFromValue ? options.getKeyFromValue(value) : key
 
             newLoading.delete(key)
             newLoading.delete(actualKey)
@@ -325,9 +320,7 @@ export function createHydrationHooks<TValue>(
 /**
  * Convenience function that creates both store and hooks
  */
-export function createHydrationStoreWithHooks<TValue>(
-  options: HydrationStoreOptions<TValue>
-) {
+export function createHydrationStoreWithHooks<TValue>(options: HydrationStoreOptions<TValue>) {
   const useStore = createHydrationStore<TValue>(options)
   const hooks = createHydrationHooks(useStore)
 

@@ -2,10 +2,10 @@
 
 'use client'
 
+import type { FieldGroup, ImportableField } from '@auxx/lib/import'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { useMemo } from 'react'
 import { useResourceFields } from '~/components/resources'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
-import type { ImportableField, FieldGroup } from '@auxx/lib/import'
 
 /** Options for useImportFields hook */
 interface UseImportFieldsOptions {

@@ -1,10 +1,10 @@
 // apps/api/src/routes/me.ts
 
-import { Hono } from 'hono'
-import { authMiddleware } from '../middleware/auth'
-import { successResponse, errorResponse, ERROR_STATUS_MAP } from '../lib/response'
-import type { AppContext } from '../types/context'
 import { getMe } from '@auxx/services/users'
+import { Hono } from 'hono'
+import { ERROR_STATUS_MAP, errorResponse, successResponse } from '../lib/response'
+import { authMiddleware } from '../middleware/auth'
+import type { AppContext } from '../types/context'
 
 /** Router handling /api/v1/me endpoints */
 const me = new Hono<AppContext>()

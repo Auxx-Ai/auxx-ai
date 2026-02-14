@@ -5,4 +5,4 @@
  */
 
 // UI Components
-export { FileItem, FileQueueManager, type FileItemProps, type FileQueueManagerProps } from './ui'
+export { FileItem, type FileItemProps, FileQueueManager, type FileQueueManagerProps } from './ui'

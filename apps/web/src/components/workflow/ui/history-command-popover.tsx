@@ -2,9 +2,7 @@
 
 'use client'
 
-import React from 'react'
 import { Button } from '@auxx/ui/components/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
   Command,
   CommandEmpty,
@@ -13,11 +11,13 @@ import {
   CommandItem,
   CommandList,
 } from '@auxx/ui/components/command'
-import { History, Clock } from 'lucide-react'
-import { useHistoryManager } from '~/components/workflow/store/workflow-store-provider'
-import { NavigationHistoryEntry } from '~/components/workflow/store/history-manager'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
+import { Clock, History } from 'lucide-react'
+import React from 'react'
 import { Tooltip } from '~/components/global/tooltip'
+import type { NavigationHistoryEntry } from '~/components/workflow/store/history-manager'
+import { useHistoryManager } from '~/components/workflow/store/workflow-store-provider'
 
 interface HistoryCommandPopoverProps {
   open: boolean
@@ -72,25 +72,25 @@ export function HistoryCommandPopover({ open, onOpenChange }: HistoryCommandPopo
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <Tooltip content="View and navigate history">
+      <Tooltip content='View and navigate history'>
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="icon-sm" className="hover:dark:bg-white/15">
+          <Button variant='ghost' size='icon-sm' className='hover:dark:bg-white/15'>
             <History />
           </Button>
         </PopoverTrigger>
       </Tooltip>
-      <PopoverContent className="w-80 p-0 backdrop-blur-sm bg-transparent" align="start">
-        <Command className="bg-transparent">
-          <CommandInput placeholder="Search history..." className="h-9" />
+      <PopoverContent className='w-80 p-0 backdrop-blur-sm bg-transparent' align='start'>
+        <Command className='bg-transparent'>
+          <CommandInput placeholder='Search history...' className='h-9' />
           <CommandList>
             <CommandEmpty>
-              <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
-                <Clock className="w-4 h-4" />
+              <div className='flex items-center gap-2 p-4 text-sm text-muted-foreground'>
+                <Clock className='w-4 h-4' />
                 No history entries found.
               </div>
             </CommandEmpty>
             {historyEntries.length > 0 && (
-              <CommandGroup heading="History Timeline">
+              <CommandGroup heading='History Timeline'>
                 {historyEntries.map((entry, index) => (
                   <CommandItem
                     key={entry.id}
@@ -99,7 +99,7 @@ export function HistoryCommandPopover({ open, onOpenChange }: HistoryCommandPopo
                       'flex items-center gap-3 justify-between cursor-pointer data-[selected=true]:bg-info/10'
                       // entry.relativePosition === 0 && 'bg-accent/50 font-medium'
                     )}>
-                    <span className="text-sm">{entry.actionDescription}</span>
+                    <span className='text-sm'>{entry.actionDescription}</span>
                     <span
                       className={cn(
                         'text-xs',

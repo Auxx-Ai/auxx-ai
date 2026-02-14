@@ -1,41 +1,34 @@
 // apps/web/src/components/custom-fields/ui/entity-definition-dialog.tsx
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import type { FieldType } from '@auxx/database/types'
+import { PRIMARY_DISPLAY_ELIGIBLE_TYPES } from '@auxx/lib/custom-fields/client'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Field,
-  FieldLabel,
   FieldDescription,
   FieldError,
   FieldGroup,
+  FieldLabel,
 } from '@auxx/ui/components/field'
+import { IconPicker, type IconPickerValue } from '@auxx/ui/components/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
+import { Input } from '@auxx/ui/components/input'
 import {
   InputGroup,
-  InputGroupInput,
   InputGroupAddon,
+  InputGroupInput,
   InputGroupText,
 } from '@auxx/ui/components/input-group'
-import { Input } from '@auxx/ui/components/input'
-import { Button } from '@auxx/ui/components/button'
-import { EntityIcon } from '@auxx/ui/components/icons'
-import { IconPicker, type IconPickerValue } from '@auxx/ui/components/icon-picker'
-import { api } from '~/trpc/react'
-import { toastError } from '@auxx/ui/components/toast'
-import { useEntityDefinitionMutations, useResource, useResourceFields } from '~/components/resources/hooks'
-import { Check, X } from 'lucide-react'
-import { Spinner } from '@auxx/ui/components/spinner'
-import { useDebouncedCallback } from '~/hooks/use-debounced-value'
-import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
-import { useDirtyCheck } from '~/hooks/use-dirty-state'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Select,
   SelectContent,
@@ -43,9 +36,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { Spinner } from '@auxx/ui/components/spinner'
+import { toastError } from '@auxx/ui/components/toast'
+import { Check, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  useEntityDefinitionMutations,
+  useResource,
+  useResourceFields,
+} from '~/components/resources/hooks'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
-import { PRIMARY_DISPLAY_ELIGIBLE_TYPES } from '@auxx/lib/custom-fields/client'
-import type { FieldType } from '@auxx/database/types'
+import { useDebouncedCallback } from '~/hooks/use-debounced-value'
+import { useDirtyCheck } from '~/hooks/use-dirty-state'
+import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
+import { api } from '~/trpc/react'
 import { CustomFieldDialog } from './custom-field-dialog'
 
 /** Props for EntityDefinitionDialog */
@@ -76,7 +80,8 @@ export function EntityDefinitionDialog({
   onSuccess,
 }: EntityDefinitionDialogProps) {
   // Get resource from store (for edit mode)
-  const { resource: editingResource, isLoading: isResourceLoading } = useResource(entityDefinitionId)
+  const { resource: editingResource, isLoading: isResourceLoading } =
+    useResource(entityDefinitionId)
 
   // Get fields from store (for display field selects)
   const { fields } = useResourceFields(entityDefinitionId)
@@ -130,7 +135,15 @@ export function EntityDefinitionDialog({
       secondaryDisplayFieldId,
       avatarFieldId,
     }),
-    [iconValue, singular, plural, slug, primaryDisplayFieldId, secondaryDisplayFieldId, avatarFieldId]
+    [
+      iconValue,
+      singular,
+      plural,
+      slug,
+      primaryDisplayFieldId,
+      secondaryDisplayFieldId,
+      avatarFieldId,
+    ]
   )
 
   // Track dirty state for unsaved changes warning
@@ -370,221 +383,225 @@ export function EntityDefinitionDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent size="sm" position="tc" {...guardProps}>
-        <DialogHeader>
-          <DialogTitle>{isEditing ? 'Edit Entity' : 'Create New Entity'}</DialogTitle>
-          <DialogDescription>
-            {isEditing
-              ? 'Update this entity definition.'
-              : 'Create a custom entity to organize your data.'}
-          </DialogDescription>
-        </DialogHeader>
+        <DialogContent size='sm' position='tc' {...guardProps}>
+          <DialogHeader>
+            <DialogTitle>{isEditing ? 'Edit Entity' : 'Create New Entity'}</DialogTitle>
+            <DialogDescription>
+              {isEditing
+                ? 'Update this entity definition.'
+                : 'Create a custom entity to organize your data.'}
+            </DialogDescription>
+          </DialogHeader>
 
-        <form onSubmit={handleSubmit}>
-          <FieldGroup className="gap-4">
-            {/* Row 1: Icon + Name fields (order depends on mode) */}
-            <div className="grid grid-cols-[30px_1fr_1fr] gap-2 items-end">
+          <form onSubmit={handleSubmit}>
+            <FieldGroup className='gap-4'>
+              {/* Row 1: Icon + Name fields (order depends on mode) */}
+              <div className='grid grid-cols-[30px_1fr_1fr] gap-2 items-end'>
+                <Field>
+                  <FieldLabel className='sr-only'>Icon</FieldLabel>
+                  <IconPicker value={iconValue} onChange={setIconValue} modal={false}>
+                    {/* <Button variant="ghost" size="icon" type="button" className="rounded-md"> */}
+                    <div>
+                      <EntityIcon
+                        iconId={iconValue.icon}
+                        color={iconValue.color}
+                        className='size-7.5! border rounded-full'
+                      />
+                    </div>
+                    {/* </Button> */}
+                  </IconPicker>
+                </Field>
+
+                {isEditing ? (
+                  <>
+                    {/* Edit mode: Singular first, then Plural */}
+                    <Field>
+                      <FieldLabel>Singular</FieldLabel>
+                      <Input
+                        placeholder='Customer'
+                        value={singular}
+                        onChange={(e) => setSingular(e.target.value)}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel>Plural</FieldLabel>
+                      <Input
+                        placeholder='Customers'
+                        value={plural}
+                        onChange={(e) => setPlural(e.target.value)}
+                      />
+                    </Field>
+                  </>
+                ) : (
+                  <>
+                    {/* Create mode: Plural first (drives slug), then Singular */}
+                    <Field>
+                      <FieldLabel>Plural</FieldLabel>
+                      <Input
+                        placeholder='Customers'
+                        value={plural}
+                        onChange={(e) => handlePluralChange(e.target.value)}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel>Singular</FieldLabel>
+                      <Input
+                        placeholder='Customer'
+                        value={singular}
+                        onChange={(e) => {
+                          setSingular(e.target.value)
+                          setSingularTouched(true)
+                        }}
+                      />
+                    </Field>
+                  </>
+                )}
+              </div>
+
+              {/* Row 2: Slug */}
               <Field>
-                <FieldLabel className="sr-only">Icon</FieldLabel>
-                <IconPicker value={iconValue} onChange={setIconValue} modal={false}>
-                  {/* <Button variant="ghost" size="icon" type="button" className="rounded-md"> */}
-                  <div>
-                    <EntityIcon
-                      iconId={iconValue.icon}
-                      color={iconValue.color}
-                      className="size-7.5! border rounded-full"
-                    />
-                  </div>
-                  {/* </Button> */}
-                </IconPicker>
+                <FieldLabel>Slug</FieldLabel>
+                <InputGroup>
+                  <InputGroupAddon align='inline-start'>
+                    <InputGroupText>/</InputGroupText>
+                  </InputGroupAddon>
+                  <InputGroupInput
+                    placeholder='customers'
+                    value={slug}
+                    onChange={(e) => handleSlugChange(e.target.value)}
+                    disabled={isEditing}
+                  />
+                  <InputGroupAddon align='inline-end'>
+                    {isCheckingSlug ? (
+                      <Spinner />
+                    ) : slug && !isEditing ? (
+                      slugExists === false ? (
+                        <Check className='size-4 text-success' />
+                      ) : slugExists === true ? (
+                        <X className='size-4 text-destructive' />
+                      ) : null
+                    ) : null}
+                  </InputGroupAddon>
+                </InputGroup>
+                <FieldDescription>
+                  {isEditing
+                    ? 'Slug cannot be changed after creation.'
+                    : 'A unique identifier for API access (cannot be changed later).'}
+                </FieldDescription>
+                {slugExists === true && !isEditing && (
+                  <FieldError>
+                    {slugReason === 'reserved'
+                      ? 'This slug is reserved for system entities.'
+                      : 'This slug is already taken.'}
+                  </FieldError>
+                )}
               </Field>
 
-              {isEditing ? (
+              {/* Display Field Configuration (only when editing and has fields) */}
+              {isEditing && fields.length > 0 && (
                 <>
-                  {/* Edit mode: Singular first, then Plural */}
-                  <Field>
-                    <FieldLabel>Singular</FieldLabel>
-                    <Input
-                      placeholder="Customer"
-                      value={singular}
-                      onChange={(e) => setSingular(e.target.value)}
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel>Plural</FieldLabel>
-                    <Input
-                      placeholder="Customers"
-                      value={plural}
-                      onChange={(e) => setPlural(e.target.value)}
-                    />
-                  </Field>
-                </>
-              ) : (
-                <>
-                  {/* Create mode: Plural first (drives slug), then Singular */}
-                  <Field>
-                    <FieldLabel>Plural</FieldLabel>
-                    <Input
-                      placeholder="Customers"
-                      value={plural}
-                      onChange={(e) => handlePluralChange(e.target.value)}
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel>Singular</FieldLabel>
-                    <Input
-                      placeholder="Customer"
-                      value={singular}
-                      onChange={(e) => {
-                        setSingular(e.target.value)
-                        setSingularTouched(true)
-                      }}
-                    />
-                  </Field>
-                </>
-              )}
-            </div>
+                  <div className='border-t pt-4 mt-2'>
+                    <p className='text-sm font-medium mb-3'>Display Fields</p>
+                    <p className='text-xs text-muted-foreground'>
+                      Configure which fields are shown when this entity appears in pickers and
+                      lists.
+                    </p>
+                  </div>
 
-            {/* Row 2: Slug */}
-            <Field>
-              <FieldLabel>Slug</FieldLabel>
-              <InputGroup>
-                <InputGroupAddon align="inline-start">
-                  <InputGroupText>/</InputGroupText>
-                </InputGroupAddon>
-                <InputGroupInput
-                  placeholder="customers"
-                  value={slug}
-                  onChange={(e) => handleSlugChange(e.target.value)}
-                  disabled={isEditing}
-                />
-                <InputGroupAddon align="inline-end">
-                  {isCheckingSlug ? (
-                    <Spinner />
-                  ) : slug && !isEditing ? (
-                    slugExists === false ? (
-                      <Check className="size-4 text-success" />
-                    ) : slugExists === true ? (
-                      <X className="size-4 text-destructive" />
-                    ) : null
-                  ) : null}
-                </InputGroupAddon>
-              </InputGroup>
-              <FieldDescription>
-                {isEditing
-                  ? 'Slug cannot be changed after creation.'
-                  : 'A unique identifier for API access (cannot be changed later).'}
-              </FieldDescription>
-              {slugExists === true && !isEditing && (
-                <FieldError>
-                  {slugReason === 'reserved'
-                    ? 'This slug is reserved for system entities.'
-                    : 'This slug is already taken.'}
-                </FieldError>
-              )}
-            </Field>
-
-            {/* Display Field Configuration (only when editing and has fields) */}
-            {isEditing && fields.length > 0 && (
-              <>
-                <div className="border-t pt-4 mt-2">
-                  <p className="text-sm font-medium mb-3">Display Fields</p>
-                  <p className="text-xs text-muted-foreground">
-                    Configure which fields are shown when this entity appears in pickers and lists.
-                  </p>
-                </div>
-
-                <Field>
-                  <VarEditorField className="p-0">
-                    <VarEditorFieldRow
-                      title="Display Field"
-                      description="This field will be shown as the main name in pickers">
-                      <Select
-                        value={primaryDisplayFieldId ?? 'none'}
-                        onValueChange={(v) => setPrimaryDisplayFieldId(v === 'none' ? null : v)}>
-                        <SelectTrigger variant="transparent" size="sm">
-                          <SelectValue placeholder="Select field for display name" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          {fields
-                            .filter((f) =>
-                              PRIMARY_DISPLAY_ELIGIBLE_TYPES.includes(f.fieldType as FieldType)
-                            )
-                            .map((field) => (
+                  <Field>
+                    <VarEditorField className='p-0'>
+                      <VarEditorFieldRow
+                        title='Display Field'
+                        description='This field will be shown as the main name in pickers'>
+                        <Select
+                          value={primaryDisplayFieldId ?? 'none'}
+                          onValueChange={(v) => setPrimaryDisplayFieldId(v === 'none' ? null : v)}>
+                          <SelectTrigger variant='transparent' size='sm'>
+                            <SelectValue placeholder='Select field for display name' />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value='none'>None</SelectItem>
+                            {fields
+                              .filter((f) =>
+                                PRIMARY_DISPLAY_ELIGIBLE_TYPES.includes(f.fieldType as FieldType)
+                              )
+                              .map((field) => (
+                                <SelectItem key={field.id} value={field.id}>
+                                  {field.label}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </VarEditorFieldRow>
+                      <VarEditorFieldRow
+                        title='Subtitle Field'
+                        description='Optional subtitle shown below the primary name'>
+                        <Select
+                          value={secondaryDisplayFieldId ?? 'none'}
+                          onValueChange={(v) =>
+                            setSecondaryDisplayFieldId(v === 'none' ? null : v)
+                          }>
+                          <SelectTrigger variant='transparent' size='sm'>
+                            <SelectValue placeholder='Select field for subtitle' />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value='none'>None</SelectItem>
+                            {fields.map((field) => (
                               <SelectItem key={field.id} value={field.id}>
                                 {field.label}
                               </SelectItem>
                             ))}
-                        </SelectContent>
-                      </Select>
-                    </VarEditorFieldRow>
-                    <VarEditorFieldRow
-                      title="Subtitle Field"
-                      description="Optional subtitle shown below the primary name">
-                      <Select
-                        value={secondaryDisplayFieldId ?? 'none'}
-                        onValueChange={(v) => setSecondaryDisplayFieldId(v === 'none' ? null : v)}>
-                        <SelectTrigger variant="transparent" size="sm">
-                          <SelectValue placeholder="Select field for subtitle" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          {fields.map((field) => (
-                            <SelectItem key={field.id} value={field.id}>
-                              {field.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </VarEditorFieldRow>
-                    <VarEditorFieldRow
-                      title="Avatar Field"
-                      description="Image field to use as avatar in pickers">
-                      <Select
-                        value={avatarFieldId ?? 'none'}
-                        onValueChange={(v) => setAvatarFieldId(v === 'none' ? null : v)}>
-                        <SelectTrigger variant="transparent" size="sm">
-                          <SelectValue placeholder="Select field for avatar" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          {fields
-                            .filter((f) => f.fieldType === 'URL' || f.fieldType === 'FILE')
-                            .map((field) => (
-                              <SelectItem key={field.id} value={field.id}>
-                                {field.label}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                    </VarEditorFieldRow>
-                  </VarEditorField>
-                </Field>
-              </>
-            )}
-          </FieldGroup>
+                          </SelectContent>
+                        </Select>
+                      </VarEditorFieldRow>
+                      <VarEditorFieldRow
+                        title='Avatar Field'
+                        description='Image field to use as avatar in pickers'>
+                        <Select
+                          value={avatarFieldId ?? 'none'}
+                          onValueChange={(v) => setAvatarFieldId(v === 'none' ? null : v)}>
+                          <SelectTrigger variant='transparent' size='sm'>
+                            <SelectValue placeholder='Select field for avatar' />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value='none'>None</SelectItem>
+                            {fields
+                              .filter((f) => f.fieldType === 'URL' || f.fieldType === 'FILE')
+                              .map((field) => (
+                                <SelectItem key={field.id} value={field.id}>
+                                  {field.label}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </VarEditorFieldRow>
+                    </VarEditorField>
+                  </Field>
+                </>
+              )}
+            </FieldGroup>
 
-          <DialogFooter>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={guardedClose}
-              disabled={isPending}>
-              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              type="submit"
-              loading={isPending}
-              loadingText="Saving..."
-              disabled={!isValid || isPending}>
-              {isEditing ? 'Update Entity' : 'Create Entity'} <KbdSubmit variant="outline" size="sm" />
-            </Button>
-          </DialogFooter>
-        </form>
+            <DialogFooter>
+              <Button
+                type='button'
+                size='sm'
+                variant='ghost'
+                onClick={guardedClose}
+                disabled={isPending}>
+                Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
+              </Button>
+              <Button
+                variant='outline'
+                size='sm'
+                type='submit'
+                loading={isPending}
+                loadingText='Saving...'
+                disabled={!isValid || isPending}>
+                {isEditing ? 'Update Entity' : 'Create Entity'}{' '}
+                <KbdSubmit variant='outline' size='sm' />
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

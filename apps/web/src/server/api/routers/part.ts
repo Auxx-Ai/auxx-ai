@@ -1,8 +1,8 @@
 // apps/web/src/server/api/routers/part.ts
 
+import { PartService } from '@auxx/lib/parts'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { PartService } from '@auxx/lib/parts'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 /**
@@ -104,20 +104,18 @@ export const partRouter = createTRPCRouter({
   /**
    * Get a single part by ID
    */
-  byId: protectedProcedure
-    .input(z.object({ id: z.string() }))
-    .query(async ({ ctx, input }) => {
-      try {
-        const { organizationId, userId } = ctx.session
-        const partService = new PartService(organizationId, userId)
-        return await partService.getPartById(input.id)
-      } catch (error: any) {
-        if (error.message.includes('not found')) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: error.message })
-        }
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message })
+  byId: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
+    try {
+      const { organizationId, userId } = ctx.session
+      const partService = new PartService(organizationId, userId)
+      return await partService.getPartById(input.id)
+    } catch (error: any) {
+      if (error.message.includes('not found')) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: error.message })
       }
-    }),
+      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message })
+    }
+  }),
 
   /**
    * Update a part

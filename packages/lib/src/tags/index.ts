@@ -2,10 +2,10 @@
 
 // TagService - CRUD operations for tags using UnifiedCrudHandler
 export {
-  TagService,
-  type TagData,
-  type TagWithChildren,
   type CreateTagInput,
+  type TagData,
+  TagService,
+  type TagWithChildren,
   type UpdateTagInput,
 } from './tag-service'
 

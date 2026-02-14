@@ -1,6 +1,6 @@
 // apps/web/src/components/pickers/date-time-picker/utils.ts
 
-import { format, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns'
+import { format, setHours, setMilliseconds, setMinutes, setSeconds } from 'date-fns'
 import { Period } from './types'
 
 /**

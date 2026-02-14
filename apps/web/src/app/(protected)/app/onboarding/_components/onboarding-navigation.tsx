@@ -1,8 +1,8 @@
 // apps/web/src/app/(protected)/app/onboarding/_components/onboarding-navigation.tsx
 'use client'
 
-import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
 
 /**
  * Props for OnboardingNavigation component
@@ -36,30 +36,30 @@ export function OnboardingNavigation({
   continueLoading = false,
 }: OnboardingNavigationProps) {
   return (
-    <div className="flex items-center justify-between pt-6">
+    <div className='flex items-center justify-between pt-6'>
       <div>
         {showBack && onBack && (
-          <Button type="button" variant="ghost" onClick={onBack} className="gap-2">
+          <Button type='button' variant='ghost' onClick={onBack} className='gap-2'>
             Back
           </Button>
         )}
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className='flex items-center gap-3'>
         {showSkip && onSkip && (
-          <Button type="button" variant="ghost" onClick={onSkip}>
+          <Button type='button' variant='ghost' onClick={onSkip}>
             {skipText}
           </Button>
         )}
 
         {showContinue && onContinue && (
           <Button
-            type="button"
+            type='button'
             onClick={onContinue}
             disabled={continueDisabled || continueLoading}
             loading={continueLoading}
-            loadingText="Please wait..."
-            className="gap-2">
+            loadingText='Please wait...'
+            className='gap-2'>
             {continueText}
             <ArrowRight />
           </Button>

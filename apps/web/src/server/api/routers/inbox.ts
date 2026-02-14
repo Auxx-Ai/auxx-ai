@@ -1,10 +1,10 @@
 // apps/web/src/server/api/routers/inbox.ts
 
-import { z } from 'zod'
-import { TRPCError } from '@trpc/server'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 import { InboxService } from '@auxx/lib/inboxes'
-import { toRecordId, recordIdSchema } from '@auxx/types/resource'
+import { recordIdSchema, toRecordId } from '@auxx/types/resource'
+import { TRPCError } from '@trpc/server'
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 /** Schema for creating an inbox */
 const createInboxSchema = z.object({

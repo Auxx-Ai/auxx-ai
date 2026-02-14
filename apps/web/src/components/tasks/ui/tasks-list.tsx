@@ -2,22 +2,22 @@
 
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
-import { ListTodo } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
-import { EmptyState } from '~/components/global/empty-state'
-import { TasksListHeader } from './tasks-list-header'
-import { TaskItem } from './task-item'
-import { TaskDialog } from './task-dialog'
-import { useTasks } from '../hooks/use-tasks'
-import { groupTasksByCompletion } from '../utils/group-tasks'
-import { convertConditionsToFilterProps } from '../utils/condition-to-props'
+import type { RecordId } from '@auxx/lib/resources/client'
 import type { TaskWithRelations } from '@auxx/lib/tasks'
 import type { TaskSortConfig } from '@auxx/lib/tasks/client'
 import type { TaskViewMode } from '@auxx/types/task'
-import type { Condition } from '~/components/conditions'
-import type { RecordId } from '@auxx/lib/resources/client'
+import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
+import { ListTodo } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import type { Condition } from '~/components/conditions'
+import { EmptyState } from '~/components/global/empty-state'
+import { useTasks } from '../hooks/use-tasks'
+import { convertConditionsToFilterProps } from '../utils/condition-to-props'
+import { groupTasksByCompletion } from '../utils/group-tasks'
+import { TaskDialog } from './task-dialog'
+import { TaskItem } from './task-item'
+import { TasksListHeader } from './tasks-list-header'
 
 /**
  * Props for TasksList component
@@ -111,10 +111,10 @@ export function TasksList({
     return (
       <EmptyState
         icon={ListTodo}
-        iconClassName="animate-spin"
-        title="Loading tasks"
-        description="Fetching tasks..."
-        button={<Button size="sm" className="invisible pointer-events-none"></Button>}
+        iconClassName='animate-spin'
+        title='Loading tasks'
+        description='Fetching tasks...'
+        button={<Button size='sm' className='invisible pointer-events-none'></Button>}
       />
     )
   }
@@ -129,16 +129,16 @@ export function TasksList({
     return (
       <EmptyState
         icon={ListTodo}
-        className="py-8"
-        title="No tasks yet"
+        className='py-8'
+        title='No tasks yet'
         description={emptyMessage}
         button={
           onCreateClick ? (
-            <Button variant="outline" size="sm" onClick={onCreateClick}>
+            <Button variant='outline' size='sm' onClick={onCreateClick}>
               Create task
             </Button>
           ) : (
-            <Button size="sm" className="invisible pointer-events-none"></Button>
+            <Button size='sm' className='invisible pointer-events-none'></Button>
           )
         }
       />
@@ -152,7 +152,7 @@ export function TasksList({
           <div key={completionGroup.id}>
             {/* Completion Section Header (only shown for completed) */}
             {completionGroup.showHeader && (
-              <div className="text-sm font-medium text-primary-400 mt-6 mb-2">
+              <div className='text-sm font-medium text-primary-400 mt-6 mb-2'>
                 {completionGroup.title}
               </div>
             )}
@@ -162,7 +162,7 @@ export function TasksList({
               const isCollapsed = collapsedGroups.has(period.id)
 
               return (
-                <div key={period.id} className="mb-4">
+                <div key={period.id} className='mb-4'>
                   {/* Period Header */}
                   <TasksListHeader
                     title={period.title}
@@ -175,7 +175,7 @@ export function TasksList({
 
                   {/* Task Items */}
                   {!isCollapsed && (
-                    <div className="space-y-1 mt-2">
+                    <div className='space-y-1 mt-2'>
                       {period.tasks.map((task) => (
                         <TaskItem
                           key={task.id}
@@ -194,13 +194,13 @@ export function TasksList({
 
         {/* Load More */}
         {hasNextPage && (
-          <div className="flex justify-center py-4">
+          <div className='flex justify-center py-4'>
             <Button
               onClick={fetchNextPage}
-              variant="ghost"
-              size="sm"
+              variant='ghost'
+              size='sm'
               loading={isFetchingNextPage}
-              loadingText="Loading...">
+              loadingText='Loading...'>
               Load more
             </Button>
           </div>
@@ -211,7 +211,7 @@ export function TasksList({
       <TaskDialog
         open={!!selectedTask}
         onOpenChange={(open) => !open && setSelectedTask(null)}
-        mode="edit"
+        mode='edit'
         task={selectedTask ?? undefined}
       />
     </>

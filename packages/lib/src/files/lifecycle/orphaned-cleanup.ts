@@ -1,11 +1,11 @@
 // packages/lib/src/files/lifecycle/orphaned-cleanup.ts
 
-import type { Job } from 'bullmq'
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { deleteFilesByIds, deleteExpiredFiles, cleanupOrphanedAttachments } from './cleanup-service'
+import type { Job } from 'bullmq'
 import { createFileService } from '../core/file-service'
 import { createMediaAssetService } from '../core/media-asset-service'
+import { cleanupOrphanedAttachments, deleteExpiredFiles, deleteFilesByIds } from './cleanup-service'
 import type { OrphanedFileCleanupJobData, OrphanedFileCleanupResult } from './types'
 
 // Scoped logger used across orphaned file cleanup routines
@@ -41,7 +41,9 @@ export async function orphanedFileCleanupJob(
       try {
         // Note: This requires organization context, so we'll skip for global cleanup
         // In a real implementation, you'd want to iterate through organizations
-        logger.info('Skipping orphaned attachment cleanup in global mode - requires organization context')
+        logger.info(
+          'Skipping orphaned attachment cleanup in global mode - requires organization context'
+        )
       } catch (error) {
         logger.warn('Failed to cleanup orphaned attachments:', error)
       }

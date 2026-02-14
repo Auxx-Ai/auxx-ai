@@ -1,16 +1,15 @@
 // packages/lib/src/workflow-engine/events/index.ts
 
+export { WorkflowEventPublisher, workflowEventPublisher } from './redis-event-publisher'
 // Re-export from types.ts (single source of truth)
 export {
-  WorkflowEventType,
-  WorkflowEventSchema,
+  type NodeFailedEvent,
+  type NodeFinishedEvent,
+  type NodeStartedEvent,
   type WorkflowEvent,
   type WorkflowEventGeneric,
-  type NodeStartedEvent,
-  type NodeFinishedEvent,
-  type NodeFailedEvent,
-  type WorkflowStartedEvent,
+  WorkflowEventSchema,
+  WorkflowEventType,
   type WorkflowFinishedEvent,
+  type WorkflowStartedEvent,
 } from './types'
-
-export { WorkflowEventPublisher, workflowEventPublisher } from './redis-event-publisher'

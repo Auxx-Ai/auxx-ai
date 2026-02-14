@@ -1,7 +1,7 @@
 // packages/types/resource/utils.ts
 
+import { type ModelType, ModelTypeValues } from '@auxx/database/enums'
 import type { RecordId } from './index'
-import { ModelTypeValues, type ModelType } from '@auxx/database/enums'
 
 /**
  * Create a RecordId from entityDefinitionId and entityInstanceId.
@@ -77,4 +77,3 @@ export function isSystemModelType(entityDefinitionId: string): entityDefinitionI
 export function getModelType(entityDefinitionId: string): ModelType {
   return isSystemModelType(entityDefinitionId) ? entityDefinitionId : 'entity'
 }
-

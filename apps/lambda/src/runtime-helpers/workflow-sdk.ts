@@ -5,7 +5,7 @@
  * Extends the Server SDK with workflow-specific methods
  */
 
-import type { WorkflowSDK, WorkflowExecutionContext } from '../types/workflow.ts'
+import type { WorkflowExecutionContext, WorkflowSDK } from '../types/workflow.ts'
 import { createServerSDK } from './index.ts'
 
 /**

@@ -1,7 +1,7 @@
 'use client'
+import { cn } from '@auxx/ui/lib/utils'
 import * as React from 'react'
 import { useCallback, useMemo } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
 
 interface UseAutosizeTextAreaProps {
   textAreaRef: React.RefObject<HTMLTextAreaElement | null>

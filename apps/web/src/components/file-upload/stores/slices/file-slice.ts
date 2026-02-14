@@ -1,10 +1,10 @@
 // apps/web/src/components/file-upload/stores/slices/file-slice.ts
 
-import type { StateCreator } from 'zustand'
-import type { UploadStore, FileState } from '../types'
-import type { UploadProgress, EntityType } from '@auxx/lib/files/types'
+import type { EntityType, UploadProgress } from '@auxx/lib/files/types'
 import { getEntityConfig } from '@auxx/lib/files/types'
 import { generateId } from '@auxx/utils/generateId'
+import type { StateCreator } from 'zustand'
+import type { FileState, UploadStore } from '../types'
 
 export interface FileSlice {
   files: Record<string, FileState>

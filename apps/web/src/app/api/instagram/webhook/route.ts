@@ -1,13 +1,14 @@
 // apps/web/src/app/api/instagram/webhook/route.ts
-import { NextRequest, NextResponse } from 'next/server'
-import { database as db, schema } from '@auxx/database'
-import { MessageStorageService } from '@auxx/lib/email'
-import type { MessageData } from '@auxx/lib/email'
-import { createScopedLogger } from '@auxx/logger'
+
 import { env } from '@auxx/config/server'
-import crypto from 'crypto'
+import { database as db, schema } from '@auxx/database'
+import type { MessageData } from '@auxx/lib/email'
+import { MessageStorageService } from '@auxx/lib/email'
 import type { InstagramIntegrationMetadata } from '@auxx/lib/providers'
+import { createScopedLogger } from '@auxx/logger'
+import crypto from 'crypto'
 import { and, eq, sql } from 'drizzle-orm'
+import { type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('instagram-webhook')
 

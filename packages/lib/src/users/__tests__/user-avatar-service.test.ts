@@ -1,6 +1,6 @@
 // packages/lib/src/users/__tests__/user-avatar-service.test.ts
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { UserAvatarService } from '../user-avatar-service'
 
 // Mock dependencies
@@ -19,14 +19,14 @@ vi.mock('@auxx/database', () => ({
     insert: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-  }
+  },
 }))
 
 vi.mock('../../files/adapters/s3-adapter', () => ({
   S3Adapter: vi.fn().mockImplementation(() => ({
     init: vi.fn(),
-    upload: vi.fn().mockResolvedValue({ key: 'test-key' })
-  }))
+    upload: vi.fn().mockResolvedValue({ key: 'test-key' }),
+  })),
 }))
 
 vi.mock('../../files/upload/processors/entity-processors', () => ({
@@ -46,13 +46,13 @@ vi.mock('../../files/upload/processors/entity-processors', () => ({
           allowedMimeTypes: ['image/jpeg'],
         },
         uploadPlan: { strategy: 'single' },
-      }
+      },
     }),
     process: vi.fn().mockResolvedValue({
       assetId: 'test-asset-id',
-      storageLocationId: 'test-location-id'
-    })
-  }))
+      storageLocationId: 'test-location-id',
+    }),
+  })),
 }))
 
 vi.mock('../../files/upload/session-manager', () => ({
@@ -64,8 +64,8 @@ vi.mock('../../files/upload/session-manager', () => ({
       bucket: 'auxx-private-local',
       visibility: 'PRIVATE',
     }),
-    deleteSession: vi.fn()
-  }
+    deleteSession: vi.fn(),
+  },
 }))
 
 describe('UserAvatarService', () => {
@@ -79,9 +79,9 @@ describe('UserAvatarService', () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
         headers: {
-          get: vi.fn().mockReturnValue('image/jpeg')
+          get: vi.fn().mockReturnValue('image/jpeg'),
         },
-        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(1000))
+        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(1000)),
       })
 
       const result = await UserAvatarService.downloadAndCreateAvatarAsset(
@@ -97,7 +97,7 @@ describe('UserAvatarService', () => {
     it('should return null if image download fails', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: false,
-        status: 404
+        status: 404,
       })
 
       const result = await UserAvatarService.downloadAndCreateAvatarAsset(
@@ -112,13 +112,13 @@ describe('UserAvatarService', () => {
     it('should return null if image is too large', async () => {
       // Mock a 6MB image (over the 5MB limit)
       const largeBuffer = new ArrayBuffer(6 * 1024 * 1024)
-      
+
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
         headers: {
-          get: vi.fn().mockReturnValue('image/jpeg')
+          get: vi.fn().mockReturnValue('image/jpeg'),
         },
-        arrayBuffer: vi.fn().mockResolvedValue(largeBuffer)
+        arrayBuffer: vi.fn().mockResolvedValue(largeBuffer),
       })
 
       const result = await UserAvatarService.downloadAndCreateAvatarAsset(
@@ -134,31 +134,31 @@ describe('UserAvatarService', () => {
   describe('checkAndMigrateAvatar', () => {
     it('should skip migration if user already has avatarAssetId', async () => {
       const { database } = await import('@auxx/database')
-      
+
       ;(database.query.User.findFirst as any).mockResolvedValue({
         id: 'test-user',
         image: 'https://example.com/avatar.jpg',
         avatarAssetId: 'existing-asset',
-        defaultOrganizationId: 'test-org'
+        defaultOrganizationId: 'test-org',
       })
 
       const result = await UserAvatarService.checkAndMigrateAvatar('test-user')
-      
+
       expect(result).toBe(false)
     })
 
     it('should skip migration if user has no image URL', async () => {
       const { database } = await import('@auxx/database')
-      
+
       ;(database.query.User.findFirst as any).mockResolvedValue({
         id: 'test-user',
         image: null,
         avatarAssetId: null,
-        defaultOrganizationId: 'test-org'
+        defaultOrganizationId: 'test-org',
       })
 
       const result = await UserAvatarService.checkAndMigrateAvatar('test-user')
-      
+
       expect(result).toBe(false)
     })
   })

@@ -127,7 +127,7 @@ export interface FileProcessor {
 
   /** Process uploaded file and create records */
   process(
-    session: PresignedUploadSession, 
+    session: PresignedUploadSession,
     storageLocationId: string,
     opts?: { tx?: any }
   ): Promise<ProcessorResult>

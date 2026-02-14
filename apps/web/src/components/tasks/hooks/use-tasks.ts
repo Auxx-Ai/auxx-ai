@@ -2,12 +2,12 @@
 
 'use client'
 
-import { useMemo, useCallback, useEffect } from 'react'
+import type { RecordId } from '@auxx/lib/resources/client'
+import type { TaskPriority, TaskWithRelations } from '@auxx/lib/tasks'
+import type { TaskSortConfig } from '@auxx/lib/tasks/client'
+import { useCallback, useEffect, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { useTaskStore } from '../stores/task-store'
-import type { TaskWithRelations, TaskPriority } from '@auxx/lib/tasks'
-import type { TaskSortConfig } from '@auxx/lib/tasks/client'
-import type { RecordId } from '@auxx/lib/resources/client'
 
 /**
  * Options for useTasks hook

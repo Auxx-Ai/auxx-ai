@@ -11,8 +11,8 @@ import type { DetailViewTabProps } from '../types'
  */
 export function TimelineTab({ recordId }: DetailViewTabProps) {
   return (
-    <ScrollArea className="flex-1">
-      <div className="p-6 flex-1 flex-col flex">
+    <ScrollArea className='flex-1'>
+      <div className='p-6 flex-1 flex-col flex'>
         <TimelineTabCore recordId={recordId} />
       </div>
     </ScrollArea>

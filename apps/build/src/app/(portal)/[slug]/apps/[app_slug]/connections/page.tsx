@@ -1,11 +1,14 @@
 // apps/build/src/app/(portal)/[slug]/apps/[app_slug]/connections/page.tsx
 'use client'
 
-import { useEffect, useRef } from 'react'
-import { useForm, useWatch, Controller } from 'react-hook-form'
-import { z } from 'zod'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Button } from '@auxx/ui/components/button'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@auxx/ui/components/empty'
 import {
   Field,
   FieldDescription,
@@ -22,19 +25,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@auxx/ui/components/empty'
-
-import { api } from '~/trpc/react'
-import { toastError } from '~/components/global/toast'
-import { useParams } from 'next/navigation'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Loader2, X } from 'lucide-react'
+import { useParams } from 'next/navigation'
+import { useEffect, useRef } from 'react'
+import { Controller, useForm, useWatch } from 'react-hook-form'
+import { z } from 'zod'
+import { toastError } from '~/components/global/toast'
+import { api } from '~/trpc/react'
 
 /** Connection form validation schema */
 const connectionFormSchema = z
@@ -261,11 +259,11 @@ export default function ConnectionsPage() {
   // Loading state
   if (isLoadingApp || isLoadingConnection) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 overflow-y-auto">
+      <div className='flex flex-col items-center justify-center flex-1 overflow-y-auto'>
         <Empty>
           <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Loader2 className="animate-spin" />
+            <EmptyMedia variant='icon'>
+              <Loader2 className='animate-spin' />
             </EmptyMedia>
             <EmptyTitle>Loading...</EmptyTitle>
             <EmptyDescription>Fetching connection settings</EmptyDescription>
@@ -278,10 +276,10 @@ export default function ConnectionsPage() {
   // Error state
   if (!app) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 overflow-y-auto">
+      <div className='flex flex-col items-center justify-center flex-1 overflow-y-auto'>
         <Empty>
           <EmptyHeader>
-            <EmptyMedia variant="icon">
+            <EmptyMedia variant='icon'>
               <X />
             </EmptyMedia>
             <EmptyTitle>Error...</EmptyTitle>
@@ -293,8 +291,8 @@ export default function ConnectionsPage() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-start gap-1 py-10 px-4 overflow-y-auto">
-      <div className="max-w-3xl w-full mx-auto">
+    <div className='flex flex-col items-center justify-start gap-1 py-10 px-4 overflow-y-auto'>
+      <div className='max-w-3xl w-full mx-auto'>
         <form onSubmit={handleSubmit(onSubmit)}>
           <FieldGroup>
             <FieldSet>
@@ -317,7 +315,7 @@ export default function ConnectionsPage() {
               <FieldGroup>
                 <Field>
                   <Controller
-                    name="connectionType"
+                    name='connectionType'
                     control={control}
                     render={({ field }) => (
                       <Select
@@ -329,19 +327,19 @@ export default function ConnectionsPage() {
                             field.onChange(value)
                           }
                         }}>
-                        <SelectTrigger id="app-organization-auth-method">
-                          <SelectValue placeholder="Select a method..." />
+                        <SelectTrigger id='app-organization-auth-method'>
+                          <SelectValue placeholder='Select a method...' />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          <SelectItem value="secret">Secret</SelectItem>
-                          <SelectItem value="oauth2-code">OAuth 2.0</SelectItem>
+                          <SelectItem value='none'>None</SelectItem>
+                          <SelectItem value='secret'>Secret</SelectItem>
+                          <SelectItem value='oauth2-code'>OAuth 2.0</SelectItem>
                         </SelectContent>
                       </Select>
                     )}
                   />
                   {errors.connectionType && (
-                    <p className="text-sm text-red-600 mt-1">{errors.connectionType.message}</p>
+                    <p className='text-sm text-red-600 mt-1'>{errors.connectionType.message}</p>
                   )}
                 </Field>
               </FieldGroup>
@@ -349,119 +347,119 @@ export default function ConnectionsPage() {
               {isOAuth2 && (
                 <FieldGroup>
                   <Field>
-                    <FieldLabel htmlFor="app-organization-authorize-url">Authorize URL</FieldLabel>
+                    <FieldLabel htmlFor='app-organization-authorize-url'>Authorize URL</FieldLabel>
                     <Input
-                      id="app-organization-authorize-url"
-                      placeholder="https://auth-server.com/oauth/authorize"
+                      id='app-organization-authorize-url'
+                      placeholder='https://auth-server.com/oauth/authorize'
                       {...register('oauth2AuthorizeUrl')}
                     />
                     {errors.oauth2AuthorizeUrl && (
-                      <p className="text-sm text-red-600 mt-1">
+                      <p className='text-sm text-red-600 mt-1'>
                         {errors.oauth2AuthorizeUrl.message}
                       </p>
                     )}
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="app-organization-token-url">Access token URL</FieldLabel>
+                    <FieldLabel htmlFor='app-organization-token-url'>Access token URL</FieldLabel>
                     <Input
-                      id="app-organization-token-url"
-                      placeholder="https://auth-server.com/oauth/token"
+                      id='app-organization-token-url'
+                      placeholder='https://auth-server.com/oauth/token'
                       {...register('oauth2AccessTokenUrl')}
                     />
                     {errors.oauth2AccessTokenUrl && (
-                      <p className="text-sm text-red-600 mt-1">
+                      <p className='text-sm text-red-600 mt-1'>
                         {errors.oauth2AccessTokenUrl.message}
                       </p>
                     )}
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="app-organization-client-id">Client ID</FieldLabel>
+                    <FieldLabel htmlFor='app-organization-client-id'>Client ID</FieldLabel>
                     <Input
-                      id="app-organization-client-id"
-                      placeholder=""
+                      id='app-organization-client-id'
+                      placeholder=''
                       {...register('oauth2ClientId')}
                     />
                     {errors.oauth2ClientId && (
-                      <p className="text-sm text-red-600 mt-1">{errors.oauth2ClientId.message}</p>
+                      <p className='text-sm text-red-600 mt-1'>{errors.oauth2ClientId.message}</p>
                     )}
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="app-organization-client-secret">Client secret</FieldLabel>
+                    <FieldLabel htmlFor='app-organization-client-secret'>Client secret</FieldLabel>
                     <Input
-                      id="app-organization-client-secret"
-                      placeholder=""
-                      type="password"
+                      id='app-organization-client-secret'
+                      placeholder=''
+                      type='password'
                       {...register('oauth2ClientSecret')}
                     />
                     {errors.oauth2ClientSecret && (
-                      <p className="text-sm text-red-600 mt-1">
+                      <p className='text-sm text-red-600 mt-1'>
                         {errors.oauth2ClientSecret.message}
                       </p>
                     )}
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="app-organization-scopes">Scopes</FieldLabel>
+                    <FieldLabel htmlFor='app-organization-scopes'>Scopes</FieldLabel>
                     <Input
-                      id="app-organization-scopes"
-                      placeholder="read:user, write:data"
+                      id='app-organization-scopes'
+                      placeholder='read:user, write:data'
                       {...register('oauth2Scopes')}
                     />
                     <FieldDescription>
                       Enter comma-separated scopes (e.g., read:user, write:data)
                     </FieldDescription>
                     {errors.oauth2Scopes && (
-                      <p className="text-sm text-red-600 mt-1">{errors.oauth2Scopes.message}</p>
+                      <p className='text-sm text-red-600 mt-1'>{errors.oauth2Scopes.message}</p>
                     )}
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="app-organization-request-method">
+                    <FieldLabel htmlFor='app-organization-request-method'>
                       Token request authentication method
                     </FieldLabel>
 
                     <Controller
-                      name="oauth2TokenRequestAuthMethod"
+                      name='oauth2TokenRequestAuthMethod'
                       control={control}
                       render={({ field }) => (
                         <Select value={field.value} onValueChange={field.onChange}>
-                          <SelectTrigger id="app-organization-request-method">
-                            <SelectValue placeholder="Select a method..." />
+                          <SelectTrigger id='app-organization-request-method'>
+                            <SelectValue placeholder='Select a method...' />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="request-body">Body</SelectItem>
-                            <SelectItem value="basic-auth">Basic Auth</SelectItem>
+                            <SelectItem value='request-body'>Body</SelectItem>
+                            <SelectItem value='basic-auth'>Basic Auth</SelectItem>
                           </SelectContent>
                         </Select>
                       )}
                     />
                     {errors.oauth2TokenRequestAuthMethod && (
-                      <p className="text-sm text-red-600 mt-1">
+                      <p className='text-sm text-red-600 mt-1'>
                         {errors.oauth2TokenRequestAuthMethod.message}
                       </p>
                     )}
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="app-organization-refresh-schedule">
+                    <FieldLabel htmlFor='app-organization-refresh-schedule'>
                       Access token refresh schedule
                     </FieldLabel>
                     <Controller
-                      name="oauth2RefreshSchedule"
+                      name='oauth2RefreshSchedule'
                       control={control}
                       render={({ field }) => (
                         <Select value={field.value} onValueChange={field.onChange}>
-                          <SelectTrigger id="app-organization-refresh-schedule">
-                            <SelectValue placeholder="Select a refresh schedule..." />
+                          <SelectTrigger id='app-organization-refresh-schedule'>
+                            <SelectValue placeholder='Select a refresh schedule...' />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="none">None</SelectItem>
-                            <SelectItem value="hourly">Hourly</SelectItem>
-                            <SelectItem value="daily">Daily</SelectItem>
-                            <SelectItem value="weekly">Weekly</SelectItem>
+                            <SelectItem value='none'>None</SelectItem>
+                            <SelectItem value='hourly'>Hourly</SelectItem>
+                            <SelectItem value='daily'>Daily</SelectItem>
+                            <SelectItem value='weekly'>Weekly</SelectItem>
                           </SelectContent>
                         </Select>
                       )}
                     />
                     {errors.oauth2RefreshSchedule && (
-                      <p className="text-sm text-red-600 mt-1">
+                      <p className='text-sm text-red-600 mt-1'>
                         {errors.oauth2RefreshSchedule.message}
                       </p>
                     )}
@@ -470,12 +468,12 @@ export default function ConnectionsPage() {
               )}
             </FieldSet>
 
-            <Field orientation="horizontal">
+            <Field orientation='horizontal'>
               <Button
-                type="submit"
-                size="sm"
+                type='submit'
+                size='sm'
                 loading={upsertConnection.isPending}
-                loadingText="Saving..."
+                loadingText='Saving...'
                 disabled={!isDirty || upsertConnection.isPending}>
                 Save Connection
               </Button>

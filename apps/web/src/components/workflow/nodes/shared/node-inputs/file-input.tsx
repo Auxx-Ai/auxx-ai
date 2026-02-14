@@ -2,14 +2,14 @@
 
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
-import { createNodeInput, type NodeInputProps } from './base-node-input'
 import { Button } from '@auxx/ui/components/button'
 import { File as FileIcon } from 'lucide-react'
-import { FilesPicker } from '~/components/pickers/files-picker'
-import type { FileSelection } from '~/components/pickers/files-picker'
-import { CommentFile } from '~/components/global/comments/comment-file'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useFileSystemStore } from '~/components/files/files-store'
+import { CommentFile } from '~/components/global/comments/comment-file'
+import type { FileSelection } from '~/components/pickers/files-picker'
+import { FilesPicker } from '~/components/pickers/files-picker'
+import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 interface FileInputProps extends NodeInputProps {
   /** Field name */
@@ -138,22 +138,22 @@ export const FileInput = createNodeInput<FileInputProps>(
     const inputId = `input-${name}`
 
     return (
-      <div className="flex gap-2 w-full group" id={inputId}>
+      <div className='flex gap-2 w-full group' id={inputId}>
         {/* Left: Selected files display */}
-        <div className="flex-1 min-w-0">
+        <div className='flex-1 min-w-0'>
           {selectedFiles.length === 0 ? (
-            <span className="text-sm text-primary-400 truncate pointer-events-none">
+            <span className='text-sm text-primary-400 truncate pointer-events-none'>
               {placeholder}
             </span>
           ) : (
-            <div className="flex flex-row gap-1 max-h-[200px] overflow-y-auto">
+            <div className='flex flex-row gap-1 max-h-[200px] overflow-y-auto'>
               {selectedFiles.map((file) => (
                 <CommentFile
                   key={file.id}
                   file={file}
                   showRemoveButton={!isLoading}
                   showFileSize={false}
-                  className="py-0 pe-0 ps-2 rounded-2xl"
+                  className='py-0 pe-0 ps-2 rounded-2xl'
                   onRemove={handleRemoveFile}
                 />
               ))}
@@ -165,12 +165,12 @@ export const FileInput = createNodeInput<FileInputProps>(
         <FilesPicker
           trigger={
             <Button
-              size="icon-xs"
-              variant="ghost"
-              className="mt-[2px] hover:bg-primary-200/50"
+              size='icon-xs'
+              variant='ghost'
+              className='mt-[2px] hover:bg-primary-200/50'
               disabled={isLoading}
-              type="button"
-              title="Select files">
+              type='button'
+              title='Select files'>
               <FileIcon />
             </Button>
           }

@@ -1,9 +1,9 @@
 // packages/services/src/table-view/duplicate-view.ts
 
 import { database, schema } from '@auxx/database'
+import type { TableViewEntity } from '@auxx/database/models'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { TableViewEntity } from '@auxx/database/models'
 import { getView } from './get-view'
 
 /**
@@ -31,7 +31,15 @@ export async function duplicateView(input: DuplicateViewInput) {
   const dbResult = await fromDatabase(
     database
       .insert(schema.TableView)
-      .values({ tableId: original.tableId, name, config: original.config, isShared: false, userId, organizationId, updatedAt: new Date() })
+      .values({
+        tableId: original.tableId,
+        name,
+        config: original.config,
+        isShared: false,
+        userId,
+        organizationId,
+        updatedAt: new Date(),
+      })
       .returning(),
     'duplicate-view'
   )

@@ -1,37 +1,22 @@
 // apps/web/src/components/workflow/panels/settings/workflow-access-settings.tsx
 
-import { memo, useCallback, useState, useEffect, useRef } from 'react'
-import {
-  Check,
-  Copy,
-  ExternalLink,
-  Link,
-  RefreshCw,
-  Globe,
-  Building,
-  KeyRound,
-  Trash2,
-  Plus,
-  LockKeyhole,
-} from 'lucide-react'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@auxx/ui/components/dialog'
+import { API_URL, WEBAPP_URL } from '@auxx/config/urls'
+import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Label } from '@auxx/ui/components/label'
-import { RadioGroup } from '@auxx/ui/components/radio-group'
-import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
-import { Switch } from '@auxx/ui/components/switch'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@auxx/ui/components/collapsible'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@auxx/ui/components/dialog'
 import {
   InputGroup,
   InputGroupAddon,
@@ -41,22 +26,37 @@ import {
 } from '@auxx/ui/components/input-group'
 import {
   NumberInput,
-  NumberInputField,
-  NumberInputScrubber,
-  NumberInputIncrement,
   NumberInputDecrement,
+  NumberInputField,
+  NumberInputIncrement,
+  NumberInputScrubber,
 } from '@auxx/ui/components/input-number'
-import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
+import { Label } from '@auxx/ui/components/label'
+import { RadioGroup } from '@auxx/ui/components/radio-group'
+import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
+import { Switch } from '@auxx/ui/components/switch'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useCopy } from '@auxx/ui/hooks/use-copy'
+import {
+  Building,
+  Check,
+  Copy,
+  ExternalLink,
+  Globe,
+  KeyRound,
+  Link,
+  LockKeyhole,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
-import { WEBAPP_URL, API_URL } from '@auxx/config/urls'
-import { api } from '~/trpc/react'
 import { useWorkflowSave } from '~/components/workflow/hooks/use-workflow-save'
 import { useConfirm } from '~/hooks/use-confirm'
-import Section from '../../ui/section'
+import { api } from '~/trpc/react'
 import Field from '../../ui/field'
-import { Badge } from '@auxx/ui/components/badge'
+import Section from '../../ui/section'
 
 /** Access mode for web access (public or organization) */
 type AccessMode = 'public' | 'organization'
@@ -442,64 +442,64 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
       {/* WEB ACCESS                                              */}
       {/* ═══════════════════════════════════════════════════════ */}
       <Section
-        title="Web Access"
-        description="Allow others to run this workflow via browser"
+        title='Web Access'
+        description='Allow others to run this workflow via browser'
         showEnable
         enabled={webEnabled}
         onEnableChange={handleWebEnabledChange}>
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
+        <div className='space-y-4'>
+          <div className='space-y-1'>
+            <div className='flex items-center gap-2'>
               <div
                 className={`size-2 rounded-full ${webEnabled ? 'bg-good-500' : 'bg-muted-foreground/50'}`}
               />
-              <span className="text-sm">
+              <span className='text-sm'>
                 {webEnabled ? 'Web access enabled' : 'Web access disabled'}
               </span>
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className='text-xs text-muted-foreground'>
               {webEnabled
                 ? 'Others can run this workflow via the share link in their browser.'
                 : 'Enable web access to allow others to run this workflow via a public link.'}
             </p>
           </div>
           {shareToken && (
-            <Field title="Share Link">
+            <Field title='Share Link'>
               <InputGroup>
-                <InputGroupAddon align="inline-start">
+                <InputGroupAddon align='inline-start'>
                   <Link />
                 </InputGroupAddon>
                 <InputGroupInput
-                  type="text"
+                  type='text'
                   value={shareUrl || ''}
                   readOnly
-                  className="font-mono text-xs"
+                  className='font-mono text-xs'
                   onFocus={(e) => e.target.select()}
                 />
-                <InputGroupAddon align="inline-end" className="gap-0.5">
-                  <Tooltip content="Copy">
+                <InputGroupAddon align='inline-end' className='gap-0.5'>
+                  <Tooltip content='Copy'>
                     <InputGroupButton
-                      aria-label="Copy share link"
-                      className="rounded-full"
-                      size="icon-xs"
+                      aria-label='Copy share link'
+                      className='rounded-full'
+                      size='icon-xs'
                       onClick={() => shareUrl && copyLink(shareUrl)}>
                       {copiedLink ? <Check /> : <Copy />}
                     </InputGroupButton>
                   </Tooltip>
-                  <Tooltip content="Open">
+                  <Tooltip content='Open'>
                     <InputGroupButton
-                      aria-label="Open share link"
-                      className="rounded-full"
-                      size="icon-xs"
+                      aria-label='Open share link'
+                      className='rounded-full'
+                      size='icon-xs'
                       onClick={handleOpenLink}>
                       <ExternalLink />
                     </InputGroupButton>
                   </Tooltip>
-                  <Tooltip content="Regenerate">
+                  <Tooltip content='Regenerate'>
                     <InputGroupButton
-                      aria-label="Regenerate share link"
-                      className="rounded-full"
-                      size="icon-xs"
+                      aria-label='Regenerate share link'
+                      className='rounded-full'
+                      size='icon-xs'
                       onClick={handleRegenerateToken}
                       disabled={generateToken.isPending}>
                       {justRegenerated ? <Check /> : <RefreshCw />}
@@ -510,36 +510,36 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
             </Field>
           )}
           <Field
-            title="Execution Details"
-            description="Control what execution information is visible to users">
-            <div className="flex items-center justify-between">
+            title='Execution Details'
+            description='Control what execution information is visible to users'>
+            <div className='flex items-center justify-between'>
               <div>
-                <Label htmlFor="showWorkflowDetails" className="cursor-pointer">
+                <Label htmlFor='showWorkflowDetails' className='cursor-pointer'>
                   Show workflow details
                 </Label>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className='text-xs text-muted-foreground mt-1'>
                   When enabled, users can see all node execution events. When disabled, only the
                   final result from the End node is shown.
                 </p>
               </div>
               <Switch
-                id="showWorkflowDetails"
-                size="sm"
-                className="ml-4"
+                id='showWorkflowDetails'
+                size='sm'
+                className='ml-4'
                 checked={config.showWorkflowDetails ?? false}
                 onCheckedChange={(checked) => handleConfigChange('showWorkflowDetails', checked)}
               />
             </div>
           </Field>
 
-          <Collapsible className="mb-2!" open={accessModeOpen} onOpenChange={setAccessModeOpen}>
+          <Collapsible className='mb-2!' open={accessModeOpen} onOpenChange={setAccessModeOpen}>
             <Field
-              className=""
-              title="Access Mode"
-              description="Configure who can access this workflow via web"
+              className=''
+              title='Access Mode'
+              description='Configure who can access this workflow via web'
               actions={
                 <CollapsibleTrigger asChild>
-                  <Button size="xs" variant="ghost">
+                  <Button size='xs' variant='ghost'>
                     {(() => {
                       const Icon = ACCESS_MODES[accessMode].icon
                       return <Icon />
@@ -576,16 +576,16 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
           </Collapsible>
 
           <Field
-            title="About"
-            wrapperClassName="-mx-1.5 mt-0"
-            description="Optional text shown in the About dialog on the public page">
+            title='About'
+            wrapperClassName='-mx-1.5 mt-0'
+            description='Optional text shown in the About dialog on the public page'>
             <AutosizeTextarea
-              placeholder="Add information about this workflow..."
+              placeholder='Add information about this workflow...'
               value={localAbout}
               onChange={handleAboutChange}
               minHeight={35}
               maxHeight={300}
-              className="text-sm border-0 px-2 "
+              className='text-sm border-0 px-2 '
             />
           </Field>
         </div>
@@ -595,61 +595,61 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
       {/* API ACCESS                                              */}
       {/* ═══════════════════════════════════════════════════════ */}
       <Section
-        title="API Access"
-        description="Allow programmatic access via REST API"
+        title='API Access'
+        description='Allow programmatic access via REST API'
         showEnable
         collapsible
         enabled={apiEnabled}
         onEnableChange={handleApiEnabledChange}>
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
+        <div className='space-y-4'>
+          <div className='space-y-1'>
+            <div className='flex items-center gap-2'>
               <div
                 className={`size-2 rounded-full ${apiEnabled ? 'bg-good-500' : 'bg-muted-foreground/50'}`}
               />
-              <span className="text-sm">
+              <span className='text-sm'>
                 {apiEnabled ? 'API access enabled' : 'API access disabled'}
               </span>
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className='text-xs text-muted-foreground'>
               {apiEnabled
                 ? 'Applications can run this workflow via API with a valid API key.'
                 : 'Enable API access to allow programmatic execution of this workflow.'}
             </p>
           </div>
           <Field
-            title="Workflow API Keys"
-            description="Manage API keys for programmatic access"
+            title='Workflow API Keys'
+            description='Manage API keys for programmatic access'
             actions={
               <Button
-                size="xs"
-                variant="ghost"
+                size='xs'
+                variant='ghost'
                 onClick={handleCreateApiKey}
                 loading={createApiKey.isPending}
-                loadingText="Creating...">
+                loadingText='Creating...'>
                 <LockKeyhole />
                 Create New API Key
               </Button>
             }>
             {/* API endpoint info */}
-            <div className="space-y-2">
+            <div className='space-y-2'>
               <InputGroup>
                 <InputGroupAddon>
                   <InputGroupText>POST</InputGroupText>
                 </InputGroupAddon>
                 <InputGroupInput
-                  type="text"
+                  type='text'
                   value={`${API_URL}/api/v1/workflows/run`}
                   readOnly
-                  className="font-mono text-xs"
+                  className='font-mono text-xs'
                   onFocus={(e) => e.target.select()}
                 />
-                <InputGroupAddon align="inline-end">
-                  <Tooltip content="Copy">
+                <InputGroupAddon align='inline-end'>
+                  <Tooltip content='Copy'>
                     <InputGroupButton
-                      aria-label="Copy endpoint"
-                      className="rounded-full"
-                      size="icon-xs"
+                      aria-label='Copy endpoint'
+                      className='rounded-full'
+                      size='icon-xs'
                       onClick={() => copyEndpoint(`${API_URL}/api/v1/workflows/run`)}>
                       {copiedEndpoint ? <Check /> : <Copy />}
                     </InputGroupButton>
@@ -661,26 +661,26 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
 
           {/* List existing keys */}
           {workflowApiKeys.length > 0 ? (
-            <div className="space-y-2">
+            <div className='space-y-2'>
               {workflowApiKeys.map((key) => (
                 <InputGroup key={key.id}>
-                  <InputGroupAddon align="inline-start">
-                    <KeyRound className="size-3 text-muted-foreground" />
+                  <InputGroupAddon align='inline-start'>
+                    <KeyRound className='size-3 text-muted-foreground' />
                   </InputGroupAddon>
-                  <InputGroupText className="ms-1 flex-1 truncate font-mono">
+                  <InputGroupText className='ms-1 flex-1 truncate font-mono'>
                     {key.name}
                   </InputGroupText>
-                  <InputGroupAddon align="inline-end" className="pe-2.5 gap-2">
-                    <Badge variant="gray" className="opacity-50 rounded-lg">
+                  <InputGroupAddon align='inline-end' className='pe-2.5 gap-2'>
+                    <Badge variant='gray' className='opacity-50 rounded-lg'>
                       {new Date(key.createdAt).toLocaleDateString()}
                     </Badge>
                     <InputGroupButton
-                      type="button"
-                      variant="destructive-hover"
-                      className="rounded-lg"
-                      aria-label="Revoke API key"
-                      title="Revoke"
-                      size="icon-xs"
+                      type='button'
+                      variant='destructive-hover'
+                      className='rounded-lg'
+                      aria-label='Revoke API key'
+                      title='Revoke'
+                      size='icon-xs'
                       onClick={() => handleRevokeApiKey(key.id)}
                       disabled={deleteApiKey.isPending}>
                       <Trash2 />
@@ -690,7 +690,7 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No API keys yet.</p>
+            <p className='text-sm text-muted-foreground'>No API keys yet.</p>
           )}
         </div>
       </Section>
@@ -698,7 +698,7 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
       {/* API Key Created Dialog */}
       <Dialog open={!!newlyCreatedKey} onOpenChange={(open) => !open && handleCloseApiKeyDialog()}>
         <DialogContent
-          size="sm"
+          size='sm'
           showClose={false}
           onEscapeKeyDown={handlePreventClose}
           onPointerDownOutside={handlePreventClose}>
@@ -709,22 +709,22 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
             </DialogDescription>
           </DialogHeader>
           <InputGroup>
-            <InputGroupAddon align="inline-start">
+            <InputGroupAddon align='inline-start'>
               <KeyRound />
             </InputGroupAddon>
             <InputGroupInput
-              type="text"
+              type='text'
               value={newlyCreatedKey || ''}
               readOnly
-              className="font-mono text-xs"
+              className='font-mono text-xs'
               onFocus={(e) => e.target.select()}
             />
-            <InputGroupAddon align="inline-end">
+            <InputGroupAddon align='inline-end'>
               <Tooltip content={copiedKey ? 'Copied!' : 'Copy'}>
                 <InputGroupButton
-                  aria-label="Copy API key"
-                  className="rounded-full"
-                  size="icon-xs"
+                  aria-label='Copy API key'
+                  className='rounded-full'
+                  size='icon-xs'
                   onClick={() => newlyCreatedKey && copyApiKey(newlyCreatedKey)}>
                   {copiedKey ? <Check /> : <Copy />}
                 </InputGroupButton>
@@ -734,9 +734,9 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
           <DialogFooter>
             <Button
               onClick={handleCloseApiKeyDialog}
-              size="sm"
+              size='sm'
               disabled={!copiedKey}
-              variant="outline">
+              variant='outline'>
               {copiedKey ? 'Done' : 'Copy to continue'}
             </Button>
           </DialogFooter>
@@ -746,29 +746,29 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
       {/* Rate Limiting Section - shown when any access is enabled */}
       {hasAnyAccess && (
         <Section
-          title="Rate Limiting"
-          description="Limit how often users can run this workflow"
+          title='Rate Limiting'
+          description='Limit how often users can run this workflow'
           showEnable
           enabled={rateLimit.enabled}
           onEnableChange={handleRateLimitToggle}
           initialOpen={false}>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+          <div className='space-y-3'>
+            <div className='grid grid-cols-2 gap-3'>
               <NumberInput
                 value={rateLimit.maxRequests}
                 onValueChange={(val) => handleRateLimitChange('maxRequests', val ?? 1)}
                 min={1}
                 step={1}>
-                <div className="flex flex-col items-start">
-                  <NumberInputScrubber htmlFor="maxRequests" className="mb-1">
+                <div className='flex flex-col items-start'>
+                  <NumberInputScrubber htmlFor='maxRequests' className='mb-1'>
                     Max requests
                   </NumberInputScrubber>
                   <InputGroup>
-                    <InputGroupAddon align="inline-start">
+                    <InputGroupAddon align='inline-start'>
                       <NumberInputDecrement />
                     </InputGroupAddon>
-                    <NumberInputField id="maxRequests" placeholder="100" />
-                    <InputGroupAddon align="inline-end">
+                    <NumberInputField id='maxRequests' placeholder='100' />
+                    <InputGroupAddon align='inline-end'>
                       <NumberInputIncrement />
                     </InputGroupAddon>
                   </InputGroup>
@@ -780,16 +780,16 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
                 onValueChange={(val) => handleRateLimitChange('windowMs', (val ?? 1) * 1000)}
                 min={1}
                 step={1}>
-                <div className="flex flex-col items-start">
-                  <NumberInputScrubber htmlFor="windowMs" className="mb-1">
+                <div className='flex flex-col items-start'>
+                  <NumberInputScrubber htmlFor='windowMs' className='mb-1'>
                     Time window
                   </NumberInputScrubber>
                   <InputGroup>
-                    <InputGroupAddon align="inline-start">
+                    <InputGroupAddon align='inline-start'>
                       <NumberInputDecrement />
                     </InputGroupAddon>
-                    <NumberInputField id="windowMs" placeholder="60" />
-                    <InputGroupAddon align="inline-end">
+                    <NumberInputField id='windowMs' placeholder='60' />
+                    <InputGroupAddon align='inline-end'>
                       <NumberInputIncrement />
                       <InputGroupText>s</InputGroupText>
                     </InputGroupAddon>
@@ -797,13 +797,13 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
                 </div>
               </NumberInput>
             </div>
-            <div className="flex items-center gap-2">
+            <div className='flex items-center gap-2'>
               <Switch
-                id="perUser"
+                id='perUser'
                 checked={rateLimit.perUser || false}
                 onCheckedChange={(checked) => handleRateLimitChange('perUser', checked)}
               />
-              <Label htmlFor="perUser" className="text-sm cursor-pointer">
+              <Label htmlFor='perUser' className='text-sm cursor-pointer'>
                 Per user (based on IP/session)
               </Label>
             </div>
@@ -813,16 +813,16 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
 
       {/* Revoke Access Button - shown when share token exists and any access is enabled */}
       {shareToken && hasAnyAccess && (
-        <div className="flex items-center px-2 pt-4 justify-between">
+        <div className='flex items-center px-2 pt-4 justify-between'>
           <Button
-            variant="destructive-hover"
-            size="sm"
+            variant='destructive-hover'
+            size='sm'
             onClick={handleRevokeAccess}
             disabled={revokeToken.isPending}>
             <Trash2 />
             Revoke All Access
           </Button>
-          {isSaving && <div className="text-xs text-muted-foreground">Saving...</div>}
+          {isSaving && <div className='text-xs text-muted-foreground'>Saving...</div>}
         </div>
       )}
     </>

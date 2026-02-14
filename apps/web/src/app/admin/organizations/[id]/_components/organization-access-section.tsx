@@ -1,17 +1,17 @@
 // apps/web/src/app/admin/organizations/[id]/_components/organization-access-section.tsx
 'use client'
 
-import { useState } from 'react'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Label } from '@auxx/ui/components/label'
 import { Textarea } from '@auxx/ui/components/textarea'
-import { Badge } from '@auxx/ui/components/badge'
-import { useConfirm } from '~/hooks/use-confirm'
 import { toastError } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
 import { format } from 'date-fns'
-import { Ban, CheckCircle, AlertTriangle, Trash2 } from 'lucide-react'
+import { AlertTriangle, Ban, CheckCircle, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 interface OrganizationAccessSectionProps {
   organizationId: string
@@ -134,62 +134,62 @@ export function OrganizationAccessSection({
             Suspend or restore organization access, manage scheduled deletions
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className='space-y-6'>
           {/* Current Status */}
-          <div className="p-4 rounded-lg border bg-muted/50">
-            <div className="grid grid-cols-2 gap-4">
+          <div className='p-4 rounded-lg border bg-muted/50'>
+            <div className='grid grid-cols-2 gap-4'>
               <div>
-                <div className="text-sm font-medium text-muted-foreground mb-1">Access Status</div>
-                <div className="flex items-center gap-2">
+                <div className='text-sm font-medium text-muted-foreground mb-1'>Access Status</div>
+                <div className='flex items-center gap-2'>
                   {isDisabled ? (
                     <>
-                      <Ban className="size-4 text-red-500" />
-                      <Badge variant="destructive">Disabled</Badge>
+                      <Ban className='size-4 text-red-500' />
+                      <Badge variant='destructive'>Disabled</Badge>
                     </>
                   ) : (
                     <>
-                      <CheckCircle className="size-4 text-green-500" />
-                      <Badge variant="outline">Active</Badge>
+                      <CheckCircle className='size-4 text-green-500' />
+                      <Badge variant='outline'>Active</Badge>
                     </>
                   )}
                 </div>
               </div>
               {isDisabled && (
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground mb-1">Disabled At</div>
-                  <div className="font-medium">{format(disabledAt, 'PPP p')}</div>
+                  <div className='text-sm font-medium text-muted-foreground mb-1'>Disabled At</div>
+                  <div className='font-medium'>{format(disabledAt, 'PPP p')}</div>
                 </div>
               )}
             </div>
             {isDisabled && disabledReason && (
-              <div className="mt-4 pt-4 border-t">
-                <div className="text-sm font-medium text-muted-foreground mb-1">Reason</div>
-                <div className="text-sm">{disabledReason}</div>
+              <div className='mt-4 pt-4 border-t'>
+                <div className='text-sm font-medium text-muted-foreground mb-1'>Reason</div>
+                <div className='text-sm'>{disabledReason}</div>
               </div>
             )}
           </div>
 
           {/* Deletion Warning */}
           {hasDeletionScheduled && (
-            <div className="p-4 rounded-lg border border-destructive bg-destructive/5">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="size-5 text-destructive mt-0.5" />
-                <div className="flex-1 space-y-2">
+            <div className='p-4 rounded-lg border border-destructive bg-destructive/5'>
+              <div className='flex items-start gap-3'>
+                <AlertTriangle className='size-5 text-destructive mt-0.5' />
+                <div className='flex-1 space-y-2'>
                   <div>
-                    <div className="font-medium text-destructive">Deletion Scheduled</div>
-                    <div className="text-sm text-muted-foreground">
+                    <div className='font-medium text-destructive'>Deletion Scheduled</div>
+                    <div className='text-sm text-muted-foreground'>
                       This organization is scheduled for deletion on{' '}
                       {format(subscription.deletionScheduledDate!, 'PPP p')}
                     </div>
                   </div>
                   {subscription.deletionReason && (
-                    <div className="text-sm">
-                      <span className="font-medium">Reason:</span> {subscription.deletionReason}
+                    <div className='text-sm'>
+                      <span className='font-medium'>Reason:</span> {subscription.deletionReason}
                     </div>
                   )}
                   <Button
-                    variant="outline"
-                    size="sm"
+                    variant='outline'
+                    size='sm'
                     onClick={handleCancelDeletion}
                     loading={cancelDeletion.isPending}>
                     <Trash2 />
@@ -202,31 +202,31 @@ export function OrganizationAccessSection({
 
           {/* Actions */}
           {!isDisabled ? (
-            <div className="space-y-3">
+            <div className='space-y-3'>
               <div>
-                <h4 className="text-sm font-medium mb-1">Disable Organization</h4>
-                <p className="text-sm text-muted-foreground">
+                <h4 className='text-sm font-medium mb-1'>Disable Organization</h4>
+                <p className='text-sm text-muted-foreground'>
                   Suspend access for policy violations or payment issues
                 </p>
               </div>
-              <div className="space-y-3">
+              <div className='space-y-3'>
                 <div>
-                  <Label htmlFor="disable-reason">
-                    Reason <span className="text-destructive">*</span>
+                  <Label htmlFor='disable-reason'>
+                    Reason <span className='text-destructive'>*</span>
                   </Label>
                   <Textarea
-                    id="disable-reason"
-                    placeholder="Why are you disabling this organization? (minimum 10 characters)"
+                    id='disable-reason'
+                    placeholder='Why are you disabling this organization? (minimum 10 characters)'
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                     rows={3}
                   />
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className='text-xs text-muted-foreground mt-1'>
                     This reason will be logged and visible to admins
                   </p>
                 </div>
                 <Button
-                  variant="destructive"
+                  variant='destructive'
                   onClick={handleDisable}
                   loading={disableOrg.isPending}
                   disabled={!reason || reason.length < 10}>
@@ -236,10 +236,10 @@ export function OrganizationAccessSection({
               </div>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className='space-y-3'>
               <div>
-                <h4 className="text-sm font-medium mb-1">Enable Organization</h4>
-                <p className="text-sm text-muted-foreground">
+                <h4 className='text-sm font-medium mb-1'>Enable Organization</h4>
+                <p className='text-sm text-muted-foreground'>
                   Restore access after suspension has been resolved
                 </p>
               </div>

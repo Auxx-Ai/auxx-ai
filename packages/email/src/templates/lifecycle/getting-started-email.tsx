@@ -1,6 +1,6 @@
 // packages/email/src/templates/lifecycle/getting-started-email.tsx
 import { Container, Text } from '@react-email/components'
-import React from 'react'
+import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
@@ -72,7 +72,7 @@ export async function GettingStartedEmail({
 
         <Text>Ready to see these features in action?</Text>
 
-        <EmailButton href={dashboardUrl} label="Explore Your Dashboard" />
+        <EmailButton href={dashboardUrl} label='Explore Your Dashboard' />
 
         <Text style={{ marginTop: '24px' }}>
           <strong>Quick Start Checklist:</strong>

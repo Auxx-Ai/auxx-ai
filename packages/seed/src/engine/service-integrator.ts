@@ -1,14 +1,14 @@
 // packages/seed/src/engine/service-integrator.ts
 // Service-based seeding helpers for entities requiring business logic coordination
 
-import { createId } from '@paralleldrive/cuid2'
-import { eq } from 'drizzle-orm'
 import { database, schema } from '@auxx/database'
 import { OrganizationSeeder } from '@auxx/lib/seed'
 import { SettingsInitializer } from '@auxx/lib/settings'
-import type { SeedingScenario, SeedingConfig, ServiceIntegratorResult } from '../types'
-import type { IdPoolManager } from '../utils/id-pool-manager'
+import { createId } from '@paralleldrive/cuid2'
+import { eq } from 'drizzle-orm'
 import type { RelationalDomainBuilder } from '../builders/relational-domain-builder'
+import type { SeedingConfig, SeedingScenario, ServiceIntegratorResult } from '../types'
+import type { IdPoolManager } from '../utils/id-pool-manager'
 
 /**
  * ServiceIntegrator orchestrates entities that benefit from service-layer logic rather than bulk seeding.

@@ -1,23 +1,18 @@
 // packages/lib/src/import/resolution/resolve-relation-lookups.ts
 
-import { eq, and, sql, isNull, inArray, ilike, type SQL } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { ResourceRegistryService } from '../../resources/registry/resource-registry-service'
-import type { Resource, SystemResource, CustomResource } from '../../resources/registry/types'
-import { BaseType } from '../../resources/types'
 import { getValueType } from '@auxx/types'
+import { and, eq, ilike, inArray, isNull, type SQL, sql } from 'drizzle-orm'
+import { ResourceRegistryService } from '../../resources/registry/resource-registry-service'
+import type { CustomResource, Resource, SystemResource } from '../../resources/registry/types'
+import { BaseType } from '../../resources/types'
 
 const logger = createScopedLogger('resolve-relation-lookups')
 
 /** Field types that support text matching */
-const TEXT_FIELD_TYPES = [
-  BaseType.STRING,
-  BaseType.EMAIL,
-  BaseType.URL,
-  BaseType.PHONE,
-]
+const TEXT_FIELD_TYPES = [BaseType.STRING, BaseType.EMAIL, BaseType.URL, BaseType.PHONE]
 
 /** Field types that support numeric matching */
 const NUMERIC_FIELD_TYPES = [BaseType.NUMBER]
@@ -85,7 +80,13 @@ export async function resolveRelationLookups(
 
   // Process each entity
   for (const [entityDefinitionId, lookups] of byEntity) {
-    const tableResults = await resolveLookupsForTable(db, organizationId, registry, entityDefinitionId, lookups)
+    const tableResults = await resolveLookupsForTable(
+      db,
+      organizationId,
+      registry,
+      entityDefinitionId,
+      lookups
+    )
     results.push(...tableResults)
   }
 
@@ -123,8 +124,8 @@ async function resolveLookupsForTable(
   // Determine default match field from resource display config
   const defaultMatchField =
     resource.type === 'system'
-      ? resource.display.primaryDisplayField?.id ?? 'id'
-      : resource.display.primaryDisplayField?.name ?? 'id'
+      ? (resource.display.primaryDisplayField?.id ?? 'id')
+      : (resource.display.primaryDisplayField?.name ?? 'id')
 
   // Group lookups by match field (most will use the same field)
   const byMatchField = new Map<string, PendingRelationLookup[]>()
@@ -141,7 +142,13 @@ async function resolveLookupsForTable(
     const searchValues = fieldLookups.map((l) => l.searchValue.toLowerCase().trim())
 
     // Query records matching any of the search values
-    const records = await queryRecordsByField(db, organizationId, resource, matchField, searchValues)
+    const records = await queryRecordsByField(
+      db,
+      organizationId,
+      resource,
+      matchField,
+      searchValues
+    )
 
     // Build lookup map: normalizedSearchValue -> recordId
     const recordMap = new Map<string, string>()
@@ -312,7 +319,10 @@ async function queryCustomEntity(
     .from(schema.FieldValue)
     .innerJoin(
       schema.EntityInstance,
-      and(eq(schema.FieldValue.entityId, schema.EntityInstance.id), isNull(schema.EntityInstance.archivedAt))
+      and(
+        eq(schema.FieldValue.entityId, schema.EntityInstance.id),
+        isNull(schema.EntityInstance.archivedAt)
+      )
     )
     .where(and(eq(schema.FieldValue.fieldId, field.id), matchCondition))
 
@@ -345,7 +355,9 @@ export async function updateResolutionsWithLookupResults(
 
   for (const result of results) {
     const newStatus = result.recordId ? 'valid' : 'error'
-    const resolvedValue = result.recordId ? JSON.stringify([{ type: 'value', value: result.recordId }]) : null
+    const resolvedValue = result.recordId
+      ? JSON.stringify([{ type: 'value', value: result.recordId }])
+      : null
 
     await db
       .update(schema.ImportValueResolution)

@@ -1,11 +1,11 @@
 // packages/lib/src/messages/message-composer.service.ts
 
-import { type Database, type Transaction, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import { SendStatus, ParticipantRole } from '@auxx/database/enums'
+import { type Database, schema, type Transaction } from '@auxx/database'
+import { ParticipantRole, SendStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
+import { and, eq } from 'drizzle-orm'
+import { type FileAttachment, MessageAttachmentService } from './message-attachment.service'
 import type { ComposedMessage, ProcessedParticipants } from './types/message-sending.types'
-import { MessageAttachmentService, type FileAttachment } from './message-attachment.service'
 
 const logger = createScopedLogger('message-composer')
 
@@ -198,7 +198,8 @@ export class MessageComposerService {
 
       // Update thread latestMessageId
       // All messages are now "real" messages - drafts are in separate Draft table
-      await tx.update(schema.Thread)
+      await tx
+        .update(schema.Thread)
         .set({ latestMessageId: message.id })
         .where(eq(schema.Thread.id, input.threadId))
 
@@ -534,7 +535,8 @@ export class MessageComposerService {
 
       // Update thread latestMessageId
       // All messages are now "real" messages - drafts are in separate Draft table
-      await tx.update(schema.Thread)
+      await tx
+        .update(schema.Thread)
         .set({ latestMessageId: message.id })
         .where(eq(schema.Thread.id, input.threadId))
 

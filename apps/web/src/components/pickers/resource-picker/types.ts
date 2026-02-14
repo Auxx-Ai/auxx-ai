@@ -1,10 +1,10 @@
 // apps/web/src/components/pickers/resource-picker/types.ts
 
-import type React from 'react'
 import type { FieldType } from '@auxx/database/types'
-import type { FieldReference, ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import type { FieldReference, ResourceFieldId } from '@auxx/types/field'
 import type { NavigationItem } from '@auxx/ui/components/command'
+import type React from 'react'
 
 /**
  * Flexible exclude filter for fields.

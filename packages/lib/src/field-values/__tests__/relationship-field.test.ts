@@ -1,11 +1,11 @@
 // packages/lib/src/field-values/__tests__/relationship-field.test.ts
 
+import type { RelationshipFieldValue } from '@auxx/types/field-value'
 import {
   extractRelationshipRecordIds,
   isRelationshipFieldValue,
   isRelationshipFieldValueArray,
 } from '../relationship-field'
-import type { RelationshipFieldValue } from '@auxx/types/field-value'
 
 describe('extractRelationshipRecordIds', () => {
   it('handles null/undefined', () => {

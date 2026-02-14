@@ -1,10 +1,11 @@
 // lib/email/providers/outlook-label-provider.ts
-import { Client } from '@microsoft/microsoft-graph-client'
-import { LabelProvider, ProviderLabel } from './label-provider.interface'
-import { OutlookOAuthService } from '../../providers/outlook/outlook-oauth'
+
 import { IntegrationModel } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
+import type { Client } from '@microsoft/microsoft-graph-client'
+import { OutlookOAuthService } from '../../providers/outlook/outlook-oauth'
 import { ReauthenticationRequiredError } from '../errors-handlers'
+import type { LabelProvider, ProviderLabel } from './label-provider.interface'
 
 const logger = createScopedLogger('outlook-label-provider')
 

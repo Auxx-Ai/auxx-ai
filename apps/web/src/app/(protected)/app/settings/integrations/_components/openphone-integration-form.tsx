@@ -1,5 +1,4 @@
 'use client'
-import React from 'react'
 import { Button } from '@auxx/ui/components/button'
 import {
   Form,
@@ -11,14 +10,15 @@ import {
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import { Phone, Key, Hash, Shield, ArrowLeft } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { z } from 'zod'
-import { useForm } from 'react-hook-form'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-
-import { useIntegration } from '~/hooks/use-integration'
+import { ArrowLeft, Hash, Key, Phone, Shield } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import React from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import SettingsPage from '~/components/global/settings-page'
+import { useIntegration } from '~/hooks/use-integration'
+
 type Props = {}
 
 // Schema for OpenPhone integration
@@ -56,8 +56,8 @@ function OpenPhoneIntegrationForm({}: Props) {
 
   return (
     <SettingsPage
-      title="OpenPhone Integration"
-      description="Setup your OpenPhone integration"
+      title='OpenPhone Integration'
+      description='Setup your OpenPhone integration'
       breadcrumbs={[
         { title: 'Settings', href: '/app/settings' },
         { title: 'Integrations', href: '/app/settings/integrations' },
@@ -65,35 +65,35 @@ function OpenPhoneIntegrationForm({}: Props) {
         { title: 'OpenPhone' },
       ]}
       button={
-        <Button variant="outline" size="sm" onClick={handleBack}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
+        <Button variant='outline' size='sm' onClick={handleBack}>
+          <ArrowLeft className='mr-2 h-4 w-4' />
           Back
         </Button>
       }>
-      <div className="p-6">
+      <div className='p-6'>
         <Form {...openPhoneForm}>
-          <form onSubmit={openPhoneForm.handleSubmit(onOpenPhoneSubmit)} className="space-y-6">
-            <div className="flex flex-col space-y-1.5">
-              <div className="flex flex-col space-y-1.5">
-                <div className="flex items-center space-x-2">
-                  <Phone className="h-6 w-6 text-green-500" />
-                  <div className="font-semibold leading-none tracking-tight">Connect OpenPhone</div>
+          <form onSubmit={openPhoneForm.handleSubmit(onOpenPhoneSubmit)} className='space-y-6'>
+            <div className='flex flex-col space-y-1.5'>
+              <div className='flex flex-col space-y-1.5'>
+                <div className='flex items-center space-x-2'>
+                  <Phone className='h-6 w-6 text-green-500' />
+                  <div className='font-semibold leading-none tracking-tight'>Connect OpenPhone</div>
                 </div>
-                <div className="text-sm text-muted-foreground">
+                <div className='text-sm text-muted-foreground'>
                   Enter your OpenPhone API credentials to connect your phone number
                 </div>
               </div>
-              <div className="space-y-4">
+              <div className='space-y-4'>
                 <FormField
                   control={openPhoneForm.control}
-                  name="apiKey"
+                  name='apiKey'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>API Key</FormLabel>
                       <FormControl>
-                        <div className="flex items-center space-x-2">
-                          <Key className="h-4 w-4 text-muted-foreground" />
-                          <Input type="password" placeholder="OpenPhone API Key" {...field} />
+                        <div className='flex items-center space-x-2'>
+                          <Key className='h-4 w-4 text-muted-foreground' />
+                          <Input type='password' placeholder='OpenPhone API Key' {...field} />
                         </div>
                       </FormControl>
                       <FormDescription>
@@ -106,14 +106,14 @@ function OpenPhoneIntegrationForm({}: Props) {
 
                 <FormField
                   control={openPhoneForm.control}
-                  name="phoneNumberId"
+                  name='phoneNumberId'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Phone Number ID</FormLabel>
                       <FormControl>
-                        <div className="flex items-center space-x-2">
-                          <Hash className="h-4 w-4 text-muted-foreground" />
-                          <Input placeholder="e.g., pnv_123456789" {...field} />
+                        <div className='flex items-center space-x-2'>
+                          <Hash className='h-4 w-4 text-muted-foreground' />
+                          <Input placeholder='e.g., pnv_123456789' {...field} />
                         </div>
                       </FormControl>
                       <FormDescription>
@@ -126,14 +126,14 @@ function OpenPhoneIntegrationForm({}: Props) {
 
                 <FormField
                   control={openPhoneForm.control}
-                  name="phoneNumber"
+                  name='phoneNumber'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Phone Number</FormLabel>
                       <FormControl>
-                        <div className="flex items-center space-x-2">
-                          <Phone className="h-4 w-4 text-muted-foreground" />
-                          <Input placeholder="+1234567890" {...field} />
+                        <div className='flex items-center space-x-2'>
+                          <Phone className='h-4 w-4 text-muted-foreground' />
+                          <Input placeholder='+1234567890' {...field} />
                         </div>
                       </FormControl>
                       <FormDescription>
@@ -146,14 +146,14 @@ function OpenPhoneIntegrationForm({}: Props) {
 
                 <FormField
                   control={openPhoneForm.control}
-                  name="webhookSigningSecret"
+                  name='webhookSigningSecret'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Webhook Signing Secret</FormLabel>
                       <FormControl>
-                        <div className="flex items-center space-x-2">
-                          <Shield className="h-4 w-4 text-muted-foreground" />
-                          <Input type="password" placeholder="Webhook signing secret" {...field} />
+                        <div className='flex items-center space-x-2'>
+                          <Shield className='h-4 w-4 text-muted-foreground' />
+                          <Input type='password' placeholder='Webhook signing secret' {...field} />
                         </div>
                       </FormControl>
                       <FormDescription>
@@ -164,17 +164,17 @@ function OpenPhoneIntegrationForm({}: Props) {
                   )}
                 />
               </div>
-              <div className="flex justify-between">
-                <Button type="button" variant="ghost" onClick={handleBack}>
+              <div className='flex justify-between'>
+                <Button type='button' variant='ghost' onClick={handleBack}>
                   <ArrowLeft />
                   Back
                 </Button>
                 <Button
-                  type="submit"
-                  variant="outline"
+                  type='submit'
+                  variant='outline'
                   disabled={addOpenPhoneIntegration.isPending}
                   loading={addOpenPhoneIntegration.isPending}
-                  loadingText="Connecting...">
+                  loadingText='Connecting...'>
                   Connect OpenPhone
                 </Button>
               </div>

@@ -1,18 +1,19 @@
 // ~/hooks/use-pusher.ts (or @auxx/lib/pusher/context.tsx)
 
+import { env } from '@auxx/config/client'
+import { useQueryClient } from '@tanstack/react-query'
+import Pusher, { type Channel } from 'pusher-js'
 import React, {
   createContext,
+  type ReactNode,
   useContext,
   useEffect,
-  useState,
-  type ReactNode,
   useMemo,
   useRef,
+  useState,
 } from 'react'
-import Pusher, { Channel } from 'pusher-js'
-import { useQueryClient } from '@tanstack/react-query'
 import { useUser } from '~/hooks/use-user' // Adjust path
-import { env } from '@auxx/config/client'
+
 // Define the shape of the context value
 interface PusherContextProps {
   pusher: Pusher | null

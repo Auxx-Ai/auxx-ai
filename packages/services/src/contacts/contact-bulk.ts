@@ -2,7 +2,7 @@
 
 import { database, schema, type Transaction } from '@auxx/database'
 import type { CustomerStatus } from '@auxx/database/types'
-import { eq, and, inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { ContactContext } from './types'
@@ -62,10 +62,7 @@ export async function bulkUpdate(
       .update(schema.Contact)
       .set({ ...values, updatedAt: new Date() })
       .where(
-        and(
-          inArray(schema.Contact.id, validIds),
-          eq(schema.Contact.organizationId, organizationId)
-        )
+        and(inArray(schema.Contact.id, validIds), eq(schema.Contact.organizationId, organizationId))
       )
       .returning({ id: schema.Contact.id }),
     'bulk-update-contacts'
@@ -111,7 +108,10 @@ export async function bulkDeleteContacts(
     tx
       .delete(schema.Comment)
       .where(
-        and(inArray(schema.Comment.entityId, validIds), eq(schema.Comment.entityDefinitionId, 'contact'))
+        and(
+          inArray(schema.Comment.entityId, validIds),
+          eq(schema.Comment.entityDefinitionId, 'contact')
+        )
       ),
   ])
 

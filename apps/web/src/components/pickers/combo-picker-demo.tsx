@@ -1,10 +1,10 @@
 'use client'
 
-// filepath: /Users/mklooth/Sites/auxx-ai/apps/web/src/components/pickers/combo-picker-demo.tsx
-import { useState } from 'react'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import { ComboPicker, Option } from './combo-picker'
+// filepath: /Users/mklooth/Sites/auxx-ai/apps/web/src/components/pickers/combo-picker-demo.tsx
+import { useState } from 'react'
+import { ComboPicker, type Option } from './combo-picker'
 
 /**
  * Demo component for ComboPicker
@@ -29,17 +29,17 @@ export default function ComboPickerDemo() {
   const [multiOpen, setMultiOpen] = useState(false)
 
   return (
-    <div className="flex flex-col gap-8 p-8">
+    <div className='flex flex-col gap-8 p-8'>
       <Card>
         <CardHeader>
           <CardTitle>ComboPicker Demo</CardTitle>
           <CardDescription>Test the component's functionality</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-6">
+        <CardContent className='flex flex-col gap-6'>
           {/* Single select demo */}
           <div>
-            <h3 className="text-lg font-medium mb-2">Single Select</h3>
-            <div className="flex items-center gap-4">
+            <h3 className='text-lg font-medium mb-2'>Single Select</h3>
+            <div className='flex items-center gap-4'>
               <ComboPicker
                 options={options}
                 selected={singleSelected}
@@ -48,7 +48,7 @@ export default function ComboPickerDemo() {
                 onOpen={() => setSingleOpen(true)}
                 onClose={() => setSingleOpen(false)}
                 multi={false}>
-                <Button variant="outline" className="w-full justify-between">
+                <Button variant='outline' className='w-full justify-between'>
                   {singleSelected ? singleSelected.label : 'Select a fruit...'}
                 </Button>
               </ComboPicker>
@@ -58,8 +58,8 @@ export default function ComboPickerDemo() {
 
           {/* Multi select demo */}
           <div>
-            <h3 className="text-lg font-medium mb-2">Multi Select</h3>
-            <div className="flex items-center gap-4">
+            <h3 className='text-lg font-medium mb-2'>Multi Select</h3>
+            <div className='flex items-center gap-4'>
               <ComboPicker
                 options={options}
                 selected={multiSelected}
@@ -72,7 +72,7 @@ export default function ComboPickerDemo() {
                 onOpen={() => setMultiOpen(true)}
                 onClose={() => setMultiOpen(false)}
                 multi={true}>
-                <Button variant="outline" className="w-full justify-between">
+                <Button variant='outline' className='w-full justify-between'>
                   {multiSelected.length > 0
                     ? `${multiSelected.length} selected`
                     : 'Select fruits...'}

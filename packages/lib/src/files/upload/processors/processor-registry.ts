@@ -1,8 +1,8 @@
 // packages/lib/src/files/upload/processors/processor-registry.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { BaseProcessor } from './base-processor'
 import type { EntityType } from '../../types/entities'
+import type { BaseProcessor } from './base-processor'
 
 const logger = createScopedLogger('processor-registry')
 
@@ -24,11 +24,11 @@ export class ProcessorRegistry {
    * Register a processor factory for an entity type
    */
   static registerForEntity(entityType: EntityType, factory: ProcessorFactory): void {
-    if (this.entityProcessors.has(entityType)) {
+    if (ProcessorRegistry.entityProcessors.has(entityType)) {
       logger.warn(`Processor for entity type ${entityType} already registered, overwriting`)
     }
 
-    this.entityProcessors.set(entityType, factory)
+    ProcessorRegistry.entityProcessors.set(entityType, factory)
     logger.info(`Registered processor for entity: ${entityType}`)
   }
 
@@ -36,7 +36,7 @@ export class ProcessorRegistry {
    * Set the default processor factory for unknown entity types
    */
   static setDefaultProcessor(factory: ProcessorFactory): void {
-    this.defaultProcessorFactory = factory
+    ProcessorRegistry.defaultProcessorFactory = factory
     logger.info('Set default processor factory')
   }
 
@@ -44,14 +44,14 @@ export class ProcessorRegistry {
    * Mark processors as initialized (called by the initialization function)
    */
   static markInitialized(): void {
-    this.initialized = true
+    ProcessorRegistry.initialized = true
   }
 
   /**
    * Check if processors are initialized
    */
   static isInitialized(): boolean {
-    return this.initialized
+    return ProcessorRegistry.initialized
   }
 
   /**
@@ -59,13 +59,15 @@ export class ProcessorRegistry {
    */
   static getForEntityType(entityType: EntityType, organizationId: string): BaseProcessor {
     // Check if processors are initialized, if not, warn but continue
-    if (!this.initialized) {
+    if (!ProcessorRegistry.initialized) {
       logger.warn(
         'Processors not initialized, this may cause issues. Call ensureProcessorsInitialized() first.'
       )
     }
 
-    const factory = this.entityProcessors.get(entityType) || this.defaultProcessorFactory
+    const factory =
+      ProcessorRegistry.entityProcessors.get(entityType) ||
+      ProcessorRegistry.defaultProcessorFactory
 
     if (!factory) {
       throw new Error(`No processor found for entity type: ${entityType}`)
@@ -85,14 +87,14 @@ export class ProcessorRegistry {
    * Check if a processor is registered for the given entity type
    */
   static hasProcessor(entityType: EntityType): boolean {
-    return this.entityProcessors.has(entityType)
+    return ProcessorRegistry.entityProcessors.has(entityType)
   }
 
   /**
    * Unregister a processor
    */
   static unregisterProcessor(entityType: EntityType): boolean {
-    const removed = this.entityProcessors.delete(entityType)
+    const removed = ProcessorRegistry.entityProcessors.delete(entityType)
     if (removed) {
       logger.info(`Unregistered processor: ${entityType}`)
     }
@@ -103,22 +105,22 @@ export class ProcessorRegistry {
    * Get all registered entity types
    */
   static getRegisteredTypes(): EntityType[] {
-    return Array.from(this.entityProcessors.keys())
+    return Array.from(ProcessorRegistry.entityProcessors.keys())
   }
 
   /**
    * Get the count of registered processors
    */
   static getProcessorCount(): number {
-    return this.entityProcessors.size
+    return ProcessorRegistry.entityProcessors.size
   }
 
   /**
    * Clear all registered processors
    */
   static clear(): void {
-    const count = this.entityProcessors.size
-    this.entityProcessors.clear()
+    const count = ProcessorRegistry.entityProcessors.size
+    ProcessorRegistry.entityProcessors.clear()
     logger.info(`Cleared ${count} registered processors`)
   }
 }

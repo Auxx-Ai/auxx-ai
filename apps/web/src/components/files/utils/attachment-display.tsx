@@ -2,14 +2,14 @@
 
 'use client'
 
-import React from 'react'
-import { cn } from '@auxx/ui/lib/utils'
+import type { CommentAttachmentInfo } from '@auxx/lib/comments'
 import { Button } from '@auxx/ui/components/button'
-import { Trash2 } from 'lucide-react'
+import { cn } from '@auxx/ui/lib/utils'
 import { formatBytes, isPreviewableImage } from '@auxx/utils/file'
+import { Trash2 } from 'lucide-react'
+import type React from 'react'
 import { FileIcon } from '~/components/files/utils/file-icon'
 import { AttachmentThumbnail } from './attachment-thumbnail'
-import type { CommentAttachmentInfo } from '@auxx/lib/comments'
 
 /**
  * Props for AttachmentDisplay component
@@ -60,34 +60,34 @@ export function AttachmentDisplay({
         className
       )}
       aria-label={`Download ${attachment.name}`}
-      type="button">
+      type='button'>
       {isImage ? (
         <AttachmentThumbnail
           attachmentId={attachment.id}
           alt={attachment.name}
-          className="size-12 object-cover rounded"
+          className='size-12 object-cover rounded'
           fallback={
             <FileIcon
               mimeType={attachment.mimeType || 'application/octet-stream'}
-              className="size-4 text-gray-500 flex-shrink-0"
+              className='size-4 text-gray-500 flex-shrink-0'
             />
           }
         />
       ) : (
         <FileIcon
           mimeType={attachment.mimeType || 'application/octet-stream'}
-          className="size-4 text-gray-500 flex-shrink-0"
+          className='size-4 text-gray-500 flex-shrink-0'
         />
       )}
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium truncate" title={attachment.name}>
+      <div className='flex-1 min-w-0'>
+        <div className='flex items-center gap-2'>
+          <span className='text-sm font-medium truncate' title={attachment.name}>
             {attachment.name}
           </span>
         </div>
         {attachment.size && (
-          <div className="text-xs text-gray-500">
+          <div className='text-xs text-gray-500'>
             {formatBytes(Number(attachment.size))} {/* Convert bigint to number */}
           </div>
         )}
@@ -95,11 +95,11 @@ export function AttachmentDisplay({
 
       {showRemoveButton && onRemove && (
         <Button
-          variant="ghost"
-          size="icon-sm"
+          variant='ghost'
+          size='icon-sm'
           onClick={handleRemove}
-          title="Remove file"
-          className="hover:bg-bad-200/50 hover:text-bad-500 rounded-full">
+          title='Remove file'
+          className='hover:bg-bad-200/50 hover:text-bad-500 rounded-full'>
           <Trash2 />
         </Button>
       )}

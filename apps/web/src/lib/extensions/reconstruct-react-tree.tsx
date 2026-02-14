@@ -1,7 +1,7 @@
 // apps/web/src/lib/extensions/reconstruct-react-tree.tsx
 
 import React from 'react'
-import { getComponent, componentRegistry } from './component-registry'
+import { componentRegistry, getComponent } from './component-registry'
 
 /**
  * Sanitized instance from the reconciler.
@@ -66,7 +66,11 @@ export function reconstructReactTree(
     return React.createElement(React.Fragment, null, 'Error: children is not an array')
   }
 
-  function reconstructNode(node: SanitizedInstance, key: string, isRoot: boolean = false): React.ReactNode {
+  function reconstructNode(
+    node: SanitizedInstance,
+    key: string,
+    isRoot: boolean = false
+  ): React.ReactNode {
     if (!node) {
       return null
     }
@@ -85,14 +89,15 @@ export function reconstructReactTree(
 
       if (!Component) {
         console.error(`[ReconstructReactTree] Unknown component: "${component}"`)
-        console.error('[ReconstructReactTree] Available components:', Object.keys(componentRegistry))
+        console.error(
+          '[ReconstructReactTree] Available components:',
+          Object.keys(componentRegistry)
+        )
         throw new Error(`Extension attempted to use unauthorized component: "${component}"`)
       }
 
       // Build props, injecting special props at root level
-      const props: any = isRoot
-        ? { key, ...attributes, ...injectedProps }
-        : { key, ...attributes }
+      const props: any = isRoot ? { key, ...attributes, ...injectedProps } : { key, ...attributes }
 
       // Pass onCallHandler and instance_id to all components (for event handling)
       if (onCallHandler && instance_id !== undefined) {
@@ -140,7 +145,7 @@ function WidgetContainer({
   children?: React.ReactNode
 }) {
   return (
-    <div data-widget-container data-host-instance-id={hostInstanceId} className="extension-widget">
+    <div data-widget-container data-host-instance-id={hostInstanceId} className='extension-widget'>
       {children}
     </div>
   )

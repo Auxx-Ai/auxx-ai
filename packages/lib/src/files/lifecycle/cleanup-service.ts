@@ -1,12 +1,13 @@
 // packages/lib/src/files/lifecycle/cleanup-service.ts
 
+import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { and, eq, inArray, isNull, lte } from 'drizzle-orm'
+import { createAttachmentService } from '../core/attachment-service'
 import { createFileService } from '../core/file-service'
 import { createMediaAssetService } from '../core/media-asset-service'
-import { createAttachmentService } from '../core/attachment-service'
 import { ThumbnailService } from '../core/thumbnail-service'
-import { database, type Database, schema } from '@auxx/database'
-import { eq, and, isNull, inArray, lte } from 'drizzle-orm'
+
 const logger = createScopedLogger('file-cleanup-utils')
 
 /**
@@ -34,10 +35,8 @@ export async function deleteEntityFiles(
     // Find all attachments for the entity
 
     const attachments = await database.query.Attachment.findMany({
-      where: (attachments, { eq, and }) => and(
-        eq(attachments.entityId, entityId),
-        eq(attachments.entityType, entityType)
-      ),
+      where: (attachments, { eq, and }) =>
+        and(eq(attachments.entityId, entityId), eq(attachments.entityType, entityType)),
       with: {
         file: {
           with: {
@@ -102,11 +101,13 @@ export async function deleteEntityFiles(
         } else if (markAsDeleted) {
           // Soft delete
           if (file) {
-            await database.update(schema.FolderFile)
+            await database
+              .update(schema.FolderFile)
               .set({ deletedAt: new Date(), updatedAt: new Date() })
               .where(eq(schema.FolderFile.id, file.id))
           } else if (asset) {
-            await database.update(schema.MediaAsset)
+            await database
+              .update(schema.MediaAsset)
               .set({ deletedAt: new Date(), updatedAt: new Date() })
               .where(eq(schema.MediaAsset.id, asset.id))
           }
@@ -148,10 +149,8 @@ export async function deleteFilesByIds(
 
   // Fetch all files first
   const files = await database.query.FolderFile.findMany({
-    where: (files, { inArray, isNull, and }) => and(
-      inArray(files.id, fileIds),
-      isNull(files.deletedAt)
-    ),
+    where: (files, { inArray, isNull, and }) =>
+      and(inArray(files.id, fileIds), isNull(files.deletedAt)),
     with: {
       currentVersion: {
         with: {
@@ -175,10 +174,10 @@ export async function deleteFilesByIds(
       }
 
       if (deleteFromDatabase && !markAsDeleted) {
-        await database.delete(schema.FolderFile)
-          .where(eq(schema.FolderFile.id, file.id))
+        await database.delete(schema.FolderFile).where(eq(schema.FolderFile.id, file.id))
       } else if (markAsDeleted) {
-        await database.update(schema.FolderFile)
+        await database
+          .update(schema.FolderFile)
           .set({
             deletedAt: new Date(),
             updatedAt: new Date(),
@@ -208,10 +207,8 @@ export async function deleteOrganizationFiles(
   logger.warn(`Deleting ALL files for organization: ${organizationId}`)
 
   const files = await database.query.FolderFile.findMany({
-    where: (files, { eq, isNull, and }) => and(
-      eq(files.organizationId, organizationId),
-      isNull(files.deletedAt)
-    ),
+    where: (files, { eq, isNull, and }) =>
+      and(eq(files.organizationId, organizationId), isNull(files.deletedAt)),
   })
 
   const fileIds = files.map((f: any) => f.id)
@@ -239,10 +236,7 @@ export async function deleteOrphanedFiles(
   } else {
     // Fallback to DB query for cross-organization cleanup
     const files = await database.query.FolderFile.findMany({
-      where: (files, { isNull, and }) => and(
-        isNull(files.attachment),
-        isNull(files.deletedAt)
-      ),
+      where: (files, { isNull, and }) => and(isNull(files.attachment), isNull(files.deletedAt)),
     })
 
     logger.info(`Found ${files.length} orphaned files across all organizations`)
@@ -291,12 +285,13 @@ export async function deleteExpiredFiles(
 
     // Find orphaned files older than 24 hours
     const expiredFiles = await database.query.FolderFile.findMany({
-      where: (files, { eq, isNull, lte, and }) => and(
-        eq(files.organizationId, organizationId),
-        isNull(files.attachment),
-        lte(files.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
-        isNull(files.deletedAt)
-      ),
+      where: (files, { eq, isNull, lte, and }) =>
+        and(
+          eq(files.organizationId, organizationId),
+          isNull(files.attachment),
+          lte(files.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
+          isNull(files.deletedAt)
+        ),
     })
 
     logger.info(`Found ${expiredFiles.length} expired files`)
@@ -311,10 +306,11 @@ export async function deleteExpiredFiles(
   } else {
     // Fallback to DB query for cross-organization cleanup
     const files = await database.query.FolderFile.findMany({
-      where: (files, { lte, isNull, and }) => and(
-        lte(files.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
-        isNull(files.deletedAt)
-      ),
+      where: (files, { lte, isNull, and }) =>
+        and(
+          lte(files.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
+          isNull(files.deletedAt)
+        ),
       with: {
         attachments: true,
       },
@@ -412,8 +408,7 @@ export async function cleanupFailedUpload(
   // Delete from database if we have the ID
   if (fileId) {
     try {
-      await database.delete(schema.FolderFile)
-        .where(eq(schema.FolderFile.id, fileId))
+      await database.delete(schema.FolderFile).where(eq(schema.FolderFile.id, fileId))
       logger.info('Deleted file record from database')
     } catch (error) {
       logger.error('Failed to delete from database:', error)

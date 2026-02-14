@@ -1,7 +1,6 @@
 // src/components/editor/mention-popover.tsx
 'use client'
 
-import { useEffect, useImperativeHandle, useState } from 'react'
 import {
   Command,
   CommandEmpty,
@@ -9,6 +8,7 @@ import {
   CommandItem,
   CommandList,
 } from '@auxx/ui/components/command'
+import { useEffect, useImperativeHandle, useState } from 'react'
 
 /**
  * Interface for mention suggestion items
@@ -99,7 +99,7 @@ export const MentionPopover: React.FC<MentionProps> = ({
   }
 
   return (
-    <Command className=" bg-background shadow-sm shadow-black/25 z-100">
+    <Command className=' bg-background shadow-sm shadow-black/25 z-100'>
       <CommandList>
         {items.length > 0 ? (
           <CommandGroup>
@@ -110,33 +110,33 @@ export const MentionPopover: React.FC<MentionProps> = ({
                 value={item.name}
                 onMouseEnter={() => setSelectedIndex(index)}
                 onSelect={() => selectItem(index)}>
-                <div className="">
+                <div className=''>
                   {item.avatar ? (
                     <img
                       src={item.avatar}
                       alt={item.name}
-                      className="h-8 w-8 rounded-full object-cover"
+                      className='h-8 w-8 rounded-full object-cover'
                     />
                   ) : (
                     item.name.charAt(0).toUpperCase()
                   )}
                 </div>
-                <div className="flex flex-col overflow-hidden">
-                  <div className="truncate font-medium">{item.name}</div>
+                <div className='flex flex-col overflow-hidden'>
+                  <div className='truncate font-medium'>{item.name}</div>
                   {item.email && (
-                    <div className="truncate text-xs text-muted-foreground">{item.email}</div>
+                    <div className='truncate text-xs text-muted-foreground'>{item.email}</div>
                   )}
                   {item.role && (
-                    <div className="truncate text-xs text-muted-foreground">{item.role}</div>
+                    <div className='truncate text-xs text-muted-foreground'>{item.role}</div>
                   )}
                 </div>
               </CommandItem>
             ))}
           </CommandGroup>
         ) : isLoading ? (
-          <CommandEmpty className="">Loading team members...</CommandEmpty>
+          <CommandEmpty className=''>Loading team members...</CommandEmpty>
         ) : (
-          <CommandEmpty className="px-2 text-muted-foreground">No team members found</CommandEmpty>
+          <CommandEmpty className='px-2 text-muted-foreground'>No team members found</CommandEmpty>
         )}
       </CommandList>
     </Command>

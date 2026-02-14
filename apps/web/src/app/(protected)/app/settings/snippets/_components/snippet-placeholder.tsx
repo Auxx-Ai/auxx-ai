@@ -1,6 +1,5 @@
 // components/snippets/SnippetPlaceholder.tsx
-import React from 'react'
-import { CheckIcon, ChevronDownIcon, ChevronsUpDownIcon, HashIcon } from 'lucide-react'
+
 import { Button } from '@auxx/ui/components/button'
 import {
   Command,
@@ -12,6 +11,8 @@ import {
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
+import { CheckIcon, ChevronDownIcon, ChevronsUpDownIcon, HashIcon } from 'lucide-react'
+import React from 'react'
 
 interface PlaceholderGroup {
   name: string
@@ -251,26 +252,26 @@ export function SnippetPlaceholder({ onInsert }: SnippetPlaceholderProps) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 gap-1 text-xs">
+        <Button variant='outline' size='sm' className='h-8 gap-1 text-xs'>
           <HashIcon size={14} />
           Insert Placeholder
           <ChevronDownIcon size={14} />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="end">
+      <PopoverContent className='w-80 p-0' align='end'>
         <Command>
-          <div className="flex items-center border-b px-3">
+          <div className='flex items-center border-b px-3'>
             <CommandInput
-              placeholder="Search placeholders..."
+              placeholder='Search placeholders...'
               value={searchTerm}
               onValueChange={setSearchTerm}
-              className="h-9"
+              className='h-9'
             />
             {selectedGroup && (
               <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9"
+                variant='ghost'
+                size='icon'
+                className='h-9 w-9'
                 onClick={() => setSelectedGroup(null)}>
                 <ChevronDownIcon size={14} />
               </Button>
@@ -278,20 +279,20 @@ export function SnippetPlaceholder({ onInsert }: SnippetPlaceholderProps) {
           </div>
 
           {!selectedGroup && !searchTerm && (
-            <div className="border-b p-2">
-              <div className="px-2 py-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+            <div className='border-b p-2'>
+              <div className='px-2 py-1 text-xs font-medium text-gray-500 dark:text-gray-400'>
                 SELECT CATEGORY
               </div>
-              <div className="grid grid-cols-2 gap-1">
+              <div className='grid grid-cols-2 gap-1'>
                 {placeholderGroups.map((group) => (
                   <Button
                     key={group.name}
-                    variant="ghost"
-                    size="sm"
-                    className="justify-start font-normal"
+                    variant='ghost'
+                    size='sm'
+                    className='justify-start font-normal'
                     onClick={() => setSelectedGroup(group.name)}>
                     {group.name}
-                    <ChevronsUpDownIcon size={14} className="ml-auto opacity-70" />
+                    <ChevronsUpDownIcon size={14} className='ml-auto opacity-70' />
                   </Button>
                 ))}
               </div>
@@ -306,17 +307,17 @@ export function SnippetPlaceholder({ onInsert }: SnippetPlaceholderProps) {
                   <CommandItem
                     key={item.id}
                     onSelect={() => handleInsert(item.value)}
-                    className="flex flex-col items-start rounded-2xl space-y-0 gap-0.5">
-                    <div className="flex w-full items-center">
+                    className='flex flex-col items-start rounded-2xl space-y-0 gap-0.5'>
+                    <div className='flex w-full items-center'>
                       <span>{item.label}</span>
                       <CheckIcon className={cn('ml-auto size-4', 'opacity-0')} />
                     </div>
                     {item.description && (
-                      <span className=" text-xs text-gray-500 dark:text-gray-400">
+                      <span className=' text-xs text-gray-500 dark:text-gray-400'>
                         {item.description}
                       </span>
                     )}
-                    <span className=" font-mono text-xs text-blue-500 dark:text-blue-400">
+                    <span className=' font-mono text-xs text-blue-500 dark:text-blue-400'>
                       {item.value}
                     </span>
                   </CommandItem>

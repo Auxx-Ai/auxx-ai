@@ -42,7 +42,7 @@ export function cloneDeep<T>(value: T): T {
   // Handle plain objects
   const clonedObj: Record<string, unknown> = {}
   for (const key in value) {
-    if (Object.prototype.hasOwnProperty.call(value, key)) {
+    if (Object.hasOwn(value, key)) {
       clonedObj[key] = cloneDeep((value as Record<string, unknown>)[key])
     }
   }
@@ -76,10 +76,7 @@ export function getByPath<T = unknown>(obj: unknown, path: string): T | undefine
  * - Primitives from source override target
  * - undefined values in source are ignored
  */
-export function deepMerge<T extends Record<string, unknown>>(
-  target: T,
-  source: Partial<T>
-): T {
+export function deepMerge<T extends Record<string, unknown>>(target: T, source: Partial<T>): T {
   const result = { ...target }
 
   for (const key of Object.keys(source) as (keyof T)[]) {

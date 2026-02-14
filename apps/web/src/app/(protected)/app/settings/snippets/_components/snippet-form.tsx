@@ -1,12 +1,9 @@
 'use client'
-import React from 'react'
-import { useForm } from 'react-hook-form'
-import { FolderIcon, UserIcon, UsersIcon, Save, ShareIcon, UserPlusIcon } from 'lucide-react'
-import { api } from '~/trpc/react'
+import { SnippetSharingType as SnippetSharingTypeEnum } from '@auxx/database/enums'
+import type { SnippetSharingType } from '@auxx/database/types'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
-import { Textarea } from '@auxx/ui/components/textarea'
 import {
   Select,
   SelectContent,
@@ -14,13 +11,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
+import { FolderIcon, Save, ShareIcon, UserIcon, UserPlusIcon, UsersIcon } from 'lucide-react'
+import React from 'react'
+import { useForm } from 'react-hook-form'
+import { api } from '~/trpc/react'
 // Import the SnippetPlaceholder component
 import { SnippetPlaceholder } from './snippet-placeholder'
 import { SnippetSharing } from './snippet-sharing'
-import { SnippetSharingType as SnippetSharingTypeEnum } from '@auxx/database/enums'
-import type { SnippetSharingType } from '@auxx/database/types'
 
 interface FormValues {
   title: string
@@ -160,16 +160,16 @@ export function SnippetForm({ snippetId, initialValues, onSuccess, onCancel }: S
     }
   }
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-      <div className="space-y-4">
-        <div className="flex flex-col space-y-2">
-          <Label htmlFor="title">Title</Label>
+    <form onSubmit={handleSubmit(onSubmit)} className='space-y-6'>
+      <div className='space-y-4'>
+        <div className='flex flex-col space-y-2'>
+          <Label htmlFor='title'>Title</Label>
           <Input
-            id="title"
+            id='title'
             {...register('title', { required: 'Title is required' })}
             className={cn(errors.title && 'border-red-500')}
           />
-          {errors.title && <p className="mt-1 text-sm text-red-500">{errors.title.message}</p>}
+          {errors.title && <p className='mt-1 text-sm text-red-500'>{errors.title.message}</p>}
         </div>
 
         {/* <div>
@@ -177,8 +177,8 @@ export function SnippetForm({ snippetId, initialValues, onSuccess, onCancel }: S
           <Input id='description' {...register('description')} />
         </div> */}
 
-        <div className="flex flex-col space-y-2">
-          <Label htmlFor="folder">Folder (optional)</Label>
+        <div className='flex flex-col space-y-2'>
+          <Label htmlFor='folder'>Folder (optional)</Label>
           <Select
             defaultValue={watch('folderId') || ''}
             onValueChange={(value) =>
@@ -187,14 +187,14 @@ export function SnippetForm({ snippetId, initialValues, onSuccess, onCancel }: S
               })
             }>
             <SelectTrigger>
-              <SelectValue placeholder="Select a folder" />
+              <SelectValue placeholder='Select a folder' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">None</SelectItem>
+              <SelectItem value='none'>None</SelectItem>
               {folderData?.folders.map((folder) => (
                 <SelectItem key={folder.id} value={folder.id}>
-                  <div className="flex items-center">
-                    <FolderIcon size={14} className="mr-2" />
+                  <div className='flex items-center'>
+                    <FolderIcon size={14} className='mr-2' />
                     {folder.name}
                   </div>
                 </SelectItem>
@@ -203,32 +203,32 @@ export function SnippetForm({ snippetId, initialValues, onSuccess, onCancel }: S
           </Select>
         </div>
 
-        <div className="relative flex flex-col space-y-2">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="content">Content</Label>
+        <div className='relative flex flex-col space-y-2'>
+          <div className='flex items-center justify-between'>
+            <Label htmlFor='content'>Content</Label>
             {/* {isContentFocused && ( */}
-            <div className="absolute right-2 bottom-2">
+            <div className='absolute right-2 bottom-2'>
               <SnippetPlaceholder onInsert={handleInsertPlaceholder} />
             </div>
             {/* )} */}
           </div>
           <Textarea
-            id="content"
+            id='content'
             {...register('content', { required: 'Content is required' })}
             className={cn('h-60 font-mono text-sm', errors.content && 'border-red-500')}
             onFocus={() => setIsContentFocused(true)}
             onBlur={() => setIsContentFocused(false)}
           />
-          {errors.content && <p className="mt-1 text-sm text-red-500">{errors.content.message}</p>}
+          {errors.content && <p className='mt-1 text-sm text-red-500'>{errors.content.message}</p>}
         </div>
 
         <div>
-          <Label htmlFor="sharing">Sharing</Label>
-          <div className="mt-2 flex items-center space-x-2">
+          <Label htmlFor='sharing'>Sharing</Label>
+          <div className='mt-2 flex items-center space-x-2'>
             <Button
-              variant="outline"
-              type="button"
-              size="sm"
+              variant='outline'
+              type='button'
+              size='sm'
               className={cn(
                 sharingType === 'PRIVATE'
                   ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
@@ -241,9 +241,9 @@ export function SnippetForm({ snippetId, initialValues, onSuccess, onCancel }: S
               Private
             </Button>
             <Button
-              variant="outline"
-              type="button"
-              size="sm"
+              variant='outline'
+              type='button'
+              size='sm'
               className={cn(
                 sharingType === 'ORGANIZATION'
                   ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
@@ -256,9 +256,9 @@ export function SnippetForm({ snippetId, initialValues, onSuccess, onCancel }: S
               Organization
             </Button>
             <Button
-              type="button"
-              size="sm"
-              variant="outline"
+              type='button'
+              size='sm'
+              variant='outline'
               onClick={() => setIsSharingDialogOpen(true)}>
               <ShareIcon />
               Advanced Sharing
@@ -267,20 +267,20 @@ export function SnippetForm({ snippetId, initialValues, onSuccess, onCancel }: S
         </div>
       </div>
 
-      <div className="flex justify-end space-x-2">
+      <div className='flex justify-end space-x-2'>
         {onCancel && (
-          <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+          <Button type='button' size='sm' variant='ghost' onClick={onCancel}>
             Cancel
           </Button>
         )}
         <Button
-          type="submit"
-          variant="outline"
-          size="sm"
+          type='submit'
+          variant='outline'
+          size='sm'
           disabled={!isDirty || createMutation.isPending || updateMutation.isPending}
           loading={createMutation.isPending || updateMutation.isPending}
           loadingText={snippetId ? 'Updating...' : 'Creating...'}>
-          <Save className="" />
+          <Save className='' />
           {snippetId ? 'Update' : 'Create'}
         </Button>
       </div>

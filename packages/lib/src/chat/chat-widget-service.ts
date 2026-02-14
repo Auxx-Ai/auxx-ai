@@ -1,10 +1,11 @@
 // packages/lib/src/chat/chat-widget-service.ts
-import { schema, type Database } from '@auxx/database'
-import { eq } from 'drizzle-orm'
-import { createScopedLogger } from '../logger'
+
 import { env } from '@auxx/config/server'
-import { WidgetPosition } from '../widgets/types'
+import { type Database, schema } from '@auxx/database'
+import { eq } from 'drizzle-orm'
 import { databaseErrorCodes } from '../errors'
+import { createScopedLogger } from '../logger'
+import type { WidgetPosition } from '../widgets/types'
 
 const logger = createScopedLogger('chat-widget-service')
 
@@ -184,14 +185,12 @@ export class ChatWidgetService {
 
         // Create InboxIntegration link if inboxId is provided
         if (inboxId) {
-          await tx
-            .insert(schema.InboxIntegration)
-            .values({
-              inboxId: inboxId,
-              integrationId: newIntegration.id,
-              isDefault: false,
-              updatedAt: new Date(),
-            })
+          await tx.insert(schema.InboxIntegration).values({
+            inboxId: inboxId,
+            integrationId: newIntegration.id,
+            isDefault: false,
+            updatedAt: new Date(),
+          })
           logger.info(`Linked new chat integration ${newIntegration.id} to inbox ${inboxId}`)
         }
 
@@ -273,7 +272,7 @@ export class ChatWidgetService {
         }
 
         // Update Inbox Link if inboxId is present in input (even if null)
-        if (input.hasOwnProperty('inboxId')) {
+        if (Object.hasOwn(input, 'inboxId')) {
           // Delete existing link first (if any)
           await tx
             .delete(schema.InboxIntegration)
@@ -281,14 +280,12 @@ export class ChatWidgetService {
 
           // Create new link if inboxId is not null
           if (inboxId !== null && inboxId !== undefined) {
-            await tx
-              .insert(schema.InboxIntegration)
-              .values({
-                inboxId: inboxId,
-                integrationId: integrationId,
-                isDefault: false,
-                updatedAt: new Date(),
-              })
+            await tx.insert(schema.InboxIntegration).values({
+              inboxId: inboxId,
+              integrationId: integrationId,
+              isDefault: false,
+              updatedAt: new Date(),
+            })
             logger.info(`Updated chat integration ${integrationId} link to inbox ${inboxId}`)
           } else {
             logger.info(`Removed inbox link for chat integration ${integrationId}`)
@@ -398,14 +395,12 @@ export class ChatWidgetService {
 
         // Create new link if inboxId is provided
         if (inboxId) {
-          await tx
-            .insert(schema.InboxIntegration)
-            .values({
-              inboxId: inboxId,
-              integrationId: integrationId,
-              isDefault: false,
-              updatedAt: new Date(),
-            })
+          await tx.insert(schema.InboxIntegration).values({
+            inboxId: inboxId,
+            integrationId: integrationId,
+            isDefault: false,
+            updatedAt: new Date(),
+          })
           logger.info(`Linked chat integration ${integrationId} to inbox ${inboxId}`)
         } else {
           logger.info(`Removed inbox link for chat integration ${integrationId}`)

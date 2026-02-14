@@ -1,9 +1,9 @@
 // packages/lib/src/mail-query/draft-condition-builder.ts
 
-import { and, eq, isNull, sql, type SQL } from 'drizzle-orm'
 import { schema } from '@auxx/database'
-import type { Condition, ConditionGroup } from '../conditions/types'
+import { and, eq, isNull, type SQL, sql } from 'drizzle-orm'
 import type { Operator } from '../conditions/operator-definitions'
+import type { Condition, ConditionGroup } from '../conditions/types'
 
 const { Draft } = schema
 
@@ -20,14 +20,7 @@ const SUPPORTED_DRAFT_FIELDS = ['subject', 'body', 'hasAttachments', 'to', 'date
  * - hasDraft: Is the DRAFTS context trigger, should include drafts
  * - status: Filters threads only; drafts are implicitly not TRASH/SPAM
  */
-const UNSUPPORTED_DRAFT_FIELDS = [
-  'tag',
-  'assignee',
-  'inbox',
-  'sender',
-  'from',
-  'sent',
-]
+const UNSUPPORTED_DRAFT_FIELDS = ['tag', 'assignee', 'inbox', 'sender', 'from', 'sent']
 
 /**
  * Check if condition groups contain any unsupported draft conditions.
@@ -191,11 +184,7 @@ function buildDraftRecipientsCondition(operator: Operator, value: any): SQL | nu
 /**
  * Build date condition for drafts.
  */
-function buildDraftDateCondition(
-  operator: Operator,
-  value: any,
-  field?: string
-): SQL | null {
+function buildDraftDateCondition(operator: Operator, value: any, field?: string): SQL | null {
   const dateColumn = field === 'createdAt' ? Draft.createdAt : Draft.updatedAt
   const dateValue = new Date(value)
 

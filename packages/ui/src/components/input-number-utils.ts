@@ -18,11 +18,7 @@ export function clampValue(
 /**
  * Increment a value by step, respecting max constraint
  */
-export function incrementValue(
-  current: number | undefined,
-  step: number,
-  max?: number
-): number {
+export function incrementValue(current: number | undefined, step: number, max?: number): number {
   const newValue = (current ?? 0) + step
   return clampValue(newValue, undefined, max) ?? newValue
 }
@@ -30,11 +26,7 @@ export function incrementValue(
 /**
  * Decrement a value by step, respecting min constraint
  */
-export function decrementValue(
-  current: number | undefined,
-  step: number,
-  min?: number
-): number {
+export function decrementValue(current: number | undefined, step: number, min?: number): number {
   const newValue = (current ?? 0) - step
   return clampValue(newValue, min, undefined) ?? newValue
 }

@@ -1,8 +1,8 @@
 // apps/web/src/components/dynamic-table/components/floating-bulk-action-bar.tsx
 'use client'
 
-import { useMemo } from 'react'
 import { ActionBar, type ActionBarAction } from '@auxx/ui/components/action-bar'
+import { useMemo } from 'react'
 import type { BulkAction } from '../types'
 
 /**
@@ -32,8 +32,8 @@ export function FloatingBulkActionBar<TData>({
   // Convert BulkAction[] to ActionBarAction[]
   const actions: ActionBarAction[] = useMemo(() => {
     return bulkActions
-      .filter(action => !action.hidden?.(selectedData))
-      .map(action => ({
+      .filter((action) => !action.hidden?.(selectedData))
+      .map((action) => ({
         id: action.id ?? action.label,
         label: action.label,
         icon: action.icon,
@@ -46,10 +46,12 @@ export function FloatingBulkActionBar<TData>({
   return (
     <ActionBar
       open={isOpen}
-      onOpenChange={open => { if (!open) onClearSelection() }}
+      onOpenChange={(open) => {
+        if (!open) onClearSelection()
+      }}
       duration={Infinity}
       selectedCount={selectedData.length}
-      selectedLabel="selected"
+      selectedLabel='selected'
       actions={actions}
       showClose
     />

@@ -1,9 +1,9 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/__tests__/crud-relation-fields.test.ts
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { CrudNodeProcessor } from '../crud'
-import { WorkflowNodeType } from '../../../core/types'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkflowNode } from '../../../core/types'
+import { WorkflowNodeType } from '../../../core/types'
+import { CrudNodeProcessor } from '../crud'
 
 /**
  * Test suite for CRUD node relation field handling

@@ -1,11 +1,10 @@
 'use client'
 
-import * as React from 'react'
-import { createContext, useContext } from 'react'
+import { cn } from '@auxx/ui/lib/utils'
 import { CheckIcon, LoaderCircleIcon } from 'lucide-react'
 import { Slot } from 'radix-ui'
-
-import { cn } from '@auxx/ui/lib/utils'
+import * as React from 'react'
+import { createContext, useContext } from 'react'
 
 // Types
 type StepperContextValue = {
@@ -76,7 +75,7 @@ function Stepper({
   return (
     <StepperContext.Provider value={{ activeStep: currentStep, setActiveStep, orientation }}>
       <div
-        data-slot="stepper"
+        data-slot='stepper'
         className={cn(
           'group/stepper inline-flex data-[orientation=horizontal]:w-full data-[orientation=horizontal]:flex-row data-[orientation=vertical]:flex-col',
           className
@@ -115,7 +114,7 @@ function StepperItem({
   return (
     <StepItemContext.Provider value={{ step, state, isDisabled: disabled, isLoading }}>
       <div
-        data-slot="stepper-item"
+        data-slot='stepper-item'
         className={cn(
           'group/step flex items-center group-data-[orientation=horizontal]/stepper:flex-row group-data-[orientation=vertical]/stepper:flex-col',
           className
@@ -141,7 +140,7 @@ function StepperTrigger({ asChild = false, className, children, ...props }: Step
   if (asChild) {
     const Comp = asChild ? Slot.Root : 'span'
     return (
-      <Comp data-slot="stepper-trigger" className={className}>
+      <Comp data-slot='stepper-trigger' className={className}>
         {children}
       </Comp>
     )
@@ -149,7 +148,7 @@ function StepperTrigger({ asChild = false, className, children, ...props }: Step
 
   return (
     <button
-      data-slot="stepper-trigger"
+      data-slot='stepper-trigger'
       className={cn(
         'focus-visible:border-ring focus-visible:ring-ring/50 inline-flex items-center gap-3 rounded-full outline-none focus-visible:z-10 focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50',
         className
@@ -177,7 +176,7 @@ function StepperIndicator({
 
   return (
     <span
-      data-slot="stepper-indicator"
+      data-slot='stepper-indicator'
       className={cn(
         'bg-muted text-muted-foreground data-[state=active]:bg-info data-[state=completed]:bg-info data-[state=active]:text-primary-foreground data-[state=completed]:text-primary-foreground relative flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium',
         className
@@ -188,17 +187,17 @@ function StepperIndicator({
         children
       ) : (
         <>
-          <span className="transition-all group-data-loading/step:scale-0 group-data-loading/step:opacity-0 group-data-loading/step:transition-none group-data-[state=completed]/step:scale-0 group-data-[state=completed]/step:opacity-0">
+          <span className='transition-all group-data-loading/step:scale-0 group-data-loading/step:opacity-0 group-data-loading/step:transition-none group-data-[state=completed]/step:scale-0 group-data-[state=completed]/step:opacity-0'>
             {step}
           </span>
           <CheckIcon
-            className="absolute scale-0 opacity-0 transition-all group-data-[state=completed]/step:scale-100 group-data-[state=completed]/step:opacity-100"
+            className='absolute scale-0 opacity-0 transition-all group-data-[state=completed]/step:scale-100 group-data-[state=completed]/step:opacity-100'
             size={16}
-            aria-hidden="true"
+            aria-hidden='true'
           />
           {isLoading && (
-            <span className="absolute transition-all">
-              <LoaderCircleIcon className="animate-spin" size={14} aria-hidden="true" />
+            <span className='absolute transition-all'>
+              <LoaderCircleIcon className='animate-spin' size={14} aria-hidden='true' />
             </span>
           )}
         </>
@@ -210,7 +209,7 @@ function StepperIndicator({
 // StepperTitle
 function StepperTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
-    <h3 data-slot="stepper-title" className={cn('text-sm font-medium', className)} {...props} />
+    <h3 data-slot='stepper-title' className={cn('text-sm font-medium', className)} {...props} />
   )
 }
 
@@ -218,7 +217,7 @@ function StepperTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingE
 function StepperDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
   return (
     <p
-      data-slot="stepper-description"
+      data-slot='stepper-description'
       className={cn('text-muted-foreground text-sm', className)}
       {...props}
     />
@@ -229,7 +228,7 @@ function StepperDescription({ className, ...props }: React.HTMLAttributes<HTMLPa
 function StepperSeparator({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      data-slot="stepper-separator"
+      data-slot='stepper-separator'
       className={cn(
         'bg-muted group-data-[state=completed]/step:bg-info m-0.5 group-data-[orientation=horizontal]/stepper:h-0.5 group-data-[orientation=horizontal]/stepper:w-full group-data-[orientation=horizontal]/stepper:flex-1 group-data-[orientation=vertical]/stepper:h-12 group-data-[orientation=vertical]/stepper:w-0.5',
         className

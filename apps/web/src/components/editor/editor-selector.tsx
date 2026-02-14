@@ -1,5 +1,5 @@
 // components/editor/EditorSelector.tsx
-import React from 'react'
+
 import {
   Select,
   SelectContent,
@@ -7,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import type React from 'react'
 import { useEditorActiveStateContext } from '~/components/mail/email-editor/editor-active-state-context'
 
 type EditorSelectorProps = {
@@ -51,11 +52,11 @@ const EditorSelector = ({
           }
         }
       }}>
-      <SelectTrigger variant="outline" className={` ${className}`} size="sm" disabled={disabled}>
+      <SelectTrigger variant='outline' className={` ${className}`} size='sm' disabled={disabled}>
         <SelectValue
           placeholder={
             placeholderIcon ? (
-              <span className="flex items-center gap-1.5">
+              <span className='flex items-center gap-1.5'>
                 {placeholderIcon}
                 <span>{placeholder}</span>
               </span>

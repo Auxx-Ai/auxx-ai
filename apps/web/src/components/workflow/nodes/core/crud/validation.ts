@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/crud/validation.ts
 
-import { type CrudNodeData } from './types'
+import type { CrudNodeData } from './types'
 
 /**
  * Validation result interface
@@ -19,7 +19,10 @@ export const validateCrudNodeConfig = (data: CrudNodeData): ValidationResult => 
 
   // Guard against undefined/null data
   if (!data) {
-    return { isValid: false, errors: [{ field: 'data', message: 'Node data is missing', type: 'error' }] }
+    return {
+      isValid: false,
+      errors: [{ field: 'data', message: 'Node data is missing', type: 'error' }],
+    }
   }
 
   // Basic field validation

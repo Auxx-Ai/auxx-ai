@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/unified-registry.ts
 
-import React from 'react'
-import { type NodeDefinition, NodeCategory, type ValidationResult } from '../types'
+import type React from 'react'
+import { NodeCategory, type NodeDefinition, type ValidationResult } from '../types'
 import { getIcon } from '../utils/icon-helper'
 
 /**

@@ -1,9 +1,9 @@
 // packages/services/src/apps/register-oauth-app.ts
 
-import { database, App, oauthApplication } from '@auxx/database'
-import { eq } from 'drizzle-orm'
+import { App, database, oauthApplication } from '@auxx/database'
 import { randomBytes } from 'crypto'
-import { ok, err } from 'neverthrow'
+import { eq } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 
 /**

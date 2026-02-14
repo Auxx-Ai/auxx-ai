@@ -1,28 +1,28 @@
 // packages/lib/src/files/storage/storage-manager.ts
 
+import { credentialManager } from '@auxx/credentials'
 import type { StorageLocationEntity as StorageLocation } from '@auxx/database/models'
+import { createScopedLogger } from '@auxx/logger'
 import type {
-  StorageAdapter,
-  ProviderId,
-  ProviderAuth,
-  StorageLocationRef,
-  FileMetadata,
-  PresignedUpload,
-  MultipartUpload,
-  StorageCapabilities,
-  WebhookEvent,
   DownloadRef,
+  FileMetadata,
+  MultipartUpload,
+  PresignedUpload,
+  ProviderAuth,
+  ProviderId,
+  StorageAdapter,
+  StorageCapabilities,
+  StorageLocationRef,
+  WebhookEvent,
 } from '../adapters/base-adapter'
 import {
   StorageAdapterError,
   StorageAuthError,
   StorageFileNotFoundError,
 } from '../adapters/base-adapter'
-import { storageLocationService } from './storage-location-service'
-import { credentialManager } from '@auxx/credentials'
-import { createScopedLogger } from '@auxx/logger'
 import type { UploadPreparedConfig } from '../upload/init-types'
 import { getBucketForVisibility } from '../upload/util'
+import { storageLocationService } from './storage-location-service'
 
 const logger = createScopedLogger('storage-manager')
 
@@ -134,14 +134,12 @@ export interface StorageMigrationParams {
  * }
  * ```
  */
-export interface UploadProgressCallback {
-  (progress: {
-    bytesUploaded: number
-    totalBytes: number
-    percentage: number
-    stage: 'preparing' | 'uploading' | 'completing' | 'completed'
-  }): void
-}
+export type UploadProgressCallback = (progress: {
+  bytesUploaded: number
+  totalBytes: number
+  percentage: number
+  stage: 'preparing' | 'uploading' | 'completing' | 'completed'
+}) => void
 
 /**
  * Storage usage statistics
@@ -721,7 +719,7 @@ export class StorageManager {
    * ```typescript
    * const externalUrl = await storageManager.buildExternalUrl(
    *   'S3',
- *   'org-123/file.pdf',
+   *   'org-123/file.pdf',
    *   's3_cred_id'
    * )
    * ```
@@ -2328,7 +2326,7 @@ export class StorageManager {
    * ```typescript
    * const metadata = await manager.headByKey({
    *   provider: 'S3',
- *   key: 'org-123/file.pdf',
+   *   key: 'org-123/file.pdf',
    *   credentialId: 's3_cred_id'
    * })
    *

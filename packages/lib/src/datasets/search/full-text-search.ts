@@ -1,13 +1,13 @@
 // packages/lib/src/datasets/search/full-text-search.ts
 
 import { database as db } from '@auxx/database'
-import { sql } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
+import { sql } from 'drizzle-orm'
 import type {
-  SearchQuery,
-  SearchResult,
   FullTextSearchOptions,
   SearchPerformanceMetrics,
+  SearchQuery,
+  SearchResult,
 } from '../types/search.types'
 import { FullTextSearchError } from '../types/search.types'
 
@@ -38,7 +38,7 @@ export class FullTextSearchService {
       // Prepare search query for PostgreSQL
       // Filters are now applied in SQL for better performance
       const searchStartTime = Date.now()
-      const searchResults = await this.performFullTextSearch(
+      const searchResults = await FullTextSearchService.performFullTextSearch(
         query.query,
         datasetIds,
         organizationId,
@@ -121,7 +121,7 @@ export class FullTextSearchService {
       })
 
       // Build SQL filter conditions
-      const filterConditions = this.buildSqlFilters(options.filters)
+      const filterConditions = FullTextSearchService.buildSqlFilters(options.filters)
 
       // Execute optimized full-text search using stored searchVector generated column
       // searchVector is auto-computed from content by PostgreSQL
@@ -164,7 +164,7 @@ export class FullTextSearchService {
       ).rows as any[]
 
       // Convert raw results to SearchResult format
-      return this.convertRawToSearchResultsOptimized(searchResults)
+      return FullTextSearchService.convertRawToSearchResultsOptimized(searchResults)
     } catch (error) {
       logger.error('Full-text search execution failed', {
         error: error instanceof Error ? error.message : error,
@@ -197,7 +197,9 @@ export class FullTextSearchService {
     // Filter by date range
     if (filters.dateRange) {
       if (filters.dateRange.from) {
-        conditions.push(sql`AND d."createdAt" >= ${filters.dateRange.from.toISOString()}::timestamp`)
+        conditions.push(
+          sql`AND d."createdAt" >= ${filters.dateRange.from.toISOString()}::timestamp`
+        )
       }
       if (filters.dateRange.to) {
         conditions.push(sql`AND d."createdAt" <= ${filters.dateRange.to.toISOString()}::timestamp`)
@@ -231,40 +233,41 @@ export class FullTextSearchService {
    * Convert raw database results to SearchResult format (optimized version with reduced columns)
    */
   private static convertRawToSearchResultsOptimized(rawResults: any[]): SearchResult[] {
-    return rawResults.map((row, index) => ({
-      segment: {
-        id: row.id,
-        documentId: row.documentId,
-        content: row.content,
-        position: row.position,
-        tokenCount: row.tokenCount,
-        organizationId: row.organizationId,
-        document: {
-          id: row.docId,
-          title: row.documentTitle,
-          filename: row.documentFilename,
-          mimeType: row.documentMimeType,
-          type: row.documentType,
-          size: row.documentSize,
-          status: row.documentStatus,
-          enabled: row.documentEnabled,
-          createdAt: row.documentCreatedAt,
-          datasetId: row.datasetId,
-          organizationId: row.organizationId,
-          dataset: {
-            id: row.datasetId,
-            name: row.datasetName,
+    return rawResults.map(
+      (row, index) =>
+        ({
+          segment: {
+            id: row.id,
+            documentId: row.documentId,
+            content: row.content,
+            position: row.position,
+            tokenCount: row.tokenCount,
+            organizationId: row.organizationId,
+            document: {
+              id: row.docId,
+              title: row.documentTitle,
+              filename: row.documentFilename,
+              mimeType: row.documentMimeType,
+              type: row.documentType,
+              size: row.documentSize,
+              status: row.documentStatus,
+              enabled: row.documentEnabled,
+              createdAt: row.documentCreatedAt,
+              datasetId: row.datasetId,
+              organizationId: row.organizationId,
+              dataset: {
+                id: row.datasetId,
+                name: row.datasetName,
+              },
+            },
           },
-        },
-      },
-      score: parseFloat(row.rank_score) || 0,
-      rank: index,
-      relevanceScore: parseFloat(row.rank_score) || 0,
-      searchType: 'text',
-    } as SearchResult))
+          score: parseFloat(row.rank_score) || 0,
+          rank: index,
+          relevanceScore: parseFloat(row.rank_score) || 0,
+          searchType: 'text',
+        }) as SearchResult
+    )
   }
-
-
 
   /**
    * Get search suggestions based on frequent terms
@@ -281,7 +284,8 @@ export class FullTextSearchService {
       }
 
       // Get frequent terms that start with the partial query
-      const suggestions = (await db.execute(sql`
+      const suggestions = (
+        await db.execute(sql`
         SELECT word, nentry as frequency
         FROM ts_stat('
           SELECT to_tsvector(''english'', content) 
@@ -296,7 +300,8 @@ export class FullTextSearchService {
           AND LENGTH(word) > 2
         ORDER BY frequency DESC, word ASC
         LIMIT ${limit};
-      `)).rows as { word: string; frequency: number }[]
+      `)
+      ).rows as { word: string; frequency: number }[]
 
       return suggestions.map((s) => s.word)
     } catch (error) {
@@ -353,7 +358,7 @@ export class FullTextSearchService {
       `)
       ).rows as any[]
 
-      return this.convertRawToSearchResultsOptimized(searchResults)
+      return FullTextSearchService.convertRawToSearchResultsOptimized(searchResults)
     } catch (error) {
       logger.error('Failed to search within document', {
         error: error instanceof Error ? error.message : error,

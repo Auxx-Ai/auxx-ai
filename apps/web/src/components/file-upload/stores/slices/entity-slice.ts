@@ -1,8 +1,8 @@
 // apps/web/src/components/file-upload/stores/slices/entity-slice.ts
 
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import type { StateCreator } from 'zustand'
-import type { UploadStore, EntityConfig, CallbackConfig } from '../types'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
+import type { CallbackConfig, EntityConfig, UploadStore } from '../types'
 
 /**
  * Entity configuration slice - DEPRECATED
@@ -35,7 +35,9 @@ export const createEntitySlice: StateCreator<
    * Pass entityType and entityId to createSession.
    */
   setEntityConfig: (config: EntityConfig) => {
-    console.warn('setEntityConfig is deprecated. Configuration should be passed to createSession instead.')
+    console.warn(
+      'setEntityConfig is deprecated. Configuration should be passed to createSession instead.'
+    )
     set((state) => {
       state.entityConfig = config
     })
@@ -61,7 +63,7 @@ export const createEntitySlice: StateCreator<
     const activeSessionId = get().activeSessionId
     const session = activeSessionId ? get().sessions[activeSessionId] : null
     const sessionCallbacks = session?.callbacks || {}
-    
+
     // Fall back to global callbacks (deprecated)
     const globalCallbacks = get().callbacks
     const callbacks = { ...globalCallbacks, ...sessionCallbacks }

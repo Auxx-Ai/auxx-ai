@@ -1,12 +1,12 @@
 // apps/web/src/components/workflow/nodes/core/dataset/index.ts
 
-export { DatasetPanel } from './panel'
 export { DatasetNode } from './node'
+export { getDatasetOutputVariables } from './output-variables'
+export { DatasetPanel } from './panel'
 export {
+  datasetDefaultData,
   datasetDefinition,
   datasetNodeDataSchema,
-  datasetDefaultData,
   extractDatasetVariables,
 } from './schema'
-export type { DatasetNodeData, DatasetNode as DatasetNodeType } from './types'
-export { getDatasetOutputVariables } from './output-variables'
+export type { DatasetNode as DatasetNodeType, DatasetNodeData } from './types'

@@ -1,8 +1,8 @@
 // apps/web/src/components/groups/utils/group-utils.ts
 
 import type { EntityInstanceEntity } from '@auxx/database'
-import type { GroupMember } from '@auxx/types/groups'
 import { MemberType } from '@auxx/lib/groups/client'
+import type { GroupMember } from '@auxx/types/groups'
 
 /** Metadata stored on group EntityInstance */
 export interface GroupMetadata {

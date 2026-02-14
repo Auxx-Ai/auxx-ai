@@ -1,9 +1,10 @@
 // apps/web/src/lib/extensions/components/workflow/inputs/number-input.tsx
 
-import React, { useState, useEffect } from 'react'
 import { Field, FieldContent, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
-import { useDebouncedCallback } from './use-debounced-callback'
 import { Input } from '@auxx/ui/components/input'
+import type React from 'react'
+import { useEffect, useState } from 'react'
+import { useDebouncedCallback } from './use-debounced-callback'
 
 /**
  * NumberInput component.
@@ -63,26 +64,26 @@ export const NumberInput = ({
     <Field data-invalid={false} className={className} orientation={orientation}>
       <FieldContent>{label && <FieldLabel htmlFor={name}>{label}</FieldLabel>}</FieldContent>
       {showSlider && min !== undefined && max !== undefined ? (
-        <div className="flex items-center gap-3">
+        <div className='flex items-center gap-3'>
           <input
             id={name}
             name={name}
-            type="range"
+            type='range'
             value={localValue || min}
             onChange={handleChange}
             min={min}
             max={max}
             step={step}
             disabled={disabled}
-            className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className='flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
           />
-          <span className="text-sm font-medium w-12 text-right">{localValue || min}</span>
+          <span className='text-sm font-medium w-12 text-right'>{localValue || min}</span>
         </div>
       ) : (
         <Input
           id={name}
           name={name}
-          type="number"
+          type='number'
           value={localValue}
           onChange={handleChange}
           placeholder={placeholder}

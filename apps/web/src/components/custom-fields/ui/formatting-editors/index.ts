@@ -2,12 +2,12 @@
 
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 
-export { NumberFormattingEditor } from './number-formatting-editor'
+export { BooleanFormattingEditor } from './boolean-formatting-editor'
 export { DateFormattingEditor } from './date-formatting-editor'
 export { DateTimeFormattingEditor } from './datetime-formatting-editor'
-export { TimeFormattingEditor } from './time-formatting-editor'
-export { BooleanFormattingEditor } from './boolean-formatting-editor'
+export { NumberFormattingEditor } from './number-formatting-editor'
 export { PhoneFormattingEditor } from './phone-formatting-editor'
+export { TimeFormattingEditor } from './time-formatting-editor'
 
 /**
  * Display options type for internal state.

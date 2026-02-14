@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/constants/nodes/crud.ts
-import { createRangeValidator } from '../validation'
+
 import type { NodeConstants } from '../types'
+import { createRangeValidator } from '../validation'
 
 /**
  * Constants for CRUD node configuration

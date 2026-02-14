@@ -1,7 +1,7 @@
 // apps/api/src/services/organizations/verify-organization-access.ts
 
 import { database } from '@auxx/database'
-import { ok, err } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 // import type { OrganizationError } from './errors'
 import { fromDatabase } from '../shared/utils'
 

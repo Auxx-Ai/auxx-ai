@@ -1,29 +1,25 @@
 // apps/web/src/components/fields/entity-fields.tsx
 'use client'
 
-import React, { useState, useCallback, useRef, useMemo } from 'react'
+import { parseRecordId, type RecordId, type ResourceField } from '@auxx/lib/resources/client'
+import { type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import {
+  type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import { FieldNavigationProvider } from './field-navigation-context'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
+import { useResourceFields } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { EntityFieldsContent } from './entity-fields-content'
-import { useResourceFields } from '~/components/resources'
-import {
-  parseRecordId,
-  type ResourceField,
-  type RecordId,
-} from '@auxx/lib/resources/client'
+import { FieldNavigationProvider } from './field-navigation-context'
 import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
 import { useFieldView } from './hooks/use-field-view'
 import { useToggleFieldVisibility } from './hooks/use-toggle-field-visibility'
-import { toResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 
 /**
  * Props for EntityFields component
@@ -106,7 +102,12 @@ function EntityFields({
   )
 
   // Use field view hook for visibility and ordering
-  const { getVisibleFields, getAllFields, isFieldVisible, isLoading: fieldViewLoading } = useFieldView({
+  const {
+    getVisibleFields,
+    getAllFields,
+    isFieldVisible,
+    isLoading: fieldViewLoading,
+  } = useFieldView({
     entityDefinitionId,
     contextType: 'panel',
     fields: effectiveFields,

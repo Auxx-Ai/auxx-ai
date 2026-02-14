@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/ui/code-editor/monaco-workflow-completions.ts
 
 import type { Node } from '@xyflow/react'
+import type { editor, IDisposable, languages } from 'monaco-editor'
 import type { UnifiedVariable } from '~/components/workflow/types'
-import type { editor, languages, IDisposable } from 'monaco-editor'
 import { getPathFromVariableId } from '~/components/workflow/utils/variable-utils'
 
 interface CompletionContext {
@@ -137,7 +137,7 @@ function createNodeSuggestions(
       const isUpstream = currentNodeId ? isNodeUpstream(nodes, node.id, currentNodeId) : true
 
       let insertText: string
-      let range: any = undefined
+      let range: any
 
       if (position && model) {
         const lineContent = model.getLineContent(position.lineNumber)
@@ -270,7 +270,7 @@ function createVariableSuggestions(
       const varPath = getPathFromVariableId(variable.id)
 
       let insertText: string
-      let range: any = undefined
+      let range: any
 
       if (position && model) {
         const lineContent = model.getLineContent(position.lineNumber)

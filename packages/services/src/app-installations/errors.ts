@@ -1,7 +1,7 @@
 // packages/services/src/app-installations/errors.ts
 
-import type { DatabaseError } from '../shared/errors'
 import type { AppError } from '../apps/errors'
+import type { DatabaseError } from '../shared/errors'
 
 /**
  * App installation-specific errors

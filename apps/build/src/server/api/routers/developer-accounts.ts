@@ -1,23 +1,23 @@
 // apps/build/src/server/api/routers/developer-accounts.ts
 // Developer accounts tRPC router
 
-import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { TRPCError } from '@trpc/server'
-import { BuildDehydrationService } from '~/lib/dehydration'
 import { createScopedLogger } from '@auxx/logger'
 import {
   checkDeveloperAccountSlugExists,
-  listDeveloperAccounts,
-  getDeveloperAccount,
-  createDeveloperAccount,
-  updateDeveloperAccount,
-  getDeveloperAccountFirstApp,
   checkSlugInputSchema,
-  getDeveloperAccountInputSchema,
+  createDeveloperAccount,
   createDeveloperAccountInputSchema,
+  getDeveloperAccount,
+  getDeveloperAccountFirstApp,
+  getDeveloperAccountInputSchema,
+  listDeveloperAccounts,
+  updateDeveloperAccount,
   updateDeveloperAccountInputSchema,
 } from '@auxx/services/developer-accounts'
+import { TRPCError } from '@trpc/server'
 import z from 'zod'
+import { BuildDehydrationService } from '~/lib/dehydration'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('trpc-build-developer-accounts')
 

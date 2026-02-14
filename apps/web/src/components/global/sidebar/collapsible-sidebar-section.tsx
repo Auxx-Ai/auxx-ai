@@ -1,17 +1,16 @@
 // components/global/sidebar/collapsible-sidebar-section.tsx
 'use client'
 
-import { ReactNode, memo, useCallback, useEffect, useState, type MouseEvent } from 'react'
-import { SidebarMenuItem, SidebarMenuSub } from '@auxx/ui/components/sidebar'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@auxx/ui/components/collapsible'
-import { SidebarMenuButton } from '@auxx/ui/components/sidebar'
+import { SidebarMenuButton, SidebarMenuItem, SidebarMenuSub } from '@auxx/ui/components/sidebar'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChevronRight } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { type MouseEvent, memo, type ReactNode, useCallback, useEffect, useState } from 'react'
 import { useSidebarState } from '~/hooks/use-sidebar-state'
 
 // CollapsibleSidebarSectionProps describes the inputs accepted by the collapsible sidebar section component.
@@ -117,7 +116,7 @@ function CollapsibleSidebarSectionComponent({
   return (
     <Collapsible open={computedOpen} onOpenChange={isEditMode ? undefined : handleOpenChange}>
       <SidebarMenuItem>
-        <SidebarMenuButton asChild className="h-7 py-0" tooltip={title}>
+        <SidebarMenuButton asChild className='h-7 py-0' tooltip={title}>
           <div
             onClick={handleContainerClick}
             className={cn('cursor-pointer group/collapsible relative', {
@@ -137,10 +136,10 @@ function CollapsibleSidebarSectionComponent({
               />
             </CollapsibleTrigger>
 
-            {avatar ? avatar : icon ? <span className="[&_svg]:size-4">{icon}</span> : null}
-            <span className="group-data-[collapsible=icon]:hidden">{title}</span>
+            {avatar ? avatar : icon ? <span className='[&_svg]:size-4'>{icon}</span> : null}
+            <span className='group-data-[collapsible=icon]:hidden'>{title}</span>
             {count ? (
-              <div className="pointer-events-none absolute right-[11px] top-1/2 flex -translate-y-1/2 text-right text-xs group-hover/item:opacity-0">
+              <div className='pointer-events-none absolute right-[11px] top-1/2 flex -translate-y-1/2 text-right text-xs group-hover/item:opacity-0'>
                 {count}
               </div>
             ) : // <Badge className="ml-auto group-data-[collapsible=icon]:hidden" variant="secondary">

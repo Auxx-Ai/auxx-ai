@@ -1,17 +1,17 @@
 // packages/lib/src/workflow-engine/core/__tests__/parallel-execution.test.ts
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { WorkflowEngine } from '../workflow-engine'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ExecutionContextManager } from '../execution-context'
 import { NodeProcessorRegistry } from '../node-processor-registry'
-import { ExecutionContextManager } from '../execution-context'
 import type {
-  Workflow,
-  WorkflowNode,
-  WorkflowEdge,
-  WorkflowNodeType,
   NodeExecutionResult,
   NodeRunningStatus,
+  Workflow,
+  WorkflowEdge,
+  WorkflowNode,
+  WorkflowNodeType,
 } from '../types'
+import { WorkflowEngine } from '../workflow-engine'
 
 // Mock processor for testing
 class MockProcessor {

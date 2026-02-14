@@ -2,13 +2,13 @@
 
 'use client'
 
+import type { NodeProps } from '@xyflow/react'
+import { ArrowUpDown, Filter, Search } from 'lucide-react'
 import { type FC, memo } from 'react'
-import { Search, Filter, ArrowUpDown } from 'lucide-react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
-import { type FindNodeData } from './types'
-import { type NodeProps } from '@xyflow/react'
 import { useWorkflowResources } from '../../../providers'
+import type { FindNodeData } from './types'
 
 interface FindNodeProps extends NodeProps {
   data: FindNodeData
@@ -55,13 +55,13 @@ const FindNodeComponent: FC<FindNodeProps> = ({ id, data, selected, ...props }) 
 
   return (
     <BaseNode {...props} data={data} id={id} selected={selected}>
-      <NodeTargetHandle id={id} data={{ ...data, selected }} handleId="target" />
-      <div className="relative px-3 pb-2 space-y-1">
+      <NodeTargetHandle id={id} data={{ ...data, selected }} handleId='target' />
+      <div className='relative px-3 pb-2 space-y-1'>
         {/* Resource type and find mode */}
-        <div className="relative flex items-center justify-between h-6 rounded-md bg-muted px-2">
-          <div className="flex items-center gap-1">
-            <Search className="size-3" />
-            <div className="text-sm font-medium">
+        <div className='relative flex items-center justify-between h-6 rounded-md bg-muted px-2'>
+          <div className='flex items-center gap-1'>
+            <Search className='size-3' />
+            <div className='text-sm font-medium'>
               {getFindModeDisplay()} {resource?.label || resourceType}
             </div>
           </div>
@@ -69,28 +69,28 @@ const FindNodeComponent: FC<FindNodeProps> = ({ id, data, selected, ...props }) 
 
         {/* Filters display */}
         {filterCount > 0 && (
-          <div className="relative flex items-center justify-between h-6 rounded-md bg-accent-50 px-2">
-            <div className="flex items-center gap-1">
-              <Filter className="size-3 text-accent-500" />
-              <div className="text-xs text-accent-600">{getFilterDisplay()}</div>
+          <div className='relative flex items-center justify-between h-6 rounded-md bg-accent-50 px-2'>
+            <div className='flex items-center gap-1'>
+              <Filter className='size-3 text-accent-500' />
+              <div className='text-xs text-accent-600'>{getFilterDisplay()}</div>
             </div>
           </div>
         )}
 
         {/* Ordering display */}
         {data.orderBy && (
-          <div className="relative flex items-center justify-between h-6 rounded-md bg-comparison-50 px-2">
-            <div className="flex items-center gap-1">
-              <ArrowUpDown className="size-3 text-comparison-500" />
-              <div className="text-xs text-comparison-600">{getOrderDisplay()}</div>
+          <div className='relative flex items-center justify-between h-6 rounded-md bg-comparison-50 px-2'>
+            <div className='flex items-center gap-1'>
+              <ArrowUpDown className='size-3 text-comparison-500' />
+              <div className='text-xs text-comparison-600'>{getOrderDisplay()}</div>
             </div>
           </div>
         )}
 
         {/* Limit display for findMany */}
         {data.findMode === 'findMany' && data.limit && (
-          <div className="relative flex items-center justify-between h-6 rounded-md bg-bad-50 px-2">
-            <div className="text-xs text-bad-600">Limit: {data.limit} results</div>
+          <div className='relative flex items-center justify-between h-6 rounded-md bg-bad-50 px-2'>
+            <div className='text-xs text-bad-600'>Limit: {data.limit} results</div>
           </div>
         )}
 
@@ -105,8 +105,8 @@ const FindNodeComponent: FC<FindNodeProps> = ({ id, data, selected, ...props }) 
       <NodeSourceHandle
         id={id}
         data={{ ...data, selected }}
-        handleId="source"
-        handleClassName="!top-1/2 !-right-[0px]"
+        handleId='source'
+        handleClassName='!top-1/2 !-right-[0px]'
       />
     </BaseNode>
   )

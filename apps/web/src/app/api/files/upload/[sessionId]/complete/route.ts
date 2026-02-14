@@ -1,14 +1,17 @@
 // apps/web/src/app/api/files/upload/[sessionId]/complete/route.ts
 
-import { NextRequest, NextResponse } from 'next/server'
 import { database as db } from '@auxx/database'
-import { SessionManager } from '@auxx/lib/files/server'
-import { ProcessorRegistry, ensureProcessorsInitialized } from '@auxx/lib/files/server'
-import { createStorageManager } from '@auxx/lib/files/server'
-import { ProgressPublisher } from '@auxx/lib/files/server'
-import { UploadErrorHandler } from '@auxx/lib/files/server'
-import { cleanupService } from '@auxx/lib/files/server'
+import {
+  cleanupService,
+  createStorageManager,
+  ensureProcessorsInitialized,
+  ProcessorRegistry,
+  ProgressPublisher,
+  SessionManager,
+  UploadErrorHandler,
+} from '@auxx/lib/files/server'
 import { createScopedLogger } from '@auxx/logger'
+import { type NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
 const logger = createScopedLogger('api-upload-complete')

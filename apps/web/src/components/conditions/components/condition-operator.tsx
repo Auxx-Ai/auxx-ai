@@ -2,12 +2,12 @@
 
 'use client'
 
-import { useMemo, useState } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { useConditionContext } from '../condition-context'
+import { useMemo, useState } from 'react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { PickerTrigger } from '~/components/ui/picker-trigger'
+import { useConditionContext } from '../condition-context'
 import type { OperatorSelectorProps } from '../types'
 
 /**
@@ -49,7 +49,7 @@ const ConditionOperator = ({
           open={isOpen}
           disabled={disabled}
           hasValue={!!selectedOption}
-          placeholder="Select operator"
+          placeholder='Select operator'
           variant={triggerProps?.variant ?? 'ghost'}
           size={triggerProps?.size ?? 'sm'}
           hideIcon={triggerProps?.hideIcon ?? true}
@@ -57,7 +57,7 @@ const ConditionOperator = ({
           {selectedOption?.label}
         </PickerTrigger>
       </PopoverTrigger>
-      <PopoverContent className="w-48 p-0">
+      <PopoverContent className='w-48 p-0'>
         <MultiSelectPicker
           options={options}
           value={value}
@@ -66,7 +66,7 @@ const ConditionOperator = ({
           canManage={false}
           canAdd={false}
           disabled={disabled}
-          placeholder="Search operators..."
+          placeholder='Search operators...'
           onSelectSingle={() => setIsOpen(false)}
         />
       </PopoverContent>

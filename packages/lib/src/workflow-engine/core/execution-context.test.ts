@@ -1,6 +1,6 @@
 // packages/lib/src/workflow-engine/core/execution-context.test.ts
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { ExecutionContextManager } from './execution-context'
 
 describe('ExecutionContextManager - Variable Validation', () => {

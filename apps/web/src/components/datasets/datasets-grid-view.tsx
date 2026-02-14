@@ -3,8 +3,8 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useDatasets } from './datasets-provider'
 import { DatasetCard } from './dataset-card'
+import { useDatasets } from './datasets-provider'
 
 /**
  * Grid view component for displaying datasets as cards
@@ -21,7 +21,7 @@ export function DatasetsGridView() {
   }
 
   return (
-    <div className="grid gap-4 @md:grid-cols-2 @4xl:grid-cols-3 @5xl:grid-cols-4 @6xl:grid-cols-5 p-3">
+    <div className='grid gap-4 @md:grid-cols-2 @4xl:grid-cols-3 @5xl:grid-cols-4 @6xl:grid-cols-5 p-3'>
       {items.map((dataset) => (
         <DatasetCard
           key={dataset.id}

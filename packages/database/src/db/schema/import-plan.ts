@@ -1,7 +1,7 @@
 // packages/database/src/db/schema/import-plan.ts
 
-import { pgTable, index, text, timestamp, type AnyPgColumn, importPlanStatus } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import { type AnyPgColumn, importPlanStatus, index, pgTable, text, timestamp } from './_shared'
 import { ImportJob } from './import-job'
 
 /**

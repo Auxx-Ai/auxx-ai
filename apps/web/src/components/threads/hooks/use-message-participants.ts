@@ -1,9 +1,9 @@
 // apps/web/src/components/threads/hooks/use-message-participants.ts
 
+import { getParticipantRawId, groupParticipantsByRole, type ParticipantId } from '@auxx/types'
 import { useMemo } from 'react'
-import { groupParticipantsByRole, getParticipantRawId, type ParticipantId } from '@auxx/types'
-import { useParticipants } from './use-participants'
 import type { ParticipantMeta } from '../store'
+import { useParticipants } from './use-participants'
 
 interface UseMessageParticipantsResult {
   from: ParticipantMeta | undefined

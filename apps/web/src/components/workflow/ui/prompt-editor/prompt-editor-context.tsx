@@ -2,9 +2,10 @@
 
 'use client'
 
-import React, { createContext, useContext, useState, useCallback, useMemo, useRef } from 'react'
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
 import { useAvailableVariables } from '~/components/workflow/hooks'
 import type { BaseType, UnifiedVariable, VariableGroup } from '~/components/workflow/types'
+
 // Simple copy utility
 const copy = (text: string) => {
   if (navigator.clipboard) {
@@ -29,6 +30,7 @@ const useBoolean = (initialValue = false) => {
 
   return [value, { setTrue, setFalse, toggle }] as const
 }
+
 // import type { WorkflowVariable } from '~/components/editor/variable-picker-popover' // No longer needed
 import { usePanelStore } from '../../store'
 

@@ -2,18 +2,18 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { EntityDefMap, FieldMap, FieldRecord } from './types'
 import type { FieldOptions } from '../../custom-fields'
-import { ENTITY_INSTANCE_COLUMNS } from './constants'
-import { buildFieldOptions, mapCapabilities, shouldCreateField } from './utils'
+import type { ResourceField } from '../../resources/registry/field-types'
 import { CONTACT_FIELDS } from '../../resources/registry/resources/contact-fields'
-import { TICKET_FIELDS } from '../../resources/registry/resources/ticket-fields'
-import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { INBOX_FIELDS } from '../../resources/registry/resources/inbox-fields'
+import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
+import { SIGNATURE_FIELDS } from '../../resources/registry/resources/signature-fields'
 import { TAG_FIELDS } from '../../resources/registry/resources/tag-fields'
 import { THREAD_FIELDS } from '../../resources/registry/resources/thread-fields'
-import { SIGNATURE_FIELDS } from '../../resources/registry/resources/signature-fields'
-import type { ResourceField } from '../../resources/registry/field-types'
+import { TICKET_FIELDS } from '../../resources/registry/resources/ticket-fields'
+import { ENTITY_INSTANCE_COLUMNS } from './constants'
+import type { EntityDefMap, FieldMap, FieldRecord } from './types'
+import { buildFieldOptions, mapCapabilities, shouldCreateField } from './utils'
 
 const logger = createScopedLogger('entity-seeder:create-fields')
 

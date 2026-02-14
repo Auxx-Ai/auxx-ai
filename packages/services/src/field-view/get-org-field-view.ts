@@ -1,10 +1,10 @@
 // packages/services/src/field-view/get-org-field-view.ts
 
 import { database, schema } from '@auxx/database'
+import type { TableViewEntity } from '@auxx/database/models'
 import { and, eq } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { TableViewEntity } from '@auxx/database/models'
 
 /** View context type for table views */
 type ViewContextType = 'table' | 'kanban' | 'panel' | 'dialog_create' | 'dialog_edit'

@@ -1,8 +1,8 @@
 // packages/credentials/src/passport/verify-workflow-passport.ts
 
 import { jwtVerify } from 'jose'
-import { ok, err, type Result } from 'neverthrow'
-import type { VerifiedPassport, WorkflowPassportPayload, PassportError } from './types'
+import { err, ok, type Result } from 'neverthrow'
+import type { PassportError, VerifiedPassport, WorkflowPassportPayload } from './types'
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.PUBLIC_WORKFLOW_JWT_SECRET || 'public-workflow-secret-change-me'
@@ -14,7 +14,9 @@ const JWT_SECRET = new TextEncoder().encode(
  * @param token - JWT passport token
  * @returns Result with verified passport data or error
  */
-export async function verifyWorkflowPassport(token: string): Promise<Result<VerifiedPassport, PassportError>> {
+export async function verifyWorkflowPassport(
+  token: string
+): Promise<Result<VerifiedPassport, PassportError>> {
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET)
 

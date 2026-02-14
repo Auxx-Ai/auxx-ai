@@ -1,13 +1,16 @@
 // src/lib/billing/plan-enforcement-service.ts
-import { database as db, schema, type Database } from '@auxx/database'
+import { type Database, database as db, schema } from '@auxx/database'
 import { OrganizationMemberStatus, OrganizationRole } from '@auxx/database/enums'
-import { eq, and, ne, desc, sql, inArray } from 'drizzle-orm'
-import { FeaturePermissionService } from '../permissions/feature-permission-service'
-import { FeatureKey } from '../permissions/types'
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
+import { createScopedLogger } from '../logger'
 // import type { Redis } from 'ioredis' // Assuming you use ioredis
 // import { createScopedLogger } from '@auxx/logger';
-import type { FeatureMap } from '../permissions/feature-permission-service' // Import type if defined
-import { createScopedLogger } from '../logger'
+import type {
+  FeatureMap,
+  FeaturePermissionService,
+} from '../permissions/feature-permission-service' // Import type if defined
+import { FeatureKey } from '../permissions/types'
+
 const logger = createScopedLogger('plan-enforcement-service')
 export class PlanEnforcementService {
   private db: Database

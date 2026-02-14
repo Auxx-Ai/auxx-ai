@@ -17,54 +17,50 @@
  * - Adaptive rate limiting based on API responses
  */
 
+export { ExponentialBackoff } from './backoff-handler'
+export { CircuitBreaker } from './circuit-breaker'
+export { ConcurrencySemaphore } from './concurrency-semaphore'
+// Configuration
+export {
+  createThrottlerForProvider,
+  getConfigManager,
+  RateLimiterConfigManager,
+} from './config-manager'
+export { MetricsCollector } from './metrics-collector'
+export { PriorityQueue } from './priority-queue'
+export {
+  DEFAULT_RETRY_CONFIG,
+  ENHANCED_PROVIDER_LIMITS,
+  GMAIL_QUOTA_COSTS,
+  getContextLimits,
+  getDefaultRateLimits,
+  getGmailQuotaCost,
+  getMergedProviderLimits,
+  supportsRateLimiting,
+} from './provider-configs'
+export { RedisRateLimiter } from './redis-rate-limiter'
+// Core components
+export { TokenBucket } from './token-bucket'
 // Core types and interfaces
 export type {
-  RateLimiterConfig,
-  RetryConfig,
+  CircuitBreakerConfig,
   EnhancedRateLimits,
   ExecutionOptions,
   QueuedRequest,
-  CircuitBreakerConfig,
+  RateLimiter,
+  RateLimiterConfig,
+  RetryConfig,
   ThrottlerConfig,
   ThrottlerMetrics,
-  RateLimiter,
 } from './types'
-
 // Custom errors
-export { RateLimitError, CircuitBreakerError } from './types'
-
-// Core components
-export { TokenBucket } from './token-bucket'
-export { ExponentialBackoff } from './backoff-handler'
-export { CircuitBreaker } from './circuit-breaker'
-export { PriorityQueue } from './priority-queue'
-export { RedisRateLimiter } from './redis-rate-limiter'
-export { MetricsCollector } from './metrics-collector'
+export { CircuitBreakerError, RateLimitError } from './types'
 export { UniversalThrottler } from './universal-throttler'
-export { ConcurrencySemaphore } from './concurrency-semaphore'
-
-// Configuration
-export {
-  RateLimiterConfigManager,
-  getConfigManager,
-  createThrottlerForProvider,
-} from './config-manager'
-
-export {
-  ENHANCED_PROVIDER_LIMITS,
-  DEFAULT_RETRY_CONFIG,
-  GMAIL_QUOTA_COSTS,
-  getMergedProviderLimits,
-  getContextLimits,
-  getGmailQuotaCost,
-  supportsRateLimiting,
-  getDefaultRateLimits,
-} from './provider-configs'
 
 // Convenience factory function
 import type { IntegrationProviderType } from '@auxx/database/types'
-import { UniversalThrottler } from './universal-throttler'
 import { getConfigManager, RateLimiterConfigManager } from './config-manager'
+import { UniversalThrottler } from './universal-throttler'
 
 /**
  * Create a pre-configured throttler for a specific provider

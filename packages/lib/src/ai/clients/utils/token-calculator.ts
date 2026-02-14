@@ -1,6 +1,6 @@
 // packages/lib/src/ai/clients/utils/token-calculator.ts
 
-import type { MultiModalContent, Message, Tool } from '../base/types'
+import type { Message, MultiModalContent, Tool } from '../base/types'
 
 /**
  * Token calculation utilities for different content types
@@ -25,19 +25,21 @@ export class TokenCalculator {
     for (const item of content) {
       switch (item.type) {
         case 'text':
-          totalTokens += this.estimateTextTokens(item.data)
+          totalTokens += TokenCalculator.estimateTextTokens(item.data)
           break
-        case 'image':
+        case 'image': {
           // Base image tokens + detail multiplier
           const baseTokens = 85
           const detailMultiplier = item.metadata?.detail === 'high' ? 9 : 1
           totalTokens += baseTokens * detailMultiplier
           break
-        case 'audio':
+        }
+        case 'audio': {
           // Estimate based on duration (rough: 50 tokens per 10 seconds)
           const duration = item.metadata?.duration || 30
           totalTokens += Math.ceil(duration / 10) * 50
           break
+        }
       }
     }
 
@@ -55,9 +57,9 @@ export class TokenCalculator {
       totalTokens += 4 // Approximate overhead per message
 
       if (typeof message.content === 'string') {
-        totalTokens += this.estimateTextTokens(message.content)
+        totalTokens += TokenCalculator.estimateTextTokens(message.content)
       } else if (Array.isArray(message.content)) {
-        totalTokens += this.estimateMultiModalTokens(message.content)
+        totalTokens += TokenCalculator.estimateMultiModalTokens(message.content)
       }
     }
 
@@ -72,15 +74,15 @@ export class TokenCalculator {
 
     for (const tool of tools) {
       // Function name and description
-      totalTokens += this.estimateTextTokens(tool.function.name)
+      totalTokens += TokenCalculator.estimateTextTokens(tool.function.name)
       if (tool.function.description) {
-        totalTokens += this.estimateTextTokens(tool.function.description)
+        totalTokens += TokenCalculator.estimateTextTokens(tool.function.description)
       }
 
       // Parameters schema (rough estimate)
       if (tool.function.parameters) {
         const parametersJson = JSON.stringify(tool.function.parameters)
-        totalTokens += this.estimateTextTokens(parametersJson)
+        totalTokens += TokenCalculator.estimateTextTokens(parametersJson)
       }
 
       // Base overhead per tool
@@ -93,19 +95,15 @@ export class TokenCalculator {
   /**
    * Get comprehensive token estimate for a complete request
    */
-  static estimateRequestTokens(
-    messages: Message[],
-    tools?: Tool[],
-    model?: string
-  ): number {
+  static estimateRequestTokens(messages: Message[], tools?: Tool[], model?: string): number {
     let totalTokens = 0
 
     // Messages
-    totalTokens += this.estimateMessagesTokens(messages)
+    totalTokens += TokenCalculator.estimateMessagesTokens(messages)
 
     // Tools
     if (tools && tools.length > 0) {
-      totalTokens += this.estimateToolsTokens(tools)
+      totalTokens += TokenCalculator.estimateToolsTokens(tools)
     }
 
     // Model-specific overhead

@@ -1,15 +1,15 @@
 // apps/web/src/components/dynamic-table/cells/primary-field-cell.tsx
 'use client'
 
-import { memo, useMemo, type ReactNode } from 'react'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { useFieldValue } from '~/components/resources/hooks/use-field-values'
 import { formatToDisplayValue } from '@auxx/lib/field-values/client'
-import type { TypedFieldValue } from '@auxx/types/field-value'
-import { PrimaryCell } from './primary-cell'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
-import { useField } from '~/components/resources/hooks/use-field'
+import type { TypedFieldValue } from '@auxx/types/field-value'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { memo, type ReactNode, useMemo } from 'react'
 import { toRecordId } from '~/components/resources'
+import { useField } from '~/components/resources/hooks/use-field'
+import { useFieldValue } from '~/components/resources/hooks/use-field-values'
+import { PrimaryCell } from './primary-cell'
 
 /**
  * Props for PrimaryFieldCell component
@@ -46,10 +46,7 @@ export const PrimaryFieldCell = memo(function PrimaryFieldCell({
   )
 
   // Build recordId from entityDefinitionId and rowId
-  const recordId = useMemo(
-    () => toRecordId(entityDefinitionId, rowId),
-    [entityDefinitionId, rowId]
-  )
+  const recordId = useMemo(() => toRecordId(entityDefinitionId, rowId), [entityDefinitionId, rowId])
 
   // Direct store subscription - triggers re-render when value changes
   // autoFetch ensures isLoading=true on first render (queues synchronously)
@@ -75,8 +72,8 @@ export const PrimaryFieldCell = memo(function PrimaryFieldCell({
   // Show skeleton while loading and no value yet
   if (isLoading && value === undefined) {
     return (
-      <div className="flex items-center pl-3 pr-2">
-        <Skeleton className="h-5 w-32" />
+      <div className='flex items-center pl-3 pr-2'>
+        <Skeleton className='h-5 w-32' />
       </div>
     )
   }

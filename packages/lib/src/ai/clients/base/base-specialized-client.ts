@@ -1,16 +1,15 @@
 // packages/lib/src/ai/clients/base/base-specialized-client.ts
 
-import { createScopedLogger, Logger } from '@auxx/logger'
-
-import { RetryManager } from '../utils/retry-manager'
+import { createScopedLogger, type Logger } from '@auxx/logger'
 import { CircuitBreaker } from '../utils/circuit-breaker'
+import { RetryManager } from '../utils/retry-manager'
 import type {
   ClientConfig,
+  ModelCapabilities,
+  ModelValidationResult,
+  MultiModalContent,
   OperationContext,
   UsageMetrics,
-  ModelValidationResult,
-  ModelCapabilities,
-  MultiModalContent,
 } from './types'
 import { DEFAULT_CLIENT_CONFIG } from './types'
 

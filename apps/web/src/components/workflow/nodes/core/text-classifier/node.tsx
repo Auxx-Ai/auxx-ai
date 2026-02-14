@@ -2,13 +2,13 @@
 
 'use client'
 
-import React, { memo } from 'react'
 import { Tags } from 'lucide-react'
-import { BaseNode } from '../../shared/base/base-node'
-import { type TextClassifierNode as TextClassifierNodeType } from './types'
-import { NodeTargetHandle, NodeSourceHandle } from '../../../ui/node-handle'
-import { generatePreviewElements } from './utils/preview-text'
+import React, { memo } from 'react'
 import ModelNodeView from '~/components/workflow/ui/model-parameter/model-node-view'
+import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'
+import { BaseNode } from '../../shared/base/base-node'
+import type { TextClassifierNode as TextClassifierNodeType } from './types'
+import { generatePreviewElements } from './utils/preview-text'
 
 /**
  * Text classifier node visual component
@@ -24,20 +24,20 @@ export const TextClassifierNode = memo<TextClassifierNodeType>(
     const augmentedData = { ...data, _sourceHandleCount: totalSourceHandles }
 
     return (
-      <BaseNode id={id} data={augmentedData} selected={selected} width={width || 244} height="auto">
-        <NodeTargetHandle id={id} data={{ ...augmentedData, selected }} handleId="target" />
+      <BaseNode id={id} data={augmentedData} selected={selected} width={width || 244} height='auto'>
+        <NodeTargetHandle id={id} data={{ ...augmentedData, selected }} handleId='target' />
 
-        <div className="px-3 pb-2">
-          <div className="space-y-1">
+        <div className='px-3 pb-2'>
+          <div className='space-y-1'>
             {data?.model ? (
               <ModelNodeView model={data.model} />
             ) : (
-              <div className="text-[10px] text-primary-500 truncate">No model selected</div>
+              <div className='text-[10px] text-primary-500 truncate'>No model selected</div>
             )}
 
             {/* Text to classify preview */}
             {data?.text && (
-              <div className="text-xs text-muted-foreground mb-2 p-2 bg-muted/30 rounded">
+              <div className='text-xs text-muted-foreground mb-2 p-2 bg-muted/30 rounded'>
                 {generatePreviewElements(data.text, id, 50)}
               </div>
             )}
@@ -46,15 +46,15 @@ export const TextClassifierNode = memo<TextClassifierNodeType>(
             {categories.map((category, index) => (
               <div
                 key={category.id}
-                className="relative flex items-center justify-between h-6 rounded-md bg-muted">
-                <div className="text-xs font-medium text-primary-500 truncate ms-auto mr-2">
+                className='relative flex items-center justify-between h-6 rounded-md bg-muted'>
+                <div className='text-xs font-medium text-primary-500 truncate ms-auto mr-2'>
                   {category.name}
                 </div>
                 <NodeSourceHandle
                   id={id}
                   data={{ ...augmentedData, selected }}
                   handleId={category.id}
-                  handleClassName="!top-1/2 !-right-[12px]"
+                  handleClassName='!top-1/2 !-right-[12px]'
                   handleIndex={index}
                   handleTotal={totalSourceHandles}
                 />
@@ -62,15 +62,15 @@ export const TextClassifierNode = memo<TextClassifierNodeType>(
             ))}
 
             {/* Unmatched connection */}
-            <div className="relative flex items-center justify-end p-1 bg-bad-50 rounded-md">
-              <div className="text-xs rounded-md px-1 font-semibold uppercase bg-bad-100 text-bad-500 whitespace-pre-line">
+            <div className='relative flex items-center justify-end p-1 bg-bad-50 rounded-md'>
+              <div className='text-xs rounded-md px-1 font-semibold uppercase bg-bad-100 text-bad-500 whitespace-pre-line'>
                 Unmatched
               </div>
               <NodeSourceHandle
                 id={id}
                 data={{ ...augmentedData, selected }}
-                handleId="unmatched"
-                handleClassName="!top-1/2 !-right-[12px]"
+                handleId='unmatched'
+                handleClassName='!top-1/2 !-right-[12px]'
                 handleIndex={categories.length}
                 handleTotal={totalSourceHandles}
               />

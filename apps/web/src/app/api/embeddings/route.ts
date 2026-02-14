@@ -1,6 +1,6 @@
 // app/api/embeddings/route.ts
 import { headers } from 'next/headers'
-import { NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 // import { createEmbedding } from '@auxx/lib/embeddings'
 import { auth } from '~/auth/server'
 

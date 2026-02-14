@@ -2,34 +2,34 @@
 
 'use client'
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { EditorContent } from '@tiptap/react'
-import { Calendar, Link2, User, X } from 'lucide-react'
+import type { RecordId } from '@auxx/lib/field-values/client'
+import type { CreateTaskInput, TaskWithRelations, UpdateTaskInput } from '@auxx/lib/tasks'
+import { DateLanguageModule, TextDateParser } from '@auxx/lib/tasks/client'
+import type { ActorId } from '@auxx/types/actor'
+import { Button, buttonVariants } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
-  DialogDescription,
 } from '@auxx/ui/components/dialog'
-import { Button, buttonVariants } from '@auxx/ui/components/button'
-import { Switch } from '@auxx/ui/components/switch'
 import { Kbd } from '@auxx/ui/components/kbd'
+import { Switch } from '@auxx/ui/components/switch'
+import { toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { useMentionEditor, InlinePickerPopover } from '~/components/editor/inline-picker'
+import { EditorContent } from '@tiptap/react'
+import { Calendar, Link2, User, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { InlinePickerPopover, useMentionEditor } from '~/components/editor/inline-picker'
+import { SubmitOnEnter } from '~/components/global/comments/comment-composer'
+import { ActorPicker } from '~/components/pickers/actor-picker/actor-picker'
 import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
 import { DateTimePicker } from '~/components/pickers/date-time-picker'
-import { ActorPicker } from '~/components/pickers/actor-picker/actor-picker'
 import { RecordPicker } from '~/components/pickers/record-picker'
-import type { ActorId } from '@auxx/types/actor'
-import { formatTaskDeadlineDisplay } from '../utils/group-tasks-by-period'
 import { useTaskMutations } from '../hooks/use-task-mutations'
-import { TextDateParser, DateLanguageModule } from '@auxx/lib/tasks/client'
-import type { TaskWithRelations, CreateTaskInput, UpdateTaskInput } from '@auxx/lib/tasks'
-import { SubmitOnEnter } from '~/components/global/comments/comment-composer'
-import { toastSuccess } from '@auxx/ui/components/toast'
-import { type RecordId } from '@auxx/lib/field-values/client'
+import { formatTaskDeadlineDisplay } from '../utils/group-tasks-by-period'
 
 /**
  * Props for TaskDialog component
@@ -298,55 +298,56 @@ export function TaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent position="tc" size="xl" innerClassName="p-0" onEscapeKeyDown={handleEscapeKeyDown}>
-        <DialogHeader className="border-b px-3 py-2 mb-0 h-10 ">
-          <DialogTitle className="text-base font-medium">
+      <DialogContent
+        position='tc'
+        size='xl'
+        innerClassName='p-0'
+        onEscapeKeyDown={handleEscapeKeyDown}>
+        <DialogHeader className='border-b px-3 py-2 mb-0 h-10 '>
+          <DialogTitle className='text-base font-medium'>
             {mode === 'create' ? 'Create task' : 'Edit task'}
           </DialogTitle>
-          <DialogDescription className="sr-only">Template selector</DialogDescription>
+          <DialogDescription className='sr-only'>Template selector</DialogDescription>
         </DialogHeader>
 
         {/* Editor Area */}
-        <div ref={containerRef} className="p-4 relative">
-          <EditorContent editor={editor} className="w-full bg-transparent text-sm outline-hidden" />
+        <div ref={containerRef} className='p-4 relative'>
+          <EditorContent editor={editor} className='w-full bg-transparent text-sm outline-hidden' />
 
           {/* Mention Picker Popover */}
           <InlinePickerPopover
             state={suggestionState}
             containerRef={containerRef}
             width={280}
-            onClose={closePicker}
-          >
+            onClose={closePicker}>
             <ActorPickerContent
               value={[]}
               onChange={() => {}}
-              target="user"
+              target='user'
               multi={false}
               onSelectSingle={(actorId) => {
                 insertMention(actorId)
                 // Add to assignees if not already present
-                setAssigneeActorIds((prev) =>
-                  prev.includes(actorId) ? prev : [...prev, actorId]
-                )
+                setAssigneeActorIds((prev) => (prev.includes(actorId) ? prev : [...prev, actorId]))
               }}
-              placeholder="Search team members..."
+              placeholder='Search team members...'
             />
           </InlinePickerPopover>
         </div>
 
         {/* Footer with pickers and actions (merged inline) */}
-        <DialogFooter className="border-t py-1 px-4">
-          <div className="flex items-center justify-between w-full">
+        <DialogFooter className='border-t py-1 px-4'>
+          <div className='flex items-center justify-between w-full'>
             {/* Left side: Pickers */}
-            <div className="flex items-center gap-1">
+            <div className='flex items-center gap-1'>
               {/* Date Picker with clear button */}
               <DateTimePicker
                 value={deadline}
                 onChange={handleDeadlineChange}
-                mode="date"
+                mode='date'
                 noConfirm
-                placeholder="Due date">
-                <Button variant="ghost" size="sm">
+                placeholder='Due date'>
+                <Button variant='ghost' size='sm'>
                   <Calendar />
                   {deadline ? formatTaskDeadlineDisplay(deadline) : 'Due date'}
                 </Button>
@@ -355,12 +356,12 @@ export function TaskDialog({
               {/* Clear deadline button (shown when deadline is set) */}
               {deadline && (
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
+                  variant='ghost'
+                  size='icon'
+                  className='h-6 w-6'
                   onClick={handleDeadlineClear}
-                  title="Clear deadline">
-                  <X className="h-3 w-3" />
+                  title='Clear deadline'>
+                  <X className='h-3 w-3' />
                 </Button>
               )}
 
@@ -369,9 +370,9 @@ export function TaskDialog({
                 value={assigneeActorIds}
                 onChange={setAssigneeActorIds}
                 multi
-                target="user"
-                emptyLabel="Assignee">
-                <Button variant="ghost" size="sm">
+                target='user'
+                emptyLabel='Assignee'>
+                <Button variant='ghost' size='sm'>
                   <User />
                   {assigneeActorIds.length > 0 ? `${assigneeActorIds.length} assigned` : 'Assignee'}
                 </Button>
@@ -382,8 +383,8 @@ export function TaskDialog({
                 value={linkedRecords}
                 onChange={setLinkedRecords}
                 multi
-                emptyLabel="Link record">
-                <Button variant="ghost" size="sm">
+                emptyLabel='Link record'>
+                <Button variant='ghost' size='sm'>
                   <Link2 />
                   {linkedRecords.length > 0
                     ? `${linkedRecords.length} linked record${linkedRecords.length > 1 ? 's' : ''}`
@@ -393,7 +394,7 @@ export function TaskDialog({
             </div>
 
             {/* Right side: Actions */}
-            <div className="flex items-center gap-2">
+            <div className='flex items-center gap-2'>
               {/* Create more toggle - only shown in create mode */}
               {mode === 'create' && (
                 <label
@@ -401,9 +402,9 @@ export function TaskDialog({
                     buttonVariants({ variant: 'ghost', size: 'sm' }),
                     'gap-2 cursor-pointer'
                   )}>
-                  <span className="text-muted-foreground text-xs">Create more</span>
+                  <span className='text-muted-foreground text-xs'>Create more</span>
                   <Switch
-                    size="sm"
+                    size='sm'
                     checked={createMore}
                     onCheckedChange={setCreateMore}
                     disabled={isSaving}
@@ -411,18 +412,18 @@ export function TaskDialog({
                 </label>
               )}
               <Button
-                variant="outline"
-                size="sm"
+                variant='outline'
+                size='sm'
                 onClick={handleCancel}
                 disabled={isSaving && !createMore}>
-                Cancel <Kbd shortcut="esc" size="sm" variant="outline" />
+                Cancel <Kbd shortcut='esc' size='sm' variant='outline' />
               </Button>
               <Button
-                size="sm"
+                size='sm'
                 onClick={handleSave}
                 loading={isSaving && !createMore}
-                loadingText="Saving...">
-                Save <Kbd shortcut="enter" size="sm" variant="default" />
+                loadingText='Saving...'>
+                Save <Kbd shortcut='enter' size='sm' variant='default' />
               </Button>
             </div>
           </div>

@@ -49,7 +49,11 @@ export class ShopifyIntegrationModel extends BaseModel<
   /** Global lookup by id without org scoping */
   async findByIdGlobal(id: string): Promise<TypedResult<ShopifyIntegrationEntity | null, Error>> {
     try {
-      const rows = await this.db.select().from(ShopifyIntegration).where(eq(ShopifyIntegration.id, id)).limit(1)
+      const rows = await this.db
+        .select()
+        .from(ShopifyIntegration)
+        .where(eq(ShopifyIntegration.id, id))
+        .limit(1)
       return Result.ok((rows?.[0] as ShopifyIntegrationEntity) ?? null)
     } catch (error: any) {
       return Result.error(error)

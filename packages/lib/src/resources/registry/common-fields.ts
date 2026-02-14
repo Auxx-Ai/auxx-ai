@@ -1,9 +1,9 @@
 // packages/lib/src/resources/registry/common-fields.ts
 
 import { FieldType } from '@auxx/database/enums'
-import { BaseType } from '../../workflow-engine/core/types'
-import { toFieldId } from '@auxx/types/field'
 import { CREATED_BY_FIELD_CONFIG } from '@auxx/types/custom-field'
+import { toFieldId } from '@auxx/types/field'
+import { BaseType } from '../../workflow-engine/core/types'
 import type { ResourceField } from './field-types'
 
 /**

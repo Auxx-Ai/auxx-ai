@@ -1,6 +1,6 @@
-"use client"
+'use client'
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from 'react'
 
 export function useMedia(query: string): boolean {
   const [matches, setMatches] = useState(true)
@@ -11,10 +11,10 @@ export function useMedia(query: string): boolean {
 
     const handleChange = () => setMatches(matchMedia.matches)
 
-    matchMedia.addEventListener("change", handleChange)
+    matchMedia.addEventListener('change', handleChange)
 
     return () => {
-      matchMedia.removeEventListener("change", handleChange)
+      matchMedia.removeEventListener('change', handleChange)
     }
   }, [query])
 

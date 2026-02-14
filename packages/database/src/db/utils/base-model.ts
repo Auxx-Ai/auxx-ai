@@ -1,22 +1,22 @@
 // packages/database/src/db/utils/base-model.ts
 // BaseModel: shared CRUD helpers for Drizzle models (server-only)
 
+import { createId } from '@paralleldrive/cuid2'
 import {
   and,
-  eq,
-  inArray,
   count,
-  type SQL,
+  eq,
   type InferInsertModel,
   type InferSelectModel,
+  inArray,
+  type SQL,
 } from 'drizzle-orm'
 import type { AnyPgTable } from 'drizzle-orm/pg-core'
 import type { Database } from '../client'
 import { database as defaultDatabase } from '../client'
-import { Result, type TypedResult } from './result'
 import { NotFoundError } from './errors'
+import { Result, type TypedResult } from './result'
 import { orgScope } from './scopes'
-import { createId } from '@paralleldrive/cuid2'
 
 /** Minimal returning payload when the driver yields a QueryResult object */
 type ReturningQueryResult<TRow> = {

@@ -2,9 +2,9 @@
 
 'use client'
 
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
-import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
 import { BaseType } from '~/components/workflow/types/unified-types'
+import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
+import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 
 /**
  * String options for text field configuration
@@ -38,11 +38,11 @@ export function TextOptionsEditor({ options, onChange, disabled }: TextOptionsEd
   }
 
   return (
-    <VarEditorField orientation="horizontal" className="p-0">
+    <VarEditorField orientation='horizontal' className='p-0'>
       {/* Multiline Toggle */}
       <VarEditorFieldRow
-        title="Multiline"
-        description="Allow multiple lines of text (textarea)"
+        title='Multiline'
+        description='Allow multiple lines of text (textarea)'
         type={BaseType.BOOLEAN}>
         <ConstantInputAdapter
           value={options.multiline ?? false}
@@ -55,28 +55,28 @@ export function TextOptionsEditor({ options, onChange, disabled }: TextOptionsEd
 
       {/* Min Length */}
       <VarEditorFieldRow
-        title="Min Length"
-        description="Minimum number of characters required"
+        title='Min Length'
+        description='Minimum number of characters required'
         type={BaseType.NUMBER}>
         <ConstantInputAdapter
           value={options.minLength ?? ''}
           onChange={handleChange('minLength')}
           varType={BaseType.NUMBER}
-          placeholder="No minimum"
+          placeholder='No minimum'
           disabled={disabled}
         />
       </VarEditorFieldRow>
 
       {/* Max Length */}
       <VarEditorFieldRow
-        title="Max Length"
-        description="Maximum number of characters allowed"
+        title='Max Length'
+        description='Maximum number of characters allowed'
         type={BaseType.NUMBER}>
         <ConstantInputAdapter
           value={options.maxLength ?? ''}
           onChange={handleChange('maxLength')}
           varType={BaseType.NUMBER}
-          placeholder="No maximum"
+          placeholder='No maximum'
           disabled={disabled}
         />
       </VarEditorFieldRow>

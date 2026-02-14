@@ -1,16 +1,16 @@
 // packages/database/src/db/schema/participant.ts
 
-import {
-  pgTable,
-  uniqueIndex,
-  index,
-  text,
-  boolean,
-  timestamp,
-  type AnyPgColumn,
-  identifierType,
-} from './_shared'
 import { createId } from '@paralleldrive/cuid2'
+import {
+  type AnyPgColumn,
+  boolean,
+  identifierType,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from './_shared'
 
 import { EntityInstance } from './entity-instance'
 import { Organization } from './organization'
@@ -30,7 +30,9 @@ export const Participant = pgTable(
     initials: text(),
     isSpammer: boolean().default(false).notNull(),
     /** Reference to EntityInstance (contact entity type) */
-    entityInstanceId: text().references((): AnyPgColumn => EntityInstance.id, { onUpdate: 'cascade' }),
+    entityInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
+      onUpdate: 'cascade',
+    }),
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
@@ -42,7 +44,10 @@ export const Participant = pgTable(
     lastSentMessageAt: timestamp({ precision: 3 }),
   },
   (table) => [
-    index('Participant_entityInstanceId_idx').using('btree', table.entityInstanceId.asc().nullsLast()),
+    index('Participant_entityInstanceId_idx').using(
+      'btree',
+      table.entityInstanceId.asc().nullsLast()
+    ),
     index('Participant_identifierType_idx').using('btree', table.identifierType.asc().nullsLast()),
     index('Participant_identifier_idx').using('btree', table.identifier.asc().nullsLast()),
     uniqueIndex('Participant_organizationId_identifier_identifierType_key').using(

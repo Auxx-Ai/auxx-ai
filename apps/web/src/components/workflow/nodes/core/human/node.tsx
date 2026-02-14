@@ -1,13 +1,15 @@
 // apps/web/src/components/workflow/nodes/core/human/node.tsx
 
-import { type FC, memo } from 'react'
 import { Position } from '@xyflow/react'
-import { Clock, Users, Mail, Bell } from 'lucide-react'
+import { Bell, Clock, Mail, Users } from 'lucide-react'
+import { type FC, memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
+import type { UnifiedVariable } from '~/components/workflow/types'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
-import { type HumanConfirmationNode as HumanConfirmationNodeType } from './types'
-import { type HumanConfirmationNodeData } from './types'
-import { type UnifiedVariable } from '~/components/workflow/types'
+import type {
+  HumanConfirmationNodeData,
+  HumanConfirmationNode as HumanConfirmationNodeType,
+} from './types'
 
 /**
  * Human Confirmation node component
@@ -48,24 +50,24 @@ export const HumanConfirmationNode: FC<HumanConfirmationNodeType> = memo((props)
 
   return (
     <BaseNode {...props} data={augmentedData}>
-      <NodeTargetHandle id={id} data={{ ...augmentedData, selected }} handleId="target" />
+      <NodeTargetHandle id={id} data={{ ...augmentedData, selected }} handleId='target' />
 
-      <div className="relative px-3 pb-2 space-y-1">
+      <div className='relative px-3 pb-2 space-y-1'>
         {data.assignees && (
-          <div className="relative flex items-center justify-between h-6 rounded-md bg-muted px-2">
-            <div className="flex items-center gap-1">
-              <Users className="size-3" />
+          <div className='relative flex items-center justify-between h-6 rounded-md bg-muted px-2'>
+            <div className='flex items-center gap-1'>
+              <Users className='size-3' />
 
-              <div className="whitespace-pre-line">
-                <div className="text-sm font-medium">{getAssigneeDisplay(data.assignees)}</div>
+              <div className='whitespace-pre-line'>
+                <div className='text-sm font-medium'>{getAssigneeDisplay(data.assignees)}</div>
               </div>
             </div>
-            <div className="flex gap-1">
+            <div className='flex gap-1'>
               {data.notification_methods?.in_app && (
-                <Bell className="h-3 w-3 text-muted-foreground" />
+                <Bell className='h-3 w-3 text-muted-foreground' />
               )}
               {data.notification_methods?.email && (
-                <Mail className="h-3 w-3 text-muted-foreground" />
+                <Mail className='h-3 w-3 text-muted-foreground' />
               )}
             </div>
           </div>
@@ -73,28 +75,28 @@ export const HumanConfirmationNode: FC<HumanConfirmationNodeType> = memo((props)
 
         {/* Output handles */}
         {/* Approved handle */}
-        <div className="relative flex items-center justify-end h-6 rounded-md bg-good-50">
-          <div className="text-xs rounded-md px-1 font-semibold uppercase bg-good-100 text-good-500 whitespace-pre-line">
+        <div className='relative flex items-center justify-end h-6 rounded-md bg-good-50'>
+          <div className='text-xs rounded-md px-1 font-semibold uppercase bg-good-100 text-good-500 whitespace-pre-line'>
             Approved
           </div>
           <NodeSourceHandle
             id={id}
             data={{ ...augmentedData, selected }}
-            handleId="approved"
-            handleClassName="!top-1/2 !-right-[12px]"
+            handleId='approved'
+            handleClassName='!top-1/2 !-right-[12px]'
             handleIndex={0}
             handleTotal={totalSourceHandles}
           />
         </div>
-        <div className="relative flex items-center justify-end p-1 bg-bad-50 rounded-md">
-          <div className="text-xs rounded-md px-1 font-semibold uppercase bg-bad-100 text-bad-500 whitespace-pre-line">
+        <div className='relative flex items-center justify-end p-1 bg-bad-50 rounded-md'>
+          <div className='text-xs rounded-md px-1 font-semibold uppercase bg-bad-100 text-bad-500 whitespace-pre-line'>
             Denied
           </div>
           <NodeSourceHandle
             id={id}
             data={{ ...augmentedData, selected }}
-            handleId="denied"
-            handleClassName="!top-1/2 !-right-[12px]"
+            handleId='denied'
+            handleClassName='!top-1/2 !-right-[12px]'
             handleIndex={1}
             handleTotal={totalSourceHandles}
           />
@@ -102,19 +104,19 @@ export const HumanConfirmationNode: FC<HumanConfirmationNodeType> = memo((props)
 
         {/* Timeout handle */}
         {hasTimeout && (
-          <div className="relative flex items-center justify-between p-1 bg-accent-100 rounded-md">
-            <span className="flex items-center gap-1">
-              <Clock className="size-3 text-accent-500" />
-              <span className="text-xs text-accent-400">{formatTimeout(data.timeout!)}</span>
+          <div className='relative flex items-center justify-between p-1 bg-accent-100 rounded-md'>
+            <span className='flex items-center gap-1'>
+              <Clock className='size-3 text-accent-500' />
+              <span className='text-xs text-accent-400'>{formatTimeout(data.timeout!)}</span>
             </span>
-            <div className="text-xs rounded-md px-1 font-semibold uppercase bg-accent-100 text-accent-500 whitespace-pre-line">
+            <div className='text-xs rounded-md px-1 font-semibold uppercase bg-accent-100 text-accent-500 whitespace-pre-line'>
               Timeout
             </div>
             <NodeSourceHandle
               id={id}
               data={{ ...augmentedData, selected }}
-              handleId="timeout"
-              handleClassName="!top-1/2 !-right-[12px]"
+              handleId='timeout'
+              handleClassName='!top-1/2 !-right-[12px]'
               handleIndex={2}
               handleTotal={totalSourceHandles}
             />

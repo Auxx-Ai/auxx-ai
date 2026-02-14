@@ -34,9 +34,7 @@ export function createThrottledProgress(
  * @param callback - Callback receiving percentage (0-100)
  * @returns Progress callback
  */
-export function createPercentageProgress(
-  callback: (percentage: number) => void
-): ProgressCallback {
+export function createPercentageProgress(callback: (percentage: number) => void): ProgressCallback {
   return (processed: number, total: number) => {
     if (total === 0) {
       callback(100)

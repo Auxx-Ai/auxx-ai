@@ -1,12 +1,14 @@
 // packages/lib/src/jobs/workflow/approval-timeout-job.ts
-import { Job } from 'bullmq'
+
 import { database as db, schema } from '@auxx/database'
+import { ApprovalStatus } from '@auxx/database/enums'
+import type { ApprovalRequestEntity as ApprovalRequest } from '@auxx/database/models'
+import { createScopedLogger } from '@auxx/logger'
+import type { Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { publisher } from '../../events/publisher'
 import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
-import { createScopedLogger } from '@auxx/logger'
-import { ApprovalStatus } from '@auxx/database/enums'
-import type { ApprovalRequestEntity as ApprovalRequest } from '@auxx/database/models'
+
 const logger = createScopedLogger('approval-timeout-job')
 interface ApprovalTimeoutJobData {
   approvalRequestId: string

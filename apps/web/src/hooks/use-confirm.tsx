@@ -1,16 +1,16 @@
 // ~/hooks/use-confirm.tsx
 'use client'
 
-import React, { useState } from 'react'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Button } from '@auxx/ui/components/button'
+import React, { useState } from 'react'
 
 interface ConfirmOptions {
   title?: string
@@ -59,17 +59,17 @@ export function useConfirm() {
 
   const ConfirmDialog = () => (
     <Dialog open={open} onOpenChange={(open) => !open && handleCancel()}>
-      <DialogContent size="sm" position="tc">
+      <DialogContent size='sm' position='tc'>
         <DialogHeader>
           <DialogTitle>{options.title}</DialogTitle>
           {options.description && <DialogDescription>{options.description}</DialogDescription>}
         </DialogHeader>
-        <DialogFooter className="gap-2 sm:gap-0 pt-2 sm:pt-0">
-          <Button size="sm" variant="ghost" onClick={handleCancel}>
+        <DialogFooter className='gap-2 sm:gap-0 pt-2 sm:pt-0'>
+          <Button size='sm' variant='ghost' onClick={handleCancel}>
             {options.cancelText}
           </Button>
           <Button
-            size="sm"
+            size='sm'
             variant={options.destructive ? 'destructive' : 'default'}
             onClick={handleConfirm}>
             {options.confirmText}

@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/manual/types.ts
 
-import { NodeType } from '~/components/workflow/types/node-types'
-import { BaseNodeData } from '~/components/workflow/types/node-base'
+import type { BaseNodeData } from '~/components/workflow/types/node-base'
+import type { NodeType } from '~/components/workflow/types/node-types'
 
 /**
  * Manual trigger node data interface

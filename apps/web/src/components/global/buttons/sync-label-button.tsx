@@ -1,10 +1,10 @@
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
+import { useState } from 'react'
+import { api } from '~/trpc/react'
 import { isActionError } from '~/utils/error'
 import { toastError, toastSuccess } from '../toast'
-import { Button } from '@auxx/ui/components/button'
-import { api } from '~/trpc/react'
-import { useState } from 'react'
 
 export function SyncLabelButton() {
   const syncLabels = api.label.syncAll.useMutation()
@@ -22,7 +22,7 @@ export function SyncLabelButton() {
     setIsLoading(false)
   }
   return (
-    <Button variant="outline" size="sm" onClick={handleSyncLabels} disabled={isLoading}>
+    <Button variant='outline' size='sm' onClick={handleSyncLabels} disabled={isLoading}>
       Sync Now
     </Button>
   )

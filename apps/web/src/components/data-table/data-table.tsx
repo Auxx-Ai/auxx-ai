@@ -1,25 +1,6 @@
 'use client'
 
-// import * as React from 'react'
-import {
-  ColumnDef,
-  ColumnFiltersState,
-  SortingState,
-  VisibilityState,
-  flexRender,
-  getCoreRowModel,
-  getFacetedRowModel,
-  getFacetedUniqueValues,
-  getFilteredRowModel,
-  // getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-  ColumnResizeMode,
-  getExpandedRowModel,
-} from '@tanstack/react-table'
-
-// import { DataTablePagination } from './data-table-pagination'
-import { DataTableToolbar } from './data-table-toolbar'
+import InfiniteScroll from '@auxx/ui/components/infinite-scroll'
 import {
   Table,
   TableBody,
@@ -28,9 +9,28 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import { createContext, Fragment, useEffect, useReducer, useRef, useState } from 'react'
-import InfiniteScroll from '@auxx/ui/components/infinite-scroll'
+// import * as React from 'react'
+import {
+  type ColumnDef,
+  type ColumnFiltersState,
+  type ColumnResizeMode,
+  flexRender,
+  getCoreRowModel,
+  getExpandedRowModel,
+  getFacetedRowModel,
+  getFacetedUniqueValues,
+  getFilteredRowModel,
+  // getPaginationRowModel,
+  getSortedRowModel,
+  type SortingState,
+  useReactTable,
+  type VisibilityState,
+} from '@tanstack/react-table'
 import { InfoIcon, Loader2 } from 'lucide-react'
+import { createContext, Fragment, useEffect, useReducer, useRef, useState } from 'react'
+// import { DataTablePagination } from './data-table-pagination'
+import { DataTableToolbar } from './data-table-toolbar'
+
 // import useCustomers from '~/hooks/use-customers'
 
 type TableContext = import('@tanstack/table-core').Table<TData> | null
@@ -297,11 +297,11 @@ export function DataTable<TData, TValue>({
   }, [containerWidth, columnResizing, table])
   return (
     <DataTableConext.Provider value={table}>
-      <div className="flex flex-1 flex-col w-full h-full">
+      <div className='flex flex-1 flex-col w-full h-full'>
         {children}
         <DataTableToolbar table={table} label={label} />
         <div
-          className="relative flex-1 overflow-y-auto"
+          className='relative flex-1 overflow-y-auto'
           // onScroll={(e) => fetchMoreOnBottomReached(e.currentTarget)}
           ref={tableContainerRef}>
           <table style={{ width: table.getCenterTotalSize(), display: 'grid' }}>
@@ -371,13 +371,13 @@ export function DataTable<TData, TValue>({
                     {row.getIsExpanded() && (
                       <TableRow>
                         <TableCell colSpan={row.getVisibleCells().length}>
-                          <div className="flex items-start py-2 text-foreground/80">
+                          <div className='flex items-start py-2 text-foreground/80'>
                             <span
-                              className="me-3 mt-0.5 flex w-7 shrink-0 justify-center"
-                              aria-hidden="true">
-                              <InfoIcon className="opacity-60" size={16} />
+                              className='me-3 mt-0.5 flex w-7 shrink-0 justify-center'
+                              aria-hidden='true'>
+                              <InfoIcon className='opacity-60' size={16} />
                             </span>
-                            <p className="text-sm">Lallalala</p>
+                            <p className='text-sm'>Lallalala</p>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -386,7 +386,7 @@ export function DataTable<TData, TValue>({
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={columns.length} className="h-24 text-center">
+                  <TableCell colSpan={columns.length} className='h-24 text-center'>
                     No results.
                   </TableCell>
                 </TableRow>
@@ -400,7 +400,7 @@ export function DataTable<TData, TValue>({
               // console.log('fetching more data')
               fetchNextPage()
             }}>
-            {hasNextPage && <Loader2 className="mx-auto my-4 h-8 w-8 animate-spin" />}
+            {hasNextPage && <Loader2 className='mx-auto my-4 h-8 w-8 animate-spin' />}
           </InfiniteScroll>
 
           {/* <DataTablePagination table={table} /> */}

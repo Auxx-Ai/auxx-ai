@@ -1,10 +1,10 @@
 // packages/lib/src/messages/message-sync-service.ts
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { IntegrationProviderType } from '../email/message-service'
-import { ProviderRegistryService } from '../providers/provider-registry-service'
+import { and, eq, isNull, lt, or } from 'drizzle-orm'
+import type { IntegrationProviderType } from '../email/message-service'
 import { AuthErrorHandler } from '../providers/auth-error-handler'
-import { eq, and, or, lt, isNull } from 'drizzle-orm'
+import type { ProviderRegistryService } from '../providers/provider-registry-service'
 
 const logger = createScopedLogger('message-sync-service')
 

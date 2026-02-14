@@ -2,11 +2,11 @@
 // packages/workflow-nodes/scripts/generate-frontend.ts
 
 import fs from 'fs-extra'
+import { glob } from 'glob'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { glob } from 'glob'
 import { NodeFileGenerator } from '../src/generators/node-file-generator'
-import { UnifiedNodeConfig, validateNodeConfig } from '../src/types/unified-config'
+import { type UnifiedNodeConfig, validateNodeConfig } from '../src/types/unified-config'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 

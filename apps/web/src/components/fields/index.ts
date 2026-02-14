@@ -1,12 +1,13 @@
 // apps/web/src/components/fields/index.ts
 
+export { AddFieldRow } from './add-field-row'
+export { DisplayOnlyProvider, useDisplayOnlyContext } from './display-only-provider'
+// Display components
+export { DisplayField, useFieldContext } from './displays/display-field'
 // Main component exports
 export { default as EntityFields } from './entity-fields'
-export { PropertyProvider, usePropertyContext } from './property-provider'
-export { default as PropertyRow } from './property-row'
+export { FieldDisplay } from './field-display'
 export { FieldInput } from './field-input'
-export { SortablePropertyRow } from './sortable-property-row'
-export { AddFieldRow } from './add-field-row'
 
 // Navigation context
 export {
@@ -14,18 +15,18 @@ export {
   useFieldNavigation,
   useFieldNavigationOptional,
 } from './field-navigation-context'
-
-// Hooks
-export { useFieldPopoverHandlers } from './use-field-popover-handlers'
+export { useDynamicFieldOptions, useFieldDynamicOptions } from './hooks/use-dynamic-field-options'
 
 // Input components
 export { getInputComponentForFieldType } from './inputs/get-input-component'
-
-// Display components
-export { DisplayField, useFieldContext } from './displays/display-field'
-export { FieldDisplay } from './field-display'
-export { DisplayOnlyProvider, useDisplayOnlyContext } from './display-only-provider'
-
+export { PropertyProvider, usePropertyContext } from './property-provider'
+export { default as PropertyRow } from './property-row'
 // Dynamic options registry and hooks
-export { DYNAMIC_OPTIONS_REGISTRY, getDynamicOptionsEntry, type DynamicOption } from './registries/dynamic-options-registry'
-export { useDynamicFieldOptions, useFieldDynamicOptions } from './hooks/use-dynamic-field-options'
+export {
+  DYNAMIC_OPTIONS_REGISTRY,
+  type DynamicOption,
+  getDynamicOptionsEntry,
+} from './registries/dynamic-options-registry'
+export { SortablePropertyRow } from './sortable-property-row'
+// Hooks
+export { useFieldPopoverHandlers } from './use-field-popover-handlers'

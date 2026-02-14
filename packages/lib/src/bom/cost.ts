@@ -1,7 +1,7 @@
 // src/lib/cost-utils.ts
 
 import { database as db, schema } from '@auxx/database'
-import { eq, and, not, asc, isNotNull } from 'drizzle-orm'
+import { and, asc, eq, isNotNull, not } from 'drizzle-orm'
 
 /**
  * Get the cost of a part from its preferred vendor
@@ -9,24 +9,25 @@ import { eq, and, not, asc, isNotNull } from 'drizzle-orm'
  * @returns The cost from the preferred vendor or null if not available
  */
 async function getPreferredVendorCost(partId: string): Promise<number | null> {
-  const [vendorPart] = await db.select()
+  const [vendorPart] = await db
+    .select()
     .from(schema.VendorPart)
-    .where(and(
-      eq(schema.VendorPart.partId, partId),
-      eq(schema.VendorPart.isPreferred, true),
-      isNotNull(schema.VendorPart.unitPrice)
-    ))
+    .where(
+      and(
+        eq(schema.VendorPart.partId, partId),
+        eq(schema.VendorPart.isPreferred, true),
+        isNotNull(schema.VendorPart.unitPrice)
+      )
+    )
     .orderBy(asc(schema.VendorPart.unitPrice)) // In case there are multiple preferred vendors, take the lowest price
     .limit(1)
 
   if (!vendorPart || !vendorPart.unitPrice) {
     // If no preferred vendor, take the lowest price from any vendor
-    const [anyVendorPart] = await db.select()
+    const [anyVendorPart] = await db
+      .select()
       .from(schema.VendorPart)
-      .where(and(
-        eq(schema.VendorPart.partId, partId),
-        isNotNull(schema.VendorPart.unitPrice)
-      ))
+      .where(and(eq(schema.VendorPart.partId, partId), isNotNull(schema.VendorPart.unitPrice)))
       .orderBy(asc(schema.VendorPart.unitPrice))
       .limit(1)
 
@@ -46,13 +47,14 @@ async function calculatePartCost(partId: string): Promise<number> {
   const vendorCost = await getPreferredVendorCost(partId)
 
   // Get all subparts with their quantities
-  const subparts = await db.select({
-    subpart: schema.Subpart,
-    childPart: schema.Part
-  })
-  .from(schema.Subpart)
-  .leftJoin(schema.Part, eq(schema.Part.id, schema.Subpart.childPartId))
-  .where(eq(schema.Subpart.parentPartId, partId))
+  const subparts = await db
+    .select({
+      subpart: schema.Subpart,
+      childPart: schema.Part,
+    })
+    .from(schema.Subpart)
+    .leftJoin(schema.Part, eq(schema.Part.id, schema.Subpart.childPartId))
+    .where(eq(schema.Subpart.parentPartId, partId))
 
   // If no subparts and no vendor cost, return zero
   if (subparts.length === 0 && !vendorCost) {
@@ -81,7 +83,8 @@ async function calculatePartCost(partId: string): Promise<number> {
       subpartCost = await calculatePartCost(subpart.childPartId)
 
       // Update subpart's cached cost
-      await db.update(schema.Part)
+      await db
+        .update(schema.Part)
         .set({ cost: subpartCost })
         .where(eq(schema.Part.id, subpart.childPartId))
     }
@@ -106,15 +109,14 @@ export async function updatePartCostAndPropagate(
   const calculatedCost = await calculatePartCost(partId)
 
   // Update the part with the calculated cost
-  await db.update(schema.Part)
+  await db
+    .update(schema.Part)
     .set({ cost: calculatedCost })
-    .where(and(
-      eq(schema.Part.id, partId),
-      eq(schema.Part.organizationId, organizationId)
-    ))
+    .where(and(eq(schema.Part.id, partId), eq(schema.Part.organizationId, organizationId)))
 
   // Find all parent parts that use this part as a subpart
-  const parentParts = await db.select({ parentPartId: schema.Subpart.parentPartId })
+  const parentParts = await db
+    .select({ parentPartId: schema.Subpart.parentPartId })
     .from(schema.Subpart)
     .where(eq(schema.Subpart.childPartId, partId))
 

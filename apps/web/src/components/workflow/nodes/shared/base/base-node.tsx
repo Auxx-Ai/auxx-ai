@@ -1,15 +1,15 @@
 // apps/web/src/components/workflow/nodes/shared/base/base-node.tsx
 
-import React, { memo, useMemo, useEffect, type ReactNode } from 'react'
+import { ShineBorder } from '@auxx/ui/components/shine-border'
 import { cn } from '@auxx/ui/lib/utils'
-import { type BaseNodeData, NodeRunningStatus } from '../../../types'
-import { Check, Clock, XCircle, ChevronDown } from 'lucide-react'
+import { useUpdateNodeInternals } from '@xyflow/react'
+import { Check, ChevronDown, Clock, XCircle } from 'lucide-react'
+import React, { memo, type ReactNode, useEffect, useMemo } from 'react'
 import { useNodeStatus, useNodeValidationErrors } from '~/components/workflow/hooks'
+import { useNodesInteractions } from '~/components/workflow/hooks/use-node-interactions'
+import { type BaseNodeData, NodeRunningStatus } from '../../../types'
 import { unifiedNodeRegistry } from '../../unified-registry'
 import { NodeValidationWarning } from '../node-validation-warning'
-import { ShineBorder } from '@auxx/ui/components/shine-border'
-import { useNodesInteractions } from '~/components/workflow/hooks/use-node-interactions'
-import { useUpdateNodeInternals } from '@xyflow/react'
 
 /** Collapsed node dimensions */
 const COLLAPSED_WIDTH = 70
@@ -37,21 +37,21 @@ const StatusIndicator = ({
 }) => {
   if (status === NodeRunningStatus.Succeeded) {
     return (
-      <div className="rounded-full border p-0.5 border-good-500 bg-good-50">
+      <div className='rounded-full border p-0.5 border-good-500 bg-good-50'>
         <Check className={cn(size === 2 ? 'size-2' : 'size-3', 'text-green-500')} />
       </div>
     )
   }
   if (status === NodeRunningStatus.Failed) {
     return (
-      <div className="rounded-full border p-0.5 border-destructive-500 bg-destructive-50">
+      <div className='rounded-full border p-0.5 border-destructive-500 bg-destructive-50'>
         <XCircle className={cn(size === 2 ? 'size-2' : 'size-3', 'text-destructive-500')} />
       </div>
     )
   }
   if (status === NodeRunningStatus.Running) {
     return (
-      <div className="rounded-full border p-0.5 border-warning-500 bg-warning-50">
+      <div className='rounded-full border p-0.5 border-warning-500 bg-warning-50'>
         <Clock className={cn(size === 2 ? 'size-2' : 'size-3', 'text-warning-500')} />
       </div>
     )
@@ -150,7 +150,7 @@ export const BaseNode = memo<BaseNodeProps>(
 
           {/* Parallel node indicator - hidden when collapsed */}
           {!isEffectivelyCollapsed && data._inParallelHovering && (
-            <div className="uppercase font-mono text-[8px] absolute -top-2.5 left-2 z-10 text-primary-400">
+            <div className='uppercase font-mono text-[8px] absolute -top-2.5 left-2 z-10 text-primary-400'>
               Parallel Node
             </div>
           )}
@@ -159,7 +159,7 @@ export const BaseNode = memo<BaseNodeProps>(
           {status === NodeRunningStatus.Running && (
             <ShineBorder
               borderWidth={2}
-              className="absolute inset-[-2px]"
+              className='absolute inset-[-2px]'
               shineColor={['#e92a67', '#a853ba', '#2a8af6']}
             />
           )}
@@ -168,7 +168,7 @@ export const BaseNode = memo<BaseNodeProps>(
           {selected && <div className={selectedBorderClassName} />}
 
           {/* Main content wrapper */}
-          <div className="group relative shadow-xs flex h-full w-full flex-col rounded-2xl">
+          <div className='group relative shadow-xs flex h-full w-full flex-col rounded-2xl'>
             {/* Header */}
             <div
               className={cn(
@@ -202,7 +202,7 @@ export const BaseNode = memo<BaseNodeProps>(
                 {!isEffectivelyCollapsed && (
                   <div
                     title={data.title}
-                    className="font-semibold font-mono text-sm mr-1 flex grow items-center truncate text-foreground">
+                    className='font-semibold font-mono text-sm mr-1 flex grow items-center truncate text-foreground'>
                     {data.title}
                   </div>
                 )}
@@ -211,9 +211,9 @@ export const BaseNode = memo<BaseNodeProps>(
                 {canCollapse && !isEffectivelyCollapsed && (
                   <button
                     onClick={onCollapseToggle}
-                    className="flex-shrink-0 p-0.5 hover:bg-muted rounded transition-colors opacity-0 group-hover/node:opacity-100"
-                    title="Collapse node (K)">
-                    <ChevronDown className="size-4 text-muted-foreground" />
+                    className='flex-shrink-0 p-0.5 hover:bg-muted rounded transition-colors opacity-0 group-hover/node:opacity-100'
+                    title='Collapse node (K)'>
+                    <ChevronDown className='size-4 text-muted-foreground' />
                   </button>
                 )}
               </div>
@@ -247,7 +247,7 @@ export const BaseNode = memo<BaseNodeProps>(
 
         {/* Title label below node when collapsed */}
         {isEffectivelyCollapsed && (
-          <div className="text-xs font-medium ps-2 mt-1 truncate max-w-[70px] text-muted-foreground">
+          <div className='text-xs font-medium ps-2 mt-1 truncate max-w-[70px] text-muted-foreground'>
             {data.title}
           </div>
         )}

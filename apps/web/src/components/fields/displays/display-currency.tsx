@@ -1,10 +1,10 @@
 // apps/web/src/components/fields/displays/display-currency.tsx
 'use client'
 
+import { type CurrencyDisplayOptions, formatCurrency } from '@auxx/utils'
 import { useMemo } from 'react'
-import DisplayWrapper from './display-wrapper'
 import { useFieldContext } from './display-field'
-import { formatCurrency, type CurrencyDisplayOptions } from '@auxx/utils'
+import DisplayWrapper from './display-wrapper'
 
 /**
  * DisplayCurrency component
@@ -14,12 +14,14 @@ export function DisplayCurrency() {
   const { value, field } = useFieldContext()
 
   const options: CurrencyDisplayOptions = useMemo(() => {
-    return field.options?.currency || {
-      currencyCode: 'USD',
-      decimalPlaces: 'two-places',
-      displayType: 'symbol',
-      groups: 'default',
-    }
+    return (
+      field.options?.currency || {
+        currencyCode: 'USD',
+        decimalPlaces: 'two-places',
+        displayType: 'symbol',
+        groups: 'default',
+      }
+    )
   }, [field.options])
 
   const formattedValue = useMemo(() => {
@@ -28,13 +30,10 @@ export function DisplayCurrency() {
   }, [value, options])
 
   // For copy, use the plain number format (dollars, not cents)
-  const copyValue = value !== null && value !== undefined
-    ? (value / 100).toFixed(options.decimalPlaces === 'no-decimal' ? 0 : 2)
-    : null
+  const copyValue =
+    value !== null && value !== undefined
+      ? (value / 100).toFixed(options.decimalPlaces === 'no-decimal' ? 0 : 2)
+      : null
 
-  return (
-    <DisplayWrapper copyValue={copyValue}>
-      {formattedValue || '-'}
-    </DisplayWrapper>
-  )
+  return <DisplayWrapper copyValue={copyValue}>{formattedValue || '-'}</DisplayWrapper>
 }

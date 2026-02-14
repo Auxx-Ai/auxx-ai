@@ -1,12 +1,14 @@
 // apps/web/src/components/workflow/hooks/use-node-data-update.ts
-import { useCallback, useMemo } from 'react'
-import { produce } from 'immer'
-import { useStoreApi, useStore as useReactFlowStore } from '@xyflow/react'
+
 import { getByPath } from '@auxx/utils'
-import { useWorkflowSave } from './use-workflow-save'
+import { useStore as useReactFlowStore, useStoreApi } from '@xyflow/react'
+import { produce } from 'immer'
+import { useCallback, useMemo } from 'react'
+import { useReadOnly } from './use-read-only'
 // import { useWorkflowStore } from '../store/workflow-store'
 import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'
-import { useReadOnly } from './use-read-only'
+import { useWorkflowSave } from './use-workflow-save'
+
 // Variable syncing now handled automatically by VarStoreSyncProvider
 
 type NodeDataUpdatePayload = { id: string; data: Record<string, any> }

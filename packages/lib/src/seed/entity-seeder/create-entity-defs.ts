@@ -2,8 +2,8 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { EntityDefMap } from './types'
 import { SYSTEM_ENTITIES } from './constants'
+import type { EntityDefMap } from './types'
 
 const logger = createScopedLogger('entity-seeder:create-entity-defs')
 

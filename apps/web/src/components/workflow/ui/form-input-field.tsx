@@ -2,16 +2,16 @@
 
 'use client'
 
+import { getMimePatternsForCategories } from '@auxx/lib/files/client'
 import { memo, useMemo } from 'react'
-import { VarEditorFieldRow } from './input-editor/var-editor'
-import { getInputComponent, getSpecificPropsForType } from './input-editor/get-input-component'
-import { BaseType } from '~/components/workflow/types'
 import type { TypeOptions } from '~/components/workflow/nodes/inputs/form-input/types'
 import {
   PublicFileInput,
   type PublicFileMetadata,
 } from '~/components/workflow/share/inputs/public-file-input'
-import { getMimePatternsForCategories } from '@auxx/lib/files/client'
+import { BaseType } from '~/components/workflow/types'
+import { getInputComponent, getSpecificPropsForType } from './input-editor/get-input-component'
+import { VarEditorFieldRow } from './input-editor/var-editor'
 
 /**
  * Simplified form input config for rendering
@@ -100,7 +100,7 @@ export const FormInputField = memo(function FormInputField({
         isRequired={required}
         validationError={error}
         validationType={error ? 'error' : undefined}
-        className="[&_[data-slot=field-row-label]]:font-medium">
+        className='[&_[data-slot=field-row-label]]:font-medium'>
         <PublicFileInput
           name={nodeId}
           value={fileValue}
@@ -165,7 +165,7 @@ export const FormInputField = memo(function FormInputField({
       isRequired={required}
       validationError={error}
       validationType={error ? 'error' : undefined}
-      className="[&_[data-slot=field-row-label]]:font-medium">
+      className='[&_[data-slot=field-row-label]]:font-medium'>
       <InputComponent {...commonProps} {...specificProps} />
     </VarEditorFieldRow>
   )

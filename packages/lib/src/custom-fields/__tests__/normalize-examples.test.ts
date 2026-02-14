@@ -1,6 +1,7 @@
 // packages/lib/src/custom-fields/__tests__/normalize-examples.test.ts
-import { normalizeCustomFieldValue } from '../custom-field-service'
+
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
+import { normalizeCustomFieldValue } from '../custom-field-service'
 
 /**
  * Test examples for normalizeCustomFieldValue function

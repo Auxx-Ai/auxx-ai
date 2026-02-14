@@ -1,6 +1,6 @@
-import { gmail_v1 } from 'googleapis'
-import { z } from 'zod'
 import type { UserEntity as User } from '@auxx/database/models'
+import type { gmail_v1 } from 'googleapis'
+import { z } from 'zod'
 
 /**
  * Utility type to expand/flatten type definitions for better IDE visibility.

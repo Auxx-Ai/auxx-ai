@@ -1,13 +1,10 @@
 // packages/lib/src/files/upload/processors/base-attachment-processor.ts
 
-import { BaseAssetProcessor } from './base-asset-processor'
-import type {
-  ProcessorMetadata,
-  ProcessorResult,
-} from './types'
-import type { PresignedUploadSession } from '../session-types'
-import type { UploadInitConfig, ProcessorConfigResult } from '../init-types'
 import type { CreateAttachmentRequest } from '../../core/types'
+import type { ProcessorConfigResult, UploadInitConfig } from '../init-types'
+import type { PresignedUploadSession } from '../session-types'
+import { BaseAssetProcessor } from './base-asset-processor'
+import type { ProcessorMetadata, ProcessorResult } from './types'
 
 /**
  * Base attachment processor that creates both assets and attachments
@@ -48,11 +45,15 @@ export abstract class BaseAttachmentProcessor extends BaseAssetProcessor {
     return baseResult
   }
 
-  protected async executeProcess(session: PresignedUploadSession, storageLocationId: string, tx?: any): Promise<ProcessorResult> {
+  protected async executeProcess(
+    session: PresignedUploadSession,
+    storageLocationId: string,
+    tx?: any
+  ): Promise<ProcessorResult> {
     // First create asset
     const assetId = await this.createAsset(session, storageLocationId, tx)
     await this.postCreateAsset(session, storageLocationId, assetId, tx)
-    
+
     // Then create attachment linking asset to entity
     const attachmentId = await this.createAttachment(assetId, session, tx)
 
@@ -66,7 +67,11 @@ export abstract class BaseAttachmentProcessor extends BaseAssetProcessor {
   /**
    * Create an Attachment linking asset to entity
    */
-  protected async createAttachment(assetId: string, session: PresignedUploadSession, tx?: any): Promise<string> {
+  protected async createAttachment(
+    assetId: string,
+    session: PresignedUploadSession,
+    tx?: any
+  ): Promise<string> {
     if (!session.entityType || !session.entityId) {
       throw new Error('Entity information required for attachment')
     }

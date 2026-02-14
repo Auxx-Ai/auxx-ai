@@ -1,10 +1,10 @@
 // packages/services/src/field-values/update-value.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
+import { and, eq } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { UpdateFieldValueInput, FieldValueRow, FieldValueNotFoundError } from './types'
+import type { FieldValueNotFoundError, FieldValueRow, UpdateFieldValueInput } from './types'
 
 /**
  * Update an existing field value row.
@@ -31,10 +31,7 @@ export async function updateFieldValue(input: UpdateFieldValueInput) {
         actorId: updateData.actorId ?? null,
       })
       .where(
-        and(
-          eq(schema.FieldValue.id, id),
-          eq(schema.FieldValue.organizationId, organizationId)
-        )
+        and(eq(schema.FieldValue.id, id), eq(schema.FieldValue.organizationId, organizationId))
       )
       .returning(),
     'update-field-value'

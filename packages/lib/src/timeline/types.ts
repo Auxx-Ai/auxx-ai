@@ -1,7 +1,7 @@
 // packages/lib/src/timeline/types.ts
 
-import type { TimelineActorType, TimelineEventType } from './event-types'
 import type { RecordId } from '@auxx/types/resource'
+import type { TimelineActorType, TimelineEventType } from './event-types'
 
 export { ContactEventType } from './event-types'
 

@@ -1,56 +1,56 @@
 // apps/web/src/components/workflow/canvas/workflow-canvas.tsx
 
-import React, { useCallback, useEffect, useMemo, useRef, type ComponentType } from 'react'
 import {
-  ReactFlow,
   Background,
-  MiniMap,
   BackgroundVariant,
-  useReactFlow,
   ConnectionMode,
-  SelectionMode,
-  useOnViewportChange,
-  Panel,
-  useNodesState,
-  useEdgesState,
+  MiniMap,
   type NodeProps,
+  Panel,
+  ReactFlow,
+  SelectionMode,
+  useEdgesState,
+  useNodesState,
+  useOnViewportChange,
+  useReactFlow,
   type Viewport,
 } from '@xyflow/react'
+import React, { type ComponentType, useCallback, useEffect, useMemo, useRef } from 'react'
+
 // import '@xyflow/react/dist/style.css'
 // import { DevTools } from '~/components/devtools'
 
-import { createCenterOnNodeHandler } from '~/components/workflow/utils'
-import {
-  useCanvasSettings,
-  useCanvasActions,
-  useEdgeStatusUpdater,
-  useEdgeInteractions,
-  useNodesInteractions,
-  useSelectionInteractions,
-  useNodeValidation,
-  useWorkflowSave,
-  useWorkflowRunNodeSync,
-} from '~/components/workflow/hooks'
-
-import { FLOW_NODE_TYPES, NODE_TYPES } from '~/components/workflow/nodes'
-import { cn } from '@auxx/ui/lib/utils'
-import CustomConnectionLine from '~/components/workflow/edges/custom-edge/custom-connection-line'
-import CustomEdge from '~/components/workflow/edges/custom-edge'
-import HelpLine from '~/components/workflow/ui/helpline'
-import type { FlowNode, FlowEdge } from '~/components/workflow/types'
-import { useCanvasStore } from '~/components/workflow/store/canvas-store'
-import { useInteractionStore } from '~/components/workflow/store/interaction-store'
-import { storeEventBus } from '~/components/workflow/store/event-bus'
 import { Badge } from '@auxx/ui/components/badge'
+import { cn } from '@auxx/ui/lib/utils'
 import { Eye } from 'lucide-react'
-import { WorkflowOperators } from './workflow-operators'
-import { EmptyTriggerButton } from '~/components/workflow/ui/empty-trigger-button'
-import { RunInfo } from '../ui/run-info'
-import { CanvasNodeInfo } from '../ui/canvas-node-info'
 import { useTheme } from 'next-themes'
+import CustomEdge from '~/components/workflow/edges/custom-edge'
+import CustomConnectionLine from '~/components/workflow/edges/custom-edge/custom-connection-line'
+import {
+  useCanvasActions,
+  useCanvasSettings,
+  useEdgeInteractions,
+  useEdgeStatusUpdater,
+  useNodesInteractions,
+  useNodeValidation,
+  useSelectionInteractions,
+  useWorkflowRunNodeSync,
+  useWorkflowSave,
+} from '~/components/workflow/hooks'
+import { FLOW_NODE_TYPES, NODE_TYPES } from '~/components/workflow/nodes'
+import { useCanvasStore } from '~/components/workflow/store/canvas-store'
+import { storeEventBus } from '~/components/workflow/store/event-bus'
+import { useInteractionStore } from '~/components/workflow/store/interaction-store'
+import type { FlowEdge, FlowNode } from '~/components/workflow/types'
+import { EmptyTriggerButton } from '~/components/workflow/ui/empty-trigger-button'
+import HelpLine from '~/components/workflow/ui/helpline'
+import { createCenterOnNodeHandler } from '~/components/workflow/utils'
 import { useContextMenu } from '../hooks/use-context-menu'
+import { CanvasNodeInfo } from '../ui/canvas-node-info'
 import { NodeContextMenu } from '../ui/node-context-menu'
 import { PaneContextMenu } from '../ui/pane-context-menu'
+import { RunInfo } from '../ui/run-info'
+import { WorkflowOperators } from './workflow-operators'
 
 // Context to provide canvas state to operations hooks
 // Removed unused CanvasStateContext - was causing performance issues
@@ -320,7 +320,7 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
             // Viewport
             defaultViewport={defaultViewport}
             // Styling
-            attributionPosition="bottom-left"
+            attributionPosition='bottom-left'
             className={cn('bg-primary-50 dark:bg-primary-100', readOnly && 'opacity-95')}>
             {/* <DevTools position="top-left" /> */}
             {/* Background */}
@@ -337,7 +337,7 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
             {showMinimap && (
               <MiniMap
                 style={{ width: 102, height: 72 }}
-                className="backdrop-blur-sm bg-white/40 dark:bg-primary-400/40 rounded-lg !bottom-14 !left-4 z-[9] !m-0 !h-[72px] !w-[102px] !border-[0.5px] border-zinc-200 dark:border-primary-300 overflow-hidden"
+                className='backdrop-blur-sm bg-white/40 dark:bg-primary-400/40 rounded-lg !bottom-14 !left-4 z-[9] !m-0 !h-[72px] !w-[102px] !border-[0.5px] border-zinc-200 dark:border-primary-300 overflow-hidden'
                 pannable
                 zoomable
                 bgColor={theme === 'dark' ? '#18181b' : '#fff'}
@@ -348,17 +348,17 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
             )}
 
             {/* Custom panels */}
-            <Panel position="top-left" className="space-y-2 flex flex-row space-x-2">
+            <Panel position='top-left' className='space-y-2 flex flex-row space-x-2'>
               {/* Read-only mode indicator */}
               {!readOnly && <EmptyTriggerButton />}
               <RunInfo />
               {readOnly && (
                 <div>
-                  <Badge variant="zinc">
-                    <Eye className="size-3 mr-1.5" />
+                  <Badge variant='zinc'>
+                    <Eye className='size-3 mr-1.5' />
                     Read Only
                     {versionPreviewData && (
-                      <span className="ml-1 text-xs">- {versionPreviewData.title}</span>
+                      <span className='ml-1 text-xs'>- {versionPreviewData.title}</span>
                     )}
                   </Badge>
                 </div>
@@ -368,7 +368,7 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
             {/* Empty trigger button - only show in edit mode */}
 
             {/* Workflow operators panel - bottom left */}
-            <Panel position="bottom-left">
+            <Panel position='bottom-left'>
               <WorkflowOperators />
             </Panel>
             <CanvasNodeInfo />

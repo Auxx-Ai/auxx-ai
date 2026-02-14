@@ -1,8 +1,8 @@
 import type { Job } from 'bullmq'
-import { type AuxxEvent } from '../types'
-import { EventHandlers } from '.'
 import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
+import type { AuxxEvent } from '../types'
+import { EventHandlers } from '.'
 
 export const publishEventJob = async (job: Job<AuxxEvent>) => {
   const event = job.data

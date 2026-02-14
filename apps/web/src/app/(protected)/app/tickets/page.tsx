@@ -2,13 +2,13 @@
 
 'use client'
 
-import { useCallback } from 'react'
-import { parseAsString, useQueryState } from 'nuqs'
 import { MainPageContent } from '@auxx/ui/components/main-page'
-import { TicketManagement } from './_components/ticket-management'
-import { TicketDetailDrawer } from './_components/ticket-detail-drawer'
+import { parseAsString, useQueryState } from 'nuqs'
+import { useCallback } from 'react'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
+import { TicketDetailDrawer } from './_components/ticket-detail-drawer'
+import { TicketManagement } from './_components/ticket-management'
 
 /**
  * Tickets list page
@@ -22,10 +22,7 @@ export default function TicketsListPage() {
   const maxWidth = useDockStore((state) => state.maxWidth)
 
   // Ticket drawer state - synced with URL for deep linking
-  const [selectedTicketId, setSelectedTicketId] = useQueryState(
-    't',
-    parseAsString.withDefault('')
-  )
+  const [selectedTicketId, setSelectedTicketId] = useQueryState('t', parseAsString.withDefault(''))
 
   // Derive drawer open state from whether a ticket is selected
   const isDrawerOpen = !!selectedTicketId

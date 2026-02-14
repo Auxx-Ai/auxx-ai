@@ -1,12 +1,12 @@
 // apps/web/src/app/client-providers.tsx
 'use client'
 
-import React from 'react'
-import { ThemeProvider } from '~/providers/theme-provider'
-import { ViewStoreProvider } from '~/components/dynamic-table/context/view-store-provider'
-import { NuqsAdapter } from 'nuqs/adapters/next/app'
-import { TRPCReactProvider } from '~/trpc/react'
 import { Toaster } from '@auxx/ui/components/sonner'
+import { NuqsAdapter } from 'nuqs/adapters/next/app'
+import type React from 'react'
+import { ViewStoreProvider } from '~/components/dynamic-table/context/view-store-provider'
+import { ThemeProvider } from '~/providers/theme-provider'
+import { TRPCReactProvider } from '~/trpc/react'
 
 /**
  * ClientProviders
@@ -16,7 +16,7 @@ import { Toaster } from '@auxx/ui/components/sonner'
  */
 export function ClientProviders({ children }: { children: React.ReactNode }) {
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+    <ThemeProvider attribute='class' defaultTheme='system' enableSystem disableTransitionOnChange>
       <Toaster />
       <NuqsAdapter>
         <TRPCReactProvider>

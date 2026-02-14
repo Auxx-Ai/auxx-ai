@@ -1,18 +1,17 @@
 // packages/lib/src/tickets/ticket-service.ts
-import { schema, type Database, type Transaction } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import {
-  TicketStatus as TicketStatusEnum,
   TicketPriority as TicketPriorityEnum,
+  TicketStatus as TicketStatusEnum,
 } from '@auxx/database/enums'
-import type { TicketType, TicketPriority, TicketStatus } from '@auxx/database/types'
 import type { TicketEntity as Ticket } from '@auxx/database/models'
-
-import { eq, and, or, inArray, ilike, exists, not, lt } from 'drizzle-orm'
-import { TRPCError } from '@trpc/server'
-import { ticketNumbering } from './ticket-numbering'
+import type { TicketPriority, TicketStatus, TicketType } from '@auxx/database/types'
 import { publisher } from '@auxx/lib/events'
+import { TRPCError } from '@trpc/server'
+import { and, eq, exists, ilike, inArray, lt, not, or } from 'drizzle-orm'
+import { ticketNumbering } from './ticket-numbering'
+import type { TicketWithTypeData } from './types'
 import { validateTicketTypeData } from './validation'
-import { type TicketWithTypeData } from './types'
 /**
  * Interface for creating a new ticket
  */

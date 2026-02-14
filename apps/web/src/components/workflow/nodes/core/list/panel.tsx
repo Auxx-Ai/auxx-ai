@@ -2,19 +2,6 @@
 
 'use client'
 
-import React, { useCallback, memo, useMemo } from 'react'
-import { produce } from 'immer'
-import { v4 as generateId } from 'uuid'
-import { type ListNodeData, OPERATION_METADATA, type ListOperation } from './types'
-import { VAR_MODE } from '~/components/workflow/types'
-
-import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
-import Section from '~/components/workflow/ui/section'
-import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
-import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
-import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
-import { computeListOutputVariables } from './output-variables'
 import {
   Select,
   SelectContent,
@@ -22,16 +9,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { produce } from 'immer'
+import type React from 'react'
+import { memo, useCallback, useMemo } from 'react'
+import { v4 as generateId } from 'uuid'
+import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
+import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
+import { BaseType, VAR_MODE } from '~/components/workflow/types'
+import Field from '~/components/workflow/ui/field'
+import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import Section from '~/components/workflow/ui/section'
 
 // Import operation-specific components
 import { FilterPanel } from './components/filter-panel'
-import { SortPanel } from './components/sort-panel'
-import { SlicePanel } from './components/slice-panel'
 // import { UniquePanel } from './components/unique-panel'
 import { JoinPanel } from './components/join-panel'
 import { PluckPanel } from './components/pluck-panel'
-import { BaseType } from '~/components/workflow/types'
-import Field from '~/components/workflow/ui/field'
+import { SlicePanel } from './components/slice-panel'
+import { SortPanel } from './components/sort-panel'
+import { computeListOutputVariables } from './output-variables'
+import { type ListNodeData, type ListOperation, OPERATION_METADATA } from './types'
 
 interface ListPanelProps {
   nodeId: string
@@ -183,7 +182,7 @@ const ListPanelComponent: React.FC<ListPanelProps> = ({ nodeId, data }) => {
       case 'reverse':
         // Reverse operation has no additional configuration
         return (
-          <div className="text-sm text-muted-foreground">
+          <div className='text-sm text-muted-foreground'>
             This operation reverses the order of items in the list. No additional configuration
             needed.
           </div>
@@ -200,15 +199,15 @@ const ListPanelComponent: React.FC<ListPanelProps> = ({ nodeId, data }) => {
     <BasePanel nodeId={nodeId} data={data}>
       {/* Operation Selection */}
       <Section
-        title="Operation"
-        description="Select the operation to perform on the list"
+        title='Operation'
+        description='Select the operation to perform on the list'
         isRequired
         actions={
           <Select
             value={nodeData.operation}
             onValueChange={handleOperationChange}
             disabled={isReadOnly}>
-            <SelectTrigger size="sm">
+            <SelectTrigger size='sm'>
               <SelectValue>
                 {OPERATION_METADATA[nodeData.operation]?.label || nodeData.operation}
               </SelectValue>
@@ -217,9 +216,9 @@ const ListPanelComponent: React.FC<ListPanelProps> = ({ nodeId, data }) => {
               {operationOptions.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   <div>
-                    <div className="font-medium">{option.label}</div>
+                    <div className='font-medium'>{option.label}</div>
                     {option.description && (
-                      <div className="text-xs text-muted-foreground">{option.description}</div>
+                      <div className='text-xs text-muted-foreground'>{option.description}</div>
                     )}
                   </div>
                 </SelectItem>
@@ -227,11 +226,11 @@ const ListPanelComponent: React.FC<ListPanelProps> = ({ nodeId, data }) => {
             </SelectContent>
           </Select>
         }>
-        <div className="space-y-2">
-          <Field title="Input List" description="Select or enter the list variable to operate on">
+        <div className='space-y-2'>
+          <Field title='Input List' description='Select or enter the list variable to operate on'>
             <VarEditorField>
               <VarEditor
-                placeholder="Select or enter a list variable"
+                placeholder='Select or enter a list variable'
                 varType={BaseType.ARRAY}
                 value={nodeData.inputList}
                 onChange={handleInputListChange}

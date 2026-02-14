@@ -1,13 +1,13 @@
 // apps/web/src/components/timeline/timeline-grouped-item.tsx
 'use client'
 
-import { useState } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
 import type { GroupedTimelineEvent } from '@auxx/lib/timeline/client'
-import { EventIcon, getEventIcon, getEventColor } from './event-icon'
+import { cn } from '@auxx/ui/lib/utils'
+import { useState } from 'react'
+import { ChangeDetail } from './change-detail'
+import { EventIcon, getEventColor, getEventIcon } from './event-icon'
 import { EventTimestamp } from './event-timestamp'
 import { GroupDescription } from './group-description'
-import { ChangeDetail } from './change-detail'
 
 /**
  * Props for the TimelineGroupedItem component
@@ -38,26 +38,26 @@ export function TimelineGroupedItem({ groupedEvent }: TimelineGroupedItemProps) 
         <EventIcon icon={icon} color={color} />
 
         {/* Content */}
-        <div className="min-w-0 flex-1 pt-0.5">
-          <div className="flex items-start justify-between gap-4">
+        <div className='min-w-0 flex-1 pt-0.5'>
+          <div className='flex items-start justify-between gap-4'>
             {/* Group Description */}
-            <div className="text-sm">
-              <div className="flex flex-wrap items-center gap-2 text-[14px] text-primary-400 dark:text-primary-500">
+            <div className='text-sm'>
+              <div className='flex flex-wrap items-center gap-2 text-[14px] text-primary-400 dark:text-primary-500'>
                 <GroupDescription eventType={groupedEvent.eventType} events={groupedEvent.events} />
 
                 <button
-                  type="button"
+                  type='button'
                   onClick={() => setIsExpanded(!isExpanded)}
-                  className="inline-flex items-center rounded bg-accent-50 px-2 py-0.5 text-xs font-medium text-accent-700 transition-colors hover:bg-accent-100">
+                  className='inline-flex items-center rounded bg-accent-50 px-2 py-0.5 text-xs font-medium text-accent-700 transition-colors hover:bg-accent-100'>
                   {eventCount} {eventCount === 1 ? 'change' : 'changes'}
                 </button>
               </div>
 
               {/* Expanded Events */}
               {isExpanded && (
-                <div className="mt-3 space-y-2 pl-0">
+                <div className='mt-3 space-y-2 pl-0'>
                   {groupedEvent.events.map((event) => (
-                    <div key={event.id} className="text-xs">
+                    <div key={event.id} className='text-xs'>
                       {event.changes?.map((change, idx) => (
                         <ChangeDetail key={idx} change={change} />
                       ))}
@@ -68,7 +68,7 @@ export function TimelineGroupedItem({ groupedEvent }: TimelineGroupedItemProps) 
             </div>
           </div>
         </div>
-        <div className="pt-1">
+        <div className='pt-1'>
           <EventTimestamp timestamp={groupedEvent.startedAt} />
         </div>
       </div>

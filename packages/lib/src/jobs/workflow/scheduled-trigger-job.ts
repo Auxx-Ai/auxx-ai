@@ -1,14 +1,14 @@
 // packages/lib/src/jobs/workflow/scheduled-trigger-job.ts
 
-import { Job } from 'bullmq'
-import { createScopedLogger } from '../../logger'
-import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
-import { ScheduledTriggerService } from '../../workflows/scheduled-trigger-service'
-import { WorkflowNodeType } from '../../workflow-engine/core/types'
-import { RedisWorkflowExecutionReporter } from '../../workflow-engine'
 import { database as db, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
+import type { Job } from 'bullmq'
+import { and, eq } from 'drizzle-orm'
+import { createScopedLogger } from '../../logger'
+import { RedisWorkflowExecutionReporter } from '../../workflow-engine'
+import { WorkflowNodeType } from '../../workflow-engine/core/types'
 import type { ScheduledTriggerConfig } from '../../workflows/scheduled-trigger-service'
+import { ScheduledTriggerService } from '../../workflows/scheduled-trigger-service'
+import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
 
 const logger = createScopedLogger('scheduled-trigger-job')
 

@@ -1,10 +1,10 @@
 // packages/lib/src/signatures/signature-service.ts
-import { database as db, schema, type Database } from '@auxx/database'
-import { type SignatureEntity as Signature } from '@auxx/database/models'
+import { type Database, database as db, schema } from '@auxx/database'
 import { SignatureSharingType } from '@auxx/database/enums'
-import { eq, and, or, ne } from 'drizzle-orm'
-import { PermissionService } from '../permissions/permission-service'
+import type { SignatureEntity as Signature } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
+import { and, eq, ne, or } from 'drizzle-orm'
+import { PermissionService } from '../permissions/permission-service'
 
 const logger = createScopedLogger('signature-service') // Add logger instance
 

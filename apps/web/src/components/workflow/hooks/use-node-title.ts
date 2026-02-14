@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/hooks/use-node-title.ts
 
-import { useMemo } from 'react'
 import { useReactFlow } from '@xyflow/react'
+import { useMemo } from 'react'
 
 /**
  * Hook to get the current title of a node by its ID

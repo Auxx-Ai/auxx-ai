@@ -1,20 +1,19 @@
 // apps/web/src/app/api/files/upload/sessions/route.ts
 
-import { NextRequest, NextResponse } from 'next/server'
+import {
+  createStorageManager,
+  ensureProcessorsInitialized,
+  ProcessorRegistry,
+  SessionManager,
+  UploadErrorHandler,
+} from '@auxx/lib/files/server'
+import type { EntityType, UploadInitConfig } from '@auxx/lib/files/types'
+import { ENTITY_TYPES } from '@auxx/lib/files/types'
+import { createScopedLogger } from '@auxx/logger'
 import { headers } from 'next/headers'
+import { type NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '~/auth/server'
-import { createScopedLogger } from '@auxx/logger'
-import {
-  SessionManager,
-  ProcessorRegistry,
-  ensureProcessorsInitialized,
-} from '@auxx/lib/files/server'
-import { createStorageManager } from '@auxx/lib/files/server'
-import { UploadErrorHandler } from '@auxx/lib/files/server'
-import type { UploadInitConfig } from '@auxx/lib/files/types'
-import type { EntityType } from '@auxx/lib/files/types'
-import { ENTITY_TYPES } from '@auxx/lib/files/types'
 
 const logger = createScopedLogger('api-presigned-upload-sessions')
 

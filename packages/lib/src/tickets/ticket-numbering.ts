@@ -1,5 +1,6 @@
 // src/lib/tickets/ticket-numbering.ts
 import { TicketSequenceModel } from '@auxx/database/models'
+
 type TicketNumberReturn = { ticketNumber: string; sequenceNumber: number }
 /**
  * Service for merging multiple tickets into a single primary ticket

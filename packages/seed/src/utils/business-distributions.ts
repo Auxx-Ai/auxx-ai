@@ -30,11 +30,11 @@ export class BusinessDistributions {
   getCustomerOrderFrequency(): WeightedDistribution<number>[] {
     return [
       { value: 7, weight: 0.05, description: 'Weekly (power users)' },
-      { value: 14, weight: 0.10, description: 'Bi-weekly (frequent)' },
+      { value: 14, weight: 0.1, description: 'Bi-weekly (frequent)' },
       { value: 30, weight: 0.25, description: 'Monthly (regular)' },
-      { value: 60, weight: 0.30, description: 'Bi-monthly (typical)' },
-      { value: 90, weight: 0.20, description: 'Quarterly (occasional)' },
-      { value: 180, weight: 0.10, description: 'Semi-annual (rare)' },
+      { value: 60, weight: 0.3, description: 'Bi-monthly (typical)' },
+      { value: 90, weight: 0.2, description: 'Quarterly (occasional)' },
+      { value: 180, weight: 0.1, description: 'Semi-annual (rare)' },
     ]
   }
 
@@ -44,9 +44,9 @@ export class BusinessDistributions {
    */
   getSupportTicketPriorities(): WeightedDistribution<'low' | 'medium' | 'high' | 'urgent'>[] {
     return [
-      { value: 'low', weight: 0.40, description: 'General inquiries, non-urgent' },
+      { value: 'low', weight: 0.4, description: 'General inquiries, non-urgent' },
       { value: 'medium', weight: 0.35, description: 'Standard issues, needs attention' },
-      { value: 'high', weight: 0.20, description: 'Important issues, quick response needed' },
+      { value: 'high', weight: 0.2, description: 'Important issues, quick response needed' },
       { value: 'urgent', weight: 0.05, description: 'Critical issues, immediate attention' },
     ]
   }
@@ -57,10 +57,10 @@ export class BusinessDistributions {
    */
   getProductCategoryMix(): WeightedDistribution<string>[] {
     return [
-      { value: 'Electronics', weight: 0.20, description: 'Tech products, gadgets' },
+      { value: 'Electronics', weight: 0.2, description: 'Tech products, gadgets' },
       { value: 'Clothing & Apparel', weight: 0.25, description: 'Fashion, accessories' },
       { value: 'Home & Garden', weight: 0.15, description: 'Home improvement, decor' },
-      { value: 'Sports & Outdoor', weight: 0.10, description: 'Fitness, outdoor gear' },
+      { value: 'Sports & Outdoor', weight: 0.1, description: 'Fitness, outdoor gear' },
       { value: 'Books & Media', weight: 0.08, description: 'Books, entertainment' },
       { value: 'Health & Beauty', weight: 0.12, description: 'Personal care, wellness' },
       { value: 'Automotive', weight: 0.05, description: 'Car parts, accessories' },
@@ -74,17 +74,45 @@ export class BusinessDistributions {
    */
   getSeasonalOrderPatterns(): WeightedDistribution<{ month: number; multiplier: number }>[] {
     return [
-      { value: { month: 1, multiplier: 0.8 }, weight: 1, description: 'January - Post-holiday lull' },
-      { value: { month: 2, multiplier: 0.9 }, weight: 1, description: 'February - Valentine\'s boost' },
-      { value: { month: 3, multiplier: 1.0 }, weight: 1, description: 'March - Spring preparation' },
+      {
+        value: { month: 1, multiplier: 0.8 },
+        weight: 1,
+        description: 'January - Post-holiday lull',
+      },
+      {
+        value: { month: 2, multiplier: 0.9 },
+        weight: 1,
+        description: "February - Valentine's boost",
+      },
+      {
+        value: { month: 3, multiplier: 1.0 },
+        weight: 1,
+        description: 'March - Spring preparation',
+      },
       { value: { month: 4, multiplier: 1.1 }, weight: 1, description: 'April - Spring shopping' },
-      { value: { month: 5, multiplier: 1.2 }, weight: 1, description: 'May - Mother\'s Day, graduation' },
+      {
+        value: { month: 5, multiplier: 1.2 },
+        weight: 1,
+        description: "May - Mother's Day, graduation",
+      },
       { value: { month: 6, multiplier: 1.1 }, weight: 1, description: 'June - Summer preparation' },
       { value: { month: 7, multiplier: 1.0 }, weight: 1, description: 'July - Mid-summer steady' },
       { value: { month: 8, multiplier: 1.1 }, weight: 1, description: 'August - Back-to-school' },
-      { value: { month: 9, multiplier: 1.2 }, weight: 1, description: 'September - Fall preparation' },
-      { value: { month: 10, multiplier: 1.3 }, weight: 1, description: 'October - Halloween, pre-holiday' },
-      { value: { month: 11, multiplier: 1.8 }, weight: 1, description: 'November - Black Friday, Thanksgiving' },
+      {
+        value: { month: 9, multiplier: 1.2 },
+        weight: 1,
+        description: 'September - Fall preparation',
+      },
+      {
+        value: { month: 10, multiplier: 1.3 },
+        weight: 1,
+        description: 'October - Halloween, pre-holiday',
+      },
+      {
+        value: { month: 11, multiplier: 1.8 },
+        weight: 1,
+        description: 'November - Black Friday, Thanksgiving',
+      },
       { value: { month: 12, multiplier: 2.0 }, weight: 1, description: 'December - Holiday peak' },
     ]
   }
@@ -95,7 +123,7 @@ export class BusinessDistributions {
    */
   getOrderValueDistribution(): WeightedDistribution<{ min: number; max: number }>[] {
     return [
-      { value: { min: 5, max: 25 }, weight: 0.20, description: 'Small purchases' },
+      { value: { min: 5, max: 25 }, weight: 0.2, description: 'Small purchases' },
       { value: { min: 25, max: 75 }, weight: 0.35, description: 'Typical orders' },
       { value: { min: 75, max: 150 }, weight: 0.25, description: 'Medium orders' },
       { value: { min: 150, max: 300 }, weight: 0.15, description: 'Large orders' },
@@ -116,7 +144,7 @@ export class BusinessDistributions {
     return [
       {
         value: { segment: 'new', orderFrequency: 365, avgOrderValue: 45 },
-        weight: 0.30,
+        weight: 0.3,
         description: 'First-time customers',
       },
       {
@@ -150,8 +178,8 @@ export class BusinessDistributions {
     return [
       { value: 0.5, weight: 0.15, description: 'Immediate (< 30 min)' },
       { value: 2, weight: 0.25, description: 'Same day (< 2 hours)' },
-      { value: 8, weight: 0.30, description: 'Within business day' },
-      { value: 24, weight: 0.20, description: 'Next business day' },
+      { value: 8, weight: 0.3, description: 'Within business day' },
+      { value: 24, weight: 0.2, description: 'Next business day' },
       { value: 72, weight: 0.08, description: 'Within 3 days' },
       { value: 168, weight: 0.02, description: 'Within a week' },
     ]
@@ -169,7 +197,7 @@ export class BusinessDistributions {
     return [
       {
         value: { complexity: 'simple', messageCount: 3, resolutionTime: 2 },
-        weight: 0.50,
+        weight: 0.5,
         description: 'Quick FAQ-style questions',
       },
       {
@@ -202,12 +230,12 @@ export class BusinessDistributions {
       },
       {
         value: { tier: 'popular', salesMultiplier: 2.5, viewsMultiplier: 4.0 },
-        weight: 0.20,
+        weight: 0.2,
         description: 'Popular items with good sales',
       },
       {
         value: { tier: 'average', salesMultiplier: 1.0, viewsMultiplier: 1.0 },
-        weight: 0.60,
+        weight: 0.6,
         description: 'Standard catalog items',
       },
       {
@@ -224,11 +252,11 @@ export class BusinessDistributions {
    */
   getEmailResponseTimes(): WeightedDistribution<number>[] {
     return [
-      { value: 0.25, weight: 0.10, description: 'Immediate (< 15 min)' },
-      { value: 1, weight: 0.20, description: 'Within an hour' },
-      { value: 4, weight: 0.30, description: 'Same business day' },
+      { value: 0.25, weight: 0.1, description: 'Immediate (< 15 min)' },
+      { value: 1, weight: 0.2, description: 'Within an hour' },
+      { value: 4, weight: 0.3, description: 'Same business day' },
       { value: 24, weight: 0.25, description: 'Next business day' },
-      { value: 48, weight: 0.10, description: 'Within 2 days' },
+      { value: 48, weight: 0.1, description: 'Within 2 days' },
       { value: 72, weight: 0.05, description: 'Within 3 days' },
     ]
   }
@@ -255,7 +283,7 @@ export class BusinessDistributions {
       },
       {
         value: { level: 'medium', quantity: 45, reorderPoint: 20 },
-        weight: 0.50,
+        weight: 0.5,
         description: 'Healthy stock levels',
       },
       {
@@ -283,17 +311,17 @@ export class BusinessDistributions {
     return [
       {
         value: { frequency: 'high', executionsPerDay: 50, successRate: 0.95 },
-        weight: 0.20,
+        weight: 0.2,
         description: 'High-frequency automations',
       },
       {
         value: { frequency: 'medium', executionsPerDay: 15, successRate: 0.92 },
-        weight: 0.50,
+        weight: 0.5,
         description: 'Regular workflow executions',
       },
       {
         value: { frequency: 'low', executionsPerDay: 3, successRate: 0.88 },
-        weight: 0.30,
+        weight: 0.3,
         description: 'Occasional or complex workflows',
       },
     ]
@@ -341,7 +369,7 @@ export class BusinessDistributions {
    */
   applyBusinessSeasonality(baseValue: number, month: number): number {
     const seasonalPattern = this.getSeasonalOrderPatterns()
-    const seasonalData = seasonalPattern.find(p => p.value.month === month + 1)
+    const seasonalData = seasonalPattern.find((p) => p.value.month === month + 1)
     const multiplier = seasonalData?.value.multiplier || 1.0
 
     return Math.round(baseValue * multiplier)

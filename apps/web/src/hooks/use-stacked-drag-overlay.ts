@@ -1,6 +1,6 @@
 // apps/web/src/hooks/use-stacked-drag-overlay.ts
 
-import { useMemo, type CSSProperties } from 'react'
+import { type CSSProperties, useMemo } from 'react'
 
 /**
  * Options for useStackedDragOverlay hook

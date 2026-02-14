@@ -1,56 +1,55 @@
+import { env } from '@auxx/config/server'
+import type { OrganizationRole } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { render } from '@react-email/components'
-
-import { env } from '@auxx/config/server'
-import type { EmailOptions, UserEmail } from '../types'
-import { NodemailerService } from './nodemailer-service'
 import {
-  PasswordResetNotifyEmail,
-  PasswordResetNotifyText,
-  ResetPasswordEmail,
-  ResetPasswordText,
-  VerificationEmail,
-  VerificationText,
-  EmailChangeVerificationEmail,
-  EmailChangeVerificationText,
-  WelcomeEmail,
-  WelcomeText,
+  ApprovalReminderEmail,
+  ApprovalReminderText,
+  ApprovalRequestEmail,
+  ApprovalRequestText,
   BillingEmail,
   BillingText,
-  SystemEmail,
-  SystemText,
+  EmailChangeVerificationEmail,
+  EmailChangeVerificationText,
+  GettingStartedEmail,
+  GettingStartedText,
   InviteEmail,
   InviteText,
   JoinOrganizationEmail,
   JoinOrganizationText,
-  ApprovalRequestEmail,
-  ApprovalRequestText,
-  ApprovalReminderEmail,
-  ApprovalReminderText,
+  MidTrialEmail,
+  MidTrialText,
+  PasswordResetNotifyEmail,
+  PasswordResetNotifyText,
+  PaymentFailedEmail,
+  PaymentFailedText,
+  ResetPasswordEmail,
+  ResetPasswordText,
+  SubscriptionCancelledEmail,
+  SubscriptionCancelledText,
   SubscriptionWelcomeEmail,
   SubscriptionWelcomeText,
-  TrialStartedEmail,
-  TrialStartedText,
+  SystemEmail,
+  SystemText,
+  TrialConversionEmail,
+  TrialConversionText,
+  TrialDeletionFinalEmail,
+  TrialDeletionFinalText,
+  TrialDeletionWarningEmail,
+  TrialDeletionWarningText,
   TrialEndingEmail,
   TrialEndingText,
   TrialExpiredEmail,
   TrialExpiredText,
-  SubscriptionCancelledEmail,
-  SubscriptionCancelledText,
-  PaymentFailedEmail,
-  PaymentFailedText,
-  TrialDeletionWarningEmail,
-  TrialDeletionWarningText,
-  TrialDeletionFinalEmail,
-  TrialDeletionFinalText,
-  GettingStartedEmail,
-  GettingStartedText,
-  MidTrialEmail,
-  MidTrialText,
-  TrialConversionEmail,
-  TrialConversionText,
+  TrialStartedEmail,
+  TrialStartedText,
+  VerificationEmail,
+  VerificationText,
+  WelcomeEmail,
+  WelcomeText,
 } from '../templates'
-import { type OrganizationRole } from '@auxx/database/types'
+import type { EmailOptions, UserEmail } from '../types'
+import { NodemailerService } from './nodemailer-service'
 
 const logger = createScopedLogger('system-mail')
 
@@ -492,7 +491,9 @@ export const sendSubscriptionWelcomeEmail = async ({
   dashboardUrl?: string
 }): Promise<boolean> => {
   try {
-    const html = await render(await SubscriptionWelcomeEmail({ name, planName, billingCycle, dashboardUrl }))
+    const html = await render(
+      await SubscriptionWelcomeEmail({ name, planName, billingCycle, dashboardUrl })
+    )
     const text = SubscriptionWelcomeText({ name, planName, billingCycle, dashboardUrl })
 
     return await sendEmail({

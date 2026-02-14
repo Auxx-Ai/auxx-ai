@@ -3,7 +3,7 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { OpenAIEmbeddings } from '@langchain/openai'
-import { eq, and, asc, sql } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 
 const logger = createScopedLogger('embedding-service')
 

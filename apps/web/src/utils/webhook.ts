@@ -1,7 +1,8 @@
 import { UserModel } from '@auxx/database/models'
-import { sleep } from './sleep'
-import { createScopedLogger } from '@auxx/logger'
 import type { ExecutedRule } from '@auxx/database/types'
+import { createScopedLogger } from '@auxx/logger'
+import { sleep } from './sleep'
+
 const logger = createScopedLogger('webhook')
 type WebhookPayload = {
   email: {

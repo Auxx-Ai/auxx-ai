@@ -1,7 +1,7 @@
 // packages/sdk/src/commands/login.ts
 
-import { Command } from 'commander'
 import chalk from 'chalk'
+import { Command } from 'commander'
 import { authenticator } from '../auth/auth.js'
 import { isError } from '../types/result.js'
 

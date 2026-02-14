@@ -1,17 +1,17 @@
 // packages/lib/src/files/upload/processors/entity-processors.ts
 import { database as db, schema } from '@auxx/database'
-import { eq, and, desc } from 'drizzle-orm'
-import { BaseAssetProcessor } from './base-asset-processor'
-import { BaseAttachmentProcessor } from './base-attachment-processor'
-import type { PresignedUploadSession } from '../session-types'
-import type { AssetKind } from '../../core/types'
-import type { UploadInitConfig, ProcessorConfigResult } from '../init-types'
-import type { ProcessorResult } from './types'
+import type { MediaAsset } from '@auxx/database/types'
 import { MemberService } from '@auxx/lib/members'
+import { and, desc, eq } from 'drizzle-orm'
+import { ensureThumbnailPresets } from '../../core/thumbnail-batch'
 import { ThumbnailService } from '../../core/thumbnail-service'
 import type { ThumbnailSource } from '../../core/thumbnail-types'
-import { ensureThumbnailPresets } from '../../core/thumbnail-batch'
-import type { MediaAsset } from '@auxx/database/types'
+import type { AssetKind } from '../../core/types'
+import type { ProcessorConfigResult, UploadInitConfig } from '../init-types'
+import type { PresignedUploadSession } from '../session-types'
+import { BaseAssetProcessor } from './base-asset-processor'
+import { BaseAttachmentProcessor } from './base-attachment-processor'
+import type { ProcessorResult } from './types'
 // ============= Ticket Processor =============
 export class TicketProcessor extends BaseAttachmentProcessor {
   protected readonly entityType = 'TICKET'
@@ -469,10 +469,7 @@ export class MessageProcessor extends BaseAttachmentProcessor {
       .select({ id: schema.Message.id })
       .from(schema.Message)
       .where(
-        and(
-          eq(schema.Message.id, entityId),
-          eq(schema.Message.organizationId, organizationId)
-        )
+        and(eq(schema.Message.id, entityId), eq(schema.Message.organizationId, organizationId))
       )
       .limit(1)
     if (!message) {
@@ -677,7 +674,8 @@ export class KnowledgeBaseProcessor extends BaseAttachmentProcessor {
       // Update KnowledgeBase.logoLight/logoDark immediately to original URL
       if (session.entityId && originalUrl) {
         const variant = (session.metadata?.variant as string) || 'light'
-        const updateData = variant === 'dark' ? { logoDark: originalUrl } : { logoLight: originalUrl }
+        const updateData =
+          variant === 'dark' ? { logoDark: originalUrl } : { logoLight: originalUrl }
         await tx
           .update(schema.KnowledgeBase)
           .set(updateData)

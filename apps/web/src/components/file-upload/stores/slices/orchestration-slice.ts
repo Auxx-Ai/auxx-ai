@@ -1,11 +1,11 @@
 // apps/web/src/components/file-upload/stores/slices/orchestration-slice.ts
 
-import type { StateCreator } from 'zustand'
-import type { UploadStore, CreateSessionOptions } from '../types'
 import type { BatchUploadResult, EntityType } from '@auxx/lib/files/types'
-import { validateFile, calculateOverallProgress } from '../../utils'
 import { getEntityConfig } from '@auxx/lib/files/types'
+import type { StateCreator } from 'zustand'
+import { calculateOverallProgress, validateFile } from '../../utils'
 import { directUpload } from '../../utils/direct-upload'
+import type { CreateSessionOptions, UploadStore } from '../types'
 
 /**
  * Module-level promise maps for concurrency control (outside component lifecycle)
@@ -553,8 +553,8 @@ export const createEnhancedOrchestrationSlice: StateCreator<
     const maxConcurrency = Math.max(1, config?.maxConcurrentUploads ?? 3)
 
     // Get session or lazily create one
-    let sessionId = activeSessionId
-    let session = sessionId ? sessions[sessionId] : null
+    const sessionId = activeSessionId
+    const session = sessionId ? sessions[sessionId] : null
 
     // Gather files eligible to upload (pending or failed) from the store
     const allFiles = Object.values(files)

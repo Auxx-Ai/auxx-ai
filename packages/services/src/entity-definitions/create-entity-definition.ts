@@ -1,14 +1,14 @@
 // packages/services/src/entity-definitions/create-entity-definition.ts
 
-import { database, EntityDefinition } from '@auxx/database'
 import { RESERVED_API_SLUGS } from '@auxx/config/client'
+import { database, EntityDefinition } from '@auxx/database'
 import { FieldType } from '@auxx/database/enums'
+import type { EntityType, StandardType } from '@auxx/database/types'
 import { CREATED_BY_FIELD_CONFIG } from '@auxx/types/custom-field'
-import { ok, err } from 'neverthrow'
+import { err, ok } from 'neverthrow'
+import { createCustomField } from '../custom-fields/create-field'
 import { fromDatabase } from '../shared/utils'
 import { checkSlugExists } from './check-slug-exists'
-import { createCustomField } from '../custom-fields/create-field'
-import type { EntityType, StandardType } from '@auxx/database/types'
 
 /** Parameters for creating an entity definition */
 export interface CreateEntityDefinitionParams {

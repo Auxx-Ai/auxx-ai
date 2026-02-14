@@ -1,7 +1,7 @@
 // packages/sdk/src/runtime/reconciler/tags/workflow-number-input-tag.ts
 
-import { BaseTag } from './base-tag.js'
 import { registerEventHandler } from '../../register-event-handler.js'
+import { BaseTag } from './base-tag.js'
 
 /**
  * Tag for NumberInput component.
@@ -23,17 +23,7 @@ export class WorkflowNumberInputTag extends BaseTag {
 
   getAttributes(props: Record<string, any>): Record<string, any> {
     // ✓ Explicitly whitelist only serializable props
-    const {
-      name,
-      value,
-      label,
-      description,
-      placeholder,
-      disabled,
-      min,
-      max,
-      step,
-    } = props
+    const { name, value, label, description, placeholder, disabled, min, max, step } = props
 
     return {
       name,

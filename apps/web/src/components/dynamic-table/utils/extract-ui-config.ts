@@ -1,7 +1,7 @@
 // apps/web/src/components/dynamic-table/utils/extract-ui-config.ts
 
-import type { ViewConfig } from '../types'
 import type { TableUIConfig } from '../stores/store-types'
+import type { ViewConfig } from '../types'
 
 /**
  * Extract TableUIConfig from ViewConfig by removing filters.

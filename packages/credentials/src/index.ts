@@ -2,25 +2,22 @@
 
 // Export everything from manager
 export * from './manager'
-
-// Export everything from service
-export * from './service'
-
-// Export everything from types
-export * from './types'
-
 // Re-export commonly used items for convenience
 export { CredentialManager } from './manager/credential-manager'
+// Export everything from service
+export * from './service'
 export { CredentialService } from './service/credential-service'
 export type {
+  ConnectionTestResult,
+  CredentialReference,
   ICredentialManager,
   ProviderAuth,
   ProviderInfo,
-  CredentialReference,
   SystemCredentialInfo,
-  ConnectionTestResult,
   ValidationResult,
 } from './types'
+// Export everything from types
+export * from './types'
 
 import { CredentialManager } from './manager/credential-manager'
 // Create singleton instance for convenience

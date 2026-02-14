@@ -1,35 +1,33 @@
 // ~/components/global/sidebar/personal-mail-group.tsx
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { usePathname } from 'next/navigation'
-
 import { SidebarGroup, SidebarMenu, SidebarMenuItem } from '@auxx/ui/components/sidebar'
-import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
-import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
-import { EditableSidebarItem } from '~/components/global/sidebar/editable-sidebar-item'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { Inbox as InboxIcon, Send, FileEdit } from 'lucide-react'
-import { useMailCountsStore } from '~/components/mail/store'
-import { useSidebarStateContext } from './sidebar-state-context'
-
 // Import necessary DnD Kit components
 import {
-  DndContext,
   closestCenter,
+  DndContext,
+  type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  DragEndEvent,
 } from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import { FileEdit, Inbox as InboxIcon, Send } from 'lucide-react'
+import { usePathname } from 'next/navigation'
+import { useCallback, useEffect, useState } from 'react'
+import { EditableSidebarItem } from '~/components/global/sidebar/editable-sidebar-item'
+import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
+import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
+import { useMailCountsStore } from '~/components/mail/store'
+import { useSidebarStateContext } from './sidebar-state-context'
 
 export interface PersonalMenuItem {
   id: string
@@ -55,7 +53,7 @@ const DEFAULT_PERSONAL_ITEMS: PersonalMenuItem[] = [
   {
     id: 'inbox',
     name: 'Inbox',
-    icon: <InboxIcon className="size-4" />,
+    icon: <InboxIcon className='size-4' />,
     visible: true,
     order: 0,
     count: 0,
@@ -63,7 +61,7 @@ const DEFAULT_PERSONAL_ITEMS: PersonalMenuItem[] = [
   {
     id: 'drafts',
     name: 'Drafts',
-    icon: <FileEdit className="size-4" />,
+    icon: <FileEdit className='size-4' />,
     visible: true,
     order: 1,
     count: undefined,
@@ -71,7 +69,7 @@ const DEFAULT_PERSONAL_ITEMS: PersonalMenuItem[] = [
   {
     id: 'sent',
     name: 'Sent',
-    icon: <Send className="size-4" />,
+    icon: <Send className='size-4' />,
     visible: true,
     order: 2,
     count: undefined,
@@ -117,7 +115,7 @@ export function PersonalMailGroup({
         const baseItem = settingItem ? { ...defaultItem, ...settingItem } : defaultItem
 
         // Apply correct counts from store
-        let count: number | undefined = undefined
+        let count: number | undefined
         if (defaultItem.id === 'inbox') {
           count = inboxCount
         } else if (defaultItem.id === 'drafts') {
@@ -213,9 +211,9 @@ export function PersonalMailGroup({
 
   if (settingsLoading || isInitialLoading) {
     return (
-      <SidebarGroup className="group">
+      <SidebarGroup className='group'>
         <SidebarGroupHeader
-          title="Me"
+          title='Me'
           isEditMode={isEditMode}
           onToggleEditMode={onToggleEditMode}
           toggleOpen={handleToggleOpen}
@@ -223,12 +221,12 @@ export function PersonalMailGroup({
           isGroupVisible={isGroupVisible}
           onToggleGroupVisibility={onToggleGroupVisibility}
         />
-        <SidebarMenu className="gap-0">
-          <div className="space-y-1 px-2">
+        <SidebarMenu className='gap-0'>
+          <div className='space-y-1 px-2'>
             {Array(3)
               .fill(0)
               .map((_, i) => (
-                <Skeleton key={i} className="h-[26px] w-full" />
+                <Skeleton key={i} className='h-[26px] w-full' />
               ))}
           </div>
         </SidebarMenu>
@@ -237,9 +235,9 @@ export function PersonalMailGroup({
   }
 
   return (
-    <SidebarGroup className="group">
+    <SidebarGroup className='group'>
       <SidebarGroupHeader
-        title="Me"
+        title='Me'
         isEditMode={isEditMode}
         onToggleEditMode={onToggleEditMode}
         toggleOpen={handleToggleOpen}
@@ -248,7 +246,7 @@ export function PersonalMailGroup({
         onToggleGroupVisibility={onToggleGroupVisibility}
       />
       {(isEditMode || isOpen) && (
-        <SidebarMenu className="gap-0">
+        <SidebarMenu className='gap-0'>
           {isEditMode ? (
             <DndContext
               sensors={sensors}

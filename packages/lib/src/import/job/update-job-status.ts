@@ -1,8 +1,8 @@
 // packages/lib/src/import/job/update-job-status.ts
 
-import { eq, sql } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { eq, sql } from 'drizzle-orm'
 import type { ImportJobStatus } from '../types/job'
 
 /**

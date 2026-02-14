@@ -1,16 +1,15 @@
 // server/api/routers/tag.ts
+
+import { TagService } from '@auxx/lib/tags'
+import type { RecordId } from '@auxx/types/resource'
+import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { TagService } from '@auxx/lib/tags'
-import { type RecordId } from '@auxx/types/resource'
-import { TRPCError } from '@trpc/server'
 
 /** Zod schema for RecordId (format: "entityDefId:instanceId") */
-const recordIdSchema = z
-  .string()
-  .refine((val): val is RecordId => val.includes(':'), {
-    message: 'RecordId must be in format "entityDefId:instanceId"',
-  })
+const recordIdSchema = z.string().refine((val): val is RecordId => val.includes(':'), {
+  message: 'RecordId must be in format "entityDefId:instanceId"',
+})
 
 export const tagRouter = createTRPCRouter({
   /**

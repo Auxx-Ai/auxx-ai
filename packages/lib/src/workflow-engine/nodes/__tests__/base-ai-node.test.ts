@@ -1,12 +1,15 @@
 // packages/lib/src/workflow-engine/nodes/__tests__/base-ai-node.test.ts
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { BaseAiNodeProcessor } from '../base-ai-node'
-import { WorkflowNodeType, NodeRunningStatus } from '../../core/types'
-import type { WorkflowNode, NodeExecutionResult } from '../../core/types'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message } from '../../../ai/clients/base/types'
-import type { StructuredOutputConfig, InvokeOrchestratorResponse } from '../utils/ai-invocation-utils'
 import type { ExecutionContextManager } from '../../core/execution-context'
+import type { NodeExecutionResult, WorkflowNode } from '../../core/types'
+import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { BaseAiNodeProcessor } from '../base-ai-node'
+import type {
+  InvokeOrchestratorResponse,
+  StructuredOutputConfig,
+} from '../utils/ai-invocation-utils'
 
 /**
  * Test implementation of BaseAiNodeProcessor for testing
@@ -245,11 +248,7 @@ describe('BaseAiNodeProcessor', () => {
       )
       // Should store individual fields
       expect(mockContextManager.setNodeVariable).toHaveBeenCalledWith('node_1', 'category', 'test')
-      expect(mockContextManager.setNodeVariable).toHaveBeenCalledWith(
-        'node_1',
-        'confidence',
-        0.95
-      )
+      expect(mockContextManager.setNodeVariable).toHaveBeenCalledWith('node_1', 'confidence', 0.95)
     })
 
     it('should store tool results when present', () => {

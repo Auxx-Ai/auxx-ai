@@ -7,10 +7,10 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
-import { stripeClient } from './stripe-client'
 import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
 import { auditLog } from '../utils/audit-logger'
+import { stripeClient } from './stripe-client'
 
 const logger = createScopedLogger('admin-billing-service')
 
@@ -123,7 +123,10 @@ export class AdminBillingService {
       newState: { trialEnd: input.newEndDate, hasTrialEnded: false },
     })
 
-    logger.info('Trial extended', { organizationId: input.organizationId, newEndDate: input.newEndDate })
+    logger.info('Trial extended', {
+      organizationId: input.organizationId,
+      newEndDate: input.newEndDate,
+    })
   }
 
   /**
@@ -203,10 +206,7 @@ export class AdminBillingService {
   /**
    * Enable organization access
    */
-  async enableOrganization(input: {
-    organizationId: string
-    adminUserId: string
-  }): Promise<void> {
+  async enableOrganization(input: { organizationId: string; adminUserId: string }): Promise<void> {
     const org = await this.db.query.Organization.findFirst({
       where: (orgs, { eq }) => eq(orgs.id, input.organizationId),
     })
@@ -594,7 +594,9 @@ export class AdminBillingService {
   /**
    * Get current feature limits from plan
    */
-  private async getCurrentFeatureLimits(organizationId: string): Promise<CustomFeatureLimits | null> {
+  private async getCurrentFeatureLimits(
+    organizationId: string
+  ): Promise<CustomFeatureLimits | null> {
     const subscription = await this.getSubscription(organizationId)
 
     if (!subscription.planId) {

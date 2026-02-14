@@ -1,9 +1,10 @@
 // apps/web/src/components/workflow/hooks/run-hooks/use-run-created.ts
+
+import type { WorkflowRun } from '@auxx/database/types'
 import { useCallback } from 'react'
-import { useRunStore } from '../../store/run-store'
 import { useCanvasStore } from '../../store/canvas-store'
 import type { ExecutionEvent } from '../../store/run-store'
-import type { WorkflowRun } from '@auxx/database/types'
+import { useRunStore } from '../../store/run-store'
 export const useRunCreated = () => {
   const updateActiveRun = useRunStore((state) => state.updateActiveRun)
   const setReadOnly = useCanvasStore((state) => state.setReadOnly)

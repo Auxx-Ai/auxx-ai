@@ -1,7 +1,7 @@
 // apps/web/src/components/tags/types.ts
 
-import type { RecordMeta, FieldInfo } from '~/components/resources'
 import type { RecordId } from '@auxx/lib/resources/client'
+import type { FieldInfo, RecordMeta } from '~/components/resources'
 
 /**
  * Tag record with field values from the entity system

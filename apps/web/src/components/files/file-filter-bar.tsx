@@ -2,7 +2,8 @@
 
 'use client'
 
-import { useMemo } from 'react'
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import {
   Select,
   SelectContent,
@@ -10,10 +11,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Button } from '@auxx/ui/components/button'
-import { Badge } from '@auxx/ui/components/badge'
 import { X } from 'lucide-react'
-import type { FileItem, FileFilterSettings } from './files-store'
+import { useMemo } from 'react'
+import type { FileFilterSettings, FileItem } from './files-store'
 import { getFileCategory } from './utils/file-type'
 
 /**
@@ -76,7 +76,7 @@ export function FileFilterBar({
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className='flex items-center gap-2'>
       {/* File Type Filter */}
       <Select
         value={filterSettings.fileTypes[0] || 'all'}
@@ -86,47 +86,47 @@ export function FileFilterBar({
             fileTypes: value === 'all' ? [] : [value],
           })
         }}>
-        <SelectTrigger className="w-[140px]" variant="ghost" size="sm">
-          <SelectValue placeholder="All types" />
+        <SelectTrigger className='w-[140px]' variant='ghost' size='sm'>
+          <SelectValue placeholder='All types' />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">All ({categoryCounts.all})</SelectItem>
+          <SelectItem value='all'>All ({categoryCounts.all})</SelectItem>
           {categoryCounts.uploading > 0 && (
-            <SelectItem value="uploading">Uploading ({categoryCounts.uploading})</SelectItem>
+            <SelectItem value='uploading'>Uploading ({categoryCounts.uploading})</SelectItem>
           )}
-          <SelectItem value="folders">Folders ({categoryCounts.folders})</SelectItem>
-          <SelectItem value="images">Images ({categoryCounts.images})</SelectItem>
-          <SelectItem value="documents">Documents ({categoryCounts.documents})</SelectItem>
-          <SelectItem value="videos">Videos ({categoryCounts.videos})</SelectItem>
-          <SelectItem value="audio">Audio ({categoryCounts.audio})</SelectItem>
-          <SelectItem value="archives">Archives ({categoryCounts.archives})</SelectItem>
-          <SelectItem value="code">Code ({categoryCounts.code})</SelectItem>
-          <SelectItem value="other">Other ({categoryCounts.other})</SelectItem>
+          <SelectItem value='folders'>Folders ({categoryCounts.folders})</SelectItem>
+          <SelectItem value='images'>Images ({categoryCounts.images})</SelectItem>
+          <SelectItem value='documents'>Documents ({categoryCounts.documents})</SelectItem>
+          <SelectItem value='videos'>Videos ({categoryCounts.videos})</SelectItem>
+          <SelectItem value='audio'>Audio ({categoryCounts.audio})</SelectItem>
+          <SelectItem value='archives'>Archives ({categoryCounts.archives})</SelectItem>
+          <SelectItem value='code'>Code ({categoryCounts.code})</SelectItem>
+          <SelectItem value='other'>Other ({categoryCounts.other})</SelectItem>
         </SelectContent>
       </Select>
 
       {/* Active Filters */}
       {hasActiveFilters && (
-        <div className="flex items-center gap-1">
+        <div className='flex items-center gap-1'>
           {filterSettings.fileTypes.map((type) => (
-            <Badge key={type} variant="secondary" className="text-xs">
+            <Badge key={type} variant='secondary' className='text-xs'>
               {type}
               <Button
-                variant="ghost"
-                size="icon-sm"
-                className="h-3 w-3 ml-1 p-0"
+                variant='ghost'
+                size='icon-sm'
+                className='h-3 w-3 ml-1 p-0'
                 onClick={() => {
                   onFilterChange({
                     ...filterSettings,
                     fileTypes: filterSettings.fileTypes.filter((t) => t !== type),
                   })
                 }}>
-                <X className="h-2 w-2" />
+                <X className='h-2 w-2' />
               </Button>
             </Badge>
           ))}
 
-          <Button variant="ghost" size="sm" onClick={clearFilters}>
+          <Button variant='ghost' size='sm' onClick={clearFilters}>
             Clear all
           </Button>
         </div>

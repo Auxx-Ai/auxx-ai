@@ -1,26 +1,25 @@
 // src/app/(protected)/app/kb/_components/kb-context.tsx
 'use client'
 
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { usePathname, useRouter } from 'next/navigation'
 import React, {
   createContext,
-  useContext,
-  useState,
+  type ReactNode,
   useCallback,
-  ReactNode,
-  useMemo,
+  useContext,
   useEffect,
+  useMemo,
+  useState,
 } from 'react'
-import { usePathname } from 'next/navigation'
 import { api } from '~/trpc/react'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { useRouter } from 'next/navigation'
 import {
   buildArticleTree,
-  generateArticlePaths,
+  findArticleAndParent,
   flattenArticleTreePreservingChildren,
+  generateArticlePaths,
   getFullSlugPath,
   isArticleActive,
-  findArticleAndParent,
 } from './helpers'
 
 // Enhanced Article type with path information

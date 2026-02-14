@@ -1,9 +1,10 @@
 import { database as db, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
-import type { Job } from 'bullmq'
-import { createShopifyAdminClient, ShopifyAdminClient } from '../../shopify'
-import { createScopedLogger } from '../../logger'
 import { SYNC_STATUS } from '@auxx/database/enums'
+import type { Job } from 'bullmq'
+import { and, eq } from 'drizzle-orm'
+import { createScopedLogger } from '../../logger'
+import { createShopifyAdminClient, type ShopifyAdminClient } from '../../shopify'
+
 const logger = createScopedLogger('shopify-webhook')
 export const shopifyWebhookLogger = logger
 export type WebhookJobDataProps = {

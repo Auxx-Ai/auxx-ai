@@ -101,11 +101,7 @@ export function mergeSettingsWithDefaults(
  * @param options - Valid options for select type
  * @returns true if value matches type, false otherwise
  */
-function validateType(
-  type: string,
-  value: any,
-  options?: string[]
-): boolean {
+function validateType(type: string, value: any, options?: string[]): boolean {
   const actualType = typeof value
 
   switch (type) {

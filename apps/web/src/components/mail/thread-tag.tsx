@@ -1,21 +1,21 @@
 // src/components/mail/thread-tag.tsx
 'use client'
 
-import { useState } from 'react'
-import { api } from '~/trpc/react'
+import type { RecordId } from '@auxx/lib/resources/client'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { TagDialog } from '~/components/tags/ui/tag-dialog'
-import { TagBadge } from '~/components/tags/ui/tag-badge'
-import { useTagHierarchy } from '~/components/tags/hooks/use-tag-hierarchy'
-import { useConfirm } from '~/hooks/use-confirm'
-import { Pencil, Trash2 } from 'lucide-react'
 import { toastError } from '@auxx/ui/components/toast'
-import type { RecordId } from '@auxx/lib/resources/client'
+import { Pencil, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { useTagHierarchy } from '~/components/tags/hooks/use-tag-hierarchy'
+import { TagBadge } from '~/components/tags/ui/tag-badge'
+import { TagDialog } from '~/components/tags/ui/tag-dialog'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 interface ThreadTagProps {
   /** The tag RecordId (format: "entityDefinitionId:instanceId") */
@@ -88,21 +88,21 @@ export function ThreadTag({ tagId, threadId, onRemove }: ThreadTagProps) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           {/* Use TagBadge for display - it reads from stores */}
-          <div className="cursor-pointer">
+          <div className='cursor-pointer'>
             <TagBadge
               recordId={tagId}
-              size="sm"
-              className="data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
+              size='sm'
+              className='data-[state=open]:bg-accent data-[state=open]:text-accent-foreground'
             />
           </div>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align='end'>
           <DropdownMenuItem onClick={handleRemoveFromThread}>Remove from thread</DropdownMenuItem>
           <DropdownMenuItem onClick={handleEdit}>
             <Pencil />
             Edit Tag
           </DropdownMenuItem>
-          <DropdownMenuItem variant="destructive" onClick={handleDeleteTag}>
+          <DropdownMenuItem variant='destructive' onClick={handleDeleteTag}>
             <Trash2 />
             Delete Tag
           </DropdownMenuItem>

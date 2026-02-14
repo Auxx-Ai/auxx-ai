@@ -1,8 +1,9 @@
 // apps/web/src/components/manufacturing/parts/subpart-dialog.tsx
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { AlertCircle } from 'lucide-react'
+import type { SubpartEntity as Subpart } from '@auxx/database/models'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -12,14 +13,13 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
-import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
-import { BaseType } from '~/components/workflow/types'
-import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
-import type { SubpartEntity as Subpart } from '@auxx/database/models'
+import { AlertCircle } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { BaseType } from '~/components/workflow/types'
+import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
+import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { api } from '~/trpc/react'
 
 /** Props for SubpartDialog component */
 interface SubpartDialogProps {
@@ -197,7 +197,7 @@ export function SubpartDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]" position="tc">
+      <DialogContent className='sm:max-w-[500px]' position='tc'>
         <DialogHeader>
           <DialogTitle>{isEditMode ? 'Edit Subpart' : 'Add Subpart'}</DialogTitle>
           <DialogDescription>
@@ -207,11 +207,11 @@ export function SubpartDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <VarEditorField className="p-0">
+        <VarEditorField className='p-0'>
           {/* Subpart Selection */}
           <VarEditorFieldRow
-            title="Subpart"
-            description="Component to add"
+            title='Subpart'
+            description='Component to add'
             isRequired
             validationError={
               errors.childPartId || (noAvailableParts ? 'No available parts to add' : undefined)
@@ -229,33 +229,33 @@ export function SubpartDialog({
 
           {/* Quantity */}
           <VarEditorFieldRow
-            title="Quantity"
-            description="Number of units required per parent part"
+            title='Quantity'
+            description='Number of units required per parent part'
             type={BaseType.NUMBER}
             showIcon
             isRequired
             validationError={errors.quantity}
-            validationType="error">
+            validationType='error'>
             <ConstantInputAdapter
               value={values.quantity}
               onChange={(_, val) => handleChange('quantity', val ?? 1)}
               varType={BaseType.NUMBER}
-              placeholder="1"
+              placeholder='1'
               disabled={isPending}
             />
           </VarEditorFieldRow>
 
           {/* Notes */}
           <VarEditorFieldRow
-            title="Notes"
-            description="Optional notes about this component usage"
+            title='Notes'
+            description='Optional notes about this component usage'
             type={BaseType.STRING}
             showIcon>
             <ConstantInputAdapter
               value={values.notes}
               onChange={(_, val) => handleChange('notes', val ?? '')}
               varType={BaseType.STRING}
-              placeholder="Optional notes..."
+              placeholder='Optional notes...'
               disabled={isPending}
               fieldOptions={{ string: { multiline: true } }}
             />
@@ -264,7 +264,7 @@ export function SubpartDialog({
 
         {/* Cyclic Dependency Warning */}
         {hasCyclicDependency && (
-          <Alert variant="destructive">
+          <Alert variant='destructive'>
             <AlertCircle />
             <AlertTitle>Warning</AlertTitle>
             <AlertDescription>
@@ -275,22 +275,23 @@ export function SubpartDialog({
 
         <DialogFooter>
           <Button
-            type="button"
-            variant="ghost"
-            size="sm"
+            type='button'
+            variant='ghost'
+            size='sm'
             onClick={() => onOpenChange(false)}
             disabled={isPending}>
-            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
           <Button
             onClick={handleSubmit}
-            size="sm"
-            variant="outline"
+            size='sm'
+            variant='outline'
             loading={isPending}
             loadingText={isEditMode ? 'Updating...' : 'Adding...'}
             disabled={noAvailableParts || hasCyclicDependency}
             data-dialog-submit>
-            {isEditMode ? 'Update Subpart' : 'Add Subpart'} <KbdSubmit variant="outline" size="sm" />
+            {isEditMode ? 'Update Subpart' : 'Add Subpart'}{' '}
+            <KbdSubmit variant='outline' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

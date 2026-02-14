@@ -1,6 +1,6 @@
 // packages/database/lambda/__tests__/deploy.test.ts
 
-import { describe, expect, it, beforeEach, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /** Vitest mock for filesystem stat checks. */
 const mockStat = vi.fn()
@@ -91,12 +91,17 @@ describe('database deploy lambda', () => {
     const response = await handler()
 
     expect(response.statusCode).toBe(200)
-    expect(mockPoolConstructor).toHaveBeenCalledWith(expect.objectContaining({
-      connectionString: 'postgresql://postgres:password@example-host:5432/example-db',
-    }))
-    expect(mockMigrate).toHaveBeenCalledWith({}, expect.objectContaining({
-      migrationsFolder: expect.stringMatching(/drizzle$/),
-    }))
+    expect(mockPoolConstructor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionString: 'postgresql://postgres:password@example-host:5432/example-db',
+      })
+    )
+    expect(mockMigrate).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({
+        migrationsFolder: expect.stringMatching(/drizzle$/),
+      })
+    )
     expect(mockPoolEnd).toHaveBeenCalled()
   })
 
@@ -110,9 +115,11 @@ describe('database deploy lambda', () => {
 
     await handler()
 
-    expect(mockPoolConstructor).toHaveBeenCalledWith(expect.objectContaining({
-      connectionString: 'postgresql://env-user:env-pass@env-host:5555/env-db',
-    }))
+    expect(mockPoolConstructor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionString: 'postgresql://env-user:env-pass@env-host:5555/env-db',
+      })
+    )
   })
 
   it('fails when migrations folder is missing', async () => {

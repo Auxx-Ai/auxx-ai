@@ -1,12 +1,7 @@
 // apps/web/src/app/(protected)/app/settings/general/_components/edit-email-dialog.tsx
 'use client'
 
-import { useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { z } from 'zod'
-import { AlertCircle, Mail } from 'lucide-react'
-import { changeEmail } from '~/auth/auth-client'
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -16,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
   FormControl,
@@ -26,8 +20,14 @@ import {
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { Alert, AlertDescription } from '@auxx/ui/components/alert'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { AlertCircle, Mail } from 'lucide-react'
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
+import { changeEmail } from '~/auth/auth-client'
 
 /**
  * Schema factory for the change email form (Zod v4 syntax)
@@ -84,7 +84,6 @@ export function EditEmailDialog({
     },
     mode: 'onTouched',
   })
-
 
   /**
    * Handle form submission
@@ -167,7 +166,7 @@ export function EditEmailDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className='sm:max-w-md'>
         <DialogHeader>
           <DialogTitle>Change Email Address</DialogTitle>
           <DialogDescription>
@@ -176,36 +175,36 @@ export function EditEmailDialog({
         </DialogHeader>
 
         {showSuccess ? (
-          <div className="space-y-4 py-4">
-            <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
-              <Mail className="size-4 text-green-600 dark:text-green-400" />
-              <AlertDescription className="text-green-700 dark:text-green-300">
+          <div className='space-y-4 py-4'>
+            <Alert className='border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950'>
+              <Mail className='size-4 text-green-600 dark:text-green-400' />
+              <AlertDescription className='text-green-700 dark:text-green-300'>
                 <strong>Verification email sent!</strong>
                 <br />
                 Please check your inbox at <strong>{newEmailAddress}</strong> and click the
                 verification link to complete the email change.
               </AlertDescription>
             </Alert>
-            <p className="text-sm text-muted-foreground">
+            <p className='text-sm text-muted-foreground'>
               The verification link will expire in 24 hours. If you don't receive the email, check
               your spam folder.
             </p>
           </div>
         ) : (
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
               {/* New Email Input */}
               <FormField
                 control={form.control}
-                name="newEmail"
+                name='newEmail'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>New Email</FormLabel>
                     <FormControl>
                       <Input
-                        type="email"
-                        placeholder="Enter new email address"
-                        autoComplete="email"
+                        type='email'
+                        placeholder='Enter new email address'
+                        autoComplete='email'
                         disabled={isSubmitting}
                         {...field}
                       />
@@ -217,7 +216,7 @@ export function EditEmailDialog({
 
               {/* Warning Message */}
               <Alert>
-                <AlertCircle className="size-4" />
+                <AlertCircle className='size-4' />
                 <AlertDescription>
                   You will need to verify your new email address before the change takes effect.
                   Your current email will remain active until verification is complete.
@@ -226,21 +225,21 @@ export function EditEmailDialog({
 
               <DialogFooter>
                 <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
+                  type='button'
+                  variant='ghost'
+                  size='sm'
                   onClick={() => handleOpenChange(false)}
                   disabled={isSubmitting}>
-                  Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+                  Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
                 </Button>
                 <Button
-                  type="submit"
-                  variant="outline"
-                  size="sm"
+                  type='submit'
+                  variant='outline'
+                  size='sm'
                   loading={isSubmitting}
-                  loadingText="Sending verification..."
+                  loadingText='Sending verification...'
                   disabled={!form.formState.isValid || isSubmitting}>
-                  Send Verification <KbdSubmit variant="outline" size="sm" />
+                  Send Verification <KbdSubmit variant='outline' size='sm' />
                 </Button>
               </DialogFooter>
             </form>

@@ -1,9 +1,9 @@
 import chalk from 'chalk'
 import { Command } from 'commander'
-import { combineAsync, isErrored } from '../../errors.js'
 import { api } from '../../api/api.js'
 import { authenticator } from '../../auth/auth.js'
 import { USE_APP_TS, USE_SETTINGS } from '../../env.js'
+import { combineAsync, isErrored } from '../../errors.js'
 import {
   printCliVersionError,
   printFetcherError,
@@ -12,17 +12,17 @@ import {
 import { getAppInfo } from '../../spinners/get-app-info.spinner.js'
 import { getAppSlugFromPackageJson } from '../../spinners/get-app-slug-from-package-json.js'
 import { getVersions } from '../../spinners/get-versions.spinner.js'
-import { ensureAppEntryPoint } from '../../util/ensure-app-entry-point.js'
 import { assertAppSettings } from '../../util/assert-app-settings.js'
+import { calculateBundleShas } from '../../util/calculate-bundle-sha.js'
+import { ensureAppEntryPoint } from '../../util/ensure-app-entry-point.js'
+import { exitWithMissingAppSettings } from '../../util/exit-with-missing-app-settings.js'
+import { exitWithMissingEntryPoint } from '../../util/exit-with-missing-entry-point.js'
 import { loadAuxxCliVersion } from '../../util/load-auxx-cli-version.js'
 import { spinnerify } from '../../util/spinner.js'
 import { printJsError } from '../../util/typescript.js'
 import { uploadBundle } from '../../util/upload-bundle.js'
 import { printBuildContextError } from '../dev/prepare-build-context.js'
 import { bundleJavaScript } from './create/bundle-javascript.js'
-import { exitWithMissingAppSettings } from '../../util/exit-with-missing-app-settings.js'
-import { exitWithMissingEntryPoint } from '../../util/exit-with-missing-entry-point.js'
-import { calculateBundleShas } from '../../util/calculate-bundle-sha.js'
 
 export const versionCreate = new Command('create')
   .description('Create a new unpublished version of your auxx app')

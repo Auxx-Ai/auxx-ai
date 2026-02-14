@@ -1,14 +1,14 @@
 // src/server/api/routers/googleOAuth.ts
 // TODO: DELETE
+
+import { env, WEBAPP_URL } from '@auxx/config/server'
+import { database as db, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import { TRPCError } from '@trpc/server'
+import { eq } from 'drizzle-orm'
+import { google } from 'googleapis'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { TRPCError } from '@trpc/server'
-import { google } from 'googleapis'
-import { env, WEBAPP_URL } from '@auxx/config/server'
-import { database as db } from '@auxx/database'
-import { schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
-import { createScopedLogger } from '@auxx/logger'
 
 const logger = createScopedLogger('google-oauth')
 

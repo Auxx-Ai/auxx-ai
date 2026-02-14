@@ -1,8 +1,7 @@
-import * as React from 'react'
+import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { Slot as SlotPrimitive } from 'radix-ui'
-
-import { cn } from '@auxx/ui/lib/utils'
+import type * as React from 'react'
 
 export type Variant = VariantProps<typeof badgeVariants>['variant']
 export type Shape = VariantProps<typeof badgeVariants>['shape']

@@ -1,8 +1,8 @@
 // packages/lib/src/import/planning/update-plan-status.ts
 
-import { eq } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { eq } from 'drizzle-orm'
 
 /**
  * Mark a plan as completed (status='planned').

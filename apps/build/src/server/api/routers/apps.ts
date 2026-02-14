@@ -1,27 +1,26 @@
 // apps/build/src/server/api/routers/apps.ts
 // Apps tRPC router
 
-import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { TRPCError } from '@trpc/server'
-import { BuildDehydrationService } from '~/lib/dehydration'
-import { createScopedLogger } from '@auxx/logger'
+import { WEBAPP_URL } from '@auxx/config/urls'
 import { schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
-
+import { createScopedLogger } from '@auxx/logger'
 import {
   checkAppSlugExists,
-  getDeveloperApp,
-  createApp,
-  updateApp,
-  updateAppPublicationStatus,
   checkSlugInputSchema,
+  createApp,
+  generateClientSecret,
+  getDeveloperApp,
   registerAppAsOAuthClient,
   unregisterAppOAuthClient,
+  updateApp,
+  updateAppPublicationStatus,
   updateOAuthRedirectUris,
-  generateClientSecret,
 } from '@auxx/services/apps'
-import { WEBAPP_URL } from '@auxx/config/urls'
+import { TRPCError } from '@trpc/server'
+import { and, eq } from 'drizzle-orm'
+import { z } from 'zod'
+import { BuildDehydrationService } from '~/lib/dehydration'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('trpc-build-apps')
 

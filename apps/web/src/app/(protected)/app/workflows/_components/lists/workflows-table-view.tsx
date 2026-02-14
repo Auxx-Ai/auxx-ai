@@ -1,17 +1,7 @@
 // apps/web/src/app/(protected)/app/workflows/_components/lists/workflows-table-view.tsx
 'use client'
 
-import { useState } from 'react'
-import { formatDistanceToNow } from 'date-fns'
-import { MoreHorizontal, Edit, Copy, Trash, TestTube, ExternalLink } from 'lucide-react'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@auxx/ui/components/table'
+import { TRIGGER_NAME_MAP, type WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -22,13 +12,23 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Switch } from '@auxx/ui/components/switch'
-import { useWorkflows } from '../providers/workflows-provider'
-import { api } from '~/trpc/react'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@auxx/ui/components/table'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { formatDistanceToNow } from 'date-fns'
+import { Copy, Edit, ExternalLink, MoreHorizontal, TestTube, Trash } from 'lucide-react'
 import Link from 'next/link'
-import { getTriggerInfo } from '../utils/trigger-info'
+import { useState } from 'react'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
-import { TRIGGER_NAME_MAP, WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
+import { api } from '~/trpc/react'
+import { useWorkflows } from '../providers/workflows-provider'
+import { getTriggerInfo } from '../utils/trigger-info'
 
 export function WorkflowsTableView() {
   const { workflows, refetchWorkflows } = useWorkflows()
@@ -77,7 +77,7 @@ export function WorkflowsTableView() {
   const getStatusBadge = (executions: any[]) => {
     if (!executions || executions.length === 0) {
       return (
-        <Badge variant="gray" className="shrink-0 truncate">
+        <Badge variant='gray' className='shrink-0 truncate'>
           Never run
         </Badge>
       )
@@ -86,14 +86,14 @@ export function WorkflowsTableView() {
     const latest = executions[0]
     switch (latest.status) {
       case 'SUCCEEDED':
-        return <Badge variant="green">Success</Badge>
+        return <Badge variant='green'>Success</Badge>
       case 'FAILED':
-        return <Badge variant="destructive">Failed</Badge>
+        return <Badge variant='destructive'>Failed</Badge>
       case 'RUNNING':
-        return <Badge variant="blue">Running</Badge>
+        return <Badge variant='blue'>Running</Badge>
       default:
         return (
-          <Badge variant="gray" className="shrink-0 truncate">
+          <Badge variant='gray' className='shrink-0 truncate'>
             {latest.status}
           </Badge>
         )
@@ -101,7 +101,7 @@ export function WorkflowsTableView() {
   }
 
   return (
-    <div className="border rounded-lg">
+    <div className='border rounded-lg'>
       <Table>
         <TableHeader>
           <TableRow>
@@ -112,21 +112,21 @@ export function WorkflowsTableView() {
             <TableHead>Executions</TableHead>
             <TableHead>Last Run</TableHead>
             <TableHead>Enabled</TableHead>
-            <TableHead className="w-[50px]"></TableHead>
+            <TableHead className='w-[50px]'></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {workflows.map((workflow) => (
             <TableRow key={workflow.id}>
-              <TableCell className="w-max">
+              <TableCell className='w-max'>
                 <div>
                   <Link
                     href={`/app/workflows/${workflow.id}`}
-                    className="font-medium hover:text-primary hover:underline">
+                    className='font-medium hover:text-primary hover:underline'>
                     {workflow.name}
                   </Link>
                   {workflow.description && (
-                    <div className="text-sm text-muted-foreground truncate max-w-xs">
+                    <div className='text-sm text-muted-foreground truncate max-w-xs'>
                       {workflow.description}
                     </div>
                   )}
@@ -134,7 +134,7 @@ export function WorkflowsTableView() {
               </TableCell>
 
               <TableCell>
-                <Badge className="shrink-0 truncate" variant="outline">
+                <Badge className='shrink-0 truncate' variant='outline'>
                   {TRIGGER_NAME_MAP[workflow.triggerType as WorkflowTriggerType] || 'Unknown'}
                 </Badge>
               </TableCell>
@@ -142,32 +142,32 @@ export function WorkflowsTableView() {
               <TableCell>{getStatusBadge(workflow.executions)}</TableCell>
 
               <TableCell>
-                <span className="text-sm text-muted-foreground">
+                <span className='text-sm text-muted-foreground'>
                   {workflow._count?.workflows || 1}
                 </span>
               </TableCell>
 
               <TableCell>
-                <span className="text-sm text-muted-foreground">
+                <span className='text-sm text-muted-foreground'>
                   {workflow._count?.executions || 0}
                 </span>
               </TableCell>
 
               <TableCell>
                 {workflow.executions && workflow.executions.length > 0 ? (
-                  <span className="text-sm text-muted-foreground">
+                  <span className='text-sm text-muted-foreground'>
                     {formatDistanceToNow(new Date(workflow.executions[0].createdAt), {
                       addSuffix: true,
                     })}
                   </span>
                 ) : (
-                  <span className="text-sm text-muted-foreground">Never</span>
+                  <span className='text-sm text-muted-foreground'>Never</span>
                 )}
               </TableCell>
 
               <TableCell>
                 <Switch
-                  size="sm"
+                  size='sm'
                   checked={workflow.enabled}
                   onCheckedChange={() => handleToggleEnabled(workflow.id, workflow.enabled)}
                   disabled={updateWorkflow.isPending}
@@ -177,11 +177,11 @@ export function WorkflowsTableView() {
               <TableCell>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon-sm">
+                    <Button variant='ghost' size='icon-sm'>
                       <MoreHorizontal />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent align='end'>
                     <DropdownMenuItem asChild>
                       <Link href={`/app/workflows/${workflow.id}`}>
                         <ExternalLink />
@@ -212,7 +212,7 @@ export function WorkflowsTableView() {
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={() => handleDelete(workflow.id)}
-                      variant="destructive">
+                      variant='destructive'>
                       <Trash />
                       Delete
                     </DropdownMenuItem>
@@ -227,7 +227,7 @@ export function WorkflowsTableView() {
         <WorkflowFormDialog
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
-          mode="edit"
+          mode='edit'
           workflow={selectedWorkflow}
         />
       )}

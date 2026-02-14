@@ -1,10 +1,11 @@
 // apps/web/src/app/(protected)/app/layout.tsx
-import { auth } from '~/auth/server'
+
 import { headers } from 'next/headers'
-import { AppLayoutWrapper } from './_components/app-layout-wrapper'
-import { ExtensionsProvider } from '~/providers/extensions/extensions-provider'
+import type { ReactNode } from 'react'
+import { auth } from '~/auth/server'
 import { ExtensionDialog } from '~/components/extensions/extension-dialog'
-import { type ReactNode } from 'react'
+import { ExtensionsProvider } from '~/providers/extensions/extensions-provider'
+import { AppLayoutWrapper } from './_components/app-layout-wrapper'
 
 interface AppLayoutProps {
   children: ReactNode

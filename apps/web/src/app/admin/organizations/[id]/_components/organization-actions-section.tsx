@@ -1,19 +1,19 @@
 // apps/web/src/app/admin/organizations/[id]/_components/organization-actions-section.tsx
 'use client'
 
-import { useState } from 'react'
-import { api } from '~/trpc/react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { ChevronDown, Database, Plus } from 'lucide-react'
-import { useConfirm } from '~/hooks/use-confirm'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { ChevronDown, Database, Plus } from 'lucide-react'
+import { useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 
 interface OrganizationActionsSectionProps {
   organizationId: string
@@ -101,20 +101,20 @@ export function OrganizationActionsSection({
           <CardDescription>Administrative actions for managing organization data</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col gap-2">
+          <div className='flex flex-col gap-2'>
             <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant="outline"
+                  variant='outline'
                   disabled={seedOrganization.isPending}
                   loading={seedOrganization.isPending}
-                  loadingText="Seeding...">
+                  loadingText='Seeding...'>
                   <Database />
                   Seed Data
                   <ChevronDown />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
+              <DropdownMenuContent align='start'>
                 <DropdownMenuItem onClick={handleResetAndSeed}>
                   <Database />
                   Reset and Seed
@@ -126,7 +126,7 @@ export function OrganizationActionsSection({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <p className="text-xs text-muted-foreground">
+            <p className='text-xs text-muted-foreground'>
               Seeding operations will temporarily disconnect and reconnect webhooks to prevent stale
               data.
             </p>

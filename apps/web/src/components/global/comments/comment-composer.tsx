@@ -2,30 +2,28 @@
 
 // apps/web/src/components/global/comments/comment-composer.tsx
 
-import React, { useRef, useState, useEffect, useCallback } from 'react'
-import { EditorContent } from '@tiptap/react'
+import type { RecordId } from '@auxx/lib/field-values/client'
+import { ENTITY_TYPES } from '@auxx/lib/files/types'
+import { Button } from '@auxx/ui/components/button'
+import { EmojiPicker } from '@auxx/ui/components/emoji-picker'
+import { cn } from '@auxx/ui/lib/utils'
 import type { Editor } from '@tiptap/core'
 import { Extension } from '@tiptap/core'
-
-import { useMentionEditor, InlinePickerPopover } from '~/components/editor/inline-picker'
+import { EditorContent } from '@tiptap/react'
+import { AtSign, CornerDownLeft, Maximize2, Minimize2, Paperclip, Send, Smile } from 'lucide-react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useDropzone } from 'react-dropzone'
+import { InlinePickerPopover, useMentionEditor } from '~/components/editor/inline-picker'
+import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
 import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
-import { cn } from '@auxx/ui/lib/utils'
-import { Button } from '@auxx/ui/components/button'
-import { AtSign, Maximize2, Minimize2, Paperclip, Smile, Send, CornerDownLeft } from 'lucide-react'
+import { FileSelectPicker } from '~/components/pickers/file-select-picker'
+import { MetaIcon } from '~/constants/icons'
 import {
+  type CommentAttachmentInfo,
   type UseCommentsOptions,
   useComments,
-  type CommentAttachmentInfo,
 } from '~/hooks/use-comments'
-import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
-import { FileSelectPicker } from '~/components/pickers/file-select-picker'
 import { CommentFile } from './comment-file'
-import { useDropzone } from 'react-dropzone'
-import { ENTITY_TYPES } from '@auxx/lib/files/types'
-import type { RecordId } from '@auxx/lib/field-values/client'
-
-import { EmojiPicker } from '@auxx/ui/components/emoji-picker'
-import { MetaIcon } from '~/constants/icons'
 
 // Frontend file type distinction
 interface FileAttachment {
@@ -438,9 +436,9 @@ const CommentComposer = ({
 
       {/* File attachments preview */}
       {fileSelect.selectedItems.length > 0 && (
-        <div className="flex w-full flex-col gap-2 border-b border-gray-300 dark:border-foreground/10 p-3">
-          <div className="text-xs text-gray-600 font-medium">Attachments</div>
-          <div className="flex flex-col gap-1 group">
+        <div className='flex w-full flex-col gap-2 border-b border-gray-300 dark:border-foreground/10 p-3'>
+          <div className='text-xs text-gray-600 font-medium'>Attachments</div>
+          <div className='flex flex-col gap-1 group'>
             {fileSelect.selectedItems.map((file) => (
               <CommentFile
                 key={file.id}
@@ -452,7 +450,7 @@ const CommentComposer = ({
                   source: (file as any).isExistingAttachment ? 'existing' : 'upload',
                 }}
                 onRemove={handleRemoveFile}
-                className="group-hover:opacity-100"
+                className='group-hover:opacity-100'
               />
             ))}
           </div>
@@ -460,12 +458,12 @@ const CommentComposer = ({
       )}
 
       {/* Main editor area wrapper */}
-      <div className="flex w-full flex-row overflow-hidden">
+      <div className='flex w-full flex-row overflow-hidden'>
         {/* Main editor area */}
-        <div className="flex flex-1 flex-row overflow-hidden">
+        <div className='flex flex-1 flex-row overflow-hidden'>
           {/* Editor */}
-          <div className="flex flex-1 flex-col overflow-auto leading-5">
-            <div className="relative flex flex-1 flex-col">
+          <div className='flex flex-1 flex-col overflow-auto leading-5'>
+            <div className='relative flex flex-1 flex-col'>
               {/* {placeholderVisible && (
                 <div className="pointer-events-none absolute left-0 top-0 px-[12px] py-[8px] text-sm text-muted-foreground">
                   {placeholder}
@@ -484,20 +482,20 @@ const CommentComposer = ({
                 <ActorPickerContent
                   value={[]}
                   onChange={() => {}}
-                  target="user"
+                  target='user'
                   multi={false}
                   onSelectSingle={(actorId) => insertMention(actorId)}
-                  placeholder="Search team members..."
+                  placeholder='Search team members...'
                 />
               </InlinePickerPopover>
             </div>
           </div>
 
           {/* Sidebar controls */}
-          <div className="relative flex flex-col items-end justify-between overflow-hidden pr-[2px]">
-            <div className="flex flex-1 flex-row px-[2px] py-[4px]">
+          <div className='relative flex flex-col items-end justify-between overflow-hidden pr-[2px]'>
+            <div className='flex flex-1 flex-row px-[2px] py-[4px]'>
               {/* Attachment button with file picker */}
-              <div className="min-w-0">
+              <div className='min-w-0'>
                 <FileSelectPicker
                   fileSelect={fileSelect}
                   allowMultiple={true}
@@ -507,12 +505,12 @@ const CommentComposer = ({
                   }}
                   open={pickerOpen}
                   onOpenChange={setPickerOpen}
-                  align="end"
-                  className="w-80">
+                  align='end'
+                  className='w-80'>
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/80 outline-hidden transition-[color,box-shadow] hover:bg-gray-300 hover:text-foreground dark:hover:bg-gray-700"
+                    variant='ghost'
+                    size='icon'
+                    className='flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/80 outline-hidden transition-[color,box-shadow] hover:bg-gray-300 hover:text-foreground dark:hover:bg-gray-700'
                     onClick={handleAttachmentClick}>
                     <Paperclip size={15} />
                   </Button>
@@ -520,11 +518,11 @@ const CommentComposer = ({
               </div>
 
               {/* Mention button */}
-              <div className="min-w-0">
+              <div className='min-w-0'>
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/80 outline-hidden transition-[color,box-shadow] hover:bg-gray-300 hover:text-foreground dark:hover:bg-gray-700"
+                  variant='ghost'
+                  size='icon'
+                  className='flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/80 outline-hidden transition-[color,box-shadow] hover:bg-gray-300 hover:text-foreground dark:hover:bg-gray-700'
                   onMouseDown={(e) => {
                     // Prevent editor blur when clicking mention button
                     e.preventDefault()
@@ -535,17 +533,17 @@ const CommentComposer = ({
               </div>
 
               {/* Emoji button with popover */}
-              <div className="min-w-0">
+              <div className='min-w-0'>
                 <EmojiPicker
                   // open={isEmojiPickerOpen}
                   // onOpenChange={setIsEmojiPickerOpen}
                   // onChange={handleEmojiSelect}
-                  align="end"
+                  align='end'
                   onChange={handleEmojiSelect}>
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/80 outline-hidden transition-[color,box-shadow] hover:bg-gray-300 hover:text-foreground dark:hover:bg-gray-700">
+                    variant='ghost'
+                    size='icon'
+                    className='flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/80 outline-hidden transition-[color,box-shadow] hover:bg-gray-300 hover:text-foreground dark:hover:bg-gray-700'>
                     <Smile size={15} />
                   </Button>
                 </EmojiPicker>
@@ -559,24 +557,24 @@ const CommentComposer = ({
               </div>
 
               {/* Expand/Collapse button */}
-              <div className="min-w-0">
+              <div className='min-w-0'>
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/80 outline-hidden transition-[color,box-shadow] hover:bg-gray-300 hover:text-foreground dark:hover:bg-gray-700"
+                  variant='ghost'
+                  size='icon'
+                  className='flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/80 outline-hidden transition-[color,box-shadow] hover:bg-gray-300 hover:text-foreground dark:hover:bg-gray-700'
                   onClick={handleExpandClick}>
                   {isExpanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
                 </Button>
               </div>
             </div>
             {isExpanded && (
-              <div className="flex items-end justify-end p-2">
+              <div className='flex items-end justify-end p-2'>
                 {onCancel && (
                   <Button
-                    variant="info"
-                    size="xs"
+                    variant='info'
+                    size='xs'
                     onClick={onCancel}
-                    className="mr-2 rounded-full"
+                    className='mr-2 rounded-full'
                     disabled={
                       isSubmitting || isCreatingComment || isCreatingReply || isUpdatingComment
                     }>
@@ -587,8 +585,8 @@ const CommentComposer = ({
                   onClick={() => {
                     handleSubmit(editor)
                   }}
-                  size="xs"
-                  variant="info"
+                  size='xs'
+                  variant='info'
                   disabled={
                     isSubmitting ||
                     isCreatingComment ||
@@ -602,13 +600,13 @@ const CommentComposer = ({
                   loading={
                     isSubmitting || isCreatingComment || isCreatingReply || isUpdatingComment
                   }
-                  loadingText="Submitting..."
-                  className="flex items-center gap-1 rounded-full">
+                  loadingText='Submitting...'
+                  className='flex items-center gap-1 rounded-full'>
                   <Send size={14} />
                   Submit
-                  <kbd className="flex items-center shrink-0 ring-1 ring-white/10 rounded-md p-[2px]">
-                    <MetaIcon className="size-3! opacity-80" />
-                    <CornerDownLeft className="size-3! opacity-80" />
+                  <kbd className='flex items-center shrink-0 ring-1 ring-white/10 rounded-md p-[2px]'>
+                    <MetaIcon className='size-3! opacity-80' />
+                    <CornerDownLeft className='size-3! opacity-80' />
                   </kbd>
                 </Button>
               </div>

@@ -5,8 +5,9 @@
  * Creates and coordinates ClientBuilder and ServerBuilder instances with proper error handling.
  */
 
-import path from 'path'
 import chalk from 'chalk'
+import path from 'path'
+import { findWorkflowBlockModules } from '../../build/server/find-workflow-block-server-modules.js'
 import {
   combine,
   combineAsync,
@@ -17,9 +18,8 @@ import {
   type Result,
 } from '../../errors.js'
 // import { findWorkflowBlockModules } from '../../build/server/find-workflow-block-server-modules.js'
-import { ClientBuilder, type BuildMode } from './client-builder.js'
+import { type BuildMode, ClientBuilder } from './client-builder.js'
 import { ServerBuilder } from './server-builder.js'
-import { findWorkflowBlockModules } from '../../build/server/find-workflow-block-server-modules.js'
 
 /**
  * Union type of all possible build context errors that can occur during the build process.
@@ -151,9 +151,7 @@ export function printBuildContextError(error: BuildContextError): void {
       process.stderr.write(`${chalk.red('✖ ')}Failed to generate client entry\n`)
       break
     case 'FAILED_TO_DISPOSE_OF_BUILD_CONTEXT':
-      process.stderr.write(
-        `${chalk.red('✖ ')}Failed to dispose of build context: ${error.error}\n`
-      )
+      process.stderr.write(`${chalk.red('✖ ')}Failed to dispose of build context: ${error.error}\n`)
       break
     case 'FAILED_TO_CREATE_ESBUILD_CONTEXT':
       process.stderr.write(

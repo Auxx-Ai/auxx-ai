@@ -1,8 +1,8 @@
 // packages/lib/src/contacts/sync-contact.ts
-import { type Database, type Transaction, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import type { ContactEntity as Contact } from '@auxx/database/models'
 import type { CustomerSourceType } from '@auxx/database/types'
-import { sql, eq, and, or, ne } from 'drizzle-orm'
+import { and, eq, ne, or, sql } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 
 /** Data required to map an external customer to a contact. */

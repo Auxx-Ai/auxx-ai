@@ -1,35 +1,36 @@
 // packages/lib/src/files/core/attachment-service.ts
-import { database as db, schema, type Database, type Transaction } from '@auxx/database'
+import { type Database, database as db, schema, type Transaction } from '@auxx/database'
+import type { AttachmentEntity as Attachment } from '@auxx/database/models'
+import { createScopedLogger } from '@auxx/logger'
 import {
   and,
   asc,
+  count as dCount,
   desc,
   eq,
-  inArray,
-  sql,
-  count as dCount,
-  or,
-  ilike,
-  isNull,
-  isNotNull,
   gte,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
 } from 'drizzle-orm'
+import type { DownloadRef } from '../adapters/base-adapter'
+import { BaseService } from './base-service'
 import type {
-  CreateAttachmentRequest,
-  UpdateAttachmentRequest,
-  EntityType,
   AttachmentRole,
+  AttachmentSearchResult,
   AttachmentWithRelations,
-  BulkOperationResult,
   BulkOperationOptions,
+  BulkOperationResult,
+  CreateAttachmentRequest,
+  EntityType,
   FileDownloadInfo,
   SearchOptions,
-  AttachmentSearchResult,
+  UpdateAttachmentRequest,
 } from './types'
-import { BaseService } from './base-service'
-import { createScopedLogger } from '@auxx/logger'
-import type { DownloadRef } from '../adapters/base-adapter'
-import type { AttachmentEntity as Attachment } from '@auxx/database/models'
+
 const logger = createScopedLogger('attachment-service')
 /**
  * Grouped attachment information for display

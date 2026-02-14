@@ -1,13 +1,13 @@
 // apps/web/src/components/detail-view/detail-view-main-tabs.tsx
 'use client'
 
-import * as React from 'react'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
+import * as React from 'react'
 import { parseRecordId } from '~/components/resources'
 import { getDetailViewTabComponent } from './detail-view-tab-registry'
-import { getIconComponent } from './utils'
 import type { DetailViewMainTabsProps, DetailViewTabProps } from './types'
+import { getIconComponent } from './utils'
 
 /**
  * DetailViewMainTabs - main content area with tabs loaded from registry
@@ -37,11 +37,13 @@ export function DetailViewMainTabs({
     <Tabs
       value={activeTab}
       onValueChange={onTabChange}
-      className="flex-1 h-full flex flex-col min-h-0">
-      <TabsList className="border-b w-full justify-start rounded-b-none bg-primary-150" variant="outline">
+      className='flex-1 h-full flex flex-col min-h-0'>
+      <TabsList
+        className='border-b w-full justify-start rounded-b-none bg-primary-150'
+        variant='outline'>
         {tabs.map((tab) => (
-          <TabsTrigger key={tab.value} value={tab.value} variant="outline">
-            <tab.icon className="size-3.5 mr-1.5 opacity-70" />
+          <TabsTrigger key={tab.value} value={tab.value} variant='outline'>
+            <tab.icon className='size-3.5 mr-1.5 opacity-70' />
             {tab.label}
           </TabsTrigger>
         ))}
@@ -49,7 +51,7 @@ export function DetailViewMainTabs({
 
       {/* Render tab contents */}
       {config.mainTabs.map((tab) => (
-        <TabsContent key={tab.value} value={tab.value} className="flex flex-col flex-1 min-h-0">
+        <TabsContent key={tab.value} value={tab.value} className='flex flex-col flex-1 min-h-0'>
           <LazyTabComponent
             entityType={entityType}
             tabValue={tab.value}
@@ -104,16 +106,16 @@ function LazyTabComponent({
 
   if (isLoading) {
     return (
-      <ScrollArea className="flex-1">
-        <div className="p-6 text-sm text-muted-foreground">Loading...</div>
+      <ScrollArea className='flex-1'>
+        <div className='p-6 text-sm text-muted-foreground'>Loading...</div>
       </ScrollArea>
     )
   }
 
   if (!Component) {
     return (
-      <ScrollArea className="flex-1">
-        <div className="p-6 text-sm text-muted-foreground">
+      <ScrollArea className='flex-1'>
+        <div className='p-6 text-sm text-muted-foreground'>
           Tab component not found for {entityType}:{tabValue}
         </div>
       </ScrollArea>

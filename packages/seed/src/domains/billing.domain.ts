@@ -4,10 +4,10 @@
  * Creates plans in database and corresponding Stripe products/prices.
  */
 
-import Stripe from 'stripe'
 import { database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import type { SeedingScenario, SeedingContext } from '../types'
+import Stripe from 'stripe'
+import type { SeedingContext, SeedingScenario } from '../types'
 
 /** Feature limit definition */
 interface FeatureLimit {
@@ -214,7 +214,9 @@ export class BillingDomain {
 
         console.log(`  ✓ Created plan: ${planData.name} (${stripeProduct.id})`)
       } else {
-        const reason = shouldCreateStripe ? 'custom pricing, no Stripe resources' : 'plans-only mode, no Stripe resources'
+        const reason = shouldCreateStripe
+          ? 'custom pricing, no Stripe resources'
+          : 'plans-only mode, no Stripe resources'
         console.log(`  ✓ Created plan: ${planData.name} (${reason})`)
       }
 
