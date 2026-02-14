@@ -46,7 +46,9 @@ export {
   isValidOperatorForField,
   setResourceVariables,
   setEntityVariables,
+  NEW_SYSTEM_ENTITY_TYPES,
 } from './registry'
+export type { NewSystemEntityType } from './registry'
 
 // Type exports
 export type { TableId } from './registry'
