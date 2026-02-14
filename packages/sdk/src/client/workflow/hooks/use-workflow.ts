@@ -205,7 +205,7 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
 
   // Serialize input schema to make _metadata accessible
   // Node instances store options in private _options, but _metadata is only available in toJSON() output
-  // ✓ Empty deps - schema is stable during component lifecycle
+  // biome-ignore lint/correctness/useExhaustiveDependencies: inputSchema is stable during component lifecycle
   const serializedInputSchema = useMemo(() => {
     const result: Record<string, any> = {}
     for (const [key, node] of Object.entries(inputSchema)) {

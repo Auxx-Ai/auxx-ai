@@ -57,6 +57,7 @@ export function useParticipant({
     requestParticipant(participantId)
   }, [enabled, participantId, participant, requestParticipant])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: participantId triggers clearing the requested set
   useEffect(() => {
     requestedRef.current.clear()
   }, [participantId])

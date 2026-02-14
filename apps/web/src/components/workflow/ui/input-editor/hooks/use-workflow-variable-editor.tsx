@@ -326,17 +326,17 @@ export function useWorkflowVariableEditor({
   }, [editor])
 
   // Get used variable IDs (memoized, updates on editor changes)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: editor.getJSON and editor are accessed via editor?.state.doc as a change signal
   const usedTags = useMemo(() => {
     if (!editor) return []
     return extractVarIds(editor.getJSON())
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor?.state.doc])
 
   // Validate current content (memoized)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: editor.getJSON and editor are accessed via editor?.state.doc as a change signal
   const validation = useMemo(() => {
     const content = editor ? tiptapToString(editor.getJSON()) : ''
     return validateTagPattern(content)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor?.state.doc])
 
   return {

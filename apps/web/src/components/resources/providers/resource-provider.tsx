@@ -149,7 +149,7 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     // Pass requested keys so missing items (deleted entities) get marked as not found
     getRelationshipStoreState().addHydratedItems(relationshipData, relationshipBatch)
     setRelationshipBatch([])
-  }, [relationshipData, relationshipBatch.length])
+  }, [relationshipData, relationshipBatch])
 
   useEffect(() => {
     if (!relationshipError || relationshipBatch.length === 0) return

@@ -54,6 +54,7 @@ export function useWorkflowRun(shareToken: string) {
   /**
    * Process SSE stream from response
    */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: parseSSEEvent is a stable helper function
   const processStream = useCallback(
     async (response: Response) => {
       const reader = response.body?.getReader()

@@ -107,7 +107,7 @@ export function StepReviewValues({ jobId, onComplete }: StepReviewValuesProps) {
       // Trigger resolution - onComplete from ResolutionProgress will handle completion
       resolveValues.mutate({ jobId })
     }
-  }, [job?.allowPlanGeneration, jobId, isResolutionActive, resolveValues])
+  }, [job, jobId, isResolutionActive, resolveValues])
 
   // Detect resolution completion via polling (backup for SSE)
   // Also reset auto-trigger flag when allowPlanGeneration becomes true

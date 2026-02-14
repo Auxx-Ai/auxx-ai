@@ -106,7 +106,7 @@ export function TableFilterBuilder({
       //     fieldReference: `${resourceType}:${field.key}`,
       //   }),
     }))
-  }, [filterableFields, resourceType])
+  }, [filterableFields])
 
   // Config - no variable features (table filters are always constant values)
   const config: ConditionSystemConfig = useMemo(

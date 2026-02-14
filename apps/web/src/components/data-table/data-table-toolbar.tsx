@@ -25,6 +25,7 @@ export function DataTableToolbar<TData>({ table, label }: DataTableToolbarProps<
   const [search, setSearch] = useState((table.getColumn('title')?.getFilterValue() as string) ?? '')
   const [debouncedSearch] = useDebouncedValue(search, 300)
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: table.getColumn is stable
   useEffect(() => {
     console.log('use effect', debouncedSearch)
     table.getColumn('title')?.setFilterValue(debouncedSearch)

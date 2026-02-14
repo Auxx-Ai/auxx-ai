@@ -188,7 +188,7 @@ export const PusherProvider: React.FC<PusherProviderProps> = ({ children }) => {
     }
     // --- 6. Final Dependencies ---
     // Rerun ONLY if auth state, org, or user changes. queryClient is stable.
-  }, [isAuthenticatedAndReady, organizationId, user?.id, queryClient]) // Removed 'pusher' state
+  }, [isAuthenticatedAndReady, organizationId, queryClient]) // Removed 'pusher' state
 
   // --- Context Methods ---
   const subscribe = (channelName: string): Channel | null => {
@@ -212,6 +212,7 @@ export const PusherProvider: React.FC<PusherProviderProps> = ({ children }) => {
   }
 
   // Memoize the context value, now depending on the connection state bool
+  // biome-ignore lint/correctness/useExhaustiveDependencies: subscribe/unsubscribe use pusherRef internally; isPusherConnected triggers re-memoization when instance changes
   const value = useMemo(
     () => ({
       pusher: pusherRef.current, // Provide the current instance from ref

@@ -74,8 +74,7 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
     }
 
     return { appId, blockId, installationId }
-  }, [data.appId, data.blockId, data.installationId, data.type, appInstallations.length, id])
-  // Note: Changed from appInstallations to appInstallations.length to prevent mass rerenders
+  }, [data.appId, data.blockId, data.installationId, data.type, appInstallations])
 
   // Persist resolved metadata back to node data so it survives save/load cycles
   useEffect(() => {
@@ -180,6 +179,7 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
   }, [appId, installationId, id, appStore])
 
   // Send data updates to iframe when React Flow data changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: nodeComponent is intentionally excluded - only trigger on data changes from React Flow
   useEffect(() => {
     if (!nodeComponent) return // Wait for initial render
     if (!appId || !installationId) return

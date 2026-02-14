@@ -302,7 +302,7 @@ export function useRunSingleNode(nodeId?: string) {
         onTabSwitch()
       }
     },
-    [nodeId, runSingleNode, result, getNodeResult]
+    [nodeId, runSingleNode]
   )
   return { runSingleNode, runLoopNode, isRunning, result, clearResult, runWithDefaults }
 }

@@ -61,6 +61,7 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
   const [iconValue, setIconValue] = useState<IconPickerValue>(DEFAULT_ICON)
 
   // Reset form when dialog opens with appropriate values
+  // biome-ignore lint/correctness/useExhaustiveDependencies: props.workflow fields are intentionally excluded to only reset on open/mode change
   useEffect(() => {
     if (open) {
       if (props.mode === 'edit') {

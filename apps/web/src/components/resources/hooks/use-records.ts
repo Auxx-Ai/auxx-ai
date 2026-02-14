@@ -73,6 +73,7 @@ export function useRecords<T extends RecordMeta = RecordMeta>({
   const requestRecord = useRecordStore((s) => s.requestRecord)
 
   // Request all records via batch system
+  // biome-ignore lint/correctness/useExhaustiveDependencies: recordIds and recordIds.length are derived from recordIdsKey
   useEffect(() => {
     if (!enabled || recordIds.length === 0) return
 
@@ -95,7 +96,7 @@ export function useRecords<T extends RecordMeta = RecordMeta>({
       const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
       return recordsState[entityDefinitionId]?.get(entityInstanceId) as T | undefined
     })
-  }, [recordIds, recordsState, recordIdsKey])
+  }, [recordIds, recordsState])
 
   // Build lookup map
   const recordsByKey = useMemo(() => {
@@ -115,7 +116,7 @@ export function useRecords<T extends RecordMeta = RecordMeta>({
   const isLoading = useMemo(() => {
     if (recordIds.length === 0) return false
     return recordIds.some((id) => loadingIds.has(id) || pendingIds.has(id))
-  }, [recordIds, loadingIds, pendingIds, recordIdsKey])
+  }, [recordIds, loadingIds, pendingIds])
 
   // Check completion state
   const isComplete = useMemo(() => {
@@ -124,13 +125,13 @@ export function useRecords<T extends RecordMeta = RecordMeta>({
       const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
       return recordsState[entityDefinitionId]?.has(entityInstanceId) || notFoundIdsSet.has(recordId)
     })
-  }, [recordIds, recordsState, notFoundIdsSet, recordIdsKey])
+  }, [recordIds, recordsState, notFoundIdsSet])
 
   // Get not found IDs
   const notFoundIds = useMemo(() => {
     if (recordIds.length === 0) return EMPTY_NOT_FOUND
     return recordIds.filter((id) => notFoundIdsSet.has(id))
-  }, [recordIds, notFoundIdsSet, recordIdsKey])
+  }, [recordIds, notFoundIdsSet])
 
   return {
     records,

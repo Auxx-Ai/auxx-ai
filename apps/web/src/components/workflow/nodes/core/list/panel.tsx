@@ -54,6 +54,7 @@ const ListPanelComponent: React.FC<ListPanelProps> = ({ nodeId, data }) => {
   const { variable: inputArrayVariable } = useVariable(inputVariableId, nodeId)
 
   // Compute output variables with proper memoization
+  // biome-ignore lint/correctness/useExhaustiveDependencies: using specific sub-properties for fine-grained memoization
   const outputVariables = useMemo(() => {
     if (!nodeData) return []
 

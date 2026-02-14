@@ -47,7 +47,7 @@ export function FieldPathBreadcrumb({ tableId, columnId }: FieldPathBreadcrumbPr
       label: field.label ?? field.key ?? 'Unknown',
       icon: field.fieldType ? getIconForFieldType(field.fieldType) : undefined,
     }))
-  }, [metadata, columnId])
+  }, [columnId])
 
   // Show error state if metadata failed to load
   if (metadata?.loadError) {

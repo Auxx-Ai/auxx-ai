@@ -72,7 +72,7 @@ export function WorkflowRunsProvider({ children, workflowId }: WorkflowRunsProvi
       params.endDate = endOfDay(filter.endDate)
     }
     return params
-  }, [workflowId, filter.status, filter.startDate?.toISOString(), filter.endDate?.toISOString()])
+  }, [workflowId, filter.status, filter.startDate, filter.endDate])
   // Fetch workflow runs with infinite query
   const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } =
     api.workflow.listWorkflowRuns.useInfiniteQuery(queryInput, {
@@ -212,12 +212,9 @@ export function WorkflowRunsProvider({ children, workflowId }: WorkflowRunsProvi
     toastSuccess({ title: 'Workflow runs exported' })
   }, [items, workflowId])
   // Navigation handlers
-  const handleViewDetails = useCallback(
-    (run: WorkflowRun) => {
-      // router.push(`/app/workflows/${workflowId}/runs/${run.id}`)
-    },
-    [router, workflowId]
-  )
+  const handleViewDetails = useCallback((run: WorkflowRun) => {
+    // router.push(`/app/workflows/${workflowId}/runs/${run.id}`)
+  }, [])
   const contextValue: WorkflowRunsContextType = {
     // Data
     items,

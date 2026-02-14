@@ -223,7 +223,7 @@ function CurrencyInput({
     if (disabled || readOnly) return
     const newValue = incrementValue(value, step, max)
     setValue(newValue)
-  }, [disabled, readOnly, value, step, max, setValue])
+  }, [disabled, readOnly, value, max, setValue])
 
   /**
    * Decrement value by step amount (100 cents)
@@ -232,7 +232,7 @@ function CurrencyInput({
     if (disabled || readOnly) return
     const newValue = decrementValue(value, step, min)
     setValue(newValue)
-  }, [disabled, readOnly, value, step, min, setValue])
+  }, [disabled, readOnly, value, min, setValue])
 
   const contextValue: CurrencyInputContextValue = React.useMemo(
     () => ({
@@ -365,7 +365,7 @@ const CurrencyInputField = React.forwardRef<HTMLInputElement, CurrencyInputField
             break
         }
       },
-      [disabled, readOnly, onKeyDown, increment, decrement, setValue, value, step, max, min]
+      [disabled, readOnly, onKeyDown, increment, decrement, setValue, value, max, min]
     )
 
     /**

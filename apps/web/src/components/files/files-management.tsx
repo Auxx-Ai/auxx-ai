@@ -419,7 +419,7 @@ export function FilesManagement({
       }
       setAllowedBreadcrumbIds(set)
     },
-    [breadcrumbs, getItemDescendants, setAllowedBreadcrumbIds]
+    [breadcrumbs, getItemDescendants]
   )
 
   // Drag and drop configuration
@@ -544,14 +544,7 @@ export function FilesManagement({
 
       dragPreview: MailThreadItemDragOverlay,
     }),
-    [
-      selectedItems,
-      moveItems,
-      getItemDescendants,
-      computeAllowedCrumbs,
-      setDraggingItems,
-      setAllowedBreadcrumbIds,
-    ]
+    [selectedItems, moveItems, getItemDescendants, computeAllowedCrumbs, currentFolderId]
   )
 
   return (

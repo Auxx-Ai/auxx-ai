@@ -64,6 +64,7 @@ export function AnimatedGridPattern({
   }
 
   // Update squares to animate in
+  // biome-ignore lint/correctness/useExhaustiveDependencies: generateSquares depends on dimensions which is already in deps
   useEffect(() => {
     if (dimensions.width && dimensions.height) {
       setSquares(generateSquares(numSquares))
@@ -90,7 +91,7 @@ export function AnimatedGridPattern({
         resizeObserver.unobserve(containerRef.current)
       }
     }
-  }, [containerRef])
+  }, [])
 
   return (
     <svg

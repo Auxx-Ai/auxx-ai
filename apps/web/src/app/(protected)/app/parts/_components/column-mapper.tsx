@@ -117,6 +117,7 @@ export function CSVColumnMapper({
 
   // Fix for potential infinite loop - remove requiredFields from dependency array
   // since it's a constant derived from FIELD_DEFINITIONS
+  // biome-ignore lint/correctness/useExhaustiveDependencies: requiredFields.filter is derived from a module-level constant
   useEffect(() => {
     const mappedFields = Object.values(columnMappings)
     const missingFields = requiredFields.filter((field) => !mappedFields.includes(field))

@@ -14,7 +14,7 @@ export const RunInfo = memo(function RunInfo() {
 
   const handleClearActiveRun = useCallback(() => {
     useRunStore.getState().clearRun()
-  }, [useRunStore])
+  }, [])
 
   if (!activeRun) {
     return null

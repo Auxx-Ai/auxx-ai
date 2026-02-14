@@ -36,6 +36,7 @@ export function AttachmentThumbnail({
   const [attemptCount, setAttemptCount] = useState(0)
   const timeoutRef = useRef<NodeJS.Timeout>()
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: attachmentId triggers reset when attachment changes
   useEffect(() => {
     // Clear any existing timeout
     if (timeoutRef.current) {

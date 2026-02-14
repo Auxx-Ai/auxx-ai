@@ -261,6 +261,7 @@ export function KanbanView<TData extends KanbanRow>({
   )
 
   /** Toggle card selection */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setSelectedCardIds is a stable useState setter
   const handleCardSelectChange = useCallback((cardId: string, selected: boolean) => {
     setSelectedCardIds((prev) => {
       const next = new Set(prev)
@@ -398,6 +399,7 @@ export function KanbanView<TData extends KanbanRow>({
   }, [])
 
   /** Handle drag end - supports multi-select with internal saveValue */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: entityDefinitionId, groupByField.fieldType are stable props; setSelectedCardIds is a stable setter
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       const { active, over } = event

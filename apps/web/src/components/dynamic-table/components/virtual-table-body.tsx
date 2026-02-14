@@ -84,7 +84,7 @@ export function VirtualTableBody<TData>({
     if (!lastPinnedColumn) return 0
 
     return lastPinnedColumn.getStart('left') + lastPinnedColumn.getSize()
-  }, [table, columnPinning, table.getState().columnSizing])
+  }, [table, columnPinning])
   // Set CSS variable for scroll-margin-left
   useEffect(() => {
     if (scrollContainerRef.current) {
@@ -122,6 +122,7 @@ export function VirtualTableBody<TData>({
     }
   }, [scrollContainerRef])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rows.length, shadowLeftPosition, isVisible intentionally trigger scroll handler re-setup
   useLayoutEffect(() => {
     let scrollContainer: HTMLElement | null = null
     let cleanupFn: (() => void) | null = null

@@ -378,6 +378,7 @@ function FilesPickerContent({
   const [selectedIndex, setSelectedIndex] = useState(-1)
 
   // Reset selected index when filtered items change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: filteredItems triggers index reset when list changes
   useEffect(() => {
     setSelectedIndex(-1)
   }, [filteredItems])

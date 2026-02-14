@@ -82,6 +82,7 @@ export const FileInput = createNodeInput<FileInputProps>(
         size: bigint
         source: 'existing'
       }>
+      // biome-ignore lint/correctness/useExhaustiveDependencies: fileIds is derived from node data and intentionally used
     }, [fileIds, itemsById])
 
     // Handle file selection from picker

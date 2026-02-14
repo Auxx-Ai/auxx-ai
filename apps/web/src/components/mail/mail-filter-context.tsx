@@ -68,6 +68,7 @@ interface MailFilterProviderProps {
 export function MailFilterProvider({ children, value }: MailFilterProviderProps) {
   // Memoize the context value to prevent unnecessary re-renders of consumers
   // if the value object itself hasn't changed identity (though primitive changes will still trigger updates).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: using value sub-properties for granular memoization to prevent unnecessary re-renders
   const memoizedValue = useMemo(
     () => value,
     [

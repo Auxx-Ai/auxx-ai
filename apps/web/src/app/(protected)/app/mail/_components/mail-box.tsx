@@ -250,8 +250,6 @@ function MailboxInner({
       sortDirection,
       filterConditions,
       setViewMode,
-      setSortBy,
-      setSortDirection,
     ]
   )
 
@@ -271,6 +269,7 @@ function MailboxInner({
   }
 
   // Build the thread filter input using pre-built conditions
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mapSortByToField is a stable local function
   const threadFilterForHook: ThreadsFilterInput = useMemo(
     () => ({
       filter: filterConditions,

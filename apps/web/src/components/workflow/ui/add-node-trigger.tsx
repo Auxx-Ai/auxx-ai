@@ -180,15 +180,19 @@ export function AddNodeTrigger({
       selectOnCreate,
       onNodeAdded,
       onBeforeAdd,
-      reactFlowInstance,
-      // nodeAdditionService,
+      addNode,
+      closeAllSelectors,
+      replaceNodeId,
+      selectNewNode,
+      setIsOpen,
+      targetNode,
     ]
   )
 
   const handleCancel = useCallback(() => {
     setIsOpen(false)
     onCancel?.()
-  }, [onCancel])
+  }, [onCancel, setIsOpen])
 
   // Handle trigger click
   const handleTriggerClick = useCallback(
@@ -206,7 +210,7 @@ export function AddNodeTrigger({
         setIsOpen(true)
       }
     },
-    [children, isAdding, isReadOnly]
+    [children, isAdding, isReadOnly, setIsOpen]
   )
 
   // Don't render in read-only mode

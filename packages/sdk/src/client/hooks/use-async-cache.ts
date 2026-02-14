@@ -89,6 +89,8 @@ export function useAsyncCache<Config extends AsyncCacheConfig>(
   })
 
   // Subscribe to cache updates for all entries
+  const cacheKeyString = entries.map((e) => e.cacheKey).join(',')
+  // biome-ignore lint/correctness/useExhaustiveDependencies: entries is derived from config and tracked via cacheKeyString
   useEffect(() => {
     const unsubscribers: Array<() => void> = []
 
@@ -101,7 +103,7 @@ export function useAsyncCache<Config extends AsyncCacheConfig>(
     return () => {
       unsubscribers.forEach((unsub) => unsub())
     }
-  }, [entries.map((e) => e.cacheKey).join(',')])
+  }, [cacheKeyString])
 
   // Load data for each entry
   const values: any = {}

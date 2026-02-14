@@ -42,6 +42,7 @@ export function KanbanViewBody<TData extends KanbanRow>() {
   const [localColumnOrder, setLocalColumnOrder] = useState<string[] | null>(null)
 
   // Reset local state when view changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: currentView?.id triggers reset on view switch
   useEffect(() => {
     setLocalColumnOrder(null)
   }, [currentView?.id])

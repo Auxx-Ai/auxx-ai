@@ -72,6 +72,7 @@ export const RunHistory = memo<RunHistoryProps>(({ className, onRunSelect }) => 
   const allRuns = runsData?.pages.flatMap((page) => page.items) ?? []
 
   // Populate run store when data arrives
+  // biome-ignore lint/correctness/useExhaustiveDependencies: allRuns.map is stable; using allRuns.length as trigger
   useEffect(() => {
     if (allRuns.length > 0) {
       const workflowRuns = allRuns.map((run) => ({

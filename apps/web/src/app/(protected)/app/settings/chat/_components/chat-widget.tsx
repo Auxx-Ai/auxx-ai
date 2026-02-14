@@ -198,6 +198,7 @@ export function ChatWidget({
   })
 
   // Initialization
+  // biome-ignore lint/correctness/useExhaustiveDependencies: initializeChat.mutate is stable
   useEffect(() => {
     // Check if on mobile
     const checkMobile = () => {
@@ -222,6 +223,7 @@ export function ChatWidget({
   }, [organizationId, widgetId])
 
   // Load chat history when session is established
+  // biome-ignore lint/correctness/useExhaustiveDependencies: isLoadingHistory and loadChatHistory.mutate are intentionally excluded
   useEffect(() => {
     if (sessionId && !isLoadingHistory) {
       setIsLoadingHistory(true)
@@ -230,6 +232,7 @@ export function ChatWidget({
   }, [sessionId])
 
   // Auto-scroll to bottom when messages change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: messages triggers scroll when content changes
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])

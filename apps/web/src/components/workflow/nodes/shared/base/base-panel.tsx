@@ -135,7 +135,7 @@ export const BasePanel = memo<BasePanelProps>(
       return () => {
         isMountedRef.current = false
       }
-    }, [nodeId]) // Reset when nodeId changes
+    }, []) // Reset when nodeId changes
 
     // Update local state when nodeData changes (e.g., from external updates)
     useEffect(() => {

@@ -231,6 +231,7 @@ export const useKbarAdminSettings = () => {
     },
   ]
   // Only register actions if user is admin or owner
+  // biome-ignore lint/correctness/useExhaustiveDependencies: adminSettingsActions is a static array defined inline
   const actions = React.useMemo(
     () => (data?.isAdminOrOwner ? adminSettingsActions : []),
     [data?.isAdminOrOwner]

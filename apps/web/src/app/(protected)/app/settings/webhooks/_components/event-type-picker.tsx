@@ -236,6 +236,7 @@ export function EventTypePicker({
   }, [highlightedOption])
 
   // Update dropdown position when container size changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedEventTypes triggers position recalculation when items change container height
   useEffect(() => {
     const updateDropdownPosition = () => {
       if (containerRef.current) {

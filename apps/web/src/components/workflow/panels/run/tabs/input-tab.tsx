@@ -122,7 +122,7 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
         })
       }
     },
-    [setInputs, errors, setErrors]
+    [errors]
   )
 
   const validateInputs = () => {

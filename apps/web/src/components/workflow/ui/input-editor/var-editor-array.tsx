@@ -162,6 +162,7 @@ export const VarEditorArray: React.FC<VarEditorArrayProps> = ({
   modes: externalModes,
 }) => {
   // Initialize modes array (one per item)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: value.map is stable; using value.length as trigger
   const modes = useMemo(() => {
     if (externalModes && externalModes.length === value.length) {
       return externalModes

@@ -91,7 +91,7 @@ export function useNodeValidationErrors({
       hasErrors: errors.length > 0,
       hasWarnings: warnings.length > 0,
     }
-  }, [nodeId, debouncedData, needsOutgoingConnection, enabled, data.type])
+  }, [debouncedData, needsOutgoingConnection, enabled, data.type])
 
   return validation
 }

@@ -166,6 +166,7 @@ export const useWorkflowInit = (options?: UseWorkflowInitOptions): UseWorkflowIn
   /**
    * Initialize on mount and when workflowId changes
    */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: options.workflowAppId is intentionally read inside the effect
   useEffect(() => {
     // Set workflow app ID if provided
     if (options?.workflowAppId) {
@@ -173,7 +174,7 @@ export const useWorkflowInit = (options?: UseWorkflowInitOptions): UseWorkflowIn
     }
     // Fetch workflow data (model data is handled by tRPC query above)
     fetchWorkflow()
-  }, [workflowId, fetchWorkflow])
+  }, [fetchWorkflow])
   /**
    * Sync modelData to workflow store when it updates
    */

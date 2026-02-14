@@ -8,6 +8,7 @@ export function useDebouncedValue<T = any>(value: T, wait: number, options = { l
 
   const cancel = () => window.clearTimeout(timeoutRef.current!)
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: cancel is a stable local function
   useEffect(() => {
     if (mountedRef.current) {
       if (!cooldownRef.current && options.leading) {
@@ -23,6 +24,7 @@ export function useDebouncedValue<T = any>(value: T, wait: number, options = { l
     }
   }, [value, options.leading, wait])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: cancel is a stable local function
   useEffect(() => {
     mountedRef.current = true
     return cancel

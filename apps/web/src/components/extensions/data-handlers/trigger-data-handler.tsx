@@ -61,7 +61,7 @@ export function TriggerDataHandler() {
       unsubscribeComplete()
       unsubscribeError()
     }
-  }, [appId, appInstallationId, isDevLoggingEnabled, messageClient, store])
+  }, [appId, isDevLoggingEnabled, messageClient, store])
 
   return null
 }

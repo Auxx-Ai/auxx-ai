@@ -59,6 +59,7 @@ export function WorkflowResourceProvider({ children }: WorkflowResourceProviderP
       getResourceById,
       refetch,
     }),
+    // biome-ignore lint/correctness/useExhaustiveDependencies: refetch is intentionally included to update context value
     [resources, isLoading, getResourceById, refetch]
   )
 

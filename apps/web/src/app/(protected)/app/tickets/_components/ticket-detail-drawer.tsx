@@ -199,6 +199,7 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
   const [originalTitle, setOriginalTitle] = useState('')
 
   // Reset editing title when ticket changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only re-run when ticket title changes
   useEffect(() => {
     if (ticket) {
       setEditingTitle(ticket.title || '')
@@ -271,6 +272,7 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
     }
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only re-run when ticket id changes
   const handleOpenInNewTab = useCallback(() => {
     if (!ticket) return
     window.open(`/app/tickets/${ticket.id}`, '_blank')
@@ -281,6 +283,7 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
     setEditDialogOpen(true)
   }, [ticket])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only re-run when ticket id changes
   const handleReply = useCallback(() => {
     if (!ticket) return
     router.push(`/app/tickets/${ticket.id}#reply`)

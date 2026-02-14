@@ -87,6 +87,7 @@ export function MailSearchBar({
   })
 
   // Reset suggestion highlight when suggestions change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: suggestions triggers index reset when results change
   useEffect(() => {
     setHighlightedSuggestionIndex(-1)
   }, [suggestions])

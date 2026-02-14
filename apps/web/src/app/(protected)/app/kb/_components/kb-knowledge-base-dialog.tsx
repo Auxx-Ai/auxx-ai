@@ -94,6 +94,7 @@ function KnowledgeBaseDialogContent({
   })
 
   // Reset form when dialog opens/closes or when initialValues change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: form.reset is stable; initialValues is intentionally excluded to only reset on open
   useEffect(() => {
     if (open) {
       form.reset(initialValues)

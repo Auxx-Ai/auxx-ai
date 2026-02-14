@@ -108,6 +108,7 @@ function DynamicViewInner<TData extends object>({
 
   // Table-selected rows (for table view)
   const tableState = table.getState()
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tableState properties trigger recalculation when filters/selection change
   const tableSelectedRows = useMemo(
     () => table.getFilteredSelectedRowModel().rows,
     [table, tableState.columnFilters, tableState.globalFilter, tableState.rowSelection]

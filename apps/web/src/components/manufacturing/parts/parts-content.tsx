@@ -180,6 +180,7 @@ export function PartsContent() {
   )
 
   /** Handle opening edit dialog */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setIsCreateDialogOpen is a stable useState setter
   const handleOpenEditDialog = useCallback(
     (row: PartRow) => {
       const part = parts.find((p) => p.id === row.id)
@@ -205,6 +206,7 @@ export function PartsContent() {
   }, [])
 
   /** Handle dialog open change */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setIsCreateDialogOpen is a stable useState setter
   const handleDialogOpenChange = useCallback((open: boolean) => {
     setIsCreateDialogOpen(open)
     if (!open) {
@@ -244,6 +246,7 @@ export function PartsContent() {
   )
 
   /** Empty state component */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setIsCreateDialogOpen is a stable useState setter
   const EmptyStateComponent = useCallback(
     () => (
       <div className='flex h-full items-center justify-center'>

@@ -240,6 +240,7 @@ export function SnippetPlaceholder({ onInsert }: SnippetPlaceholderProps) {
     }
 
     return result
+    // biome-ignore lint/correctness/useExhaustiveDependencies: placeholderGroups is a static array defined inline
   }, [placeholderGroups, selectedGroup, searchTerm])
 
   // Handle insert

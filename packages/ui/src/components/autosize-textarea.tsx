@@ -23,6 +23,7 @@ export const useAutosizeTextArea = ({
   // Memoize offset to avoid recreating on each render
   const offsetBorder = useMemo(() => 6, [])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: triggerAutoSize is used as a trigger to recalculate height; textAreaRef.current is accessed via ref
   React.useEffect(() => {
     // We need to reset the height momentarily to get the correct scrollHeight for the textarea
     const textAreaElement = textAreaRef.current

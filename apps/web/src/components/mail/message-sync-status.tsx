@@ -63,6 +63,7 @@ const MessageSyncStatus: React.FC<MessageSyncStatusProps> = ({ integrationId }) 
       trpc: { context: { skipBatch: true } },
     }
   )
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeSyncJobId is intentionally excluded to avoid infinite loop when setting it to null
   useEffect(() => {
     if (activeSyncJobId && initialSyncCheck && initialSyncCheck.data) {
       const status = initialSyncCheck.data.status

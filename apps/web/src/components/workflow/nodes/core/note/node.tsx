@@ -55,7 +55,7 @@ export const NoteNode = memo<NoteNodeType>(({ id, data, selected, width, height 
       })
       setInputs(newData)
     },
-    [inputs, setInputs, currentUser]
+    [inputs, setInputs]
   )
 
   const handleCopy = useCallback(() => {

@@ -46,6 +46,7 @@ export function useMessage({ messageId, enabled = true }: UseMessageOptions): Us
     requestMessage(messageId)
   }, [enabled, messageId, message, requestMessage])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: messageId triggers clearing the requested set
   useEffect(() => {
     requestedRef.current.clear()
   }, [messageId])

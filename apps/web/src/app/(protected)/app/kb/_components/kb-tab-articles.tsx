@@ -171,7 +171,7 @@ const KBTabArticles: React.FC<KBTabArticlesProps> = ({ knowledgeBaseId }) => {
       })
       return newState
     })
-  }, [pathname, articles, findActiveArticle])
+  }, [articles, findActiveArticle])
 
   if (isLoadingArticles) {
     return (

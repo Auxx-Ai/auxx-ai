@@ -226,13 +226,15 @@ function SlashCommandList(props: SlashCommandListProps) {
         rest.command(item)
       }
     },
+    // biome-ignore lint/correctness/useExhaustiveDependencies: rest contains command callback from Suggestion plugin
     [currentItems, rest]
   )
 
   // Reset index when items change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: currentItems.length and snippetMode intentionally trigger index reset
   useEffect(() => {
     setSelectedIndex(0)
-  }, [currentItems.length, snippetMode]) // Depend on length and mode
+  }, [currentItems.length, snippetMode])
 
   // Function to go back from snippet mode
   const goBack = useCallback(() => {

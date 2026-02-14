@@ -50,13 +50,14 @@ export function TableBody<TData extends object>({
 
   // Update CSS variables directly on DOM when columns or sizing changes
   const columnSizing = table.getState().columnSizing
+  // biome-ignore lint/correctness/useExhaustiveDependencies: columnSizing triggers CSS variable updates when column sizes change
   useEffect(() => {
     if (!containerRef.current) return
     const style = containerRef.current.style
     table.getVisibleLeafColumns().forEach((col) => {
       style.setProperty(`--col-${sanitizeColumnId(col.id)}-w`, `${col.getSize()}px`)
     })
-  }, [columnSizing, columnIds, table])
+  }, [columnSizing, table])
   const columnStyleRules = useMemo(() => {
     return visibleColumns
       .map(
@@ -64,7 +65,7 @@ export function TableBody<TData extends object>({
           `[data-col="${sanitizeColumnId(c.id)}"] { width: var(--col-${sanitizeColumnId(c.id)}-w); min-width: var(--col-${sanitizeColumnId(c.id)}-w); }`
       )
       .join('\n')
-  }, [columnIds])
+  }, [visibleColumns])
 
   return (
     <div className=''>

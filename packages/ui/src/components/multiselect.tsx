@@ -238,6 +238,7 @@ const MultipleSelector = ({
     [handleUnselect, selected]
   )
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: handleClickOutside is intentionally excluded to avoid re-subscribing on every render
   useEffect(() => {
     if (open) {
       document.addEventListener('mousedown', handleClickOutside)
@@ -268,8 +269,9 @@ const MultipleSelector = ({
     if (JSON.stringify(newOption) !== JSON.stringify(options)) {
       setOptions(newOption)
     }
-  }, [arrayDefaultOptions, arrayOptions, groupBy, onSearch, options])
+  }, [arrayOptions, groupBy, onSearch, options])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: onSearchSync is intentionally excluded to avoid re-triggering on callback identity changes
   useEffect(() => {
     /** sync search */
 
@@ -291,9 +293,9 @@ const MultipleSelector = ({
     }
 
     void exec()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearchTerm, groupBy, open, triggerSearchOnFocus])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: onSearch is intentionally excluded to avoid re-triggering on callback identity changes
   useEffect(() => {
     /** async search */
 
@@ -317,7 +319,6 @@ const MultipleSelector = ({
     }
 
     void exec()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearchTerm, groupBy, open, triggerSearchOnFocus])
 
   const CreatableItem = () => {

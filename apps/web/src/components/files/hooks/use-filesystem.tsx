@@ -260,6 +260,7 @@ export function useFilesystem() {
   ])
 
   // Build hierarchical items with upload integration
+  // biome-ignore lint/correctness/useExhaustiveDependencies: itemsById, filesByParent, foldersByParent trigger recomputation when file system state changes
   const hierarchicalItems = useMemo(() => {
     // Get the buildHierarchicalView method from store
     const buildHierarchicalView = useFileSystemStore.getState().buildHierarchicalView

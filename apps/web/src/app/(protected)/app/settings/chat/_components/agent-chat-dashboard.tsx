@@ -153,6 +153,7 @@ export default function AgentChatDashboard() {
   })
 
   // Load chat history when session is selected
+  // biome-ignore lint/correctness/useExhaustiveDependencies: getChatHistory.mutate is stable
   useEffect(() => {
     if (selectedSessionId) {
       getChatHistory.mutate({ sessionId: selectedSessionId })
@@ -162,6 +163,7 @@ export default function AgentChatDashboard() {
   }, [selectedSessionId])
 
   // Real-time updates via polling
+  // biome-ignore lint/correctness/useExhaustiveDependencies: getChatHistory.mutate is stable; pollingInterval is managed internally
   useEffect(() => {
     // Clear any existing interval
     if (pollingInterval) {

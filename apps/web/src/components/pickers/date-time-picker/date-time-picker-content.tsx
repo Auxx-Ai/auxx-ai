@@ -133,7 +133,7 @@ export function DateTimePickerContent({
         onChange(newDate)
       }
     },
-    [selectedDate, noConfirm, mode, onChange]
+    [selectedDate, noConfirm, onChange]
   )
 
   /** Handle hour selection */
@@ -191,7 +191,7 @@ export function DateTimePickerContent({
       const date = preset.getDate()
       onChange(date)
     },
-    [onChange, presets]
+    [onChange]
   )
 
   /** Formatted time for footer display */

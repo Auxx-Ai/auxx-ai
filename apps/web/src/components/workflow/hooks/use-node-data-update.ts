@@ -52,7 +52,7 @@ export const useNodeDataUpdate = () => {
       debouncedSave()
       saveStateToHistory(WorkflowHistoryEvent.NodeChange)
     },
-    [debouncedSave, handleNodeDataUpdate, isReadOnly, saveStateToHistory, store]
+    [debouncedSave, handleNodeDataUpdate, isReadOnly, saveStateToHistory]
   )
 
   return { handleNodeDataUpdate, handleNodeDataUpdateWithSync }

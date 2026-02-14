@@ -74,6 +74,7 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
   }, [mappableProperties, fields, job?.importMappingId])
 
   // Report initial mapping counts to parent when mappings are loaded
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally runs only on initial load when mappings become available
   useEffect(() => {
     if (mappings.length > 0) {
       const mappedCount = mappings.filter((m) => m.isMapped).length

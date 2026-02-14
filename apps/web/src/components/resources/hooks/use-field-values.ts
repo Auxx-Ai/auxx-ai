@@ -80,6 +80,7 @@ export function useFieldValue(
   }, [autoFetch, fieldRef, value, key, recordId])
 
   // Clear requested set when key changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: key triggers clearing the requested set
   useEffect(() => {
     requestedRef.current.clear()
   }, [key])
@@ -119,6 +120,7 @@ export function useFieldValues(
   // Subscribe to values
   const values = useFieldValueStore(
     useShallow(
+      // biome-ignore lint/correctness/useExhaustiveDependencies: fieldRefs is derived from refsKey, using refsKey as stable string dependency
       useCallback(
         (state: CustomFieldValueState) => {
           const result: Record<string, StoredFieldValue | undefined> = {}
@@ -142,7 +144,7 @@ export function useFieldValues(
         }
         return false
       },
-      [recordId, refsKey]
+      [recordId, fieldRefs]
     )
   )
 

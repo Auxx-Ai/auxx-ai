@@ -79,6 +79,7 @@ export default function OrganizationOnboardingPage() {
   // Debounced handle for availability checking
   const [debouncedHandle, setDebouncedHandle] = useState('')
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: generateHandle is a stable local function
   useEffect(() => {
     // Only auto-generate if user hasn't manually edited the handle
     if (watchName && !handleManuallyEdited && !org?.handle) {

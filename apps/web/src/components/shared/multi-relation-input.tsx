@@ -134,12 +134,13 @@ export function MultiRelationInput({
     (recordIds: string[]) => {
       onChange(recordIds)
     },
-    [tableId, onChange]
+    [onChange]
   )
 
   /**
    * Handle single-select: close popover after selection
    */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setOpen is a stable useState setter
   const handleSelectSingle = useCallback(() => {
     setOpen(false)
     setSearchQuery('')

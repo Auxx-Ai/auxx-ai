@@ -4,44 +4,37 @@ import { getPusherClient } from '@auxx/lib/realtime/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem } from '@auxx/ui/components/sidebar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { formatDistanceToNow } from 'date-fns'
-import {
-  Bell,
-  Check,
-  CheckSquare,
-  Heart,
-  Mail as MailIcon,
-  MessageSquare,
-  Play,
-  Trash,
-  User,
-} from 'lucide-react'
+import { Bell, Check, Mail as MailIcon, Play, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 // components/notifications/notification-center.tsx
 import { useEffect, useState } from 'react'
 import { HumanConfirmationDialog } from '~/components/workflow/dialogs/human-confirmation-dialog'
 import { api } from '~/trpc/react'
 
-// Helper to get icon for notification type
-const getNotificationIcon = (type: NotificationType) => {
-  switch (type) {
-    case 'COMMENT_MENTION':
-      return <User className='size-4 text-blue-500' />
-    case 'COMMENT_REPLY':
-      return <MessageSquare className='size-4 text-green-500' />
-    case 'COMMENT_REACTION':
-      return <Heart className='size-4 text-red-500' />
-    case 'WORKFLOW_APPROVAL_REQUIRED':
-      return <CheckSquare className='size-4 text-orange-500' />
-    default:
-      return <Bell className='size-4 text-gray-500' />
-  }
+/** Icon config for each notification type */
+const NOTIFICATION_ICON_MAP: Record<NotificationType, { iconId: string; color: string }> = {
+  COMMENT_MENTION: { iconId: 'user', color: 'blue' },
+  COMMENT_REPLY: { iconId: 'message-square', color: 'green' },
+  COMMENT_REACTION: { iconId: 'heart', color: 'pink' },
+  TICKET_ASSIGNED: { iconId: 'ticket', color: 'indigo' },
+  TICKET_UPDATED: { iconId: 'ticket', color: 'teal' },
+  TICKET_MENTIONED: { iconId: 'user', color: 'purple' },
+  THREAD_ACTIVITY: { iconId: 'message-circle', color: 'teal' },
+  SYSTEM_MESSAGE: { iconId: 'info', color: 'gray' },
+  WORKFLOW_APPROVAL_REQUIRED: { iconId: 'check-circle', color: 'orange' },
+  WORKFLOW_APPROVAL_REMINDER: { iconId: 'bell-ring', color: 'orange' },
+  WORKFLOW_APPROVAL_COMPLETED: { iconId: 'check-circle', color: 'green' },
 }
+
+/** Default icon config for unmapped notification types */
+const DEFAULT_NOTIFICATION_ICON = { iconId: 'bell', color: 'gray' }
 // Helper to determine notification link based on entity type
 const getNotificationLink = (entityType: string, entityId: string) => {
   switch (entityType) {
@@ -87,9 +80,13 @@ const NotificationItem = ({
   }
   return (
     <div
-      className={`group/item flex relative cursor-pointer items-start gap-1 px-1 py-2 hover:bg-primary-150 ${isRead ? 'opacity-70' : 'bg-blue-50'} `}
+      className={`group/item flex relative cursor-pointer items-start gap-1 px-2 py-2 hover:bg-primary-150 ${isRead ? 'opacity-70' : 'bg-blue-50'} `}
       onClick={handleClick}>
-      <div className='mt-1 shrink-0'>{getNotificationIcon(type)}</div>
+      <EntityIcon
+        {...(NOTIFICATION_ICON_MAP[type as NotificationType] ?? DEFAULT_NOTIFICATION_ICON)}
+        size='sm'
+        className='mt-1 me-1'
+      />
 
       <div className='min-w-0 grow'>
         <div className='flex items-start justify-between'>
@@ -260,7 +257,7 @@ export const NotificationCenter = () => {
           ) : null}
         </Button> sideOffset={-36} */}
         </PopoverTrigger>
-        <PopoverContent className='w-90 mr-4 p-0 min-h-[300px]' align='start'>
+        <PopoverContent className='w-110 mr-4 p-0 min-h-[300px]' align='start'>
           <div className='flex items-center justify-between p-2'>
             <div className='font-medium text-base'>Notifications</div>
             {unreadData && unreadData?.count > 0 && (

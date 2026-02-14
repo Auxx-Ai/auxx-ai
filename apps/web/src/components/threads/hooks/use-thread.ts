@@ -61,6 +61,7 @@ export function useThread({ threadId, enabled = true }: UseThreadOptions): UseTh
   }, [enabled, threadId, thread, requestThread])
 
   // Clear on threadId change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: threadId triggers clearing the requested set
   useEffect(() => {
     requestedRef.current.clear()
   }, [threadId])

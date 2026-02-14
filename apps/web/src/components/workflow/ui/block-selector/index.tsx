@@ -36,6 +36,7 @@ export const BlockSelector = memo(
     // Subscribe to registry updates so app blocks appear when loaded
     const registryVersion = useRegistryVersion()
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: registryVersion triggers re-fetch when registry updates
     const availableNodes = useMemo(() => {
       return availableBlocksTypes
         .map((nodeId) => {

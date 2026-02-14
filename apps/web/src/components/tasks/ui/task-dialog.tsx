@@ -151,6 +151,7 @@ export function TaskDialog({
   }, [editor, handleEditorUpdate])
 
   // Reset form when task changes or dialog opens
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mentionEditor.setContent is stable
   useEffect(() => {
     if (open) {
       if (task) {
@@ -199,7 +200,7 @@ export function TaskDialog({
   const handleDeadlineClear = useCallback(() => {
     setDeadline(undefined)
     setDeadlineManuallySet(false)
-  }, [editor, textDateParser, dateModule])
+  }, [])
 
   /**
    * Reset form state for creating another task

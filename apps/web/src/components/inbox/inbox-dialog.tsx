@@ -96,6 +96,7 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
   const accessType = form.watch('accessType')
 
   // Combined form values for dirty checking
+  // biome-ignore lint/correctness/useExhaustiveDependencies: form.watch values are intentionally used as dependencies for dirty checking
   const formValues = useMemo(
     () => ({
       name: form.watch('name'),

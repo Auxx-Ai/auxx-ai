@@ -90,7 +90,7 @@ export const BaseNode = memo<BaseNodeProps>(
     // Notify React Flow to recalculate edge positions when collapsed state changes
     useEffect(() => {
       updateNodeInternals(id)
-    }, [id, isCollapsed, updateNodeInternals])
+    }, [id, updateNodeInternals])
 
     /** Handle collapse toggle click */
     const onCollapseToggle = (e: React.MouseEvent) => {
@@ -133,7 +133,7 @@ export const BaseNode = memo<BaseNodeProps>(
           isDisabled && 'border-gray-400',
           className
         ),
-      [status, nodeType, isDisabled]
+      [status, nodeType, isDisabled, className]
     )
 
     return (

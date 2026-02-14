@@ -387,6 +387,7 @@ export function useFileSelect(options: UseFileSelectOptions = {}): UseFileSelect
   }, [upload, onChange])
 
   // Upload actions
+  // biome-ignore lint/correctness/useExhaustiveDependencies: addError is a stable callback
   const startUpload = useCallback(async () => {
     try {
       await upload.startUpload()

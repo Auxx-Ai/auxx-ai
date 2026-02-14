@@ -78,6 +78,7 @@ export function CreateAPIKeyButton({
       toastError({ description: error.message })
     },
   })
+  // biome-ignore lint/correctness/useExhaustiveDependencies: createApiKey.mutateAsync is stable
   const onSubmit = useCallback(async (values: CreateApiKeyBody) => {
     await createApiKey.mutateAsync(values)
   }, [])

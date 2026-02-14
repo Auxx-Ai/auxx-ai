@@ -254,7 +254,6 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
       onChange,
       onConstantModeChange,
       previousConstantValues,
-      setPreviousConstantValues,
     ])
 
     const handleClearContent = useCallback(() => {
@@ -271,6 +270,7 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
     }, [isConstantMode, setContent, onChange])
 
     // Sync value changes with constantValue
+    // biome-ignore lint/correctness/useExhaustiveDependencies: constantValue is intentionally excluded to avoid infinite loop
     useEffect(() => {
       if (value !== undefined && value !== constantValue) {
         setConstantValue(value)

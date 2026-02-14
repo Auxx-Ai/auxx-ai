@@ -114,6 +114,7 @@ export default function LoginForm({
     }
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: enablePasskeyAutofill is stable and callbackUrl/router are not captured
   useEffect(() => {
     // Check if passkey conditional UI is available
     if (
@@ -124,9 +125,10 @@ export default function LoginForm({
     }
 
     enablePasskeyAutofill()
-  }, [callbackUrl, router])
+  }, [])
 
   // Auto-fill email from URL parameter (e.g., from signup redirect)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: isEmail is a stable local function
   useEffect(() => {
     const emailParam = searchParams.get('email')
     if (emailParam && isEmail(emailParam)) {

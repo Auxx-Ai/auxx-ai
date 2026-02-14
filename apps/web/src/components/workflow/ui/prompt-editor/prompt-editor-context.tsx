@@ -273,6 +273,7 @@ export const PromptEditorProvider: React.FC<PromptEditorProviderProps> = ({
   })
 
   // Sync external value changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: value is intentionally excluded to avoid infinite loop
   React.useEffect(() => {
     if (initialValue !== value) {
       setValue(initialValue)
@@ -332,23 +333,24 @@ export const PromptEditorProvider: React.FC<PromptEditorProviderProps> = ({
       value,
       handleChange,
       isExpanded,
-      // isFocus,
+      isFocused,
       isCopied,
       setIsExpanded,
-      // setFocus,
       readOnly,
       showRemove,
       showAIGenerate,
       gradientBorder,
       variables,
+      groups,
+      allVariables,
       handleBlur,
       handleFocus,
       handleInsertVariable,
       handleCopy,
       characterCount,
-      setCharacterCount,
       contentHeight,
       minHeight,
+      // biome-ignore lint/correctness/useExhaustiveDependencies: props is the component props object used as context value
       props,
     ]
   )

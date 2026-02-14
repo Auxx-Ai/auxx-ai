@@ -30,6 +30,7 @@ function PropertyRow({
 
   // Get iconId from field or fall back to field type's default icon
   const iconId = field.iconId ?? fieldTypeOptions[field.fieldType as FieldType]?.iconId ?? 'circle'
+  // biome-ignore lint/correctness/useExhaustiveDependencies: isOutsideClick is a stable ref
   const handleClick = useCallback(() => {
     if (isLoading) return
     if (field.readOnly) return
@@ -43,11 +44,12 @@ function PropertyRow({
     isOutsideClick.current = false
   }, [field, isLoading, isOpen, open, onFocus])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: isOutsideClick is a stable ref
   const handlePointerDown = useCallback(() => {
     if (isLoading) return
     isOutsideClick.current = true
     // console.log('1. row click: isOpen:', isOpen, 'isOutsideClick:', isOutsideClick.current)
-  }, [field, isLoading, isOpen])
+  }, [isLoading])
 
   const valueSection = (
     <div className='min-w-0 relative flex text-sm flex-1'>

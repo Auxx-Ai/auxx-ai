@@ -132,7 +132,7 @@ function RootStack<TData = any>() {
         const decoded = decodeColumnId(col.id)
         return decoded.type === 'path' ? decoded.fieldPath : []
       })
-  }, [visibleColumns])
+  }, [validVisibleColumns])
 
   // Get field metadata for all path fields (for breadcrumb labels)
   const pathFields = useFields(pathColumnIds)

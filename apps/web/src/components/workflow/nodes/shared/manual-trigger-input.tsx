@@ -33,6 +33,7 @@ export function ManualTriggerInput({ inputs, errors, onChange, isLoading }: Trig
   }
 
   // Get connected form-input configs for the manual trigger
+  // biome-ignore lint/correctness/useExhaustiveDependencies: nodesLength triggers recomputation when nodes change
   const formInputConfigs = useMemo(() => {
     const { nodes, edges } = store.getState()
 

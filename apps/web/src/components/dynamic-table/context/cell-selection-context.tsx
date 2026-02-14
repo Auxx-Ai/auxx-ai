@@ -83,6 +83,7 @@ export function useCellSelection(): CellSelectionContextValue {
 
   // ─── RETURN VALUE ───────────────────────────────────────────────────────────
   // Only depend on primitive values that actually change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: using sub-properties for granular memoization to prevent unnecessary re-renders
   return useMemo(
     () => ({
       selectedCell,

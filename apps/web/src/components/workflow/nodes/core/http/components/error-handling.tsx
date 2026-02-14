@@ -83,6 +83,7 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
     (value: number | undefined) => {
       updateDefaultValue('status_code', (value ?? 200).toString(), 'number')
     },
+    // biome-ignore lint/correctness/useExhaustiveDependencies: updateDefaultValue is intentionally used as dependency
     [updateDefaultValue]
   )
 
@@ -90,6 +91,7 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
     (value: string) => {
       updateDefaultValue('headers', value, 'object')
     },
+    // biome-ignore lint/correctness/useExhaustiveDependencies: updateDefaultValue is intentionally used as dependency
     [updateDefaultValue]
   )
 
@@ -97,6 +99,7 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
     (value: string) => {
       updateDefaultValue('body', value, 'string')
     },
+    // biome-ignore lint/correctness/useExhaustiveDependencies: updateDefaultValue is intentionally used as dependency
     [updateDefaultValue]
   )
 

@@ -58,12 +58,12 @@ export function EditOrganizationForm(): JSX.Element {
     mode: 'onChange',
   })
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: form.reset is stable
   useEffect(() => {
     if (user) {
       form.reset({ username: user.name || '' })
       setCurrentAvatarUrl(user.image || undefined)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
   async function onSubmit(data: ProfileFormValues) {

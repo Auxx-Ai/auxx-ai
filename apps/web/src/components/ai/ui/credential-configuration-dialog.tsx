@@ -197,6 +197,7 @@ export function CredentialConfigurationDialog({
   }, [providerCapabilities])
 
   // Dynamic form schema
+  // biome-ignore lint/correctness/useExhaustiveDependencies: operation and originalValues are intentionally excluded - they are stable for the lifetime of the dialog
   const formSchema = useMemo(() => {
     if (!providerCapabilities) return z.object({})
 
@@ -358,6 +359,7 @@ export function CredentialConfigurationDialog({
   }
 
   // Handle provider prop changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedProvider is intentionally excluded to avoid infinite loop
   useEffect(() => {
     if (provider && provider !== selectedProvider) {
       setSelectedProvider(provider)

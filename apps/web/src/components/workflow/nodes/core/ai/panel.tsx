@@ -53,6 +53,7 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
   const { inputs: nodeData, setInputs: setNodeData } = useNodeCrud<AiNodeData>(nodeId, data)
 
   // Initialize schema from data if not already set
+  // biome-ignore lint/correctness/useExhaustiveDependencies: schema is intentionally excluded to only set once when not already set
   useEffect(() => {
     if (nodeData.structured_output?.schema && !schema) {
       setSchema(nodeData.structured_output.schema as SchemaRoot)
