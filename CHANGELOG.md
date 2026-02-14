@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/auxxai/auxx-ai/compare/auxx-v0.1.1...auxx-v0.1.2) (2026-02-14)
+
+
+### Features
+
+* add GitHub Action to validate PR titles ([d133d9b](https://github.com/auxxai/auxx-ai/commit/d133d9be3294514ee4cee60a69b01e8a76b6f5d4))
+
 ## [0.1.1](https://github.com/auxxai/auxx-ai/compare/auxx-v0.1.0...auxx-v0.1.1) (2026-02-13)
 
 
