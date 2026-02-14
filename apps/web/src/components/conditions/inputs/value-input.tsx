@@ -33,7 +33,8 @@ const ValueInput = ({
         onChange={(val) => onChange(val, true)} // Resource is always constant mode
         disabled={disabled}
         placeholder={placeholder}
-        className={className}
+        inputClassName={className}
+        triggerProps={className ? { className } : undefined}
       />
     )
   }

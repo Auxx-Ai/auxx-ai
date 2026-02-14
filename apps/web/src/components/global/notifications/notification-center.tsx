@@ -15,6 +15,7 @@ import { Bell, Check, Mail as MailIcon, Play, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 // components/notifications/notification-center.tsx
 import { useEffect, useState } from 'react'
+import { EmptyState } from '~/components/global/empty-state'
 import { HumanConfirmationDialog } from '~/components/workflow/dialogs/human-confirmation-dialog'
 import { api } from '~/trpc/react'
 
@@ -80,21 +81,18 @@ const NotificationItem = ({
   }
   return (
     <div
-      className={`group/item flex relative cursor-pointer items-start gap-1 px-2 py-2 hover:bg-primary-150 ${isRead ? 'opacity-70' : 'bg-blue-50'} `}
+      className={`group/item flex cursor-pointer items-start gap-1 px-2 py-2 hover:bg-primary-150 ${isRead ? 'opacity-70' : 'bg-blue-50 dark:bg-blue-900'} `}
       onClick={handleClick}>
-      <EntityIcon
-        {...(NOTIFICATION_ICON_MAP[type as NotificationType] ?? DEFAULT_NOTIFICATION_ICON)}
-        size='sm'
-        className='mt-1 me-1'
-      />
+      <div className='flex flex-col items-center gap-1 mt-1 me-1'>
+        <EntityIcon
+          {...(NOTIFICATION_ICON_MAP[type as NotificationType] ?? DEFAULT_NOTIFICATION_ICON)}
+          size='sm'
+        />
+        {!isRead && <span className='size-2 rounded-full bg-blue-500' />}
+      </div>
 
       <div className='min-w-0 grow'>
-        <div className='flex items-start justify-between'>
-          <p className='truncate text-sm font-medium'>{message}</p>
-          <div className='ml-2 flex shrink-0 gap-1'>
-            {!isRead && <span className='bg-info size-2 rounded-full bg-blue-500 shrink-0' />}
-          </div>
-        </div>
+        <p className='text-sm font-medium'>{message}</p>
 
         <div className='mt-1 flex items-center'>
           {actor && (
@@ -118,7 +116,7 @@ const NotificationItem = ({
       <Button
         variant='ghost'
         size='icon-sm'
-        className='absolute right-1 top-1 opacity-0 group-hover/item:opacity-100 hover:bg-destructive/20 hover:text-destructive border border-transparent hover:border-destructive/50'
+        className='shrink-0 opacity-0 group-hover/item:opacity-100 hover:bg-destructive/20 hover:text-destructive border border-transparent hover:border-destructive/50'
         onClick={(e) => {
           e.stopPropagation()
           onDelete(id)
@@ -297,21 +295,26 @@ export const NotificationCenter = () => {
             </RadioTab>
           </div>
 
-          <div className='m-0 flex-1'>
-            <div className='max-h-96 overflow-y-auto'>
-              {isLoading ? (
-                <>
-                  <NotificationSkeleton />
-                  <NotificationSkeleton />
-                  <NotificationSkeleton />
-                </>
-              ) : mode === 'all' ? (
-                data?.notifications.length === 0 ? (
-                  <div className='p-4 flex justify-center items-center text-center text-gray-500 text-sm'>
-                    No notifications yet
-                  </div>
-                ) : (
-                  data?.notifications.map((notification) => (
+          <div className='flex flex-col m-0 flex-1'>
+            {isLoading ? (
+              <div className='max-h-96 overflow-y-auto'>
+                <NotificationSkeleton />
+                <NotificationSkeleton />
+                <NotificationSkeleton />
+              </div>
+            ) : mode === 'all' ? (
+              data?.notifications.length === 0 ? (
+                <div className='flex flex-1 items-center justify-center'>
+                  <EmptyState
+                    icon={Bell}
+                    title='No notifications yet'
+                    className='py-8'
+                    iconClassName='h-8 w-8'
+                  />
+                </div>
+              ) : (
+                <div className='max-h-96 overflow-y-auto'>
+                  {data?.notifications.map((notification) => (
                     <NotificationItem
                       key={notification.id!}
                       notification={notification}
@@ -319,15 +322,22 @@ export const NotificationCenter = () => {
                       onDelete={handleDelete}
                       onOpenApprovalDialog={openHumanConfirmationDialog}
                     />
-                  ))
-                )
-              ) : mode === 'unread' ? (
-                data?.notifications.length === 0 ? (
-                  <div className='p-4 flex justify-center items-center text-center text-gray-500 text-sm'>
-                    No unread notifications
-                  </div>
-                ) : (
-                  data?.notifications
+                  ))}
+                </div>
+              )
+            ) : mode === 'unread' ? (
+              data?.notifications.filter((n) => !n.isRead).length === 0 ? (
+                <div className='flex flex-1 items-center justify-center'>
+                  <EmptyState
+                    icon={Bell}
+                    title='No unread notifications'
+                    className='py-8'
+                    iconClassName='h-8 w-8'
+                  />
+                </div>
+              ) : (
+                <div className='max-h-96 overflow-y-auto'>
+                  {data?.notifications
                     .filter((notification) => !notification.isRead)
                     .map((notification) => (
                       <NotificationItem
@@ -337,10 +347,10 @@ export const NotificationCenter = () => {
                         onDelete={handleDelete}
                         onOpenApprovalDialog={openHumanConfirmationDialog}
                       />
-                    ))
-                )
-              ) : null}
-            </div>
+                    ))}
+                </div>
+              )
+            ) : null}
 
             {data?.totalCount && data.totalCount > 10 ? (
               <div className='p-2 text-center'>

@@ -6,7 +6,6 @@ import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/t
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
 import { BaseType, NodeCategory, type NodeDefinition, type ValidationResult } from '../../../types'
 import { NodeType } from '../../../types/node-types'
-import { EndPanel } from './panel'
 import type { EndNodeData } from './types'
 
 /**
@@ -93,7 +92,6 @@ export const endDefinition: NodeDefinition<EndNodeData> = {
   color: '#10b981', // ACTION category color
   defaultData: endDefaultData,
   schema: endNodeDataSchema,
-  panel: EndPanel,
   validator: validateEndConfig,
   canRunSingle: true,
   extractVariables: extractEndVariables,

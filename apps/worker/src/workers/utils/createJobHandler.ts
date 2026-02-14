@@ -95,6 +95,7 @@ export function createJobHandler<T extends Record<string, JobHandler | LegacyJob
 
       logger.error(`Error processing job ${jobName}:`, {
         error: error instanceof Error ? error.message : error,
+        cause: error instanceof Error && error.cause ? String(error.cause) : undefined,
         jobId: job.id,
       })
       throw error

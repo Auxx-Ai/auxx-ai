@@ -10,7 +10,6 @@ import {
   type ValidationResult,
 } from '~/components/workflow/types'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
-import { CodePanel } from './panel'
 import type { CodeNodeData } from './types'
 
 /**
@@ -197,7 +196,6 @@ export const codeDefinition: NodeDefinition<CodeNodeData> = {
   color: '#8B5CF6', // TRANSFORM category color
   defaultData: codeDefaultData,
   schema: codeNodeDataSchema,
-  panel: CodePanel,
   validator: validateCodeConfig as any,
   canRunSingle: true,
   extractVariables: extractCodeVariables as any,

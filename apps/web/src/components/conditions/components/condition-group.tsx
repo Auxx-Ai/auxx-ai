@@ -134,7 +134,7 @@ const ConditionGroup = ({
           <div
             className={cn(
               'absolute left-4 text-[13px] font-semibold leading-4 text-muted-foreground',
-              !showSubtext || group?.metadata?.subtext == '' ? 'top-2.5' : 'top-1'
+              !showSubtext || group?.metadata?.subtext === '' ? 'top-2.5' : 'top-1'
             )}>
             {group.metadata?.name || config.defaultGroupName || 'Group'}
             {showSubtext && group.metadata?.subtext && (

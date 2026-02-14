@@ -25,22 +25,7 @@ export function MailViewFilterBuilder() {
   // Watch the filter groups from form state
   const filterGroups = watch('filterGroups') as ConditionGroup[] | undefined
 
-  // Convert field definitions to the format expected by ConditionProvider
-  const fieldDefinitions = useMemo(
-    () =>
-      MAIL_VIEW_FIELD_DEFINITIONS.map((field) => ({
-        id: field.id,
-        label: field.label,
-        type: field.type,
-        fieldType: field.fieldType,
-        operators: field.operators,
-        options: field.options,
-        targetTable: field.targetTable,
-        placeholder: field.placeholder,
-        description: field.description,
-      })),
-    []
-  )
+  const fieldDefinitions = MAIL_VIEW_FIELD_DEFINITIONS
 
   // Condition system config for mail view filters
   const config: ConditionSystemConfig = useMemo(
@@ -64,6 +49,7 @@ export function MailViewFilterBuilder() {
       // No variable mode for mail views
       allowVarEditor: false,
       allowConstantToggle: false,
+      display: 'inline',
     }),
     [fieldDefinitions]
   )
@@ -157,8 +143,6 @@ export function MailViewFilterBuilder() {
           emptyStateText='No filters added yet. Add conditions to filter threads.'
           showAddButton
           showGrouping
-          addConditionText='Add Condition'
-          addGroupText='Add Group'
         />
       </ConditionProvider>
     </div>

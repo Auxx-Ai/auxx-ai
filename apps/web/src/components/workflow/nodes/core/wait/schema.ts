@@ -11,7 +11,6 @@ import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
 import { NodeType } from '~/components/workflow/types/node-types'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
 import { BaseType } from '../if-else'
-import { WaitNodePanel } from './panel'
 import { DurationUnit, type WaitNodeData, WaitType } from './types'
 
 /**
@@ -154,7 +153,6 @@ export const waitDefinition: NodeDefinition<WaitNodeData> = {
   color: '#3B82F6', // UTILITY category color
   defaultData: waitDefaultData,
   schema: waitNodeDataSchema,
-  panel: WaitNodePanel,
   validator: validateWaitConfig,
   canRunSingle: true,
   extractVariables: () => [], // Wait node doesn't use any variables

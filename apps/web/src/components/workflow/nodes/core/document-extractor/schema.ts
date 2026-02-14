@@ -7,7 +7,6 @@ import { NodeType } from '~/components/workflow/types/node-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { isNodeVariable, isVariableMode } from '~/components/workflow/utils/variable-utils'
 import { getDocumentExtractorOutputVariables } from './output-variables'
-import { DocumentExtractorPanel } from './panel'
 import { type DocumentExtractorNodeData, DocumentSourceType } from './types'
 
 /**
@@ -116,7 +115,6 @@ export const documentExtractorDefinition: NodeDefinition<DocumentExtractorNodeDa
   canRunSingle: true,
   defaultData: documentExtractorDefaultData,
   schema: documentExtractorNodeDataSchema,
-  panel: DocumentExtractorPanel,
   extractVariables: extractDocumentExtractorVariables,
   outputVariables: (data: DocumentExtractorNodeData, nodeId: string) =>
     getDocumentExtractorOutputVariables(data, nodeId),

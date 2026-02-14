@@ -88,6 +88,8 @@ export interface ConditionSystemConfig {
   showLogicalOperators?: boolean
   showGrouping?: boolean
   compactMode?: boolean
+  /** How to display the value input: 'inline' next to operator, 'stacked' below (default) */
+  display?: 'inline' | 'stacked'
   readOnly?: boolean
   allowGroupNaming?: boolean
   allowGroupCollapse?: boolean

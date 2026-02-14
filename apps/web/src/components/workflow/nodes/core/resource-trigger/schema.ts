@@ -3,7 +3,6 @@
 import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
 import { NodeCategory, type NodeDefinition } from '~/components/workflow/types'
 import { getResourceTriggerOutputVariables } from './output-variables'
-import { ResourceTriggerPanel } from './panel'
 import {
   type ResourceTriggerData,
   resourceTriggerNodeDataSchema,
@@ -110,7 +109,6 @@ export const resourceTriggerDefinition: NodeDefinition<ResourceTriggerData> = {
   color: '#10b981',
   defaultData: createResourceTriggerDefaultData('contact', 'created'),
   schema: resourceTriggerNodeDataSchema,
-  panel: ResourceTriggerPanel,
   validator: validateResourceTriggerConfig,
   triggerType: WorkflowTriggerType.RESOURCE_TRIGGER,
   // Pattern: Accepts resource context from var store for dynamic variable generation

@@ -11,7 +11,6 @@ import {
 } from '~/components/workflow/types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { createUnifiedOutputVariable } from '../../../utils/variable-conversion'
-import { IfElsePanel } from './panel'
 import type { IfElseNodeData } from './types'
 
 /**
@@ -208,7 +207,6 @@ export const ifElseDefinition: NodeDefinition<IfElseNodeData> = {
   color: '#f59e0b', // CONDITION category color
   defaultData: ifElseDefaultData,
   schema: ifElseNodeDataSchema,
-  panel: IfElsePanel,
   validator: validateIfElseConfig as any,
   canRunSingle: true,
   extractVariables: extractIfElseVariableIds as any,

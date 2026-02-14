@@ -12,7 +12,6 @@ import { BaseType } from '~/components/workflow/types/unified-types'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
-import { VarAssignPanel } from './panel'
 import type { VarAssignNodeData, VariableAssignment } from './types'
 
 /**
@@ -198,7 +197,6 @@ export const varAssignDefinition: NodeDefinition<VarAssignNodeData> = {
   schema: varAssignNodeDataSchema,
   defaultData: varAssignDefaultData,
   canRunSingle: true,
-  panel: VarAssignPanel,
   validator: validateVarAssign as any,
   extractVariables: extractVarAssignVariables as any,
   outputVariables: getVarAssignOutputVariables as any,

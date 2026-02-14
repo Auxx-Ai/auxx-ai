@@ -11,7 +11,6 @@ import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
 import { NodeType } from '~/components/workflow/types/node-types'
 import { BaseType, type UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
-import { ManualPanel } from './panel'
 import type { ManualNodeData } from './types'
 
 /**
@@ -112,7 +111,6 @@ export const manualDefinition: NodeDefinition<ManualNodeData> = {
   schema: manualNodeDataSchema,
   defaultData: manualDefaultData,
   canRunSingle: false, // Triggers cannot be run individually
-  panel: ManualPanel,
   triggerType: WorkflowTriggerType.MANUAL,
   validator: validateManualData,
   outputVariables: getManualOutputVariables as any,

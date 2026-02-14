@@ -11,7 +11,6 @@ import { NodeType } from '~/components/workflow/types/node-types'
 import { BaseType } from '~/components/workflow/types/variable-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
-import { AnswerPanel } from './panel'
 import type { AnswerNodeData } from './types'
 
 /**
@@ -215,7 +214,6 @@ export const answerDefinition: NodeDefinition<AnswerNodeData> = {
   color: '#10b981', // ACTION category color
   defaultData: answerDefaultData,
   schema: answerNodeDataSchema,
-  panel: AnswerPanel,
   validator: validateAnswerConfig,
   canRunSingle: true,
   extractVariables: extractAnswerVariables,

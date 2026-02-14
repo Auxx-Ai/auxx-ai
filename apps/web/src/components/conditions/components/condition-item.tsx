@@ -37,8 +37,15 @@ const ConditionItem = ({
     nodeId,
   } = useConditionContext()
 
-  console.log('ConditionItem render:', condition.fieldId)
-  const fieldDef = getFieldDefinition(condition.fieldId)
+  const display = config.display ?? 'stacked'
+  const isInline = display === 'inline'
+
+  /** Resolve fieldId to a plain string (handles branded and array formats) */
+  const resolvedFieldId = Array.isArray(condition.fieldId)
+    ? (condition.fieldId[0] ?? '')
+    : (condition.fieldId as string)
+
+  const fieldDef = getFieldDefinition(resolvedFieldId)
 
   const handleUpdate = useCallback(
     (updates: Partial<typeof condition>) => {
@@ -110,6 +117,28 @@ const ConditionItem = ({
     [handleUpdate]
   )
 
+  /** Value input block — placed inline or stacked depending on config.display */
+  const valueBlock =
+    fieldDef && operatorRequiresValue(condition.operator) ? (
+      <div
+        className={cn(
+          'px-1 py-0.5',
+          isInline ? 'border-l border-l-divider w-0 grow' : 'border-t border-t-divider',
+          isHovered && 'border-destructive/20',
+          compactMode && 'max-h-[60px] overflow-y-auto'
+        )}>
+        <ValueInput
+          condition={condition}
+          field={fieldDef}
+          value={condition.value}
+          onChange={handleValueChange}
+          disabled={readOnly}
+          nodeId={nodeId}
+          className='text-xs w-full pe-1'
+        />
+      </div>
+    ) : null
+
   return (
     <div className={cn('mb-1 flex last-of-type:mb-0', className)}>
       <div
@@ -117,11 +146,11 @@ const ConditionItem = ({
           'grow rounded-xl bg-primary-200/30 border',
           isHovered && 'bg-destructive/10 border-destructive/20'
         )}>
-        <div className='flex items-center p-1'>
+        <div className={cn('flex items-center', isInline ? 'ps-1' : 'p-1')}>
           <div className='w-0 grow'>
             {config.mode === 'variable' && nodeId ? (
               <VariableFieldSelector
-                value={condition.fieldId}
+                value={resolvedFieldId}
                 onChange={handleFieldChange}
                 disabled={readOnly}
                 placeholder='Select field'
@@ -130,7 +159,7 @@ const ConditionItem = ({
               />
             ) : (
               <ResourceFieldSelector
-                value={condition.fieldId}
+                value={resolvedFieldId}
                 onChange={handleFieldChange}
                 disabled={readOnly}
                 placeholder='Select field'
@@ -143,31 +172,16 @@ const ConditionItem = ({
           <div className='mx-1 h-3 w-[1px] bg-divider'></div>
 
           <ConditionOperator
-            fieldId={condition.fieldId}
+            fieldId={resolvedFieldId}
             value={condition.operator}
             onChange={handleOperatorChange}
-            disabled={!condition.fieldId || readOnly}
+            disabled={!resolvedFieldId || readOnly}
           />
+
+          {isInline && valueBlock}
         </div>
 
-        {fieldDef && operatorRequiresValue(condition.operator) && (
-          <div
-            className={cn(
-              'border-t border-t-divider px-1 py-0.5',
-              isHovered && 'border-destructive/20',
-              compactMode && 'max-h-[60px] overflow-y-auto'
-            )}>
-            <ValueInput
-              condition={condition}
-              field={fieldDef}
-              value={condition.value}
-              onChange={handleValueChange}
-              disabled={readOnly}
-              nodeId={nodeId}
-              className='text-xs'
-            />
-          </div>
-        )}
+        {!isInline && valueBlock}
       </div>
 
       {showRemoveButton && !readOnly && (

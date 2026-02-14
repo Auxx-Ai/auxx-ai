@@ -11,7 +11,6 @@ import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
 import { NodeType } from '~/components/workflow/types/node-types'
 import { BaseType, type UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
-import { ScheduledTriggerPanel } from './panel'
 import type { ScheduledTriggerNodeData } from './types'
 
 /**
@@ -252,7 +251,6 @@ export const scheduledTriggerDefinition: NodeDefinition<ScheduledTriggerNodeData
   schema: scheduledTriggerNodeDataSchema,
   defaultData: scheduledTriggerDefaultData,
   canRunSingle: false,
-  panel: ScheduledTriggerPanel,
   triggerType: WorkflowTriggerType.SCHEDULED,
   validator: validateScheduledTriggerData,
   extractVariables: extractScheduledTriggerVariables,

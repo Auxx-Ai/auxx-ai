@@ -10,7 +10,6 @@ import {
 } from '~/components/workflow/types'
 import { BaseType, type UnifiedVariable } from '../../../types/variable-types'
 import { createNestedVariable } from '../../../utils/variable-conversion'
-import { MessageReceivedPanel } from './panel'
 import type { MessageReceivedNodeData } from './types'
 
 /**
@@ -124,7 +123,6 @@ export const messageReceivedDefinition: NodeDefinition<MessageReceivedNodeData> 
   color: '#10b981', // TRIGGER category color
   defaultData: messageReceivedDefaultData,
   schema: messageReceivedNodeDataSchema,
-  panel: MessageReceivedPanel,
   validator: validateMessageReceivedConfig as any,
   triggerType: WorkflowTriggerType.MESSAGE_RECEIVED,
   outputVariables: getMessageReceivedOutputVariables as any,

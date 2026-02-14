@@ -11,7 +11,6 @@ import {
 import { NodeType } from '~/components/workflow/types/node-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
-import { TextClassifierPanel } from './panel'
 import { AiModelMode, type TextClassifierNodeData } from './types'
 
 /**
@@ -283,7 +282,6 @@ export const textClassifierDefinition: NodeDefinition<TextClassifierNodeData> = 
   color: '#f59e0b', // CONDITION category color
   defaultData: createTextClassifierDefaultData(),
   schema: textClassifierSchema,
-  panel: TextClassifierPanel,
   validator: validateTextClassifierData,
   canRunSingle: true,
   extractVariables: extractTextClassifierVariables,
