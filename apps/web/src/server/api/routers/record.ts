@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
-import { UnifiedCrudHandler, RESOURCE_TABLE_REGISTRY } from '@auxx/lib/resources'
+import { UnifiedCrudHandler, RESOURCE_TABLE_REGISTRY, NEW_SYSTEM_ENTITY_TYPES } from '@auxx/lib/resources'
 import { conditionGroupSchema } from '@auxx/lib/conditions'
 import { recordIdSchema, type RecordId, parseRecordId, toRecordId } from '@auxx/types/resource'
 import { resourceFieldIdSchema, parseResourceFieldId, type FieldId } from '@auxx/types/field'
@@ -12,17 +12,19 @@ import { schema } from '@auxx/database'
 import { eq, and } from 'drizzle-orm'
 
 /**
- * Validate entity definition ID - accepts system TableId or custom entity UUID
+ * Validate entity definition ID - accepts system TableId, new system entity type, or custom entity UUID
  */
 const entityDefinitionIdSchema = z.string().refine(
   (val: string) => {
-    // System table IDs
+    // System table IDs (thread, user, inbox, etc.)
     if (RESOURCE_TABLE_REGISTRY.some((r: { id: string }) => r.id === val)) return true
+    // New system entity types (tag, contact, ticket, etc.) - resolved to UUIDs downstream
+    if (NEW_SYSTEM_ENTITY_TYPES.includes(val as any)) return true
     // Custom entity IDs - UUID format (cuid2 minimum length)
     if (val.length >= 20) return true
     return false
   },
-  { message: 'Invalid resource ID. Must be system TableId or EntityDefinitionId (UUID).' }
+  { message: 'Invalid resource ID. Must be system TableId, system entity type, or EntityDefinitionId (UUID).' }
 )
 
 /**

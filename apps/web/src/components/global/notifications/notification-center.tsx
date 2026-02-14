@@ -164,6 +164,7 @@ export const NotificationCenter = () => {
       refetchOnWindowFocus: false,
     }
   )
+
   // Get unread count
   const { data: unreadData, refetch: refreshUnreadCount } =
     api.notification.getUnreadCount.useQuery(undefined, {
