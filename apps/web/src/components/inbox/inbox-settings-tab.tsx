@@ -19,7 +19,7 @@ import { AlertTriangle, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { FormColorTagPicker } from '~/components/pickers/color-tag-picker'
+import { FormColorTagPicker } from '~/components/tags/ui/color-tag-picker'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 
@@ -49,7 +49,7 @@ export function InboxSettingsTab({ inbox }: { inbox: Inbox }) {
     defaultValues: {
       name: inbox.name,
       description: inbox.description || '',
-      color: inbox.color || '#4F46E5',
+      color: inbox.color || 'indigo',
       status: inbox.status,
     },
   })

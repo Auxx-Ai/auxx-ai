@@ -184,20 +184,20 @@ export class OrganizationSeeder {
       title: 'Topic Categorization',
       tag_description: 'Top-level categorization for support tickets',
       tag_emoji: '🏷️',
-      tag_color: '#A7C1F2',
+      tag_color: 'blue',
     })
 
     // Create child tags under Topic Categorization using parent relationship
     // Must be sequential to avoid inverse relationship sync conflicts (sortKey collisions)
     const topicSubTags = [
-      { title: 'Account Management', tag_emoji: '👤', tag_color: '#F2A99B' },
-      { title: 'Billing', tag_emoji: '💳', tag_color: '#B9E3B9' },
-      { title: 'Customer Feedback', tag_emoji: '💬', tag_color: '#F5C8A3' },
-      { title: 'Legal', tag_emoji: '⚖️', tag_color: '#8D8D8D' },
-      { title: 'Sales', tag_emoji: '💼', tag_color: '#D7A4D3' },
-      { title: 'Security', tag_emoji: '🔒', tag_color: '#C9B6F2' },
-      { title: 'Shipping', tag_emoji: '🚚', tag_color: '#F5E7A3' },
-      { title: 'Troubleshooting', tag_emoji: '🛠️', tag_color: '#A7D8E2' },
+      { title: 'Account Management', tag_emoji: '👤', tag_color: 'red' },
+      { title: 'Billing', tag_emoji: '💳', tag_color: 'green' },
+      { title: 'Customer Feedback', tag_emoji: '💬', tag_color: 'orange' },
+      { title: 'Legal', tag_emoji: '⚖️', tag_color: 'gray' },
+      { title: 'Sales', tag_emoji: '💼', tag_color: 'pink' },
+      { title: 'Security', tag_emoji: '🔒', tag_color: 'purple' },
+      { title: 'Shipping', tag_emoji: '🚚', tag_color: 'amber' },
+      { title: 'Troubleshooting', tag_emoji: '🛠️', tag_color: 'teal' },
     ]
 
     for (const tag of topicSubTags) {
@@ -209,10 +209,10 @@ export class OrganizationSeeder {
 
     // Create independent tags (no parent) - can be parallel since no inverse sync needed
     const independentTags = [
-      { title: 'Support', tag_emoji: '🆘', tag_color: '#F2A99B' },
-      { title: 'Urgent', tag_emoji: '🚨', tag_color: '#C9B6F2' },
-      { title: 'Orders', tag_emoji: '📦', tag_color: '#F5E7A3' },
-      { title: 'VIP', tag_emoji: '⭐', tag_color: '#F5C8A3' },
+      { title: 'Support', tag_emoji: '🆘', tag_color: 'red' },
+      { title: 'Urgent', tag_emoji: '🚨', tag_color: 'purple' },
+      { title: 'Orders', tag_emoji: '📦', tag_color: 'amber' },
+      { title: 'VIP', tag_emoji: '⭐', tag_color: 'orange' },
     ]
 
     await Promise.all(independentTags.map((tag) => handler.create('tag', tag)))
@@ -250,7 +250,7 @@ export class OrganizationSeeder {
     const defaultInbox = await inboxService.createInbox({
       name: 'Shared Inbox',
       description: 'Default shared inbox for all team members',
-      color: '#A7C1F2', // Light Blue
+      color: 'blue',
       status: 'ACTIVE',
       visibility: 'org_members', // All members have access by default
     })
@@ -350,7 +350,7 @@ export class OrganizationSeeder {
       await inboxService.createInbox({
         name: 'Shared Inbox',
         description: 'Default shared inbox for all team members',
-        color: '#A7C1F2', // Light Blue
+        color: 'blue',
         status: 'ACTIVE',
         visibility: 'org_members',
       })

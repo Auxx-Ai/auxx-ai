@@ -1,6 +1,7 @@
 // apps/web/src/components/tags/ui/tags-list.tsx
 'use client'
 
+import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
@@ -168,8 +169,10 @@ export function TagTreeView() {
             className='ml-1 flex flex-1 cursor-pointer items-center'
             onClick={() => hasChildren && toggleExpanded(tag.id)}>
             <div
-              className='size-7 mr-2 flex items-center justify-center rounded-full shrink-0'
-              style={{ backgroundColor: tag.tag_color || '#94a3b8' }}>
+              className={cn(
+                'size-7 mr-2 flex items-center justify-center rounded-full shrink-0',
+                getOptionColor((tag.tag_color || 'gray') as SelectOptionColor).swatch
+              )}>
               {tag.tag_emoji && <span className='shrink-0'>{tag.tag_emoji}</span>}
             </div>
 

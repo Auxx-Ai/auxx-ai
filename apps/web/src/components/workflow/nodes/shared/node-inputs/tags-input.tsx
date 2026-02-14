@@ -2,8 +2,10 @@
 
 'use client'
 
+import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Popover, PopoverTrigger } from '@auxx/ui/components/popover'
+import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, X } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTagHierarchy } from '~/components/tags/hooks/use-tag-hierarchy'
@@ -90,8 +92,10 @@ export const TagsInput = createNodeInput<TagsInputProps>(
                         <span>{tag.tag_emoji}</span>
                       ) : (
                         <div
-                          className='size-2 rounded-full'
-                          style={{ backgroundColor: tag.tag_color || '#94a3b8' }}
+                          className={cn(
+                            'size-2 rounded-full',
+                            getOptionColor((tag.tag_color || 'gray') as SelectOptionColor).swatch
+                          )}
                         />
                       )}
                       <span>{tag.title}</span>

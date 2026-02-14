@@ -47,7 +47,7 @@ export function useTagHierarchy(): UseTagHierarchyResult {
         title: record.fieldValues.title ?? record.displayName ?? 'Untitled',
         tag_description: record.fieldValues.tag_description ?? null,
         tag_emoji: record.fieldValues.tag_emoji ?? null,
-        tag_color: record.fieldValues.tag_color ?? '#94a3b8',
+        tag_color: record.fieldValues.tag_color ?? 'gray',
         parentId,
         isSystemTag: record.fieldValues.is_system_tag ?? false,
         children: [],

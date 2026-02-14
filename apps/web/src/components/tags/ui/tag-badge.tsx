@@ -1,6 +1,7 @@
 // apps/web/src/components/tags/ui/tag-badge.tsx
 'use client'
 
+import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
@@ -34,12 +35,15 @@ export function TagBadge({ recordId, size = 'md', onRemove, className, ...props 
 
   const color = values.tag_color as string | undefined
   const emoji = values.tag_emoji as string | undefined
-
+  console.log('color', color, 'emoji', emoji)
   // Show loading when recordId is undefined or when fetching data
   const isLoading = !recordId || recordLoading || valuesLoading
 
   const displayName = record?.displayName ?? 'Unknown'
   const sizeClasses = size === 'sm' ? 'text-xs px-1.5 py-0.5 h-5' : 'text-sm px-2 py-1 h-6'
+
+  // Get Tailwind badge classes from named color
+  const colorData = getOptionColor((color || 'gray') as SelectOptionColor)
 
   if (isLoading) {
     return <Skeleton className={cn('h-5 w-16 rounded-[5px]', className)} />
@@ -50,17 +54,12 @@ export function TagBadge({ recordId, size = 'md', onRemove, className, ...props 
       className={cn(
         'inline-flex items-center gap-1 rounded-[5px] border shrink-0',
         sizeClasses,
+        colorData.badgeClasses,
         className
       )}
-      style={{
-        backgroundColor: color ? `${color}20` : undefined,
-        borderColor: color ? `${color}40` : undefined,
-      }}
       {...props}>
       {emoji && <span>{emoji}</span>}
-      {color && !emoji && (
-        <span className='size-2 rounded-full shrink-0' style={{ backgroundColor: color }} />
-      )}
+      {color && !emoji && <span className={cn('size-2 rounded-full shrink-0', colorData.swatch)} />}
       <span data-slot='text' className='font-medium shrink-0'>
         {displayName}
       </span>

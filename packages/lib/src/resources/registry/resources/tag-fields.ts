@@ -111,7 +111,7 @@ export const TAG_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 'a4',
     dbColumn: 'color',
     nullable: true,
-    defaultValue: '#94a3b8',
+    defaultValue: 'gray',
     capabilities: {
       filterable: false,
       sortable: false,

@@ -11,7 +11,6 @@ import {
 import { toastError } from '@auxx/ui/components/toast'
 import { Pencil, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { useTagHierarchy } from '~/components/tags/hooks/use-tag-hierarchy'
 import { TagBadge } from '~/components/tags/ui/tag-badge'
 import { TagDialog } from '~/components/tags/ui/tag-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -34,11 +33,9 @@ export function ThreadTag({ tagId, threadId, onRemove }: ThreadTagProps) {
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
 
-  const { refresh } = useTagHierarchy()
-
   const deleteRecord = api.record.delete.useMutation({
     onSuccess: () => {
-      refresh()
+      utils.record.listAll.invalidate({ entityDefinitionId: 'tag' })
     },
     onError: (error) => {
       toastError({
@@ -55,7 +52,7 @@ export function ThreadTag({ tagId, threadId, onRemove }: ThreadTagProps) {
 
   /** Called when tag edit is successful */
   function handleEditSuccess() {
-    refresh()
+    utils.record.listAll.invalidate({ entityDefinitionId: 'tag' })
   }
 
   /** Handles deleting the tag entirely (from all threads) */
@@ -109,12 +106,14 @@ export function ThreadTag({ tagId, threadId, onRemove }: ThreadTagProps) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <TagDialog
-        open={isEditDialogOpen}
-        onOpenChange={setIsEditDialogOpen}
-        recordId={tagId}
-        onSaved={handleEditSuccess}
-      />
+      {isEditDialogOpen && (
+        <TagDialog
+          open={isEditDialogOpen}
+          onOpenChange={setIsEditDialogOpen}
+          recordId={tagId}
+          onSaved={handleEditSuccess}
+        />
+      )}
 
       <ConfirmDialog />
     </>
