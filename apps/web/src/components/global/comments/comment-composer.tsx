@@ -254,6 +254,7 @@ const CommentComposer = ({
   const initializedRef = useRef(false)
 
   // Populate fileSelect with initial attachments when editing
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fileSelect.addItems is stable
   useEffect(() => {
     if (initialAttachments.length > 0 && commentId && !initializedRef.current) {
       // Only for edit mode and only once
@@ -264,6 +265,7 @@ const CommentComposer = ({
   }, [initialAttachments, commentId]) // Removed fileSelect from dependencies
 
   // Reset the initialized ref when commentId changes (switching between different edits)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fileSelect.clearItems is stable
   useEffect(() => {
     initializedRef.current = false
     // Clear existing items when switching to a different comment or starting fresh
@@ -402,6 +404,7 @@ const CommentComposer = ({
       handleCreateReply,
       handleCreateComment,
       onSubmitted,
+      initialExpanded,
     ]
   )
 

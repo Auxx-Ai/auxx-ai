@@ -96,7 +96,7 @@ export function FeatureFlagProvider({ children }: { children: React.ReactNode })
 
   const value = useMemo(
     () => ({ features, isLoading, error, hasAccess, getLimit }),
-    [features, isLoading, error, hasAccess, getLimit]
+    [features, hasAccess, getLimit]
   )
 
   return <FeatureFlagContext.Provider value={value}>{children}</FeatureFlagContext.Provider>

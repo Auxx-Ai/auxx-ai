@@ -95,6 +95,7 @@ const ArticleSidebarItem = ({ article, isOpen = false, onToggleOpen }: ArticleSi
   const isParentTarget = isBeingDraggedOver && isCategory
 
   // Generate the URL for the article
+  // biome-ignore lint/correctness/useExhaustiveDependencies: getFullSlugPath is stable from context
   const itemHref = useMemo(() => getFullSlugPath(article), [article]) //`${basePath}/editor/~/${fullSlugPath}?tab=articles`
 
   // Determine the icon based on article type and open state

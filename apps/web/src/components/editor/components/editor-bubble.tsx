@@ -23,6 +23,7 @@ export const EditorBubble: React.FC<EditorBubbleProps> = ({ children, tippyOptio
     instanceRef.current.popperInstance?.update()
   }, [tippyOptions?.placement])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: currentEditor is stable from useCurrentEditor hook, rest is intentionally used as dependency
   const bubbleMenuProps: Omit<BubbleMenuProps, 'children'> = useMemo(() => {
     const shouldShow: BubbleMenuProps['shouldShow'] = ({ editor, state }) => {
       const { selection } = state
@@ -59,6 +60,7 @@ export const EditorBubble: React.FC<EditorBubbleProps> = ({ children, tippyOptio
       editor: currentEditor,
       ...rest,
     }
+    // biome-ignore lint/correctness/useExhaustiveDependencies: rest is spread props intentionally used as dependency
   }, [rest, tippyOptions])
 
   if (!currentEditor) return null

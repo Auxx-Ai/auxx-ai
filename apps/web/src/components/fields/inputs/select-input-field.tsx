@@ -299,6 +299,7 @@ export function SelectFieldInput({
   /**
    * Handle single-select completion (close popover)
    */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setOpen is a stable useState setter
   const handleSelectSingle = useCallback(
     (_value: string) => {
       if (config.closeOnSelect) {

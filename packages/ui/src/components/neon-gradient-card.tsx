@@ -96,6 +96,7 @@ export const NeonGradientCard: React.FC<NeonGradientCardProps> = ({
     }
   }, [])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: children is used as a trigger to re-measure dimensions when content changes
   useEffect(() => {
     if (containerRef.current) {
       const { offsetWidth, offsetHeight } = containerRef.current

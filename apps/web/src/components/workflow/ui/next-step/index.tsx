@@ -48,7 +48,7 @@ const NextStep = ({ data, nodeId }: NextStepProps) => {
     }
 
     return items
-  }, [branches, connectedEdges, outgoers, nodes, edges])
+  }, [branches, connectedEdges, outgoers])
 
   return (
     <div className='flex py-1'>

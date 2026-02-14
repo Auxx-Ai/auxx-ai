@@ -62,11 +62,12 @@ export const ConditionBadge = ({
 
   // Auto-open value picker when condition is created with undefined value
   // Only auto-open if the operator requires a value input and no section is focused
+  // biome-ignore lint/correctness/useExhaustiveDependencies: condition.value and focusedSection are intentionally excluded to only trigger on condition creation
   useEffect(() => {
     if (condition.value === undefined && focusedSection === null && hasInput) {
       setFocusedSection('value')
     }
-  }, [condition.id, hasInput])
+  }, [hasInput])
 
   const handleUpdate = useCallback(
     (updates: Partial<typeof condition>) => {

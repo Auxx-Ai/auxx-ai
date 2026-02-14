@@ -79,7 +79,7 @@ const VariableInput = React.memo<VariableInputProps>(
           onVariableSelect(variable)
         }
       },
-      [variableId, onVariableSelect]
+      [onVariableSelect]
     )
 
     // Memoize the trigger className to avoid recalculation

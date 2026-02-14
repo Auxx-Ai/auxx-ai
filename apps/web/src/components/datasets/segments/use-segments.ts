@@ -277,7 +277,8 @@ export function useSegments(
         })
       }
     },
-    [selectedSegments, batchDeleteMutation]
+    // biome-ignore lint/correctness/useExhaustiveDependencies: chunkArray is a stable utility function
+    [selectedSegments, batchDeleteMutation, chunkArray]
   )
   const handleBatchToggleEnabled = useCallback(
     async (enabled: boolean, segmentIds?: string[]) => {
@@ -292,7 +293,8 @@ export function useSegments(
         })
       }
     },
-    [selectedSegments, batchToggleEnabledMutation]
+    // biome-ignore lint/correctness/useExhaustiveDependencies: chunkArray is a stable utility function
+    [selectedSegments, batchToggleEnabledMutation, chunkArray]
   )
   const handleBatchReindex = useCallback(
     async (segmentIds?: string[]) => {
@@ -307,7 +309,8 @@ export function useSegments(
         })
       }
     },
-    [selectedSegments, batchReindexMutation]
+    // biome-ignore lint/correctness/useExhaustiveDependencies: chunkArray is a stable utility function
+    [selectedSegments, batchReindexMutation, chunkArray]
   )
   return {
     // Data

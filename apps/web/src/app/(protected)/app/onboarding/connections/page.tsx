@@ -71,6 +71,7 @@ export default function ConnectionsOnboardingPage() {
 
   // Sync local state with actual integrations from database
   // This ensures state reflects reality after OAuth completion or browser back
+  // biome-ignore lint/correctness/useExhaustiveDependencies: state.connections and updateConnections are intentionally excluded to avoid loops
   useEffect(() => {
     if (integrations) {
       const actualGoogleStatus = integrations.some((i) => i.provider === 'google' && i.enabled)

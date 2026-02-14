@@ -82,6 +82,7 @@ export const WorkflowOperators = memo(function WorkflowOperators({
   const canRunWorkflow = false
 
   // Debounced handlers to prevent duplicate requests
+  // biome-ignore lint/correctness/useExhaustiveDependencies: workflowAppId and startRun are captured inside debounce wrapper
   const handleRunWorkflow = useCallback(
     debounce(() => {
       if (!workflowAppId) return

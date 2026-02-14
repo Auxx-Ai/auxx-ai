@@ -123,6 +123,7 @@ export const TextClassifierProvider: React.FC<TextClassifierProviderProps> = ({
   )
 
   // Add new category
+  // biome-ignore lint/correctness/useExhaustiveDependencies: updateTargetBranches is a local helper, not a reactive dependency
   const addCategory = useCallback(() => {
     updateConfig((draft) => {
       draft.categories.push({
@@ -138,6 +139,7 @@ export const TextClassifierProvider: React.FC<TextClassifierProviderProps> = ({
   }, [updateConfig, nodeId, updateNodeInternals])
 
   // Update existing category
+  // biome-ignore lint/correctness/useExhaustiveDependencies: updateTargetBranches is a local helper, not a reactive dependency
   const updateCategory = useCallback(
     (id: string, updates: Partial<Category>) => {
       updateConfig((draft) => {
@@ -155,6 +157,7 @@ export const TextClassifierProvider: React.FC<TextClassifierProviderProps> = ({
   )
 
   // Delete category
+  // biome-ignore lint/correctness/useExhaustiveDependencies: updateTargetBranches is a local helper, not a reactive dependency
   const deleteCategory = useCallback(
     (id: string) => {
       updateConfig((draft) => {

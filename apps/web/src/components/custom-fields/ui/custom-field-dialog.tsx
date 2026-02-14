@@ -289,6 +289,7 @@ export function CustomFieldDialog({
   })
 
   // Reset form when dialog opens or editing field changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resourceFieldId is stable when dialog opens
   useEffect(() => {
     if (open) {
       // Use parse helpers for defaults
@@ -426,6 +427,7 @@ export function CustomFieldDialog({
   }, [selectedType, selectedTypeOption])
 
   // Clear default value, reset isUnique, and reset displayOptions when type changes (in create mode only)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: form.setValue and relationshipOptions.relationshipType are stable / intentionally excluded
   useEffect(() => {
     if (!isEditing) {
       form.setValue('defaultValue', '')

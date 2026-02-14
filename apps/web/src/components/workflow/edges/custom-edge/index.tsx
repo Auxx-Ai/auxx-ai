@@ -119,7 +119,7 @@ const CustomEdge = memo<EdgeProps>(
           deleteButtonY: labelY + (buttonSpacing / 2) * Math.sin(edgeAngle),
         }
       }
-    }, [isBackwardEdge, labelX, labelY, sourceX, sourceY, targetX, targetY, buttonSpacing])
+    }, [isBackwardEdge, labelX, labelY, sourceX, sourceY, targetX, targetY])
 
     const { _sourceRunningStatus, _targetRunningStatus, _hovering } = edgeData
 

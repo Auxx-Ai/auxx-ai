@@ -87,6 +87,7 @@ export function DataTable<TData, TValue>({
 
   const rerender = useReducer(() => ({}), {})[1]
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount
   useEffect(() => {
     // Check if window is defined (i.e., code is running in the browser)
     if (typeof window !== 'undefined') {
@@ -97,6 +98,7 @@ export function DataTable<TData, TValue>({
     }
   }, [])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: id is stable
   useEffect(() => {
     localStorage.setItem(`table-visibility-${id}`, JSON.stringify(columnVisibility))
   }, [columnVisibility])
@@ -115,6 +117,7 @@ export function DataTable<TData, TValue>({
 
   // const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount
   useEffect(() => {
     // Check if window is defined (i.e., code is running in the browser)
     if (typeof window !== 'undefined') {
@@ -125,6 +128,7 @@ export function DataTable<TData, TValue>({
     }
   }, [])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: id is stable
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem(`table-filters-${id}`, JSON.stringify(columnFilters))
@@ -216,6 +220,7 @@ export function DataTable<TData, TValue>({
   }, [])
 
   // Calculate and adjust column widths to fill container
+  // biome-ignore lint/correctness/useExhaustiveDependencies: columnSizingInfo is intentionally read inside effect
   useEffect(() => {
     if (containerWidth > 0 && !columnResizing) {
       const totalColumnWidth = table.getTotalSize()

@@ -60,6 +60,7 @@ export function FileSelect({
   })
 
   // Handle controlled component behavior
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fileSelect methods are stable, only re-sync when value changes
   useEffect(() => {
     if (value !== undefined) {
       // Compare items by their IDs to avoid reference comparison issues
@@ -81,6 +82,7 @@ export function FileSelect({
   }, [value])
 
   // Handle default value
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fileSelect methods are stable, only re-sync when defaultValue changes
   useEffect(() => {
     if (defaultValue && fileSelect.selectedItems.length === 0) {
       fileSelect.addItems(defaultValue)

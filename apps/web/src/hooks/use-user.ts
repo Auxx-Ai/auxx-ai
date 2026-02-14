@@ -91,6 +91,7 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
   const switchOrganizationMutation = api.organization.setDefault.useMutation()
 
   // Effect to set the current organization ID based on user data
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setOrganizationId is stable from context
   useEffect(() => {
     if (dehydratedUser && !organizationId) {
       // If user has a default organization, use that
@@ -107,7 +108,6 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
         setOrganizationId(dehydratedUser.memberships[0].organizationId)
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dehydratedUser, organizationId])
 
   // Get organization details from dehydrated state

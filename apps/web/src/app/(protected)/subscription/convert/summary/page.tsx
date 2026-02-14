@@ -104,6 +104,7 @@ function SummaryContent() {
   // Calculate preview whenever plan, cycle, or seats change
   const calculatePreview = api.billing.calculateSubscriptionPreview.useMutation()
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: calculatePreview.mutate is stable
   useEffect(() => {
     if (state.selectedPlan) {
       calculatePreview.mutate({

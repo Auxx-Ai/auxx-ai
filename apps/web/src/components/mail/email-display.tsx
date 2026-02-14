@@ -122,6 +122,7 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
     }
   }, [message, retrySendMessage])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: message triggers DOM manipulation when email content changes
   useEffect(() => {
     if (letterRef.current) {
       const gmailQuote = letterRef.current.querySelector('div[class*="_gmail_quote"]')

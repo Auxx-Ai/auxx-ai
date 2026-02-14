@@ -29,6 +29,7 @@ function ColorTagPicker({ onChange, value }: ColorPickerProps) {
   const [selectedColor, setSelectedColor] = useState(value || colors[0])
 
   // Sync internal state when value prop changes (for controlled usage)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedColor is intentionally excluded to avoid infinite loop
   useEffect(() => {
     if (value && value !== selectedColor) {
       setSelectedColor(value)

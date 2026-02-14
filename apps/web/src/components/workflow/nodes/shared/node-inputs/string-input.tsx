@@ -60,7 +60,7 @@ export const StringInput = createNodeInput<StringInputProps>(
     // Sync local state when parent value changes externally
     useEffect(() => {
       setLocalValue(inputs[name] ?? '')
-    }, [inputs[name]])
+    }, [inputs[name], name])
 
     // Debounced validation and parent update (300ms)
     const debouncedUpdate = useDebouncedCallback((newValue: string) => {

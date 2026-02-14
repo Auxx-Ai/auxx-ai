@@ -258,6 +258,7 @@ function TagPickerContent({
   }, [search, flatTags, current, tagHierarchy, findChildren])
 
   // Reset selected index when tags change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tagsToDisplay triggers index reset when tag list changes
   useEffect(() => {
     setSelectedIndex(-1)
   }, [tagsToDisplay])

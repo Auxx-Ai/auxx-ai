@@ -174,6 +174,7 @@ export function AvatarUpload({
   }, [])
 
   // Handle avatar removal
+  // biome-ignore lint/correctness/useExhaustiveDependencies: removeAvatar.mutateAsync is stable from useMutation
   const handleRemove = useCallback(async () => {
     if (!currentAvatarUrl && !previewUrl) return
 

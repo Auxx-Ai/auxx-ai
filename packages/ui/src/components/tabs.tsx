@@ -221,6 +221,7 @@ function OverflowTabsList({
   }, [tabs, visibleTabs])
 
   // Setup IntersectionObserver to detect visible tabs
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tabs, moreClassName, overflowTriggerVariant are used as triggers to re-create observer when tab layout changes
   React.useEffect(() => {
     if (!containerRef.current) return
 

@@ -61,6 +61,7 @@ export function TagTreeView() {
   const filteredTags = searchQuery ? filterTags(tagHierarchy || [], searchQuery) : tagHierarchy
 
   // Auto-expand parent tags when search is active
+  // biome-ignore lint/correctness/useExhaustiveDependencies: expandedTags is intentionally excluded to avoid infinite loop
   useEffect(() => {
     if (searchQuery && tagHierarchy) {
       const collectMatchingParentIds = (tags: TagNode[]): string[] => {

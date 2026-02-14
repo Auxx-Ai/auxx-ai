@@ -182,7 +182,7 @@ export const SingleRunInputTab = memo(function SingleRunInputTab({
         })
       }
     },
-    [requiredVariables, workflow?.id, setTestInput, nodeId]
+    [requiredVariables, workflow?.id, setTestInput]
   )
 
   return (

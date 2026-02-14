@@ -603,7 +603,6 @@ export function useArticleMove({
       performArticleMovement,
       optimisticArticles,
       router,
-      articleOpenStates,
       setArticleOpenStates,
     ]
   )

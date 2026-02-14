@@ -68,6 +68,7 @@ export function useActor({ actorId, enabled = true }: UseActorOptions): UseActor
   }, [enabled, actorId, actor, requestActor])
 
   // Clear on actorId change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: actorId triggers clearing the requested set
   useEffect(() => {
     requestedRef.current.clear()
   }, [actorId])

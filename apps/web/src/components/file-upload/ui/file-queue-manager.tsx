@@ -164,6 +164,7 @@ export function FileQueueManager({
   })
 
   // Start fresh whenever the dialog opens; fully clean on close/unmount
+  // biome-ignore lint/correctness/useExhaustiveDependencies: upload methods are stable
   React.useEffect(() => {
     if (open) {
       upload.reset()
@@ -180,6 +181,7 @@ export function FileQueueManager({
   }, [open])
 
   // Ensure cleanup on unmount regardless of other effects
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount for cleanup
   React.useEffect(() => {
     return () => {
       upload.cancelUpload()
@@ -188,6 +190,7 @@ export function FileQueueManager({
   }, [])
 
   // Clear completed files and errors when entityType or entityId changes to prevent repeated toast notifications
+  // biome-ignore lint/correctness/useExhaustiveDependencies: upload state is read inside but only entityType/entityId should trigger this
   React.useEffect(() => {
     // Clear any completed files and errors from previous contexts to prevent stale toast notifications
     const hasCompletedFiles = upload.files.some(

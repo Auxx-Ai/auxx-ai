@@ -36,6 +36,7 @@ export function useEdgeStatusUpdater() {
     Map<string, { source?: NodeRunningStatus; target?: NodeRunningStatus }>
   >(new Map())
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: updateEdgeStatuses uses getEdges/setEdges internally; getEdges and setEdges are stable ReactFlow refs
   useEffect(() => {
     // Initial update
     const nodeExecutions = useRunStore.getState().nodeExecutions
@@ -73,7 +74,7 @@ export function useEdgeStatusUpdater() {
       unsubscribeRun()
       unsubscribeSingle()
     }
-  }, [getEdges, setEdges])
+  }, [])
 
   function updateEdgeStatuses(data: any, source: 'workflow' | 'single') {
     const edges = getEdges()

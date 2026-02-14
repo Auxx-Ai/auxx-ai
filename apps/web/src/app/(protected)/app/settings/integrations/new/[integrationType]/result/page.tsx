@@ -32,6 +32,7 @@ export default function NewIntegrationSuccess() {
   const error = searchParams.get('error')
   const errorDescription = searchParams.get('error_description')
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: utils.user.me.invalidate is stable
   useEffect(() => {
     // Show appropriate toast based on success/error status
     if (success) {

@@ -89,6 +89,7 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
   }
 
   // Auto-generate handle when name changes (only if not manually edited)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: generateHandle is a stable local function
   useEffect(() => {
     if (watchName && !handleManuallyEdited) {
       form.setValue('handle', generateHandle(watchName), { shouldValidate: true })

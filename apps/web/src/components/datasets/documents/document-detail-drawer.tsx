@@ -103,7 +103,7 @@ export function DocumentDetailDrawer({
   useEffect(() => {
     setEditingTitle(displayDocument.title || displayDocument.filename || '')
     setOriginalTitle(displayDocument.title || displayDocument.filename || '')
-  }, [document.id, displayDocument.title, displayDocument.filename])
+  }, [displayDocument.title, displayDocument.filename])
   // Update mutation (for renaming)
   const updateDocumentMutation = api.document.update.useMutation({
     onSuccess: () => {

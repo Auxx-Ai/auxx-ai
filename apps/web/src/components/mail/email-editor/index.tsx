@@ -177,6 +177,7 @@ function ReplyComposeEditorComponent({
   })
 
   // Handle preset attachments on initial mount (when no draft exists)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount
   useEffect(() => {
     if (!initialDraft && presetValues?.attachments && presetValues.attachments.length > 0) {
       setAttachments(presetValues.attachments)
@@ -384,6 +385,7 @@ function ReplyComposeEditorComponent({
     [upsertRecipient]
   )
   // Calculate if editor has content
+  // biome-ignore lint/correctness/useExhaustiveDependencies: content triggers recalculation when editor content changes
   const hasContent = useMemo(() => {
     if (!editor) return false
     return !isContentEmpty(editor)

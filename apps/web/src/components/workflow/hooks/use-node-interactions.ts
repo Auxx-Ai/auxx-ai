@@ -450,6 +450,7 @@ export const useNodesInteractions = () => {
     [getNodesReadOnly, store, debouncedSave, saveStateToHistory, closePanel]
   )
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reactFlow is stable from useReactFlow hook
   const handleCenterOnNode = useCallback(
     (
       nodeId: string,
@@ -466,7 +467,7 @@ export const useNodesInteractions = () => {
         )
       }
     },
-    [store]
+    []
   )
 
   /**
@@ -762,7 +763,7 @@ export const useNodesInteractions = () => {
       dragNodeStartPosition.current = null
       dragStartPositions.current.clear()
     },
-    [getNodesReadOnly, debouncedSave]
+    [getNodesReadOnly, debouncedSave, handleClearHelpline]
   )
 
   const handleNodeSelect = useCallback(
@@ -1119,7 +1120,7 @@ export const useNodesInteractions = () => {
       // setNodes(newNodes)
       // debouncedSave()
     },
-    [store, getNodesReadOnly, debouncedSave]
+    [getNodesReadOnly]
   )
 
   /**

@@ -65,6 +65,7 @@ function PaymentMethodForm({ onSuccess }: { onSuccess: () => void }) {
   })
 
   /** Create setup intent when form loads */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount; createSetupIntent.mutate is stable
   useEffect(() => {
     createSetupIntent.mutate()
   }, [])

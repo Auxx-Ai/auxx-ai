@@ -105,7 +105,7 @@ const VariableTag = ({
     }
 
     return 'Invalid variable reference'
-  }, [variable, isValid, isNodeVar, nodeId, variableNodeId])
+  }, [variable, isNodeVar, nodeId, variableNodeId])
 
   const renderContent = useCallback(
     (withMaxWidth: boolean = true) => (

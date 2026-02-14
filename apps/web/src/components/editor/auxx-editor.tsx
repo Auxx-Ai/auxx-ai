@@ -164,18 +164,15 @@ const AuxxEditor = ({
   }, [editorInstance])
 
   // Handle click on the editor container
-  const handleContainerClick = useCallback(
-    (e: React.MouseEvent) => {
-      // Only handle clicks directly on the container (not on toolbar buttons, etc.)
-      if (
-        e.target === e.currentTarget ||
-        (e.currentTarget as HTMLDivElement).contains(e.target as Node)
-      ) {
-        // focusEditor()
-      }
-    },
-    [focusEditor]
-  )
+  const handleContainerClick = useCallback((e: React.MouseEvent) => {
+    // Only handle clicks directly on the container (not on toolbar buttons, etc.)
+    if (
+      e.target === e.currentTarget ||
+      (e.currentTarget as HTMLDivElement).contains(e.target as Node)
+    ) {
+      // focusEditor()
+    }
+  }, [])
 
   if (!initialContent) return null
 

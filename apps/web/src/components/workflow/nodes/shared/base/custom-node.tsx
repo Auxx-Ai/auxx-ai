@@ -26,7 +26,7 @@ const StandardNode = (props: NodeProps) => {
     }
 
     return component
-  }, [nodeType, registryVersion])
+  }, [nodeType])
 
   if (!NodeComponent) {
     return (

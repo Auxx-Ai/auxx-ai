@@ -39,9 +39,12 @@ const NodeResizer = memo(
     const { handleNodeResize } = useNodesInteractions()
 
     // Let React Flow handle resize internally - no store update needed here
-    const handleResize = useCallback<OnResize>((_, params) => {
-      handleNodeResize(nodeId, params)
-    }, [])
+    const handleResize = useCallback<OnResize>(
+      (_, params) => {
+        handleNodeResize(nodeId, params)
+      },
+      [handleNodeResize, nodeId]
+    )
 
     return (
       <div className={cn('group-hover:block !block')}>

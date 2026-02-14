@@ -142,6 +142,7 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
   // Subscribe to ONLY the field values we need (prevents re-renders from unrelated changes)
   const relevantFieldValues = useFieldValueStore(
     useShallow(
+      // biome-ignore lint/correctness/useExhaustiveDependencies: fieldValueKeys is derived from keysKey, using keysKey as stable string dependency
       useCallback(
         (state: CustomFieldValueState): Record<FieldValueKey, StoredFieldValue | undefined> => {
           const result: Record<FieldValueKey, StoredFieldValue | undefined> = {}
@@ -215,7 +216,7 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
         fieldValues: composedFieldValues,
       }
     })
-  }, [data?.items, resolvedEntityDefId, relevantFieldValues, resolveFieldId])
+  }, [data?.items, data?.fields, resolvedEntityDefId, relevantFieldValues, resolveFieldId])
 
   return {
     records: records as T[],

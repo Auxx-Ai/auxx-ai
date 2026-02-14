@@ -321,6 +321,7 @@ export default function CustomerListPage() {
       onMarkAsSpam: handleMarkAsSpam,
       onDelete: handleDeleteContact,
     }),
+    // biome-ignore lint/correctness/useExhaustiveDependencies: handler functions are intentionally used as dependencies
     [handleOpenCustomerDetails, handleMarkAsSpam, handleDeleteContact]
   )
   // Define bulk actions for DynamicTable
@@ -351,6 +352,7 @@ export default function CustomerListPage() {
         action: (rows: Contact[]) => handleBulkDeleteContacts(rows.map((row) => row.id)),
       },
     ],
+    // biome-ignore lint/correctness/useExhaustiveDependencies: handler functions are intentionally used as dependencies
     [handleMarkAsSpam, handleBulkDeleteContacts]
   )
   // Define columns for DynamicTable using static factory function + reactive cells for custom fields

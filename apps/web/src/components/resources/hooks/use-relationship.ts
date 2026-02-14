@@ -34,7 +34,7 @@ export function useRelationship(recordIds: RecordId[]): UseRelationshipResult {
   useEffect(() => {
     if (recordIds.length === 0) return
     getRelationshipStoreState().requestHydration(recordIds)
-  }, [recordIdsKey, recordIds])
+  }, [recordIds])
 
   // Subscribe to hydrated items
   const items = useHydratedItems(recordIds)

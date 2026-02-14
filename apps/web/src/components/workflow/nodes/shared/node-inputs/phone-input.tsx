@@ -27,7 +27,7 @@ export const PhoneInput = createNodeInput<PhoneInputProps>(
     // Sync local state when parent value changes externally
     useEffect(() => {
       setLocalValue(inputs[name] ?? '')
-    }, [inputs[name]])
+    }, [inputs[name], name])
 
     /**
      * Handle phone value change - update local state immediately

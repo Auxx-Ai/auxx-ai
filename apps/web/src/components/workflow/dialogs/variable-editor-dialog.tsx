@@ -285,7 +285,17 @@ export function VariableEditorDialog({ open, onOpenChange }: VariableEditorDialo
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [open, isEditing, selectedVariableId, bulkSelectMode, selectedVariableIds])
+  }, [
+    open,
+    isEditing,
+    selectedVariableId,
+    bulkSelectMode,
+    selectedVariableIds,
+    // biome-ignore lint/correctness/useExhaustiveDependencies: handler functions are intentionally used as dependencies
+    handleBulkDelete,
+    // biome-ignore lint/correctness/useExhaustiveDependencies: handler function is intentionally used as dependency
+    handleDelete,
+  ])
 
   const handleEdit = (variable: EnvVar) => {
     setEditingVariable(variable)

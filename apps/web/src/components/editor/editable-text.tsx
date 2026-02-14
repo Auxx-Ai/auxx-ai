@@ -35,6 +35,7 @@ export const EditableText = ({
   }, [initialText])
 
   // Save the width of the text element (or placeholder) before switching to edit mode
+  // biome-ignore lint/correctness/useExhaustiveDependencies: text and placeholder trigger width recalculation when content changes
   useEffect(() => {
     if (textRef.current && !minWidth) {
       // Calculate width based on what's visible (text or placeholder)
@@ -45,7 +46,7 @@ export const EditableText = ({
     if (textRef.current && !isEditing) {
       setMinWidth(textRef.current.offsetWidth)
     }
-  }, [textRef, minWidth, text, placeholder, isEditing]) // Added dependencies
+  }, [minWidth, text, placeholder, isEditing]) // Added dependencies
 
   // Focus editable div when switching to edit mode
   useEffect(() => {

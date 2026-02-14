@@ -68,6 +68,7 @@ const ResourceTriggerPanelComponent: React.FC<ResourceTriggerPanelProps> = ({ no
   )
 
   // Ensure node.data has resourceType, entityDefinitionId, and operation on mount
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount to initialize defaults
   useEffect(() => {
     if (!nodeData.resourceType || !nodeData.operation || !nodeData.entityDefinitionId) {
       const currentResourceData = resources.find((r) => r.id === resourceType)

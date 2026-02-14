@@ -295,6 +295,7 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
   )
 
   /** Handle rate limit toggle */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: isEqual is a stable import
   const handleRateLimitToggle = useCallback(
     (enabled: boolean) => {
       const newRateLimit = { ...rateLimit, enabled }
@@ -308,6 +309,7 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
   )
 
   /** Handle rate limit value changes */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: isEqual is a stable import
   const handleRateLimitChange = useCallback(
     (field: 'maxRequests' | 'windowMs' | 'perUser', value: number | boolean) => {
       const newRateLimit = { ...rateLimit, [field]: value }

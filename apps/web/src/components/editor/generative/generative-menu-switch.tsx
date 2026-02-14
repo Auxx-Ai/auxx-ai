@@ -13,6 +13,7 @@ interface GenerativeMenuSwitchProps {
 const GenerativeMenuSwitch = ({ children, open, onOpenChange }: GenerativeMenuSwitchProps) => {
   const { editor } = useEditor()
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: editor is stable from useEditor hook
   useEffect(() => {
     if (!open) removeAIHighlight(editor)
   }, [open])

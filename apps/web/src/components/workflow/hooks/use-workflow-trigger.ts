@@ -42,6 +42,7 @@ export function useWorkflowTrigger(): UseWorkflowTriggerReturn {
   // }
   // console.log('useWorkflowTrigger nodes:', nodes)
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: nodesLength triggers recomputation when nodes change
   const triggerData = useMemo(() => {
     // Find trigger node in the workflow
     const { nodes } = store.getState()
@@ -76,7 +77,7 @@ export function useWorkflowTrigger(): UseWorkflowTriggerReturn {
     }
 
     return { hasTrigger: true, triggerNode: triggerNode as FlowNode, triggerType, triggerConfig }
-  }, [nodesLength])
+  }, [nodesLength, store])
 
   /**
    * Validate inputs for the current trigger

@@ -45,6 +45,7 @@ export function NameInputField() {
   }, [fields])
 
   // Register save handler for popover close - fire-and-forget
+  // biome-ignore lint/correctness/useExhaustiveDependencies: using initialName sub-properties for granular dependency tracking
   useEffect(() => {
     onBeforeClose.current = () => {
       if (hasNameChanged(fieldsRef.current, initialName)) {

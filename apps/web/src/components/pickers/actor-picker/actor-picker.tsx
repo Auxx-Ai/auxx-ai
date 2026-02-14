@@ -119,6 +119,7 @@ export function ActorPicker({
   )
 
   // Sync internal state with controlled state
+  // biome-ignore lint/correctness/useExhaustiveDependencies: internalOpen is intentionally excluded to avoid infinite loop
   useEffect(() => {
     if (open !== undefined && open !== internalOpen) {
       setInternalOpen(open)

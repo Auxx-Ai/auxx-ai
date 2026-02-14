@@ -401,7 +401,7 @@ export function useSSE(
     }
 
     return cleanup
-  }, [config, configUrl, configMethod, configBodyString, configReconnect, cleanup])
+  }, [config, cleanup])
 
   return {
     connectionStatus,

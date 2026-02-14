@@ -178,6 +178,7 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
   )
 
   // Log deprecation warning once per component
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount
   React.useEffect(() => {
     if (autoCreateSession && process.env.NODE_ENV === 'development') {
       console.warn(
@@ -261,6 +262,7 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
     onProgress,
     onChange,
     config,
+    sessionMetadata,
   ])
 
   // Build arrays used by UI
@@ -307,6 +309,7 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
   }))
 
   // 5) Lightweight progress callback (no throttling; your UI is already efficient)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: using uploadSummary sub-properties for granular progress tracking; onProgress and filesForSummary are stable
   React.useEffect(() => {
     if (!onProgress || !uploadSummary || uploadSummary.totalFiles === 0) return
 
@@ -337,6 +340,7 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
   ])
 
   // 6) Fire onComplete once per session using the metadata flag
+  // biome-ignore lint/correctness/useExhaustiveDependencies: using uploadSummary sub-properties for granular completion tracking
   React.useEffect(() => {
     if (!onComplete || !uploadSummary || uploadSummary.uploading) return
     const done =
@@ -442,6 +446,7 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
     onProgress,
     onChange,
     config,
+    sessionMetadata,
   ])
 
   const handleAddFiles = React.useCallback(

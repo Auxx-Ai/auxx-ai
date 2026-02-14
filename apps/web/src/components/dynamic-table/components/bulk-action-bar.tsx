@@ -27,6 +27,7 @@ export function BulkActionBar({ children }: BulkActionBarProps) {
   const rowSelectionState = useRowSelectionHook(tableId)
 
   // Memoize the selected rows to avoid recalculating on every render
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rowSelectionState triggers recalculation when selection changes
   const selectedRows = useMemo(
     () => table.getFilteredSelectedRowModel().rows,
     [rowSelectionState, table]

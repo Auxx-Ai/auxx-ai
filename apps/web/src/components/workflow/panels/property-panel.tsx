@@ -62,7 +62,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = React.memo(() => {
 
   const nodeType = selectedNode?.type
 
-  // registryVersion forces re-fetch when registry updates
+  // biome-ignore lint/correctness/useExhaustiveDependencies: registryVersion triggers re-fetch when registry updates
   const PanelComponent = useMemo(() => {
     if (nodeType && typeof nodeType === 'string' && nodeType !== NodeType.NOTE) {
       const panel = unifiedNodeRegistry.getPanel(nodeType)

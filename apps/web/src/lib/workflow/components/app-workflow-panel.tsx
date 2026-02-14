@@ -153,6 +153,7 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
     // ✓ nodeData removed - panel loads once, data flows through context
 
     // Listen for data updates from iframe
+    // biome-ignore lint/correctness/useExhaustiveDependencies: setInputs is stable from useNodeCrud
     useEffect(() => {
       let unsubscribe: (() => void) | undefined
       let isMounted = true
@@ -195,7 +196,6 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
         isMounted = false
         unsubscribe?.()
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [appId, installationId, nodeId, appStore])
 
     // Listen for reactive updates from iframe
@@ -218,6 +218,7 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
     }, [appId, installationId, nodeId, appStore])
 
     // Send data updates to iframe when React Flow data changes
+    // biome-ignore lint/correctness/useExhaustiveDependencies: panelComponent is intentionally excluded - only send when nodeData changes
     useEffect(() => {
       if (!panelComponent) return // Wait for initial render
 

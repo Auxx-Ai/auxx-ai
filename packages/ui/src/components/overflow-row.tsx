@@ -150,6 +150,7 @@ export function OverflowRow({
   }, [])
 
   // Measure child widths once on mount and when children change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: childArray.length is used as a trigger to re-measure when children count changes
   useLayoutEffect(() => {
     const fullContainer = fullMeasureRef.current
     const collapsedContainer = collapsedMeasureRef.current

@@ -186,6 +186,7 @@ function PlanChangeSummaryContent({
   const calculatePreview = api.billing.calculateSubscriptionPreview.useMutation()
 
   // Trigger calculation when dependencies change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: calculatePreview.mutate is stable from useMutation
   useEffect(() => {
     if (selectedPlan) {
       calculatePreview.mutate({

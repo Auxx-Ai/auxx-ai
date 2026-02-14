@@ -54,6 +54,7 @@ export function useEntityValues({ recordId }: UseEntityValuesOptions): UseEntity
     .map((f) => f.id)
     .join(',')
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fields.filter is derived from fieldIdsKey, using fieldIdsKey as stable string dependency
   const activeFieldIds = useMemo(() => {
     const ids = fields.filter((f) => f.id).map((f) => f.id!)
     return ids.length > 0 ? ids : EMPTY_FIELD_IDS
@@ -64,6 +65,7 @@ export function useEntityValues({ recordId }: UseEntityValuesOptions): UseEntity
 
   // Stabilize fieldValues - only change when actual content changes
   const fieldValuesKey = JSON.stringify(rawFieldValues)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rawFieldValues is derived from fieldValuesKey, using fieldValuesKey as stable string dependency
   const fieldValues = useMemo(() => rawFieldValues, [fieldValuesKey])
 
   // Transform to preloadedValues format

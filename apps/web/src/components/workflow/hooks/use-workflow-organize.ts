@@ -29,7 +29,7 @@ export const useWorkflowOrganize = () => {
   const isReadOnly = useMemo(() => {
     // Only consider readonly if workflow is explicitly published
     return false // TODO: Check workflow status when available
-  }, [workflow])
+  }, [])
 
   /**
    * Main layout organization function

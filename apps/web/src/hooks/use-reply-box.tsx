@@ -106,7 +106,7 @@ export function useReplyBox(thread: ThreadMeta | null | undefined) {
         // Don't override sourceMessage here - let it be populated from sourceMessageFromDraft
       }
     }
-  }, [effectiveDraft, thread?.id])
+  }, [effectiveDraft])
 
   // Reset internal state ONLY when the thread ID actually changes
   const previousThreadId = useRef<string | null | undefined>(null)

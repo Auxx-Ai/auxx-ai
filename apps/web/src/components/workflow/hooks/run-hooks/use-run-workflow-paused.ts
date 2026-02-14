@@ -53,7 +53,7 @@ export const useRunWorkflowPaused = () => {
         description: reasonText,
       })
     },
-    [updateActiveRun, activeRun]
+    [updateActiveRun]
   )
 
   return { handleWorkflowPaused }

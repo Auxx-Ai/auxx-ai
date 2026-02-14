@@ -267,7 +267,7 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
       // Call parent handler with final variable (converted or original)
       onVariableSelect(finalVariable)
     },
-    [onVariableSelect, nodeId, nodes]
+    [onVariableSelect]
   )
 
   // Copy variable

@@ -22,6 +22,7 @@ export function ExtensionDialog() {
   const [, forceUpdate] = useReducer((x) => x + 1, 0)
 
   // Subscribe to dialog updates to handle React state changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: using dialog?.id for granular subscription instead of full dialog object
   useEffect(() => {
     if (!dialog) return
 

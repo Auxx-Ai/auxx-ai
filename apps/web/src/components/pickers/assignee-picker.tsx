@@ -130,6 +130,7 @@ export function AssigneePicker({
   )
 
   // Update selected members when the selected prop changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: normalizeSelected is a stable function; selectedMembers.map is intentionally excluded to avoid loop
   useEffect(() => {
     const normalizedValue = normalizeSelected(selected)
 
@@ -146,7 +147,7 @@ export function AssigneePicker({
     if (currentIds !== newIds) {
       setSelectedMembers(normalizedValue)
     }
-  }, [selected, teamMembers])
+  }, [selected])
 
   // Handle open state changes
   useEffect(() => {

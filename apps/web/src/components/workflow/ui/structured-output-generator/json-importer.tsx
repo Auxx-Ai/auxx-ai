@@ -26,12 +26,12 @@ const JsonImporter: FC<JsonImporterProps> = ({ onSubmit, updateBtnWidth }) => {
   const isAddingNewField = useVisualEditorStore((state) => state.isAddingNewField)
   const { emit } = useEventEmitter()
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount to measure button width
   useEffect(() => {
     if (importBtnRef.current) {
       const rect = importBtnRef.current.getBoundingClientRect()
       updateBtnWidth(rect.width)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleTrigger = useCallback(

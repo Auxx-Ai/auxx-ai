@@ -57,6 +57,7 @@ export function MessageClientWrapper({
   const orgName = organization?.name
 
   // Stabilize connectionDefinition object to prevent re-initialization
+  // biome-ignore lint/correctness/useExhaustiveDependencies: using sub-properties for granular memoization to prevent unnecessary re-initialization
   const stableConnectionDef = useMemo(
     () => connectionDefinition,
     [

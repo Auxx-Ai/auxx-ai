@@ -79,6 +79,7 @@ export const MentionPopover: React.FC<MentionProps> = ({
   /**
    * Reset selected index when items change
    */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: items triggers reset when list changes
   useEffect(() => {
     setSelectedIndex(0)
   }, [items])

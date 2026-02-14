@@ -309,7 +309,7 @@ const WorkflowVersionsPopover: React.FC<WorkflowVersionsPopoverProps> = ({
         }
       }
     }
-  }, [getVersionById.data, selectedVersion]) // Remove store functions from dependencies
+  }, [getVersionById.data, selectedVersion, setEdges, setNodes, setVersionPreviewData])
 
   // Early return if no workflow ID
   if (!workflowId) {

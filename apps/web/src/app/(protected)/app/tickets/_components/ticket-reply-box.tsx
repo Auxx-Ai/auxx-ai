@@ -127,6 +127,7 @@ function TicketReplyBox({ ticket, onSuccess, onCancel }: Props) {
   useEffect(() => {
     if (currentUserContact && !from) setFrom(currentUserContact)
     if (customerContact && !to) setTo(customerContact)
+    // biome-ignore lint/correctness/useExhaustiveDependencies: customerContact is derived from props and intentionally used
   }, [currentUserContact, customerContact, from, to])
   // --- End Contact Logic ---
 

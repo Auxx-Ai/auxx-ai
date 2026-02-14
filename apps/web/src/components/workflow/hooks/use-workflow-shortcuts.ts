@@ -356,9 +356,7 @@ export function useWorkflowShortcuts() {
       document.removeEventListener('keyup', handleKeyUp)
     }
   }, [
-    store,
     setInteractionMode,
-    togglePanMode,
     startTemporaryPan,
     endTemporaryPan,
     isTemporaryPan,
@@ -373,15 +371,10 @@ export function useWorkflowShortcuts() {
     canOrganize,
     handleCopyNode,
     handleNodesPaste,
-    // duplicateNodes,
     handleDeleteNode,
-    // disableNodes,
-    // enableNodes,
     getSelectedNodeIds,
     getSelectedEdgeIds,
     handleSelectAll,
-    // selectAll,
-    // deselectAll,
     toggleLeftSidebar,
     openPanel,
     closePanel,
@@ -389,5 +382,8 @@ export function useWorkflowShortcuts() {
     openRunPanel,
     setRunPanelTab,
     handleToggleCollapse,
+    getNodesReadOnly,
+    handleBulkEdgeDelete,
+    handleNodeDisable,
   ])
 }

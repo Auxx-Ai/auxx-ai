@@ -87,6 +87,7 @@ export function useRecord<T extends RecordMeta = RecordMeta>({
   }, [enabled, recordId, record, requestRecord])
 
   // Clear requested set when recordId changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: recordId triggers clearing the requested set
   useEffect(() => {
     requestedRef.current.clear()
   }, [recordId])

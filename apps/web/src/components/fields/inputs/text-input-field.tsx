@@ -39,6 +39,7 @@ export function TextInputField() {
   }, [])
 
   // Force AutosizeField to recalculate height when value changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: inputValue triggers resize recalculation
   useEffect(() => {
     window.dispatchEvent(new Event('resize'))
   }, [inputValue])

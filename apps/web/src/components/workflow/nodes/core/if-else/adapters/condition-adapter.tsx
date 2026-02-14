@@ -48,7 +48,7 @@ export const useIfElseConditionAdapter = ({
         },
       }
     })
-  }, [data.cases, data._targetBranches])
+  }, [data.cases])
 
   // Use refs to create stable callbacks that don't change reference
   // This prevents unnecessary re-renders of ConditionProvider consumers

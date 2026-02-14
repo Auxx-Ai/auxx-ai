@@ -148,7 +148,7 @@ const ParameterItem: FC<ParameterItemProps> = ({
   useEffect(() => {
     if ((parameterRule.type === 'int' || parameterRule.type === 'float') && numberInputRef.current)
       numberInputRef.current.value = `${renderValue}`
-  }, [value, parameterRule.type, renderValue])
+  }, [parameterRule.type, renderValue])
 
   const renderInput = () => {
     const numberInputWithSlide =
