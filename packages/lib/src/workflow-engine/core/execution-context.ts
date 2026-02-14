@@ -269,7 +269,7 @@ export class ExecutionContextManager {
         return baseValue
       } else {
         // Access specific index
-        const idx = parseInt(index)
+        const idx = parseInt(index, 10)
         if (idx < 0 || idx >= baseValue.length) {
           this.log('WARN', undefined, `Array index out of bounds: ${path}`)
           return undefined
@@ -368,7 +368,7 @@ export class ExecutionContextManager {
         if (index === '*') {
           return current // Return the array itself
         } else {
-          const idx = parseInt(index)
+          const idx = parseInt(index, 10)
           current = current[idx]
         }
       } else {

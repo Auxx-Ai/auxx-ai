@@ -28,7 +28,6 @@ import { useState } from 'react'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { api } from '~/trpc/react'
 import { useWorkflows } from '../providers/workflows-provider'
-import { getTriggerInfo } from '../utils/trigger-info'
 
 export function WorkflowsTableView() {
   const { workflows, refetchWorkflows } = useWorkflows()

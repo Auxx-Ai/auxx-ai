@@ -2,7 +2,6 @@
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@auxx/ui/components/input-otp'
-import { Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import type React from 'react'
 import { useEffect, useRef, useState } from 'react'

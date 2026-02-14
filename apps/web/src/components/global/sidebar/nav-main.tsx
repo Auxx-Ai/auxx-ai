@@ -63,7 +63,7 @@ export function NavMain({ menu }: Props) {
   })
 
   function isActive(item: SidebarProps) {
-    if (item.items && item.items.length) {
+    if (item.items?.length) {
       const isActive = item.items.some(
         (subItem) => pathname.startsWith(subItem.url!) || pathname === subItem.url
       )

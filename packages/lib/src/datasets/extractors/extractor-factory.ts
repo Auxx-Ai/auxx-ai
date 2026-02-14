@@ -2,7 +2,6 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import type { ExtractionOptions, ExtractionResult, ExtractorInfo } from '../types/extractor.types'
-import { BaseExtractor } from './base-extractor'
 import { ExtractorRegistry } from './extractor-registry'
 
 // Auto-import all extractors to register them

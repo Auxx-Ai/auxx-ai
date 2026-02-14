@@ -1,7 +1,6 @@
 // apps/web/src/components/workflow/panels/run/tabs/result-tab.tsx
 
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
-import React from 'react'
 import { useRunStore } from '~/components/workflow/store/run-store'
 import CodeEditor, { CodeLanguage } from '~/components/workflow/ui/code-editor'
 import Section from '~/components/workflow/ui/section'

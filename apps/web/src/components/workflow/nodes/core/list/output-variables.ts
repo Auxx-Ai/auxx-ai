@@ -1,6 +1,5 @@
 // apps/web/src/components/workflow/nodes/core/list/output-variables.ts
 
-import type { TableId } from '@auxx/lib/workflow-engine/client'
 import type { UnifiedVariable } from '~/components/workflow/types'
 import { BaseType } from '~/components/workflow/types'
 import {

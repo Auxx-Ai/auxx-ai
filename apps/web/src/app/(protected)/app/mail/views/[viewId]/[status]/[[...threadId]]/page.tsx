@@ -1,4 +1,3 @@
-import React from 'react'
 import { Mailbox } from '../../../../_components/mail-box'
 
 type ContextType = 'view'

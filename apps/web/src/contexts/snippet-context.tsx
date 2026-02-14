@@ -19,12 +19,9 @@ import type {
 import {
   buildBreadcrumbTrail,
   calculatePanelSizes,
-  createOptimisticFolder,
-  createOptimisticSnippet,
   getCurrentFolderName,
   isTempFolder,
   isTempSnippet,
-  validatePanelSize,
 } from './snippet-utils'
 
 /**

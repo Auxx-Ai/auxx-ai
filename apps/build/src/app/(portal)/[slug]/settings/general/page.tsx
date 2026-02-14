@@ -21,7 +21,6 @@ import {
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Building2, Check, Copy } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
-import React from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useCopyClipboard } from '@/hooks/use-copy-clipboard'

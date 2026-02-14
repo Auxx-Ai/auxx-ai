@@ -459,7 +459,7 @@ export class MediaAssetService
           matchedFields.push('name')
         }
         // Name contains query
-        else if (asset.name && asset.name.toLowerCase().includes(query.toLowerCase())) {
+        else if (asset.name?.toLowerCase().includes(query.toLowerCase())) {
           relevance += 5
           matchedFields.push('name')
         }
@@ -1356,7 +1356,7 @@ export class MediaAssetService
   private generateSearchSnippet(asset: MediaAsset, query: string): string {
     const parts: string[] = []
 
-    if (asset.name && asset.name.toLowerCase().includes(query.toLowerCase())) {
+    if (asset.name?.toLowerCase().includes(query.toLowerCase())) {
       parts.push(`Name: ${asset.name}`)
     }
 

@@ -284,8 +284,8 @@ export function DragHandlePlugin(options: GlobalDragHandleOptions & { pluginKey:
 
           const compStyle = window.getComputedStyle(node)
           const parsedLineHeight = parseInt(compStyle.lineHeight, 10)
-          const lineHeight = isNaN(parsedLineHeight)
-            ? parseInt(compStyle.fontSize) * 1.2
+          const lineHeight = Number.isNaN(parsedLineHeight)
+            ? parseInt(compStyle.fontSize, 10) * 1.2
             : parsedLineHeight
           const paddingTop = parseInt(compStyle.paddingTop, 10)
 

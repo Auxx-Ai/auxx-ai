@@ -1,5 +1,3 @@
-// apps/web/src/app/(protected)/app/settings/apps/installed/[slug]/settings/page.tsx
-import React from 'react'
 import AppSettings from '~/components/apps/app-settings'
 import { api } from '~/trpc/server'
 

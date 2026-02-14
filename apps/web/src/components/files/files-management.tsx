@@ -7,7 +7,6 @@ import { toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import {
   DndContext,
-  type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
   pointerWithin,

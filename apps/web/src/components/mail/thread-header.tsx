@@ -1,10 +1,9 @@
 // src/components/mail/thread-header.tsx
 'use client'
 
-import type { ActorId, ActorId as ActorIdString } from '@auxx/types/actor'
+import type { ActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/types/resource'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
-import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,

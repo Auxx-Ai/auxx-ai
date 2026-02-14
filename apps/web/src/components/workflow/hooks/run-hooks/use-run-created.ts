@@ -13,7 +13,7 @@ export const useRunCreated = () => {
       console.log('[Run Event] RUN_CREATED:', event.data)
       // The event.data contains the full WorkflowRun object from the API
       const workflowRun = event.data as WorkflowRun
-      if (workflowRun && workflowRun.id) {
+      if (workflowRun?.id) {
         // Set canvas to read-only for live workflow runs
         setReadOnly(true)
         // Set this as the active run in the store

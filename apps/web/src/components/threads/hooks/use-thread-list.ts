@@ -3,14 +3,8 @@
 import type { ConditionGroup } from '@auxx/lib/conditions'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { useCallback, useEffect, useMemo } from 'react'
-import { useShallow } from 'zustand/shallow'
 import { api } from '~/trpc/react'
-import { type ThreadMeta, type ThreadSort, useThreadStore } from '../store'
-import {
-  createContextKey,
-  createThreadSelector,
-  type ThreadFilter,
-} from '../store/thread-selectors'
+import { type ThreadMeta, useThreadStore } from '../store'
 
 /** Sort descriptor for thread lists */
 interface ThreadSortDescriptor {

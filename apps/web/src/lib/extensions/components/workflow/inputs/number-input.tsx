@@ -54,7 +54,7 @@ export const NumberInput = ({
     // Parse and send to platform if valid
     if (stringValue !== '') {
       const numValue = parseFloat(stringValue)
-      if (!isNaN(numValue)) {
+      if (!Number.isNaN(numValue)) {
         debouncedUpdate(numValue)
       }
     }

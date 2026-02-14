@@ -1,6 +1,5 @@
 // packages/lib/src/import/events/event-types.ts
 
-import type { ExecutionProgress } from '../types/execution'
 import type { ImportJobStatus, ImportStatistics } from '../types/job'
 import type { PlanEstimates, StrategyType } from '../types/plan'
 

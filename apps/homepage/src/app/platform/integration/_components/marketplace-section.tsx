@@ -3,17 +3,13 @@
 import Link from 'next/link'
 import {
   ClaudeAI,
-  Cloudflare,
   Dropbox,
   Facebook,
-  Gemini,
   Gmail,
   GoogleDrive,
   Instagram,
   OpenAI,
   Outlook,
-  Vercel,
-  VisualStudioCode as VSCode,
 } from '~/components/logos'
 import { Button } from '~/components/ui/button'
 import { config } from '~/lib/config'

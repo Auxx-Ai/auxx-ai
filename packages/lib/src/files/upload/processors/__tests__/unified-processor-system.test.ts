@@ -4,12 +4,7 @@ import { beforeEach, describe, expect, it, type MockedFunction, vi } from 'vites
 import type { EntityType } from '../../../types/entities'
 import { ENTITY_TYPES } from '../../../types/entities'
 import type { UploadInitConfig } from '../../init-types'
-import {
-  ArticleProcessor,
-  TicketProcessor,
-  UserProfileProcessor,
-  WorkflowRunProcessor,
-} from '../entity-processors'
+import { TicketProcessor, UserProfileProcessor, WorkflowRunProcessor } from '../entity-processors'
 import { FileProcessor } from '../file-processor'
 import { ProcessorRegistry } from '../processor-registry'
 

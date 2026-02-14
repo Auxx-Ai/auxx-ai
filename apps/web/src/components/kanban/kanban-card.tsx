@@ -12,7 +12,7 @@ import { Box, CheckSquare, MessageSquare, StickyNote } from 'lucide-react'
 import { memo } from 'react'
 import type { CustomField } from '~/components/dynamic-table/types'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
-import { type RecordId, toRecordId } from '~/components/resources/store/field-value-store'
+import { toRecordId } from '~/components/resources/store/field-value-store'
 import { KanbanCardField } from './kanban-card-field'
 
 /** Props for KanbanCard component */

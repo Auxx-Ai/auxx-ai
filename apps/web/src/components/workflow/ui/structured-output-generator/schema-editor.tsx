@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/schema-editor.tsx
 
 import { cn } from '@auxx/ui/lib/utils'
-import React, { type FC } from 'react'
+import type { FC } from 'react'
 import CodeEditor from './code-editor'
 
 type SchemaEditorProps = {

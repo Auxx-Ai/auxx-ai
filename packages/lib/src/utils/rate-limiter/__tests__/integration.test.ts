@@ -1,6 +1,6 @@
 // packages/lib/src/utils/rate-limiter/__tests__/integration.test.ts
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { ExponentialBackoff } from '../backoff-handler'
 import { CircuitBreaker } from '../circuit-breaker'
 import { createSimpleRateLimiter } from '../index'

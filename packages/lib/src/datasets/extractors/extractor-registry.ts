@@ -1,7 +1,7 @@
 // packages/lib/src/datasets/extractors/extractor-registry.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { ExtractorCapabilities, ExtractorInfo } from '../types/extractor.types'
+import type { ExtractorInfo } from '../types/extractor.types'
 import type { BaseExtractor } from './base-extractor'
 
 const logger = createScopedLogger('extractor-registry')

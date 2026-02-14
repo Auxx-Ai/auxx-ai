@@ -4,7 +4,7 @@
 
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { Card } from '@auxx/ui/components/card'
 import {
   Dialog,
   DialogContent,
@@ -15,10 +15,10 @@ import {
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Switch } from '@auxx/ui/components/switch'
 import { Calendar, Code, Database, Globe, Search, Type, Variable, Wrench } from 'lucide-react'
-import React, { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
 import { InlineToolCredentialSelector } from './tool-credential-dialog'
-import { CredentialStatusIndicator, hasCredentialIssue } from './tool-credential-status'
+import { CredentialStatusIndicator } from './tool-credential-status'
 import type { AiToolsConfig } from './types'
 
 interface ToolsSelectionDialogProps {

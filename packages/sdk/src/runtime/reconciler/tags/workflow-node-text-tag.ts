@@ -7,10 +7,6 @@ import { BaseTag } from './base-tag.js'
  * Text content within a workflow node.
  */
 export class WorkflowNodeTextTag extends BaseTag {
-  constructor(props: Record<string, any>) {
-    super(props)
-  }
-
   getTagName(): string {
     return 'div'
   }

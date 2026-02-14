@@ -2,8 +2,7 @@
 'use client'
 
 import type { FieldType } from '@auxx/database/types'
-import { isCustomResource, type RecordId, type ResourceField } from '@auxx/lib/resources/client'
-import { ModelTypes } from '@auxx/types/custom-field'
+import type { RecordId, ResourceField } from '@auxx/lib/resources/client'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import {

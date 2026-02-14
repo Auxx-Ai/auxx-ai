@@ -30,7 +30,7 @@ import { Switch } from '@auxx/ui/components/switch'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Clock, Mail, MailCheck, RefreshCw, User } from 'lucide-react'
 // ~/app/(protected)/app/settings/integrations/_components/integration-settings.tsx
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useIntegration } from '~/hooks/use-integration'
@@ -249,7 +249,7 @@ export default function IntegrationSettings({ integration }: IntegrationSettings
                           <Clock className='h-4 w-4 text-muted-foreground' />
                           <Select
                             value={field.value.toString()}
-                            onValueChange={(value) => field.onChange(parseInt(value))}>
+                            onValueChange={(value) => field.onChange(parseInt(value, 10))}>
                             <SelectTrigger className='w-full'>
                               <SelectValue placeholder='Select time' />
                             </SelectTrigger>

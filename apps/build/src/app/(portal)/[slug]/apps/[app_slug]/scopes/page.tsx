@@ -1,11 +1,9 @@
 import {
-  Field,
   FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
   FieldLegend,
-  FieldSeparator,
   FieldSet,
 } from '@auxx/ui/components/field'
 import {
@@ -15,7 +13,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import React from 'react'
 
 type Props = {}
 

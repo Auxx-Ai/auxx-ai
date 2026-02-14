@@ -300,7 +300,7 @@ export class ToolExecutionManager {
       case 'string':
         return typeof value === 'string'
       case 'number':
-        return typeof value === 'number' && !isNaN(value)
+        return typeof value === 'number' && !Number.isNaN(value)
       case 'boolean':
         return typeof value === 'boolean'
       case 'object':
@@ -387,7 +387,7 @@ export class ToolExecutionManager {
     const defaultCredentials = aiNodeData.tools.defaultCredentials
 
     // First try tool-specific credential
-    if (toolCredentials && toolCredentials[toolId]) {
+    if (toolCredentials?.[toolId]) {
       logger.debug('Using tool-specific credential', {
         toolId,
         credentialId: toolCredentials[toolId],
@@ -432,7 +432,7 @@ export class ToolExecutionManager {
     const defaultCredentials = aiNodeData.tools.defaultCredentials
 
     // First try tool-specific credential
-    if (toolCredentials && toolCredentials[toolId]) {
+    if (toolCredentials?.[toolId]) {
       return toolCredentials[toolId]
     }
 

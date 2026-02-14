@@ -8,12 +8,10 @@ import {
   Command,
   CommandEmpty,
   CommandGroup,
-  CommandInput,
   CommandItem,
   CommandList,
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import React from 'react'
 import type { SearchCondition } from './store'
 
 /**

@@ -5,13 +5,11 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import { Search } from 'lucide-react'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import {
   CREDENTIAL_CATEGORIES,
   CREDENTIAL_REGISTRY,
   type CredentialTypeMetadata,
-  getCredentialsByCategory,
-  searchCredentialTypes,
 } from './credential-registry'
 
 interface CredentialTypeSelectorProps {

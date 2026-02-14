@@ -2,7 +2,7 @@
 
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { type RecordId, toRecordId } from '@auxx/types/resource'
+import { toRecordId } from '@auxx/types/resource'
 import {
   ContactEventType,
   EntityInstanceEventType,

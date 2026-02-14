@@ -1,7 +1,6 @@
 // packages/seed/src/domains/workflow.domain.ts
 // Workflow automation domain refinements for drizzle-seed with comprehensive workflow seeding
 
-import { createId } from '@paralleldrive/cuid2'
 import type { SeedingScenario } from '../types'
 import { BusinessDistributions } from '../utils/business-distributions'
 

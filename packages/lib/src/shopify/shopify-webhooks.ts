@@ -166,7 +166,7 @@ export const createWebhook = async ({
   const exists = await findSubscription(WEBHOOK_PROVIDER, topic, integrationId)
 
   logger.info('createWebhook', { subTopic, integrationId, exists })
-  if (exists && exists.active) {
+  if (exists?.active) {
     logger.error('Webhook already exists and is active', { subTopic, integrationId })
     throw new Error('Webhook already exists and is active')
   }

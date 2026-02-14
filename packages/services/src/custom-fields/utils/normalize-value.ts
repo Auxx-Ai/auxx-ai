@@ -137,14 +137,14 @@ export function normalizeCustomFieldValue(
 
     case FieldTypeEnum.NUMBER: {
       if (typeof rawValue === 'number') {
-        if (isNaN(rawValue) || !isFinite(rawValue)) {
+        if (Number.isNaN(rawValue) || !isFinite(rawValue)) {
           throw new Error(`Invalid NUMBER value for field "${field.name}": ${rawValue}`)
         }
         return { data: rawValue }
       }
       if (typeof rawValue === 'string') {
         const parsed = parseFloat(rawValue.trim())
-        if (isNaN(parsed) || !isFinite(parsed)) {
+        if (Number.isNaN(parsed) || !isFinite(parsed)) {
           throw new Error(`Invalid NUMBER value for field "${field.name}": "${rawValue}"`)
         }
         return { data: parsed }
@@ -167,7 +167,7 @@ export function normalizeCustomFieldValue(
         // Remove currency symbols and commas
         const cleaned = rawValue.replace(/[$€£¥,\s]/g, '').trim()
         const parsed = parseFloat(cleaned)
-        if (isNaN(parsed) || !isFinite(parsed)) {
+        if (Number.isNaN(parsed) || !isFinite(parsed)) {
           throw new Error(`Invalid CURRENCY value for field "${field.name}": "${rawValue}"`)
         }
         // Convert to cents
@@ -181,14 +181,14 @@ export function normalizeCustomFieldValue(
     case FieldTypeEnum.DATETIME:
     case FieldTypeEnum.TIME: {
       if (rawValue instanceof Date) {
-        if (isNaN(rawValue.getTime())) {
+        if (Number.isNaN(rawValue.getTime())) {
           throw new Error(`Invalid ${field.type} value for field "${field.name}"`)
         }
         return { data: rawValue.toISOString() }
       }
       if (typeof rawValue === 'string') {
         const date = new Date(rawValue.trim())
-        if (isNaN(date.getTime())) {
+        if (Number.isNaN(date.getTime())) {
           throw new Error(`Invalid ${field.type} value for field "${field.name}": "${rawValue}"`)
         }
         return { data: date.toISOString() }

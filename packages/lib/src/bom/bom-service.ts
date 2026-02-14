@@ -2,7 +2,7 @@
 // Service for BOM (Bill of Materials) operations using Drizzle
 
 import { database as db, schema } from '@auxx/database'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import type { PartCost, PartItem, RequieredQuantity, Subpart } from './types'
 
 /** Service for BOM (Bill of Materials) operations */

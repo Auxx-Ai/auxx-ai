@@ -2,22 +2,12 @@
 'use client'
 
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
-import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import {
-  AlertTriangle,
-  ChevronDown,
-  ChevronRight,
-  ChevronUp,
-  Clock,
-  ExternalLink,
-  RefreshCw,
-  X,
-} from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useIsSmallScreen } from '~/hooks/use-small-screen'
 import { api } from '~/trpc/react'

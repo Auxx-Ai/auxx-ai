@@ -1,6 +1,5 @@
 // packages/lib/src/ai/providers/provider-registry.ts
 
-import { PROVIDER_THEMES } from '../../constants/provider-icons'
 import { createScopedLogger } from '../../logger'
 import { ANTHROPIC_CAPABILITIES, ANTHROPIC_MODELS } from './anthropic/anthropic-defaults'
 import type { ProviderClient } from './base/provider-client'
@@ -9,7 +8,7 @@ import { DEEPSEEK_CAPABILITIES, DEEPSEEK_MODELS } from './deepseek/deepseek-defa
 import { GOOGLE_CAPABILITIES, GOOGLE_MODELS } from './google/google-defaults'
 import { GROQ_CAPABILITIES, GROQ_MODELS } from './groq/groq-defaults'
 import { OPENAI_CAPABILITIES, OPENAI_MODELS } from './openai/openai-defaults'
-import { type ModelCapabilities, ModelType, type ProviderCapabilities } from './types'
+import type { ModelCapabilities, ProviderCapabilities } from './types'
 
 const logger = createScopedLogger('ProviderRegistry')
 

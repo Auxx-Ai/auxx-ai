@@ -12,7 +12,7 @@ import {
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContentDialogAware, PopoverTrigger } from '@auxx/ui/components/popover'
 import { ChevronDownIcon, ChevronsUpDownIcon, HashIcon } from 'lucide-react'
-import React, { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 interface VariableGroup {
   name: string

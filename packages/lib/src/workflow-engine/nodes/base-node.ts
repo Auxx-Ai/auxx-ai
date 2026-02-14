@@ -19,7 +19,6 @@ import type {
   WorkflowNodeType,
 } from '../core/types'
 import { NodeRunningStatus } from '../core/types'
-import { safeJsonStringify } from '../utils/serialization'
 
 const logger = createScopedLogger('base-node')
 

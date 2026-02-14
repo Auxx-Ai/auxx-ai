@@ -1,15 +1,6 @@
 'use client'
-import { Button } from '@auxx/ui/components/button'
-import { Field, FieldGroup, FieldLabel, FieldSeparator, FieldSet } from '@auxx/ui/components/field'
-import { Input } from '@auxx/ui/components/input'
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from '@auxx/ui/components/input-group'
-import { Building2, Check, Copy, Users } from 'lucide-react'
-import React from 'react'
+import { FieldGroup, FieldSet } from '@auxx/ui/components/field'
+import { Users } from 'lucide-react'
 import { useCopyClipboard } from '@/hooks/use-copy-clipboard'
 import SettingsHeader from '../_components/settings-header'
 

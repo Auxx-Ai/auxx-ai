@@ -2,7 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import type { PendingRelationLookup } from './resolve-relation-lookups'
 import { isPendingRelationLookup } from './resolvers'
 

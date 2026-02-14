@@ -1,5 +1,3 @@
-// app/(protected)/app/settings/tags/page.tsx
-import React from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import { TagTreeView } from '~/components/tags/ui/tags-list'
 

@@ -4,7 +4,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Editor } from '@monaco-editor/react'
 import { Clipboard, IndentIncrease } from 'lucide-react'
 import { useTheme } from 'next-themes'
-import React, { type FC, useCallback, useEffect, useMemo, useRef } from 'react'
+import React, { type FC, useCallback, useEffect, useRef } from 'react'
 // import copy from 'copy-to-clipboard'
 import { Tooltip } from '~/components/global/tooltip'
 

@@ -1,7 +1,7 @@
 // packages/lib/src/ai/providers/openai/openai-speech2text-client.ts
 
 import type OpenAI from 'openai'
-import { createScopedLogger, type Logger } from '../../../logger'
+import type { Logger } from '../../../logger'
 import { Speech2TextClient } from '../../clients/base/speech2text-client'
 import type {
   ClientConfig,

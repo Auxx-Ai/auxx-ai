@@ -10,7 +10,6 @@ import {
   getRecordIdField,
   getResourceTypeFromEvent,
 } from '../../resources/resource-fetcher'
-import { WorkflowNodeType } from '../../workflow-engine/core/types'
 import type { AuxxEvent } from '../types'
 
 const logger = createScopedLogger('trigger-resource-workflows')

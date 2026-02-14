@@ -49,7 +49,7 @@ import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { format, formatDistanceToNow } from 'date-fns'
 import { ArrowUpRight, CheckCircle2, Clock, Globe, Paperclip, Send, User } from 'lucide-react'
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
 
 type ChatSessionItem = {

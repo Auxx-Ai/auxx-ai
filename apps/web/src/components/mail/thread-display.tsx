@@ -41,40 +41,37 @@ export function ThreadDisplay() {
     <div className='flex h-full flex-col flex-1'>
       {/* BulkActionToolbar is self-contained - reads selection from store */}
       <BulkActionToolbar />
-      {!showBulkToolbar && (
-        <>
-          {thread ? (
-            // Determine thread type from integration provider
-            isChatThread(thread.integrationProvider) ? (
-              <ChatInterface threadId={thread.id} sessionId={thread.externalId} thread={thread} />
-            ) : (
-              <ThreadProvider threadId={thread.id}>
-                <ThreadDetails />
-              </ThreadProvider>
-            )
-          ) : isLoading ? (
-            <div className='flex h-full items-center justify-center'>
-              <div className='h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent'></div>
-            </div>
+      {!showBulkToolbar &&
+        (thread ? (
+          // Determine thread type from integration provider
+          isChatThread(thread.integrationProvider) ? (
+            <ChatInterface threadId={thread.id} sessionId={thread.externalId} thread={thread} />
           ) : (
-            <EmptyState
-              icon={Mail}
-              title='No message selected'
-              description='Select a message to view its details.'
-              button={
-                <NewMessageDialog
-                  trigger={
-                    <Button variant='outline'>
-                      <Plus size={16} />
-                      <span>Compose Message</span>
-                    </Button>
-                  }
-                />
-              }
-            />
-          )}
-        </>
-      )}
+            <ThreadProvider threadId={thread.id}>
+              <ThreadDetails />
+            </ThreadProvider>
+          )
+        ) : isLoading ? (
+          <div className='flex h-full items-center justify-center'>
+            <div className='h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent'></div>
+          </div>
+        ) : (
+          <EmptyState
+            icon={Mail}
+            title='No message selected'
+            description='Select a message to view its details.'
+            button={
+              <NewMessageDialog
+                trigger={
+                  <Button variant='outline'>
+                    <Plus size={16} />
+                    <span>Compose Message</span>
+                  </Button>
+                }
+              />
+            }
+          />
+        ))}
     </div>
   )
 }

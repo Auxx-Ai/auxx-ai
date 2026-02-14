@@ -1,7 +1,5 @@
 // apps/web/src/components/workflow/nodes/shared/node-inputs/participant-input.tsx
 
-import { Label } from '@auxx/ui/components/label'
-import React from 'react'
 import { ParticipantPicker } from '~/components/pickers/participant-picker'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 

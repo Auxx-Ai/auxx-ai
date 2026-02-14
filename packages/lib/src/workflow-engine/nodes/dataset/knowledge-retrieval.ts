@@ -219,7 +219,7 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
         const limitStr = String(config.limit)
         const limitValue = await this.interpolateVariables(limitStr, contextManager)
         const parsed = parseInt(limitValue, 10)
-        if (!isNaN(parsed) && parsed >= 1 && parsed <= 100) {
+        if (!Number.isNaN(parsed) && parsed >= 1 && parsed <= 100) {
           resolvedLimit = parsed
         }
         this.extractVariableIds(limitStr).forEach((v) => usedVariables.add(v))
@@ -235,7 +235,7 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
         const thresholdStr = String(config.similarityThreshold)
         const thresholdValue = await this.interpolateVariables(thresholdStr, contextManager)
         const parsed = parseFloat(thresholdValue)
-        if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) {
+        if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 1) {
           resolvedSimilarityThreshold = parsed
         }
         this.extractVariableIds(thresholdStr).forEach((v) => usedVariables.add(v))

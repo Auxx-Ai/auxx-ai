@@ -2,7 +2,6 @@
 import { ArrowUp, Globe, Play, Plus, Sparkle } from 'lucide-react'
 import { motion, useScroll, useTransform } from 'motion/react'
 import Link from 'next/link'
-import React from 'react'
 import HeroHeader from '@/components/header'
 import { Beacon } from '@/components/logos/beacon'
 import { Hulu } from '@/components/logos/hulu'

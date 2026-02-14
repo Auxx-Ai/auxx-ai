@@ -1,6 +1,6 @@
 // apps/api/src/lib/utils.ts
 
-import { fromPromise, type Result, type ResultAsync } from 'neverthrow'
+import { fromPromise, type ResultAsync } from 'neverthrow'
 
 /**
  * Database error type with literal code

@@ -7,7 +7,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSubItem,
 } from '@auxx/ui/components/sidebar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
@@ -29,12 +28,10 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { Lock, Mail, TableProperties, Trash2, Users } from 'lucide-react'
-import Link from 'next/link'
+import { TableProperties, Trash2 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useCallback, useState } from 'react'
 import { useDndState } from '~/app/context/dnd-state-context'
-import { CollapsibleSidebarSection } from '~/components/global/sidebar/collapsible-sidebar-section'
 import { EditableSidebarItem } from '~/components/global/sidebar/editable-sidebar-item'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
 import { SidebarItem } from '~/components/global/sidebar/sidebar-item'

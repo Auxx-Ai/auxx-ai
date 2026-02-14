@@ -106,7 +106,7 @@ function deserializeNumberField(
   let schema: any = z.number({ message: errors.required || 'Required' }).or(
     z.string().transform((val) => {
       const num = parseFloat(val)
-      return isNaN(num) ? undefined : num
+      return Number.isNaN(num) ? undefined : num
     })
   )
 

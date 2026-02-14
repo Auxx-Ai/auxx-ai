@@ -22,9 +22,11 @@ export const useFieldValidation = () => {
         break
       case FieldType.NUMBER:
         schema = field.required
-          ? schema.refine((val) => !isNaN(Number(val)), { error: 'Please enter a valid number' })
+          ? schema.refine((val) => !Number.isNaN(Number(val)), {
+              error: 'Please enter a valid number',
+            })
           : schema
-              .refine((val) => !val || !isNaN(Number(val)), {
+              .refine((val) => !val || !Number.isNaN(Number(val)), {
                 error: 'Please enter a valid number',
               })
               .optional()

@@ -114,7 +114,7 @@ export const useTestInputStore = create<TestInputStore>()(
         // Handle array format (new standard)
         if (Array.isArray(workflow.variables)) {
           workflow.variables.forEach((variable: any) => {
-            if (variable && variable.variableId) {
+            if (variable?.variableId) {
               variablesMap.set(variable.variableId, variable)
             }
           })

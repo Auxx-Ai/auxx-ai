@@ -1,6 +1,6 @@
 // packages/services/src/apps/list-app-event-logs.ts
 
-import { AppEventLog, database, Organization } from '@auxx/database'
+import { AppEventLog, database } from '@auxx/database'
 import { and, desc, eq, gte, lte, or, sql } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'

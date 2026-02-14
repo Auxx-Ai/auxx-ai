@@ -1,6 +1,6 @@
 // apps/web/src/app/(website)/_components/features-3-cols/triggers-illustration.tsx
 
-import { Clock, Link, Mail, Tags, User, Webhook } from 'lucide-react'
+import { Link, Mail, Tags, User } from 'lucide-react'
 
 // ActionIllustration renders the messaging avatar bubble used in the feature card.
 export const ActionIllustration = () => {

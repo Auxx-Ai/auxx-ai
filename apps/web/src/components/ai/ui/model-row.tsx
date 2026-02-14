@@ -3,7 +3,7 @@
 'use client'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
-import { Plus, Settings } from 'lucide-react'
+import { Settings } from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
 import { ModelToggle } from '~/components/ai/ui/model-toggle'

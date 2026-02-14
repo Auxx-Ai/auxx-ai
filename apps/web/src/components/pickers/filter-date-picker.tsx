@@ -80,7 +80,7 @@ export function FilterDatePicker({
     try {
       const date = new Date(value)
       // Check if parsing resulted in a valid date
-      if (!isNaN(date.getTime())) {
+      if (!Number.isNaN(date.getTime())) {
         return format(date, 'PPP') // e.g., "Dec 31st, 2023"
       }
     } catch (e) {
@@ -127,7 +127,7 @@ export function FilterDatePicker({
     // Try to parse as a date
     try {
       const date = new Date(value)
-      return !isNaN(date.getTime()) ? date : undefined
+      return !Number.isNaN(date.getTime()) ? date : undefined
     } catch {
       return undefined // Invalid date string
     }

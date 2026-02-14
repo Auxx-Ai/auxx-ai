@@ -21,10 +21,6 @@ import type {
  * Provides common LLM functionality like token calculation, streaming, and tool handling
  */
 export abstract class LLMClient extends BaseSpecializedClient {
-  constructor(config: ClientConfig, clientName: string, logger?: any) {
-    super(config, clientName, logger)
-  }
-
   // ===== ABSTRACT METHODS (must be implemented by each provider) =====
 
   /**

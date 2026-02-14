@@ -3,7 +3,6 @@
 import { Button } from '@auxx/ui/components/button'
 import { ButtonGroup } from '@auxx/ui/components/button-group'
 import { Switch } from '@auxx/ui/components/switch'
-import React from 'react'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 interface BooleanInputProps extends NodeInputProps {

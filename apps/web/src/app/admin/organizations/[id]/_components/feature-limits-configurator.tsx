@@ -195,7 +195,7 @@ export function FeatureLimitsConfigurator({ organizationId }: FeatureLimitsConfi
                       min='0'
                       value={limits[feature.key] || 0}
                       onChange={(e) =>
-                        setLimits({ ...limits, [feature.key]: parseInt(e.target.value) || 0 })
+                        setLimits({ ...limits, [feature.key]: parseInt(e.target.value, 10) || 0 })
                       }
                       disabled={unlimited[feature.key]}
                       placeholder='Enter limit'

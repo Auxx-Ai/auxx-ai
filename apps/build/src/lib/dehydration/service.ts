@@ -13,12 +13,10 @@ import { getUser } from '@auxx/services/users'
 import { BuildDehydrationCacheService } from './cache'
 import type {
   BuildDehydratedState,
-  DehydratedApp,
   DehydratedBuildEnvironment,
   DehydratedBuildUser,
   DehydratedDeveloperAccount,
   DehydratedDeveloperAccountInvitation,
-  DehydratedOrganization,
 } from './types'
 
 const logger = createScopedLogger('build-dehydration-service')

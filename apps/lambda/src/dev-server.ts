@@ -15,7 +15,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { handler } from './index.ts'
 import type { LambdaEvent } from './types.ts'
 
-const PORT = parseInt(Deno.env.get('PORT') || '3008')
+const PORT = parseInt(Deno.env.get('PORT') || '3008', 10)
 
 console.log(`[DevServer] Starting on port ${PORT}`)
 console.log(`[DevServer] Environment: ${Deno.env.get('NODE_ENV')}`)

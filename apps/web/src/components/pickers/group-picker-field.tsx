@@ -8,7 +8,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
-import { type Control, Controller, type FieldPath, type FieldValues } from 'react-hook-form'
+import type { Control, FieldPath, FieldValues } from 'react-hook-form'
 import { FormGroupPicker } from './group-picker'
 
 interface GroupPickerFieldProps<

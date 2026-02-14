@@ -2,11 +2,10 @@
 
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
-import { Label } from '@auxx/ui/components/label'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { cn } from '@auxx/ui/lib/utils'
 import { BookText, ChevronDown, ChevronRight, Code } from 'lucide-react'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 import { BooleanInput } from './boolean-input'
 import { NumberInput } from './number-input'
@@ -83,43 +82,40 @@ export const ObjectInput = createNodeInput<ObjectInputProps>(
           </div>
         </div>
 
-        {!isCollapsed && (
-          <>
-            {isRawMode || !fields ? (
-              <div className='space-y-2'>
-                <Textarea
-                  id={inputId}
-                  value={inputs[`${name}_raw`] || JSON.stringify(value, null, 2)}
-                  onChange={(e) => handleRawChange(e.target.value)}
-                  placeholder='Enter JSON object'
-                  disabled={isLoading}
-                  className={cn('font-mono text-sm', jsonError && 'border-destructive')}
-                  rows={8}
+        {!isCollapsed &&
+          (isRawMode || !fields ? (
+            <div className='space-y-2'>
+              <Textarea
+                id={inputId}
+                value={inputs[`${name}_raw`] || JSON.stringify(value, null, 2)}
+                onChange={(e) => handleRawChange(e.target.value)}
+                placeholder='Enter JSON object'
+                disabled={isLoading}
+                className={cn('font-mono text-sm', jsonError && 'border-destructive')}
+                rows={8}
+              />
+              {jsonError && (
+                <Alert variant='destructive'>
+                  <AlertDescription>{jsonError}</AlertDescription>
+                </Alert>
+              )}
+            </div>
+          ) : (
+            <div className='space-y-3 pl-6 border-l-2 border-muted'>
+              {Object.entries(fields).map(([fieldName, field]) => (
+                <FieldInput
+                  key={fieldName}
+                  name={fieldName}
+                  field={field}
+                  value={value[fieldName]}
+                  onChange={(fieldValue) => handleFieldChange(fieldName, fieldValue)}
+                  onError={onError}
+                  isLoading={isLoading}
+                  error={errors[`${name}.${fieldName}`]}
                 />
-                {jsonError && (
-                  <Alert variant='destructive'>
-                    <AlertDescription>{jsonError}</AlertDescription>
-                  </Alert>
-                )}
-              </div>
-            ) : (
-              <div className='space-y-3 pl-6 border-l-2 border-muted'>
-                {Object.entries(fields).map(([fieldName, field]) => (
-                  <FieldInput
-                    key={fieldName}
-                    name={fieldName}
-                    field={field}
-                    value={value[fieldName]}
-                    onChange={(fieldValue) => handleFieldChange(fieldName, fieldValue)}
-                    onError={onError}
-                    isLoading={isLoading}
-                    error={errors[`${name}.${fieldName}`]}
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        )}
+              ))}
+            </div>
+          ))}
       </div>
     )
   }

@@ -414,13 +414,11 @@ export default function PlansSection() {
 
                 <div className='grid md:col-span-3 md:grid-cols-3'>
                   {isMedium ? (
-                    <>
-                      {plans.map((plan) => (
-                        <div key={plan} className='group'>
-                          {renderPlanColumn(plan)}
-                        </div>
-                      ))}
-                    </>
+                    plans.map((plan) => (
+                      <div key={plan} className='group'>
+                        {renderPlanColumn(plan)}
+                      </div>
+                    ))
                   ) : (
                     <div>{renderPlanColumn(activePlan)}</div>
                   )}

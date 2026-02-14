@@ -3,10 +3,8 @@ import {
   type EventHandler,
   type EventRouterStats,
   logger,
-  type RedisEvent,
   type SubscriptionOptions,
 } from '../types'
-import { findMatchingPatterns, matchesPattern } from '../utils/channel-matcher'
 import {
   createRedisEvent,
   deserializeRedisEvent,

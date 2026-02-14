@@ -8,7 +8,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
@@ -31,16 +30,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Switch } from '@auxx/ui/components/switch'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import {
-  Check,
-  Edit2,
-  Minus,
-  Plus,
-  Trash2,
-  Variable,
-  Variable as VariableIcon,
-  X,
-} from 'lucide-react'
+import { Check, Edit2, Plus, Trash2, Variable, Variable as VariableIcon, X } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useVarStore } from '~/components/workflow/store/use-var-store'
 import type { EnvVar } from '~/components/workflow/types'

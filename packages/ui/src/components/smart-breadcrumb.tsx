@@ -3,7 +3,7 @@
 'use client'
 
 import { useContainerWidth } from '@auxx/ui/hooks/use-container-width'
-import { measureTextWidth, measureTextWidths, truncateText } from '@auxx/ui/lib/measure-text'
+import { measureTextWidths, truncateText } from '@auxx/ui/lib/measure-text'
 import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { ChevronRight, ChevronsRight, type LucideIcon, MoreHorizontal } from 'lucide-react'

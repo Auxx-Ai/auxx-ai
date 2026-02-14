@@ -3,7 +3,7 @@
 import { cn } from '@auxx/ui/lib/utils'
 import { Handle, Position } from '@xyflow/react'
 import { produce } from 'immer'
-import React, { memo, useCallback, useRef, useState } from 'react'
+import { memo, useCallback, useRef, useState } from 'react'
 import { useNodeCrud, useNodesInteractions } from '~/components/workflow/hooks'
 import { NodeResizer } from '~/components/workflow/ui/node-resizer'
 import { MIN_NOTE_HEIGHT, MIN_NOTE_WIDTH, THEME_MAP } from './constants'

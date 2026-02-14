@@ -7,7 +7,6 @@ import {
   deleteTimelineEvents,
   getRelatedTimelineEvents,
   getTimelineEvents,
-  type TimelineCursor as ServiceTimelineCursor,
 } from '@auxx/services/timeline'
 import type { RecordId } from '@auxx/types/resource'
 import type { TimelineEventType } from './event-types'

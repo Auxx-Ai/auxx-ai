@@ -22,7 +22,7 @@ import { Input } from '@auxx/ui/components/input'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast' // Use your toast system
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import Link from 'next/link'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { client } from '~/auth/auth-client'

@@ -3,7 +3,7 @@
 
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { usePathname, useRouter } from 'next/navigation'
-import React, {
+import {
   createContext,
   type ReactNode,
   useCallback,
@@ -13,14 +13,7 @@ import React, {
   useState,
 } from 'react'
 import { api } from '~/trpc/react'
-import {
-  buildArticleTree,
-  findArticleAndParent,
-  flattenArticleTreePreservingChildren,
-  generateArticlePaths,
-  getFullSlugPath,
-  isArticleActive,
-} from './helpers'
+import { buildArticleTree, generateArticlePaths, getFullSlugPath, isArticleActive } from './helpers'
 
 // Enhanced Article type with path information
 interface Article {
@@ -256,7 +249,7 @@ export function KBProvider({
           if (article.id === articleId) return false
 
           // Also remove any article that has this as an ancestor (by checking path)
-          if (article.path && article.path.includes(`/${articleId}/`)) return false
+          if (article.path?.includes(`/${articleId}/`)) return false
 
           return true
         })

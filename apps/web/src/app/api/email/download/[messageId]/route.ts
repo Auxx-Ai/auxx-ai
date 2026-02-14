@@ -1,7 +1,6 @@
 // ~/app/api/email/download/[messageId]/route.ts
 
-import { database, schema } from '@auxx/database'
-import { eq, or } from 'drizzle-orm'
+import { database } from '@auxx/database'
 import { headers } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
 import { auth } from '~/auth/server'

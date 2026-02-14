@@ -8,7 +8,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { useDroppable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
@@ -29,8 +28,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import React, { useMemo, useState } from 'react'
-import { Tooltip } from '~/components/global/tooltip'
+import { useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import { ArticleRenameDialog } from './article-rename-dialog'
 import { useKnowledgeBase } from './kb-context'
@@ -283,10 +281,8 @@ const ArticleSidebarItem = ({ article, isOpen = false, onToggleOpen }: ArticleSi
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => publishArticle(article)}>
-                    <>
-                      <EyeOff />
-                      {article.isPublished ? 'Unpublish' : 'Publish'}
-                    </>
+                    <EyeOff />
+                    {article.isPublished ? 'Unpublish' : 'Publish'}
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuGroup>

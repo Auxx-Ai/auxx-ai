@@ -6,11 +6,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { FileText, Plus, Workflow, Zap } from 'lucide-react'
-import Link from 'next/link'
+import { FileText, Plus, Workflow } from 'lucide-react'
 import { useState } from 'react'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { WorkflowTemplateDialog } from '~/components/workflow/dialogs/workflow-template-dialog'

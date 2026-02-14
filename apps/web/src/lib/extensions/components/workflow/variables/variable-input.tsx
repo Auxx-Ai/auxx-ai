@@ -1,6 +1,5 @@
 // apps/web/src/lib/extensions/components/workflow/variables/variable-input.tsx
 
-import React from 'react'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import VariableInputUI from '~/components/workflow/ui/variables/variable-input'
 

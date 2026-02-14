@@ -22,7 +22,6 @@ import {
 } from '@auxx/ui/components/select'
 import { Separator } from '@auxx/ui/components/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { toastSuccess } from '@auxx/ui/components/toast'
 import { Loader2, RefreshCcw, Upload } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'

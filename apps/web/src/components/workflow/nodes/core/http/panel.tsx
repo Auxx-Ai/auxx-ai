@@ -10,12 +10,10 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { Input } from '@auxx/ui/components/input'
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
-  InputGroupInput,
   InputGroupText,
 } from '@auxx/ui/components/input-group'
 import {
@@ -34,8 +32,7 @@ import {
 } from '@auxx/ui/components/select'
 import { produce } from 'immer'
 import { ChevronDown, FileJson, Plus } from 'lucide-react'
-import { memo, useCallback, useMemo } from 'react'
-import { NodeCredentialButton } from '~/components/workflow/credentials/node-credential-button'
+import { memo, useMemo } from 'react'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import Field from '~/components/workflow/ui/field'

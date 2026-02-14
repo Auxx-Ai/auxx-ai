@@ -1,4 +1,3 @@
-import React from 'react'
 import { api } from '~/trpc/server'
 import { CustomersOverview } from '../_components/customers-overview'
 import NoShopifyIntegration from '../_components/no-shopify-integration'

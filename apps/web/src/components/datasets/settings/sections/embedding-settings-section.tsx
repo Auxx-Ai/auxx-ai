@@ -238,7 +238,7 @@ export function EmbeddingSettingsSection({
                     <FormItem className='flex-1 mb-0 space-y-0!'>
                       <Select
                         value={field.value?.toString() ?? defaultDimension.toString()}
-                        onValueChange={(v) => field.onChange(parseInt(v))}>
+                        onValueChange={(v) => field.onChange(parseInt(v, 10))}>
                         <SelectTrigger className='w-full ' size='sm' variant='transparent'>
                           <SelectValue placeholder='Select dimension' />
                         </SelectTrigger>

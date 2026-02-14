@@ -3,10 +3,9 @@
 import { hashApiKey } from '@auxx/credentials/api-key'
 import { database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
-import { err, ok, type Result } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { WorkflowShareError } from './errors'
-import type { WorkflowRateLimitConfig, WorkflowShareConfig, WorkflowShareIcon } from './types'
+import type { WorkflowRateLimitConfig, WorkflowShareConfig } from './types'
 
 /**
  * Workflow data returned when looking up by API key

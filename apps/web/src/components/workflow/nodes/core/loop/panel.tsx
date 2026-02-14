@@ -11,8 +11,6 @@ import {
   NumberInputIncrement,
   NumberInputScrubber,
 } from '@auxx/ui/components/input-number'
-import { Label } from '@auxx/ui/components/label'
-import { Switch } from '@auxx/ui/components/switch'
 import { InfoIcon } from 'lucide-react'
 import type React from 'react'
 import { memo, useCallback } from 'react'

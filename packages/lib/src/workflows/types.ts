@@ -14,11 +14,7 @@ import type {
   WorkflowNodeExecutionEntity as WorkflowNodeExecution,
   WorkflowRunEntity as WorkflowRun,
 } from '@auxx/database/models'
-import type {
-  NodeTriggerSource,
-  WorkflowRunStatus,
-  WorkflowTriggerSource,
-} from '@auxx/database/types'
+import type { WorkflowRunStatus, WorkflowTriggerSource } from '@auxx/database/types'
 // Import from workflow engine
 import type { WorkflowTriggerType } from '../workflow-engine/core/types'
 

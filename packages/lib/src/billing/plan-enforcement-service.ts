@@ -1,5 +1,5 @@
 // src/lib/billing/plan-enforcement-service.ts
-import { type Database, database as db, schema } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { OrganizationMemberStatus, OrganizationRole } from '@auxx/database/enums'
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import { createScopedLogger } from '../logger'

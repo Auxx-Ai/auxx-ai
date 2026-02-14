@@ -1,6 +1,5 @@
 // apps/web/src/components/workflow/nodes/core/wait/types.ts
 
-import { UnifiedVariable } from '~/components/workflow/types'
 import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
 
 /**

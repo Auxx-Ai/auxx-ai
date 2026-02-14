@@ -5,7 +5,6 @@ import VariableTag from '~/components/workflow/ui/variables/variable-tag'
 import { getIcon } from '~/components/workflow/utils/icon-helper'
 import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'
 import { BaseNode } from '../../shared/base/base-node'
-import { listNodeDefinition } from './schema'
 import { type ListNode as ListNodeType, OPERATION_METADATA } from './types'
 
 /**
@@ -59,7 +58,7 @@ export const ListNode: FC<ListNodeType> = memo((props) => {
         <div className='px-3 py-2 space-y-2'>
           {/* Operation type */}
           <div className='flex items-center gap-2'>
-            {getIcon((operationMeta && operationMeta.icon) ?? 'List', 'h-4 w-4 text-indigo-500')}
+            {getIcon(operationMeta?.icon ?? 'List', 'h-4 w-4 text-indigo-500')}
             <span className='text-sm font-medium'>{operationMeta?.label ?? 'Unknown'}</span>
           </div>
 

@@ -2,7 +2,7 @@
 'use client'
 
 import { createContext, useContext } from 'react'
-import type { CustomField, ResourceField } from '../types'
+import type { CustomField } from '../types'
 
 // ============================================================================
 // TYPES

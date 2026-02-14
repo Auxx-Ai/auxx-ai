@@ -11,7 +11,7 @@ import {
 } from '@auxx/lib/custom-fields/types'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
-import { canFieldBeUnique, type SelectOptionColor } from '@auxx/types/custom-field'
+import { canFieldBeUnique } from '@auxx/types/custom-field'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -60,11 +60,7 @@ import {
   getDefaultActorOptions,
   parseActorOptions,
 } from './actor-options-editor'
-import {
-  AddressComponentsEditor,
-  formatAddressComponents,
-  parseAddressComponents,
-} from './address-component-editor'
+import { AddressComponentsEditor, parseAddressComponents } from './address-component-editor'
 import {
   type CalcEditorOptions,
   CalcFieldEditor,
@@ -94,12 +90,7 @@ import {
   parseDisplayOptions,
   TimeFormattingEditor,
 } from './formatting-editors'
-import {
-  formatSelectOptions,
-  OptionsEditor,
-  parseSelectOptions,
-  type SelectOption,
-} from './options-editor'
+import { OptionsEditor, parseSelectOptions, type SelectOption } from './options-editor'
 import { RelationshipFieldEditor, type RelationshipOptions } from './relationship-field-editor'
 
 /** Field types that don't support default values */

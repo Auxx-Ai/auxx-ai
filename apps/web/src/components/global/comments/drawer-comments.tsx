@@ -2,9 +2,8 @@
 
 // apps/web/src/components/global/comments/drawer-comments.tsx
 
-import { getDefinitionId, parseRecordId, type RecordId } from '@auxx/lib/field-values/client'
+import { getDefinitionId, type RecordId } from '@auxx/lib/field-values/client'
 import { MessagesSquare } from 'lucide-react'
-import React from 'react'
 import CommentComposer from '~/components/global/comments/comment-composer'
 import { CommentList } from '~/components/global/comments/comment-list'
 import { EmptyState } from '~/components/global/empty-state'

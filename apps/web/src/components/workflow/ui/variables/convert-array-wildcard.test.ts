@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/ui/variables/__tests__/convert-array-wildcard.test.ts
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 /**
  * Test for array wildcard to loop item conversion logic

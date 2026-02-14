@@ -4,7 +4,7 @@ import type { AssetKind } from '../../core/types'
 import type { ProcessorConfigResult, UploadInitConfig } from '../init-types'
 import type { PresignedUploadSession } from '../session-types'
 import { BaseAssetProcessor } from './base-asset-processor'
-import type { CreateSessionRequest, ProcessorMetadata, ProcessorResult } from './types'
+import type { ProcessorMetadata, ProcessorResult } from './types'
 
 /**
  * Workflow processor for temporary workflow files

@@ -8,10 +8,7 @@ import type {
   SystemCredentialInfo,
   ValidationResult,
 } from '../types'
-import {
-  RequiredEnvironmentVariableError,
-  SystemCredentialNotAvailableError,
-} from '../types/errors'
+import { RequiredEnvironmentVariableError } from '../types/errors'
 import type { CredentialTypeRegistry } from './credential-type-registry'
 
 const logger = createScopedLogger('system-credential-service')

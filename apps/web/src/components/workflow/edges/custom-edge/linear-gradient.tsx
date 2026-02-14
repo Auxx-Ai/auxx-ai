@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/edges/custom-edge/linear-gradient.tsx
 
-import React, { memo } from 'react'
+import { memo } from 'react'
 import type { CustomEdgeLinearGradientProps } from './types'
 
 export const CustomEdgeLinearGradient = memo(

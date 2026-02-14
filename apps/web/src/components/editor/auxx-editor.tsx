@@ -13,7 +13,6 @@ import {
   EditorContent,
   EditorRoot,
 } from './components'
-import { defaultEditorContent } from './default-editor-content'
 import { defaultExtensions } from './default-extensions'
 import { handleCommandNavigation, ImageResizer } from './extensions'
 import GenerativeMenuSwitch from './generative/generative-menu-switch'

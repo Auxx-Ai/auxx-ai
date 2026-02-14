@@ -2,7 +2,6 @@
 
 import { ArrowRight, Brain, CheckCircle, Link2, Zap } from 'lucide-react'
 import Link from 'next/link'
-import React from 'react'
 import { config } from '@/lib/config'
 import { Button } from '~/components/ui/button'
 

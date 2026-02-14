@@ -230,7 +230,7 @@ export class RecordPickerService {
         }
 
         // Search across configured fields
-        if (search && search.trim()) {
+        if (search?.trim()) {
           const searchConditions = displayConfig.searchFields.map((fieldKey: string) =>
             ilike(table[fieldKey], `%${search.trim()}%`)
           )
@@ -333,7 +333,7 @@ export class RecordPickerService {
     }
 
     // Search across configured fields
-    if (search && search.trim()) {
+    if (search?.trim()) {
       const searchConditions = displayConfig.searchFields.map((fieldKey: string) =>
         ilike(table[fieldKey], `%${search.trim()}%`)
       )
@@ -530,7 +530,7 @@ export class RecordPickerService {
     )
 
     // Client-side search filtering (TODO: optimize with database search)
-    if (search && search.trim()) {
+    if (search?.trim()) {
       const searchLower = search.trim().toLowerCase()
       transformedItems = transformedItems.filter(
         (item) =>

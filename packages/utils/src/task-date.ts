@@ -1,6 +1,6 @@
 // packages/utils/src/task-date.ts
 
-import type { PredefinedDateOption, RelativeDate } from '@auxx/types/task'
+import type { RelativeDate } from '@auxx/types/task'
 import { findPredefinedOption } from '@auxx/types/task'
 import {
   addDays as dateFnsAddDays,

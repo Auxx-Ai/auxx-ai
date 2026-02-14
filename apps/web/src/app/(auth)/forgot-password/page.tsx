@@ -1,5 +1,3 @@
-// src/app/(auth)/forgot-password/page.tsx
-import React from 'react'
 import { Logo } from '~/components/global/login/logo'
 import { ForgotPasswordForm } from '../_components/forgot-password-form'
 

@@ -1,7 +1,6 @@
 import { Button } from '@auxx/ui/components/button'
 import { Plus } from 'lucide-react'
 import Link from 'next/link'
-import React from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { ShopifyIcon } from '~/constants/icons'
 

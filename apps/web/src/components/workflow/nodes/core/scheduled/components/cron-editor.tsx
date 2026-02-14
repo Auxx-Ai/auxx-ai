@@ -2,7 +2,6 @@
 
 'use client'
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   Command,
   CommandEmpty,

@@ -1,5 +1,5 @@
 // apps/web/src/app/(website)/_components/features-3-cols/performance-analytics-card.tsx
-import { SquareChevronRight, SquareTerminal } from 'lucide-react'
+import { SquareTerminal } from 'lucide-react'
 import { ActionIllustration } from './action-illustration'
 
 // ActionsCard renders the analytics feature column.

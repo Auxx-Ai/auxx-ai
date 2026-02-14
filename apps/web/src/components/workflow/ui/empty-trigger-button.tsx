@@ -1,7 +1,6 @@
 // apps/web/src/components/workflow/ui/empty-trigger-button.tsx
 
 import { Button } from '@auxx/ui/components/button'
-import { Panel } from '@xyflow/react'
 import { Plus } from 'lucide-react'
 import { memo, useState } from 'react'
 import { useTriggerDefinitions, useWorkflowTrigger } from '~/components/workflow/hooks'

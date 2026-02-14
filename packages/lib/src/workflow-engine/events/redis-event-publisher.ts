@@ -4,7 +4,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import type { NodeRunningStatus } from '../types'
 import { safeJsonStringify } from '../utils/serialization'
-import { type WorkflowEvent, WorkflowEventSchema, WorkflowEventType } from './types'
+import { type WorkflowEvent, WorkflowEventType } from './types'
 
 const logger = createScopedLogger('workflow-event-publisher')
 

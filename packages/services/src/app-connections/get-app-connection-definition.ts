@@ -1,7 +1,7 @@
 // packages/services/src/app-connections/get-app-connection-definition.ts
 
 import { database } from '@auxx/database'
-import { err, ok, type Result } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 
 /**

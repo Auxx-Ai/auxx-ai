@@ -154,7 +154,7 @@ function AutosizeInput({
 
     // Add extra width (defaults to 16 for number inputs to accommodate stepper)
     const effectiveExtraWidth =
-      type === 'number' && extraWidth === undefined ? 16 : parseInt(String(extraWidth)) || 0
+      type === 'number' && extraWidth === undefined ? 16 : parseInt(String(extraWidth), 10) || 0
     newWidth += effectiveExtraWidth
 
     // Apply min/max constraints

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 // ~/app/(protected)/app/settings/integrations/_components/integration-list.tsx
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { AppListCard } from '~/components/apps/app-list-card'
 import SettingsPage from '~/components/global/settings-page'
 import { api } from '~/trpc/react'

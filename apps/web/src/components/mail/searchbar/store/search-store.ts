@@ -2,7 +2,7 @@
 'use client'
 
 import type { Operator } from '@auxx/lib/conditions/client'
-import { getDefaultOperatorForField, getMailViewFieldDefinition } from '@auxx/lib/mail-views/client'
+import { getMailViewFieldDefinition } from '@auxx/lib/mail-views/client'
 import { v4 as generateId } from 'uuid'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'

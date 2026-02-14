@@ -2,7 +2,6 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { AlertCircle, AlertTriangle } from 'lucide-react'
-import React from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 
 interface NodeValidationWarningProps {

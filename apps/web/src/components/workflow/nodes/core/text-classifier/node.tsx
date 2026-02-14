@@ -2,8 +2,7 @@
 
 'use client'
 
-import { Tags } from 'lucide-react'
-import React, { memo } from 'react'
+import { memo } from 'react'
 import ModelNodeView from '~/components/workflow/ui/model-parameter/model-node-view'
 import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'
 import { BaseNode } from '../../shared/base/base-node'

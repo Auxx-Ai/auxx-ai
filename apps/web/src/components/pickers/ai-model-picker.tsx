@@ -2,7 +2,6 @@
 'use client'
 
 import type { ModelData, ModelType } from '@auxx/lib/ai/providers/types'
-import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   Command,
@@ -13,7 +12,6 @@ import {
   CommandList,
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { ProviderIcon } from '@auxx/ui/components/provider-icon'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { Bot, Check, ChevronsUpDown, Settings } from 'lucide-react'

@@ -1,5 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
-import { GoogleProvider } from '../../google/google-provider'
+import { describe, expect, it } from 'vitest'
 import { createEmailMessage } from '../../google/messages/create-message'
 
 describe('GoogleProvider MIME building', () => {

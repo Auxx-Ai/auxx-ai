@@ -243,8 +243,7 @@ function TagPickerContent({
       // When searching, show all matching tags
       return flatTags.filter(
         (tag) =>
-          tag.title.toLowerCase().includes(search.toLowerCase()) ||
-          (tag.tag_emoji && tag.tag_emoji.includes(search))
+          tag.title.toLowerCase().includes(search.toLowerCase()) || tag.tag_emoji?.includes(search)
       )
     }
 

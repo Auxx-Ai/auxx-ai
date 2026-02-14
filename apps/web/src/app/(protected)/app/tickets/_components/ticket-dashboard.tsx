@@ -252,18 +252,16 @@ export function TicketDashboardContent() {
       {/* Bottom section */}
       <div className='grid grid-cols-1 gap-3 lg:grid-cols-3 p-3'>
         {isLoading ? (
-          <>
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Card key={i}>
-                <CardHeader>
-                  <Skeleton className='h-6 w-40' />
-                </CardHeader>
-                <CardContent>
-                  <Skeleton className='h-60 w-full' />
-                </CardContent>
-              </Card>
-            ))}
-          </>
+          Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader>
+                <Skeleton className='h-6 w-40' />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className='h-60 w-full' />
+              </CardContent>
+            </Card>
+          ))
         ) : (
           <>
             {/* Tickets by Priority Chart */}

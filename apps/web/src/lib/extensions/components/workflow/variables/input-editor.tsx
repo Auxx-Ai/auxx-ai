@@ -1,6 +1,5 @@
 // apps/web/src/lib/extensions/components/workflow/variables/input-editor.tsx
 
-import React from 'react'
 import InputEditorUI from '~/components/workflow/ui/input-editor/input-editor'
 import type { TiptapJSON } from '~/components/workflow/ui/input-editor/types'
 

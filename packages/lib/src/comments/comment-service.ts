@@ -5,7 +5,7 @@ import type {
   CommentReactionEntity as CommentReaction,
 } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { publisher } from '../events'
 import type {
   CommentCreatedEvent,
@@ -18,7 +18,6 @@ import { MediaAssetService } from '../files/core/media-asset-service'
 import { NotificationService } from '../notifications/notification-service'
 import { PermissionService } from '../permissions/permission-service'
 import { parseRecordId, type RecordId } from '../resources/resource-id'
-import { SystemUserService } from '../users/system-user-service'
 
 // System entity types (hardcoded)
 export const SYSTEM_ENTITY_TYPES = ['Ticket', 'Thread', 'Contact'] as const

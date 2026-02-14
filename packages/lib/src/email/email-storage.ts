@@ -10,15 +10,13 @@ import {
 } from '@auxx/database/enums'
 import type {
   ContactEntity as Contact,
-  CustomerSourceEntity as CustomerSource,
   MessageEntity as Message,
-  MessageParticipantEntity as MessageParticipant,
   ParticipantEntity as Participant,
   ThreadEntity as Thread,
 } from '@auxx/database/models'
 import type { IdentifierType, ParticipantRole } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { SelectiveModeCache } from '../cache/selective-mode-cache'
 import { MessageReconcilerService } from '../messages/message-reconciler.service'

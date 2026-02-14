@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/test-usage.tsx
 // This is a test file to demonstrate usage - delete after testing
 
-import React, { useState } from 'react'
+import { useState } from 'react'
 import StructuredOutputGenerator from './index'
 import type { SchemaRoot } from './types'
 

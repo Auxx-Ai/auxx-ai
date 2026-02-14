@@ -11,12 +11,11 @@ import { PROVIDER_WITH_PRESET_TONE, stopParameterRule, TONE_LIST } from './const
 import ParameterItem from './parameter-item'
 import PresetsParameter from './presets-parameter'
 import Trigger from './trigger'
-import {
-  type DefaultModel,
-  type ModelParameterModalProps,
-  type ModelParameterRule,
-  type ParameterValue,
-  TriggerProps,
+import type {
+  DefaultModel,
+  ModelParameterModalProps,
+  ModelParameterRule,
+  ParameterValue,
 } from './types'
 
 // Model ID conversion utilities

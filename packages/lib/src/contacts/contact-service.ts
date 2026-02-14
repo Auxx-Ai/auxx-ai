@@ -11,7 +11,6 @@ import type {
   ContactDeletedEvent,
   ContactGroupAddedEvent,
   ContactGroupRemovedEvent,
-  ContactMergedEvent,
   ContactUpdatedEvent,
 } from '../events/types'
 import { SystemUserService } from '../users/system-user-service'

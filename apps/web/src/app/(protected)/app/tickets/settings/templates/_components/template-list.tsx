@@ -2,7 +2,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { Card, CardContent } from '@auxx/ui/components/card'
 import {
   Dialog,
   DialogContent,
@@ -36,7 +36,7 @@ import {
   PlusIcon,
   Trash2Icon,
 } from 'lucide-react'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { TemplateEditorDialog } from './template-editor-dialog'

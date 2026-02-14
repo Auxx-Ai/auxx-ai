@@ -15,7 +15,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { Check, ChevronDown } from 'lucide-react'
-import React, { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { getVarTypeName, VarTypeIcon } from '~/components/workflow/utils/icon-helper'
 
 /**

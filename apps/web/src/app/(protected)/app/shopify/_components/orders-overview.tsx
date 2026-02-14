@@ -6,15 +6,10 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import React from 'react'
-// import { ProductNav } from './products/product-nav'
-// import { DataTable } from '../data-table/data-table'
-import { z } from 'zod'
 import { SyncShopifyButton } from '~/app/(protected)/app/shopify/_components/sync-button'
 import { DataTable } from '~/components/data-table/data-table'
 import useOrders from '~/hooks/use-orders'
 import { columns } from './orders-columns'
-import { orderSchema } from './schema'
 
 type Props = {}
 

@@ -115,7 +115,7 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
     // Parse from type field if not present (fallback for nodes without explicit metadata)
     if (!appId || !blockId) {
       const nodeType = node.type as string
-      if (nodeType && nodeType.includes(':')) {
+      if (nodeType?.includes(':')) {
         const [parsedAppId, parsedBlockId] = nodeType.split(':')
         appId = appId || parsedAppId
         blockId = blockId || parsedBlockId
@@ -332,7 +332,7 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
     // Parse from type field if not present (same logic as preprocessNode)
     if (!appId || !blockId) {
       const nodeType = node.type as string
-      if (nodeType && nodeType.includes(':')) {
+      if (nodeType?.includes(':')) {
         const [parsedAppId, parsedBlockId] = nodeType.split(':')
         appId = appId || parsedAppId
         blockId = blockId || parsedBlockId
@@ -434,7 +434,7 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
 
       case 'number': {
         const num = Number(value)
-        if (isNaN(num)) {
+        if (Number.isNaN(num)) {
           throw new Error(`Cannot coerce "${value}" to number`)
         }
         return num

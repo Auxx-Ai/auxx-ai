@@ -7,10 +7,6 @@ import { BaseTag } from './base-tag.js'
  * Serializes alert display props for cross-iframe communication.
  */
 export class WorkflowAlertTag extends BaseTag {
-  constructor(props: Record<string, any>) {
-    super(props)
-  }
-
   /**
    * Returns the HTML tag name to render.
    */

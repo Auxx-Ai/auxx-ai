@@ -3,8 +3,6 @@
  * Plan-related types for billing package.
  */
 
-import type { Plan } from '@auxx/database'
-
 /** Extended plan configuration with runtime behavior */
 export interface BillingPlan {
   /** Database plan reference */

@@ -2,10 +2,8 @@
 
 import { AdminActionLog, AppVersion, database } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import type { Result } from 'neverthrow'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { AppVersionError } from './errors'
 import { recalculateAppStatus } from './recalculate-app-status'
 
 /**

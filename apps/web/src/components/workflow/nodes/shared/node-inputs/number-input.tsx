@@ -7,7 +7,6 @@ import {
   NumberInputIncrement,
   NumberInput as NumberInputUi,
 } from '@auxx/ui/components/input-number'
-import React from 'react'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 interface NumberInputProps extends NodeInputProps {
@@ -69,7 +68,7 @@ export const NumberInput = createNodeInput<NumberInputProps>(
           : numValue
 
       // Validate - use callback instead of mutation
-      if (isNaN(parsedValue)) {
+      if (Number.isNaN(parsedValue)) {
         onError(name, 'Please enter a valid number')
         return
       }

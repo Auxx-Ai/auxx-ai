@@ -28,8 +28,8 @@ export async function GET(req: NextRequest) {
           ? (triggerTypeParam as WorkflowTriggerType)
           : undefined,
       search: searchParams.get('search') || undefined,
-      limit: searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 50,
-      offset: searchParams.get('offset') ? parseInt(searchParams.get('offset')!) : 0,
+      limit: searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 50,
+      offset: searchParams.get('offset') ? parseInt(searchParams.get('offset')!, 10) : 0,
     }
 
     // Create tRPC context

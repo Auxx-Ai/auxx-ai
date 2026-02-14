@@ -5,7 +5,6 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { format } from 'date-fns'
 import { ExternalLink, Mail, Phone, User } from 'lucide-react'
 import Link from 'next/link'
-import React from 'react'
 import { useOrder } from '~/components/orders/order-context'
 import { formatMoney } from '~/utils/strings'
 

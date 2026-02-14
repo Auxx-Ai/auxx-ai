@@ -2,7 +2,7 @@
 
 'use client'
 
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { useNodeCrud } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'

@@ -4,7 +4,6 @@
 import { FieldType } from '@auxx/database/enums'
 import { converters, type DateFieldOptions } from '@auxx/lib/field-values/client'
 import { X } from 'lucide-react'
-import { usePropertyContext } from '../property-provider'
 import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
 import { FieldOptionButton } from './field-option-button'

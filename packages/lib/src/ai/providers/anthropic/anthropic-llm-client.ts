@@ -1,7 +1,7 @@
 // packages/lib/src/ai/providers/anthropic/anthropic-llm-client.ts
 
 import type Anthropic from '@anthropic-ai/sdk'
-import { createScopedLogger, type Logger } from '../../../logger'
+import type { Logger } from '../../../logger'
 import { LLMClient } from '../../clients/base/llm-client'
 import type {
   ClientConfig,
@@ -12,7 +12,6 @@ import type {
   Message,
   ModelCapabilities,
   MultiModalContent,
-  StreamingError,
   Tool,
   ToolCall,
   UsageMetrics,

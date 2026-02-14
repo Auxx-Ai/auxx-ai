@@ -10,9 +10,8 @@ import {
   CardTitle,
 } from '@auxx/ui/components/card'
 import { AlertTriangle } from 'lucide-react' // Icon for error display
-import Image from 'next/image'
 import Link from 'next/link'
-import React, { Suspense } from 'react'
+import { Suspense } from 'react'
 import { Logo } from '~/components/global/login/logo'
 import { ResetPasswordForm } from '../_components/reset-password-form'
 

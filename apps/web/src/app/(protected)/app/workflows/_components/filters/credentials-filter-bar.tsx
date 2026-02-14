@@ -12,8 +12,8 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { LayoutGrid, List, Plus, Search } from 'lucide-react'
-import React, { useState } from 'react'
+import { LayoutGrid, List, Search } from 'lucide-react'
+import { useState } from 'react'
 import { CreateCredentialDialog } from '~/components/workflow/credentials/create-credential-dialog'
 import { CREDENTIAL_REGISTRY } from '~/components/workflow/credentials/credential-registry'
 import { useCredentials } from '~/components/workflow/credentials/credentials-provider'

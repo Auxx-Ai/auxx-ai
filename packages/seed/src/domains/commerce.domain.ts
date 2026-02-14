@@ -1,7 +1,6 @@
 // packages/seed/src/domains/commerce.domain.ts
 // Commerce domain refinements for drizzle-seed with comprehensive e-commerce seeding
 
-import { createId } from '@paralleldrive/cuid2'
 import { sql } from 'drizzle-orm'
 import { ContentEngine } from '../generators/content-engine'
 import type { SeedingContext, SeedingScenario, ServiceIntegratorShopifyIntegration } from '../types'

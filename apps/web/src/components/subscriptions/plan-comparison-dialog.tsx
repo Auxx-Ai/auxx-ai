@@ -8,7 +8,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useState } from 'react'
 import { PlanComparison } from './plan-comparison'
 
 /** Props for PlanComparisonDialog component */

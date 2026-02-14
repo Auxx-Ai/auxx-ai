@@ -9,12 +9,7 @@
  */
 
 import { database } from '@auxx/database'
-import {
-  getAppSetting,
-  getAppSettings,
-  saveAppSettings,
-  setAppSetting,
-} from '@auxx/services/app-settings'
+import { getAppSettings, saveAppSettings, setAppSetting } from '@auxx/services/app-settings'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { ERROR_STATUS_MAP, errorResponse } from '../lib/response'

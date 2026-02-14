@@ -2,7 +2,7 @@
 import { database as db, schema } from '@auxx/database'
 import { NodeTriggerSource } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import type { WorkflowExecutionReporter } from '../execution-reporter'
 import { WorkflowEventType } from '../shared/types'
 import { BatchedJoinStateUpdater } from './batched-join-updater'
@@ -20,12 +20,7 @@ import {
 import { ExecutionContextManager } from './execution-context'
 import { ExecutionTrackingManager } from './execution-tracking'
 import { calculateTotalTokens } from './execution-utils'
-import {
-  findEntryNode,
-  findNodeById,
-  getNextNodeIds,
-  getTargetsFromHandle,
-} from './graph-navigation'
+import { findEntryNode, findNodeById, getNextNodeIds } from './graph-navigation'
 import {
   type BranchArrivalStatus,
   JoinExecutionManager,
@@ -58,14 +53,9 @@ import {
   WorkflowExecutionStatus,
   WorkflowNodeType,
   WorkflowPausedException,
-  WorkflowTriggerType,
 } from './types'
 import { validateWorkflow } from './validation'
-import {
-  type WorkflowGraph,
-  WorkflowGraphBuilder,
-  WorkflowGraphHelper,
-} from './workflow-graph-builder'
+import { type WorkflowGraph, WorkflowGraphBuilder } from './workflow-graph-builder'
 import { workflowMetrics } from './workflow-metrics'
 
 const logger = createScopedLogger('workflow-engine')
@@ -538,7 +528,7 @@ export class WorkflowEngine {
         const forkInfo = graph.forkPoints.get(currentNode.nodeId)
         const outputHandle = result.outputHandle || 'source'
         const currentFork = forkInfo?.find((f) => f.outputHandle === outputHandle)
-        if (currentFork && currentFork.joinNodeId) {
+        if (currentFork?.joinNodeId) {
           // We have a fork with a known join point
           contextManager.log('INFO', currentNode.name, 'Fork with join point detected', {
             forkNode: currentNode.nodeId,
@@ -1101,7 +1091,7 @@ export class WorkflowEngine {
           throw error
         } else {
           const preprocessMessage = error instanceof Error ? error.message : 'Preprocessing failed'
-          const errorType = error && error.constructor && error.constructor.name
+          const errorType = error?.constructor?.name
           // Wrap generic preprocessing errors in WorkflowNodeProcessingError
           const nodeError = new WorkflowNodeProcessingError(
             preprocessMessage,
@@ -1227,7 +1217,7 @@ export class WorkflowEngine {
         await handleNodeErrorUtil(error, node, options, contextManager, nodeExecutionId)
       } else {
         const message = error instanceof Error ? error.message : ''
-        const errorType = error && error.constructor && error.constructor.name
+        const errorType = error?.constructor?.name
         // For generic errors, wrap in WorkflowNodeExecutionError and handle
         const nodeError = new WorkflowNodeExecutionError(
           message || 'Unknown node error',

@@ -16,7 +16,7 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useRouter } from 'next/navigation'
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '~/trpc/react'
 
 interface DuplicateWorkflowDialogProps {

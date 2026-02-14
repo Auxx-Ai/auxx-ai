@@ -2,7 +2,6 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { Label } from '@auxx/ui/components/label'
 import { Switch } from '@auxx/ui/components/switch'
 import { Monitor, Moon, Smartphone, Sun } from 'lucide-react'
 import { useState } from 'react'

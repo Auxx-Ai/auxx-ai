@@ -7,7 +7,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import React from 'react'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 interface EnumOption {

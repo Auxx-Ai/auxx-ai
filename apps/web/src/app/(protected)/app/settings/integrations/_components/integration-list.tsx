@@ -3,8 +3,6 @@ import { FeatureKey } from '@auxx/lib/types'
 import { Button } from '@auxx/ui/components/button'
 import { Plus, Waypoints } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-// ~/app/(protected)/app/settings/integrations/_components/integration-list.tsx
-import React from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
 import { useInboxes } from '~/components/threads/hooks'

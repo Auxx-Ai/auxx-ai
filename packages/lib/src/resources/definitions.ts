@@ -1,11 +1,9 @@
 // packages/lib/src/workflow-engine/resources/definitions.ts
 import { RESOURCE_TABLE_MAP, type TableId } from './registry/field-registry'
 import {
-  createContactVariables,
   createDatasetVariables,
   createMessageVariables,
   createThreadVariables,
-  createTicketVariables,
 } from './variable-generators'
 
 /**

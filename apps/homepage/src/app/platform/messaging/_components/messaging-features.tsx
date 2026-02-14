@@ -1,5 +1,5 @@
 'use client'
-import { ChartBar, Share2, Smile, Sparkles, SquaresUnite } from 'lucide-react'
+import { Share2, Smile, Sparkles, SquaresUnite } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import Image from 'next/image'
 import { useState } from 'react'

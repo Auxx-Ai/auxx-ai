@@ -3,12 +3,7 @@
 'use client'
 
 import type { RecordId } from '@auxx/lib/resources/client'
-import {
-  type FieldPath,
-  type FieldReference,
-  isFieldPath,
-  type ResourceFieldId,
-} from '@auxx/types/field'
+import type { FieldPath, FieldReference, ResourceFieldId } from '@auxx/types/field'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { memo, useMemo } from 'react'
 import { useField } from '~/components/resources/hooks/use-field'

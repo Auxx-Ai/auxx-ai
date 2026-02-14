@@ -14,7 +14,7 @@ export function formatBytes(bytes: number | bigint, decimals: number = 2): strin
   const numBytes = typeof bytes === 'bigint' ? Number(bytes) : bytes
 
   // Handle NaN, negative numbers, or zero
-  if (isNaN(numBytes) || numBytes < 0) return '0 B'
+  if (Number.isNaN(numBytes) || numBytes < 0) return '0 B'
   if (numBytes === 0) return '0 B'
 
   const k = 1024

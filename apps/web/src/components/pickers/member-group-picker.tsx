@@ -68,7 +68,7 @@ export function MemberGroupPicker({
     members?.filter(
       (member) =>
         member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (member.email && member.email.toLowerCase().includes(searchQuery.toLowerCase()))
+        member.email?.toLowerCase().includes(searchQuery.toLowerCase())
     ) || []
 
   const filteredGroups =

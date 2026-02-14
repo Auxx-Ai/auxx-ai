@@ -2,12 +2,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { ExecutionContextManager } from '../core/execution-context'
-import {
-  type NodeExecutionResult,
-  type ValidationResult,
-  WorkflowNode,
-  WorkflowNodeType,
-} from '../core/types'
+import { type NodeExecutionResult, type ValidationResult, WorkflowNodeType } from '../core/types'
 import { BaseNodeProcessor } from '../nodes/base-node'
 
 // Mock node processor for testing

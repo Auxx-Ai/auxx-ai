@@ -33,7 +33,6 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import React from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { useConfirm } from '~/hooks/use-confirm'
 import { type SignatureVisibility, useSignatureMutations, useSignatures } from '../hooks'

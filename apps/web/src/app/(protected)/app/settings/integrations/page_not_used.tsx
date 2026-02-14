@@ -1,13 +1,5 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@auxx/ui/components/card'
+import { Card, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import Link from 'next/link'
-import React from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import { ShopifyIcon } from '~/constants/menu'
 

@@ -2,8 +2,6 @@
 import { Button } from '@auxx/ui/components/button'
 import { ArrowLeft, MessageSquare } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-// ~/app/(protected)/app/settings/integrations/new/page.tsx
-import React from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import IntegrationCard from '../_components/integration-card'
 

@@ -1,9 +1,8 @@
 // ~/components/mail/chat-interface.tsx
 'use client'
-import { ThreadStatus } from '@auxx/database/enums'
 import { getPusherClient } from '@auxx/lib/realtime/client' // Import Pusher client helper
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area' // Import ScrollBar if needed
@@ -23,7 +22,7 @@ import {
   User,
 } from 'lucide-react'
 import type { Channel } from 'pusher-js' // Import Pusher types
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSession } from '~/auth/auth-client'
 import { api } from '~/trpc/react'
 import { ChatMessageBubble } from './chat-message-bubble'

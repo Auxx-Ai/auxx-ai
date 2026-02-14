@@ -324,7 +324,7 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
     } else {
       duration = timeout.duration
     }
-    if (isNaN(duration) || duration <= 0) {
+    if (Number.isNaN(duration) || duration <= 0) {
       throw new Error('Invalid timeout duration')
     }
     // Convert to milliseconds based on unit

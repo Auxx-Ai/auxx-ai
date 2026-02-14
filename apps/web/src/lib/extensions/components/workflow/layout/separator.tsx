@@ -2,8 +2,6 @@
 
 'use client'
 
-import React from 'react'
-
 /**
  * Separator component.
  * Visual divider for separating sections.

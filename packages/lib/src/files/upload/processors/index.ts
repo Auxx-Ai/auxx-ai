@@ -13,7 +13,6 @@ import {
 } from './entity-processors'
 import { FileProcessor } from './file-processor'
 import { ProcessorRegistry } from './processor-registry'
-import { WorkflowProcessor } from './workflow-processor'
 
 const logger = createScopedLogger('processors')
 

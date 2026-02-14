@@ -12,7 +12,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { CommandItem } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { cn } from '@auxx/ui/lib/utils'
 import { Check } from 'lucide-react'
 import { useResource } from '~/components/resources'
 

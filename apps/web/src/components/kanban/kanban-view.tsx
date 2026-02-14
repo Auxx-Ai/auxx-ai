@@ -22,7 +22,7 @@ import {
 } from '@dnd-kit/core'
 import { arrayMove, horizontalListSortingStrategy, SortableContext } from '@dnd-kit/sortable'
 import { Plus } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useFieldSelectOptionMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import {
@@ -332,7 +332,7 @@ export function KanbanView<TData extends KanbanRow>({
         grouped[columnId].push(item)
       } else {
         // Only items with truly invalid/deleted column values go to No Stage
-        grouped[NO_STATUS_COLUMN_ID] && grouped[NO_STATUS_COLUMN_ID].push(item)
+        grouped[NO_STATUS_COLUMN_ID]?.push(item)
       }
     })
 

@@ -1,6 +1,5 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import React from 'react'
 import { auth } from '~/auth/server'
 import SettingsPage from '~/components/global/settings-page'
 import InviteForm from '../_components/invite-form'

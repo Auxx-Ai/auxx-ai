@@ -1,7 +1,7 @@
 // packages/lib/src/ai/providers/openai/openai-moderation-client.ts
 
 import type OpenAI from 'openai'
-import { createScopedLogger, type Logger } from '../../../logger'
+import type { Logger } from '../../../logger'
 import { ModerationClient } from '../../clients/base/moderation-client'
 import type {
   ClientConfig,

@@ -34,7 +34,7 @@ import {
   TextCursorInput,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useDatasetDetail } from '~/app/(protected)/app/datasets/[datasetId]/_components/dataset-detail-provider'
 import { AttachmentPreview } from '~/components/attachments/attachment-preview'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'

@@ -1,6 +1,5 @@
 // packages/config/src/env.ts
 import { createEnv } from '@t3-oss/env-nextjs'
-import * as dotenv from 'dotenv'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { z } from 'zod'

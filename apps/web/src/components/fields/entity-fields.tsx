@@ -11,7 +11,7 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import React, { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { useResourceFields } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -22,7 +22,7 @@ import { useFieldView } from './hooks/use-field-view'
 import { useToggleFieldVisibility } from './hooks/use-toggle-field-visibility'
 
 /**
- * Props for EntityFields component
+ * Props for EntityFields component.
  */
 interface EntityFieldsProps {
   /** RecordId in format "entityDefinitionId:entityInstanceId" */

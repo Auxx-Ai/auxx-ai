@@ -1,5 +1,3 @@
-// ~/app/(protected)/app/settings/integrations/page.tsx
-import React from 'react'
 import IntegrationList from './_components/integration-list'
 
 /**

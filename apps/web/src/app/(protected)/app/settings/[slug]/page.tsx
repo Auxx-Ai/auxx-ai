@@ -1,5 +1,3 @@
-import React from 'react'
-
 type Props = { params: Promise<{ slug: string }> }
 
 const Page = async ({ params }: Props) => {

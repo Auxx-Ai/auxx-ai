@@ -4,7 +4,7 @@
 import { TRIGGER_NAME_MAP, type WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,16 +15,7 @@ import {
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import {
-  Copy,
-  Edit,
-  MoreHorizontal,
-  MoreVertical,
-  Pause,
-  Play,
-  TestTube,
-  Trash,
-} from 'lucide-react'
+import { Copy, Edit, MoreVertical, Pause, Play, TestTube, Trash } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
@@ -35,7 +26,6 @@ import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registr
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { useWorkflows } from '../providers/workflows-provider'
-import { getTriggerInfo } from '../utils/trigger-info'
 
 interface WorkflowCardProps {
   workflow: any

@@ -143,7 +143,7 @@ export function extractNameFromHeader(headerValue: string): string | undefined {
 
   // Extract name from "Name <email>" format
   const match = headerValue.match(/^([^<]+)</)
-  if (match && match[1]) {
+  if (match?.[1]) {
     return match[1].trim()
   }
 

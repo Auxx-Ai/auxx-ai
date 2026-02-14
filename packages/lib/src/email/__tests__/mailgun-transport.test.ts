@@ -19,8 +19,6 @@ const fakeClient = {
 
 vi.mock('mailgun.js', () => ({
   default: class {
-    constructor(..._args: unknown[]) {}
-
     // Provide the fake client that exposes the minimal interface we rely on.
     client() {
       return fakeClient

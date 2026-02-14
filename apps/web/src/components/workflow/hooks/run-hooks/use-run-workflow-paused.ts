@@ -23,7 +23,7 @@ export const useRunWorkflowPaused = () => {
       try {
         pausedAt = event.data.pausedAt ? new Date(event.data.pausedAt) : new Date()
         // Validate the parsed date
-        if (isNaN(pausedAt.getTime())) {
+        if (Number.isNaN(pausedAt.getTime())) {
           console.warn(
             '[Run Event] Invalid pausedAt date, using current time:',
             event.data.pausedAt

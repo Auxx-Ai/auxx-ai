@@ -9,7 +9,7 @@ import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
 import { Switch } from '@auxx/ui/components/switch'
 import type { CredentialTestResult } from '@auxx/workflow-nodes/types'
-import { AlertTriangle, CheckCircle, Loader2, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle, XCircle } from 'lucide-react'
 import { useState } from 'react'
 import { useCredentialTest } from '~/hooks/use-credential-test'
 

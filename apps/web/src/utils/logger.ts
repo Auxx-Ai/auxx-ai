@@ -1,5 +1,3 @@
-import { env } from '@auxx/config/server'
-
 export type Logger = ReturnType<typeof createScopedLogger>
 
 type LogLevel = 'info' | 'error' | 'warn' | 'trace' | 'debug'

@@ -76,22 +76,19 @@ export function Timeline({ events, onLoadMore, hasMore, isLoading }: TimelinePro
                 />
 
                 {/* Render events if not collapsed */}
-                {!isCollapsed && (
-                  <>
-                    {period.events.map((item, index) => {
-                      if (item.type === 'single') {
-                        return <TimelineEventItem key={item.event.id} event={item.event} />
-                      }
+                {!isCollapsed &&
+                  period.events.map((item, index) => {
+                    if (item.type === 'single') {
+                      return <TimelineEventItem key={item.event.id} event={item.event} />
+                    }
 
-                      return (
-                        <TimelineGroupedItem
-                          key={`group-${yearGroup.year}-${period.type}-${index}`}
-                          groupedEvent={item}
-                        />
-                      )
-                    })}
-                  </>
-                )}
+                    return (
+                      <TimelineGroupedItem
+                        key={`group-${yearGroup.year}-${period.type}-${index}`}
+                        groupedEvent={item}
+                      />
+                    )
+                  })}
               </div>
             )
           })}

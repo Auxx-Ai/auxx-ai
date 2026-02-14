@@ -3,7 +3,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { ListPlus, Plus } from 'lucide-react'
+import { ListPlus } from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
 import Section from '~/components/workflow/ui/section'

@@ -2,7 +2,6 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Cog, MoreVertical, Smile } from 'lucide-react'
-import React from 'react'
 import { EditableText } from '~/components/editor/editable-text'
 
 // Extended article type including content properties

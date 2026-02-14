@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/code/node.tsx
 
-import React, { memo } from 'react'
+import { memo } from 'react'
 import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'
 import { BaseNode } from '../../shared/base/base-node'
 import type { CodeNode as CodeNodeType } from './types'

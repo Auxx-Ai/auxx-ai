@@ -9,7 +9,6 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { closestCorners, DndContext, DragOverlay } from '@dnd-kit/core'
 import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Loader2, Plus, Settings } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'

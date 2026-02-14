@@ -7,10 +7,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import React from 'react'
 import type { StatusSlug } from '~/components/mail/types'
 import { formatStatusSlugForDisplay } from '../_utils/mail-utils'
-import { getStatusOptionsForDropdown, type StatusOption } from '../_utils/mailbox-utils'
+import { getStatusOptionsForDropdown } from '../_utils/mailbox-utils'
 
 /**
  * Props for the MailboxStatusDropdown component

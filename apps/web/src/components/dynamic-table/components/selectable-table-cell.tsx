@@ -8,7 +8,6 @@ import { useCellSelection } from '../context/cell-selection-context'
 import { getEditModeForFieldType } from '../utils/edit-mode'
 import { sanitizeColumnId } from '../utils/sanitize-column-id'
 import { CellFieldEditor } from './cell-field-editor'
-import { CellSelectionOverlay } from './cell-selection-overlay'
 import { InlineCellEditor } from './inline-cell-editor'
 
 interface SelectableTableCellProps<TData> {

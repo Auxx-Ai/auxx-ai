@@ -4,12 +4,11 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { useRouter } from 'next/navigation'
-import React, { useState } from 'react'
+import { useState } from 'react'
 // import { ArticleForm } from '../../_components/article-form'
 import { api } from '~/trpc/react'
 

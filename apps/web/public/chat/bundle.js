@@ -220,7 +220,7 @@
       function handleFetchError(operation, error, response = null) {
         console.error(`[AuxxChat] Error during ${operation}:`, error)
         let errorMessage = `Failed to ${operation}.`
-        if (response && response.status) {
+        if (response?.status) {
           errorMessage += ` Status: ${response.status}`
         } else if (error instanceof TypeError && error.message.includes('fetch')) {
           errorMessage += ' Network error or CORS issue.'
@@ -263,7 +263,7 @@
       }
 
       function formatTimestamp(date) {
-        if (!(date instanceof Date) || isNaN(date)) return ''
+        if (!(date instanceof Date) || Number.isNaN(date)) return ''
         return date.toLocaleTimeString([], {
           hour: '2-digit',
           minute: '2-digit',
@@ -593,7 +593,7 @@
           // --- Pusher Bindings ---
           pusher.connection.bind('connected', () => {
             console.log('[AuxxChat Pusher] Connected.')
-            if (errorInfoElement && errorInfoElement.textContent?.includes('Real-time')) {
+            if (errorInfoElement?.textContent?.includes('Real-time')) {
               errorInfoElement.textContent = ''
               errorInfoElement.style.display = 'none'
             }
@@ -646,7 +646,7 @@
           })
           channel.bind('message-sent', (data) => {
             console.log('[AuxxChat Pusher] Received event: message-sent confirmation', data)
-            if (data && data.clientMessageId) {
+            if (data?.clientMessageId) {
               const messageIndex = messages.findIndex((msg) => msg.id === data.clientMessageId)
               if (messageIndex > -1 && messages[messageIndex].status !== 'sent') {
                 const serverMessageId = data.messageId || messages[messageIndex].id
@@ -776,7 +776,7 @@
               throw new Error(errorDetail)
             }
             const contentType = response.headers.get('content-type')
-            if (!(contentType && contentType.includes('application/json'))) {
+            if (!contentType?.includes('application/json')) {
               const text = await response.text()
               console.error('[AuxxChat Init] Non-JSON response received:', text)
               throw new Error(`Received non-JSON response from server.`)
@@ -1174,7 +1174,7 @@
       // Remove associated styles
       const styleElementId = `auxx-chat-styles-${widgetId}`
       const styleEl = document.getElementById(styleElementId)
-      if (styleEl && styleEl.parentNode) {
+      if (styleEl?.parentNode) {
         console.log('[AuxxChat destroy] Removing widget styles:', styleElementId)
         styleEl.parentNode.removeChild(styleEl)
       }

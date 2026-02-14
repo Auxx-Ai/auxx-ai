@@ -81,7 +81,9 @@ export default function AddonsConvertPage() {
               min={state.selectedPlan.minSeats}
               max={state.selectedPlan.maxSeats}
               value={state.addons.seats}
-              onChange={(e) => updateAddons({ seats: Math.max(1, parseInt(e.target.value) || 1) })}
+              onChange={(e) =>
+                updateAddons({ seats: Math.max(1, parseInt(e.target.value, 10) || 1) })
+              }
               className='w-20'
             />
           </div>

@@ -22,7 +22,6 @@ import {
   Truck,
 } from 'lucide-react'
 import Link from 'next/link'
-import React from 'react'
 import { useOrder } from '~/components/orders/order-context'
 
 // Helper function to format dates

@@ -385,7 +385,7 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
       }
 
       const operatorDef = getOperatorDefinition(condition.operator)
-      if (operatorDef && operatorDef.requiresValue) {
+      if (operatorDef?.requiresValue) {
         return condition.value !== '' && condition.value !== null && condition.value !== undefined
       }
 

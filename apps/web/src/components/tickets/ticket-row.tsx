@@ -4,7 +4,6 @@ import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, AlertTriangle, Clock, Info, User } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import React from 'react'
 import { TicketTypeBadge } from './ticket-badges'
 
 type Props = {

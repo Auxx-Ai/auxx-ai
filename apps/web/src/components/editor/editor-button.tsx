@@ -16,10 +16,7 @@ import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
 import type { Editor } from '@tiptap/react'
 import {
-  ALargeSmall,
   Bold,
-  CaseSensitive,
-  Command,
   CornerDownLeft,
   File,
   Italic,

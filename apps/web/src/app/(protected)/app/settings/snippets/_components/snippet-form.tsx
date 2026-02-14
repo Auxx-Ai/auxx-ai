@@ -14,7 +14,7 @@ import {
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { FolderIcon, Save, ShareIcon, UserIcon, UserPlusIcon, UsersIcon } from 'lucide-react'
+import { FolderIcon, Save, ShareIcon, UserIcon, UsersIcon } from 'lucide-react'
 import React from 'react'
 import { useForm } from 'react-hook-form'
 import { api } from '~/trpc/react'

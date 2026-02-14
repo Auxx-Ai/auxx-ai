@@ -2,7 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import type { ImportPlanRow, StrategyType } from '../types/plan'
+import type { ImportPlanRow } from '../types/plan'
 
 /** Input for assigning a row to a strategy */
 export interface AssignRowInput {

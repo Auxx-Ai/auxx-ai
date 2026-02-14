@@ -4,7 +4,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Plus } from 'lucide-react'
-import { memo, useCallback, useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import { Editor } from '~/components/workflow/ui/prompt-editor'
 import { VariablePicker } from '~/components/workflow/ui/variables/variable-picker'
 import type { Body, KeyValue } from '../types'

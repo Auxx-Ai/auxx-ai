@@ -72,10 +72,6 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
   readonly type: WorkflowNodeType = WorkflowNodeType.CRUD
   private resourceServiceCache: ResourceRegistryService | null = null
 
-  constructor() {
-    super()
-  }
-
   /**
    * Get or create a ResourceRegistryService instance for the given organization
    */

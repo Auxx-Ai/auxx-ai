@@ -68,7 +68,7 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
         } else if (isConstantMode) {
           // Constant mode: parse as number
           const numValue = typeof value === 'number' ? value : parseInt(value, 10)
-          draft[field] = isNaN(numValue) ? undefined : numValue
+          draft[field] = Number.isNaN(numValue) ? undefined : numValue
         } else {
           // Variable mode: store as string (variable reference)
           draft[field] = value as any

@@ -3,7 +3,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
-import { Check, Loader2, Sparkles } from 'lucide-react'
+import { Check, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { api } from '~/trpc/react'

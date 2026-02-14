@@ -1,7 +1,4 @@
-// apps/homepage/src/app/platform/ticketing/_components/ticket-3-columns.tsx
-import { ChevronRight } from 'lucide-react'
 import Image from 'next/image'
-import Link from 'next/link'
 
 /**
  * Ticket3Columns component showcases three key ticketing features:

@@ -1,7 +1,7 @@
 // packages/database/src/db/models/customer-group-member.ts
 // CustomerGroupMember model built on BaseModel (no org scope column)
 
-import { and, eq, type SQL } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { CustomerGroupMember } from '../schema/customer-group-member'
 import { BaseModel } from '../utils/base-model'
 import { Result, type TypedResult } from '../utils/result'

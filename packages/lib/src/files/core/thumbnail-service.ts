@@ -3,7 +3,7 @@
 import { type Database, database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
 import { createHash } from 'crypto'
-import { and, asc, count, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, count, desc, eq, isNull, sql } from 'drizzle-orm'
 import { getQueue, Queues } from '../../jobs/queues'
 import { createScopedLogger } from '../../logger'
 import { createStorageManager, type StorageManager } from '../storage/storage-manager'
@@ -13,7 +13,6 @@ import type {
   ThumbnailMetadata,
   ThumbnailOptions,
   ThumbnailResult,
-  ThumbnailSet,
   ThumbnailSource,
 } from './thumbnail-types'
 import { THUMBNAIL_PRESETS } from './thumbnail-types'

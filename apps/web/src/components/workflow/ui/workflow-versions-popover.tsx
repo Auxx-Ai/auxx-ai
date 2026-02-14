@@ -212,7 +212,7 @@ const WorkflowVersionsPopover: React.FC<WorkflowVersionsPopoverProps> = ({
         // Get the version data
         const versionData = await apiUtils.workflow.getVersionById.fetch({ workflowId, versionId })
 
-        if (versionData && versionData.graph) {
+        if (versionData?.graph) {
           const graph = versionData.graph as any
 
           // Defer canvas updates to avoid React hook issues

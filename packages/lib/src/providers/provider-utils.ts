@@ -147,5 +147,5 @@ export interface BatchError {
   error: { code: number; message: string; errors?: any[] }
 }
 export function isBatchError(response: any): response is BatchError {
-  return response && response.error && typeof response.error.code === 'number'
+  return response?.error && typeof response.error.code === 'number'
 }

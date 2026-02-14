@@ -1,5 +1,3 @@
-import React from 'react'
-
 function TicketCreatePage() {
   return <div>TicketCreatePage</div>
 }

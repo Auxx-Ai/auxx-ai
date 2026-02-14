@@ -40,15 +40,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Separator } from '@auxx/ui/components/separator'
 import { Switch } from '@auxx/ui/components/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Globe, Plus, Save, Trash2, X } from 'lucide-react'
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { toast } from 'sonner'
 import { useWidget, type WidgetFormValues, widgetSchema } from '~/hooks/use-widget'
 
 interface ChatWidgetSettingsProps {

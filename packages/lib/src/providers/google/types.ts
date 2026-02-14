@@ -1,8 +1,6 @@
 // packages/lib/src/providers/google/types.ts
 import type { gmail_v1 } from 'googleapis'
 import type { UniversalThrottler } from '../../utils/rate-limiter'
-import { SendMessageOptions } from '../integration-provider.interface'
-import { AttachmentFile } from '../message-provider-interface'
 
 /**
  * Google integration metadata structure

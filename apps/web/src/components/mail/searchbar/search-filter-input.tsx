@@ -6,7 +6,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
 import { useCallback, useRef } from 'react'
 import { ConditionBadge } from '~/components/conditions/components/condition-badge'
-import { type SearchCondition, useSearchStore } from './store'
+import { useSearchStore } from './store'
 
 /**
  * Props for SearchFilterInput component

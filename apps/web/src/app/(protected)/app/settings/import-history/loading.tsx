@@ -1,7 +1,6 @@
 // apps/web/src/app/(protected)/app/settings/import-history/loading.tsx
 
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import React from 'react'
 import SettingsPage from '~/components/global/settings-page'
 
 /**

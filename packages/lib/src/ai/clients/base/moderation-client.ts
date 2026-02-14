@@ -1,16 +1,12 @@
 // packages/lib/src/ai/clients/base/moderation-client.ts
 
 import { BaseSpecializedClient } from './base-specialized-client'
-import type { ClientConfig, ModerationParams, ModerationResponse, ModerationResult } from './types'
+import type { ModerationParams, ModerationResponse, ModerationResult } from './types'
 
 /**
  * Abstract base class for content moderation clients
  */
 export abstract class ModerationClient extends BaseSpecializedClient {
-  constructor(config: ClientConfig, clientName: string, logger?: any) {
-    super(config, clientName, logger)
-  }
-
   // ===== ABSTRACT METHODS =====
 
   /**

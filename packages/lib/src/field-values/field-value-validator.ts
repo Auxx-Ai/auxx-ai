@@ -33,7 +33,7 @@ const booleanSchema = z.unknown().transform((v) => {
 const dateSchema = z.unknown().transform((v) => {
   if (v instanceof Date) return v.toISOString()
   const date = new Date(String(v))
-  if (isNaN(date.getTime())) return z.NEVER
+  if (Number.isNaN(date.getTime())) return z.NEVER
   return date.toISOString()
 })
 

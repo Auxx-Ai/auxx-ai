@@ -2,7 +2,7 @@
 
 import { isValidTableId, RESOURCE_FIELD_REGISTRY, type TableId } from './field-registry'
 import type { ResourceField } from './field-types'
-import { getFieldOptions, getOptionLabel, hasOptions, isValidOptionValue } from './option-helpers'
+import { getFieldOptions, getOptionLabel, isValidOptionValue } from './option-helpers'
 
 // Re-export for easy access
 export { isValidTableId }

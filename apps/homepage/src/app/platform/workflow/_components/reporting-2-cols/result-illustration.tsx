@@ -1,4 +1,3 @@
-import { LogoIcon } from '~/components/logo'
 import { cn } from '~/lib/utils'
 import { TableIllustration } from './table-illustration'
 // import { DocumentIllustation } from '~/components/document-illustration'

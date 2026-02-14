@@ -1,11 +1,7 @@
 // apps/web/src/app/(protected)/app/settings/aiModels/_components/utils.ts
 
 // Import new types from ProviderManager - no more registry needed!
-import type {
-  // ProviderData as ProviderProviderData,
-  ProviderConfiguration,
-  ModelData as ProviderModelData,
-} from '@auxx/lib/ai/providers/types'
+import type { ModelData as ProviderModelData } from '@auxx/lib/ai/providers/types'
 
 export { FetchFrom } from '@auxx/lib/ai/providers/types'
 

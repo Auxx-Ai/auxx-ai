@@ -2,7 +2,6 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { Computer, Eye, FileText, Image, MessageCircle, Settings2, Volume2 } from 'lucide-react'
-import type { FC, PropsWithChildren } from 'react'
 import ModelBadge from './model-badge'
 import type { ModelData } from './types'
 

@@ -5,7 +5,6 @@ import {
   BackgroundVariant,
   ConnectionMode,
   MiniMap,
-  type NodeProps,
   Panel,
   ReactFlow,
   SelectionMode,
@@ -15,7 +14,7 @@ import {
   useReactFlow,
   type Viewport,
 } from '@xyflow/react'
-import React, { type ComponentType, useCallback, useEffect, useMemo, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 
 // import '@xyflow/react/dist/style.css'
 // import { DevTools } from '~/components/devtools'
@@ -37,7 +36,7 @@ import {
   useWorkflowRunNodeSync,
   useWorkflowSave,
 } from '~/components/workflow/hooks'
-import { FLOW_NODE_TYPES, NODE_TYPES } from '~/components/workflow/nodes'
+import { FLOW_NODE_TYPES } from '~/components/workflow/nodes'
 import { useCanvasStore } from '~/components/workflow/store/canvas-store'
 import { storeEventBus } from '~/components/workflow/store/event-bus'
 import { useInteractionStore } from '~/components/workflow/store/interaction-store'
@@ -266,122 +265,120 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
     const proOptions = { hideAttribution: true }
 
     return (
-      <>
-        <div
-          className={cn(
-            'workflow-canvas relative w-full h-full',
-            readOnly && 'cursor-default',
-            className
-          )}>
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            // onNodesChange={}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            onConnect={readOnly ? undefined : handleNodeConnect}
-            onConnectStart={readOnly ? undefined : handleNodeConnectStart}
-            onConnectEnd={readOnly ? undefined : handleNodeConnectEnd}
-            onSelectionStart={handleSelectionStart}
-            onSelectionChange={handleSelectionChange}
-            onSelectionDrag={handleSelectionDrag}
-            onNodeClick={handleNodeClick}
-            onPaneClick={handlePaneClick}
-            // onNodesChange={handleNodeChange}
-            onNodeDragStart={readOnly ? undefined : handleNodeDragStart}
-            onNodeDrag={readOnly ? undefined : handleNodeDrag}
-            onNodeDragStop={readOnly ? undefined : handleNodeDragStop}
-            onNodeMouseEnter={handleNodeEnter}
-            onNodeMouseLeave={handleNodeLeave}
-            onEdgeMouseEnter={handleEdgeEnter}
-            onEdgeMouseLeave={handleEdgeLeave}
-            onEdgesChange={readOnly ? undefined : handleEdgesChange}
-            onNodeContextMenu={handleNodeContextMenu}
-            onPaneContextMenu={handlePaneContextMenu}
-            connectionLineComponent={CustomConnectionLine}
-            proOptions={proOptions}
-            isValidConnection={isValidConnection}
-            // Interaction settings (already adjusted for read-only mode)
-            panOnDrag={interactionSettings.panOnDrag}
-            panOnScroll={interactionSettings.panOnScroll}
-            selectionOnDrag={interactionSettings.selectionOnDrag}
-            nodesDraggable={interactionSettings.nodesDraggable}
-            nodesConnectable={interactionSettings.nodesConnectable}
-            elementsSelectable={interactionSettings.elementsSelectable}
-            // Disable deselection on pane click when pinned
-            selectNodesOnDrag={false}
-            // Grid settings
-            snapToGrid={snapToGrid}
-            snapGrid={[gridSize, gridSize]}
-            // Connection settings
-            connectionMode={ConnectionMode.Loose}
-            // Selection settings
-            selectionMode={SelectionMode.Partial}
-            // Viewport
-            defaultViewport={defaultViewport}
-            // Styling
-            attributionPosition='bottom-left'
-            className={cn('bg-primary-50 dark:bg-primary-100', readOnly && 'opacity-95')}>
-            {/* <DevTools position="top-left" /> */}
-            {/* Background */}
-            {showGrid && (
-              <Background
-                variant={BackgroundVariant.Dots}
-                gap={gridSize}
-                size={1}
-                color={theme === 'dark' ? '#3f3f46' : '#d4d4d8'}
-              />
+      <div
+        className={cn(
+          'workflow-canvas relative w-full h-full',
+          readOnly && 'cursor-default',
+          className
+        )}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          // onNodesChange={}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          onConnect={readOnly ? undefined : handleNodeConnect}
+          onConnectStart={readOnly ? undefined : handleNodeConnectStart}
+          onConnectEnd={readOnly ? undefined : handleNodeConnectEnd}
+          onSelectionStart={handleSelectionStart}
+          onSelectionChange={handleSelectionChange}
+          onSelectionDrag={handleSelectionDrag}
+          onNodeClick={handleNodeClick}
+          onPaneClick={handlePaneClick}
+          // onNodesChange={handleNodeChange}
+          onNodeDragStart={readOnly ? undefined : handleNodeDragStart}
+          onNodeDrag={readOnly ? undefined : handleNodeDrag}
+          onNodeDragStop={readOnly ? undefined : handleNodeDragStop}
+          onNodeMouseEnter={handleNodeEnter}
+          onNodeMouseLeave={handleNodeLeave}
+          onEdgeMouseEnter={handleEdgeEnter}
+          onEdgeMouseLeave={handleEdgeLeave}
+          onEdgesChange={readOnly ? undefined : handleEdgesChange}
+          onNodeContextMenu={handleNodeContextMenu}
+          onPaneContextMenu={handlePaneContextMenu}
+          connectionLineComponent={CustomConnectionLine}
+          proOptions={proOptions}
+          isValidConnection={isValidConnection}
+          // Interaction settings (already adjusted for read-only mode)
+          panOnDrag={interactionSettings.panOnDrag}
+          panOnScroll={interactionSettings.panOnScroll}
+          selectionOnDrag={interactionSettings.selectionOnDrag}
+          nodesDraggable={interactionSettings.nodesDraggable}
+          nodesConnectable={interactionSettings.nodesConnectable}
+          elementsSelectable={interactionSettings.elementsSelectable}
+          // Disable deselection on pane click when pinned
+          selectNodesOnDrag={false}
+          // Grid settings
+          snapToGrid={snapToGrid}
+          snapGrid={[gridSize, gridSize]}
+          // Connection settings
+          connectionMode={ConnectionMode.Loose}
+          // Selection settings
+          selectionMode={SelectionMode.Partial}
+          // Viewport
+          defaultViewport={defaultViewport}
+          // Styling
+          attributionPosition='bottom-left'
+          className={cn('bg-primary-50 dark:bg-primary-100', readOnly && 'opacity-95')}>
+          {/* <DevTools position="top-left" /> */}
+          {/* Background */}
+          {showGrid && (
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={gridSize}
+              size={1}
+              color={theme === 'dark' ? '#3f3f46' : '#d4d4d8'}
+            />
+          )}
+
+          {/* Minimap */}
+          {showMinimap && (
+            <MiniMap
+              style={{ width: 102, height: 72 }}
+              className='backdrop-blur-sm bg-white/40 dark:bg-primary-400/40 rounded-lg !bottom-14 !left-4 z-[9] !m-0 !h-[72px] !w-[102px] !border-[0.5px] border-zinc-200 dark:border-primary-300 overflow-hidden'
+              pannable
+              zoomable
+              bgColor={theme === 'dark' ? '#18181b' : '#fff'}
+              nodeColor={theme === 'dark' ? '#a1a1aa' : '#e2e2e2'}
+              nodeStrokeColor={theme === 'dark' ? '#52525b' : 'transparent'}
+              maskColor={theme === 'dark' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(240, 240, 240, 0.6)'}
+            />
+          )}
+
+          {/* Custom panels */}
+          <Panel position='top-left' className='space-y-2 flex flex-row space-x-2'>
+            {/* Read-only mode indicator */}
+            {!readOnly && <EmptyTriggerButton />}
+            <RunInfo />
+            {readOnly && (
+              <div>
+                <Badge variant='zinc'>
+                  <Eye className='size-3 mr-1.5' />
+                  Read Only
+                  {versionPreviewData && (
+                    <span className='ml-1 text-xs'>- {versionPreviewData.title}</span>
+                  )}
+                </Badge>
+              </div>
             )}
+          </Panel>
 
-            {/* Minimap */}
-            {showMinimap && (
-              <MiniMap
-                style={{ width: 102, height: 72 }}
-                className='backdrop-blur-sm bg-white/40 dark:bg-primary-400/40 rounded-lg !bottom-14 !left-4 z-[9] !m-0 !h-[72px] !w-[102px] !border-[0.5px] border-zinc-200 dark:border-primary-300 overflow-hidden'
-                pannable
-                zoomable
-                bgColor={theme === 'dark' ? '#18181b' : '#fff'}
-                nodeColor={theme === 'dark' ? '#a1a1aa' : '#e2e2e2'}
-                nodeStrokeColor={theme === 'dark' ? '#52525b' : 'transparent'}
-                maskColor={theme === 'dark' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(240, 240, 240, 0.6)'}
-              />
-            )}
+          {/* Empty trigger button - only show in edit mode */}
 
-            {/* Custom panels */}
-            <Panel position='top-left' className='space-y-2 flex flex-row space-x-2'>
-              {/* Read-only mode indicator */}
-              {!readOnly && <EmptyTriggerButton />}
-              <RunInfo />
-              {readOnly && (
-                <div>
-                  <Badge variant='zinc'>
-                    <Eye className='size-3 mr-1.5' />
-                    Read Only
-                    {versionPreviewData && (
-                      <span className='ml-1 text-xs'>- {versionPreviewData.title}</span>
-                    )}
-                  </Badge>
-                </div>
-              )}
-            </Panel>
+          {/* Workflow operators panel - bottom left */}
+          <Panel position='bottom-left'>
+            <WorkflowOperators />
+          </Panel>
+          <CanvasNodeInfo />
+        </ReactFlow>
 
-            {/* Empty trigger button - only show in edit mode */}
+        {/* Context menus - single instance each */}
+        <NodeContextMenu />
+        <PaneContextMenu />
 
-            {/* Workflow operators panel - bottom left */}
-            <Panel position='bottom-left'>
-              <WorkflowOperators />
-            </Panel>
-            <CanvasNodeInfo />
-          </ReactFlow>
-
-          {/* Context menus - single instance each */}
-          <NodeContextMenu />
-          <PaneContextMenu />
-
-          {/* Helplines for alignment - positioned outside ReactFlow for proper coordinate system */}
-          <HelpLine />
-        </div>
-      </>
+        {/* Helplines for alignment - positioned outside ReactFlow for proper coordinate system */}
+        <HelpLine />
+      </div>
     )
   }
   // (prevProps, nextProps) => {

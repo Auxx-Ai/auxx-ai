@@ -1,11 +1,6 @@
 // packages/workflow-nodes/src/generators/node-file-generator.ts
 
-import type {
-  FieldConfig,
-  SectionConfig,
-  UnifiedNodeConfig,
-  ValidationRule,
-} from '../types/unified-config'
+import type { FieldConfig, SectionConfig, UnifiedNodeConfig } from '../types/unified-config'
 
 /**
  * Generates TypeScript and React files from unified node configuration

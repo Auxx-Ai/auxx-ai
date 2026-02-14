@@ -37,7 +37,7 @@ export const dateConverter: FieldValueConverter = {
 
     // Parse Date object
     if (value instanceof Date) {
-      if (isNaN(value.getTime())) {
+      if (Number.isNaN(value.getTime())) {
         return null
       }
       return { type: 'date', value: value.toISOString() }
@@ -46,7 +46,7 @@ export const dateConverter: FieldValueConverter = {
     // Parse ISO string
     if (typeof value === 'string') {
       const date = new Date(value)
-      if (isNaN(date.getTime())) {
+      if (Number.isNaN(date.getTime())) {
         return null
       }
       return { type: 'date', value: date.toISOString() }
@@ -55,7 +55,7 @@ export const dateConverter: FieldValueConverter = {
     // Parse timestamp number
     if (typeof value === 'number') {
       const date = new Date(value)
-      if (isNaN(date.getTime())) {
+      if (Number.isNaN(date.getTime())) {
         return null
       }
       return { type: 'date', value: date.toISOString() }
@@ -83,14 +83,14 @@ export const dateConverter: FieldValueConverter = {
 
     // Handle Date object
     if (value instanceof Date) {
-      if (isNaN(value.getTime())) return null
+      if (Number.isNaN(value.getTime())) return null
       return value.toISOString()
     }
 
     // Handle raw string passthrough
     if (typeof value === 'string') {
       const date = new Date(value)
-      if (isNaN(date.getTime())) return null
+      if (Number.isNaN(date.getTime())) return null
       return date.toISOString()
     }
 
@@ -114,7 +114,7 @@ export const dateConverter: FieldValueConverter = {
     }
 
     const date = new Date(dateString)
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       return ''
     }
 

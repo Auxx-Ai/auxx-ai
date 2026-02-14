@@ -3,7 +3,6 @@
 
 import { database, schema } from '@auxx/database'
 import { OrganizationSeeder } from '@auxx/lib/seed'
-import { SettingsInitializer } from '@auxx/lib/settings'
 import { createId } from '@paralleldrive/cuid2'
 import { eq } from 'drizzle-orm'
 import type { RelationalDomainBuilder } from '../builders/relational-domain-builder'

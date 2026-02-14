@@ -2,7 +2,6 @@
 'use client'
 
 import { Calendar } from '@auxx/ui/components/calendar'
-import { cn } from '@auxx/ui/lib/utils'
 import React from 'react'
 import type { CalendarViewProps } from '../types'
 
@@ -21,7 +20,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   const isDateDisabled = (date: Date): boolean => {
     if (minDate && date < minDate) return true
     if (maxDate && date > maxDate) return true
-    if (disabledDates && disabledDates(date)) return true
+    if (disabledDates?.(date)) return true
     return false
   }
 

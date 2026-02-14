@@ -1,12 +1,5 @@
 // apps/web/src/components/workflow/utils/workflow-trigger-utils.ts
 
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
-import type { Node } from '@xyflow/react'
-import { NODE_DEFINITIONS } from '../nodes/core'
-import type { BaseNodeData } from '../types/core'
-import { generateNodeId } from './id-generator'
-import { triggerTypeToNodeIdMapper, validateTriggerTypeConsistency } from './trigger-type-mapper'
-
 /**
  * Create a trigger node for a workflow based on its trigger type
  * @param triggerType The workflow trigger type

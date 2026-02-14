@@ -31,9 +31,6 @@ const useBoolean = (initialValue = false) => {
   return [value, { setTrue, setFalse, toggle }] as const
 }
 
-// import type { WorkflowVariable } from '~/components/editor/variable-picker-popover' // No longer needed
-import { usePanelStore } from '../../store'
-
 /** Default minimum height for prompt editor content area */
 const DEFAULT_PROMPT_MIN_HEIGHT = 80
 

@@ -2,7 +2,6 @@
 
 import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/models'
 import type { WorkflowRunStatus } from '@auxx/database/types'
-import React from 'react'
 import type { LoopIterationData } from '../../../store/run-store'
 import { LoopIterationCard } from './loop-iteration-card'
 import { NodeExecutionCard } from './node-execution-card'

@@ -11,7 +11,6 @@ import { toResourceFieldId } from '@auxx/types/field'
 import { useMemo } from 'react'
 import type { FieldDefinition } from '~/components/conditions'
 import { useResourceStore } from '~/components/resources/store/resource-store'
-import { useAvailableVariables } from '~/components/workflow/hooks'
 import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
 import { isNodeVariable } from '~/components/workflow/utils/variable-utils'
 

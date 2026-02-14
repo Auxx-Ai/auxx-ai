@@ -110,7 +110,7 @@ export const validateCodeConfig = (data: CodeNodeData): ValidationResult => {
       }
 
       // Add warnings for potentially unsafe patterns
-      if (data.code && data.code.includes('eval(')) {
+      if (data.code?.includes('eval(')) {
         errors.push({
           field: 'code',
           message: 'Using eval() is potentially unsafe and should be avoided',
@@ -118,7 +118,7 @@ export const validateCodeConfig = (data: CodeNodeData): ValidationResult => {
         })
       }
 
-      if (data.code && data.code.includes('innerHTML')) {
+      if (data.code?.includes('innerHTML')) {
         errors.push({
           field: 'code',
           message: 'Direct innerHTML manipulation can lead to XSS vulnerabilities',

@@ -100,7 +100,7 @@ export class UploadStrategySelector {
     for (const rule of rules) {
       if (rule.condition(fileSize, provider, capabilities)) {
         const strategy = this.strategies.get(rule.strategy)
-        if (strategy && strategy.canHandle(request)) {
+        if (strategy?.canHandle(request)) {
           logger.info(`Selected ${rule.strategy} strategy for upload`, {
             filename: request.filename,
             fileSize,

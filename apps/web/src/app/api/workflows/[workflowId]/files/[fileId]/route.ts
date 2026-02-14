@@ -1,7 +1,7 @@
 // apps/web/src/app/api/workflows/[workflowId]/files/[fileId]/route.ts
 
 import { database as db, schema } from '@auxx/database'
-import { and, eq, gt } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
 import { auth } from '~/auth/server'

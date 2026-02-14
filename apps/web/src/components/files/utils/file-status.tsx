@@ -2,16 +2,7 @@
 
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
-import {
-  AlertCircle,
-  Ban,
-  CheckCircle,
-  Clock,
-  Loader2,
-  Trash2,
-  Upload,
-  XCircle,
-} from 'lucide-react'
+import { AlertCircle, Ban, CheckCircle, Clock, Loader2, Trash2, XCircle } from 'lucide-react'
 
 /**
  * File status types used throughout the application

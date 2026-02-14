@@ -3,7 +3,7 @@
 import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown } from 'lucide-react'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import type { LoopIterationData } from '../../../store/run-store'
 import { NodeExecutionCard } from './node-execution-card'
 

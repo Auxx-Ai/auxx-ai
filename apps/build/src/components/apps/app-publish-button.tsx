@@ -2,7 +2,6 @@
 
 'use client'
 
-import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -10,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { ChevronDown, Globe, Unplug } from 'lucide-react'
+import { ChevronDown, Unplug } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useConfirm } from '@/hooks/use-confirm'
 import { toastError } from '~/components/global/toast'
@@ -129,36 +128,32 @@ export function AppPublishButton({ app, size = 'default', onSuccess }: AppPublis
   // If app was rejected - allow resubmission
   if (app.reviewStatus === 'rejected') {
     return (
-      <>
-        <PublishAppDialog
-          mode='app'
-          appSlug={app.slug}
-          onSuccess={onSuccess}
-          trigger={
-            <Button size={size} variant='outline'>
-              Resubmit for Review
-            </Button>
-          }
-        />
-      </>
+      <PublishAppDialog
+        mode='app'
+        appSlug={app.slug}
+        onSuccess={onSuccess}
+        trigger={
+          <Button size={size} variant='outline'>
+            Resubmit for Review
+          </Button>
+        }
+      />
     )
   }
 
   // If app was withdrawn - allow resubmission
   if (app.reviewStatus === 'withdrawn') {
     return (
-      <>
-        <PublishAppDialog
-          mode='app'
-          appSlug={app.slug}
-          onSuccess={onSuccess}
-          trigger={
-            <Button size={size} variant='outline'>
-              Resubmit for Review
-            </Button>
-          }
-        />
-      </>
+      <PublishAppDialog
+        mode='app'
+        appSlug={app.slug}
+        onSuccess={onSuccess}
+        trigger={
+          <Button size={size} variant='outline'>
+            Resubmit for Review
+          </Button>
+        }
+      />
     )
   }
 
@@ -173,13 +168,11 @@ export function AppPublishButton({ app, size = 'default', onSuccess }: AppPublis
 
   // Default: no review status, allow submission
   return (
-    <>
-      <PublishAppDialog
-        mode='app'
-        appSlug={app.slug}
-        onSuccess={onSuccess}
-        trigger={<Button size={size}>Submit for Review</Button>}
-      />
-    </>
+    <PublishAppDialog
+      mode='app'
+      appSlug={app.slug}
+      onSuccess={onSuccess}
+      trigger={<Button size={size}>Submit for Review</Button>}
+    />
   )
 }

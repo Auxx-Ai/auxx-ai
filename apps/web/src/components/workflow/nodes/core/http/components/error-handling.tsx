@@ -124,7 +124,7 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
         <div className='space-y-3'>
           {/* Status Code */}
           <NumberInput
-            value={parseInt(getDefaultValue('status_code')) || 200}
+            value={parseInt(getDefaultValue('status_code'), 10) || 200}
             onValueChange={handleStatusCodeChange}
             min={100}
             max={599}

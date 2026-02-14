@@ -220,9 +220,7 @@ export function ViewSelector({
               size='sm'
               className={cn('text-xs', activeView && 'rounded-r-none')}>
               {activeView ? (
-                <>
-                  <span className='max-w-40 truncate'>{activeView.name}</span>
-                </>
+                <span className='max-w-40 truncate'>{activeView.name}</span>
               ) : (
                 <>
                   <Lock className='size-3.5!' />

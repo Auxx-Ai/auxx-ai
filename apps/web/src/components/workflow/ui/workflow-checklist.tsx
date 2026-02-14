@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/pop
 import { cn } from '@auxx/ui/lib/utils'
 import { pluralize } from '@auxx/utils/strings'
 import { AlertCircle, AlertTriangle, ListTodo } from 'lucide-react'
-import React, { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useChecklist } from '~/components/workflow/hooks'
 import { useNodesInteractions } from '../hooks/use-node-interactions'

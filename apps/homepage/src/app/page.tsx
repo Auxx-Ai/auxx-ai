@@ -1,14 +1,12 @@
 // apps/homepage/src/app/page.tsx
 
 import type { Metadata } from 'next'
-import React from 'react'
 import { config } from '~/lib/config'
 import LogoCloudTwo from './_components/logo-cloud'
 import FooterSection from './_components/main/footer-section'
 import Header from './_components/main/header'
 import HeroSection from './_components/sections/hero-section'
 import IntegrationSection from './_components/sections/integration-section'
-import ProblemSolutionSection from './_components/sections/problem-solution-section'
 import StatsSection from './_components/sections/stats-section'
 import TestimonialsSection from './_components/sections/testimonials-section'
 import CrmHero from './platform/crm/_components/crm-hero'

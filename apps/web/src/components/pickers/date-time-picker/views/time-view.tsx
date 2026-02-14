@@ -4,7 +4,7 @@
 import React from 'react'
 import OptionListItem from '../components/option-list-item'
 import { useTimeOptions } from '../hooks'
-import { Period, type TimeViewProps } from '../types'
+import type { TimeViewProps } from '../types'
 import { getHourIn12HourFormat, getPeriod } from '../utils'
 
 /**

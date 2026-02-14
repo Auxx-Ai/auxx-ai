@@ -1,6 +1,5 @@
 // apps/web/src/components/workflow/nodes/core/human/node.tsx
 
-import { Position } from '@xyflow/react'
 import { Bell, Clock, Mail, Users } from 'lucide-react'
 import { type FC, memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
@@ -42,7 +41,7 @@ export const HumanConfirmationNode: FC<HumanConfirmationNodeType> = memo((props)
   }
 
   // Calculate total source handles based on timeout configuration
-  const hasTimeout = data.timeout && data.timeout.enabled
+  const hasTimeout = data.timeout?.enabled
   const totalSourceHandles = hasTimeout ? 3 : 2
 
   // Augment data with handle count for collapsed height calculation

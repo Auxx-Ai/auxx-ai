@@ -1,6 +1,6 @@
 // src/app/api/facebook/oauth2/callback/route.ts
 
-import { env, WEBAPP_URL } from '@auxx/config/server'
+import { WEBAPP_URL } from '@auxx/config/server'
 import type { FacebookIntegrationMetadata } from '@auxx/lib/providers'
 import { FacebookOAuthService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'

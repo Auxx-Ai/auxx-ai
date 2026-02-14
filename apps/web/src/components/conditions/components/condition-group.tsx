@@ -5,7 +5,7 @@
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChevronDown, ChevronRight, Edit2, GripVertical, Trash2 } from 'lucide-react'
+import { Edit2, GripVertical, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useConditionContext } from '../condition-context'
 import type { ConditionGroupProps } from '../types'

@@ -3,7 +3,7 @@
 import { cn } from '@auxx/ui/lib/utils'
 import { BaseEdge, EdgeLabelRenderer, type EdgeProps, useReactFlow } from '@xyflow/react'
 import { Plus, Trash2 } from 'lucide-react'
-import React, { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { useAvailableBlocks, useEdgeInteractions } from '~/components/workflow/hooks'
 import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registry'
 import type { EdgeData } from '~/components/workflow/types'

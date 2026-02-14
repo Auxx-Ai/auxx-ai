@@ -2,8 +2,8 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { useVirtualizer, type VirtualizerOptions } from '@tanstack/react-virtual'
-import { type CSSProperties, createContext, type ReactNode, useContext, useRef } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { createContext, type ReactNode, useContext, useRef } from 'react'
 
 /**
  * Context value for the VirtualList component

@@ -38,7 +38,7 @@ export const useArticles = () => {
   let articles: Article[] = []
   let categories: ArticleCategory[] = []
 
-  if (data && data.categories && data.articles) {
+  if (data?.categories && data.articles) {
     // const { categories, articles } = data
     categories = data.categories ?? []
     articles = data.articles ?? []

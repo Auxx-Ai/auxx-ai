@@ -1,12 +1,10 @@
 import { Button } from '@auxx/ui/components/button'
-import { Separator } from '@auxx/ui/components/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import type { Editor } from '@tiptap/react'
 import {
   Bold,
   Code,
-  CodepenIcon,
   Heading1,
   Heading2,
   Heading3,

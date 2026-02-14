@@ -1,7 +1,7 @@
 // src/lib/cost-utils.ts
 
 import { database as db, schema } from '@auxx/database'
-import { and, asc, eq, isNotNull, not } from 'drizzle-orm'
+import { and, asc, eq, isNotNull } from 'drizzle-orm'
 
 /**
  * Get the cost of a part from its preferred vendor

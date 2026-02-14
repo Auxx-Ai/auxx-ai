@@ -76,7 +76,7 @@ export function getOverflowWidgetContainer(): HTMLElement | null {
  * Useful for testing or when needed to reset state
  */
 export function forceCleanupOverflowWidgetContainer(): void {
-  if (overflowContainer && overflowContainer.parentNode) {
+  if (overflowContainer?.parentNode) {
     overflowContainer.parentNode.removeChild(overflowContainer)
   }
   overflowContainer = null

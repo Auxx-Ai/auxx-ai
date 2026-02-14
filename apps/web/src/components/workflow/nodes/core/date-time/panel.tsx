@@ -15,7 +15,7 @@ import { produce } from 'immer'
 import { memo, useCallback, useMemo } from 'react'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
-import { BaseType, type UnifiedVariable, VAR_MODE } from '~/components/workflow/types'
+import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
@@ -318,7 +318,7 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                   onChange={(e) => {
                     const newData = produce(data, (draft) => {
                       if (draft.addSubtract) {
-                        draft.addSubtract.duration = parseInt(e.target.value) || 0
+                        draft.addSubtract.duration = parseInt(e.target.value, 10) || 0
                       }
                     })
                     setInputs(newData)

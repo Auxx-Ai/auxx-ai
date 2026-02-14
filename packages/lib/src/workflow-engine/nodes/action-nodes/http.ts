@@ -516,7 +516,7 @@ export class HttpProcessor extends BaseNodeProcessor {
     }
 
     // Validate retry configuration
-    if (config.retry_config && config.retry_config.retry_enabled) {
+    if (config.retry_config?.retry_enabled) {
       if (config.retry_config.max_retries < 0 || config.retry_config.max_retries > 10) {
         errors.push('Max retries must be between 0 and 10')
       }
@@ -1162,7 +1162,7 @@ export class HttpProcessor extends BaseNodeProcessor {
 
       case 'raw-text': {
         const textItem = bodyConfig.data[0]
-        return textItem && textItem.value
+        return textItem?.value
           ? await this.interpolateVariables(textItem!.value, contextManager)
           : ''
       }

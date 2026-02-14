@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/message-received/node.tsx
 
-import React, { memo } from 'react'
+import { memo } from 'react'
 import { NodeSourceHandle } from '../../../ui/node-handle'
 import { BaseNode } from '../../shared/base/base-node'
 import type { MessageReceivedNode as MessageReceivedNodeType } from './types'

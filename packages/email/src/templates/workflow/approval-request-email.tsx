@@ -1,4 +1,4 @@
-import { Column, Container, Heading, Row, Section, Text } from '@react-email/components'
+import { Column, Container, Row, Section, Text } from '@react-email/components'
 
 import type React from 'react'
 import { EmailButton } from '../../components/email-button'

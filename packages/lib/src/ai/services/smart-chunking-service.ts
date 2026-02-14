@@ -1,10 +1,9 @@
 // packages/lib/src/ai/services/smart-chunking-service.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import crypto from 'crypto'
 import { LRUCache } from 'lru-cache'
 import { TextChunker } from '../../datasets/processors/text-chunker'
-import { createScopedLogger } from '../../logger'
-import { ProviderRegistry } from '../providers/provider-registry'
 
 const logger = createScopedLogger('SmartChunkingService')
 

@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { getInverseCardinality, isSingleRelationship } from '@auxx/utils'
-import { useField, useResource, useResources } from '~/components/resources'
+import { useResource, useResources } from '~/components/resources'
 
 // Re-export RelationshipOptions for consumers of this component
 export type { RelationshipOptions }

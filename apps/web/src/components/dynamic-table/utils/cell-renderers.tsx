@@ -165,7 +165,7 @@ export function renderDateValue(
 
   try {
     const date = new Date(value as string | number)
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       return <CellPadding expandDirection='horizontal'>{String(value)}</CellPadding>
     }
 
@@ -208,7 +208,7 @@ export function renderTimeValue(value: unknown, config?: CellConfig): React.Reac
 
   try {
     const date = new Date(value as string | number)
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       return <CellPadding expandDirection='horizontal'>{String(value)}</CellPadding>
     }
     const opts = config?.options as DateFieldOptions | undefined
@@ -232,7 +232,7 @@ export function renderNumberValue(
   if (value == null || value === '') return <EmptyCell />
 
   const num = typeof value === 'number' ? value : parseFloat(value as string)
-  if (isNaN(num)) {
+  if (Number.isNaN(num)) {
     return (
       <CellPadding expandDirection='horizontal'>
         <span className='font-mono'>{String(value)}</span>
@@ -297,7 +297,7 @@ export function renderCurrencyValue(
   if (value == null || value === '') return <EmptyCell />
 
   const cents = typeof value === 'number' ? value : parseInt(value as string, 10)
-  if (isNaN(cents)) return <EmptyCell />
+  if (Number.isNaN(cents)) return <EmptyCell />
 
   const fieldOptions = config?.currency
   const options: CurrencyDisplayOptions = {
@@ -661,7 +661,7 @@ export function renderCellValue(
 
   // Get renderer for field type, fallback to TEXT
   const renderer = cellRenderers[type] ?? cellRenderers.TEXT
-  return renderer && renderer(actualValue, formatting, config)
+  return renderer?.(actualValue, formatting, config)
 }
 
 /**

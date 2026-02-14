@@ -24,7 +24,6 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 // import { Inbox } from './SharedInboxesGroup'
 import { GripVertical } from 'lucide-react'
-import React from 'react'
 
 interface DraggableInboxListProps {
   inboxes: Inbox[]

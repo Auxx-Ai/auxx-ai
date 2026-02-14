@@ -1,7 +1,6 @@
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,

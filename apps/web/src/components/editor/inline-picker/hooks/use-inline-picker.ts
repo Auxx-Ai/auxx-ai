@@ -3,7 +3,7 @@
 'use client'
 
 import Placeholder from '@tiptap/extension-placeholder'
-import { type Editor, type JSONContent, useEditor } from '@tiptap/react'
+import { type JSONContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { escapeHtml } from '~/lib/sanitize'

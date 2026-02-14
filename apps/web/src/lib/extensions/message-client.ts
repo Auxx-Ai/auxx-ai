@@ -302,8 +302,7 @@ export class MessageClient {
 
       // Get target origin from iframe src (API domain)
       const targetOrigin = this.iframe!.src ? new URL(this.iframe!.src).origin : '*'
-      if (this.iframe && this.iframe.contentWindow)
-        this.iframe.contentWindow.postMessage(message, targetOrigin)
+      if (this.iframe?.contentWindow) this.iframe.contentWindow.postMessage(message, targetOrigin)
     })
   }
 

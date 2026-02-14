@@ -164,12 +164,12 @@ export class PdfExtractor extends BaseExtractor {
       // PDF dates are in format: D:YYYYMMDDHHmmSSOHH'mm'
       if (typeof dateStr === 'string' && dateStr.startsWith('D:')) {
         const cleanDate = dateStr.substring(2, 16) // Extract YYYYMMDDHHMMSS
-        const year = parseInt(cleanDate.substring(0, 4))
-        const month = parseInt(cleanDate.substring(4, 6)) - 1 // JS months are 0-indexed
-        const day = parseInt(cleanDate.substring(6, 8))
-        const hour = parseInt(cleanDate.substring(8, 10)) || 0
-        const minute = parseInt(cleanDate.substring(10, 12)) || 0
-        const second = parseInt(cleanDate.substring(12, 14)) || 0
+        const year = parseInt(cleanDate.substring(0, 4), 10)
+        const month = parseInt(cleanDate.substring(4, 6), 10) - 1 // JS months are 0-indexed
+        const day = parseInt(cleanDate.substring(6, 8), 10)
+        const hour = parseInt(cleanDate.substring(8, 10), 10) || 0
+        const minute = parseInt(cleanDate.substring(10, 12), 10) || 0
+        const second = parseInt(cleanDate.substring(12, 14), 10) || 0
 
         return new Date(year, month, day, hour, minute, second)
       }

@@ -2,7 +2,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 
 /**
  * Props for OnboardingNavigation component

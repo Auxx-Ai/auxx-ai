@@ -1,7 +1,6 @@
 // 'use client'
 
 import { redirect } from 'next/navigation'
-import React from 'react'
 import { api } from '~/trpc/server'
 import KBEditorView from './_components/kb-editor-view'
 

@@ -1,6 +1,6 @@
 // packages/lib/src/tickets/ticket-relations.ts
 
-import { type Database, database, schema } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { publisher } from '@auxx/lib/events'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'

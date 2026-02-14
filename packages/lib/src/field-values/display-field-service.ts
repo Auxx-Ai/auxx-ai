@@ -3,7 +3,7 @@
 import { type Database, database, schema } from '@auxx/database'
 import { batchUpdateDisplayValues, clearDisplayValues } from '@auxx/services/entity-instances'
 import type { TypedFieldValue } from '@auxx/types'
-import { getFieldId, toResourceFieldId } from '@auxx/types/field'
+import { toResourceFieldId } from '@auxx/types/field'
 import { and, eq, sql } from 'drizzle-orm'
 import type { ResourceField } from '../resources/registry/field-types'
 import { ResourceRegistryService } from '../resources/registry/resource-registry-service'

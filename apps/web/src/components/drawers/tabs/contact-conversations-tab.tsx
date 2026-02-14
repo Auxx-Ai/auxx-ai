@@ -2,7 +2,7 @@
 'use client'
 import { Button } from '@auxx/ui/components/button'
 import { Loader2, Mail, Plus } from 'lucide-react'
-import React, { useEffect } from 'react'
+import { useEffect } from 'react'
 import { useInView } from 'react-intersection-observer'
 import { EmptyState } from '~/components/global/empty-state'
 import { MailContactThreadItem } from '~/components/mail/mail-contact/mail-contact-thread-item'

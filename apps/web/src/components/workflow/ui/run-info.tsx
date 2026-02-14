@@ -1,6 +1,6 @@
 import { Badge } from '@auxx/ui/components/badge'
 import { X } from 'lucide-react'
-import React, { memo, useCallback } from 'react'
+import { memo, useCallback } from 'react'
 import { formatRelativeDate } from '~/utils/date'
 import { useRunStore } from '../store/run-store'
 

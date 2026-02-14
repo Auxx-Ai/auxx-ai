@@ -10,7 +10,6 @@ import {
 } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import { Clock } from 'lucide-react'
-import React from 'react'
 import { useIsSmallScreen } from '~/hooks/use-small-screen'
 import { integrationStatusConfig } from '../mail/mail-status-config'
 

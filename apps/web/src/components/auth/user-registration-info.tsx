@@ -1,7 +1,6 @@
 // apps/web/src/components/auth/user-registration-info.tsx
 'use client'
 
-import type { User } from 'better-auth/types'
 import { Loader2, Lock, Phone } from 'lucide-react'
 import { useMemo } from 'react'
 import { client } from '~/auth/auth-client'

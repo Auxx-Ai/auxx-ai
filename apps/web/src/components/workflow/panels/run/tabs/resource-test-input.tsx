@@ -8,7 +8,7 @@ import type { ResourceId } from '@auxx/lib/workflow-engine/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { AlertCircle, Loader2 } from 'lucide-react'
-import React, { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useRecord, useResource } from '~/components/resources'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { BaseType } from '~/components/workflow/types'
@@ -125,131 +125,129 @@ export function ResourceTestInput({
   }
 
   return (
-    <>
-      <Section title={`${resource.label} ${operation}`} initialOpen>
-        <div className='space-y-4'>
-          {/* Resource Picker Mode */}
-          <VarEditorField>
-            <VarEditorFieldRow
-              className='p-0'
-              title='Resource'
-              description={`Select the ${resource.label.toLowerCase()} by type or ID to ${operation === 'created' ? 'create' : operation === 'updated' ? 'update' : 'delete'}`}
-              type={BaseType.RELATION}
-              isRequired
-              validationError={errors.resourceData}
-              validationType={errors.resourceData ? 'error' : undefined}>
-              <div className='flex items-center gap-2 flex-1'>
-                <MultiRelationInput
-                  className='flex-1'
-                  entityDefinitionId={resourceType}
-                  value={selectedRecordId ? [selectedRecordId] : []}
-                  onChange={(recordIds: RecordId[]) =>
-                    handleResourceSelect(
-                      recordIds[0] ? { referenceId: getInstanceId(recordIds[0]) } : null
-                    )
-                  }
-                  multi={false}
-                />
-                {selectedRecordId && (
-                  <Button variant='ghost' size='sm' onClick={() => handleResourceSelect(null)}>
-                    Clear
-                  </Button>
-                )}
-              </div>
-            </VarEditorFieldRow>
-          </VarEditorField>
-          {/* Loading indicator */}
-          {isLoadingResource && (
-            <div className='flex items-center gap-2 text-sm text-muted-foreground px-4'>
-              <Loader2 className='h-3 w-3 animate-spin' />
-              Loading resource data...
+    <Section title={`${resource.label} ${operation}`} initialOpen>
+      <div className='space-y-4'>
+        {/* Resource Picker Mode */}
+        <VarEditorField>
+          <VarEditorFieldRow
+            className='p-0'
+            title='Resource'
+            description={`Select the ${resource.label.toLowerCase()} by type or ID to ${operation === 'created' ? 'create' : operation === 'updated' ? 'update' : 'delete'}`}
+            type={BaseType.RELATION}
+            isRequired
+            validationError={errors.resourceData}
+            validationType={errors.resourceData ? 'error' : undefined}>
+            <div className='flex items-center gap-2 flex-1'>
+              <MultiRelationInput
+                className='flex-1'
+                entityDefinitionId={resourceType}
+                value={selectedRecordId ? [selectedRecordId] : []}
+                onChange={(recordIds: RecordId[]) =>
+                  handleResourceSelect(
+                    recordIds[0] ? { referenceId: getInstanceId(recordIds[0]) } : null
+                  )
+                }
+                multi={false}
+              />
+              {selectedRecordId && (
+                <Button variant='ghost' size='sm' onClick={() => handleResourceSelect(null)}>
+                  Clear
+                </Button>
+              )}
             </div>
-          )}
-          {/* Operation-specific fields */}
-          {operation === 'updated' && (
-            <>
-              <Field
-                title='Changed Fields'
-                description='Array of field names that were changed. List the fields that were modified in this update'>
-                <CodeEditor
-                  value={
-                    typeof inputs.changedFields === 'string'
-                      ? inputs.changedFields
-                      : JSON.stringify(inputs.changedFields || [], null, 2)
-                  }
-                  onChange={(value) => {
-                    try {
-                      const parsed = JSON.parse(value)
-                      handleChange('changedFields', parsed)
-                    } catch {
-                      handleChange('changedFields', value)
-                    }
-                  }}
-                  language={CodeLanguage.json}
-                  readOnly={false}
-                  minHeight={100}
-                />
-                {errors.changedFields && (
-                  <p className='text-sm text-destructive mt-1'>{errors.changedFields}</p>
-                )}
-              </Field>
-
-              <Field
-                title='Previous Values'
-                description='Object containing previous values of changed fields. The values these fields had before the update'>
-                <CodeEditor
-                  value={
-                    typeof inputs.previousValues === 'string'
-                      ? inputs.previousValues
-                      : JSON.stringify(inputs.previousValues || {}, null, 2)
-                  }
-                  onChange={(value) => {
-                    try {
-                      const parsed = JSON.parse(value)
-                      handleChange('previousValues', parsed)
-                    } catch {
-                      handleChange('previousValues', value)
-                    }
-                  }}
-                  language={CodeLanguage.json}
-                  readOnly={false}
-                  minHeight={100}
-                />
-                {errors.previousValues && (
-                  <p className='text-sm text-destructive mt-1'>{errors.previousValues}</p>
-                )}
-              </Field>
-            </>
-          )}
-          {operation === 'deleted' && (
+          </VarEditorFieldRow>
+        </VarEditorField>
+        {/* Loading indicator */}
+        {isLoadingResource && (
+          <div className='flex items-center gap-2 text-sm text-muted-foreground px-4'>
+            <Loader2 className='h-3 w-3 animate-spin' />
+            Loading resource data...
+          </div>
+        )}
+        {/* Operation-specific fields */}
+        {operation === 'updated' && (
+          <>
             <Field
-              title='Deleted By'
-              description='Information about the user who deleted this resource. User object with id, email, and name'>
+              title='Changed Fields'
+              description='Array of field names that were changed. List the fields that were modified in this update'>
               <CodeEditor
                 value={
-                  typeof inputs.deletedBy === 'string'
-                    ? inputs.deletedBy
-                    : JSON.stringify(inputs.deletedBy || {}, null, 2)
+                  typeof inputs.changedFields === 'string'
+                    ? inputs.changedFields
+                    : JSON.stringify(inputs.changedFields || [], null, 2)
                 }
                 onChange={(value) => {
                   try {
                     const parsed = JSON.parse(value)
-                    handleChange('deletedBy', parsed)
+                    handleChange('changedFields', parsed)
                   } catch {
-                    handleChange('deletedBy', value)
+                    handleChange('changedFields', value)
                   }
                 }}
                 language={CodeLanguage.json}
                 readOnly={false}
                 minHeight={100}
               />
-              {errors.deletedBy && (
-                <p className='text-sm text-destructive mt-1'>{errors.deletedBy}</p>
+              {errors.changedFields && (
+                <p className='text-sm text-destructive mt-1'>{errors.changedFields}</p>
               )}
             </Field>
-          )}
-        </div>
-      </Section>
-    </>
+
+            <Field
+              title='Previous Values'
+              description='Object containing previous values of changed fields. The values these fields had before the update'>
+              <CodeEditor
+                value={
+                  typeof inputs.previousValues === 'string'
+                    ? inputs.previousValues
+                    : JSON.stringify(inputs.previousValues || {}, null, 2)
+                }
+                onChange={(value) => {
+                  try {
+                    const parsed = JSON.parse(value)
+                    handleChange('previousValues', parsed)
+                  } catch {
+                    handleChange('previousValues', value)
+                  }
+                }}
+                language={CodeLanguage.json}
+                readOnly={false}
+                minHeight={100}
+              />
+              {errors.previousValues && (
+                <p className='text-sm text-destructive mt-1'>{errors.previousValues}</p>
+              )}
+            </Field>
+          </>
+        )}
+        {operation === 'deleted' && (
+          <Field
+            title='Deleted By'
+            description='Information about the user who deleted this resource. User object with id, email, and name'>
+            <CodeEditor
+              value={
+                typeof inputs.deletedBy === 'string'
+                  ? inputs.deletedBy
+                  : JSON.stringify(inputs.deletedBy || {}, null, 2)
+              }
+              onChange={(value) => {
+                try {
+                  const parsed = JSON.parse(value)
+                  handleChange('deletedBy', parsed)
+                } catch {
+                  handleChange('deletedBy', value)
+                }
+              }}
+              language={CodeLanguage.json}
+              readOnly={false}
+              minHeight={100}
+            />
+            {errors.deletedBy && (
+              <p className='text-sm text-destructive mt-1'>{errors.deletedBy}</p>
+            )}
+          </Field>
+        )}
+      </div>
+    </Section>
   )
 }

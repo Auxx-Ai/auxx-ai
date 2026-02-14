@@ -2,7 +2,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Plus, TicketIcon } from 'lucide-react'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import CreateTicketDialog from '~/components/tickets/create-ticket-dialog'
 import TicketRow from '~/components/tickets/ticket-row'

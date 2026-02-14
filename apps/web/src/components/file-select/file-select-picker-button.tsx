@@ -4,7 +4,6 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { FolderOpen, Plus } from 'lucide-react'
-import React from 'react'
 import type { FileItem } from '~/components/files/files-store'
 import { FileSelectDialog } from './file-select-dialog'
 

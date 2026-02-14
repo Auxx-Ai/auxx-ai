@@ -5,7 +5,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { toastSuccess } from '@auxx/ui/components/toast'
 import { useSearchParams } from 'next/navigation'
-import React, { useEffect } from 'react'
+import { useEffect } from 'react'
 import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
 import { AppConnectionStatus } from './app-connection-status'

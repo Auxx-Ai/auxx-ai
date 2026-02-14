@@ -175,7 +175,7 @@ export function WorkflowTriggerForm({ submitButtonText }: WorkflowTriggerFormPro
             }
             break
           case BaseType.NUMBER:
-            if (isNaN(Number(value))) {
+            if (Number.isNaN(Number(value))) {
               newErrors[config.nodeId] = 'Must be a number'
             }
             break

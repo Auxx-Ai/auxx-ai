@@ -3,8 +3,7 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { getValueType } from '@auxx/types'
-import { and, eq, ilike, inArray, isNull, type SQL, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm'
 import { ResourceRegistryService } from '../../resources/registry/resource-registry-service'
 import type { CustomResource, Resource, SystemResource } from '../../resources/registry/types'
 import { BaseType } from '../../resources/types'
@@ -287,7 +286,7 @@ async function queryCustomEntity(
   } else if (NUMERIC_FIELD_TYPES.includes(field.type)) {
     // Numeric types: match on valueNumber
     valueColumn = 'valueNumber'
-    const numericValues = searchValues.map((v) => parseFloat(v)).filter((n) => !isNaN(n))
+    const numericValues = searchValues.map((v) => parseFloat(v)).filter((n) => !Number.isNaN(n))
     if (numericValues.length === 0) return []
     matchCondition = inArray(schema.FieldValue.valueNumber, numericValues)
   } else if (ENUM_FIELD_TYPES.includes(field.type)) {

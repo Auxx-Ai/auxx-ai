@@ -1,5 +1,3 @@
-import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
 import {
   Command,
   CommandEmpty,
@@ -12,8 +10,8 @@ import {
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { Check, ChevronsUpDown } from 'lucide-react'
-import React, { useCallback, useMemo, useRef, useState } from 'react'
+import { Check } from 'lucide-react'
+import React, { useCallback, useMemo, useState } from 'react'
 
 /**
  * Custom CommandItem that doesn't close the popover on selection in multi-select mode

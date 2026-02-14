@@ -1,10 +1,7 @@
 // packages/lib/src/tickets/ticket-mutations.ts
 
 import { type Database, schema } from '@auxx/database'
-import {
-  TicketPriority as TicketPriorityEnum,
-  TicketStatus as TicketStatusEnum,
-} from '@auxx/database/enums'
+import { TicketStatus as TicketStatusEnum } from '@auxx/database/enums'
 import type { TicketPriority, TicketStatus } from '@auxx/database/types'
 import { publisher } from '@auxx/lib/events'
 import { TRPCError } from '@trpc/server'

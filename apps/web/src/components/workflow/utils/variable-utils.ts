@@ -466,7 +466,7 @@ export function resolveFieldPath(
 
   for (const part of parts) {
     // Navigate through properties
-    if (current.properties && current.properties[part]) {
+    if (current.properties?.[part]) {
       current = current.properties[part]
     } else {
       // Field not found in path

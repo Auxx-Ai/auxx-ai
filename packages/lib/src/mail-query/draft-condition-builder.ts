@@ -188,7 +188,7 @@ function buildDraftDateCondition(operator: Operator, value: any, field?: string)
   const dateColumn = field === 'createdAt' ? Draft.createdAt : Draft.updatedAt
   const dateValue = new Date(value)
 
-  if (isNaN(dateValue.getTime())) return null
+  if (Number.isNaN(dateValue.getTime())) return null
 
   switch (operator) {
     case 'before':

@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Switch } from '@auxx/ui/components/switch'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { Edit2, MoreVertical, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'

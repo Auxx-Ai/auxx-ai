@@ -8,7 +8,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { formatToRawValue } from '../../field-values/client'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { invalidateSnapshots } from '../../snapshot'
-import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
+import { parseRecordId, type RecordId } from '../resource-id'
 import { mergeFieldValue } from './merge'
 import type { MergeEntitiesInput, MergeEntitiesResult } from './types'
 

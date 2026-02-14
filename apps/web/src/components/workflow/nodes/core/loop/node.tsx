@@ -10,7 +10,6 @@ import {
   useAvailableBlocks,
   useLoopConfig,
   useLoopProgress,
-  useNodeDimensions,
   useNodeStatus,
 } from '~/components/workflow/hooks'
 import { NodeRunningStatus, NodeType } from '~/components/workflow/types'

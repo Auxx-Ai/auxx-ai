@@ -1154,7 +1154,7 @@ export class FileService
     options?: { limit: number }
   ): Promise<FolderFile[]> {
     const likePattern = `%${mimeType}%`
-    const limit = options && options.limit
+    const limit = options?.limit
 
     const where = this.buildScopedWhere([
       sql`lower(${schema.FolderFile.mimeType}) LIKE lower(${likePattern})`,
@@ -1182,7 +1182,7 @@ export class FileService
   ): Promise<FolderFile[]> {
     const extensions = Array.isArray(ext) ? ext.map((e) => e.toLowerCase()) : ext.toLowerCase()
     const where = this.buildScopedWhere([eq(schema.FolderFile.ext, extensions)])
-    const limit = options && options.limit
+    const limit = options?.limit
 
     return this.db
       .select()

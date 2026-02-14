@@ -12,8 +12,6 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { IconPicker, type IconPickerValue } from '@auxx/ui/components/icon-picker'
-import { EntityIcon } from '@auxx/ui/components/icons'
-import { Input } from '@auxx/ui/components/input'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'

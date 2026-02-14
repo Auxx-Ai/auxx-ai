@@ -1,8 +1,8 @@
 'use client'
 import { Button } from '@auxx/ui/components/button'
 // import { useFormStatus } from "react-dom";
-import { Heart, Loader2 } from 'lucide-react'
-import React, { type ReactNode, useState } from 'react'
+import { Heart } from 'lucide-react'
+import { type ReactNode, useState } from 'react'
 
 interface GeneralSubmitButtonProps {
   text: string
@@ -30,10 +30,8 @@ export function GeneralSubmitButton({
       onClick={onClick}
       loading={isPending}
       loadingText='Submitting...'>
-      <>
-        {icon && <div>{icon}</div>}
-        <span>{text}</span>
-      </>
+      {icon && <div>{icon}</div>}
+      <span>{text}</span>
     </Button>
   )
 }

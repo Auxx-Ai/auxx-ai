@@ -3,7 +3,7 @@
 
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { notFound } from 'next/navigation'
-import React, { use } from 'react'
+import { use } from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import { useSignature } from '~/components/signatures/hooks'
 import { SignatureForm } from '~/components/signatures/ui'

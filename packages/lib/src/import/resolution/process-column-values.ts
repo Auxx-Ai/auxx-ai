@@ -2,7 +2,6 @@
 
 import type { Database } from '@auxx/database'
 import { countOccurrences } from '../hashing/count-occurrences'
-import { hashValue } from '../hashing/hash-value'
 import type {
   ResolutionConfig,
   ResolutionType,

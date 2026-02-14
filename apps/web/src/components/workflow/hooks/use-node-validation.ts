@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/utils/connection-validation.ts
 
-import { type Connection, type Edge, getOutgoers, type Node, useStoreApi } from '@xyflow/react'
+import { type Connection, getOutgoers, type Node, useStoreApi } from '@xyflow/react'
 import { LOOP_HANDLES } from '../nodes/core/loop/constants'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
 import { NodeType } from '../types/node-types'

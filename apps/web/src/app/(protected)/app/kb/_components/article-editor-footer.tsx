@@ -3,7 +3,6 @@
 import { Button } from '@auxx/ui/components/button'
 import { ArrowLeft, ArrowRight, Loader2, Save } from 'lucide-react'
 import Link from 'next/link'
-import React from 'react'
 import { useKnowledgeBase } from './kb-context'
 
 // Extended article type including content properties

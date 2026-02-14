@@ -5,7 +5,6 @@ import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatBytes } from '@auxx/utils/file'
 import { Trash2 } from 'lucide-react'
-import React from 'react'
 import { FileIcon } from '~/components/files/utils/file-icon'
 /**
  * Props for CommentFile component

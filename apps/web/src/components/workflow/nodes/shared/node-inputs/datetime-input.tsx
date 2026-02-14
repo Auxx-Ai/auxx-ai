@@ -2,7 +2,6 @@
 'use client'
 
 import { format } from 'date-fns'
-import React from 'react'
 import { DateTimePicker, type PickerMode } from '~/components/pickers/date-time-picker'
 import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
@@ -50,7 +49,7 @@ export const DateTimeInput = createNodeInput<DateTimeInputProps>(
 
     // Parse ISO string to Date object
     const dateValue = value ? new Date(value) : undefined
-    const isValidDate = dateValue && !isNaN(dateValue.getTime())
+    const isValidDate = dateValue && !Number.isNaN(dateValue.getTime())
 
     // Map type prop to mode prop
     const mode: PickerMode = type

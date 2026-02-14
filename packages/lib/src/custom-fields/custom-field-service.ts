@@ -8,8 +8,6 @@ import {
   deleteCustomField,
   getCustomFields,
   getRelationshipPair,
-  type ModelType,
-  ModelTypes,
   type RelationshipOptions,
   updateCustomField,
 } from '@auxx/services/custom-fields'

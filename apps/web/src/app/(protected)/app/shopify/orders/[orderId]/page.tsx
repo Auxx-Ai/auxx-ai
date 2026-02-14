@@ -1,4 +1,3 @@
-import React from 'react'
 import OrderDetail from '../../_components/order-detail'
 
 type Props = { params: Promise<{ orderId: string }> }

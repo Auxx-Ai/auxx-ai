@@ -1,15 +1,10 @@
 // packages/lib/src/files/upload/processors/base-asset-processor.ts
 
-import type { AssetKind, CreateAssetRequest, CreateFileRequest } from '../../core/types'
+import type { AssetKind, CreateAssetRequest } from '../../core/types'
 import type { ProcessorConfigResult, UploadInitConfig } from '../init-types'
 import type { PresignedUploadSession } from '../session-types'
 import { BaseProcessor } from './base-processor'
-import type {
-  CreateSessionRequest,
-  ProcessorMetadata,
-  ProcessorResult,
-  SessionMetadata,
-} from './types'
+import type { ProcessorMetadata, ProcessorResult } from './types'
 
 /**
  * Base asset processor with entity-specific configuration

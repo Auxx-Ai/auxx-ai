@@ -1,5 +1,3 @@
-import React from 'react'
-import { EditOrganizationForm } from '~/app/(protected)/app/settings/general/_components/edit-organization'
 import AppearanceForm from '~/components/global/forms/appearance-form'
 import SettingsPage from '~/components/global/settings-page'
 import { api } from '~/trpc/server'

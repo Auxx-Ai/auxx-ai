@@ -19,7 +19,7 @@ import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variable
 import Section from '~/components/workflow/ui/section'
 import { BasePanel } from '../../shared/base/base-panel'
 import { getKnowledgeRetrievalOutputVariables } from './output-variables'
-import type { DatasetEntry, KnowledgeRetrievalNodeData } from './types'
+import type { KnowledgeRetrievalNodeData } from './types'
 
 interface KnowledgeRetrievalPanelProps {
   nodeId: string
@@ -76,7 +76,7 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
         } else if (isConstantMode) {
           // Constant mode: parse as number
           const numValue = typeof value === 'number' ? value : parseFloat(String(value))
-          draft[field] = isNaN(numValue) ? undefined : numValue
+          draft[field] = Number.isNaN(numValue) ? undefined : numValue
         } else {
           // Variable mode: store as string (variable reference)
           draft[field] = value as number

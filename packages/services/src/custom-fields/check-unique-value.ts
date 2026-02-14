@@ -81,7 +81,7 @@ export async function checkUniqueValue(
   const valueMatchCondition = or(
     eq(schema.FieldValue.valueText, valueStr),
     // For numbers, try parsing the string
-    !isNaN(parseFloat(valueStr))
+    !Number.isNaN(parseFloat(valueStr))
       ? eq(schema.FieldValue.valueNumber, parseFloat(valueStr))
       : sql`false`
   )

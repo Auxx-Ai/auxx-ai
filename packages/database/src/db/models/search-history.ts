@@ -1,7 +1,7 @@
 // packages/database/src/db/models/search-history.ts
 // SearchHistory model built on BaseModel (org-scoped)
 
-import { and, asc, desc, eq, type SQL } from 'drizzle-orm'
+import { and, asc, eq, type SQL } from 'drizzle-orm'
 import { SearchHistory } from '../schema/search-history'
 import { BaseModel } from '../utils/base-model'
 import { Result, type TypedResult } from '../utils/result'

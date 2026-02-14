@@ -1,5 +1,5 @@
 // @auxx/lib/chat/chat-service.ts
-import { type Database, database, schema } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { IntegrationType, MessageType, ThreadStatus } from '@auxx/database/enums'
 import type { UserEntity as User } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
@@ -13,7 +13,7 @@ import {
   setRedisData,
 } from '@auxx/redis'
 import { TRPCError } from '@trpc/server'
-import { and, asc, desc, eq, gt, inArray, isNull, ne } from 'drizzle-orm'
+import { and, eq, ne } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import type { RealTimeService } from '../realtime/realtime-service'
 import type {

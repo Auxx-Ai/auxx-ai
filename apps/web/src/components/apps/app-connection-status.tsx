@@ -171,42 +171,40 @@ export function AppConnectionStatus({
 
   // not_connected status
   return (
-    <>
-      <div className='flex items-center gap-2'>
-        <XCircle className='h-4 w-4 text-gray-400' />
-        <span className='text-sm text-gray-600'>Not connected</span>
-        {isOAuth && (
-          <Link href={oauthAuthorizeUrl}>
-            <Button size='sm'>Connect {connectionLabel}</Button>
-          </Link>
-        )}
+    <div className='flex items-center gap-2'>
+      <XCircle className='h-4 w-4 text-gray-400' />
+      <span className='text-sm text-gray-600'>Not connected</span>
+      {isOAuth && (
+        <Link href={oauthAuthorizeUrl}>
+          <Button size='sm'>Connect {connectionLabel}</Button>
+        </Link>
+      )}
 
-        {/* Secret connection dialog */}
-        {isSecret && (
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size='sm'>Connect {connectionLabel}</Button>
-            </DialogTrigger>
-            <DialogContent size='sm' position='tc'>
-              <SecretConnectionDialogContent
-                connectionLabel={connectionLabel}
-                connectionType={connectionType}
-                secret={secret}
-                setSecret={setSecret}
-                showSecret={showSecret}
-                setShowSecret={setShowSecret}
-                saveSecret={saveSecret}
-                handleSaveSecret={handleSaveSecret}
-                onClose={() => {
-                  setDialogOpen(false)
-                  setSecret('')
-                }}
-              />
-            </DialogContent>
-          </Dialog>
-        )}
-      </div>
-    </>
+      {/* Secret connection dialog */}
+      {isSecret && (
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button size='sm'>Connect {connectionLabel}</Button>
+          </DialogTrigger>
+          <DialogContent size='sm' position='tc'>
+            <SecretConnectionDialogContent
+              connectionLabel={connectionLabel}
+              connectionType={connectionType}
+              secret={secret}
+              setSecret={setSecret}
+              showSecret={showSecret}
+              setShowSecret={setShowSecret}
+              saveSecret={saveSecret}
+              handleSaveSecret={handleSaveSecret}
+              onClose={() => {
+                setDialogOpen(false)
+                setSecret('')
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
   )
 }
 

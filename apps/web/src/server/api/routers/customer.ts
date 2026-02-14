@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/customer.ts
 
 import { schema } from '@auxx/database'
-import { and, asc, desc, eq, gt, ilike, lt, or, type SQL } from 'drizzle-orm'
+import { eq, gt, ilike, lt, or, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 

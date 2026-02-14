@@ -1,4 +1,3 @@
-import { env } from '@auxx/config/server'
 import { createScopedLogger } from '@auxx/logger'
 import { getConnectionOptions } from '@auxx/redis'
 import { type JobsOptions, Queue } from 'bullmq'

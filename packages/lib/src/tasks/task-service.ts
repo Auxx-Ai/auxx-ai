@@ -6,7 +6,7 @@ import { type ActorId, getActorRawId, getActorType, toActorId } from '@auxx/type
 import type { RecordId } from '@auxx/types/resource'
 import type { Deadline, RelativeDate } from '@auxx/types/task'
 import { TRPCError } from '@trpc/server'
-import { and, eq, gte, ilike, inArray, isNotNull, isNull, lt, lte } from 'drizzle-orm'
+import { and, eq, gte, ilike, inArray, isNull, lt, lte } from 'drizzle-orm'
 import { parseRecordId, toRecordId } from '../field-values/relationship-field'
 import { hasDefinedProps, pickDefined } from '../utils/pick-defined'
 import type {

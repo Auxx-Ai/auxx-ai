@@ -8,7 +8,6 @@ import {
   sendPasswordResetNotifyEmail,
   sendResetPasswordEmail,
   sendVerificationEmail,
-  sendWelcomeEmail,
 } from '@auxx/email'
 import { seedNewUserDatabase } from '@auxx/lib/seed'
 import { createScopedLogger } from '@auxx/logger'

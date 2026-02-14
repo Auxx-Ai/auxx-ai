@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { LayoutGrid, List, Search } from 'lucide-react'
+import { LayoutGrid, List } from 'lucide-react'
 import { useDatasets } from './datasets-provider'
 
 /**

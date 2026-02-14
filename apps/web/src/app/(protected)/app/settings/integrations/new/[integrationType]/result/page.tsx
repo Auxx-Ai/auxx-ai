@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { CheckCircle, XCircle } from 'lucide-react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import React, { useEffect } from 'react'
+import { useEffect } from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 

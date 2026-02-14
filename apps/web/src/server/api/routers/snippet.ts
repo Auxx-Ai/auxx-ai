@@ -1,6 +1,6 @@
 // server/api/routers/snippets.ts
 
-import { database, schema } from '@auxx/database'
+import { schema } from '@auxx/database'
 import {
   BuiltInEntityType,
   ResourceGranteeType,
@@ -21,7 +21,6 @@ import {
   count,
   desc,
   eq,
-  exists,
   ilike,
   inArray,
   isNull,

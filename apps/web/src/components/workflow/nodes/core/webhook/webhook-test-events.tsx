@@ -3,7 +3,6 @@
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { toastSuccess } from '@auxx/ui/components/toast'
-import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
 import {
   CheckCircle2,
@@ -14,7 +13,7 @@ import {
   FileJson,
   XCircle,
 } from 'lucide-react'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import type { WebhookTestEvent } from '~/components/workflow/store/webhook-test-store'
 
 interface WebhookTestEventsProps {

@@ -4,7 +4,6 @@
  */
 'use client'
 import { Button } from '@auxx/ui/components/button'
-import React from 'react'
 import NewMessageDialog from '../new-message-dialog'
 import type { EditorPresetValues } from '../types'
 

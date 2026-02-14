@@ -65,12 +65,12 @@ export function isThisMonth(date: Date): boolean {
  */
 export function parseDate(value: any): Date | null {
   if (value instanceof Date) {
-    return isNaN(value.getTime()) ? null : value
+    return Number.isNaN(value.getTime()) ? null : value
   }
 
   if (typeof value === 'string' || typeof value === 'number') {
     const date = new Date(value)
-    return isNaN(date.getTime()) ? null : date
+    return Number.isNaN(date.getTime()) ? null : date
   }
 
   return null

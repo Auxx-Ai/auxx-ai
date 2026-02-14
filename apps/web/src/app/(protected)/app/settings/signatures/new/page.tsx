@@ -1,7 +1,6 @@
 // apps/web/src/app/(protected)/app/settings/signatures/new/page.tsx
 
 import { headers } from 'next/headers'
-import React from 'react'
 import { auth } from '~/auth/server'
 import SettingsPage from '~/components/global/settings-page'
 import { SignatureForm } from '~/components/signatures/ui'

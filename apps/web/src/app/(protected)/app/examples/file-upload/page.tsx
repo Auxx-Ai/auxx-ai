@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx
 import { Separator } from '@auxx/ui/components/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { FileSelect, FileSelectDialog, type FileSelectItem } from '~/components/file-select'
 import {
   type BatchUploadResult,

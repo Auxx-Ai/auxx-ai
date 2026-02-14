@@ -6,7 +6,6 @@ import {
   CurrencyInput,
 } from '@auxx/ui/components/input-currency'
 import { InputGroup } from '@auxx/ui/components/input-group'
-import { NumberInputArrows } from '@auxx/ui/components/input-number'
 import { cn } from '@auxx/ui/lib/utils'
 import type { CurrencyDisplayOptions } from '@auxx/utils'
 import { useCallback, useEffect, useMemo, useRef } from 'react'

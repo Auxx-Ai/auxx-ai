@@ -16,7 +16,7 @@ import {
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { useStore } from '@xyflow/react'
-import { ChevronLeft, ChevronRight, Copy, Search, Star, Variable } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Copy, Search } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TooltipExplanation } from '~/components/global/tooltip'

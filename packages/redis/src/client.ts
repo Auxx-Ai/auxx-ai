@@ -174,7 +174,7 @@ export async function disconnectRedis(): Promise<void> {
     } catch (err) {
       logger.error('Error disconnecting from Redis', { error: (err as Error).message })
       // Force disconnect if quit fails
-      if (redisClient && redisClient.disconnect) {
+      if (redisClient?.disconnect) {
         redisClient.disconnect()
         redisClient = null
       }
@@ -190,7 +190,7 @@ export async function disconnectRedis(): Promise<void> {
       logger.error('Error disconnecting from Redis publishing client', {
         error: (err as Error).message,
       })
-      if (publishingClient && publishingClient.disconnect) {
+      if (publishingClient?.disconnect) {
         publishingClient.disconnect()
         publishingClient = null
       }
@@ -206,7 +206,7 @@ export async function disconnectRedis(): Promise<void> {
       logger.error('Error disconnecting from Redis subscription client', {
         error: (err as Error).message,
       })
-      if (subscriptionClient && subscriptionClient.disconnect) {
+      if (subscriptionClient?.disconnect) {
         subscriptionClient.disconnect()
         subscriptionClient = null
       }

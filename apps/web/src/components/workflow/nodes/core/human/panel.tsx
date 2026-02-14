@@ -99,7 +99,7 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
     const handleTestDelayChange = useCallback(
       (value: string, isConstant: boolean) =>
         updateInputs((draft) => {
-          draft.test_delay = isConstant ? parseInt(value) || 5 : 5
+          draft.test_delay = isConstant ? parseInt(value, 10) || 5 : 5
         }),
       [updateInputs]
     )
@@ -220,7 +220,7 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
                           draft.timeout = { duration: 24, unit: 'hours', enabled: true }
                         }
                         draft.timeout.duration = isConstant
-                          ? parseInt(value) || 24
+                          ? parseInt(value, 10) || 24
                           : ({ id: value } as any)
                       }),
                     [updateInputs]

@@ -5,7 +5,6 @@ import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { AlertCircle, CheckCircle, Loader2, XCircle } from 'lucide-react'
-import React from 'react'
 
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error'
 

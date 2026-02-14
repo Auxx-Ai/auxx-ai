@@ -16,12 +16,11 @@ import {
   EdgeManager,
   NodeFactory,
   NodeMover,
-  type Point,
   PositionCalculator,
   type PositionResult,
   type Size,
 } from '../utils/node-layout'
-import { checkParentNeedsResize, createResizedParentNode } from '../utils/node-resize-utils'
+import { createResizedParentNode } from '../utils/node-resize-utils'
 import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'
 import { useWorkflowSave } from './use-workflow-save'
 // Variable syncing now handled automatically by VarStoreSyncProvider

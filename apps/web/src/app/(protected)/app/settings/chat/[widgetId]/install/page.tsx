@@ -6,7 +6,6 @@ import { and, eq } from 'drizzle-orm'
 import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
-import React from 'react'
 import { auth } from '~/auth/server'
 import { WidgetInstallGuide } from '../../_components/widget-install-guide'
 

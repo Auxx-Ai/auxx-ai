@@ -7,10 +7,6 @@ import { BaseTag } from './base-tag.js'
  * Layout container for arranging inputs horizontally.
  */
 export class WorkflowInputGroupTag extends BaseTag {
-  constructor(props: Record<string, any>) {
-    super(props)
-  }
-
   getTagName(): string {
     return 'div'
   }

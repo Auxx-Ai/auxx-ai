@@ -1,7 +1,6 @@
 // packages/services/src/parts/part-queries.ts
 
-import { database, schema } from '@auxx/database'
-import { and, eq, gt, ilike, or } from 'drizzle-orm'
+import { database } from '@auxx/database'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { CheckSkuExistsInput, GetAllPartsInput, PartContext } from './types'

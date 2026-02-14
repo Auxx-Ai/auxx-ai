@@ -3,7 +3,7 @@
 import type { BatchUploadResult, EntityType } from '@auxx/lib/files/types'
 import { getEntityConfig } from '@auxx/lib/files/types'
 import type { StateCreator } from 'zustand'
-import { calculateOverallProgress, validateFile } from '../../utils'
+import { validateFile } from '../../utils'
 import { directUpload } from '../../utils/direct-upload'
 import type { CreateSessionOptions, UploadStore } from '../types'
 
@@ -495,7 +495,7 @@ export const createEnhancedOrchestrationSlice: StateCreator<
     // Store cleanup function
     set((state) => {
       const session = state.sessions[sessionId]
-      if (session && session.sseConnection) {
+      if (session?.sseConnection) {
         const existingCleanup = session.sseConnection.cleanup
         session.sseConnection.cleanup = () => {
           clearInterval(progressInterval)
@@ -950,7 +950,7 @@ export const createEnhancedOrchestrationSlice: StateCreator<
 
     // Clean up any timers or intervals
     const session = get().sessions[sessionId]
-    if (session && session.sseConnection?.cleanup) {
+    if (session?.sseConnection?.cleanup) {
       session.sseConnection.cleanup()
     }
   },

@@ -1,6 +1,6 @@
 // apps/web/src/app/(website)/features/_components/sections/email-intelligence-section.tsx
 
-import { ArrowUpRight, Bot, MailCheck, SlidersHorizontal, Sparkles, Target } from 'lucide-react'
+import { ArrowUpRight, Bot, MailCheck, SlidersHorizontal, Target } from 'lucide-react'
 import { Badge } from '~/components/ui/badge'
 import { Card } from '~/components/ui/card'
 

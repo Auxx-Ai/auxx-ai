@@ -3,7 +3,7 @@
 'use client'
 
 import { getMimePatternsForCategories } from '@auxx/lib/files/client'
-import { memo, useMemo } from 'react'
+import { memo } from 'react'
 import type { TypeOptions } from '~/components/workflow/nodes/inputs/form-input/types'
 import {
   PublicFileInput,

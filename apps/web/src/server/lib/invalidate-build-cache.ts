@@ -3,7 +3,6 @@
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
-import { eq } from 'drizzle-orm'
 
 const logger = createScopedLogger('invalidate-build-cache')
 const CACHE_PREFIX = 'build-dehydrated'

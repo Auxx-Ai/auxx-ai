@@ -9,7 +9,7 @@ import {
   CollapsibleTrigger,
 } from '@auxx/ui/components/collapsible'
 import { Separator } from '@auxx/ui/components/separator'
-import { ChevronDown, ChevronRight, ChevronUp, RotateCcw, Settings2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, RotateCcw, Settings2 } from 'lucide-react'
 import { HybridSearchOptions } from './hybrid-search-options'
 import { SearchMethodSelector, type SearchType } from './search-method-selector'
 import { TextSearchOptions } from './text-search-options'

@@ -100,7 +100,7 @@ export function InboxList() {
             description={<>Hang on tight while we load your inboxes...</>}
             button={<div className='h-12'></div>}
           />
-        ) : inboxes && inboxes.length ? (
+        ) : inboxes?.length ? (
           <Table>
             <TableHeader>
               <TableRow>

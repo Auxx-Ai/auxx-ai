@@ -3,7 +3,7 @@
 import { getByPath } from '@auxx/utils'
 import { useStore as useReactFlowStore, useStoreApi } from '@xyflow/react'
 import { produce } from 'immer'
-import { useCallback, useMemo } from 'react'
+import { useCallback } from 'react'
 import { useReadOnly } from './use-read-only'
 // import { useWorkflowStore } from '../store/workflow-store'
 import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'

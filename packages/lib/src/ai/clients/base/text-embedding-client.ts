@@ -4,7 +4,6 @@ import { BaseSpecializedClient } from './base-specialized-client'
 import type {
   BatchEmbeddingParams,
   BatchEmbeddingResponse,
-  ClientConfig,
   EmbeddingParams,
   EmbeddingResponse,
 } from './types'
@@ -13,10 +12,6 @@ import type {
  * Abstract base class for text embedding clients
  */
 export abstract class TextEmbeddingClient extends BaseSpecializedClient {
-  constructor(config: ClientConfig, clientName: string, logger?: any) {
-    super(config, clientName, logger)
-  }
-
   // ===== ABSTRACT METHODS =====
 
   /**

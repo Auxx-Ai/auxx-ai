@@ -5,7 +5,6 @@
 import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
 import { AlertTriangle, CheckCircle, Shield } from 'lucide-react'
-import React from 'react'
 import { getToolCredentialRequirement } from './tool-credential-registry'
 
 interface CredentialStatusIndicatorProps {

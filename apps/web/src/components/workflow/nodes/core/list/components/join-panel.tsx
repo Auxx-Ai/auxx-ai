@@ -4,7 +4,6 @@
 
 import { BaseType } from '@auxx/lib/workflow-engine/client'
 import { Input } from '@auxx/ui/components/input'
-import { Label } from '@auxx/ui/components/label'
 import {
   Select,
   SelectContent,

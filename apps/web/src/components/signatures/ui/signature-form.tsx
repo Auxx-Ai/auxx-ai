@@ -23,7 +23,7 @@ import {
 import { toastSuccess } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { useRouter } from 'next/navigation'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { EditorToolbar } from '~/components/editor/editor-button'

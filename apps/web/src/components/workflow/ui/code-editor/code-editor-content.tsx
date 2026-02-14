@@ -2,7 +2,6 @@
 
 'use client'
 
-import { cn } from '@auxx/ui/lib/utils'
 import Editor from '@monaco-editor/react'
 import { useReactFlow } from '@xyflow/react'
 import type { IDisposable } from 'monaco-editor'
@@ -10,11 +9,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useVarStore } from '~/components/workflow/store/use-var-store'
 import EditorHeightResizeWrap from '../editor-height-resize-wrap'
 import { useCodeEditorContext } from './code-editor-context'
-import {
-  CODE_EDITOR_LINE_HEIGHT,
-  COMPLETION_EDITOR_OPTIONS,
-  DEFAULT_EDITOR_OPTIONS,
-} from './constants'
+import { COMPLETION_EDITOR_OPTIONS, DEFAULT_EDITOR_OPTIONS } from './constants'
 import { createWorkflowCompletionProvider } from './monaco-workflow-completions'
 import {
   createOverflowWidgetContainer,

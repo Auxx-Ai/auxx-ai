@@ -1,6 +1,6 @@
 // packages/lib/src/files/storage/__tests__/policy-enforcement.test.ts
 
-import { beforeEach, describe, expect, it, MockedFunction, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UploadPreparedConfig } from '../../upload/init-types'
 import { StorageManager } from '../storage-manager'
 

@@ -22,7 +22,6 @@ import {
 import { SidebarButton } from '@auxx/ui/components/sidebar-button'
 import {
   ArrowUpRight,
-  Bell,
   Book,
   BookCheck,
   BookLock,
@@ -32,7 +31,6 @@ import {
   Globe,
   Heart,
   HeartPulse,
-  Instagram,
   Linkedin,
   Mail,
   Rocket,
@@ -42,7 +40,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { PlanChangeSummary } from '~/components/subscriptions/plan-change-summary'
 // import { PlanChangeSummary } from '~/app/(protected)/app/settings/plans/_components/plan-change-summary'
 import { useSubscription } from '~/hooks/use-subscription'

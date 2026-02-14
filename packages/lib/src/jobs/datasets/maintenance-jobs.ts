@@ -4,7 +4,7 @@ import { database as db, schema } from '@auxx/database'
 import { DocumentProcessingQueue } from '@auxx/lib/datasets'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { and, count, desc, eq, inArray, isNull, or } from 'drizzle-orm'
+import { and, count, eq, inArray, isNull, or } from 'drizzle-orm'
 
 const logger = createScopedLogger('dataset-maintenance-jobs')
 

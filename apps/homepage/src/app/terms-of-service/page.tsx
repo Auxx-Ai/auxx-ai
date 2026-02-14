@@ -1,7 +1,6 @@
 // apps/homepage/src/app/terms-of-service/page.tsx
 
 import type { Metadata } from 'next'
-import React from 'react'
 import { config } from '~/lib/config'
 import FooterSection from '../_components/main/footer-section'
 import Header from '../_components/main/header'

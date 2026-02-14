@@ -1,6 +1,4 @@
-import React from 'react'
 import SettingsPage from '~/components/global/settings-page'
-import { api } from '~/trpc/server'
 import { AppearanceSettingsForm } from './_components/appearance-settings-form'
 
 type Props = {}

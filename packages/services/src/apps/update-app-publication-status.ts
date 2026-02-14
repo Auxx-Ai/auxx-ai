@@ -2,10 +2,8 @@
 
 import { App, AppVersion, database } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
-import type { Result } from 'neverthrow'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { AppError } from './errors'
 
 /**
  * Update app publication status

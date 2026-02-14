@@ -2,7 +2,7 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { Check, ChevronRight, Circle } from 'lucide-react'
+import { Check, ChevronRight } from 'lucide-react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import type * as React from 'react'
 

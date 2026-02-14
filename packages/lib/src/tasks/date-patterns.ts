@@ -59,7 +59,7 @@ const NUMBER_PATTERN = `(\\d+|${TEXT_NUMBER_PATTERN})`
  */
 function parseNumber(value: string): number {
   const num = parseInt(value, 10)
-  if (!isNaN(num)) return num
+  if (!Number.isNaN(num)) return num
   return TEXT_NUMBERS[value.toLowerCase()] ?? 0
 }
 

@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/shared/webhook-trigger-input.tsx
 
 import { useStoreApi } from '@xyflow/react'
-import React, { useCallback } from 'react'
+import { useCallback } from 'react'
 import { CodeEditor } from '~/components/workflow/ui/code-editor'
 import Field from '~/components/workflow/ui/field'
 import Section from '~/components/workflow/ui/section'

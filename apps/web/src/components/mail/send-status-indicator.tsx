@@ -3,7 +3,6 @@
 import { SendStatus } from '@auxx/database/enums'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
-import { RefreshCw } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import { sendStatusConfig } from './mail-status-config'
 

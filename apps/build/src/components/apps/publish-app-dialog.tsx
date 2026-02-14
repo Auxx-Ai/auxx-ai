@@ -12,12 +12,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
-import { KbdSubmit } from '@auxx/ui/components/kbd'
 import { CheckCircle2, Circle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { toastError } from '~/components/global/toast'
-import type { AppForPublishCheck } from '~/lib/publish-checks'
 import { isMainAppListingComplete, isOAuthConfigComplete } from '~/lib/publish-checks'
 import { api, type RouterOutputs } from '~/trpc/react'
 

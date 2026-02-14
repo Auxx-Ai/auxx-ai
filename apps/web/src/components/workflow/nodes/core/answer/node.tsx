@@ -1,6 +1,5 @@
 // apps/web/src/components/workflow/nodes/core/answer/node.tsx
 
-import { Handle, Position } from '@xyflow/react'
 import { memo } from 'react'
 import { NodeTargetHandle } from '~/components/workflow/ui/node-handle'
 import { BaseNode } from '../../shared/base/base-node'

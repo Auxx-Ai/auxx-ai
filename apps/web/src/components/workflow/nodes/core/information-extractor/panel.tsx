@@ -12,7 +12,7 @@ import {
 import { Label } from '@auxx/ui/components/label'
 import { Switch } from '@auxx/ui/components/switch'
 import { BookText, FileJson, Pencil } from 'lucide-react'
-import React, { useCallback, useState } from 'react'
+import React, { useState } from 'react'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import ModelParameterModal from '~/components/workflow/ui/model-parameter'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'

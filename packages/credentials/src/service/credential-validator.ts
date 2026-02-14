@@ -114,11 +114,17 @@ export class CredentialValidator {
     }
 
     // Numeric range validation
-    if (validation.min !== undefined && (isNaN(numericValue) || numericValue < validation.min)) {
+    if (
+      validation.min !== undefined &&
+      (Number.isNaN(numericValue) || numericValue < validation.min)
+    ) {
       return validation.errorMessage || `${displayName} must be at least ${validation.min}`
     }
 
-    if (validation.max !== undefined && (isNaN(numericValue) || numericValue > validation.max)) {
+    if (
+      validation.max !== undefined &&
+      (Number.isNaN(numericValue) || numericValue > validation.max)
+    ) {
       return validation.errorMessage || `${displayName} must be no more than ${validation.max}`
     }
 
