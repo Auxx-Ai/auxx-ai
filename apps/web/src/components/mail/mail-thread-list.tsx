@@ -1,7 +1,7 @@
 // apps/web/src/components/mail/mail-thread-list.tsx
 'use client'
 
-import { parseRecordId, type RecordId } from '@auxx/types/resource'
+import { parseRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
@@ -13,7 +13,7 @@ import {
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { ArrowUpDown, ChevronDown, Clock, FileText, Loader2, User } from 'lucide-react'
-import React, { memo, useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 // import { useAutoAnimate } from '@formkit/auto-animate/react'
 import { useInView } from 'react-intersection-observer'
 // NEW: Import selection hooks from threads module

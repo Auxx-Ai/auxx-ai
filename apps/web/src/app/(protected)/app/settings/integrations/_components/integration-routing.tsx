@@ -23,7 +23,7 @@ import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { AlertCircle, AlertTriangle, CloudDownload, Edit, InboxIcon, MailPlus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 // ~/app/(protected)/app/settings/integrations/_components/integration-routing.tsx
-import React, { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import MessageSyncStatus from '~/components/mail/message-sync-status'
 import { toRecordId, useRecord, useRecordList, useResource } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'

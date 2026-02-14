@@ -25,7 +25,6 @@ import {
   createAICallbacks,
   extractModelConfig,
   extractOrgUserContext,
-  type PromptTemplate,
 } from './utils/ai-node-utils'
 
 const logger = createScopedLogger('base-ai-node')

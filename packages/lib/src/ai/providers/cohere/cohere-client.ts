@@ -4,12 +4,7 @@ import { CohereClient as CohereAPIClient } from 'cohere-ai'
 import type { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
 import { DEFAULT_CLIENT_CONFIG } from '../../clients/base/types'
 import { ProviderClient } from '../base/provider-client'
-import {
-  type ConnectionTestResult,
-  CredentialValidationError,
-  type ProviderCredentials,
-  type ValidationResult,
-} from '../base/types'
+import type { ConnectionTestResult, ProviderCredentials, ValidationResult } from '../base/types'
 import { type ModelCapabilities, ModelType } from '../types'
 import { CohereTextEmbeddingClient } from './cohere-embedding-client'
 

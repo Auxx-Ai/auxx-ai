@@ -4,7 +4,7 @@ import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
-import type { ListOperation, SortConfig } from '../types/list-types'
+import type { SortConfig } from '../types/list-types'
 
 export class ListProcessor extends BaseNodeProcessor {
   readonly type = WorkflowNodeType.LIST
@@ -308,7 +308,7 @@ export class ListProcessor extends BaseNodeProcessor {
             // Resolve variable
             const resolvedValue = await contextManager.getVariable(config.count)
             count = typeof resolvedValue === 'number' ? resolvedValue : parseInt(resolvedValue, 10)
-            if (isNaN(count) || count < 1) {
+            if (Number.isNaN(count) || count < 1) {
               throw new Error(`Invalid count value: ${resolvedValue}. Must be a positive number.`)
             }
           }
@@ -329,7 +329,7 @@ export class ListProcessor extends BaseNodeProcessor {
             // Resolve variable
             const resolvedValue = await contextManager.getVariable(config.count)
             count = typeof resolvedValue === 'number' ? resolvedValue : parseInt(resolvedValue, 10)
-            if (isNaN(count) || count < 1) {
+            if (Number.isNaN(count) || count < 1) {
               throw new Error(`Invalid count value: ${resolvedValue}. Must be a positive number.`)
             }
           }
@@ -349,7 +349,7 @@ export class ListProcessor extends BaseNodeProcessor {
           } else {
             const resolvedValue = await contextManager.getVariable(config.start)
             start = typeof resolvedValue === 'number' ? resolvedValue : parseInt(resolvedValue, 10)
-            if (isNaN(start) || start < 0) {
+            if (Number.isNaN(start) || start < 0) {
               throw new Error(
                 `Invalid start value: ${resolvedValue}. Must be a non-negative number.`
               )
@@ -365,7 +365,7 @@ export class ListProcessor extends BaseNodeProcessor {
           } else {
             const resolvedValue = await contextManager.getVariable(config.end)
             end = typeof resolvedValue === 'number' ? resolvedValue : parseInt(resolvedValue, 10)
-            if (isNaN(end)) {
+            if (Number.isNaN(end)) {
               throw new Error(`Invalid end value: ${resolvedValue}. Must be a number.`)
             }
           }

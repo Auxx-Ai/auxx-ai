@@ -2,16 +2,7 @@
 // Drizzle table for app version
 
 import { createId } from '@paralleldrive/cuid2'
-import {
-  type AnyPgColumn,
-  boolean,
-  index,
-  integer,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-} from './_shared'
+import { type AnyPgColumn, index, integer, jsonb, pgTable, text, timestamp } from './_shared'
 import { App } from './app'
 import { DeveloperAccountMember } from './developer-account-member'
 import { Organization } from './organization'

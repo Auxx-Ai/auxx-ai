@@ -11,7 +11,7 @@ import type { UnifiedVariable } from '~/components/workflow/types/variable-types
 import { convertOutputFieldsToVariables } from '~/lib/workflow/utils/type-mapping'
 // import { AppWorkflowNode } from './components/app-workflow-node'
 import { AppWorkflowPanel } from './components/app-workflow-panel'
-import type { WorkflowBlock, WorkflowVariable } from './types'
+import type { WorkflowBlock } from './types'
 
 // In-memory cache for loaded blocks
 const schemaCache = new Map<string, WorkflowBlock[]>()

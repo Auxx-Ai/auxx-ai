@@ -1,7 +1,7 @@
 // apps/web/src/components/dynamic-table/stores/ui-slice.ts
 
 import type { KanbanViewConfig } from '../types'
-import type { SliceCreator, TableUIConfig, UISlice } from './store-types'
+import type { SliceCreator, UISlice } from './store-types'
 import { DEFAULT_UI_CONFIG } from './store-types'
 
 /** Creates the UI slice for managing visual/layout config */

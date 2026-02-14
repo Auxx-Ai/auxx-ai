@@ -1,7 +1,7 @@
 // packages/lib/src/seed/new-user.ts
 
 import { env } from '@auxx/config/server'
-import { type Database, database as db, schema, type Transaction } from '@auxx/database'
+import { database as db, schema } from '@auxx/database'
 import {
   InvitationStatus,
   OrganizationRole as OrganizationRoleEnum,

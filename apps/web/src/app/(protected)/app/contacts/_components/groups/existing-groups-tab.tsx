@@ -1,13 +1,11 @@
 // ~/app/(protected)/app/contacts/_components/groups/existing-groups-tab.tsx
 
 import { Button } from '@auxx/ui/components/button'
-import { Checkbox } from '@auxx/ui/components/checkbox'
 import { DialogFooter } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { toastError } from '@auxx/ui/components/toast'
 import { Plus, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { api } from '~/trpc/react'
 import { useContactMutations } from '../use-contact-mutations'
 import GroupItem from './group-item'
 

@@ -2,7 +2,6 @@
 
 import { type FC, memo } from 'react'
 import { NodeSourceHandle } from '~/components/workflow/ui/node-handle'
-import { NodeResizer } from '~/components/workflow/ui/node-resizer'
 import { BaseNode } from '../../shared/base/base-node'
 import type { WebhookNode as WebhookNodeType } from './types'
 

@@ -3,7 +3,6 @@
 import { createScopedLogger } from '@auxx/logger'
 import { generateMimeBoundary } from '@auxx/utils'
 import parse from 'gmail-api-parse-message'
-import { gmail_v1 } from 'googleapis'
 import { getGmailQuotaCost, type UniversalThrottler } from '../../../utils/rate-limiter'
 import { handleGmailError } from '../shared/error-handler'
 import { executeWithThrottle } from '../shared/utils'

@@ -3,7 +3,7 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import crypto from 'crypto'
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { CredentialValidator } from './credential-validator'
 // Define NodeData type locally for now
 export type NodeData = {

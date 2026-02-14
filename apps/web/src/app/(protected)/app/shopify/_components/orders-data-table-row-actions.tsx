@@ -17,7 +17,6 @@ import {
 import type { Row } from '@tanstack/react-table'
 import { MoreHorizontal } from 'lucide-react'
 import { labels } from '~/constants/products'
-import { orderSchema } from './schema'
 
 interface DataTableRowActionsProps<TData> {
   row: Row<TData>

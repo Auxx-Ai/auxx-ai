@@ -4,7 +4,7 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { Variable } from 'lucide-react'
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo } from 'react'
 import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
 import type { BaseType, UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { VariablePicker } from './variable-picker'

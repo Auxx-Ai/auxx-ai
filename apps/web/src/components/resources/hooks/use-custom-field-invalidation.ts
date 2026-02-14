@@ -1,11 +1,7 @@
 // apps/web/src/components/resources/hooks/use-custom-field-invalidation.ts
 
 import { useCallback } from 'react'
-import {
-  type RecordId,
-  toRecordId,
-  useFieldValueStore,
-} from '~/components/resources/store/field-value-store'
+import { toRecordId, useFieldValueStore } from '~/components/resources/store/field-value-store'
 
 /**
  * Hook providing invalidation methods for custom field values.

@@ -8,7 +8,6 @@ import { CircularProgress } from '@auxx/ui/components/progress'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatBytes } from '@auxx/utils/file'
 import { Pause, RotateCcw, Trash2 } from 'lucide-react'
-import React, { useMemo } from 'react'
 import type { FileItem as FileItemType } from '~/components/files/files-store'
 import { FileIcon } from '~/components/files/utils/file-icon'
 import {
@@ -161,31 +160,28 @@ export function FileItem({
           {formatBytes(file.displaySize || (file.size ? Number(file.size) : 0))}
         </span>
 
-        {showControls && (
-          <>
-            {status === 'completed' && onDeleteServer ? (
-              <Button
-                variant='ghost'
-                size='icon-sm'
-                onClick={handleDeleteServer}
-                loading={isDeleting}
-                title={isDeleting ? 'Deleting...' : 'Delete on server'}
-                className=' hover:bg-bad-200/50 hover:text-bad-500 rounded-full'>
-                <Trash2 />
-              </Button>
-            ) : (
-              <Button
-                variant='ghost'
-                size='icon-sm'
-                onClick={handleRemove}
-                loading={isDeleting}
-                title='Remove file'
-                className=' hover:bg-bad-200/50 hover:text-bad-500 rounded-full'>
-                <Trash2 />
-              </Button>
-            )}
-          </>
-        )}
+        {showControls &&
+          (status === 'completed' && onDeleteServer ? (
+            <Button
+              variant='ghost'
+              size='icon-sm'
+              onClick={handleDeleteServer}
+              loading={isDeleting}
+              title={isDeleting ? 'Deleting...' : 'Delete on server'}
+              className=' hover:bg-bad-200/50 hover:text-bad-500 rounded-full'>
+              <Trash2 />
+            </Button>
+          ) : (
+            <Button
+              variant='ghost'
+              size='icon-sm'
+              onClick={handleRemove}
+              loading={isDeleting}
+              title='Remove file'
+              className=' hover:bg-bad-200/50 hover:text-bad-500 rounded-full'>
+              <Trash2 />
+            </Button>
+          ))}
         {isActive && (
           <div className='relative flex items-center w-7 shrink-0'>
             {canCancel && (

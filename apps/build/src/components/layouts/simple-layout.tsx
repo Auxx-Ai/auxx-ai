@@ -1,7 +1,6 @@
 // apps/build/src/components/layouts/simple-layout.tsx
 'use client'
 
-import { env } from '@auxx/config/client'
 import { Button } from '@auxx/ui/components/button'
 // import { client } from '~/auth/auth-client'
 import Link from 'next/link'

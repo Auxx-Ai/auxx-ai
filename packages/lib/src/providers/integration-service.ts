@@ -1,7 +1,6 @@
 // packages/lib/src/providers/integration-service.ts
-import { type Database, database, schema } from '@auxx/database'
-import { and, count, desc, eq, inArray, ne } from 'drizzle-orm'
-import { EmailLabel } from '../email/email-storage'
+import { type Database, schema } from '@auxx/database'
+import { and, count, desc, eq, inArray } from 'drizzle-orm'
 import { withAuthErrorHandling } from '../email/errors-handlers'
 import { type IntegrationProviderType, MessageService } from '../email/message-service'
 import { createScopedLogger } from '../logger'
@@ -11,8 +10,7 @@ import { GoogleOAuthService } from './google/google-oauth'
 import { InstagramOAuthService } from './instagram/instagram-oauth'
 import { OpenPhoneService } from './openphone/openphone-service'
 import { OutlookOAuthService } from './outlook/outlook-oauth'
-import { getEmailProviders, whereMessageMessageType, whereThreadMessageType } from './query-helpers'
-import type { MessageType } from './types'
+import { getEmailProviders, whereThreadMessageType } from './query-helpers'
 
 const logger = createScopedLogger('integration-service')
 

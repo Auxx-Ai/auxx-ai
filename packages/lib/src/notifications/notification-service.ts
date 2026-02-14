@@ -1,6 +1,5 @@
 // lib/notifications/notification-service.ts
 import { database as db, schema } from '@auxx/database'
-import type { NotificationEntity as Notification } from '@auxx/database/models'
 import type { NotificationType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, count, desc, eq, gte, inArray, lt } from 'drizzle-orm'
@@ -131,7 +130,7 @@ export class NotificationService {
       // Build conditions
       const conditions = [eq(schema.Notification.userId, userId)] as any[]
       if (!includeRead) conditions.push(eq(schema.Notification.isRead, false as any))
-      if (types && types.length) conditions.push(inArray(schema.Notification.type, types as any))
+      if (types?.length) conditions.push(inArray(schema.Notification.type, types as any))
       if (since) conditions.push(gte(schema.Notification.createdAt, since))
       // Get total count
       const [{ cnt }] = await this.database

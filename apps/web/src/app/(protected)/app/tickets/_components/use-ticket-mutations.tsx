@@ -2,7 +2,6 @@
 
 'use client'
 
-import type { TicketPriority, TicketStatus } from '@auxx/database/enums'
 import { toastError } from '@auxx/ui/components/toast'
 import { useRecordInvalidation } from '~/components/resources'
 import { api } from '~/trpc/react'

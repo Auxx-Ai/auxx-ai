@@ -4,7 +4,6 @@
  */
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   MainPage,
@@ -13,7 +12,6 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { PlanForm } from '../_components/plan-form'
 

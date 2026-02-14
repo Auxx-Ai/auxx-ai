@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/nodes/shared/single-run-input-tab.tsx
 
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { useStoreApi } from '@xyflow/react'
 import { AlertCircle, Play } from 'lucide-react'
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BaseType, type FlowNode, type UnifiedVariable } from '~/components/workflow/types'
 import Section from '~/components/workflow/ui/section'
 import { getUpstreamNodeIds } from '~/components/workflow/utils/graph-utils'

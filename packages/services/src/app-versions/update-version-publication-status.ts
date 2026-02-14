@@ -1,7 +1,7 @@
 // packages/services/src/app-versions/update-version-publication-status.ts
 
 import { App, AppVersion, database } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 

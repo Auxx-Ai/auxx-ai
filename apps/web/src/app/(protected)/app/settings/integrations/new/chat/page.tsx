@@ -1,9 +1,6 @@
 // ~/app/(protected)/app/settings/integrations/new/chat_widget/page.tsx
 'use client'
-import { Button } from '@auxx/ui/components/button'
-import { ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import React from 'react'
 import ChatWidgetIntegrationForm from '../../_components/chat-widget-integration-form'
 
 /**

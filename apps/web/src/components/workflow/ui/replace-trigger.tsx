@@ -4,7 +4,7 @@ import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
 import { Button } from '@auxx/ui/components/button'
 import { RefreshCw } from 'lucide-react'
 import { useState } from 'react'
-import { useNodeDefinition, useTriggerDefinitions } from '../hooks'
+import { useTriggerDefinitions } from '../hooks'
 import { AddNodeTrigger } from './add-node-trigger'
 
 interface ReplaceTriggerProps {

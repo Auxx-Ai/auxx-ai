@@ -1,7 +1,6 @@
 // apps/web/src/app/(website)/_components/sections/problem-solution-section.tsx
 
 import { BarChart3, Clock, DollarSign, Mail, MessageSquare, Users, UserX, Zap } from 'lucide-react'
-import React from 'react'
 
 /**
  * Problem/Solution section highlighting pain points and solutions

@@ -7,10 +7,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, Palette, Scale, Target } from 'lucide-react'
 import type { FC } from 'react'
-import { useCallback } from 'react'
 import { TONE_LIST } from './constants'
 import type { PresetsParameterProps } from './types'
 

@@ -2,12 +2,11 @@
 
 import { env } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
-import { IntegrationProviderType, MessageType } from '@auxx/database/enums'
+import { IntegrationProviderType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import {
   EmailLabel, // Still needed for MessageData structure
-  IntegrationType,
   type MessageData, // Data structure expected by storage service
   MessageStorageService,
   type ParticipantInputData, // Structure for participant info from provider

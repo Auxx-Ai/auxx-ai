@@ -4,9 +4,8 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
-import type { SeedingConfig, SeedingResult } from '../types'
+import type { SeedingResult } from '../types'
 import { OrganizationWebhookCoordinator } from '../utils/organization-webhook-coordinator'
-import { DrizzleSeeder } from './drizzle-seeder'
 
 const logger = createScopedLogger('organization-seeder')
 

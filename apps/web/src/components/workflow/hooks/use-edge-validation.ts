@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/hooks/use-edge-validation.ts
 
-import { type Connection, type Edge, Node, useReactFlow } from '@xyflow/react'
+import { type Connection, type Edge, useReactFlow } from '@xyflow/react'
 import { useCallback, useMemo } from 'react'
 import { EdgeValidationService } from '../services/edge-validation-service'
 

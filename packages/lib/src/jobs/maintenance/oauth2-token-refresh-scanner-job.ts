@@ -4,7 +4,7 @@ import { CredentialService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { and, eq, isNotNull, lt, or, sql } from 'drizzle-orm'
+import { and, eq, isNotNull } from 'drizzle-orm'
 import { getQueue, Queues } from '../queues'
 
 const logger = createScopedLogger('oauth2-token-refresh-scanner-job')

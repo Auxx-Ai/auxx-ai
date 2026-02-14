@@ -1,4 +1,3 @@
-import React from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import { EditOrganizationForm } from './_components/edit-organization'
 

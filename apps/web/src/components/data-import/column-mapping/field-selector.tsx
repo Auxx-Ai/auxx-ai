@@ -13,7 +13,7 @@ import {
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { Check, ChevronsUpDown, Trash2, X } from 'lucide-react'
+import { Check, ChevronsUpDown, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import type { ImportableField } from '../types'
 

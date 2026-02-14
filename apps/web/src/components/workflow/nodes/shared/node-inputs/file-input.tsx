@@ -4,7 +4,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { File as FileIcon } from 'lucide-react'
-import React, { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useFileSystemStore } from '~/components/files/files-store'
 import { CommentFile } from '~/components/global/comments/comment-file'
 import type { FileSelection } from '~/components/pickers/files-picker'

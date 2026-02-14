@@ -35,7 +35,6 @@ import {
   Power,
   PowerOff,
   RefreshCw,
-  Server,
   Trash,
   XCircle,
 } from 'lucide-react'

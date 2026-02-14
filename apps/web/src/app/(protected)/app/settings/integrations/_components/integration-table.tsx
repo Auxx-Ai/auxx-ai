@@ -11,27 +11,16 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Switch } from '@auxx/ui/components/switch'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@auxx/ui/components/table'
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
 import { cn } from '@auxx/ui/lib/utils'
 import { format } from 'date-fns'
 import {
-  Facebook,
-  Instagram,
   Mail,
   MessageSquare, // Added for Chat Widget
   MoreHorizontal,
   Pencil,
   Phone,
   RefreshCw,
-  Star,
-  StarOff,
   Trash2,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -41,7 +30,6 @@ import {
   getIntegrationStatus,
   IntegrationStatusIndicator,
 } from '~/components/global/integration-status-indicator'
-import { ReauthBanner } from '~/components/global/reauth-banner'
 import { Tooltip } from '~/components/global/tooltip'
 import type { InboxItem } from '~/components/threads/hooks'
 import { FacebookIcon, GoogleIcon, InstagramIcon, OutlookIcon } from '~/constants/icons'

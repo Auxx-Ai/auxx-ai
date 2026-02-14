@@ -10,8 +10,6 @@ import { cn } from '@auxx/ui/lib/utils'
 import { formatRelativeTime, getInitialsFromName } from '@auxx/utils'
 import { format } from 'date-fns'
 import { Pencil, Pin, PinOff, Reply, SmilePlus, Trash, X } from 'lucide-react'
-// components/comments/comment-item.tsx
-import React from 'react'
 import { AttachmentDisplay } from '~/components/files/utils/attachment-display'
 import { useActor } from '~/components/resources/hooks/use-actor'
 import { type Comment as CommentType, useComments } from '~/hooks/use-comments'
@@ -196,46 +194,44 @@ export function CommentItem({
               </div>
             )}
             {!isEditing && (
-              <>
-                <div className='block h-full w-fit max-w-full rounded-[15px] bg-primary-200 text-sm font-normal text-foreground'>
-                  <div className='cursor-text select-text px-3 py-1 leading-[22px]'>
-                    <div
-                      dangerouslySetInnerHTML={{
-                        __html: formatContent(comment.content, comment.mentions),
-                      }}
-                    />
-                  </div>
-
-                  {/* Attachment display with download functionality */}
-                  {comment.attachments && comment.attachments.length > 0 && (
-                    <div className='flex flex-col gap-2 px-2 pb-2'>
-                      {comment.attachments.map((attachment) => (
-                        <AttachmentDisplay
-                          key={attachment.id}
-                          attachment={attachment}
-                          showRemoveButton={false} // No remove in read-only comment view
-                        />
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Emoji reactions */}
-                  {comment.reactions.emojis && Object.keys(comment.reactions.emojis).length > 0 && (
-                    <div className='px-2 pb-1 flex flex-row items-center gap-1'>
-                      {Object.entries(comment.reactions.emojis).map(([emoji, data]) => (
-                        <Badge
-                          key={emoji}
-                          variant='outline'
-                          className='flex cursor-pointer gap-1 rounded-lg bg-primary-300 border-0 hover:bg-info/80 hover:text-info-foreground'
-                          onClick={() => handleToggleEmoji(comment.id, emoji, data.userReacted)}>
-                          <span>{emoji}</span>
-                          {data.count > 0 && <span>{data.count}</span>}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
+              <div className='block h-full w-fit max-w-full rounded-[15px] bg-primary-200 text-sm font-normal text-foreground'>
+                <div className='cursor-text select-text px-3 py-1 leading-[22px]'>
+                  <div
+                    dangerouslySetInnerHTML={{
+                      __html: formatContent(comment.content, comment.mentions),
+                    }}
+                  />
                 </div>
-              </>
+
+                {/* Attachment display with download functionality */}
+                {comment.attachments && comment.attachments.length > 0 && (
+                  <div className='flex flex-col gap-2 px-2 pb-2'>
+                    {comment.attachments.map((attachment) => (
+                      <AttachmentDisplay
+                        key={attachment.id}
+                        attachment={attachment}
+                        showRemoveButton={false} // No remove in read-only comment view
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Emoji reactions */}
+                {comment.reactions.emojis && Object.keys(comment.reactions.emojis).length > 0 && (
+                  <div className='px-2 pb-1 flex flex-row items-center gap-1'>
+                    {Object.entries(comment.reactions.emojis).map(([emoji, data]) => (
+                      <Badge
+                        key={emoji}
+                        variant='outline'
+                        className='flex cursor-pointer gap-1 rounded-lg bg-primary-300 border-0 hover:bg-info/80 hover:text-info-foreground'
+                        onClick={() => handleToggleEmoji(comment.id, emoji, data.userReacted)}>
+                        <span>{emoji}</span>
+                        {data.count > 0 && <span>{data.count}</span>}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 

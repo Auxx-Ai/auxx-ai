@@ -1,7 +1,7 @@
 // packages/lib/src/ai/providers/openai/openai-embedding-client.ts
 
 import type OpenAI from 'openai'
-import { createScopedLogger, type Logger } from '../../../logger'
+import type { Logger } from '../../../logger'
 import { TextEmbeddingClient } from '../../clients/base/text-embedding-client'
 import type {
   BatchEmbeddingParams,

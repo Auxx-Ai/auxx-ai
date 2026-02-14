@@ -1,5 +1,5 @@
 // packages/lib/src/datasets/services/document-service.ts
-import { type Database, database as db, schema } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { DocumentStatus, DocumentType as DocumentTypeEnum } from '@auxx/database/enums'
 import type {
   ChunkSettings,
@@ -7,7 +7,7 @@ import type {
   DocumentType,
 } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or } from 'drizzle-orm'
 import { MediaAssetService } from '../../files/core/media-asset-service'
 import type {
   BatchProcessingRequest,
@@ -15,7 +15,6 @@ import type {
   DocumentFilters,
   DocumentListResponse,
   DocumentMetadata,
-  DocumentProcessingStatus,
   DocumentWithRelations,
   PaginationParams,
 } from '../types'

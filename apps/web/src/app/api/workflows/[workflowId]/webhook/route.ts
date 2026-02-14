@@ -1,6 +1,6 @@
 // apps/web/src/app/api/workflows/[workflowId]/webhook/route.ts
 
-import { database as db, schema } from '@auxx/database'
+import { database as db } from '@auxx/database'
 import { WorkflowEngine } from '@auxx/lib/workflow-engine'
 import {
   WorkflowNodeType,
@@ -10,7 +10,6 @@ import {
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { filterSensitiveHeaders } from '@auxx/utils/headers'
-import { and, eq } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
 import type { WebhookTestEvent } from '~/components/workflow/nodes/core/webhook/types'

@@ -4,7 +4,7 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { type Cell, flexRender } from '@tanstack/react-table'
-import { memo, useEffect, useRef } from 'react'
+import { memo, useRef } from 'react'
 import { sanitizeColumnId } from '../utils/sanitize-column-id'
 
 interface VirtualTableCellProps<TData> {

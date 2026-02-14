@@ -16,7 +16,7 @@ import {
   OUTPUT_FORMAT,
   type OutputFormat,
 } from './types'
-import { convertHtmlToTiptap, convertTiptapToHtml, stripHtml } from './utils'
+import { convertHtmlToTiptap, stripHtml } from './utils'
 
 const logger = createScopedLogger('ai-compose-service')
 

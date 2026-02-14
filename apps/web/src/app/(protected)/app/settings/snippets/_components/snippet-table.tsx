@@ -12,7 +12,6 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Input } from '@auxx/ui/components/input'
-import { Separator } from '@auxx/ui/components/separator'
 import {
   Table,
   TableBody,
@@ -21,7 +20,6 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { keepPreviousData } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
@@ -39,10 +37,10 @@ import {
   UsersIcon,
   XIcon,
 } from 'lucide-react'
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { useConfirm } from '~/hooks/use-confirm'
-import { type Snippet as ContextSnippet, useSnippetContext } from '~/hooks/use-snippet-context'
+import { useSnippetContext } from '~/hooks/use-snippet-context'
 import { api } from '~/trpc/react'
 
 // Extended snippet interface for table display with API relations

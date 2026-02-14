@@ -1,5 +1,4 @@
 import { MailIcon } from 'lucide-react'
-import React from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import { EmailTemplatesList } from './_components/template-list'
 

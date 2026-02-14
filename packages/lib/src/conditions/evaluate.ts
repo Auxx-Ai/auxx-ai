@@ -228,7 +228,7 @@ function evaluateOperator(
     case 'within_days': {
       const fieldDate = toDate(fieldValue)
       const days = toNumber(conditionValue)
-      if (!fieldDate || isNaN(days)) return false
+      if (!fieldDate || Number.isNaN(days)) return false
       const now = new Date()
       const diffDays = (now.getTime() - fieldDate.getTime()) / (1000 * 60 * 60 * 24)
       return diffDays >= 0 && diffDays <= days
@@ -237,7 +237,7 @@ function evaluateOperator(
     case 'older_than_days': {
       const fieldDate = toDate(fieldValue)
       const days = toNumber(conditionValue)
-      if (!fieldDate || isNaN(days)) return false
+      if (!fieldDate || Number.isNaN(days)) return false
       const now = new Date()
       const diffDays = (now.getTime() - fieldDate.getTime()) / (1000 * 60 * 60 * 24)
       return diffDays > days
@@ -347,7 +347,7 @@ function toDate(value: unknown): Date | null {
   if (value instanceof Date) return value
   if (typeof value === 'string' || typeof value === 'number') {
     const date = new Date(value)
-    return isNaN(date.getTime()) ? null : date
+    return Number.isNaN(date.getTime()) ? null : date
   }
   return null
 }

@@ -1,6 +1,5 @@
 // apps/web/src/components/logos/instagram.tsx
 
-import { ChevronUp, Command } from 'lucide-react'
 import type { SVGProps } from 'react'
 
 type IconProps = { dark?: boolean } & SVGProps<SVGSVGElement>

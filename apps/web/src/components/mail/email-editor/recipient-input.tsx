@@ -8,7 +8,7 @@ import type React from 'react'
 import { useRef, useState } from 'react'
 import { useDebouncedValue } from '~/hooks/use-debounced-value'
 // --- Editor Imports ---
-import { api, type RouterOutputs } from '~/trpc/react'
+import { api } from '~/trpc/react'
 
 interface RecipientState {
   id: string

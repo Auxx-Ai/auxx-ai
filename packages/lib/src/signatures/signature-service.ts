@@ -1,5 +1,5 @@
 // packages/lib/src/signatures/signature-service.ts
-import { type Database, database as db, schema } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { SignatureSharingType } from '@auxx/database/enums'
 import type { SignatureEntity as Signature } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'

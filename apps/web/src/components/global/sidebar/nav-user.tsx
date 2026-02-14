@@ -26,7 +26,6 @@ import {
 import { getInitialsFromName } from '@auxx/utils'
 import {
   BadgeCheck,
-  Bell,
   Building2,
   ChevronsUpDown,
   CreditCard,

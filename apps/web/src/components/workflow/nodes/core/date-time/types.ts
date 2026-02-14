@@ -1,6 +1,5 @@
 // apps/web/src/components/workflow/nodes/core/date-time/types.ts
 
-import type { NodeType } from '~/components/workflow/types/node-types'
 import type { BaseNodeData, SpecificNode } from '../../../types'
 
 /**

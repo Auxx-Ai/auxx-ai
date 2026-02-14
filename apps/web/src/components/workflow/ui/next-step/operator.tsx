@@ -2,7 +2,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { useReactFlow, useStoreApi } from '@xyflow/react'
+import { useStoreApi } from '@xyflow/react'
 import { produce } from 'immer'
 import { MoreHorizontal, Replace, Trash2, Unlink } from 'lucide-react'
 import { useCallback } from 'react'

@@ -414,7 +414,7 @@ export class TextChunker {
       minChunkSize: Math.min(...sizes),
       maxChunkSize: Math.max(...sizes),
       chunkSizeDistribution: Object.entries(buckets)
-        .map(([size, count]) => ({ size: parseInt(size), count }))
+        .map(([size, count]) => ({ size: parseInt(size, 10), count }))
         .sort((a, b) => a.size - b.size),
     }
   }

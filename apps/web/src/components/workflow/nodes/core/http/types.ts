@@ -2,7 +2,6 @@
 
 import type { TargetBranch } from '~/components/workflow/types'
 import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
-import { NodeType } from '~/components/workflow/types/node-types'
 
 // HTTP methods enum
 export enum Method {

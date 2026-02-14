@@ -5,9 +5,6 @@
  * Import types directly from '@auxx/types/field-value'.
  */
 
-import type { TypedFieldValue } from '@auxx/types/field-value'
-import type { FieldValueRow } from './types'
-
 export type { RecordId } from '@auxx/types/resource'
 // CALC expression evaluator (client-safe) - re-exported from @auxx/utils
 export {

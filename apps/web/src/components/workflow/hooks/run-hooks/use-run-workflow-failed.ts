@@ -38,7 +38,7 @@ export const useRunWorkflowFailed = () => {
       try {
         failedAt = event.data.failedAt ? new Date(event.data.failedAt) : new Date()
         // Validate the parsed date
-        if (isNaN(failedAt.getTime())) {
+        if (Number.isNaN(failedAt.getTime())) {
           console.warn(
             '[Run Event] Invalid failedAt date, using current time:',
             event.data.failedAt

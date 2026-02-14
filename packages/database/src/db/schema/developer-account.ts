@@ -2,7 +2,7 @@
 // Drizzle table for developer account
 
 import { createId } from '@paralleldrive/cuid2'
-import { type AnyPgColumn, jsonb, pgTable, text, timestamp, uniqueIndex } from './_shared'
+import { jsonb, pgTable, text, timestamp, uniqueIndex } from './_shared'
 
 /** Drizzle table for DeveloperAccount */
 export const DeveloperAccount = pgTable(

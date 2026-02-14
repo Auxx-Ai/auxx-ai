@@ -191,7 +191,7 @@ export function DateRangePicker({
    * Handle calendar date range selection
    */
   const handleCalendarSelect = (range: any) => {
-    if (range && range.from && range.to) {
+    if (range?.from && range.to) {
       onChange(range as DateRange)
       // setOpen(false)
     }

@@ -1,7 +1,7 @@
 // apps/web/src/app/(auth)/consent/page.tsx
 
 import { Card, CardContent } from '@auxx/ui/components/card'
-import React, { Suspense } from 'react'
+import { Suspense } from 'react'
 import { Logo } from '~/components/global/login/logo'
 import { ConsentContent } from './_components/consent-content'
 

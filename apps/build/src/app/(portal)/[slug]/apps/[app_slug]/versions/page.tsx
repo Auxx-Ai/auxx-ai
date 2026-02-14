@@ -22,7 +22,7 @@ import {
 import { format } from 'date-fns'
 import { Check, Copy, Loader2, PackageOpen } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useConfirm } from '@/hooks/use-confirm'
 import { PublishAppDialog } from '~/components/apps/publish-app-dialog'
 import { toastError } from '~/components/global/toast'

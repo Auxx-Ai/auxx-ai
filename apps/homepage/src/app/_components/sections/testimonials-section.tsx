@@ -2,7 +2,6 @@
 
 import Image from 'next/image'
 import { avatars } from '~/app/_components/avatars'
-import { Hulu, OpenAI, Stripe } from '~/components/logos'
 
 const ADAM_AVATAR = 'https://avatars.githubusercontent.com/u/4323180?v=4'
 

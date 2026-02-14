@@ -2,7 +2,7 @@
 
 import type { Job } from 'bullmq'
 import { subDays } from 'date-fns'
-import { beforeEach, describe, expect, it, type MockedFunction, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock the job data
 const mockJobData = {

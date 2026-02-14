@@ -222,7 +222,7 @@ export const createUnifiedSessionSlice: StateCreator<UploadStore, [], [], Sessio
 
       // Also update session's SSE connection state
       const session = state.sessions[sessionId]
-      if (session && session.sseConnection) {
+      if (session?.sseConnection) {
         session.sseConnection.status = 'connecting'
         session.sseConnection.reconnectAttempts = 0
       }
@@ -243,7 +243,7 @@ export const createUnifiedSessionSlice: StateCreator<UploadStore, [], [], Sessio
 
         // Sync with session state
         const session = state.sessions[sessionId]
-        if (session && session.sseConnection) {
+        if (session?.sseConnection) {
           session.sseConnection.status = connectionStatus.state
           session.sseConnection.reconnectAttempts = connectionStatus.reconnectAttempts
           session.sseConnection.error = connectionStatus.error
@@ -290,7 +290,7 @@ export const createUnifiedSessionSlice: StateCreator<UploadStore, [], [], Sessio
 
       // Update session's SSE connection state
       const session = state.sessions[sessionId]
-      if (session && session.sseConnection) {
+      if (session?.sseConnection) {
         session.sseConnection.status = 'disconnected'
       }
       return state
@@ -317,7 +317,7 @@ export const createUnifiedSessionSlice: StateCreator<UploadStore, [], [], Sessio
           // Session connected confirmation
           set((state) => {
             const session = state.sessions[sessionId]
-            if (session && session.sseConnection) {
+            if (session?.sseConnection) {
               session.sseConnection.status = 'connected'
               session.sseConnection.lastConnected = new Date()
             }

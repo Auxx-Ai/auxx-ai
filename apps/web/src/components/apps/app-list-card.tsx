@@ -3,7 +3,6 @@
 import type { AvailableApp } from '@auxx/services/apps'
 import { Code, Mail } from 'lucide-react'
 import Link from 'next/link'
-import React from 'react'
 
 /**
  * AppListCard component

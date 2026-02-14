@@ -29,7 +29,7 @@ export function TextSearchOptions({ topK, onTopKChange, disabled }: TextSearchOp
             type='number'
             value={topK}
             onChange={(e) => {
-              const value = Math.max(1, Math.min(50, parseInt(e.target.value) || 1))
+              const value = Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 1))
               onTopKChange(value)
             }}
             className='w-16 h-7 text-xs text-center'

@@ -26,8 +26,6 @@ import {
   hasUnsupportedDraftConditions,
   isDraftsContextQuery,
 } from '../mail-query/draft-condition-builder'
-import { parseSearchQuery } from '../mail-query/search-query-parser'
-import { InternalFilterContextType } from '../mail-query/types'
 import { MailViewService } from '../mail-views/mail-view-service'
 import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import type {

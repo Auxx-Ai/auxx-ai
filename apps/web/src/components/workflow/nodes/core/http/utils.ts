@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/http/utils.ts
 
 import { generateId } from '@auxx/utils/generateId'
-import type { Body, BodyPayload, BodyPayloadItem, KeyValue } from './types'
+import type { Body, BodyPayload, KeyValue } from './types'
 import { BodyPayloadValueType, BodyType } from './types'
 
 // Re-export generateId for convenience

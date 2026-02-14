@@ -8,7 +8,6 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
 import { TicketLinkDialog } from './ticket-link-dialog'
-import type { Ticket } from './ticket-types'
 
 /**
  * Relation types with human-readable labels

@@ -1,5 +1,5 @@
 // @auxx/lib/kb/kb-service.ts
-import { type Database, database as db, schema } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { ArticleStatus } from '@auxx/database/enums'
 import type { ArticleStatus as ArticleStatusType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'

@@ -1,6 +1,6 @@
 // apps/web/src/app/(website)/solutions/customer-support-teams/_components/results-section.tsx
 'use client'
-import { ArrowRight, Clock, DollarSign, Star, TrendingUp } from 'lucide-react'
+import { Clock, DollarSign, Star, TrendingUp } from 'lucide-react'
 import { motion } from 'motion/react'
 import { Badge } from '~/components/ui/badge'
 

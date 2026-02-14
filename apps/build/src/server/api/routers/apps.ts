@@ -17,7 +17,7 @@ import {
   updateOAuthRedirectUris,
 } from '@auxx/services/apps'
 import { TRPCError } from '@trpc/server'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { BuildDehydrationService } from '~/lib/dehydration'
 import { createTRPCRouter, protectedProcedure } from '../trpc'

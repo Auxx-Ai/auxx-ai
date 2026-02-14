@@ -1,7 +1,6 @@
 // packages/services/src/app-settings/get-app-setting.ts
 
 import { database } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 

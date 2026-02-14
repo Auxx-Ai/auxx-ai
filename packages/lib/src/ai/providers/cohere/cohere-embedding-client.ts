@@ -1,7 +1,7 @@
 // packages/lib/src/ai/providers/cohere/cohere-embedding-client.ts
 
+import type { Logger } from '@auxx/logger'
 import type { CohereClient } from 'cohere-ai'
-import { createScopedLogger, type Logger } from '../../../logger'
 import { TextEmbeddingClient } from '../../clients/base/text-embedding-client'
 import type {
   BatchEmbeddingParams,

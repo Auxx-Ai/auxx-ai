@@ -2,7 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import type { gmail_v1 } from 'googleapis'
-import { getGmailQuotaCost, type UniversalThrottler } from '../../../utils/rate-limiter'
+import type { UniversalThrottler } from '../../../utils/rate-limiter'
 import { handleGmailError } from '../shared/error-handler'
 import { executeWithThrottle } from '../shared/utils'
 

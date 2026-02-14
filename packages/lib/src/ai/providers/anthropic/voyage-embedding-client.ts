@@ -1,6 +1,6 @@
 // packages/lib/src/ai/providers/anthropic/voyage-embedding-client.ts
 
-import { createScopedLogger, type Logger } from '../../../logger'
+import type { Logger } from '@auxx/logger'
 import { TextEmbeddingClient } from '../../clients/base/text-embedding-client'
 import type {
   BatchEmbeddingParams,

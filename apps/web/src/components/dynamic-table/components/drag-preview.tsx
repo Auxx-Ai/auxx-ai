@@ -3,8 +3,7 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { FileIcon, FolderIcon } from 'lucide-react'
-import type { FileItem } from '~/components/files/files-store'
+import { FileIcon } from 'lucide-react'
 
 interface DragPreviewProps<TData = any> {
   items: TData[]

@@ -18,14 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@auxx/ui/components/table'
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
 import { addDays, endOfDay, format, startOfDay } from 'date-fns'
 import { FileSearch, Loader2, RefreshCw } from 'lucide-react'
 import { useParams } from 'next/navigation'

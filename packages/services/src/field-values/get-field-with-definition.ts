@@ -4,7 +4,7 @@ import { database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { FieldNotFoundError, FieldWithDefinition, GetFieldWithDefinitionInput } from './types'
+import type { GetFieldWithDefinitionInput } from './types'
 
 /**
  * Get a CustomField by ID with its associated EntityDefinition.

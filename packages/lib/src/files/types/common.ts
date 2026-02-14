@@ -273,14 +273,14 @@ export const TypeGuards = {
    * Check if value is a valid number
    */
   isValidNumber: (value: any): value is number => {
-    return typeof value === 'number' && !isNaN(value) && isFinite(value)
+    return typeof value === 'number' && !Number.isNaN(value) && isFinite(value)
   },
 
   /**
    * Check if value is a valid date
    */
   isValidDate: (value: any): value is Date => {
-    return value instanceof Date && !isNaN(value.getTime())
+    return value instanceof Date && !Number.isNaN(value.getTime())
   },
 
   /**

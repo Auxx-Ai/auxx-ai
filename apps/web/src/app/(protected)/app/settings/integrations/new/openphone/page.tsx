@@ -1,4 +1,3 @@
-import React from 'react'
 import OpenPhoneIntegrationForm from '../../_components/openphone-integration-form'
 
 type Props = {}

@@ -272,29 +272,27 @@ export function PersonalMailGroup({
               </SortableContext>
             </DndContext>
           ) : (
-            <>
-              {visibleItems
-                .sort((a, b) => a.order - b.order)
-                .map((item) => {
-                  const itemHref = getItemHref(item)
-                  const isActive =
-                    pathname === itemHref || pathname?.startsWith(itemHref.replace(/\/open$/, '/'))
+            visibleItems
+              .sort((a, b) => a.order - b.order)
+              .map((item) => {
+                const itemHref = getItemHref(item)
+                const isActive =
+                  pathname === itemHref || pathname?.startsWith(itemHref.replace(/\/open$/, '/'))
 
-                  return (
-                    <SidebarMenuItem key={item.id}>
-                      <SidebarItem
-                        id={item.id}
-                        name={item.name}
-                        href={itemHref}
-                        icon={item.icon}
-                        count={item.count}
-                        isActive={isActive}
-                        onToggleEditMode={onToggleEditMode}
-                      />
-                    </SidebarMenuItem>
-                  )
-                })}
-            </>
+                return (
+                  <SidebarMenuItem key={item.id}>
+                    <SidebarItem
+                      id={item.id}
+                      name={item.name}
+                      href={itemHref}
+                      icon={item.icon}
+                      count={item.count}
+                      isActive={isActive}
+                      onToggleEditMode={onToggleEditMode}
+                    />
+                  </SidebarMenuItem>
+                )
+              })
           )}
         </SidebarMenu>
       )}

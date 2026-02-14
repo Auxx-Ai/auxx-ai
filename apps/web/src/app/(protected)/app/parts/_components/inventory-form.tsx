@@ -239,7 +239,8 @@ export function InventoryForm({
                           {...field}
                           value={field.value === null ? '' : field.value}
                           onChange={(e) => {
-                            const value = e.target.value === '' ? null : parseInt(e.target.value)
+                            const value =
+                              e.target.value === '' ? null : parseInt(e.target.value, 10)
                             field.onChange(value)
                           }}
                         />
@@ -265,7 +266,8 @@ export function InventoryForm({
                           {...field}
                           value={field.value === null ? '' : field.value}
                           onChange={(e) => {
-                            const value = e.target.value === '' ? null : parseInt(e.target.value)
+                            const value =
+                              e.target.value === '' ? null : parseInt(e.target.value, 10)
                             field.onChange(value)
                           }}
                         />

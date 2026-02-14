@@ -45,7 +45,7 @@ export const numberConverter: FieldValueConverter = {
     }
 
     // Validate
-    if (isNaN(num) || !isFinite(num)) {
+    if (Number.isNaN(num) || !isFinite(num)) {
       return null
     }
 
@@ -89,7 +89,7 @@ export const numberConverter: FieldValueConverter = {
     const typed = value as NumberFieldValue
     const num = typed.value
 
-    if (num === null || num === undefined || isNaN(num)) {
+    if (num === null || num === undefined || Number.isNaN(num)) {
       return ''
     }
 
@@ -163,7 +163,7 @@ export const currencyConverter: FieldValueConverter = {
     const typed = value as NumberFieldValue
     const num = typed.value
 
-    if (num === null || num === undefined || isNaN(num)) {
+    if (num === null || num === undefined || Number.isNaN(num)) {
       return ''
     }
 

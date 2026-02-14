@@ -1,11 +1,6 @@
 // packages/workflow-nodes/src/nodes/linkedin/v1/api-client.ts
 
-import type {
-  ExecuteContext,
-  IExecuteFunctions,
-  IHttpRequestMethods,
-  IRequestOptions,
-} from '../../../types'
+import type { ExecuteContext, IHttpRequestMethods, IRequestOptions } from '../../../types'
 
 /**
  * Professional Network API Client

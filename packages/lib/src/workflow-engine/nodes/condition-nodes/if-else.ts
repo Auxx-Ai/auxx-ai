@@ -27,7 +27,7 @@ import {
   isWithinDays,
   parseDate,
 } from '../utils/date-helpers'
-import type { IfElseNodeConfig, NodeCase, NodeCondition } from './if-else-types'
+import type { IfElseNodeConfig, NodeCondition } from './if-else-types'
 
 /**
  * Condition node that evaluates an if/else condition
@@ -236,7 +236,7 @@ export class IfElseProcessor extends BaseNodeProcessor {
     if (value instanceof Date) return 'date'
     if (typeof value === 'object') {
       // Check if it's a date string
-      if (typeof value === 'string' && !isNaN(Date.parse(value))) {
+      if (typeof value === 'string' && !Number.isNaN(Date.parse(value))) {
         return 'date'
       }
       return 'object'

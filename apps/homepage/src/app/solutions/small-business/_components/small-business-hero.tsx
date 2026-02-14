@@ -1,7 +1,6 @@
 // apps/web/src/app/(website)/solutions/customer-support-teams/_components/business-hero.tsx
 
 import Link from 'next/link'
-import React from 'react'
 import { config } from '@/lib/config'
 import { Button } from '~/components/ui/button'
 import { BusinessHeroIllustration } from './business-hero-illustration'

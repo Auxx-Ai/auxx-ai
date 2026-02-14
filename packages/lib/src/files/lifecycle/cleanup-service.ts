@@ -1,8 +1,8 @@
 // packages/lib/src/files/lifecycle/cleanup-service.ts
 
-import { type Database, database, schema } from '@auxx/database'
+import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray, isNull, lte } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { createAttachmentService } from '../core/attachment-service'
 import { createFileService } from '../core/file-service'
 import { createMediaAssetService } from '../core/media-asset-service'

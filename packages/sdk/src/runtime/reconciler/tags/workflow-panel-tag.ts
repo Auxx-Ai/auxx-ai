@@ -7,10 +7,6 @@ import { BaseTag } from './base-tag.js'
  * Container for configuration panel.
  */
 export class WorkflowPanelTag extends BaseTag {
-  constructor(props: Record<string, any>) {
-    super(props)
-  }
-
   getTagName(): string {
     return 'div'
   }

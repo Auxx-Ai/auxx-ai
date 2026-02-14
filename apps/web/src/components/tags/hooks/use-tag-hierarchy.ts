@@ -1,6 +1,6 @@
 // apps/web/src/components/tags/hooks/use-tag-hierarchy.ts
 
-import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import { toRecordId } from '@auxx/lib/resources/client'
 import { useMemo } from 'react'
 import { useAllRecords } from '~/components/resources/hooks/use-all-records'
 import type { TagNode, TagRecord, UseTagHierarchyResult } from '../types'

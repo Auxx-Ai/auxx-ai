@@ -6,7 +6,7 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, or } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import type Stripe from 'stripe'
 import type {
   CancelSubscriptionInput,

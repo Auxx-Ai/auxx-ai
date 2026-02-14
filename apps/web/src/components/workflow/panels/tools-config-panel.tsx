@@ -9,7 +9,7 @@ import { Label } from '@auxx/ui/components/label'
 import { Separator } from '@auxx/ui/components/separator'
 import { Switch } from '@auxx/ui/components/switch'
 import { Wrench } from 'lucide-react'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import type { AiToolsConfig } from '../nodes/core/ai/types'
 import { useWorkflowStore } from '../store/workflow-store'
 
@@ -179,7 +179,7 @@ export function ToolsConfigPanel({ nodeId, toolsConfig, onUpdate }: ToolsConfigP
                   max={20}
                   value={config.maxConcurrentTools || 5}
                   onChange={(e) =>
-                    handleConfigChange({ maxConcurrentTools: parseInt(e.target.value) || 5 })
+                    handleConfigChange({ maxConcurrentTools: parseInt(e.target.value, 10) || 5 })
                   }
                 />
                 <p className='text-xs text-muted-foreground'>

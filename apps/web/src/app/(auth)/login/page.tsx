@@ -2,7 +2,7 @@
 
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import React, { Suspense } from 'react' // Import Suspense
+import { Suspense } from 'react' // Import Suspense
 import { auth } from '~/auth/server'
 import { Logo } from '~/components/global/login/logo'
 import LoginForm from '../_components/login-form'

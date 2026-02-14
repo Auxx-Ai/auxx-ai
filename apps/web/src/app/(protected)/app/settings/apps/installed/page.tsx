@@ -1,7 +1,7 @@
 'use client'
 import { Input } from '@auxx/ui/components/input'
 // apps/web/src/app/(protected)/app/settings/apps/installed/page.tsx
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { AppListCard } from '~/components/apps/app-list-card'
 import SettingsPage from '~/components/global/settings-page'
 import { api } from '~/trpc/react'

@@ -2,7 +2,7 @@
 
 'use client'
 
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNodeCrud } from '~/components/workflow/hooks/use-node-data-update'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
 import type { BaseNodeData } from '~/components/workflow/types'
@@ -58,7 +58,7 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
     // Parse from type if not present
     if (!appId || !blockId) {
       const nodeType = data.type as string
-      if (nodeType && nodeType.includes(':')) {
+      if (nodeType?.includes(':')) {
         const parts = nodeType.split(':')
         if (parts.length === 2) {
           appId = parts[0] // e.g., "y5yf1eh8lr1ifedutbypg0vf"

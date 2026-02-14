@@ -1,6 +1,6 @@
 // apps/web/src/components/dynamic-table/stores/view-slice.ts
 
-import type { FieldViewConfig, ViewContextType } from '@auxx/lib/conditions'
+import type { FieldViewConfig } from '@auxx/lib/conditions'
 import type { ViewConfig } from '../types'
 import { EMPTY_FILTERS } from '../utils/constants'
 import type { SliceCreator, TableUIConfig, ViewSlice } from './store-types'

@@ -585,13 +585,13 @@ export class UniversalThrottler {
   private parseRetryAfter(retryAfter: string): number {
     // Check if it's a number (seconds)
     const seconds = parseInt(retryAfter, 10)
-    if (!isNaN(seconds)) {
+    if (!Number.isNaN(seconds)) {
       return seconds * 1000
     }
 
     // Check if it's a date
     const date = new Date(retryAfter)
-    if (!isNaN(date.getTime())) {
+    if (!Number.isNaN(date.getTime())) {
       return Math.max(0, date.getTime() - Date.now())
     }
 

@@ -7,15 +7,11 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import React from 'react'
-import { z } from 'zod'
 import { SyncShopifyButton } from '~/app/(protected)/app/shopify/_components/sync-button'
 // import { ProductNav } from './product-nav'
 import { DataTable } from '~/components/data-table/data-table'
 import useCustomers from '~/hooks/use-customers'
-import { api } from '~/trpc/react'
 import { columns } from './customers-columns'
-import { customerSchema } from './customers-schema'
 
 type Props = {}
 

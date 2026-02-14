@@ -2,7 +2,7 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { Handle } from '@xyflow/react'
-import React, { memo } from 'react'
+import { memo } from 'react'
 import { useAvailableBlocks, useReadOnly } from '~/components/workflow/hooks'
 import {
   getIndicatorClass,

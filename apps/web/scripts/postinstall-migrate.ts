@@ -15,7 +15,6 @@
  * since the env-proxy system may not be fully initialized during postinstall
  */
 
-import { execSync } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
 

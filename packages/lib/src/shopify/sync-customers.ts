@@ -11,9 +11,8 @@ import {
   withRetry,
 } from '@auxx/utils'
 import type { AdminApiClient, ResponseWithType } from '@shopify/admin-api-client'
-import { eq, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import pLimit from 'p-limit'
-import { z } from 'zod'
 import type { Address, Customer, ORDER_ADDRESS_TYPE } from './shopify-types'
 import { extractShopifyId } from './utils'
 
@@ -326,7 +325,7 @@ export const processCustomers = (customers: any) => {
         customer.phone = formatPhoneNumber(customer.phone)
         customer.createdAt = new Date(customer.createdAt)
         customer.updatedAt = new Date(customer.updatedAt)
-        customer.numberOfOrders = parseInt(customer.numberOfOrders)
+        customer.numberOfOrders = parseInt(customer.numberOfOrders, 10)
 
         if (customer.lastOrder) {
           customer.lastOrderId = extractShopifyId(customer.lastOrder.id)
@@ -344,7 +343,7 @@ export const processCustomers = (customers: any) => {
           })
           .filter(Boolean)
 
-        if (customer.defaultAddress && customer.defaultAddress.address1) {
+        if (customer.defaultAddress?.address1) {
           customer.defaultAddress = processAddress(customer.defaultAddress, 'default', customer.id)
 
           customer.defaultAddressId = customer.defaultAddress.id

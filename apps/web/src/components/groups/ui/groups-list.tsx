@@ -14,7 +14,6 @@ import { InputSearch } from '@auxx/ui/components/input-search'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { PlusCircle, Users } from 'lucide-react'
 import { useState } from 'react'
-import { getGroupMetadata } from '../utils'
 import { GroupItem } from './group-item'
 
 /** Props for GroupsList component */

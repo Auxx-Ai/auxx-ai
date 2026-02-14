@@ -6,7 +6,7 @@ import type { FC } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import ModelIcon from './model-icon'
 import ModelName from './model-name'
-import { MODEL_STATUS_TEXT, type TriggerProps } from './types'
+import type { TriggerProps } from './types'
 
 const Trigger: FC<TriggerProps> = ({
   disabled,

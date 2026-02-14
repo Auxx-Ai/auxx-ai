@@ -2,7 +2,6 @@
 'use client'
 
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import React from 'react'
 import { useMessages, useThread } from '~/components/threads/hooks'
 import EmailDisplay from './email-display'
 import MessageDisplay from './message-display'

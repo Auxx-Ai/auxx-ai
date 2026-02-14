@@ -20,7 +20,6 @@ import { useReconciledColumns } from './hooks/use-reconciled-columns'
 import { useDynamicTableStore } from './stores/dynamic-table-store'
 import { useColumnOrder } from './stores/store-selectors'
 import type {
-  CellSelectionState,
   CustomField,
   DynamicTableProps,
   KanbanViewConfig,

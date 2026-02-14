@@ -13,11 +13,10 @@ import {
 } from '@auxx/ui/components/card'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { desc, eq } from 'drizzle-orm'
-import { Check, Code, Edit, ExternalLink, Plus, X } from 'lucide-react'
+import { Check, Code, Edit, Plus, X } from 'lucide-react'
 import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import Link from 'next/link'
-import React from 'react'
 import { auth } from '~/auth/server'
 
 export const metadata: Metadata = { title: 'Chat Widgets', description: 'Manage your chat widgets' }

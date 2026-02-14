@@ -1,4 +1,3 @@
-import React from 'react'
 import { api } from '~/trpc/server'
 import { Mailbox } from '../_components/mail'
 
@@ -12,9 +11,5 @@ export default async function MailPage({ params }: Props) {
 
   const labels = await api.label.all()
   // const labels = []
-  return (
-    <>
-      <Mailbox labelId={labelId} labels={labels} />
-    </>
-  )
+  return <Mailbox labelId={labelId} labels={labels} />
 }

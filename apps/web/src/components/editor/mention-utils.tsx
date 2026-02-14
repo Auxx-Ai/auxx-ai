@@ -41,7 +41,7 @@ export const fetchMentionUsers = async (query: string): Promise<MentionItem[]> =
     (user) =>
       user.name.toLowerCase().includes(query.toLowerCase()) ||
       user.email.toLowerCase().includes(query.toLowerCase()) ||
-      (user.role && user.role.toLowerCase().includes(query.toLowerCase()))
+      user.role?.toLowerCase().includes(query.toLowerCase())
   )
 }
 

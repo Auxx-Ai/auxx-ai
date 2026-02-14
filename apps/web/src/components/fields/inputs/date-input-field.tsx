@@ -24,7 +24,7 @@ const parseDateValue = (value: unknown): Date | undefined => {
   if (value instanceof Date) return value
   if (typeof value === 'string') {
     const parsed = new Date(value)
-    return isNaN(parsed.getTime()) ? undefined : parsed
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed
   }
   return undefined
 }

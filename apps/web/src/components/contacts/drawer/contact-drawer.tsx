@@ -19,7 +19,6 @@ import { toRecordId, useRecord } from '~/components/resources'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
-import { api } from '~/trpc/react'
 
 interface ContactDrawerProps {
   /** Whether the drawer is open (for controlled usage) */
@@ -175,7 +174,7 @@ export function ContactDrawer({
               {contact ? getFullName(contact) : <Skeleton className='h-6 w-80 mb-1' />}
             </div>
             <div className='text-xs text-neutral-500 truncate'>
-              {contact ? <>{createdAtText}</> : <Skeleton className='h-4 w-40' />}
+              {contact ? createdAtText : <Skeleton className='h-4 w-40' />}
             </div>
           </div>
         </div>

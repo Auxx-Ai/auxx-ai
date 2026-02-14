@@ -83,7 +83,7 @@ export class FeaturePermissionService {
 
       let featureDefinitions: FeatureDefinition[] = DEFAULT_FREE_PLAN_FEATURES // Default to free plan
 
-      if (subscription && subscription.planId) {
+      if (subscription?.planId) {
         const [plan] = await this.db
           .select({ featureLimits: schema.Plan.featureLimits })
           .from(schema.Plan)

@@ -4,7 +4,7 @@ import { database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { ExistingFieldValueRow, GetExistingValueInput } from './types'
+import type { GetExistingValueInput } from './types'
 
 /**
  * Check if a field value already exists for the given entity and field.

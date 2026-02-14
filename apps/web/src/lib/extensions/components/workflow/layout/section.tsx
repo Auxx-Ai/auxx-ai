@@ -2,7 +2,6 @@
 
 'use client'
 
-import React from 'react'
 import UISection from '~/components/workflow/ui/section'
 
 /**

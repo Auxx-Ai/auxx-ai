@@ -3,7 +3,6 @@ import {
   BookOpen,
   Bot,
   Cloud,
-  Cpu,
   GitBranch,
   Headset,
   Menu,
@@ -32,7 +31,6 @@ import {
   NavigationMenuLink,
   NavigationMenuList,
   NavigationMenuTrigger,
-  NavigationMenuViewport,
   navigationMenuTriggerStyle,
 } from '~/components/ui/navigation-menu'
 import { useMedia } from '~/hooks/use-media'
@@ -200,83 +198,81 @@ export default function Header() {
   }, [])
 
   return (
-    <>
-      <header
-        role='banner'
-        data-state={isMobileMenuOpen ? 'active' : 'inactive'}
-        {...(isScrolled && { 'data-scrolled': true })}
-        className='[--color-popover:color-mix(in_oklch,var(--color-muted)_25%,var(--color-background))]'>
-        <div className='h-18 fixed inset-x-[10px] z-50 '>
-          <div
-            data-theme='quartz'
-            aria-hidden='true'
-            className='mask-b-from-35% absolute inset-x-0 -bottom-12 top-0 backdrop-blur max-lg:hidden'></div>
-          <div
-            data-theme='quartz'
-            className='mask-b-from-35% absolute inset-x-0 -bottom-12 top-0 backdrop-blur max-lg:hidden'></div>
-          <div
-            data-theme='quartz'
-            className='bg-background/75 mask-b-from-35% absolute inset-x-0 -bottom-12 top-0 backdrop-blur max-lg:hidden'></div>
-        </div>
+    <header
+      role='banner'
+      data-state={isMobileMenuOpen ? 'active' : 'inactive'}
+      {...(isScrolled && { 'data-scrolled': true })}
+      className='[--color-popover:color-mix(in_oklch,var(--color-muted)_25%,var(--color-background))]'>
+      <div className='h-18 fixed inset-x-[10px] z-50 '>
+        <div
+          data-theme='quartz'
+          aria-hidden='true'
+          className='mask-b-from-35% absolute inset-x-0 -bottom-12 top-0 backdrop-blur max-lg:hidden'></div>
+        <div
+          data-theme='quartz'
+          className='mask-b-from-35% absolute inset-x-0 -bottom-12 top-0 backdrop-blur max-lg:hidden'></div>
+        <div
+          data-theme='quartz'
+          className='bg-background/75 mask-b-from-35% absolute inset-x-0 -bottom-12 top-0 backdrop-blur max-lg:hidden'></div>
+      </div>
+      <div
+        className={cn(
+          'max-lg:in-data-[state=active]:bg-background/75 max-lg:in-data-[state=active]:h-screen max-lg:in-data-[state=active]:backdrop-blur max-lg:h-18 fixed inset-x-0 top-0 z-50 pt-2 max-lg:overflow-hidden max-lg:px-2 lg:pt-3'
+        )}>
         <div
           className={cn(
-            'max-lg:in-data-[state=active]:bg-background/75 max-lg:in-data-[state=active]:h-screen max-lg:in-data-[state=active]:backdrop-blur max-lg:h-18 fixed inset-x-0 top-0 z-50 pt-2 max-lg:overflow-hidden max-lg:px-2 lg:pt-3'
+            'in-data-scrolled:ring-foreground/5 in-data-scrolled:bg-background/75 in-data-scrolled:shadow-black/10 in-data-scrolled:max-w-4xl max-lg:in-data-scrolled:px-5 in-data-scrolled:backdrop-blur mx-auto w-full max-w-6xl rounded-2xl border border-transparent px-3 shadow-md shadow-transparent ring-1 ring-transparent transition-all duration-500 ease-in-out',
+            'max-lg:in-data-[state=active]:backdrop-blur max-lg:in-data-[state=active]:ring-foreground/5 max-lg:in-data-[state=active]:bg-background/75 max-lg:in-data-[state=active]:px-5 max-lg:in-data-[state=active]:shadow-black/10'
           )}>
-          <div
-            className={cn(
-              'in-data-scrolled:ring-foreground/5 in-data-scrolled:bg-background/75 in-data-scrolled:shadow-black/10 in-data-scrolled:max-w-4xl max-lg:in-data-scrolled:px-5 in-data-scrolled:backdrop-blur mx-auto w-full max-w-6xl rounded-2xl border border-transparent px-3 shadow-md shadow-transparent ring-1 ring-transparent transition-all duration-500 ease-in-out',
-              'max-lg:in-data-[state=active]:backdrop-blur max-lg:in-data-[state=active]:ring-foreground/5 max-lg:in-data-[state=active]:bg-background/75 max-lg:in-data-[state=active]:px-5 max-lg:in-data-[state=active]:shadow-black/10'
-            )}>
-            <div className='relative flex flex-wrap items-center justify-between lg:py-3'>
-              <div className='max-lg:in-data-[state=active]:border-b flex items-center justify-between gap-8 max-lg:h-14 max-lg:w-full'>
-                <Link
-                  href='/'
-                  aria-label='home'
-                  className='lg:in-data-scrolled:px-2 h-fit transition-all duration-500'>
-                  <div className='flex flex-row gap-1.5'>
-                    <Logo className='h-7' />
-                    <span className='font-bold text-xl'>auxx.Ai</span>
-                  </div>
-                  {/* <Stripe className="h-7 w-14" /> */}
-                </Link>
+          <div className='relative flex flex-wrap items-center justify-between lg:py-3'>
+            <div className='max-lg:in-data-[state=active]:border-b flex items-center justify-between gap-8 max-lg:h-14 max-lg:w-full'>
+              <Link
+                href='/'
+                aria-label='home'
+                className='lg:in-data-scrolled:px-2 h-fit transition-all duration-500'>
+                <div className='flex flex-row gap-1.5'>
+                  <Logo className='h-7' />
+                  <span className='font-bold text-xl'>auxx.Ai</span>
+                </div>
+                {/* <Stripe className="h-7 w-14" /> */}
+              </Link>
 
-                <button
-                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                  aria-label={isMobileMenuOpen == true ? 'Close Menu' : 'Open Menu'}
-                  className='relative z-20 -m-2.5 -mr-3 block cursor-pointer p-2.5 lg:hidden'>
-                  <Menu className='in-data-[state=active]:rotate-180 in-data-[state=active]:scale-0 in-data-[state=active]:opacity-0 m-auto size-5 duration-200' />
-                  <X className='in-data-[state=active]:rotate-0 in-data-[state=active]:scale-100 in-data-[state=active]:opacity-100 absolute inset-0 m-auto size-5 -rotate-180 scale-0 opacity-0 duration-200' />
-                </button>
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                aria-label={isMobileMenuOpen == true ? 'Close Menu' : 'Open Menu'}
+                className='relative z-20 -m-2.5 -mr-3 block cursor-pointer p-2.5 lg:hidden'>
+                <Menu className='in-data-[state=active]:rotate-180 in-data-[state=active]:scale-0 in-data-[state=active]:opacity-0 m-auto size-5 duration-200' />
+                <X className='in-data-[state=active]:rotate-0 in-data-[state=active]:scale-100 in-data-[state=active]:opacity-100 absolute inset-0 m-auto size-5 -rotate-180 scale-0 opacity-0 duration-200' />
+              </button>
+            </div>
+
+            {isLarge && (
+              <div className='absolute inset-0 m-auto size-fit'>
+                <NavMenu />
               </div>
+            )}
+            {!isLarge && isMobileMenuOpen && (
+              <MobileMenu closeMenu={() => setIsMobileMenuOpen(false)} />
+            )}
 
-              {isLarge && (
-                <div className='absolute inset-0 m-auto size-fit'>
-                  <NavMenu />
-                </div>
-              )}
-              {!isLarge && isMobileMenuOpen && (
-                <MobileMenu closeMenu={() => setIsMobileMenuOpen(false)} />
-              )}
-
-              <div className='max-lg:in-data-[state=active]:mt-6 in-data-[state=active]:flex mb-6 hidden w-full flex-wrap items-center justify-end space-y-8 md:flex-nowrap lg:m-0 lg:flex lg:w-fit lg:gap-6 lg:space-y-0 lg:border-transparent lg:bg-transparent lg:p-0 lg:shadow-none dark:shadow-none dark:lg:bg-transparent'>
-                <div className='flex w-full flex-col space-y-3 sm:flex-row sm:gap-3 sm:space-y-0 md:w-fit'>
-                  <Button asChild variant='ghost' size='sm'>
-                    <Link href={urls.login}>
-                      <span>Login</span>
-                    </Link>
-                  </Button>
-                  <Button asChild variant='default' size='sm'>
-                    <Link href={urls.signup}>
-                      <span>Start Free Trial</span>
-                    </Link>
-                  </Button>
-                </div>
+            <div className='max-lg:in-data-[state=active]:mt-6 in-data-[state=active]:flex mb-6 hidden w-full flex-wrap items-center justify-end space-y-8 md:flex-nowrap lg:m-0 lg:flex lg:w-fit lg:gap-6 lg:space-y-0 lg:border-transparent lg:bg-transparent lg:p-0 lg:shadow-none dark:shadow-none dark:lg:bg-transparent'>
+              <div className='flex w-full flex-col space-y-3 sm:flex-row sm:gap-3 sm:space-y-0 md:w-fit'>
+                <Button asChild variant='ghost' size='sm'>
+                  <Link href={urls.login}>
+                    <span>Login</span>
+                  </Link>
+                </Button>
+                <Button asChild variant='default' size='sm'>
+                  <Link href={urls.signup}>
+                    <span>Start Free Trial</span>
+                  </Link>
+                </Button>
               </div>
             </div>
           </div>
         </div>
-      </header>
-    </>
+      </div>
+    </header>
   )
 }
 

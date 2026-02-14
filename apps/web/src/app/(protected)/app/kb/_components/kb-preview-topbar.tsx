@@ -1,7 +1,6 @@
 import { Button } from '@auxx/ui/components/button'
 import { ToggleGroup, ToggleGroupItem } from '@auxx/ui/components/toggle-group'
 import { Monitor, Moon, Smartphone, Sun } from 'lucide-react'
-import React from 'react'
 import { type Device, type Theme, usePreview } from './preview-context'
 
 function KBPreviewTopBar() {

@@ -73,7 +73,7 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
       )
 
       const resumeAt = new Date(timeValue)
-      if (isNaN(resumeAt.getTime())) {
+      if (Number.isNaN(resumeAt.getTime())) {
         throw new Error('Invalid target time format')
       }
 

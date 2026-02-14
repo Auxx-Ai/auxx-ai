@@ -13,15 +13,10 @@ import {
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
 import { Input } from '@auxx/ui/components/input'
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSeparator,
-  InputOTPSlot,
-} from '@auxx/ui/components/input-otp'
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '@auxx/ui/components/input-otp'
 import { Label } from '@auxx/ui/components/label'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { Loader2, QrCode, ShieldCheck, ShieldOff } from 'lucide-react'
+import { QrCode, ShieldCheck, ShieldOff } from 'lucide-react'
 import { useState } from 'react'
 import QRCode from 'react-qr-code'
 import { client } from '~/auth/auth-client'

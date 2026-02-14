@@ -42,10 +42,6 @@ interface AnswerNodeData {
 export class AnswerProcessor extends BaseNodeProcessor {
   readonly type: WorkflowNodeType = WorkflowNodeType.ANSWER
 
-  constructor() {
-    super()
-  }
-
   protected async executeNode(
     node: WorkflowNode,
     contextManager: ExecutionContextManager

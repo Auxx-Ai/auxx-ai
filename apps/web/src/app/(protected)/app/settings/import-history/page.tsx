@@ -1,7 +1,6 @@
 // apps/web/src/app/(protected)/app/settings/import-history/page.tsx
 
 import { Import } from 'lucide-react'
-import React from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import { ImportHistoryOverview } from './_components/import-history-overview'
 

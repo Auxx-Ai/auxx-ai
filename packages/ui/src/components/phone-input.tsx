@@ -1,7 +1,7 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { Check, ChevronDownIcon, PhoneIcon } from 'lucide-react'
+import { Check, PhoneIcon } from 'lucide-react'
 // packages/ui/src/components/phone-input.tsx
 import React, { createContext, useContext, useId, useMemo, useRef, useState } from 'react'
 import * as RPNInput from 'react-phone-number-input'

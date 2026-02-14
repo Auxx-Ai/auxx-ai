@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import { Copy, Edit, Key, MoreHorizontal, TestTube, Trash } from 'lucide-react'
+import { Copy, Edit, MoreHorizontal, TestTube, Trash } from 'lucide-react'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import {

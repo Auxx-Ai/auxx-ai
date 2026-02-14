@@ -30,7 +30,7 @@ import {
 } from '@auxx/ui/components/stepper'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { hasOAuth2Config } from '@auxx/workflow-nodes/types'
-import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
 import React, { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { CredentialFormBuilder } from './credential-form-builder'

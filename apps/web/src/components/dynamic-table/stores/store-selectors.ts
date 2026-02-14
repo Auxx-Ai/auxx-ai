@@ -13,9 +13,7 @@ import type { ColumnFormatting, KanbanViewConfig, TableView, ViewConfig } from '
 import {
   EMPTY_COLUMN_FORMATTING,
   EMPTY_COLUMN_LABELS,
-  EMPTY_COLUMN_ORDER,
   EMPTY_COLUMN_SIZING,
-  EMPTY_COLUMN_VISIBILITY,
   EMPTY_FILTERS,
   EMPTY_SORTING,
   EMPTY_VIEWS,

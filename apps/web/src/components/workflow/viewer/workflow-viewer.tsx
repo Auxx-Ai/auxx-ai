@@ -5,7 +5,7 @@
 import { cn } from '@auxx/ui/lib/utils'
 import { ReactFlowProvider, type Viewport } from '@xyflow/react'
 import { Loader2 } from 'lucide-react'
-import React, { memo, useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { setupNodeRegistry } from '../nodes/registry-setup'
 import { useWorkflowStore } from '../store/workflow-store'
 import type { FlowEdge, FlowNode } from '../types'

@@ -77,7 +77,7 @@ export const IntervalSelector: React.FC<IntervalSelectorProps> = ({
                 const currentDisplayValue = getCurrentValueForDisplay()
                 if (isConstant) {
                   // Switching to constant mode - parse as number
-                  const numValue = parseInt(currentDisplayValue) || 1
+                  const numValue = parseInt(currentDisplayValue, 10) || 1
                   onValueChange(numValue, false)
                 } else {
                   // Switching to variable mode - keep as string
@@ -87,7 +87,7 @@ export const IntervalSelector: React.FC<IntervalSelectorProps> = ({
               onChange={(value, isConstantMode) => {
                 if (isConstantMode) {
                   // In constant mode, parse as number
-                  const numValue = parseInt(value) || 1
+                  const numValue = parseInt(value, 10) || 1
                   onValueChange(numValue, false)
                 } else {
                   // In variable mode, pass the variable reference as string

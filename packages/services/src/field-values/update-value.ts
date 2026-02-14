@@ -4,7 +4,7 @@ import { database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { FieldValueNotFoundError, FieldValueRow, UpdateFieldValueInput } from './types'
+import type { FieldValueRow, UpdateFieldValueInput } from './types'
 
 /**
  * Update an existing field value row.

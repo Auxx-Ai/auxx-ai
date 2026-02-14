@@ -1,7 +1,6 @@
 // packages/services/src/app-settings/get-app-settings.ts
 
 import { database } from '@auxx/database'
-import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import { type FormSchema, mergeSettingsWithDefaults } from './merge-with-defaults'

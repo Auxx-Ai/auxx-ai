@@ -10,7 +10,6 @@ import {
   type ListThreadIdsInput,
   ThreadMutationService,
   ThreadQueryService,
-  type ThreadSortDescriptor,
   UnreadService,
 } from '@auxx/lib/threads'
 import { createScopedLogger } from '@auxx/logger'

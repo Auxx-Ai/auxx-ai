@@ -98,7 +98,7 @@ export function PartDetail({
         parentPartId: subpart.parentPartId,
         childPartId: subpart.childPartId,
       })
-      if (result && result.error) {
+      if (result?.error) {
         toastError({ title: 'Error deleting subpart' })
       } else {
         toastSuccess({ title: 'Subpart removed successfully' })

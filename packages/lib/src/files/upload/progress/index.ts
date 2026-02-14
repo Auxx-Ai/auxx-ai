@@ -52,7 +52,3 @@ export {
   type UploadProgressEvent,
   type UploadStartedEvent,
 } from './event-types'
-
-// Event publisher
-// export { FileUploadEventPublisher, fileUploadEventPublisher } from './file-upload-event-publisher'
-import { FileUploadEventPublisher } from './sse-publisher'

@@ -62,8 +62,7 @@ export function PlanComparison({ inDialog = false, onPlanSelect }: PlanCompariso
     if (!subscriptionLoading && !initialCycleSet) {
       // Check if there's an active, non-trial subscription with a billing cycle
       if (
-        subscription &&
-        subscription.billingCycle &&
+        subscription?.billingCycle &&
         (subscription.status === 'active' || subscription.status === 'past_due') // Consider active or past_due as having a set cycle
       ) {
         setBillingCycle(subscription.billingCycle)

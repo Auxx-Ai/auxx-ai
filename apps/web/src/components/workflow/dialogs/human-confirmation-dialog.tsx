@@ -2,7 +2,6 @@
 
 'use client'
 
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -25,15 +24,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { format, formatDistanceToNow } from 'date-fns'
-import {
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  MessageSquare,
-  Trash2,
-  User,
-  XCircle,
-} from 'lucide-react'
+import { AlertTriangle, CheckCircle, Clock, MessageSquare, Trash2, XCircle } from 'lucide-react'
 import type React from 'react'
 import { useEffect, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'

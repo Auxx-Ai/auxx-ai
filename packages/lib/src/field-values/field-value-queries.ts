@@ -9,7 +9,6 @@ import {
   type FieldReference,
   isFieldPath,
   parseResourceFieldId,
-  type ResourceFieldId,
 } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { and, asc, eq, inArray } from 'drizzle-orm'
@@ -19,12 +18,9 @@ import {
   type FieldValueContext,
   getField,
   getFieldTypeFromRegistry,
-  getFieldTypeMapByDefinition,
-  isValidTypedValue,
   rowsToTypedValues,
   rowToTypedValue,
   validateFieldReferences,
-  validateRowReferences,
 } from './field-value-helpers'
 import type {
   BatchFieldValueResult,

@@ -4,7 +4,6 @@
  */
 
 import type { Database, schema } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
 import type { BillingPlan, PlanLookupOptions } from '../types'
 
 /**

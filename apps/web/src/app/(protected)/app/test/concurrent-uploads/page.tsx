@@ -4,7 +4,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
 
 /**

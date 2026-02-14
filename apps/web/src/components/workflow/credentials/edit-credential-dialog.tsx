@@ -1,7 +1,6 @@
 // apps/web/src/app/(protected)/app/workflows/_components/credentials/edit-credential-dialog.tsx
 'use client'
 
-import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -24,7 +23,7 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { Loader2 } from 'lucide-react'
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { api } from '~/trpc/react'
 import { filterCredentialDataForEdit, hasSensitiveFieldChanges } from './credential-data-utils'
@@ -185,12 +184,10 @@ export function EditCredentialDialog({
           </DialogDescription>
 
           {credentialData && credentialType && (
-            <>
-              <div className='flex items-center gap-3 mt-3 mb-4'>
-                <credentialType.icon className='size-5' />
-                <span className='text-sm'>{credentialType.displayName}</span>
-              </div>
-            </>
+            <div className='flex items-center gap-3 mt-3 mb-4'>
+              <credentialType.icon className='size-5' />
+              <span className='text-sm'>{credentialType.displayName}</span>
+            </div>
           )}
         </DialogHeader>
 

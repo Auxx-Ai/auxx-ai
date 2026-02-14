@@ -632,8 +632,8 @@ function filesPicker({
       const query = search.toLowerCase()
       baseItems = baseItems.filter((item) => {
         if (item.name.toLowerCase().includes(query)) return true
-        if (item.ext && item.ext.toLowerCase().includes(query)) return true
-        if (item.path && item.path.toLowerCase().includes(query)) return true
+        if (item.ext?.toLowerCase().includes(query)) return true
+        if (item.path?.toLowerCase().includes(query)) return true
         if (item.type === 'file' && item.mimeType && item.mimeType.toLowerCase().includes(query))
           return true
         return false

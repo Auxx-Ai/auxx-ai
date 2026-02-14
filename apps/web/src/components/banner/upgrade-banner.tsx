@@ -2,7 +2,7 @@
 import { AnimatedGridPattern } from '@auxx/ui/components/animated-grid-pattern'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
-import { RocketIcon, Sparkles, XIcon } from 'lucide-react'
+import { RocketIcon, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 

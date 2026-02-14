@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import React, { useState } from 'react'
+import { useState } from 'react'
 
 interface ConfirmOptions {
   title?: string

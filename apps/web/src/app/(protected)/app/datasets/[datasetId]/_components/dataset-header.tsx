@@ -2,21 +2,11 @@
 
 'use client'
 
-import { Badge } from '@auxx/ui/components/badge'
 import { Card, CardContent } from '@auxx/ui/components/card'
 import { type StatCardData, StatCards } from '@auxx/ui/components/stat-card'
 import { formatBytes } from '@auxx/utils/file'
 import { formatDistanceToNow } from 'date-fns'
-import {
-  AlertCircle,
-  Calendar,
-  CheckCircle,
-  Clock,
-  Cpu,
-  Database,
-  FileText,
-  Zap,
-} from 'lucide-react'
+import { AlertCircle, Calendar, CheckCircle, Clock, Cpu, Database, FileText } from 'lucide-react'
 import { useDatasetDetail } from './dataset-detail-provider'
 
 export function DatasetHeader() {

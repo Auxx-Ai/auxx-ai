@@ -4,13 +4,12 @@
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { getFieldOperators, type ResourceField } from '@auxx/lib/resources/client'
-import { BaseType } from '@auxx/lib/workflow-engine/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { generateId } from '@auxx/utils/generateId'
-import { Filter, X } from 'lucide-react'
-import React, { useCallback, useMemo, useRef, useState } from 'react'
+import { Filter } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   type Condition,
   ConditionContainer,

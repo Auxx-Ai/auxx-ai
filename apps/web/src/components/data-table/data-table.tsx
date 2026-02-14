@@ -1,14 +1,7 @@
 'use client'
 
 import InfiniteScroll from '@auxx/ui/components/infinite-scroll'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@auxx/ui/components/table'
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
 // import * as React from 'react'
 import {
   type ColumnDef,

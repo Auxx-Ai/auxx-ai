@@ -4,7 +4,7 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import type { NodeProps } from '@xyflow/react'
-import React, { type FC, memo } from 'react'
+import { type FC, memo } from 'react'
 import { NodeSourceHandle } from '../../../ui/node-handle'
 import { BaseNode } from '../../shared/base/base-node'
 import type { ResourceTriggerData } from './types'

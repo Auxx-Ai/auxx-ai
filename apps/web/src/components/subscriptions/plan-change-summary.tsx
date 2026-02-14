@@ -467,7 +467,7 @@ function PlanChangeSummaryContent({
               min={selectedPlan.minSeats}
               max={selectedPlan.maxSeats}
               value={seats}
-              onChange={(e) => setSeats(Math.max(1, parseInt(e.target.value) || 1))}
+              onChange={(e) => setSeats(Math.max(1, parseInt(e.target.value, 10) || 1))}
               className='w-20'
             />
           </div>

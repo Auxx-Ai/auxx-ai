@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/ai/node.tsx
 
-import React, { memo } from 'react'
+import { memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
 import ModelNodeView from '~/components/workflow/ui/model-parameter/model-node-view'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'

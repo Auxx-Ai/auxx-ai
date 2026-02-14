@@ -1,7 +1,6 @@
 // apps/web/src/components/dynamic-table/types.ts
 
 import type { FieldType } from '@auxx/database/types'
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { TargetTimeInStatus } from '@auxx/types/custom-field'
 import type { FieldPath } from '@auxx/types/field'

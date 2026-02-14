@@ -15,7 +15,7 @@ import {
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { cn } from '@auxx/ui/lib/utils'
-import { Check, Loader2, Pencil, Plus, Tags, TextCursorInput, Trash2, X } from 'lucide-react'
+import { Check, Loader2, Plus, Tags, TextCursorInput, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 /**
@@ -410,11 +410,7 @@ export function MultiSelectPicker({
                           {/* Selection indicator (checkbox/radio) or manage icon */}
 
                           {/* Icon (if option has icon) */}
-                          {opt.icon && (
-                            <>
-                              <EntityIcon iconId={opt.icon} size='sm' color='gray' />
-                            </>
-                          )}
+                          {opt.icon && <EntityIcon iconId={opt.icon} size='sm' color='gray' />}
 
                           {/* Color dot (if option has color) */}
                           {opt.color && (

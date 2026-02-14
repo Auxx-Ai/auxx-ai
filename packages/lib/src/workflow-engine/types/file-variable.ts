@@ -356,8 +356,7 @@ export function categorizeFile(mimeType: string, filename: string): string {
  */
 export function isFileValid(fileData: WorkflowFileData): boolean {
   return !!(
-    fileData &&
-    fileData.filename &&
+    fileData?.filename &&
     fileData.filename.trim().length > 0 &&
     fileData.size >= 0 &&
     fileData.url &&

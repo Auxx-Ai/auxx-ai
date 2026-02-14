@@ -293,7 +293,7 @@ function buildDateQuery(operator: Operator, value: any, field?: string): SQL<unk
     if (!v) return null
     if (v instanceof Date) return v
     const parsed = new Date(v)
-    return isNaN(parsed.getTime()) ? null : parsed
+    return Number.isNaN(parsed.getTime()) ? null : parsed
   }
 
   switch (operator) {

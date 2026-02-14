@@ -22,7 +22,7 @@ import {
 } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
 import { pluralize } from '@auxx/utils/strings'
-import { Edit, MoreHorizontal, Package, PlusCircle, Star, Trash2 } from 'lucide-react'
+import { Edit, MoreHorizontal, Package, Star, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useState } from 'react'
 import { VendorPartDialog } from '~/components/manufacturing/parts/vendor-part-dialog'

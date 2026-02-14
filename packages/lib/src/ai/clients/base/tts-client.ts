@@ -1,16 +1,12 @@
 // packages/lib/src/ai/clients/base/tts-client.ts
 
 import { BaseSpecializedClient } from './base-specialized-client'
-import type { ClientConfig, TTSParams, TTSResponse } from './types'
+import type { TTSParams, TTSResponse } from './types'
 
 /**
  * Abstract base class for text-to-speech clients
  */
 export abstract class TTSClient extends BaseSpecializedClient {
-  constructor(config: ClientConfig, clientName: string, logger?: any) {
-    super(config, clientName, logger)
-  }
-
   // ===== ABSTRACT METHODS =====
 
   /**

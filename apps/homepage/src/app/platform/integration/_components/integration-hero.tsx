@@ -1,7 +1,6 @@
 // apps/web/src/app/(website)/platform/integration/_components/integration-hero.tsx
 
 import Link from 'next/link'
-import React from 'react'
 import { Button } from '~/components/ui/button'
 import { config } from '~/lib/config'
 import { IntegrationsIllustration } from './integrations-illustration'

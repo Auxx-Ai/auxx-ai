@@ -17,7 +17,7 @@ export function DisplayNumber() {
   }
 
   const num = typeof value === 'number' ? value : parseFloat(String(value))
-  if (isNaN(num)) {
+  if (Number.isNaN(num)) {
     return <DisplayWrapper copyValue={String(value)}>{String(value)}</DisplayWrapper>
   }
 

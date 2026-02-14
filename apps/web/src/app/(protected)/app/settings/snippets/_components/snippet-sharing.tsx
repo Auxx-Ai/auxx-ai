@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { PlusIcon, SearchIcon, Trash, UserIcon, Users2Icon, UsersIcon, XIcon } from 'lucide-react'
+import { PlusIcon, SearchIcon, Trash, UserIcon, Users2Icon, UsersIcon } from 'lucide-react'
 // apps/web/src/app/(protected)/app/settings/snippets/_components/snippet-sharing.tsx
 import React from 'react'
 import { api } from '~/trpc/react'

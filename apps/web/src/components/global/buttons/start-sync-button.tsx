@@ -3,7 +3,7 @@ import { WEBAPP_URL } from '@auxx/config/client'
 import { Button } from '@auxx/ui/components/button'
 import { waitUntil } from '@vercel/functions'
 import axios from 'axios'
-import React, { useState } from 'react'
+import { useState } from 'react'
 
 type Props = { accountId: string | undefined }
 /** not used */

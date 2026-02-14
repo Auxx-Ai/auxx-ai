@@ -35,7 +35,7 @@ import {
   type SystemConfiguration,
   type ValidationOptions,
 } from './types'
-import { mergeCredentialsWithHidden, obfuscateCredentials, obfuscateToken } from './utils'
+import { mergeCredentialsWithHidden, obfuscateCredentials } from './utils'
 
 const logger = createScopedLogger('ProviderConfigurationService')
 
@@ -784,7 +784,7 @@ export class ProviderConfigurationService {
             (m) => m.model === model && m.modelType === modelType
           )
 
-          if (modelConfig && modelConfig.credentials) {
+          if (modelConfig?.credentials) {
             credentials = modelConfig.credentials
             credentialSource = 'MODEL_SPECIFIC'
           } else {
@@ -881,7 +881,7 @@ export class ProviderConfigurationService {
             (m) => m.model === model && m.modelType === modelType
           )
 
-          if (modelConfig && modelConfig.credentials) {
+          if (modelConfig?.credentials) {
             credentials = modelConfig.credentials
           } else {
             // Fall back to provider-level credentials

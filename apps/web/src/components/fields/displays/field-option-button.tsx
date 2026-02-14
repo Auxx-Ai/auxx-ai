@@ -6,7 +6,6 @@ import { Button, type ButtonProps } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import type { MouseEvent, ReactNode } from 'react'
 import { useCallback } from 'react'
-import { Tooltip } from '~/components/global/tooltip'
 
 /**
  * FieldOptionButtonProps interface

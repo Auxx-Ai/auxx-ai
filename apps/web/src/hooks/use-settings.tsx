@@ -157,7 +157,7 @@ export function useSettings({ scope }: UseSettingsOptions) {
       }
 
       // Fallback to catalog default
-      if (settingsCatalog && settingsCatalog[key]) {
+      if (settingsCatalog?.[key]) {
         return settingsCatalog[key].defaultValue
       }
 

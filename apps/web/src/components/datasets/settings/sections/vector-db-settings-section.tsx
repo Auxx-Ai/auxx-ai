@@ -2,7 +2,6 @@
 'use client'
 import type { DatasetEntity as Dataset } from '@auxx/database/models'
 import type { VectorDbType } from '@auxx/database/types'
-import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   Form,

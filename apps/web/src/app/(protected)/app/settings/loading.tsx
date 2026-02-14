@@ -7,7 +7,6 @@ import {
 } from '@auxx/ui/components/breadcrumb'
 import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import React from 'react'
 import { LoadingSpinner } from '~/components/global/loading-content'
 
 export default function Loading() {

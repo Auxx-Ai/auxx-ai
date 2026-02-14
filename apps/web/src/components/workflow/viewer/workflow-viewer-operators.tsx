@@ -5,7 +5,7 @@
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { Maximize, ZoomIn, ZoomOut } from 'lucide-react'
-import React, { memo } from 'react'
+import { memo } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 
 /**

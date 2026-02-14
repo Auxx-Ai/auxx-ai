@@ -1,5 +1,5 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/schema-to-vars.ts
-import { ArrayType, type Field, type SchemaRoot, Type } from './types'
+import { type Field, type SchemaRoot, Type } from './types'
 
 export interface OutputVariable {
   name: string

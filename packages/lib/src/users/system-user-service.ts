@@ -4,7 +4,7 @@ import type { UserEntity } from '@auxx/database/models'
 import type { UserType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient, type RedisClient } from '@auxx/redis'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 
 const logger = createScopedLogger('system-user-service')
 

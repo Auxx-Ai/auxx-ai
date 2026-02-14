@@ -2,7 +2,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { toastError } from '@auxx/ui/components/toast'
 import { Check, Mail } from 'lucide-react'
 import { motion } from 'motion/react'

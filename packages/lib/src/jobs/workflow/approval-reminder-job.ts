@@ -6,7 +6,7 @@ import { ApprovalStatus } from '@auxx/database/enums'
 import { sendApprovalReminderEmail } from '@auxx/email'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { and, eq, inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { NotificationService } from '../../notifications/notification-service'
 
 const logger = createScopedLogger('approval-reminder-job')

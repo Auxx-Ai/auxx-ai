@@ -215,7 +215,7 @@ export function CSVColumnMapper({
   const updateMapping = (columnIndex, fieldId) => {
     // If field is already mapped to another column, remove that mapping
     const existingMapping = Object.entries(columnMappings).find(
-      ([key, value]) => value === fieldId && parseInt(key) !== columnIndex
+      ([key, value]) => value === fieldId && parseInt(key, 10) !== columnIndex
     )
 
     if (existingMapping) {
@@ -289,7 +289,7 @@ export function CSVColumnMapper({
         // Specific validation for known fields
         if (fieldId === 'quantity' && value) {
           const num = parseFloat(value)
-          if (isNaN(num) || num <= 0) {
+          if (Number.isNaN(num) || num <= 0) {
             rowErrors.push({ field: field.label, message: 'Quantity must be a positive number' })
           }
         }
@@ -365,7 +365,7 @@ export function CSVColumnMapper({
             mappedRow.subPartId = matchingPart.id
           }
         } else if (fieldId === 'quantity' && value) {
-          mappedRow[fieldId] = parseInt(value) || 1
+          mappedRow[fieldId] = parseInt(value, 10) || 1
         } else {
           mappedRow[fieldId] = value
         }
@@ -403,273 +403,269 @@ export function CSVColumnMapper({
   }
 
   return (
-    <>
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className='sm:max-w-[700px]'>
-          <DialogHeader>
-            <DialogTitle>Import Subparts from CSV</DialogTitle>
-            <DialogDescription>
-              Upload a CSV file and map its columns to the required fields
-            </DialogDescription>
-          </DialogHeader>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogContent className='sm:max-w-[700px]'>
+        <DialogHeader>
+          <DialogTitle>Import Subparts from CSV</DialogTitle>
+          <DialogDescription>
+            Upload a CSV file and map its columns to the required fields
+          </DialogDescription>
+        </DialogHeader>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab} className='w-full'>
-            <TabsList className='grid w-full grid-cols-2'>
-              <TabsTrigger value='map' disabled={!csvData}>
-                Map Columns
-              </TabsTrigger>
-              <TabsTrigger value='preview' disabled={!isMappingComplete || !csvData}>
-                Preview & Validate
-              </TabsTrigger>
-            </TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className='w-full'>
+          <TabsList className='grid w-full grid-cols-2'>
+            <TabsTrigger value='map' disabled={!csvData}>
+              Map Columns
+            </TabsTrigger>
+            <TabsTrigger value='preview' disabled={!isMappingComplete || !csvData}>
+              Preview & Validate
+            </TabsTrigger>
+          </TabsList>
 
-            <TabsContent value='map' className='space-y-4 py-4'>
-              {step === 1 ? (
-                <div className='space-y-4'>
-                  <div className='flex items-center justify-between'>
-                    <div>
-                      <h3 className='text-sm font-medium'>Upload CSV File</h3>
-                      <p className='text-sm text-muted-foreground'>
-                        Select a CSV file with subpart information
+          <TabsContent value='map' className='space-y-4 py-4'>
+            {step === 1 ? (
+              <div className='space-y-4'>
+                <div className='flex items-center justify-between'>
+                  <div>
+                    <h3 className='text-sm font-medium'>Upload CSV File</h3>
+                    <p className='text-sm text-muted-foreground'>
+                      Select a CSV file with subpart information
+                    </p>
+                  </div>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={downloadTemplate}
+                    className='flex items-center gap-1'>
+                    <Download className='h-3 w-3' />
+                    Template
+                  </Button>
+                </div>
+
+                <div className='flex w-full items-center justify-center'>
+                  <Label
+                    htmlFor='csv-file'
+                    className='flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed bg-muted/30 hover:bg-muted/50'>
+                    <div className='flex flex-col items-center justify-center pb-6 pt-5'>
+                      <FileSpreadsheet className='mb-3 h-8 w-8 text-muted-foreground' />
+                      <p className='mb-2 text-sm text-muted-foreground'>
+                        <span className='font-semibold'>Click to upload</span> or drag and drop
                       </p>
+                      <p className='text-xs text-muted-foreground'>CSV files only</p>
                     </div>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={downloadTemplate}
-                      className='flex items-center gap-1'>
-                      <Download className='h-3 w-3' />
-                      Template
-                    </Button>
+                    <Input
+                      id='csv-file'
+                      ref={fileInputRef}
+                      type='file'
+                      accept='.csv'
+                      className='hidden'
+                      onChange={handleFileUpload}
+                    />
+                  </Label>
+                </div>
+
+                <Alert>
+                  <FileQuestion className='h-4 w-4' />
+                  <AlertTitle>CSV Format</AlertTitle>
+                  <AlertDescription>
+                    Your CSV should include columns for Subpart SKU, Quantity, and optional Notes.
+                    Don't worry if your headers don't match exactly - you'll be able to map them in
+                    the next step.
+                  </AlertDescription>
+                </Alert>
+              </div>
+            ) : step === 2 ? (
+              <div className='space-y-4'>
+                <div className='flex items-start justify-between'>
+                  <div>
+                    <h3 className='text-sm font-medium'>Map CSV Columns</h3>
+                    <p className='text-sm text-muted-foreground'>
+                      Match your CSV columns to the required fields
+                    </p>
                   </div>
 
-                  <div className='flex w-full items-center justify-center'>
-                    <Label
-                      htmlFor='csv-file'
-                      className='flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed bg-muted/30 hover:bg-muted/50'>
-                      <div className='flex flex-col items-center justify-center pb-6 pt-5'>
-                        <FileSpreadsheet className='mb-3 h-8 w-8 text-muted-foreground' />
-                        <p className='mb-2 text-sm text-muted-foreground'>
-                          <span className='font-semibold'>Click to upload</span> or drag and drop
-                        </p>
-                        <p className='text-xs text-muted-foreground'>CSV files only</p>
-                      </div>
-                      <Input
-                        id='csv-file'
-                        ref={fileInputRef}
-                        type='file'
-                        accept='.csv'
-                        className='hidden'
-                        onChange={handleFileUpload}
-                      />
-                    </Label>
-                  </div>
+                  <Button size='sm' disabled={!isMappingComplete} onClick={validateAndPreview}>
+                    Continue to Preview
+                    <ArrowRight className='ml-2 h-4 w-4' />
+                  </Button>
+                </div>
 
-                  <Alert>
-                    <FileQuestion className='h-4 w-4' />
-                    <AlertTitle>CSV Format</AlertTitle>
+                <div className='overflow-x-auto rounded-md border'>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className='w-[180px]'>CSV Column</TableHead>
+                        <TableHead className='w-[180px]'>Map To Field</TableHead>
+                        <TableHead>Sample Values</TableHead>
+                        <TableHead className='w-[50px]'></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {headers.map((header, index) => (
+                        <TableRow key={index}>
+                          <TableCell className='font-medium'>{header}</TableCell>
+                          <TableCell>
+                            <Select
+                              value={columnMappings[index] || ''}
+                              onValueChange={(value) => updateMapping(index, value)}>
+                              <SelectTrigger>
+                                <SelectValue placeholder='Select field' />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value='no-mapping'>-- Not Mapped --</SelectItem>
+                                {FIELD_DEFINITIONS.map((field) => (
+                                  <SelectItem key={field.id} value={field.id}>
+                                    {field.label} {field.required && '*'}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell className='text-xs text-muted-foreground'>
+                            <div className='max-w-[200px] overflow-hidden text-ellipsis'>
+                              {sampleRows.map((row, i) => (
+                                <div key={i} className='truncate'>
+                                  {row[index] || (
+                                    <span className='italic text-muted-foreground'>empty</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {columnMappings[index] && (
+                              <Button
+                                variant='ghost'
+                                size='icon'
+                                onClick={() => removeMapping(index)}>
+                                <X className='h-4 w-4' />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <div className='space-y-2 text-sm'>
+                  <div className='font-medium'>Required Fields:</div>
+                  <div className='flex flex-wrap gap-2'>
+                    {FIELD_DEFINITIONS.filter((f) => f.required).map((field) => {
+                      const isMapped = Object.values(columnMappings).includes(field.id)
+                      return (
+                        <div
+                          key={field.id}
+                          className={`flex items-center rounded-md px-2 py-1 text-xs ${
+                            isMapped ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'
+                          }`}>
+                          {isMapped ? (
+                            <Check className='mr-1 h-3 w-3' />
+                          ) : (
+                            <AlertCircle className='mr-1 h-3 w-3' />
+                          )}
+                          {field.label}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </TabsContent>
+
+          <TabsContent value='preview' className='space-y-4 py-4'>
+            {isProcessing ? (
+              <div className='space-y-4 py-8'>
+                <div className='text-center'>
+                  <Loader2 className='mx-auto mb-4 h-8 w-8 animate-spin' />
+                  <h3 className='font-medium'>Processing CSV Data</h3>
+                  <p className='text-sm text-muted-foreground'>
+                    Validating rows and checking for errors...
+                  </p>
+                </div>
+                <Progress value={progressValue} className='w-full' />
+              </div>
+            ) : (
+              <div className='space-y-4'>
+                <div className='flex items-start justify-between'>
+                  <div>
+                    <h3 className='text-sm font-medium'>Preview Import Data</h3>
+                    <p className='text-sm text-muted-foreground'>
+                      Review the data before importing
+                    </p>
+                  </div>
+                </div>
+
+                {validationErrors.length > 0 ? (
+                  <Alert variant='destructive'>
+                    <AlertCircle className='h-4 w-4' />
+                    <AlertTitle>Validation Errors Found</AlertTitle>
                     <AlertDescription>
-                      Your CSV should include columns for Subpart SKU, Quantity, and optional Notes.
-                      Don't worry if your headers don't match exactly - you'll be able to map them
-                      in the next step.
+                      There are {validationErrors.length} row(s) with errors that need to be fixed
+                      before importing.
                     </AlertDescription>
                   </Alert>
-                </div>
-              ) : step === 2 ? (
-                <div className='space-y-4'>
-                  <div className='flex items-start justify-between'>
-                    <div>
-                      <h3 className='text-sm font-medium'>Map CSV Columns</h3>
-                      <p className='text-sm text-muted-foreground'>
-                        Match your CSV columns to the required fields
-                      </p>
-                    </div>
+                ) : (
+                  <Alert variant='default' className='border-green-200 bg-green-50'>
+                    <Check className='h-4 w-4 text-green-600' />
+                    <AlertTitle className='text-green-800'>Ready to Import</AlertTitle>
+                    <AlertDescription className='text-green-700'>
+                      No validation errors were found. You can proceed with the import.
+                    </AlertDescription>
+                  </Alert>
+                )}
 
-                    <Button size='sm' disabled={!isMappingComplete} onClick={validateAndPreview}>
-                      Continue to Preview
-                      <ArrowRight className='ml-2 h-4 w-4' />
-                    </Button>
-                  </div>
-
-                  <div className='overflow-x-auto rounded-md border'>
+                {validationErrors.length > 0 && (
+                  <div className='overflow-hidden rounded-md border'>
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className='w-[180px]'>CSV Column</TableHead>
-                          <TableHead className='w-[180px]'>Map To Field</TableHead>
-                          <TableHead>Sample Values</TableHead>
-                          <TableHead className='w-[50px]'></TableHead>
+                          <TableHead>Row</TableHead>
+                          <TableHead>Field</TableHead>
+                          <TableHead>Error</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {headers.map((header, index) => (
-                          <TableRow key={index}>
-                            <TableCell className='font-medium'>{header}</TableCell>
-                            <TableCell>
-                              <Select
-                                value={columnMappings[index] || ''}
-                                onValueChange={(value) => updateMapping(index, value)}>
-                                <SelectTrigger>
-                                  <SelectValue placeholder='Select field' />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value='no-mapping'>-- Not Mapped --</SelectItem>
-                                  {FIELD_DEFINITIONS.map((field) => (
-                                    <SelectItem key={field.id} value={field.id}>
-                                      {field.label} {field.required && '*'}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
-                            <TableCell className='text-xs text-muted-foreground'>
-                              <div className='max-w-[200px] overflow-hidden text-ellipsis'>
-                                {sampleRows.map((row, i) => (
-                                  <div key={i} className='truncate'>
-                                    {row[index] || (
-                                      <span className='italic text-muted-foreground'>empty</span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              {columnMappings[index] && (
-                                <Button
-                                  variant='ghost'
-                                  size='icon'
-                                  onClick={() => removeMapping(index)}>
-                                  <X className='h-4 w-4' />
-                                </Button>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {validationErrors.map((error, i) =>
+                          error.errors.map((fieldError, j) => (
+                            <TableRow key={`${i}-${j}`}>
+                              <TableCell>{error.row}</TableCell>
+                              <TableCell>{fieldError.field}</TableCell>
+                              <TableCell className='text-red-600'>{fieldError.message}</TableCell>
+                            </TableRow>
+                          ))
+                        )}
                       </TableBody>
                     </Table>
                   </div>
-
-                  <div className='space-y-2 text-sm'>
-                    <div className='font-medium'>Required Fields:</div>
-                    <div className='flex flex-wrap gap-2'>
-                      {FIELD_DEFINITIONS.filter((f) => f.required).map((field) => {
-                        const isMapped = Object.values(columnMappings).includes(field.id)
-                        return (
-                          <div
-                            key={field.id}
-                            className={`flex items-center rounded-md px-2 py-1 text-xs ${
-                              isMapped
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-amber-100 text-amber-800'
-                            }`}>
-                            {isMapped ? (
-                              <Check className='mr-1 h-3 w-3' />
-                            ) : (
-                              <AlertCircle className='mr-1 h-3 w-3' />
-                            )}
-                            {field.label}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </TabsContent>
-
-            <TabsContent value='preview' className='space-y-4 py-4'>
-              {isProcessing ? (
-                <div className='space-y-4 py-8'>
-                  <div className='text-center'>
-                    <Loader2 className='mx-auto mb-4 h-8 w-8 animate-spin' />
-                    <h3 className='font-medium'>Processing CSV Data</h3>
-                    <p className='text-sm text-muted-foreground'>
-                      Validating rows and checking for errors...
-                    </p>
-                  </div>
-                  <Progress value={progressValue} className='w-full' />
-                </div>
-              ) : (
-                <div className='space-y-4'>
-                  <div className='flex items-start justify-between'>
-                    <div>
-                      <h3 className='text-sm font-medium'>Preview Import Data</h3>
-                      <p className='text-sm text-muted-foreground'>
-                        Review the data before importing
-                      </p>
-                    </div>
-                  </div>
-
-                  {validationErrors.length > 0 ? (
-                    <Alert variant='destructive'>
-                      <AlertCircle className='h-4 w-4' />
-                      <AlertTitle>Validation Errors Found</AlertTitle>
-                      <AlertDescription>
-                        There are {validationErrors.length} row(s) with errors that need to be fixed
-                        before importing.
-                      </AlertDescription>
-                    </Alert>
-                  ) : (
-                    <Alert variant='default' className='border-green-200 bg-green-50'>
-                      <Check className='h-4 w-4 text-green-600' />
-                      <AlertTitle className='text-green-800'>Ready to Import</AlertTitle>
-                      <AlertDescription className='text-green-700'>
-                        No validation errors were found. You can proceed with the import.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  {validationErrors.length > 0 && (
-                    <div className='overflow-hidden rounded-md border'>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Row</TableHead>
-                            <TableHead>Field</TableHead>
-                            <TableHead>Error</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {validationErrors.map((error, i) =>
-                            error.errors.map((fieldError, j) => (
-                              <TableRow key={`${i}-${j}`}>
-                                <TableCell>{error.row}</TableCell>
-                                <TableCell>{fieldError.field}</TableCell>
-                                <TableCell className='text-red-600'>{fieldError.message}</TableCell>
-                              </TableRow>
-                            ))
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
-
-          <DialogFooter>
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={() => setIsOpen(false)}
-              disabled={isProcessing}>
-              Cancel <Kbd shortcut='esc' variant='outline' size='sm' />
-            </Button>
-
-            {activeTab === 'preview' && (
-              <Button
-                size='sm'
-                onClick={processImport}
-                disabled={isProcessing || validationErrors.length > 0}
-                loading={isProcessing}
-                loadingText='Processing...'>
-                Import Data <KbdSubmit variant='default' size='sm' />
-              </Button>
+                )}
+              </div>
             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+          </TabsContent>
+        </Tabs>
+
+        <DialogFooter>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => setIsOpen(false)}
+            disabled={isProcessing}>
+            Cancel <Kbd shortcut='esc' variant='outline' size='sm' />
+          </Button>
+
+          {activeTab === 'preview' && (
+            <Button
+              size='sm'
+              onClick={processImport}
+              disabled={isProcessing || validationErrors.length > 0}
+              loading={isProcessing}
+              loadingText='Processing...'>
+              Import Data <KbdSubmit variant='default' size='sm' />
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

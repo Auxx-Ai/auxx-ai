@@ -26,7 +26,7 @@ export function formatMoney(cents: string | number, format?: string) {
     thousands = defaultOption(thousands, ',')
     decimal = defaultOption(decimal, '.')
 
-    if (isNaN(number) || number == null) {
+    if (Number.isNaN(number) || number == null) {
       return 0
     }
 

@@ -1,13 +1,12 @@
 // apps/homepage/src/app/_components/sections/hero-section.tsx
 'use client'
 
-import { Check, Clock, Play, TrendingUp, Zap } from 'lucide-react'
+import { Check, Clock, Play, Zap } from 'lucide-react'
 import Link from 'next/link'
 import React from 'react'
 import MessagingFeatures from '@/app/platform/messaging/_components/messaging-features'
 import { Button } from '~/components/ui/button'
 import { config } from '~/lib/config'
-import LogoCloud from '../logo-cloud'
 
 const { urls } = config
 

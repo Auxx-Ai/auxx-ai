@@ -485,7 +485,7 @@ export class GoogleProvider
       if (!validAddress) {
         // Auto-select primary address or fail
         const primary = sendAsAddresses.find((sa) => sa.isPrimary)
-        if (primary && primary.sendAsEmail) {
+        if (primary?.sendAsEmail) {
           logger.warn(
             `From address "${from}" not in send-as list, using primary: ${primary.sendAsEmail}`
           )

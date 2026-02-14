@@ -5,7 +5,7 @@ import {
   type Operator,
   operatorRequiresValue,
 } from '@auxx/lib/conditions/client'
-import React, { memo, useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import type { TiptapJSON } from '~/components/workflow/ui/input-editor'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
 import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'

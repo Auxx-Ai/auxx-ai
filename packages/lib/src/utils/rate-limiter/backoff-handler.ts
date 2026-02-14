@@ -175,13 +175,13 @@ export class ExponentialBackoff {
 
     // If it's a number, assume it's seconds
     const retryAfterNum = Number(retryAfter)
-    if (!isNaN(retryAfterNum)) {
+    if (!Number.isNaN(retryAfterNum)) {
       return retryAfterNum * 1000
     }
 
     // If it's a date string, calculate the difference
     const retryAfterDate = new Date(retryAfter)
-    if (!isNaN(retryAfterDate.getTime())) {
+    if (!Number.isNaN(retryAfterDate.getTime())) {
       const delay = retryAfterDate.getTime() - Date.now()
       return delay > 0 ? delay : null
     }

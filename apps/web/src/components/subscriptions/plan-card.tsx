@@ -1,7 +1,6 @@
 // app/(protected)/app/settings/plans/_components/plan-card.tsx
 'use client'
 
-import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { CardContent, CardFooter, CardHeader } from '@auxx/ui/components/card'
 import { toastError } from '@auxx/ui/components/toast'

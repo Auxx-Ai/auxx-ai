@@ -155,7 +155,7 @@ export class ChunkerProcessor extends BaseNodeProcessor {
     if (typeof config.chunkSize === 'string') {
       const interpolated = await this.interpolateVariables(config.chunkSize, contextManager)
       resolvedChunkSize = parseInt(interpolated, 10)
-      if (isNaN(resolvedChunkSize) || resolvedChunkSize <= 0) {
+      if (Number.isNaN(resolvedChunkSize) || resolvedChunkSize <= 0) {
         throw this.createProcessingError('Invalid chunk size: must be a positive number', node, {
           originalValue: config.chunkSize,
           resolvedValue: interpolated,
@@ -168,7 +168,7 @@ export class ChunkerProcessor extends BaseNodeProcessor {
     if (typeof config.chunkOverlap === 'string') {
       const interpolated = await this.interpolateVariables(config.chunkOverlap, contextManager)
       resolvedChunkOverlap = parseInt(interpolated, 10)
-      if (isNaN(resolvedChunkOverlap) || resolvedChunkOverlap < 0) {
+      if (Number.isNaN(resolvedChunkOverlap) || resolvedChunkOverlap < 0) {
         throw this.createProcessingError(
           'Invalid chunk overlap: must be a non-negative number',
           node,

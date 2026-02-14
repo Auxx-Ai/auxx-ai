@@ -1,6 +1,5 @@
 // apps/web/src/lib/extensions/components/workflow/workflow-node-handle.tsx
 
-import React from 'react'
 import type { HandlePosition } from '~/components/workflow/ui/node-handle/handle-position-utils'
 import { NodeSourceHandle } from '~/components/workflow/ui/node-handle/source-handle'
 import { NodeTargetHandle } from '~/components/workflow/ui/node-handle/target-handle'

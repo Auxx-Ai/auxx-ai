@@ -4,7 +4,7 @@
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { addMonths, setMonth, setYear, subMonths } from 'date-fns'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import PickerFooter from './components/picker-footer'
 import PickerHeader from './components/picker-header'
 import { DEFAULT_DATE_PRESETS } from './presets'

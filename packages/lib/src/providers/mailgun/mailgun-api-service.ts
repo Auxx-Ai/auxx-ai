@@ -4,13 +4,7 @@ import { env } from '@auxx/config/server'
 import { createScopedLogger } from '@auxx/logger'
 import formData from 'form-data'
 import Mailgun from 'mailgun.js'
-import type {
-  Attachment,
-  DkimRecord,
-  EmailOptions,
-  EmailProvider,
-  EmailResult,
-} from '../../email/types'
+import type { DkimRecord, EmailOptions, EmailProvider, EmailResult } from '../../email/types'
 
 const logger = createScopedLogger('mailgun-api')
 
@@ -181,7 +175,7 @@ export class MailgunApiService implements EmailProvider {
         const domainInfo = await this.client.domains.get(domain)
 
         // If domain exists, get the DKIM record
-        if (domainInfo && domainInfo.sending_dns_records) {
+        if (domainInfo?.sending_dns_records) {
           // Find the DKIM record in the response
           const dkimRecord = domainInfo.sending_dns_records.find(
             (record: any) => record.record_type === 'TXT' && record.name.includes('dkim')
@@ -209,7 +203,7 @@ export class MailgunApiService implements EmailProvider {
         // Fetch domain info again to get the DKIM record
         const domainInfo = await this.client.domains.get(domain)
 
-        if (domainInfo && domainInfo.sending_dns_records) {
+        if (domainInfo?.sending_dns_records) {
           const dkimRecord = domainInfo.sending_dns_records.find(
             (record: any) => record.record_type === 'TXT' && record.name.includes('dkim')
           )

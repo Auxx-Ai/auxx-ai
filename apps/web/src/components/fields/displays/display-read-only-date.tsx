@@ -16,7 +16,7 @@ export function DisplayReadOnlyDate() {
 
   try {
     const date = new Date(value)
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       return <DisplayWrapper copyValue={null}>Invalid date</DisplayWrapper>
     }
 

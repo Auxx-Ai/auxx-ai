@@ -3,7 +3,7 @@
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Field, FieldContent, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
 import { Switch } from '@auxx/ui/components/switch'
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 /**
  * BooleanInput component.

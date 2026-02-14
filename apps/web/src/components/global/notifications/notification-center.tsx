@@ -9,7 +9,7 @@ import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem } from '@auxx/ui/components/sidebar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { format, formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow } from 'date-fns'
 import {
   Bell,
   Check,
@@ -20,11 +20,10 @@ import {
   Play,
   Trash,
   User,
-  X,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 // components/notifications/notification-center.tsx
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { HumanConfirmationDialog } from '~/components/workflow/dialogs/human-confirmation-dialog'
 import { api } from '~/trpc/react'
 

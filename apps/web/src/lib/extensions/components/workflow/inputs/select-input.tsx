@@ -1,7 +1,6 @@
 // apps/web/src/lib/extensions/components/workflow/inputs/select-input.tsx
 
 import { Field, FieldContent, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
-import { Label } from '@auxx/ui/components/label'
 import {
   Select,
   SelectContent,
@@ -9,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 /**
  * SelectInput component.

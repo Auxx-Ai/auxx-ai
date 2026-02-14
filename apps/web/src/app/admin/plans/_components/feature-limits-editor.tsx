@@ -83,7 +83,7 @@ export function FeatureLimitsEditor({ limits, onChange }: FeatureLimitsEditorPro
               <Input
                 type='number'
                 value={getLimitValue(key)}
-                onChange={(e) => updateLimit(key, parseInt(e.target.value) || 0)}
+                onChange={(e) => updateLimit(key, parseInt(e.target.value, 10) || 0)}
                 placeholder='0'
               />
               <Button
@@ -109,7 +109,7 @@ export function FeatureLimitsEditor({ limits, onChange }: FeatureLimitsEditorPro
             <Input
               type='number'
               value={limit.limit}
-              onChange={(e) => updateLimit(limit.key, parseInt(e.target.value) || 0)}
+              onChange={(e) => updateLimit(limit.key, parseInt(e.target.value, 10) || 0)}
               className='w-24'
             />
             <Button type='button' variant='ghost' size='sm' onClick={() => removeLimit(limit.key)}>
@@ -131,7 +131,7 @@ export function FeatureLimitsEditor({ limits, onChange }: FeatureLimitsEditorPro
           <Input
             type='number'
             value={customLimit}
-            onChange={(e) => setCustomLimit(parseInt(e.target.value) || 0)}
+            onChange={(e) => setCustomLimit(parseInt(e.target.value, 10) || 0)}
             placeholder='0'
             className='w-24'
           />

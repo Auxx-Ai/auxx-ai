@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/ta
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { ArrowLeft, Check, ClipboardCopy, Code, Globe } from 'lucide-react'
 import Link from 'next/link'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { api } from '~/trpc/react'
 
 interface WidgetInstallGuideProps {

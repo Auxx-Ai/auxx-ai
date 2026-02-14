@@ -3,7 +3,7 @@
 
 import type { FeatureKey, FeatureLimit } from '@auxx/lib/types'
 import type React from 'react'
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useMemo, useState } from 'react'
 import { useDehydratedOrganization } from './dehydrated-state-provider'
 
 // Type for the feature map object

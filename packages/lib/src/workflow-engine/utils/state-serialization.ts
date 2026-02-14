@@ -287,7 +287,7 @@ export class StateSerializer {
       }
 
       // Check dates
-      if (!data.startedAt || isNaN(Date.parse(data.startedAt))) {
+      if (!data.startedAt || Number.isNaN(Date.parse(data.startedAt))) {
         return false
       }
 

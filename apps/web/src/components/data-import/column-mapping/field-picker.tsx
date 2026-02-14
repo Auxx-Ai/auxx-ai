@@ -16,7 +16,6 @@ import {
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { PopoverContent } from '@auxx/ui/components/popover'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
 import { Ban, Check, ChevronLeft, ChevronRight, Hash, Type } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'

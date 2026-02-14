@@ -11,12 +11,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import {
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  // useSidebar,
-} from '@auxx/ui/components/sidebar'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { Book, ChevronsUpDown, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'

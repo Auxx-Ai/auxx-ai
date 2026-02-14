@@ -67,7 +67,7 @@ export function parseToCents(value: string | number): number | null {
     if (!cleaned) return null
 
     const parsed = parseFloat(cleaned)
-    if (isNaN(parsed)) return null
+    if (Number.isNaN(parsed)) return null
 
     // Convert to cents
     return Math.round(parsed * 100)

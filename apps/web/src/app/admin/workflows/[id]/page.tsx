@@ -278,7 +278,7 @@ export default function WorkflowTemplateEditorPage({
                 type='number'
                 min='0'
                 value={popularity}
-                onChange={(e) => setPopularity(parseInt(e.target.value) || 0)}
+                onChange={(e) => setPopularity(parseInt(e.target.value, 10) || 0)}
               />
               <p className='text-xs text-muted-foreground'>
                 Higher scores appear first in template lists

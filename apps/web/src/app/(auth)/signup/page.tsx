@@ -1,9 +1,7 @@
 // src/app/(auth)/signup/page.tsx
 
 import { Button } from '@auxx/ui/components/button'
-import Image from 'next/image'
 import Link from 'next/link'
-import React from 'react'
 import { Logo } from '~/components/global/login/logo'
 // import Logo from '~/../public/logo_color.png' // Adjust path if needed
 import { SignUpForm } from '../_components/signup-form'

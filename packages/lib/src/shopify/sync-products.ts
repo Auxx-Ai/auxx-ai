@@ -1,4 +1,4 @@
-import { type Database, database as db, schema } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { convertToCents, withRetry } from '@auxx/utils'
 import type { AdminApiClient, ResponseWithType } from '@shopify/admin-api-client'

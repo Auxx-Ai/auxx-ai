@@ -1,4 +1,3 @@
-import { env } from '@auxx/config/server'
 // import { logErrorToPosthog } from '@/utils/error.server'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'

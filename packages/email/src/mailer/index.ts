@@ -1,5 +1,4 @@
 import { env } from '@auxx/config/server'
-import type { OrganizationRole } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { render } from '@react-email/components'
 import {

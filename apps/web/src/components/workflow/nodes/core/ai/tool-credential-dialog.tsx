@@ -14,7 +14,7 @@ import {
 } from '@auxx/ui/components/dialog'
 import { cn } from '@auxx/ui/lib/utils'
 import { AlertTriangle, Key, Trash2, Wrench } from 'lucide-react'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { CreateCredentialDialog } from '~/components/workflow/credentials/create-credential-dialog'
 import { getCredentialType } from '~/components/workflow/credentials/credential-registry'
 import { CredentialSelector } from '~/components/workflow/credentials/credential-selector'

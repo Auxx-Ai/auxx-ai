@@ -83,7 +83,7 @@ export function TrialManagementSection({
    * Handle extend trial
    */
   const handleExtendTrial = async () => {
-    const days = parseInt(extendDays) || 7
+    const days = parseInt(extendDays, 10) || 7
     const newEndDate = addDays(new Date(), days)
 
     const confirmed = await confirm({
@@ -223,7 +223,8 @@ export function TrialManagementSection({
                       placeholder='7'
                     />
                     <p className='text-xs text-muted-foreground mt-1'>
-                      New end date: {format(addDays(new Date(), parseInt(extendDays) || 7), 'PPP')}
+                      New end date:{' '}
+                      {format(addDays(new Date(), parseInt(extendDays, 10) || 7), 'PPP')}
                     </p>
                   </div>
                   <div>

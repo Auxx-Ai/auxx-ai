@@ -19,7 +19,6 @@ import { Cisco } from '~/components/logos/cisco'
 import { LeapWallet } from '~/components/logos/leap-wallet'
 import { PayPal } from '~/components/logos/paypal'
 import { Polars } from '~/components/logos/polars'
-import { Spotify } from '~/components/logos/spotify'
 import { Stripe } from '~/components/logos/stripe'
 
 const aiLogos: React.ReactNode[] = [

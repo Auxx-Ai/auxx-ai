@@ -155,8 +155,8 @@ export function SubscriptionManagementSection({
    * Handle apply credit adjustment
    */
   const handleApplyCredit = async () => {
-    const amount = parseInt(creditAmount)
-    if (isNaN(amount) || !creditReason || creditReason.length < 10) {
+    const amount = parseInt(creditAmount, 10)
+    if (Number.isNaN(amount) || !creditReason || creditReason.length < 10) {
       toastError({
         title: 'Missing information',
         description: 'Please enter a valid credit amount and reason (at least 10 characters)',

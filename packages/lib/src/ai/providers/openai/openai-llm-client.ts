@@ -1,12 +1,11 @@
 // packages/lib/src/ai/providers/openai/openai-llm-client.ts
 
-import { createScopedLogger, type Logger } from '@auxx/logger'
+import type { Logger } from '@auxx/logger'
 import type OpenAI from 'openai'
 import { LLMClient } from '../../clients/base/llm-client'
 import type {
   ClientConfig,
   FunctionCall,
-  InvalidParameterError,
   LLMInvokeParams,
   LLMResponse,
   LLMStreamChunk,
@@ -15,7 +14,6 @@ import type {
   ModelCapabilities,
   MultiModalContent,
   ProcessedLLMParams,
-  StreamingError,
   Tool,
   ToolCall,
   UsageMetrics,

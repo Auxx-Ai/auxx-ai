@@ -86,7 +86,7 @@ export function validateScheduledTriggerConfig(
   // Validate start date
   if (config.startDate) {
     const startDate = new Date(config.startDate)
-    if (isNaN(startDate.getTime())) {
+    if (Number.isNaN(startDate.getTime())) {
       errors.push('Invalid start date format')
     } else if (startDate < new Date()) {
       warnings.push('Start date is in the past - workflow will start immediately')
@@ -234,9 +234,9 @@ function validateCronField(
     // Handle step values (e.g., */5, 1-10/2)
     else if (trimmedValue.includes('/')) {
       const [range, step] = trimmedValue.split('/')
-      const stepNum = parseInt(step)
+      const stepNum = parseInt(step, 10)
 
-      if (isNaN(stepNum) || stepNum <= 0) {
+      if (Number.isNaN(stepNum) || stepNum <= 0) {
         errors.push(`Invalid step value in ${fieldName}: ${step}`)
         continue
       }
@@ -277,8 +277,8 @@ function parseFieldValue(value: string, namedValues?: string[]): number | null {
   const trimmed = value.trim().toUpperCase()
 
   // Try to parse as number first
-  const numValue = parseInt(trimmed)
-  if (!isNaN(numValue)) {
+  const numValue = parseInt(trimmed, 10)
+  if (!Number.isNaN(numValue)) {
     return numValue
   }
 

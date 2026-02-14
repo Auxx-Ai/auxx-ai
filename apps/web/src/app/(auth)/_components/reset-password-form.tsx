@@ -23,7 +23,7 @@ import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation' // For redirection
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { client } from '~/auth/auth-client'

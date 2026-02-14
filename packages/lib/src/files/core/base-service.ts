@@ -6,7 +6,6 @@ import type {
   BulkOperationOptions,
   BulkOperationResult,
   SearchOptions,
-  ServiceResult,
   ValidationResult,
 } from './types'
 

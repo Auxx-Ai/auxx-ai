@@ -1,7 +1,6 @@
 // packages/services/src/field-values/types.ts
 
 import type { FieldType } from '@auxx/database/types'
-import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
 
 // =============================================================================

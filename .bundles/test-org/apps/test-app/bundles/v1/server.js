@@ -149,8 +149,8 @@ function floatSafeRemainder(val, step) {
   const valDecCount = (val.toString().split('.')[1] || '').length
   const stepDecCount = (step.toString().split('.')[1] || '').length
   const decCount = valDecCount > stepDecCount ? valDecCount : stepDecCount
-  const valInt = parseInt(val.toFixed(decCount).replace('.', ''))
-  const stepInt = parseInt(step.toFixed(decCount).replace('.', ''))
+  const valInt = parseInt(val.toFixed(decCount).replace('.', ''), 10)
+  const stepInt = parseInt(step.toFixed(decCount).replace('.', ''), 10)
   return (valInt % stepInt) / 10 ** decCount
 }
 function deepPartialify(schema) {
@@ -465,7 +465,7 @@ var init_lib = __esm({
         case 'string':
           return ZodParsedType.string
         case 'number':
-          return isNaN(data) ? ZodParsedType.nan : ZodParsedType.number
+          return Number.isNaN(data) ? ZodParsedType.nan : ZodParsedType.number
         case 'boolean':
           return ZodParsedType.boolean
         case 'function':
@@ -2073,7 +2073,7 @@ var init_lib = __esm({
           })
           return INVALID
         }
-        if (isNaN(input.data.getTime())) {
+        if (Number.isNaN(input.data.getTime())) {
           const ctx2 = this._getOrReturnCtx(input)
           addIssueToContext(ctx2, {
             code: ZodIssueCode.invalid_date,

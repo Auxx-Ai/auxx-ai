@@ -103,7 +103,7 @@ export const validateCondition = (
   ) {
     switch (fieldDefinition.type) {
       case 'number':
-        if (typeof condition.value === 'string' && isNaN(Number(condition.value))) {
+        if (typeof condition.value === 'string' && Number.isNaN(Number(condition.value))) {
           errors.push('Value must be a number')
         }
         break
@@ -116,7 +116,7 @@ export const validateCondition = (
       }
       case 'date':
       case 'datetime':
-        if (typeof condition.value === 'string' && isNaN(Date.parse(condition.value))) {
+        if (typeof condition.value === 'string' && Number.isNaN(Date.parse(condition.value))) {
           errors.push('Value must be a valid date')
         }
         break

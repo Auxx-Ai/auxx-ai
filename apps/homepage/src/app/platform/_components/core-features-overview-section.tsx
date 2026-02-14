@@ -1,5 +1,5 @@
 // apps/web/src/app/(website)/features/_components/sections/core-features-overview-section.tsx
-import { Check, Database, Mail, Shield, Sparkles, Workflow } from 'lucide-react'
+import { Check, Database, Mail, Shield, Workflow } from 'lucide-react'
 import { Card } from '~/components/ui/card'
 
 // Represents the primary hero cards that headline the core features grid.

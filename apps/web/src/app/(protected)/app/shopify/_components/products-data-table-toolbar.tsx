@@ -2,7 +2,6 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
-import { Table } from '@tanstack/react-table'
 import { X } from 'lucide-react'
 import { useContext } from 'react'
 import { DataTableConext } from '~/components/data-table/data-table'

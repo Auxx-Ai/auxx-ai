@@ -13,7 +13,7 @@ import {
   TableRow,
 } from '@auxx/ui/components/table'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { CheckCircle, ChevronRight, MailIcon, X } from 'lucide-react'
+import { CheckCircle, ChevronRight, MailIcon } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'

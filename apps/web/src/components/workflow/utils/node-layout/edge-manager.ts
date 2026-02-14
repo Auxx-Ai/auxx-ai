@@ -5,7 +5,7 @@ import type { EdgeData, FlowEdge, FlowNode } from '~/components/workflow/types'
 import { NodeType } from '~/components/workflow/types'
 import { LOOP_HANDLES } from '../../nodes/core/loop/constants'
 import { unifiedNodeRegistry } from '../../nodes/unified-registry'
-import { calculateEdgeZIndex, getNodesConnectedSourceOrTargetHandleIdsMap } from '../edge-utils'
+import { getNodesConnectedSourceOrTargetHandleIdsMap } from '../edge-utils'
 
 export interface EdgeCreationParams {
   source: string

@@ -14,7 +14,7 @@ import {
 import { produce } from 'immer'
 import type React from 'react'
 import { memo, useCallback, useMemo } from 'react'
-import type { ConditionGroup, ConditionSystemConfig } from '~/components/conditions'
+import type { ConditionSystemConfig } from '~/components/conditions'
 import { ConditionContainer, ConditionProvider } from '~/components/conditions'
 import { useResource, useResourceFields } from '~/components/resources'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
@@ -61,7 +61,7 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
         } else if (isConstantMode) {
           // Constant mode: parse as number
           const numValue = typeof value === 'number' ? value : parseInt(value, 10)
-          draft[field] = isNaN(numValue) ? undefined : numValue
+          draft[field] = Number.isNaN(numValue) ? undefined : numValue
         } else {
           // Variable mode: store as string (variable reference)
           draft[field] = value as any

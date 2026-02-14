@@ -5,7 +5,6 @@
 import type { ResourceId } from '@auxx/lib/workflow-engine/client'
 import { useStoreApi } from '@xyflow/react'
 import { Loader2 } from 'lucide-react'
-import React from 'react'
 import { useResource } from '~/components/resources'
 import { ResourceTestInput } from '~/components/workflow/panels/run/tabs/resource-test-input'
 import Section from '~/components/workflow/ui/section'

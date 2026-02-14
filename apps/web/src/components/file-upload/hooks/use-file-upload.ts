@@ -378,7 +378,7 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
     // mark notified in store (proper Immer mutation)
     useUploadStore.setState((state) => {
       const s = state.sessions[id]
-      if (s && s.metadata) {
+      if (s?.metadata) {
         s.metadata.__notifiedComplete = true
       }
     })

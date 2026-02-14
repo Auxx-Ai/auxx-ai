@@ -23,7 +23,7 @@ interface LoadingContentProps {
 export function LoadingContent(props: LoadingContentProps) {
   if (props.error) {
     return props.errorComponent ? (
-      <>{props.errorComponent}</>
+      props.errorComponent
     ) : (
       <div className='mt-4'>
         {props.error?.info?.error || props.error?.error}

@@ -1,7 +1,6 @@
 // apps/web/src/app/(protected)/app/workflows/_components/views/credentials-grid-view.tsx
 'use client'
 
-import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
@@ -12,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
-import { Copy, Edit, Key, MoreVertical, TestTube, Trash, User } from 'lucide-react'
+import { Copy, Edit, MoreVertical, TestTube, Trash } from 'lucide-react'
 import { useState } from 'react'
 import {
   getCredentialCategory,

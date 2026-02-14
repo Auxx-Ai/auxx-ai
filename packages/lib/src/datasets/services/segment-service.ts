@@ -1,26 +1,10 @@
 // packages/lib/src/datasets/services/segment-service.ts
 
-import { type Database, database, schema } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { IndexStatus as IndexStatusEnum } from '@auxx/database/enums'
-import { DocumentSegmentEntity as DocumentSegment } from '@auxx/database/models'
 import type { IndexStatus } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import {
-  and,
-  asc,
-  count,
-  desc,
-  eq,
-  gt,
-  gte,
-  ilike,
-  inArray,
-  isNull,
-  lte,
-  or,
-  type SQL,
-  sql,
-} from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, gte, ilike, lte, or, type SQL, sql } from 'drizzle-orm'
 import { DocumentProcessingError } from '../types'
 
 const logger = createScopedLogger('segment-service')
@@ -314,7 +298,7 @@ export class SegmentService {
 
         // If search query is a number, also search by position
         const positionNumber = parseInt(filters.search, 10)
-        if (!isNaN(positionNumber)) {
+        if (!Number.isNaN(positionNumber)) {
           searchConditions.push(eq(schema.DocumentSegment.position, positionNumber))
         }
 

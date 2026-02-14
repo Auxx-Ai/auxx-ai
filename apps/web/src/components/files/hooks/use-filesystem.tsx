@@ -2,7 +2,7 @@
 
 'use client'
 
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { toastError } from '@auxx/ui/components/toast'
 import { keepPreviousData } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useFileUpload } from '~/components/file-upload/hooks/use-file-upload'

@@ -7,7 +7,6 @@ import {
   getFieldOperators,
   getFieldOptions,
   isCustomResourceId,
-  isSystemResourceId,
   isValidFieldOptionValue,
   isValidOperatorForField,
   RESOURCE_FIELD_REGISTRY,
@@ -284,7 +283,7 @@ export class FindProcessor extends BaseNodeProcessor {
         // Variable mode: resolve the variable reference
         const interpolated = await this.interpolateVariables(config.limit, contextManager)
         resolvedLimit = parseInt(interpolated, 10)
-        if (isNaN(resolvedLimit) || resolvedLimit <= 0) {
+        if (Number.isNaN(resolvedLimit) || resolvedLimit <= 0) {
           resolvedLimit = 10 // Default to 10 if invalid
         }
       } else if (typeof config.limit === 'object') {
@@ -417,7 +416,7 @@ export class FindProcessor extends BaseNodeProcessor {
             // Variable mode: resolve the variable reference
             const interpolated = await this.interpolateVariables(config.limit, contextManager)
             limit = parseInt(interpolated, 10)
-            if (isNaN(limit) || limit <= 0) {
+            if (Number.isNaN(limit) || limit <= 0) {
               limit = 10 // Default to 10 if invalid
             }
           } else if (typeof config.limit === 'object') {

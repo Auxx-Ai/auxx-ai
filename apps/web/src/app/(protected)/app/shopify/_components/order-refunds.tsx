@@ -1,7 +1,6 @@
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
   Table,
@@ -13,7 +12,6 @@ import {
 } from '@auxx/ui/components/table'
 import { format } from 'date-fns'
 import { AlertCircle, ArrowLeft, Receipt } from 'lucide-react'
-import React from 'react'
 import { useOrder } from '~/components/orders/order-context'
 import { formatMoney } from '~/utils/strings'
 
@@ -57,7 +55,7 @@ export default function OrderRefunds({ order: orderProp }: { order?: any } = {})
   const hasReturns = order?.returns && order.returns.length > 0
 
   // Special case: Check if there's a RefundCase linked to this order (from ticket system)
-  const hasRefundCase = order?.tickets && order.tickets.some((ticket: any) => ticket.refundCase)
+  const hasRefundCase = order?.tickets?.some((ticket: any) => ticket.refundCase)
 
   // If there are no refunds or returns
   if (!order || (!hasRefunds && !hasReturns && !hasRefundCase)) {
@@ -233,7 +231,7 @@ export default function OrderRefunds({ order: orderProp }: { order?: any } = {})
       )}
 
       {/* Return Cases from Ticket System */}
-      {order.tickets && order.tickets.some((ticket: any) => ticket.returnCase) && (
+      {order.tickets?.some((ticket: any) => ticket.returnCase) && (
         <Card>
           <CardHeader>
             <CardTitle className='flex items-center'>

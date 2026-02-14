@@ -3,7 +3,6 @@
 import { Button } from '@auxx/ui/components/button'
 import { PlusIcon } from 'lucide-react'
 import Link from 'next/link'
-import React from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import { SignatureList } from '~/components/signatures/ui'
 

@@ -1,12 +1,10 @@
 // apps/web/src/components/apps/app-about.tsx
 
-import type { AppWithStatusOutput } from '@auxx/services/apps'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Item, ItemContent, ItemGroup, ItemHeader, ItemMedia } from '@auxx/ui/components/item'
+import { Item, ItemContent, ItemGroup, ItemHeader } from '@auxx/ui/components/item'
 import { format } from 'date-fns'
 import { Code, Globe, LucideGitGraph, Mail } from 'lucide-react'
-import React from 'react'
 import type { RouterOutputs } from '~/trpc/react'
 
 /**

@@ -4,7 +4,7 @@
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { CodeIcon, MailIcon } from 'lucide-react'
-import React, { useState } from 'react'
+import { useState } from 'react'
 
 interface TemplatePreviewProps {
   preview: { subject: string; bodyHtml: string; bodyPlain: string }

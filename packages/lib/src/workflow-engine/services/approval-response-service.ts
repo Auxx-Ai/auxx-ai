@@ -1,5 +1,5 @@
 // packages/lib/src/workflow-engine/services/approval-response-service.ts
-import { type Database, database as db, schema } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, count, eq, sql } from 'drizzle-orm'
 import { publisher } from '../../events/publisher'

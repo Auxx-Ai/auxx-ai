@@ -11,7 +11,6 @@ import {
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
 import { Input } from '@auxx/ui/components/input'
-import { Label } from '@auxx/ui/components/label'
 import {
   Table,
   TableBody,

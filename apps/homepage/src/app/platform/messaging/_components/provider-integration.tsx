@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import type * as React from 'react'
 import { ChatWidget, Facebook, Gmail, Instagram, OpenPhone, Outlook } from '~/components/logos'
 import { Card } from '~/components/ui/card'

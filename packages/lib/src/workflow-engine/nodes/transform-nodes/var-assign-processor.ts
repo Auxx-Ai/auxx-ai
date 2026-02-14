@@ -162,7 +162,7 @@ export class VarAssignProcessor extends BaseNodeProcessor {
 
         case 'number': {
           const num = Number(value)
-          if (isNaN(num)) {
+          if (Number.isNaN(num)) {
             throw new Error(`Cannot convert '${value}' to number`)
           }
           return num

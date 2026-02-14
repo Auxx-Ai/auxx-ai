@@ -5,8 +5,6 @@ import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { AlertCircle } from 'lucide-react'
 import { useParams } from 'next/navigation'
-import React from 'react'
-import SettingsPage from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 import ChatWidgetSettings from '../_components/chat-widget-settings' // Import the new page component
 import IntegrationTabs from '../_components/integration-tabs' // For non-chat integrations

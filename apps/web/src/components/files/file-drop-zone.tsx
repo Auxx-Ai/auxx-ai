@@ -3,8 +3,7 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
-import { cn } from '@auxx/ui/lib/utils'
-import { Upload, X } from 'lucide-react'
+import { Upload } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useRef, useState } from 'react'
 

@@ -7,7 +7,6 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { PanelFrame } from '@auxx/ui/components/panel-frame'
 import { usePathname } from 'next/navigation'
 import type * as React from 'react'
 import SidebarSecondary from '~/components/global/sidebar-secondary'

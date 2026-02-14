@@ -4,7 +4,7 @@
  * Creates plans in database and corresponding Stripe products/prices.
  */
 
-import { database, schema } from '@auxx/database'
+import { schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import Stripe from 'stripe'
 import type { SeedingContext, SeedingScenario } from '../types'

@@ -131,7 +131,9 @@ export class ValidationUtils {
    * Check if a string represents a number
    */
   static isNumericString(value: any): boolean {
-    return typeof value === 'string' && !isNaN(Number(value)) && !isNaN(parseFloat(value))
+    return (
+      typeof value === 'string' && !Number.isNaN(Number(value)) && !Number.isNaN(parseFloat(value))
+    )
   }
 
   /**

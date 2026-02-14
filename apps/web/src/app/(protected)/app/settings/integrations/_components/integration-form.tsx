@@ -8,15 +8,11 @@ import {
   CardHeader,
   CardTitle,
 } from '@auxx/ui/components/card'
-import { ArrowLeft, Facebook, Instagram, Mail } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-// ~/app/(protected)/app/settings/integrations/_components/integration-form.tsx
-import React from 'react'
 import SettingsPage from '~/components/global/settings-page'
-import { GoogleIcon } from '~/constants/icons'
 import { useIntegration } from '~/hooks/use-integration'
 import { getIntegrationProviderIcon } from './integration-table'
-import OpenPhoneIntegrationForm from './openphone-integration-form'
 
 interface IntegrationFormProps {
   type: string

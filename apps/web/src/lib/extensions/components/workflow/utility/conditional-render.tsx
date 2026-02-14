@@ -1,7 +1,5 @@
 // apps/web/src/lib/extensions/components/workflow/utility/conditional-render.tsx
 
-import React from 'react'
-
 /**
  * ConditionalRender component.
  * Conditionally renders children based on the evaluated condition result.

@@ -3,7 +3,7 @@
 import { type Database, schema } from '@auxx/database'
 import type { RelationshipType } from '@auxx/types/custom-field'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 
 // ============================================================================
 // TYPES

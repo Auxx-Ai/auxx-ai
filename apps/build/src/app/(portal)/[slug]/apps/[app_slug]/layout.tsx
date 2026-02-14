@@ -1,8 +1,6 @@
 // apps/build/src/app/(portal)/[slug]/apps/[:app_slug]/layout.tsx
 'use client'
 
-import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -23,7 +21,6 @@ import {
   useAuthenticatedUser,
   useDeveloperAccount,
 } from '~/components/providers/dehydrated-state-provider'
-import { SiteHeader } from '~/components/site-header'
 /**
  * Layout for individual app pages in developer portal
  * Uses server-fetched dehydrated state from parent layout

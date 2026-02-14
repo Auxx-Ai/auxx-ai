@@ -1,15 +1,13 @@
 // packages/lib/src/workflow-engine/core/__tests__/diamond-pattern-execution.test.ts
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { BaseNodeProcessor } from '../../nodes/base-node'
 import type { ExecutionContextManager } from '../execution-context'
 import { NodeProcessorRegistry } from '../node-processor-registry'
 import type {
-  ExecutionContext,
   NodeExecutionResult,
   NodeRunningStatus,
   Workflow,
-  WorkflowExecutionOptions,
   WorkflowNode,
   WorkflowNodeType,
   WorkflowTriggerType,

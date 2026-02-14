@@ -1,6 +1,5 @@
 // apps/web/src/components/workflow/nodes/shared/scheduled-trigger-input.tsx
 
-import React from 'react'
 import Section from '~/components/workflow/ui/section'
 import type { TriggerInputProps } from '../trigger-registry'
 

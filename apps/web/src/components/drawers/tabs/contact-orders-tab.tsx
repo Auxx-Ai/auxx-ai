@@ -2,7 +2,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { ShoppingBag } from 'lucide-react'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import NoShopifyIntegration from '~/app/(protected)/app/shopify/_components/no-shopify-integration'
 import { EmptyState } from '~/components/global/empty-state'
 import OrderRow from '~/components/orders/order-row'

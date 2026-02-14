@@ -1,7 +1,7 @@
 // packages/lib/src/ai/providers/openai/openai-tts-client.ts
 
 import type OpenAI from 'openai'
-import { createScopedLogger, type Logger } from '../../../logger'
+import type { Logger } from '../../../logger'
 import { TTSClient } from '../../clients/base/tts-client'
 import type { ClientConfig, TTSParams, TTSResponse, UsageMetrics } from '../../clients/base/types'
 

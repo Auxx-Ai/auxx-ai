@@ -5,9 +5,6 @@ import { applyEdgeChanges, type EdgeChange, useStoreApi } from '@xyflow/react'
 import { produce } from 'immer'
 import { useCallback } from 'react'
 import { useNodesReadOnly } from '~/components/workflow/hooks'
-// Variable syncing now handled automatically by VarStoreSyncProvider
-import type { FlowNode } from '../store/types'
-import { getNodesConnectedSourceOrTargetHandleIdsMap } from '../utils'
 import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'
 import { useWorkflowSave } from './use-workflow-save'
 

@@ -54,7 +54,7 @@ export function cloneAndRewriteVariableIds(
   const cloned: Partial<UnifiedVariable> = { ...sourceVariable }
 
   // Update the ID if it exists and matches the old base ID
-  if (sourceVariable.id && sourceVariable.id.startsWith(oldBaseId)) {
+  if (sourceVariable.id?.startsWith(oldBaseId)) {
     cloned.id = sourceVariable.id.replace(oldBaseId, newBaseId)
   }
 

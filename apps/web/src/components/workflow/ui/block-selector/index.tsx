@@ -3,7 +3,6 @@
 import { Badge } from '@auxx/ui/components/badge'
 import {
   Command,
-  CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
@@ -12,7 +11,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { Plus } from 'lucide-react'
-import React, { memo, useMemo, useRef, useState } from 'react'
+import { memo, useMemo, useRef, useState } from 'react'
 import { NodeCategory } from '~/components/workflow/types'
 import { useRegistryVersion } from '../../hooks'
 import { unifiedNodeRegistry } from '../../nodes/unified-registry'

@@ -4,7 +4,6 @@
 import { database, schema } from '@auxx/database'
 import { seed } from 'drizzle-seed'
 import { AuthenticationSeeder } from '../src/engine/authentication-seeder'
-import { DrizzleSeeder } from '../src/engine/drizzle-seeder'
 import { ServiceIntegrator } from '../src/engine/service-integrator'
 import { ScenarioBuilder } from '../src/scenarios/scenario-builder'
 import type { SeedingScenarioName } from '../src/types'

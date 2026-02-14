@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/editor/workflow-editor-provider.tsx
 
 import type React from 'react'
-import { createContext, useCallback, useContext, useEffect } from 'react'
+import { createContext, useContext, useEffect } from 'react'
 import { setupNodeRegistry } from '../nodes/registry-setup'
 import type { FlowEdge, FlowNode } from '../store/types'
 

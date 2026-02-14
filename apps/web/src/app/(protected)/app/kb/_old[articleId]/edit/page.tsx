@@ -3,7 +3,6 @@
 import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
 import Link from 'next/link'
-import React from 'react'
 import { api } from '~/trpc/server'
 import { ArticleForm } from '../../_components/article-form'
 

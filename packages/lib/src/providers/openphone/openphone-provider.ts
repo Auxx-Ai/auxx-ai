@@ -6,10 +6,8 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import {
   EmailLabel, // Keep for MessageData structure
-  IntegrationType,
   type MessageData,
   MessageStorageService,
-  MessageType,
 } from '../../email/email-storage' // Adjust path
 import type {
   IntegrationProvider,

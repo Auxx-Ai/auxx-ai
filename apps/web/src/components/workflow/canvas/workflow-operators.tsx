@@ -16,7 +16,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
-import React, { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useReadOnly, useWorkflowOrganize } from '~/components/workflow/hooks'
 import { useCanvasStore } from '~/components/workflow/store/canvas-store'

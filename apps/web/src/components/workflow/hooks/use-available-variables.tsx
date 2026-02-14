@@ -2,7 +2,7 @@
 
 import { useStore } from '@xyflow/react'
 import { Globe, Repeat, Settings } from 'lucide-react'
-import React, { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import type { UnifiedVariable, VariableGroup } from '~/components/workflow/types/variable-types'
 import {
   getNodeIdFromVariableId,

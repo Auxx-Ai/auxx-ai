@@ -11,7 +11,6 @@ import {
 } from '@auxx/ui/components/dialog'
 import { Input } from '@auxx/ui/components/input'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Label } from '@auxx/ui/components/label'
 import PhoneInputWithFlag from '@auxx/ui/components/phone-input'
 import {
   Select,
@@ -21,7 +20,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { Textarea } from '@auxx/ui/components/textarea'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { toastError } from '@auxx/ui/components/toast'
 // ~/app/(protected)/app/contacts/_components/new-customer-form.tsx
 import { useState } from 'react'
 import { useContactMutations } from './use-contact-mutations'

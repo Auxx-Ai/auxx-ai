@@ -4,7 +4,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { cn } from '@auxx/ui/lib/utils'
 import { format } from 'date-fns'
 import { AlertCircle, Loader2 } from 'lucide-react'
-import React from 'react'
 import type { ChatMessageType } from './chat-interface'
 
 export const ChatMessageBubble = ({

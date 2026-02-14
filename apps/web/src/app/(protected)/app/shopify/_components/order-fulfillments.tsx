@@ -18,8 +18,7 @@ import {
   TableRow,
 } from '@auxx/ui/components/table'
 import { format } from 'date-fns'
-import { ExternalLink, Package, PackageCheck, Truck } from 'lucide-react'
-import React from 'react'
+import { ExternalLink, Package, PackageCheck } from 'lucide-react'
 import { useOrder } from '~/components/orders/order-context'
 
 // Helper function to format dates

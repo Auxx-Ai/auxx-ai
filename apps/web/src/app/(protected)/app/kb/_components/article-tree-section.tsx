@@ -7,7 +7,6 @@ import { cn } from '@auxx/ui/lib/utils'
 import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import ArticleSidebarItem from './article-sidebar-item'
-import { useKnowledgeBase } from './kb-context'
 import type { Article } from './kb-sidebar'
 
 // No need for useArticleMove here anymore

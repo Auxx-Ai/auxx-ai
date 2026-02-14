@@ -4,7 +4,6 @@ import { OrganizationRole as OrganizationRoleEnum } from '@auxx/database/enums'
 import type { OrganizationRole } from '@auxx/database/types'
 import { Button } from '@auxx/ui/components/button'
 import { CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import { Input } from '@auxx/ui/components/input'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
 import {
   Select,

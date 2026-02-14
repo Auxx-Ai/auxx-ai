@@ -1,5 +1,4 @@
 import { Ticket } from 'lucide-react'
-import React from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import TicketNumberingSettings from '../../_components/ticket-number-form'
 

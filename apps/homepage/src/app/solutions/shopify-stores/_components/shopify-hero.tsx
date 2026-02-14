@@ -1,7 +1,6 @@
 // apps/web/src/app/(website)/solutions/shopify-stores/_components/shopify-hero.tsx
 
 import Link from 'next/link'
-import React from 'react'
 import { config } from '@/lib/config'
 import { Button } from '~/components/ui/button'
 import { ShopifyHeroIllustration } from './shopify-hero-illustration'

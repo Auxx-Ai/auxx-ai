@@ -1,7 +1,6 @@
 // apps/web/src/app/(protected)/app/settings/aiModels/_components/model-toggle.tsx
 
 'use client'
-import { Label } from '@auxx/ui/components/label'
 import { Switch } from '@auxx/ui/components/switch'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { Loader2 } from 'lucide-react'

@@ -7,7 +7,6 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { getOrgProviderMap } from '../providers/integration-cache'
 import { getMessageTypeFromProvider } from '../providers/type-utils'
 import type {
-  ListMessageIdsOptions,
   ListMessagesByThreadResult,
   MessageMeta,
   SendStatus,

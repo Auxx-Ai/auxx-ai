@@ -334,7 +334,7 @@ const NumberInputField = React.forwardRef<HTMLInputElement, NumberInputFieldProp
         return
       }
       const numValue = parseFloat(inputValue)
-      if (!isNaN(numValue)) {
+      if (!Number.isNaN(numValue)) {
         const clampedValue = clampValue(numValue, min, max)
         setValue(clampedValue)
       }
@@ -425,7 +425,7 @@ const NumberInputField = React.forwardRef<HTMLInputElement, NumberInputFieldProp
         }
 
         const numValue = parseFloat(inputValue)
-        if (!isNaN(numValue)) {
+        if (!Number.isNaN(numValue)) {
           // Clamp the value
           const clampedValue = clampValue(numValue, min, max)
 

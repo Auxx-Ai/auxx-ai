@@ -1,10 +1,9 @@
 // apps/web/src/hooks/use-workflow-run.ts
 
 import { WorkflowEventType } from '@auxx/lib/workflow-engine/types'
-import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { useStoreApi } from '@xyflow/react'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRunEvents } from '~/components/workflow/hooks/run-hooks/use-run-events'
 import { type ExecutionEvent, useRunStore } from '~/components/workflow/store/run-store'
 import { type SSEConfig, useSSE } from '~/hooks/use-sse'

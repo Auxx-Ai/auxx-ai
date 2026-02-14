@@ -4,9 +4,8 @@
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { FileEdit } from 'lucide-react'
-import React, { useMemo, useState } from 'react'
-import { type StandaloneDraftMeta, useThreadStore } from '~/components/threads/store'
+import { useMemo, useState } from 'react'
+import { useThreadStore } from '~/components/threads/store'
 import { NewMessageDialog } from './email-editor/new-message-dialog'
 import { getIntegrationIcon } from './mail-status-config'
 

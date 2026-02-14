@@ -2,8 +2,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, count, desc, eq, gte, inArray, isNull, lt, or, type SQL } from 'drizzle-orm'
-import type { FolderTreeNode } from '../core/types'
+import { and, asc, count, eq, gte, inArray, isNull, lt, or, type SQL } from 'drizzle-orm'
 import { FileService } from './file-service'
 import { FolderService } from './folder-service'
 

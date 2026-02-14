@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/ta
 import { ArrowLeft } from 'lucide-react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 // ~/app/(protected)/app/settings/integrations/_components/integration-tabs.tsx
-import React, { useState } from 'react'
+import { useState } from 'react'
 import {
   getIntegrationStatus,
   IntegrationStatusIndicator,

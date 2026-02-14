@@ -16,7 +16,7 @@ import { Mail, MailIcon, Play, Plus, Waypoints } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useQueryState } from 'nuqs'
-import React, {
+import {
   useCallback,
   useDeferredValue, // Import for optimizing search input
   useMemo,
@@ -29,7 +29,6 @@ import {
   MailFilterProvider,
   type SortDirection,
   type SortOption,
-  type ViewMode,
 } from '~/components/mail/mail-filter-context'
 // import SearchBar from '~/components/mail/mail-searchbar'
 import { ThreadList } from '~/components/mail/mail-thread-list'
@@ -39,7 +38,7 @@ import { MailSearchBar } from '~/components/mail/searchbar'
 // import { MailFilterProvider } from '~/context/mail-filter-context' // Import the provider
 import { useSearchConditions } from '~/components/mail/searchbar/hooks/use-search-filters'
 import { ThreadDisplay } from '~/components/mail/thread-display'
-import { type ThreadsFilterInput, VALID_STATUS_SLUGS } from '~/components/mail/types'
+import type { ThreadsFilterInput } from '~/components/mail/types'
 import {
   KeyboardProvider,
   useSelectedThreadIds,
@@ -57,7 +56,6 @@ import {
   constructTabNavigationPath,
   deriveActiveStatusSlug,
   parseMailboxContext,
-  toStatusSlug,
 } from '../_utils/mail-utils'
 import {
   getBreadcrumbTitleForContext,
@@ -427,67 +425,63 @@ function MailboxInner({
             {mode === 'actions' ? (
               // Actions mode: Show proposed actions view
               <div className='h-full flex-1 bg-secondary dark:bg-primary-100'></div>
-            ) : (
-              // Mail mode: Show regular mail interface
-              <>
-                {isSmallScreen ? (
-                  // Mobile: Single panel view based on URL state
-                  <div className='h-full flex-1 bg-secondary dark:bg-primary-100'>
-                    {selectedThreadId ? (
-                      // Detail view: Show ThreadDisplay with back button
-                      <div className='h-full flex flex-col'>
-                        <MobileThreadHeader onBack={handleBackToList} />
-                        <div className='flex-1 overflow-hidden'>
-                          <ThreadDisplay />
-                        </div>
-                      </div>
-                    ) : (
-                      // List view: Show ThreadList
-                      <div className='h-full overflow-hidden'>
-                        <ThreadList
-                          filter={threadFilterForHook}
-                          basePath={basePathForList}
-                          selectedThreadId={selectedThreadId}
-                          onLoadingChange={setIsListLoading}
-                        />
-                      </div>
-                    )}
+            ) : // Mail mode: Show regular mail interface
+            isSmallScreen ? (
+              // Mobile: Single panel view based on URL state
+              <div className='h-full flex-1 bg-secondary dark:bg-primary-100'>
+                {selectedThreadId ? (
+                  // Detail view: Show ThreadDisplay with back button
+                  <div className='h-full flex flex-col'>
+                    <MobileThreadHeader onBack={handleBackToList} />
+                    <div className='flex-1 overflow-hidden'>
+                      <ThreadDisplay />
+                    </div>
                   </div>
                 ) : (
-                  // Desktop: Keep existing ResizablePanelGroup
-                  <ResizablePanelGroup
-                    direction='horizontal'
-                    // Ensure the group fills the available height and prevents internal overflow issues
-                    className='h-full  flex-1 grow overflow-hidden bg-secondary dark:bg-primary-100'>
-                    {/* Left Panel: Contains Tabs (if applicable), Search, and ThreadList */}
-                    <ResizablePanel
-                      defaultSize={defaultLayout[0]}
-                      // minSize={20} // Minimum width for the list panel
-                      // maxSize={40} // Maximum width for the list panel
-                      collapsible={true}
-                      className='flex flex-col overflow-y-hidden! border-none'>
-                      <div className='flex flex-1 flex-col items-stretch h-full'>
-                        <div className=' overflow-hidden flex-1 min-h-0'>
-                          <ThreadList
-                            filter={threadFilterForHook} // Filter uses deferred search query
-                            basePath={basePathForList}
-                            selectedThreadId={selectedThreadId}
-                            // Callback to receive loading state changes from ThreadList
-                            onLoadingChange={setIsListLoading}
-                          />
-                        </div>
-                      </div>
-                    </ResizablePanel>
-
-                    <ResizableHandle withHandle />
-
-                    {/* Right Panel: Displays the selected thread details */}
-                    <ResizablePanel defaultSize={defaultLayout[1]} minSize={30} collapsible>
-                      <ThreadDisplay />
-                    </ResizablePanel>
-                  </ResizablePanelGroup>
+                  // List view: Show ThreadList
+                  <div className='h-full overflow-hidden'>
+                    <ThreadList
+                      filter={threadFilterForHook}
+                      basePath={basePathForList}
+                      selectedThreadId={selectedThreadId}
+                      onLoadingChange={setIsListLoading}
+                    />
+                  </div>
                 )}
-              </>
+              </div>
+            ) : (
+              // Desktop: Keep existing ResizablePanelGroup
+              <ResizablePanelGroup
+                direction='horizontal'
+                // Ensure the group fills the available height and prevents internal overflow issues
+                className='h-full  flex-1 grow overflow-hidden bg-secondary dark:bg-primary-100'>
+                {/* Left Panel: Contains Tabs (if applicable), Search, and ThreadList */}
+                <ResizablePanel
+                  defaultSize={defaultLayout[0]}
+                  // minSize={20} // Minimum width for the list panel
+                  // maxSize={40} // Maximum width for the list panel
+                  collapsible={true}
+                  className='flex flex-col overflow-y-hidden! border-none'>
+                  <div className='flex flex-1 flex-col items-stretch h-full'>
+                    <div className=' overflow-hidden flex-1 min-h-0'>
+                      <ThreadList
+                        filter={threadFilterForHook} // Filter uses deferred search query
+                        basePath={basePathForList}
+                        selectedThreadId={selectedThreadId}
+                        // Callback to receive loading state changes from ThreadList
+                        onLoadingChange={setIsListLoading}
+                      />
+                    </div>
+                  </div>
+                </ResizablePanel>
+
+                <ResizableHandle withHandle />
+
+                {/* Right Panel: Displays the selected thread details */}
+                <ResizablePanel defaultSize={defaultLayout[1]} minSize={30} collapsible>
+                  <ThreadDisplay />
+                </ResizablePanel>
+              </ResizablePanelGroup>
             )}
           </MainPageContent>
         </MainPage>

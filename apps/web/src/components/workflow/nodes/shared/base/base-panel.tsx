@@ -23,7 +23,6 @@ import {
   MoreHorizontal,
   Pin,
   PinOff,
-  Play,
   Power,
   PowerOff,
   RefreshCw,

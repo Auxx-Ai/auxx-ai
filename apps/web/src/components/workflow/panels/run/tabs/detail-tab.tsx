@@ -2,7 +2,6 @@
 
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Timestamp } from '@auxx/ui/components/timestamp'
-import React from 'react'
 import { useRunStore } from '~/components/workflow/store/run-store'
 
 /**

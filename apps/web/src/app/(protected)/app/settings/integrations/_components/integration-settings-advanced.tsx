@@ -3,7 +3,7 @@ import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { MailPlus, UserCheck, Users, UserX } from 'lucide-react'
 // ~/app/(protected)/app/settings/integrations/_components/integration-settings-advanced.tsx
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useIntegration } from '~/hooks/use-integration'
 
 interface IntegrationSettingsAdvancedProps {

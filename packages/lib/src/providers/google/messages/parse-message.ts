@@ -85,7 +85,7 @@ export function convertMessagesToMessageData(
         if (dateHeader) {
           try {
             const parsedDate = new Date(dateHeader)
-            if (!isNaN(parsedDate.getTime())) {
+            if (!Number.isNaN(parsedDate.getTime())) {
               sentAt = parsedDate
             }
           } catch (e) {
@@ -169,7 +169,7 @@ function determineIsInbound(message: ParsedGmailMessage, userEmails: string[]): 
   }
 
   // Check if from address matches any user email
-  if (message.headers && message.headers['from']) {
+  if (message.headers?.['from']) {
     const fromEmail = extractEmailAddress(message.headers['from'])
     if (fromEmail && isUserEmail(fromEmail, userEmails)) {
       return false

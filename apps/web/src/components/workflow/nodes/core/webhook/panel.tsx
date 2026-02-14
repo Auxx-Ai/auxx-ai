@@ -3,7 +3,6 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
 import {
   InputGroup,
   InputGroupAddon,

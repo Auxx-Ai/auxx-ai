@@ -267,7 +267,7 @@ export function useThreadMutation() {
       saveSnapshot()
       if (currentUserId) {
         const context = buildThreadContext(threadId)
-        if (context && context.isUnread && context.status === 'OPEN') {
+        if (context?.isUnread && context.status === 'OPEN') {
           const countUpdates: CountUpdates = { inbox: 0, sharedInboxes: {} }
           if (context.assigneeId === currentUserId) {
             countUpdates.inbox = -1

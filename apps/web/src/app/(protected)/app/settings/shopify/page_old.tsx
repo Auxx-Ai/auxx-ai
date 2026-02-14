@@ -9,7 +9,6 @@ import {
 } from '@auxx/ui/components/table'
 import { differenceInSeconds, format } from 'date-fns'
 import { headers } from 'next/headers'
-import React from 'react'
 import { auth } from '~/auth/server'
 import SettingsPage from '~/components/global/settings-page'
 import { api } from '~/trpc/server'

@@ -2,7 +2,7 @@
 import { OrganizationRole as OrganizationRoleEnum } from '@auxx/database/enums'
 import type { OrganizationRole } from '@auxx/database/types'
 import { FeatureKey } from '@auxx/lib/types'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -40,7 +40,6 @@ import {
   Trash2,
   UserCircle2,
   Users,
-  X,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 // src/app/(auth)/app/settings/members/_components/member-list.tsx

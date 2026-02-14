@@ -44,7 +44,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { GripVertical, PlusCircle, Trash2 } from 'lucide-react'
-import React, { useEffect } from 'react'
+import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { api, type RouterOutputs } from '~/trpc/react'

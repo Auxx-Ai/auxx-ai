@@ -3,7 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/ca
 import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { format } from 'date-fns'
-import React from 'react'
 import { useOrder } from '~/components/orders/order-context'
 import { formatMoney } from '~/utils/strings'
 

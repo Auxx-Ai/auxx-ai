@@ -16,7 +16,7 @@ export function resolveInteger(rawValue: string, _config: ResolutionConfig): Res
   const cleaned = trimmed.replace(/,/g, '')
   const parsed = parseInt(cleaned, 10)
 
-  if (isNaN(parsed)) {
+  if (Number.isNaN(parsed)) {
     return { type: 'error', error: `Invalid integer: ${rawValue}` }
   }
 
@@ -44,7 +44,7 @@ export function resolveDecimal(rawValue: string, config: ResolutionConfig): Reso
 
   const parsed = parseFloat(cleaned)
 
-  if (isNaN(parsed)) {
+  if (Number.isNaN(parsed)) {
     return { type: 'error', error: `Invalid number: ${rawValue}` }
   }
 

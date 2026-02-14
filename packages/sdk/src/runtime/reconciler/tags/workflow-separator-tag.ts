@@ -7,10 +7,6 @@ import { BaseTag } from './base-tag.js'
  * Visual divider for separating sections.
  */
 export class WorkflowSeparatorTag extends BaseTag {
-  constructor(props: Record<string, any>) {
-    super(props)
-  }
-
   getTagName(): string {
     return 'div'
   }

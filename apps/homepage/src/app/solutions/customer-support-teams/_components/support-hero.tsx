@@ -1,7 +1,6 @@
 // apps/web/src/app/(website)/solutions/customer-support-teams/_components/support-hero.tsx
 
 import Link from 'next/link'
-import React from 'react'
 import { Button } from '~/components/ui/button'
 import { SupportHeroIllustration } from './support-hero-illustration'
 

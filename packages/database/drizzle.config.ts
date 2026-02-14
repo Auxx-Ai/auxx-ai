@@ -1,5 +1,5 @@
 // packages/database/drizzle.config.ts
-import { type Config, defineConfig } from 'drizzle-kit'
+import { defineConfig } from 'drizzle-kit'
 
 import 'dotenv/config'
 

@@ -5,10 +5,8 @@ import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent } from '@auxx/ui/components/card'
-import { Input } from '@auxx/ui/components/input'
-import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
-import { AlertTriangle, CheckCircle, Key, Plus, Search } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Key, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { getCredentialType } from './credential-registry'
 import { useCredentials } from './credentials-provider'
@@ -122,12 +120,10 @@ export function CredentialSelector({
 
       {/* Create new credential option */}
       {!hideCreateOption && (
-        <>
-          <Button variant='default' size='sm' onClick={onCreateNew} className='justify-start'>
-            <Plus />
-            Create New Credential
-          </Button>
-        </>
+        <Button variant='default' size='sm' onClick={onCreateNew} className='justify-start'>
+          <Plus />
+          Create New Credential
+        </Button>
       )}
 
       {/* No results */}

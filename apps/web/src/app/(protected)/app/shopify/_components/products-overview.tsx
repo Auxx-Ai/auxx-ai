@@ -6,11 +6,9 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import React from 'react'
 import { DataTable } from '~/components/data-table/data-table'
 import useProducts from '~/hooks/use-products'
 import { columns } from './products-columns'
-import { Product } from './schema'
 import { SyncShopifyButton } from './sync-button'
 
 export function ProductsOverview() {

@@ -1,7 +1,7 @@
 // packages/lib/src/ai/providers/google/google-embedding-client.ts
 
 import { type GoogleGenerativeAI, TaskType } from '@google/generative-ai'
-import { createScopedLogger, type Logger } from '../../../logger'
+import type { Logger } from '../../../logger'
 import { TextEmbeddingClient } from '../../clients/base/text-embedding-client'
 import type {
   BatchEmbeddingParams,

@@ -1,5 +1,5 @@
 'use client'
-import { ArrowRight, Bot, CheckCircle2, TrendingUp } from 'lucide-react'
+import { ArrowRight, Bot, TrendingUp } from 'lucide-react'
 import { motion } from 'motion/react'
 import { Badge } from '~/components/ui/badge'
 import { cn } from '~/lib/utils'

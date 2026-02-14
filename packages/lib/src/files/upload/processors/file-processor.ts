@@ -1,10 +1,10 @@
 // packages/lib/src/files/upload/processors/file-processor.ts
 
-import type { AssetKind, CreateFileRequest } from '../../core/types'
+import type { CreateFileRequest } from '../../core/types'
 import type { ProcessorConfigResult, UploadInitConfig } from '../init-types'
 import type { PresignedUploadSession } from '../session-types'
 import { BaseProcessor } from './base-processor'
-import type { CreateSessionRequest, ProcessorMetadata, ProcessorResult } from './types'
+import type { ProcessorMetadata, ProcessorResult } from './types'
 
 /**
  * Generic file processor for user files (no attachment needed)

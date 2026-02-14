@@ -6,7 +6,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { Ellipsis, Loader2, Mail, Plus, Trash2, Upload, X } from 'lucide-react'
+import { Loader2, Mail, Plus, Trash2, Upload, X } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
@@ -38,7 +38,6 @@ import { MessageFile } from './message-file'
 import PrevMessage from './prev-message'
 import { RecipientInput } from './recipient-input'
 import type {
-  DraftPayload,
   FileAttachment,
   ParticipantInputData,
   RecipientState,

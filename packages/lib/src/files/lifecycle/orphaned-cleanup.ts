@@ -3,9 +3,7 @@
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { createFileService } from '../core/file-service'
-import { createMediaAssetService } from '../core/media-asset-service'
-import { cleanupOrphanedAttachments, deleteExpiredFiles, deleteFilesByIds } from './cleanup-service'
+import { deleteExpiredFiles, deleteFilesByIds } from './cleanup-service'
 import type { OrphanedFileCleanupJobData, OrphanedFileCleanupResult } from './types'
 
 // Scoped logger used across orphaned file cleanup routines

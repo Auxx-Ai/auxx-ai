@@ -4,7 +4,6 @@
 import { database, schema } from '@auxx/database'
 import { seed } from 'drizzle-seed'
 import { ScenarioBuilder } from '../src/scenarios/scenario-builder'
-import type { SeedingScenarioName } from '../src/types'
 
 /**
  * testRelationalSeeding demonstrates the multi-phase relational seeding approach.

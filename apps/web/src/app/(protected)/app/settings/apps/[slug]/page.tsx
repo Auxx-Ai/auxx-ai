@@ -1,5 +1,4 @@
 import { Globe } from 'lucide-react'
-import React from 'react'
 import AppAbout from '~/components/apps/app-about'
 import AppInstallButton from '~/components/apps/app-install-button'
 import SettingsPage from '~/components/global/settings-page'

@@ -1,7 +1,7 @@
 // apps/web/src/components/merge/merge-item-card.tsx
 'use client'
 
-import { isCustomResource, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -63,7 +63,7 @@ export function MergeItemCard({ recordId, actions, className }: MergeItemCardPro
       {/* Name and secondary */}
       <div className='flex-1 min-w-0'>
         <span className='text-sm font-medium truncate'>{record?.displayName ?? 'Untitled'}</span>
-        {record && record.secondaryDisplayValue ? (
+        {record?.secondaryDisplayValue ? (
           <span className='text-xs text-muted-foreground truncate'>
             {record.secondaryDisplayValue}
           </span>

@@ -10,5 +10,5 @@ export async function isShopifyConnected(organizationId: string) {
 export const extractShopifyId = (gid: string | null | number): number | null => {
   if (!gid || typeof gid === 'number') return null
   // Split the string by "/" and return the last segment
-  return parseInt(gid.split('/').pop())
+  return parseInt(gid.split('/').pop(), 10)
 }

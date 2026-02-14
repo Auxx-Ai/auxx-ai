@@ -1,13 +1,7 @@
 // apps/web/src/app/admin/_components/app-sidebar.tsx
 'use client'
 
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarRail,
-} from '@auxx/ui/components/sidebar'
+import { Sidebar, SidebarContent, SidebarHeader, SidebarRail } from '@auxx/ui/components/sidebar'
 import type * as React from 'react'
 import { NavUser } from '~/components/global/sidebar/nav-user'
 import { AdminNavMain } from './admin-nav-main'

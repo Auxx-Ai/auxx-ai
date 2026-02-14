@@ -154,7 +154,7 @@ export class ModelConfigService {
           const numValue = Number(value)
 
           // Ensure it's a valid number
-          if (isNaN(numValue)) {
+          if (Number.isNaN(numValue)) {
             validated[rule.name] = rule.default || (rule.min ?? 0)
             console.warn(
               `Invalid number for "${rule.name}". Using default: ${validated[rule.name]}`

@@ -9,7 +9,7 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { Key, Settings, Workflow } from 'lucide-react'
+import { Key, Workflow } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { CredentialsProvider } from '~/components/workflow/credentials/credentials-provider'
 import { CreateWorkflowButton } from './_components/buttons/create-workflow-button'

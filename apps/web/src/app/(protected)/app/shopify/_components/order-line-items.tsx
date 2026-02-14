@@ -12,7 +12,6 @@ import {
 } from '@auxx/ui/components/table'
 import { AlertCircle, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
-import React from 'react'
 import { useOrder } from '~/components/orders/order-context'
 import { formatMoney } from '~/utils/strings'
 
@@ -126,30 +125,28 @@ export default function OrderLineItems({ order: orderProp }: { order?: any } = {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {order.lineItems.map(
-                  (item: any) =>
-                    item.missingItems &&
-                    item.missingItems.map((missingItem: any) => (
-                      <TableRow key={missingItem.id}>
-                        <TableCell className='font-medium'>{item.title}</TableCell>
-                        <TableCell className='text-center'>{missingItem.quantity}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              missingItem.status === 'APPROVED'
-                                ? 'default'
-                                : missingItem.status === 'SHIPPED'
-                                  ? 'outline'
-                                  : missingItem.status === 'REJECTED'
-                                    ? 'destructive'
-                                    : 'secondary'
-                            }>
-                            {missingItem.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{missingItem.reason || 'No reason provided'}</TableCell>
-                      </TableRow>
-                    ))
+                {order.lineItems.map((item: any) =>
+                  item.missingItems?.map((missingItem: any) => (
+                    <TableRow key={missingItem.id}>
+                      <TableCell className='font-medium'>{item.title}</TableCell>
+                      <TableCell className='text-center'>{missingItem.quantity}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            missingItem.status === 'APPROVED'
+                              ? 'default'
+                              : missingItem.status === 'SHIPPED'
+                                ? 'outline'
+                                : missingItem.status === 'REJECTED'
+                                  ? 'destructive'
+                                  : 'secondary'
+                          }>
+                          {missingItem.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{missingItem.reason || 'No reason provided'}</TableCell>
+                    </TableRow>
+                  ))
                 )}
               </TableBody>
             </Table>

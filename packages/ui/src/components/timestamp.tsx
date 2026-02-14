@@ -52,7 +52,7 @@ export function Timestamp({
   const parsedDate = React.useMemo(() => {
     try {
       const dateObj = new Date(date)
-      if (isNaN(dateObj.getTime())) {
+      if (Number.isNaN(dateObj.getTime())) {
         return null
       }
       return dateObj

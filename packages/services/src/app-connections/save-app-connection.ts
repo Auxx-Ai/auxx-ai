@@ -2,7 +2,7 @@
 
 import { CredentialService } from '@auxx/credentials'
 import { database, schema } from '@auxx/database'
-import { and, eq, isNull } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { triggerAppEvent } from '../app-events'
 import { fromDatabase } from '../shared/utils'

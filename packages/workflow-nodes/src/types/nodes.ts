@@ -213,6 +213,5 @@ export interface IRequestOptions {
   json?: boolean
   encoding?: string | null
 }
-export type INodeType = {}
 
 export type IHttpRequestMethods = 'DELETE' | 'GET' | 'HEAD' | 'PATCH' | 'POST' | 'PUT'

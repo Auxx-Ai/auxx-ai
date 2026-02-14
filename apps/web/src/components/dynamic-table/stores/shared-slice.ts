@@ -50,7 +50,7 @@ export const createSharedSlice: SliceCreator<SharedSlice> = (set, get) => ({
       if (idx !== -1) {
         set((s) => {
           const tableViews = s.viewsByTableId[tableId]
-          if (tableViews && tableViews[idx]) {
+          if (tableViews?.[idx]) {
             tableViews[idx] = { ...tableViews[idx], config: savedConfig }
           }
         })

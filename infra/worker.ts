@@ -1,7 +1,7 @@
 // infra/worker.ts
 
 import { rds, redis } from './db'
-import { cluster, vpc } from './router-vpc'
+import { cluster } from './router-vpc'
 import { getAllSecretsForLinking, getSelectedEnvVars } from './secrets'
 import { privateBucket, publicBucket } from './storage'
 

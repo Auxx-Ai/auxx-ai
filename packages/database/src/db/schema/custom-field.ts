@@ -7,7 +7,6 @@ import {
   boolean,
   contactFieldType,
   index,
-  integer,
   jsonb,
   pgTable,
   text,

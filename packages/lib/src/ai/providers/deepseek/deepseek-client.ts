@@ -3,7 +3,6 @@
 import type { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
 import { ProviderClient } from '../base/provider-client'
 import {
-  ConnectionTestError,
   type ConnectionTestResult,
   CredentialValidationError,
   type ValidationResult,

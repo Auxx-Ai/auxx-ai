@@ -20,8 +20,8 @@ import {
 } from '@auxx/ui/components/select'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast' // Adjust path
-import { AudioLines, Leaf, Plus, X } from 'lucide-react'
-import React, { type MouseEvent, useEffect, useId, useState } from 'react' // Added MouseEvent
+import { Plus, X } from 'lucide-react'
+import { type MouseEvent, useEffect, useId, useState } from 'react' // Added MouseEvent
 import { EditorToolbar } from '~/components/editor/editor-button' // Adjust path
 import { EditorProvider, useEditorContext } from '~/components/editor/editor-context' // Adjust path
 

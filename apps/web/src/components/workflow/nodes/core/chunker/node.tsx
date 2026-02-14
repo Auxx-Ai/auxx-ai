@@ -2,7 +2,6 @@
 
 'use client'
 
-import { Scissors } from 'lucide-react'
 import { memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'

@@ -1,19 +1,13 @@
 // apps/web/src/app/(website)/platform/integration/_components/integrations-illustration.tsx
 import {
   ClaudeAI,
-  Cloudflare,
   Facebook,
   Gemini,
   Gmail,
   Instagram,
-  Linear,
-  MediaWiki,
   OpenAI,
   Outlook,
-  Replit,
   Shopify,
-  Vercel,
-  VSCodium,
 } from '~/components/logos'
 
 export const IntegrationsIllustration = () => {

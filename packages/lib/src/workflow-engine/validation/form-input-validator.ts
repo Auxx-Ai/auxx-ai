@@ -128,7 +128,7 @@ export function validateFormInputs(graph: any, inputs: Record<string, any>): Val
         break
 
       case BaseType.NUMBER:
-        if (isNaN(Number(value))) {
+        if (Number.isNaN(Number(value))) {
           errors.push({
             nodeId: config.nodeId,
             field: config.label,

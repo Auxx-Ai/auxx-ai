@@ -97,7 +97,7 @@ export function SnippetFolders({ selectedFolderId, onSelectFolder }: SnippetFold
     if (selectedFolderId && folders) {
       const folder = folders.find((f) => f.id === selectedFolderId)
 
-      if (folder && folder.parentId) {
+      if (folder?.parentId) {
         const newExpandedFolders = new Set(expandedFolders)
 
         // Traverse up the folder hierarchy and expand all parent folders

@@ -1,16 +1,12 @@
 // packages/lib/src/ai/clients/base/speech2text-client.ts
 
 import { BaseSpecializedClient } from './base-specialized-client'
-import type { ClientConfig, TranscribeParams, TranscribeResponse } from './types'
+import type { TranscribeParams, TranscribeResponse } from './types'
 
 /**
  * Abstract base class for speech-to-text clients
  */
 export abstract class Speech2TextClient extends BaseSpecializedClient {
-  constructor(config: ClientConfig, clientName: string, logger?: any) {
-    super(config, clientName, logger)
-  }
-
   // ===== ABSTRACT METHODS =====
 
   /**

@@ -28,12 +28,7 @@ function DatasetsPageContent() {
 
   return (
     <MainPage>
-      <MainPageHeader
-        action={
-          <>
-            <CreateDatasetButton />
-          </>
-        }>
+      <MainPageHeader action=<CreateDatasetButton />>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Datasets' href='/app/datasets' />
           <MainPageBreadcrumbItem title='Overview' last />

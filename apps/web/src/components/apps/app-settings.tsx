@@ -2,7 +2,6 @@
 'use client'
 
 import type { SettingsSchemaField } from '@auxx/services/app-settings/client'
-import { Card } from '@auxx/ui/components/card'
 import {
   Empty,
   EmptyDescription,

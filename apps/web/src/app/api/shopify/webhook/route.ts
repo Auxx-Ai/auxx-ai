@@ -1,5 +1,4 @@
 import { env } from '@auxx/config/server'
-import { database as db } from '@auxx/database'
 import {
   ShopifyIntegrationModel,
   SubscriptionModel,

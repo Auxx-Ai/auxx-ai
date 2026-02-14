@@ -11,8 +11,6 @@ import {
   Table,
   Text,
   TextQuote,
-  Twitter,
-  Youtube,
 } from 'lucide-react'
 // import { Command, createSuggestionItems, renderItems } from 'novel'
 // import { uploadFn } from './image-upload'

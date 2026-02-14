@@ -14,15 +14,7 @@ import {
 } from '@auxx/ui/components/select'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import {
-  Command,
-  CornerDownLeft,
-  FileSearch,
-  Loader2,
-  Search,
-  TestTubeDiagonal,
-  XIcon,
-} from 'lucide-react'
+import { Command, CornerDownLeft, FileSearch, Loader2, TestTubeDiagonal, XIcon } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { api } from '~/trpc/react'

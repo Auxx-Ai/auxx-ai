@@ -1,6 +1,5 @@
 // apps/web/src/hooks/use-entity-sidebar.tsx
 
-import type { CustomResource } from '@auxx/lib/resources/client'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useResources } from '~/components/resources/hooks'
 import { useSettings } from '~/hooks/use-settings'

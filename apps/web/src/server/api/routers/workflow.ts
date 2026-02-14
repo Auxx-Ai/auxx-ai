@@ -18,7 +18,6 @@ import {
   WorkflowExecutionService,
   WorkflowService,
   WorkflowStatsService,
-  WorkflowTriggerType,
   WorkflowVersionService,
 } from '@auxx/lib/workflows'
 import { getTemplateById } from '@auxx/services/workflow-templates'

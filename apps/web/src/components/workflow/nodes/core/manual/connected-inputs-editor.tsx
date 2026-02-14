@@ -27,7 +27,6 @@ import { useAvailableVariables, useNodesInteractions } from '~/components/workfl
 import { useNodeDataUpdate } from '~/components/workflow/hooks/use-node-data-update'
 import { useReadOnly } from '~/components/workflow/hooks/use-read-only'
 import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registry'
-import type { VariableGroup } from '~/components/workflow/types/variable-types'
 import { useConfirm } from '~/hooks/use-confirm'
 import type { FormInputNodeData } from '../../inputs/form-input/types'
 import { ConnectedInputItem } from './connected-input-item'

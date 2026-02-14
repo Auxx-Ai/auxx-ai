@@ -6,8 +6,6 @@ import type { IntegrationProviderType } from '@auxx/database/types'
 import { createScopedLogger } from '../../logger'
 import {
   DEFAULT_RETRY_CONFIG,
-  ENHANCED_PROVIDER_LIMITS,
-  getContextLimits,
   getDefaultRateLimits,
   getMergedProviderLimits,
 } from './provider-configs'

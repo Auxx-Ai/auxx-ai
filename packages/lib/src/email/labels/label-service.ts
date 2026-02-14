@@ -1,7 +1,7 @@
 import { database as db, schema } from '@auxx/database'
 import { LabelType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { ReauthenticationRequiredError } from '../errors-handlers'
 import { LabelProviderFactory } from './label-provider-factory'
 import { LabelRepo } from './label-repo'

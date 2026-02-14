@@ -1,7 +1,7 @@
 // packages/lib/src/timeline/timeline-periods.ts
 
 import { isSameWeek } from '@auxx/utils/date'
-import type { GroupedTimelineEvent, SingleTimelineEvent, TimelineItem } from './types'
+import type { TimelineItem } from './types'
 
 /**
  * Period type for timeline grouping
