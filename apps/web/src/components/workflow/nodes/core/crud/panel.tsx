@@ -4,7 +4,6 @@
 
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import {
   Select,
   SelectContent,
@@ -15,6 +14,7 @@ import {
 import { produce } from 'immer'
 import type React from 'react'
 import { memo, useCallback, useMemo } from 'react'
+import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResource, useResourceFields } from '~/components/resources'
 import { useNodeCrud } from '~/components/workflow/hooks'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
@@ -60,10 +60,10 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
     useCrudValidation(nodeData)
 
   // Use dynamic resource registry hooks
-  const { resources, getResourceById } = useWorkflowResources()
+  const { resources } = useWorkflowResources()
+
   const { resource } = useResource(nodeData.resourceType)
-  console.log('Resource in CRUD panel:', resource)
-  // const resource = getResourceById(nodeData.resourceType)
+
   const { creatableFields, updatableFields } = useResourceFields(nodeData.resourceType ?? null)
 
   // Generate combined field list based on mode
@@ -81,17 +81,6 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
         return []
     }
   }, [resource, nodeData.mode, creatableFields, updatableFields])
-
-  // Resource options for selector
-  const resourceOptions = useMemo(
-    () =>
-      resources.map((r) => ({
-        value: r.id,
-        label: r.label,
-        icon: r.icon,
-      })),
-    [resources]
-  )
 
   const handleResourceTypeChange = useCallback(
     (resourceType: string) => {
@@ -305,26 +294,12 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
                   )}
                 </div>
                 <div className='flex-1'>
-                  <Select value={nodeData.resourceType} onValueChange={handleResourceTypeChange}>
-                    <SelectTrigger variant='transparent' size='xs'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {resourceOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value} className='ps-1'>
-                          <div className='flex items-center'>
-                            <EntityIcon
-                              iconId={option.icon}
-                              variant='full'
-                              size='sm'
-                              className='mr-1'
-                            />
-                            {option.label}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <ResourcePicker
+                    value={nodeData.resourceType ? [nodeData.resourceType] : []}
+                    onChange={(selected) => handleResourceTypeChange(selected[0] ?? '')}
+                    triggerProps={{ variant: 'transparent', className: 'w-full h-6 pe-2' }}
+                    emptyLabel='Select resource...'
+                  />
                   {showValidation && getFieldErrorMessage('resourceType') && (
                     <ValidationMessage
                       type={hasFieldErrorOfType('resourceType', 'error') ? 'error' : 'warning'}

@@ -39,7 +39,6 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
   /** Mutation for auto-setting primaryDisplayField on first eligible field creation */
   const setPrimaryDisplayField = api.entityDefinition.update.useMutation({
     onSuccess: () => {
-      utils.resource.getAllResourceTypes.invalidate()
       utils.entityDefinition.getAll.invalidate()
       utils.entityDefinition.getById.invalidate()
     },

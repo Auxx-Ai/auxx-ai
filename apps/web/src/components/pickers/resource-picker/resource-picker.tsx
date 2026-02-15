@@ -2,79 +2,167 @@
 
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { ChevronDown } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { EntityIcon } from '@auxx/ui/components/icons'
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContentDialogAware,
+  PopoverTrigger,
+} from '@auxx/ui/components/popover'
+import { cn } from '@auxx/ui/lib/utils'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useResources } from '~/components/resources/hooks/use-resources'
+import { PickerTrigger } from '~/components/ui/picker-trigger'
 import { ResourcePickerContent } from './resource-picker-content'
 import type { ResourcePickerProps } from './types'
 
 /**
- * ResourcePicker - Standalone field picker with popover.
- * Allows selecting fields from a resource definition with relationship drill-down.
+ * ResourcePicker - A popover wrapper around ResourcePickerContent.
+ * Provides a complete dropdown experience for selecting resources.
+ *
+ * Features:
+ * - Custom trigger support via children
+ * - Default trigger showing selected resource icon + label
+ * - Controlled or uncontrolled open state
+ * - Auto-close on single select
  */
 export function ResourcePicker({
-  open: controlledOpen,
-  onOpenChange: controlledOnOpenChange,
-  trigger,
+  children,
+  open,
+  onOpenChange,
+  anchorRef,
+  emptyLabel = 'Select resource...',
   align = 'start',
-  width = 280,
-  entityDefinitionId,
-  fieldReferences,
-  excludeFields,
-  onSelect,
-  mode = 'single',
-  closeOnSelect = mode === 'single',
-  onCreateField,
-  searchPlaceholder,
+  side = 'bottom',
+  sideOffset = 5,
+  contentClassName,
+  triggerProps,
+  value,
+  onChange,
+  multi = false,
+  onSelectSingle,
+  disabled,
+  ...pickerProps
 }: ResourcePickerProps) {
-  // Support both controlled and uncontrolled modes
+  // Internal open state (for uncontrolled mode)
   const [internalOpen, setInternalOpen] = useState(false)
-  const isControlled = controlledOpen !== undefined
-  const open = isControlled ? controlledOpen : internalOpen
 
-  const handleOpenChange = useCallback(
-    (newOpen: boolean) => {
-      if (isControlled) {
-        controlledOnOpenChange?.(newOpen)
-      } else {
-        setInternalOpen(newOpen)
-      }
+  // Ref for content to focus input when using anchorRef
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  // Use controlled or uncontrolled state
+  const isOpen = open ?? internalOpen
+
+  // Get resources to resolve selected value for display
+  const { getResourceById } = useResources()
+
+  /**
+   * Handle open state changes
+   */
+  const handleOpenChange = (newOpen: boolean) => {
+    if (open === undefined) {
+      setInternalOpen(newOpen)
+    }
+    onOpenChange?.(newOpen)
+  }
+
+  /**
+   * Handle single select - close popover after selection
+   */
+  const handleSelectSingle = (id: string) => {
+    onSelectSingle?.(id)
+    handleOpenChange(false)
+  }
+
+  /**
+   * Clear all selections
+   */
+  const handleClearAll = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      onChange([])
     },
-    [isControlled, controlledOnOpenChange]
+    [onChange]
   )
 
-  const handleClose = useCallback(() => {
-    handleOpenChange(false)
-  }, [handleOpenChange])
+  // Sync internal state with controlled state
+  // biome-ignore lint/correctness/useExhaustiveDependencies: internalOpen is intentionally excluded to avoid infinite loop
+  useEffect(() => {
+    if (open !== undefined && open !== internalOpen) {
+      setInternalOpen(open)
+    }
+  }, [open])
 
-  // Default trigger
-  const defaultTrigger = (
-    <Button variant='outline' size='sm'>
-      Select field
-      <ChevronDown className='size-4 opacity-50' />
-    </Button>
+  const hasValue = value.length > 0
+
+  // Resolve the selected resource for display in the trigger
+  const selectedResource = hasValue ? getResourceById(value[0]) : undefined
+
+  // Custom trigger or default button using PickerTrigger
+  const triggerElement = children ? (
+    children
+  ) : (
+    <PickerTrigger
+      open={isOpen}
+      disabled={disabled}
+      variant={triggerProps?.variant ?? 'transparent'}
+      hasValue={hasValue}
+      placeholder={emptyLabel}
+      showClear={triggerProps?.showClear ?? false}
+      onClear={handleClearAll}
+      hideIcon={triggerProps?.hideIcon}
+      className={triggerProps?.className}>
+      {selectedResource && (
+        <div className='flex items-center gap-2 min-w-0'>
+          <EntityIcon
+            iconId={selectedResource.icon ?? 'circle'}
+            color={selectedResource.color ?? 'gray'}
+            size='sm'
+            inverse
+            className='inset-shadow-xs inset-shadow-black/20'
+          />
+          <span className='truncate text-sm'>{selectedResource.label}</span>
+        </div>
+      )}
+    </PickerTrigger>
   )
 
   return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>{trigger ?? defaultTrigger}</PopoverTrigger>
-      <PopoverContent
-        className='p-0'
+    <Popover open={isOpen} onOpenChange={handleOpenChange}>
+      {anchorRef ? (
+        <PopoverAnchor virtualRef={anchorRef} />
+      ) : (
+        <PopoverTrigger asChild>{triggerElement}</PopoverTrigger>
+      )}
+      <PopoverContentDialogAware
+        ref={contentRef}
+        className={cn('w-72 p-0', contentClassName)}
         align={align}
-        style={{ width: typeof width === 'number' ? `${width}px` : width }}>
+        side={side}
+        sideOffset={sideOffset}
+        onOpenAutoFocus={(e) => {
+          // Prevent default focus behavior when using anchorRef, then focus the input manually
+          if (anchorRef) {
+            e.preventDefault()
+            requestAnimationFrame(() => {
+              const input = contentRef.current?.querySelector('input')
+              input?.focus()
+            })
+          }
+        }}
+        onFocusOutside={(e) => {
+          // Prevent closing on focus changes when using anchorRef
+          if (anchorRef) e.preventDefault()
+        }}>
         <ResourcePickerContent
-          entityDefinitionId={entityDefinitionId}
-          fieldReferences={fieldReferences}
-          excludeFields={excludeFields}
-          onSelect={onSelect}
-          mode={mode}
-          closeOnSelect={closeOnSelect}
-          onClose={handleClose}
-          onCreateField={onCreateField}
-          searchPlaceholder={searchPlaceholder}
+          value={value}
+          onChange={onChange}
+          multi={multi}
+          onSelectSingle={multi ? undefined : handleSelectSingle}
+          disabled={disabled}
+          {...pickerProps}
         />
-      </PopoverContent>
+      </PopoverContentDialogAware>
     </Popover>
   )
 }

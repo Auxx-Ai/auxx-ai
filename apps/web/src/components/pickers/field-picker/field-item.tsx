@@ -1,4 +1,4 @@
-// apps/web/src/components/pickers/resource-picker/field-item.tsx
+// apps/web/src/components/pickers/field-picker/field-item.tsx
 
 'use client'
 

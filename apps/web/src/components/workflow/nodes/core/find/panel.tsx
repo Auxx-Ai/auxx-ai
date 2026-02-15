@@ -3,7 +3,6 @@
 'use client'
 
 import { BaseType, getFieldOperators } from '@auxx/lib/workflow-engine/client'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import {
   Select,
   SelectContent,
@@ -16,6 +15,7 @@ import type React from 'react'
 import { memo, useCallback, useMemo } from 'react'
 import type { ConditionSystemConfig } from '~/components/conditions'
 import { ConditionContainer, ConditionProvider } from '~/components/conditions'
+import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResource, useResourceFields } from '~/components/resources'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { VAR_MODE } from '~/components/workflow/types'
@@ -75,12 +75,12 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
   )
 
   // Get resource and fields for current selection
-  const { resource } = useResource(nodeData.resourceType ?? null)
+  const { resource } = useResource(nodeData.resourceType)
   const {
     filterableFields,
     sortableFields,
     isLoading: isLoadingFields,
-  } = useResourceFields(nodeData.resourceType ?? null)
+  } = useResourceFields(nodeData.resourceType)
   // Group management hooks
   const groupHooks = useFindGroups(nodeData, setNodeData)
 
@@ -136,16 +136,6 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
       orderBy: undefined, // Clear sorting
     })
   }
-  const resourceOptions = useMemo(
-    () =>
-      resources.map((r) => ({
-        value: r.id,
-        label: r.label,
-        icon: r.icon,
-      })),
-    [resources]
-  )
-
   // Show loading state while fields are loading
   if (isLoadingFields && nodeData.resourceType) {
     return (
@@ -184,26 +174,12 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
                   </Select>
                 </div>
                 <div className='flex-1'>
-                  <Select value={nodeData.resourceType} onValueChange={handleResourceTypeChange}>
-                    <SelectTrigger variant='transparent' size='xs'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {resourceOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value} className='ps-1'>
-                          <div className='flex items-center'>
-                            <EntityIcon
-                              iconId={option.icon}
-                              variant='full'
-                              size='sm'
-                              className='mr-1'
-                            />
-                            {option.label}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <ResourcePicker
+                    value={nodeData.resourceType ? [nodeData.resourceType] : []}
+                    onChange={(selected) => handleResourceTypeChange(selected[0] ?? '')}
+                    triggerProps={{ variant: 'transparent', className: 'w-full h-6 pe-2' }}
+                    emptyLabel='Select resource...'
+                  />
                 </div>
               </div>
             </VarEditorField>

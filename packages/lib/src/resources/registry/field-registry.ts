@@ -19,7 +19,14 @@ import { USER_FIELDS } from './resources/user-fields'
  * - 'entity' is the generic custom entity marker
  * - 'contact', 'part', 'ticket' are now stored in EntityDefinition table with entityType field
  */
-export const EXCLUDED_RESOURCE_TYPES = ['entity', 'contact', 'part', 'ticket'] as const
+export const EXCLUDED_RESOURCE_TYPES = [
+  'entity',
+  'contact',
+  'part',
+  'ticket',
+  'signature',
+  'inbox',
+] as const
 
 /**
  * Resource Table Registry - Metadata about resource tables themselves
