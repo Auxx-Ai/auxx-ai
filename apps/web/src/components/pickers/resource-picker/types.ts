@@ -1,134 +1,81 @@
 // apps/web/src/components/pickers/resource-picker/types.ts
 
-import type { FieldType } from '@auxx/database/types'
-import type { ResourceField } from '@auxx/lib/resources/client'
-import type { FieldReference, ResourceFieldId } from '@auxx/types/field'
-import type { NavigationItem } from '@auxx/ui/components/command'
-import type React from 'react'
+import type { RefObject } from 'react'
+import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
 
 /**
- * Flexible exclude filter for fields.
- * - FieldType enum: excludes all fields of that type (e.g., FieldType.RELATIONSHIP)
- * - entityDefinitionId: excludes all fields from that entity
- * - ResourceFieldId: excludes specific field (format: "entityDefId:fieldId")
- */
-export type ExcludeFilter = FieldType | string
-
-/**
- * Props for ResourcePickerContent (inner content without popover)
+ * Props for ResourcePickerContent component
  */
 export interface ResourcePickerContentProps {
-  /** Entity definition ID to show fields for */
-  entityDefinitionId: string
+  /** Currently selected resource IDs (entityDefinitionId) */
+  value: string[]
 
-  /** Already selected field references */
-  fieldReferences?: FieldReference[]
+  /** Called when selection changes */
+  onChange: (selected: string[]) => void
 
-  /** Fields to exclude from display */
-  excludeFields?: ExcludeFilter[]
+  /** Multi-select mode (default: false — resource pickers are typically single-select) */
+  multi?: boolean
 
-  /** Callback when a field is selected */
-  onSelect: (fieldReference: FieldReference, field: ResourceField) => void
+  /** Called after selection in single-select mode */
+  onSelectSingle?: (resourceId: string) => void
 
-  /** Selection mode */
-  mode?: 'single' | 'multi'
+  /** Callback when arrow key capture state changes */
+  onCaptureChange?: (capturing: boolean) => void
 
-  /** Close popover after selection (typically true for single mode) */
-  closeOnSelect?: boolean
+  /** Disabled state */
+  disabled?: boolean
 
-  /** Callback to close the picker (used with closeOnSelect) */
-  onClose?: () => void
+  /** Search placeholder */
+  placeholder?: string
 
-  /** Optional: Show "Create field" button */
-  onCreateField?: () => void
+  /** Loading state */
+  isLoading?: boolean
 
-  /** Optional: Search placeholder */
-  searchPlaceholder?: string
+  /** Additional className */
+  className?: string
+
+  /** Resource IDs to exclude from the list */
+  excludeIds?: string[]
+
+  /** Filter: include system resources (default: true) */
+  includeSystem?: boolean
+
+  /** Filter: include custom resources (default: true) */
+  includeCustom?: boolean
 }
 
 /**
- * Props for ResourcePicker (with popover wrapper)
+ * Props for ResourcePicker component (popover wrapper)
  */
-export interface ResourcePickerProps extends Omit<ResourcePickerContentProps, 'onClose'> {
-  /** Controlled open state */
+export interface ResourcePickerProps
+  extends Omit<ResourcePickerContentProps, 'onCaptureChange' | 'className'> {
+  /** Custom trigger element (if not provided, uses default button) */
+  children?: React.ReactNode
+
+  /** Popover open state (controlled) */
   open?: boolean
 
   /** Callback when open state changes */
   onOpenChange?: (open: boolean) => void
 
-  /** Trigger element */
-  trigger?: React.ReactNode
+  /** External anchor ref - popover anchors to this element instead of trigger */
+  anchorRef?: RefObject<HTMLElement | null>
+
+  /** Default trigger: label when no items selected */
+  emptyLabel?: string
 
   /** Popover alignment */
   align?: 'start' | 'center' | 'end'
 
-  /** Popover width */
-  width?: number | string
-}
+  /** Popover side */
+  side?: 'top' | 'bottom' | 'left' | 'right'
 
-/**
- * Navigation item for CommandNavigation stack.
- * Tracks the path through relationships.
- */
-export interface ResourcePickerNavigationItem extends NavigationItem {
-  /** Unique navigation ID */
-  id: string
-  /** Display label (field label) */
-  label: string
-  /** The relationship field that was clicked */
-  resourceFieldId: ResourceFieldId
-  /** Target entity we navigated into */
-  targetEntityDefinitionId: string
-}
+  /** Popover side offset */
+  sideOffset?: number
 
-/**
- * External navigation interface for nested usage.
- * Allows ResourcePickerInnerContent to use parent's navigation context.
- */
-export interface ExternalNavigation {
-  /** Push a navigation item onto the stack */
-  push: (item: ResourcePickerNavigationItem) => void
-  /** Pop the current item from the stack */
-  pop: () => void
-  /** Current navigation stack */
-  stack: ResourcePickerNavigationItem[]
-  /** Current navigation item (top of stack) */
-  current: ResourcePickerNavigationItem | null
-  /** Whether at root of navigation */
-  isAtRoot: boolean
-}
+  /** Additional className for popover content */
+  contentClassName?: string
 
-/**
- * Props for ResourcePickerInnerContent (without CommandNavigation wrapper).
- * Used for nested usage within an existing CommandNavigation context.
- */
-export interface ResourcePickerInnerContentProps extends ResourcePickerContentProps {
-  /** External navigation control (for nested usage) */
-  externalNavigation?: ExternalNavigation
-
-  /** Additional content rendered at end of CommandList (e.g., Functions group for CALC) */
-  renderAdditionalContent?: (search: string) => React.ReactNode
-
-  /** Show breadcrumb in standalone mode (default: true) */
-  showBreadcrumb?: boolean
-}
-
-/**
- * Props for FieldItem component
- */
-export interface FieldItemProps {
-  /** The field to display */
-  field: ResourceField
-
-  /** Whether this field is selected */
-  isSelected?: boolean
-
-  /** Whether this is a relationship that can be drilled into */
-  canDrillDown?: boolean
-
-  /** Callback when field is selected */
-  onSelect: () => void
-
-  /** Callback when drilling into relationship */
-  onDrillDown?: () => void
+  /** Trigger customization options */
+  triggerProps?: PickerTriggerOptions
 }

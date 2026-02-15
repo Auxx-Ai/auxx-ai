@@ -229,14 +229,10 @@ export class ThreadMutationService {
       const tagsField = await this.db
         .select({ id: schema.CustomField.id })
         .from(schema.CustomField)
-        .innerJoin(
-          schema.EntityDefinition,
-          eq(schema.CustomField.entityDefinitionId, schema.EntityDefinition.id)
-        )
         .where(
           and(
             eq(schema.CustomField.systemAttribute, 'thread_tags'),
-            eq(schema.EntityDefinition.organizationId, this.organizationId)
+            eq(schema.CustomField.organizationId, this.organizationId)
           )
         )
         .limit(1)

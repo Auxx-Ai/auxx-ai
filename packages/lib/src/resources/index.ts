@@ -48,10 +48,10 @@ export type {
   CustomResource,
   CustomResourceId,
   DisplayFieldConfig,
+  EntityDefinitionType,
   FieldCapabilities,
   FieldValidation,
   JoinScopingConfig,
-  NewSystemEntityType,
   OrgScopingStrategy,
   Resource,
   ResourceDisplayConfig,
@@ -65,6 +65,7 @@ export type {
 // Registry exports
 // Resource types (system + custom)
 export {
+  ENTITY_DEFINITION_TYPES,
   getAllFields,
   getCreatableFields,
   getField,
@@ -76,6 +77,7 @@ export {
   getUpdatableFields,
   isCustomResource,
   isCustomResourceId,
+  isEntityDefinitionType,
   isFieldCreatable,
   isFieldFilterable,
   isFieldRequired,
@@ -85,7 +87,6 @@ export {
   isSystemResourceId,
   isValidOperatorForField,
   isValidTableId,
-  NEW_SYSTEM_ENTITY_TYPES,
   RESOURCE_DISPLAY_CONFIG,
   RESOURCE_FIELD_REGISTRY,
   RESOURCE_TABLE_MAP,

@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/ui/input-editor/get-input-component.ts
 
+import type { RelationshipType } from '@auxx/types/custom-field'
 import {
   AddressInput,
   ArrayInput,
@@ -8,6 +9,7 @@ import {
   DateTimeInput,
   EnumInput,
   FileInput,
+  MultiSelectInput,
   NumberInput,
   ObjectInput,
   PhoneInput,
@@ -21,7 +23,7 @@ import { BaseType } from '~/components/workflow/types'
  * Map BaseType to appropriate input component
  * Shared by both ConstantInput and VariableInput
  */
-export function getInputComponent(type: BaseType) {
+export function getInputComponent(type: BaseType, fieldOptions?: FieldOptions) {
   switch (type) {
     case BaseType.RELATION:
     case BaseType.REFERENCE:
@@ -37,6 +39,7 @@ export function getInputComponent(type: BaseType) {
     case BaseType.BOOLEAN:
       return BooleanInput
     case BaseType.ARRAY:
+      if (fieldOptions?.multiSelect) return MultiSelectInput
       return ArrayInput
     case BaseType.OBJECT:
     case BaseType.JSON:
@@ -87,6 +90,10 @@ export interface FieldOptions {
   }
   /** For RELATION/REFERENCE types - reference to field in registry */
   fieldReference?: string
+  /** For RELATION types - relationship cardinality (has_many, belongs_to, etc.) */
+  relationshipType?: RelationshipType
+  /** For MULTI_SELECT type — triggers MultiSelectInput instead of ArrayInput */
+  multiSelect?: boolean
 }
 
 /**
@@ -115,19 +122,22 @@ export function getSpecificPropsForType(
       return { options: fieldOptions?.enum || fieldOptions?.options }
 
     case BaseType.DATE:
-      return { type: 'date' }
+      return { type: 'date', triggerProps: { className: 'w-full ps-0' } }
 
     case BaseType.DATETIME:
-      return { type: 'datetime' }
+      return { type: 'datetime', triggerProps: { className: 'w-full ps-0' } }
 
     case BaseType.TIME:
-      return { type: 'time' }
+      return { type: 'time', triggerProps: { className: 'w-full ps-0' } }
 
     case BaseType.RELATION:
     case BaseType.REFERENCE:
-      // For RELATION types, pass fieldReference from fieldOptions
+      // For RELATION types, pass fieldReference and relationshipType from fieldOptions
+      // Hide clear button since VarEditor already provides its own
       return {
         fieldReference: fieldOptions?.fieldReference,
+        relationshipType: fieldOptions?.relationshipType,
+        showClear: false,
       }
 
     case BaseType.FILE:
@@ -147,6 +157,12 @@ export function getSpecificPropsForType(
     }
 
     case BaseType.ADDRESS:
+      return {}
+
+    case BaseType.ARRAY:
+      if (fieldOptions?.multiSelect) {
+        return { options: fieldOptions.enum || [] }
+      }
       return {}
 
     case BaseType.TAGS:

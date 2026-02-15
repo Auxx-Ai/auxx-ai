@@ -2,297 +2,197 @@
 
 'use client'
 
-import { FieldTypeValues } from '@auxx/database/enums'
-import type { FieldType } from '@auxx/database/types'
-import type { ResourceField } from '@auxx/lib/resources/client'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
-import type { FieldReference, ResourceFieldId } from '@auxx/types/field'
-import { isFieldPath, parseResourceFieldId, toFieldPath } from '@auxx/types/field'
 import {
   Command,
-  CommandBreadcrumb,
   CommandEmpty,
   CommandGroup,
-  CommandGroupLabel,
   CommandInput,
-  CommandItem,
   CommandList,
-  CommandNavigation,
   CommandSeparator,
-  useCommandNavigation,
 } from '@auxx/ui/components/command'
-import { EntityIcon } from '@auxx/ui/components/icons'
-import { Plus } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
-import { useResourceFields, useResourceProperty } from '~/components/resources'
-import { FieldItem } from './field-item'
-import type {
-  ExcludeFilter,
-  ResourcePickerContentProps,
-  ResourcePickerInnerContentProps,
-  ResourcePickerNavigationItem,
-} from './types'
+import { cn } from '@auxx/ui/lib/utils'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useResources } from '~/components/resources/hooks/use-resources'
+import { ResourceItem } from './resource-item'
+import type { ResourcePickerContentProps } from './types'
+
+/** Stable empty array to prevent re-renders */
+const EMPTY_EXCLUDE_IDS: string[] = []
 
 /**
- * Check if field should be excluded based on flexible excludeFields prop.
- * Supports: FieldType enum, entityDefinitionId, or ResourceFieldId
+ * ResourcePickerContent - Inner content for the resource picker.
+ * Renders a searchable list of resources grouped by System and Custom.
+ *
+ * Features:
+ * - Search filtering by resource label
+ * - System/Custom grouping with headers
+ * - Multi-select or single-select mode
+ * - Shows selected items at top, available items below
  */
-function shouldExcludeField(field: ResourceField, excludeFields?: ExcludeFilter[]): boolean {
-  if (!excludeFields?.length) return false
-
-  for (const filter of excludeFields) {
-    // Check if filter is a FieldType enum value
-    if (FieldTypeValues.includes(filter as FieldType)) {
-      if (field.fieldType === filter) return true
-      continue
-    }
-
-    // Check if filter is a ResourceFieldId (contains ":")
-    if (typeof filter === 'string' && filter.includes(':')) {
-      if (field.resourceFieldId === filter) return true
-      continue
-    }
-
-    // Otherwise treat as entityDefinitionId
-    if (field.resourceFieldId) {
-      const { entityDefinitionId } = parseResourceFieldId(field.resourceFieldId)
-      if (entityDefinitionId === filter) return true
-    }
-  }
-
-  return false
-}
-
-/**
- * Inner content component that can use either CommandNavigation context or external navigation.
- * When externalNavigation is provided, uses that instead of useCommandNavigation().
- * This allows nesting within an existing CommandNavigation without creating duplicate stacks.
- */
-export function ResourcePickerInnerContent({
-  entityDefinitionId,
-  fieldReferences = [],
-  excludeFields,
-  onSelect,
-  mode = 'single',
-  closeOnSelect = mode === 'single',
-  onClose,
-  onCreateField,
-  searchPlaceholder = 'Search fields...',
-  externalNavigation,
-  renderAdditionalContent,
-  showBreadcrumb = true,
-}: ResourcePickerInnerContentProps) {
+export function ResourcePickerContent({
+  value,
+  onChange,
+  multi = false,
+  onSelectSingle,
+  onCaptureChange,
+  disabled = false,
+  placeholder = 'Search resources...',
+  isLoading: externalLoading = false,
+  className,
+  excludeIds = EMPTY_EXCLUDE_IDS,
+  includeSystem = true,
+  includeCustom = true,
+}: ResourcePickerContentProps) {
   const [search, setSearch] = useState('')
 
-  // Use external navigation if provided, otherwise use CommandNavigation context
-  const contextNav = useCommandNavigation<ResourcePickerNavigationItem>()
-  const { stack, current, push, isAtRoot } = externalNavigation ?? contextNav
+  // Notify parent about capture state on mount/unmount
+  useEffect(() => {
+    onCaptureChange?.(true)
+    return () => onCaptureChange?.(false)
+  }, [onCaptureChange])
 
-  // Determine which entity to show fields for
-  const currentEntityDefinitionId = current?.targetEntityDefinitionId ?? entityDefinitionId
+  // Track initial selected IDs (snapshot at mount) - prevents layout shifts
+  const [initialSelectedIds] = useState<string[]>(() => value)
 
-  // Get fields for current entity
-  const { fields } = useResourceFields(currentEntityDefinitionId)
+  // Get resources from the store
+  const { resources, isLoading: isLoadingResources } = useResources()
 
-  // Get current entity's label and icon (for drilled-down view)
-  const entityProps = useResourceProperty(currentEntityDefinitionId, ['label', 'icon', 'color'])
+  /** Check if a resource ID is currently selected */
+  const isSelected = useCallback((id: string) => value.includes(id), [value])
 
-  // Filter fields (all fields together, not separated by type)
-  const filteredFields = useMemo(() => {
-    return fields.filter((field) => {
-      // Skip excluded fields
-      if (shouldExcludeField(field, excludeFields)) return false
+  /** Check if a resource ID was initially selected (for layout stability) */
+  const wasInitiallySelected = useCallback(
+    (id: string) => initialSelectedIds.includes(id),
+    [initialSelectedIds]
+  )
 
-      // Skip inactive fields
-      if (field.active === false) return false
-
-      // Apply search filter
-      if (search && !field.label.toLowerCase().includes(search.toLowerCase())) return false
-
+  // Filter resources by type inclusion and exclusions
+  const filteredResources = useMemo(() => {
+    return resources.filter((r) => {
+      if (excludeIds.includes(r.id)) return false
+      if (r.entityType && !includeSystem) return false
+      if (!r.entityType && !includeCustom) return false
       return true
     })
-  }, [fields, excludeFields, search])
+  }, [resources, excludeIds, includeSystem, includeCustom])
 
-  /**
-   * Check if a field is currently selected
-   */
-  const isFieldSelected = useCallback(
-    (field: ResourceField): boolean => {
-      if (!field.resourceFieldId) return false
+  // Initially selected items, filtered by search
+  const filteredSelectedItems = useMemo(() => {
+    const searchLower = search.toLowerCase()
+    return filteredResources.filter((r) => {
+      if (!wasInitiallySelected(r.id)) return false
+      if (search && !r.label.toLowerCase().includes(searchLower)) return false
+      return true
+    })
+  }, [filteredResources, search, wasInitiallySelected])
 
-      // Build the full path for this field
-      const pathIds = stack.map((item) => item.resourceFieldId)
-      pathIds.push(field.resourceFieldId)
+  // Available items grouped by type (excluding initially selected)
+  const groupedAvailable = useMemo(() => {
+    const searchLower = search.toLowerCase()
+    const available = filteredResources.filter((r) => {
+      if (wasInitiallySelected(r.id)) return false
+      if (search && !r.label.toLowerCase().includes(searchLower)) return false
+      return true
+    })
 
-      // Check if any fieldReference matches
-      return fieldReferences.some((ref) => {
-        if (isFieldPath(ref)) {
-          // Compare paths
-          if (ref.length !== pathIds.length) return false
-          return ref.every((id, i) => id === pathIds[i])
-        }
-        // Direct ResourceFieldId comparison (only at root)
-        return stack.length === 0 && ref === field.resourceFieldId
-      })
-    },
-    [fieldReferences, stack]
-  )
+    const system = available.filter((r) => !!r.entityType)
+    const custom = available.filter((r) => !r.entityType)
+    return { system, custom }
+  }, [filteredResources, search, wasInitiallySelected])
 
-  /**
-   * Handle field selection
-   */
-  const handleSelectField = useCallback(
-    (field: ResourceField) => {
-      if (!field.resourceFieldId) return
-
-      let fieldReference: FieldReference
-
-      if (stack.length === 0) {
-        // Root level: just ResourceFieldId
-        fieldReference = field.resourceFieldId
+  /** Toggle selection of a resource */
+  const handleToggle = useCallback(
+    (id: string) => {
+      if (multi) {
+        const exists = isSelected(id)
+        const newValue = exists ? value.filter((v) => v !== id) : [...value, id]
+        onChange(newValue)
       } else {
-        // Nested: build FieldPath from stack + current field
-        const pathIds: ResourceFieldId[] = stack.map((item) => item.resourceFieldId)
-        pathIds.push(field.resourceFieldId)
-        fieldReference = toFieldPath(pathIds)
-      }
-
-      onSelect(fieldReference, field)
-
-      if (closeOnSelect && onClose) {
-        onClose()
+        const exists = isSelected(id)
+        if (exists) {
+          onChange([])
+        } else {
+          onChange([id])
+          onSelectSingle?.(id)
+        }
       }
     },
-    [stack, onSelect, closeOnSelect, onClose]
+    [multi, value, onChange, isSelected, onSelectSingle]
   )
 
-  /**
-   * Handle drilling into a relationship
-   */
-  const handleDrillInto = useCallback(
-    (field: ResourceField) => {
-      const relatedEntityDefId = field.relationship
-        ? getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
-        : null
-      if (!relatedEntityDefId || !field.resourceFieldId) return
+  const isLoading = externalLoading || isLoadingResources
+  const hasSelectedSection = filteredSelectedItems.length > 0
+  const hasSystemSection = includeSystem && groupedAvailable.system.length > 0
+  const hasCustomSection = includeCustom && groupedAvailable.custom.length > 0
+  const hasResultsSection = hasSystemSection || hasCustomSection
+  // Show group headings only when both types are included and visible
+  const showGroupHeadings = includeSystem && includeCustom
 
-      push({
-        id: field.id,
-        label: field.label,
-        resourceFieldId: field.resourceFieldId,
-        targetEntityDefinitionId: relatedEntityDefId,
-      })
-      setSearch('')
-    },
-    [push]
-  )
-
-  /**
-   * Handle selecting the current relationship (when drilled down)
-   */
-  const handleSelectCurrentRelationship = useCallback(() => {
-    if (stack.length === 0 || !current) return
-
-    // Build FieldPath from stack
-    const pathIds: ResourceFieldId[] = stack.map((item) => item.resourceFieldId)
-    const fieldReference = toFieldPath(pathIds)
-
-    // Create a minimal field representation for the callback
-    onSelect(fieldReference, {
-      id: current.id,
-      label: current.label,
-      resourceFieldId: current.resourceFieldId,
-    } as ResourceField)
-
-    if (closeOnSelect && onClose) {
-      onClose()
-    }
-  }, [stack, current, onSelect, closeOnSelect, onClose])
-
-  // Shared content (input + list)
-  const content = (
-    <>
+  return (
+    <Command shouldFilter={false} className={cn('rounded-lg', className)}>
       <CommandInput
-        placeholder={searchPlaceholder}
+        placeholder={placeholder}
         value={search}
         onValueChange={setSearch}
+        disabled={disabled}
+        loading={isLoading}
         autoFocus
       />
-
       <CommandList>
-        <CommandEmpty>No fields found.</CommandEmpty>
+        <CommandEmpty>No resources found</CommandEmpty>
 
-        {/* When drilled into a relationship, show entity selector first */}
-        {!isAtRoot && current && entityProps && (
-          <>
-            <CommandGroup>
-              <CommandItem onSelect={handleSelectCurrentRelationship}>
-                <EntityIcon iconId={entityProps.icon} color={entityProps.color} size='xs' />
-                <span>{entityProps.label}</span>
-              </CommandItem>
-            </CommandGroup>
-            <CommandSeparator />
-          </>
-        )}
-
-        {/* All fields (regular and relationships together) */}
-        {filteredFields.length > 0 && (
-          <CommandGroup>
-            {!isAtRoot && <CommandGroupLabel>Fields</CommandGroupLabel>}
-            {filteredFields.map((field) => (
-              <FieldItem
-                key={field.id}
-                field={field}
-                isSelected={mode === 'multi' && isFieldSelected(field)}
-                canDrillDown={!!field.relationship}
-                onSelect={() => handleSelectField(field)}
-                onDrillDown={field.relationship ? () => handleDrillInto(field) : undefined}
+        {/* Selected Items Section */}
+        {hasSelectedSection && (
+          <CommandGroup aria-label='Selected'>
+            {filteredSelectedItems.map((resource) => (
+              <ResourceItem
+                key={resource.id}
+                resource={resource}
+                isSelected={isSelected(resource.id)}
+                onToggle={handleToggle}
+                multi={multi}
               />
             ))}
           </CommandGroup>
         )}
 
-        {/* Create field button */}
-        {onCreateField && isAtRoot && (
-          <>
-            {filteredFields.length > 0 && <CommandSeparator />}
-            <CommandGroup>
-              <CommandItem onSelect={onCreateField}>
-                <Plus className='size-4' />
-                <span>Create field</span>
-              </CommandItem>
-            </CommandGroup>
-          </>
+        {/* Separator between selected and available */}
+        {hasSelectedSection && hasResultsSection && <CommandSeparator />}
+
+        {/* System Resources Section */}
+        {hasSystemSection && (
+          <CommandGroup
+            heading={showGroupHeadings ? 'System' : undefined}
+            aria-label='System resources'>
+            {groupedAvailable.system.map((resource) => (
+              <ResourceItem
+                key={resource.id}
+                resource={resource}
+                isSelected={isSelected(resource.id)}
+                onToggle={handleToggle}
+                multi={multi}
+              />
+            ))}
+          </CommandGroup>
         )}
 
-        {/* Additional content (e.g., Functions for CALC) */}
-        {renderAdditionalContent?.(search)}
+        {/* Custom Resources Section */}
+        {hasCustomSection && (
+          <CommandGroup
+            heading={showGroupHeadings ? 'Custom' : undefined}
+            aria-label='Custom resources'>
+            {groupedAvailable.custom.map((resource) => (
+              <ResourceItem
+                key={resource.id}
+                resource={resource}
+                isSelected={isSelected(resource.id)}
+                onToggle={handleToggle}
+                multi={multi}
+              />
+            ))}
+          </CommandGroup>
+        )}
       </CommandList>
-    </>
-  )
-
-  // When using external navigation, parent handles Command wrapper and breadcrumb
-  if (externalNavigation) {
-    return content
-  }
-
-  // Standalone usage: wrap with Command and breadcrumb
-  return (
-    <Command shouldFilter={false}>
-      {showBreadcrumb && <CommandBreadcrumb rootLabel='Fields' />}
-      {content}
     </Command>
-  )
-}
-
-/**
- * ResourcePickerContent - Field picker with relationship drill-down.
- * Uses CommandNavigation for stack-based navigation.
- */
-export function ResourcePickerContent(props: ResourcePickerContentProps) {
-  return (
-    <CommandNavigation<ResourcePickerNavigationItem>>
-      <ResourcePickerInnerContent {...props} />
-    </CommandNavigation>
   )
 }

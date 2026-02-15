@@ -12,10 +12,15 @@ export {
   type RelationshipConfig,
 } from '@auxx/types/custom-field'
 export type { RecordId } from '@auxx/types/resource'
+// Entity type constants (from @auxx/types)
+export {
+  ENTITY_DEFINITION_TYPES,
+  type EntityDefinitionType,
+  isEntityDefinitionType,
+} from '@auxx/types/resource'
 export type { MergeFieldInput, MergeFieldResult } from './merge/client'
 // Merge utilities (client-safe)
 export { mergeFieldValue } from './merge/client'
-
 // Picker types
 export type {
   GetResourceByIdInput,
@@ -55,13 +60,7 @@ export type {
   DrawerConfigRegistry,
   DrawerTabDefinition,
 } from './registry/drawer-config-types'
-// Entity type constants (client-safe)
-export { NEW_SYSTEM_ENTITY_TYPES, type NewSystemEntityType } from './registry/entity-types'
-export type {
-  ResourceFieldRegistry,
-  ResourceTableDefinition,
-  TableId,
-} from './registry/field-registry'
+export type { TableId } from './registry/field-registry'
 // Registry constants (these are static, safe for client)
 export {
   isValidTableId,
@@ -71,7 +70,6 @@ export {
 // Field types
 export type {
   FieldCapabilities,
-  FieldOptionItem,
   FieldValidation,
   ResourceField,
 } from './registry/field-types'

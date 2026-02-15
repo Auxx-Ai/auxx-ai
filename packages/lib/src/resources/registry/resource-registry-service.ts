@@ -9,11 +9,11 @@ import {
 } from '@auxx/database/enums'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
+import { ENTITY_DEFINITION_TYPES, isEntityDefinitionType } from '@auxx/types/resource'
 import { mapFieldTypeToBaseType } from '../../workflow-engine/utils/field-type-mapper'
 import { RESOURCE_DISPLAY_CONFIG } from './display-config'
-import { resolveNewSystemEntityDefId } from './entity-def-resolver'
+import { resolveEntityDefTypeId } from './entity-def-resolver'
 import { getEntityInstanceFields } from './entity-instance-fields'
-import { NEW_SYSTEM_ENTITY_TYPES, type NewSystemEntityType } from './entity-types'
 import { RESOURCE_FIELD_REGISTRY, RESOURCE_TABLE_REGISTRY, type TableId } from './field-registry'
 import type { ResourceField } from './field-types'
 import type {
@@ -29,7 +29,7 @@ import type {
  * These don't have an EntityDefinition row - the modelType IS the entityDefinitionId.
  */
 const OLD_SYSTEM_TYPES = ModelTypeValues.filter(
-  (t) => !NEW_SYSTEM_ENTITY_TYPES.includes(t as NewSystemEntityType) && t !== 'entity'
+  (t) => !isEntityDefinitionType(t) && t !== 'entity'
 ) as readonly ModelType[]
 
 /**
@@ -41,16 +41,16 @@ const OLD_SYSTEM_API_SLUG_MAP = Object.fromEntries(
 ) as Record<string, ModelType>
 
 /**
- * ApiSlug to EntityType mapping for new system types that have ModelTypeMeta entries.
+ * ApiSlug to EntityType mapping for entity definition types that have ModelTypeMeta entries.
  * e.g., 'contacts' -> 'contact', 'tickets' -> 'ticket'
- * Note: Some NEW_SYSTEM_ENTITY_TYPES (like 'entity_group') don't have ModelTypeMeta entries.
+ * Note: Some ENTITY_DEFINITION_TYPES (like 'entity_group') don't have ModelTypeMeta entries.
  */
-const NEW_SYSTEM_API_SLUG_MAP = Object.fromEntries(
-  NEW_SYSTEM_ENTITY_TYPES.filter((t) => t in ModelTypeMeta).map((t) => [
+const ENTITY_DEF_API_SLUG_MAP = Object.fromEntries(
+  ENTITY_DEFINITION_TYPES.filter((t) => t in ModelTypeMeta).map((t) => [
     ModelTypeMeta[t as keyof typeof ModelTypeMeta].apiSlug,
     t,
   ])
-) as Record<string, NewSystemEntityType>
+) as Record<string, (typeof ENTITY_DEFINITION_TYPES)[number]>
 
 /** CustomField entity from database */
 type CustomFieldRecord = {
@@ -108,15 +108,10 @@ function toDisplayFieldConfig(
 function toCustomResourceBase(
   def: Omit<EntityDefinitionWithFields, 'customFields'>
 ): Omit<CustomResource, 'fields'> {
-  // Determine type based on entityType field
-  // If entityType is defined (not null), it's a system resource
-  // If entityType is null, it's a custom resource
-  const resourceType = def.entityType ? 'system' : 'custom'
-
   return {
     id: def.id as CustomResourceId,
     apiSlug: def.apiSlug,
-    type: 'custom', // Type assertion for now - will be fixed when we update CustomResource type
+    type: 'custom',
     label: def.singular || ModelTypeMeta[def.entityType as ModelType]?.label || def.apiSlug,
     entityType: def.entityType ?? undefined,
     plural: def.plural,
@@ -267,11 +262,17 @@ export class ResourceRegistryService {
     const fieldsByEntityId = new Map<string, CustomFieldRecord[]>()
     const fieldsByModelType = new Map<string, CustomFieldRecord[]>()
 
+    // Static registry IDs — fields for these types always route to fieldsByModelType
+    // so the system resource picks them up (e.g., thread's CustomField-backed thread_tags)
+    const staticRegistryIds = new Set(RESOURCE_TABLE_REGISTRY.map((r) => r.id))
+
     for (const field of customFields as CustomFieldRecord[]) {
-      if (field.entityDefinitionId) {
+      if (field.entityDefinitionId && !staticRegistryIds.has(field.modelType)) {
+        // Custom entity field — group by entityDefinitionId
         const existing = fieldsByEntityId.get(field.entityDefinitionId) ?? []
         fieldsByEntityId.set(field.entityDefinitionId, [...existing, field])
       } else {
+        // System resource field OR no entityDefinitionId — group by modelType
         const existing = fieldsByModelType.get(field.modelType) ?? []
         fieldsByModelType.set(field.modelType, [...existing, field])
       }
@@ -299,9 +300,14 @@ export class ResourceRegistryService {
       }
     })
 
+    // Filter out EntityDefinitions that overlap with static registry resources (e.g., thread)
+    const filteredEntityDefs = entityDefinitions.filter(
+      (def) => !def.entityType || !staticRegistryIds.has(def.entityType)
+    )
+
     // Custom resources with fields from grouped map
     // Include implicit EntityInstance system fields (id, createdAt, updatedAt) before custom fields
-    const customResources: CustomResource[] = entityDefinitions.map((def) => {
+    const customResources: CustomResource[] = filteredEntityDefs.map((def) => {
       const instanceFields = getEntityInstanceFields()
       const hydratedInstanceFields = this.mapSystemFieldsToResourceFields(instanceFields, def.id)
 
@@ -344,8 +350,14 @@ export class ResourceRegistryService {
       },
     })
 
+    // Filter out EntityDefinitions that overlap with static registry resources (e.g., thread)
+    const staticRegistryIds = new Set(RESOURCE_TABLE_REGISTRY.map((r) => r.id))
+    const filteredEntityDefs = (entityDefinitions as EntityDefinitionWithFields[]).filter(
+      (def) => !def.entityType || !staticRegistryIds.has(def.entityType)
+    )
+
     // Include implicit EntityInstance system fields (id, createdAt, updatedAt) before custom fields
-    return (entityDefinitions as EntityDefinitionWithFields[]).map((def) => {
+    return filteredEntityDefs.map((def) => {
       const instanceFields = getEntityInstanceFields()
       const hydratedInstanceFields = this.mapSystemFieldsToResourceFields(instanceFields, def.id)
 
@@ -382,6 +394,10 @@ export class ResourceRegistryService {
     })
 
     if (!entityDef) return null
+
+    // Filter out EntityDefinitions that overlap with static registry resources (e.g., thread)
+    const staticRegistryIds = new Set(RESOURCE_TABLE_REGISTRY.map((r) => r.id))
+    if (entityDef.entityType && staticRegistryIds.has(entityDef.entityType)) return null
 
     // Include implicit EntityInstance system fields (id, createdAt, updatedAt) before custom fields
     const instanceFields = getEntityInstanceFields()
@@ -457,14 +473,13 @@ export class ResourceRegistryService {
         systemResourceBase.entityDefinitionId
       )
 
-      // Get custom fields from database
+      // Get custom fields from database (includes fields with entityDefinitionId, e.g., thread_tags)
       const customFields = await this.db.query.CustomField.findMany({
-        where: (f, { eq, and, isNull }) =>
+        where: (f, { eq, and }) =>
           and(
             eq(f.organizationId, this.organizationId),
             eq(f.modelType, tableId),
-            eq(f.active, true),
-            isNull(f.entityDefinitionId)
+            eq(f.active, true)
           ),
         orderBy: (f, { asc }) => [asc(f.sortOrder)],
       })
@@ -567,14 +582,13 @@ export class ResourceRegistryService {
       // Add resourceFieldId to system fields
       const hydratedSystemFields = this.mapSystemFieldsToResourceFields(staticFields, resourceId)
 
-      // Custom fields from database (where modelType matches and entityDefinitionId is null)
+      // Custom fields from database (includes fields with entityDefinitionId, e.g., thread_tags)
       const customFields = await this.db.query.CustomField.findMany({
-        where: (f, { eq, and, isNull }) =>
+        where: (f, { eq, and }) =>
           and(
             eq(f.organizationId, this.organizationId),
             eq(f.modelType, resourceId),
-            eq(f.active, true),
-            isNull(f.entityDefinitionId)
+            eq(f.active, true)
           ),
         orderBy: (f, { asc }) => [asc(f.sortOrder)],
       })
@@ -660,13 +674,9 @@ export class ResourceRegistryService {
       return entityTypeOrDefId
     }
 
-    // 2. Check if it's a new system type - query DB with caching
-    if (NEW_SYSTEM_ENTITY_TYPES.includes(entityTypeOrDefId as NewSystemEntityType)) {
-      return resolveNewSystemEntityDefId(
-        this.organizationId,
-        entityTypeOrDefId as NewSystemEntityType,
-        this.db
-      )
+    // 2. Check if it's an entity definition type - query DB with caching
+    if (isEntityDefinitionType(entityTypeOrDefId)) {
+      return resolveEntityDefTypeId(this.organizationId, entityTypeOrDefId, this.db)
     }
 
     // 3. Assume it's an actual entityDefinitionId - return as-is
@@ -691,10 +701,10 @@ export class ResourceRegistryService {
       return oldSystemType
     }
 
-    // 2. Check if it's a new system apiSlug - query DB with caching (uses standalone function)
-    const newSystemType = NEW_SYSTEM_API_SLUG_MAP[apiSlug]
-    if (newSystemType) {
-      return resolveNewSystemEntityDefId(this.organizationId, newSystemType, this.db)
+    // 2. Check if it's an entity definition apiSlug - query DB with caching
+    const entityDefType = ENTITY_DEF_API_SLUG_MAP[apiSlug]
+    if (entityDefType) {
+      return resolveEntityDefTypeId(this.organizationId, entityDefType, this.db)
     }
 
     // 3. Custom entity apiSlug - query DB without caching (apiSlug can change)

@@ -36,8 +36,8 @@ import { Columns, EyeOff, MoreHorizontal, Pencil, Plus, Settings2 } from 'lucide
 import { useCallback, useMemo, useState } from 'react'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import { Tooltip } from '~/components/global/tooltip'
-import type { ResourcePickerNavigationItem } from '~/components/pickers/resource-picker'
-import { ResourcePickerInnerContent } from '~/components/pickers/resource-picker'
+import type { FieldPickerNavigationItem } from '~/components/pickers/field-picker'
+import { FieldPickerInnerContent } from '~/components/pickers/field-picker'
 import { useFields } from '~/components/resources/hooks/use-field'
 import { useTableConfig } from '../../context/table-config-context'
 import { useTableInstance } from '../../context/table-instance-context'
@@ -69,7 +69,7 @@ interface AddColumnNavigationItem extends NavigationItem {
 }
 
 /** Navigation item type for column manager (union of add-column and relationship drill-down) */
-type ColumnNavigationItem = AddColumnNavigationItem | ResourcePickerNavigationItem
+type ColumnNavigationItem = AddColumnNavigationItem | FieldPickerNavigationItem
 
 /**
  * RootStack - Shows visible columns (sortable, removable)
@@ -342,7 +342,7 @@ function ColumnOptionsDropdown<TData = any>({
 
 /**
  * AddColumnStack - Shows available fields to add as columns.
- * Uses ResourcePickerInnerContent with external navigation to avoid nested breadcrumbs.
+ * Uses FieldPickerInnerContent with external navigation to avoid nested breadcrumbs.
  */
 function AddColumnStack({ onCreateField }: { onCreateField: () => void }) {
   const { tableId, entityDefinitionId } = useTableConfig()
@@ -390,30 +390,30 @@ function AddColumnStack({ onCreateField }: { onCreateField: () => void }) {
     [columnVisibility, columnOrder, visibleColumnIds, setColumnVisibility, setColumnOrder, pop]
   )
 
-  // Filter stack to only include ResourcePickerNavigationItem items (for relationship drill-down)
-  const resourcePickerStack = useMemo(() => {
-    return stack.filter((item): item is ResourcePickerNavigationItem => 'resourceFieldId' in item)
+  // Filter stack to only include FieldPickerNavigationItem items (for relationship drill-down)
+  const fieldPickerStack = useMemo(() => {
+    return stack.filter((item): item is FieldPickerNavigationItem => 'resourceFieldId' in item)
   }, [stack])
 
   // Get current item for resource picker (only if it's a relationship navigation item)
-  const resourcePickerCurrent = useMemo((): ResourcePickerNavigationItem | null => {
+  const fieldPickerCurrent = useMemo((): FieldPickerNavigationItem | null => {
     if (!current) return null
-    if ('resourceFieldId' in current) return current as ResourcePickerNavigationItem
+    if ('resourceFieldId' in current) return current as FieldPickerNavigationItem
     return null
   }, [current])
 
-  // External navigation adapter for ResourcePickerInnerContent
+  // External navigation adapter for FieldPickerInnerContent
   const externalNavigation = useMemo(
     () => ({
-      push: (item: ResourcePickerNavigationItem) => push(item),
+      push: (item: FieldPickerNavigationItem) => push(item),
       pop,
-      stack: resourcePickerStack,
-      current: resourcePickerCurrent,
+      stack: fieldPickerStack,
+      current: fieldPickerCurrent,
       // "At root" for the resource picker means we're at "Add column" level
       // (no relationship has been drilled into yet)
-      isAtRoot: resourcePickerStack.length === 0,
+      isAtRoot: fieldPickerStack.length === 0,
     }),
-    [push, pop, resourcePickerStack, resourcePickerCurrent]
+    [push, pop, fieldPickerStack, fieldPickerCurrent]
   )
 
   // Fallback if no entityDefinitionId (non-resource table)
@@ -422,7 +422,7 @@ function AddColumnStack({ onCreateField }: { onCreateField: () => void }) {
   }
 
   return (
-    <ResourcePickerInnerContent
+    <FieldPickerInnerContent
       entityDefinitionId={entityDefinitionId}
       excludeFields={visibleColumnIds}
       mode='single'

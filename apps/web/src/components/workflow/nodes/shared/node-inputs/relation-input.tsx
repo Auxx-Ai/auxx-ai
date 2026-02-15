@@ -2,8 +2,17 @@
 
 'use client'
 
-import { getInstanceId, type RecordId, toRecordIds } from '@auxx/lib/field-values/client'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import {
+  getInstanceId,
+  isMultiRelationship,
+  type RecordId,
+  toRecordIds,
+} from '@auxx/lib/field-values/client'
+import {
+  getRelatedEntityDefinitionId,
+  type RelationshipConfig,
+  type RelationshipType,
+} from '@auxx/types/custom-field'
 import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useCallback, useMemo } from 'react'
@@ -18,6 +27,10 @@ interface RelationInputProps extends NodeInputProps {
   placeholder?: string
   /** Field reference: "resourceType:fieldKey" or just "resourceId" for direct */
   fieldReference?: string
+  /** Relationship cardinality type (has_many, belongs_to, etc.) */
+  relationshipType?: RelationshipType
+  /** Whether to show the clear button on the picker trigger (defaults to multi value) */
+  showClear?: boolean
 }
 
 /**
@@ -25,7 +38,17 @@ interface RelationInputProps extends NodeInputProps {
  * Resolves fieldReference to resourceId using useResourceFields
  */
 export const RelationInput = createNodeInput<RelationInputProps>(
-  ({ inputs, onChange, isLoading, name, placeholder, fieldReference }) => {
+  ({
+    inputs,
+    onChange,
+    isLoading,
+    name,
+    placeholder,
+    fieldReference,
+    relationshipType,
+    showClear,
+  }) => {
+    const isMulti = isMultiRelationship(relationshipType)
     // Parse fieldReference to get resourceType and fieldKey using typed parsing
     const [resourceType, fieldKey] = useMemo(() => {
       if (!fieldReference) return [null, null]
@@ -80,13 +103,18 @@ export const RelationInput = createNodeInput<RelationInputProps>(
       [arrayValue, targetResourceId]
     )
 
-    // Handle change - convert RecordId[] back to string ID
+    // Handle change - convert RecordId[] back to string ID(s)
     const handleChange = useCallback(
       (recordIds: RecordId[]) => {
-        const id = recordIds[0] ? getInstanceId(recordIds[0]) : ''
-        onChange(name, id)
+        if (isMulti) {
+          const ids = recordIds.map(getInstanceId)
+          onChange(name, ids.length > 0 ? JSON.stringify(ids) : '')
+        } else {
+          const id = recordIds[0] ? getInstanceId(recordIds[0]) : ''
+          onChange(name, id)
+        }
       },
-      [onChange, name]
+      [onChange, name, isMulti]
     )
 
     // Loading state while resolving fields
@@ -110,7 +138,8 @@ export const RelationInput = createNodeInput<RelationInputProps>(
         onChange={handleChange}
         disabled={isLoading}
         placeholder={placeholder}
-        multi={false}
+        multi={isMulti}
+        triggerProps={{ className: 'w-full pe-1 ps-0', showClear }}
       />
     )
   }

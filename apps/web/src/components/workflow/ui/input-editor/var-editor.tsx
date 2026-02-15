@@ -94,6 +94,8 @@ interface VarEditorFieldRowProps {
   showIcon?: boolean
   icon?: React.ReactNode
   className?: string
+  /** When provided, renders a clear button on row hover (positioned on the right edge) */
+  onClear?: () => void
 }
 
 const VarEditorFieldRow: React.FC<VarEditorFieldRowProps> = ({
@@ -107,11 +109,15 @@ const VarEditorFieldRow: React.FC<VarEditorFieldRowProps> = ({
   icon,
   showIcon = false,
   className,
+  onClear,
 }) => {
   return (
     <div
       data-slot='field-row'
-      className={cn('relative flex border-b dark:border-b-[#404754]/20', className)}>
+      className={cn(
+        'group/field-row relative flex border-b dark:border-b-[#404754]/20',
+        className
+      )}>
       <div data-slot='field-row-label' className='flex flex-row gap-1 ps-2 items-center'>
         {showIcon && (icon ? icon : <VarTypeIcon type={type!} />)}
         <div className='text-sm'>
@@ -120,9 +126,22 @@ const VarEditorFieldRow: React.FC<VarEditorFieldRowProps> = ({
         </div>
         {description && <TooltipExplanation text={description} />}
       </div>
-      <div data-slot='field-row-content' className='w-full flex-1'>
+      <div data-slot='field-row-content' className='w-full flex-1 relative'>
         {children}
       </div>
+      {onClear && (
+        <div className='absolute -right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/field-row:opacity-100 transition-opacity z-10'>
+          <Tooltip content='Clear content'>
+            <Button
+              variant='ghost'
+              size='icon-xs'
+              className='size-4 bg-primary-500/30 text-primary-100 transition-colors hover:bg-bad-100 hover:text-bad-500'
+              onClick={onClear}>
+              <X className='size-3!' />
+            </Button>
+          </Tooltip>
+        </div>
+      )}
       <ValidationErrorBadge error={validationError} type={validationType} />
     </div>
   )
@@ -159,7 +178,7 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
     // Use controlled value if provided, otherwise internal
     const isConstantMode = isControlled ? controlledIsConstantMode : internalIsConstantMode
 
-    const [constantValue, setConstantValue] = useState(value || '')
+    const [constantValue, setConstantValue] = useState(value ?? '')
 
     // Track previous constant values for each data type to allow restoration
     const [previousConstantValues, setPreviousConstantValues] = useState<Record<string, string>>({})
@@ -340,7 +359,7 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
             fieldOptions={fieldOptions}
             placeholder={placeholderConstant}
             disabled={disabled || readOnly}
-            className='flex-1'
+            // className='flex-1'
           />
         ) : mode === VAR_MODE.PICKER ? (
           <VariablePicker

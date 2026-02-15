@@ -3,6 +3,7 @@
 import { type Database, database } from '@auxx/database'
 import type { FieldWithDefinition } from '@auxx/services'
 import type { TypedFieldValue } from '@auxx/types'
+import type { RecordId } from '@auxx/types/resource'
 import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import { createFieldValueContext, type FieldValueContext } from './field-value-helpers'
 import * as mutations from './field-value-mutations'
@@ -106,6 +107,54 @@ export class FieldValueService {
    */
   deleteValue(params: DeleteValueInput): Promise<void> {
     return mutations.deleteValue(this.ctx, params)
+  }
+
+  /**
+   * Add relation values to an existing multi-value relationship field (no duplicates).
+   * Appends new values after existing ones. Syncs inverse relationships.
+   */
+  addRelationValues(params: {
+    recordId: RecordId
+    fieldId: string
+    relatedEntityIds: string[]
+    relatedEntityDefinitionId: string
+  }): Promise<void> {
+    return mutations.addRelationValues(this.ctx, params)
+  }
+
+  /**
+   * Remove specific relation values from an existing multi-value relationship field.
+   * Syncs inverse relationships for removals.
+   */
+  removeRelationValues(params: {
+    recordId: RecordId
+    fieldId: string
+    relatedEntityIds: string[]
+  }): Promise<void> {
+    return mutations.removeRelationValues(this.ctx, params)
+  }
+
+  /**
+   * Add option values to a multi-value select field (no duplicates).
+   * Appends new values after existing ones.
+   */
+  addOptionValues(params: {
+    recordId: RecordId
+    fieldId: string
+    optionIds: string[]
+  }): Promise<void> {
+    return mutations.addOptionValues(this.ctx, params)
+  }
+
+  /**
+   * Remove specific option values from a multi-value select field.
+   */
+  removeOptionValues(params: {
+    recordId: RecordId
+    fieldId: string
+    optionIds: string[]
+  }): Promise<void> {
+    return mutations.removeOptionValues(this.ctx, params)
   }
 
   /**

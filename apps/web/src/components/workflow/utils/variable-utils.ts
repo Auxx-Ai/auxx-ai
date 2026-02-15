@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/utils/variable-utils.ts
 
-import { getOperatorsForFieldType } from '@auxx/lib/conditions/client'
+import { getOperatorsForBaseType } from '@auxx/lib/conditions/client'
 import {
   BaseType,
   isTypeCompatible as isBaseTypeCompatible,
@@ -300,7 +300,7 @@ export function getVariableFieldDefinition(variable: UnifiedVariable): FieldDefi
     ...variable,
     displayType,
     actualType,
-    operators: getOperatorsForFieldType(actualType).map((op) => op.key),
+    operators: getOperatorsForBaseType(actualType).map((op) => op.key),
     options,
     fieldReference: variable.fieldReference,
     relatedEntityDefinitionId: relationship?.relatedEntityDefinitionId,

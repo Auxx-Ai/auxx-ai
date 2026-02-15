@@ -102,7 +102,13 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
               title='Dataset'
               description='Target dataset for storing chunks'
               type={BaseType.RELATION}
-              isRequired>
+              isRequired
+              onClear={
+                nodeData.datasetId
+                  ? () =>
+                      handleFieldChange('datasetId', '', nodeData.fieldModes?.['datasetId'] ?? true)
+                  : undefined
+              }>
               <VarEditor
                 nodeId={nodeId}
                 value={nodeData.datasetId || ''}
@@ -114,6 +120,7 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
                 placeholder='Select dataset'
                 allowConstant
                 isConstantMode={nodeData.fieldModes?.['datasetId'] ?? true}
+                hideClearButton
               />
             </VarEditorFieldRow>
           </VarEditorField>
@@ -125,7 +132,8 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
               title='Chunks'
               description='Array of document chunks to store'
               type={BaseType.ARRAY}
-              isRequired>
+              isRequired
+              onClear={nodeData.chunks ? () => handleFieldChange('chunks', '', false) : undefined}>
               <VarEditor
                 nodeId={nodeId}
                 value={nodeData.chunks || ''}
@@ -136,6 +144,7 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
                 placeholder='Select chunks from Chunker node'
                 allowConstant={false}
                 isConstantMode={false}
+                hideClearButton
               />
             </VarEditorFieldRow>
           </VarEditorField>
@@ -149,7 +158,17 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
             title='Document Title'
             description='Title for the document entry'
             type={BaseType.STRING}
-            isRequired>
+            isRequired
+            onClear={
+              nodeData.documentTitle
+                ? () =>
+                    handleFieldChange(
+                      'documentTitle',
+                      '',
+                      nodeData.fieldModes?.['documentTitle'] ?? true
+                    )
+                : undefined
+            }>
             <VarEditor
               nodeId={nodeId}
               value={nodeData.documentTitle || ''}
@@ -161,13 +180,24 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
               placeholderConstant='Workflow Document'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['documentTitle'] ?? true}
+              hideClearButton
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
             title='Document Type'
             description='Type of document (PDF, TXT, etc.)'
-            type={BaseType.ENUM}>
+            type={BaseType.ENUM}
+            onClear={
+              nodeData.documentType
+                ? () =>
+                    handleFieldChange(
+                      'documentType',
+                      '',
+                      nodeData.fieldModes?.['documentType'] ?? true
+                    )
+                : undefined
+            }>
             <VarEditor
               nodeId={nodeId}
               value={nodeData.documentType || ''}
@@ -180,13 +210,19 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
               placeholderConstant='TXT'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['documentType'] ?? true}
+              hideClearButton
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
             title='Mime Type'
             description="Content mime type (e.g., 'text/plain', 'application/pdf')"
-            type={BaseType.STRING}>
+            type={BaseType.STRING}
+            onClear={
+              nodeData.mimeType
+                ? () => handleFieldChange('mimeType', '', nodeData.fieldModes?.['mimeType'] ?? true)
+                : undefined
+            }>
             <VarEditor
               nodeId={nodeId}
               value={nodeData.mimeType || 'text/plain'}
@@ -198,13 +234,20 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
               placeholderConstant='text/plain'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['mimeType'] ?? true}
+              hideClearButton
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
             title='Source URL'
             description='Original source URL for reference'
-            type={BaseType.URL}>
+            type={BaseType.URL}
+            onClear={
+              nodeData.sourceUrl
+                ? () =>
+                    handleFieldChange('sourceUrl', '', nodeData.fieldModes?.['sourceUrl'] ?? true)
+                : undefined
+            }>
             <VarEditor
               nodeId={nodeId}
               value={nodeData.sourceUrl || ''}
@@ -215,13 +258,19 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
               placeholder='https://example.com/source'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['sourceUrl'] ?? true}
+              hideClearButton
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
             title='File Reference'
             description='Link to source file (MediaAsset) if available'
-            type={BaseType.FILE}>
+            type={BaseType.FILE}
+            onClear={
+              nodeData.fileId
+                ? () => handleFileIdChange('', nodeData.fieldModes?.['fileId'] ?? false)
+                : undefined
+            }>
             <VarEditor
               nodeId={nodeId}
               value={nodeData.fileId || ''}
@@ -233,6 +282,7 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
               allowConstant
               isConstantMode={nodeData.fieldModes?.['fileId'] ?? false}
               fieldOptions={{ allowMultiple: false }}
+              hideClearButton
             />
           </VarEditorFieldRow>
         </VarEditorField>
@@ -256,6 +306,7 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
               allowedTypes={[BaseType.BOOLEAN]}
               allowConstant
               isConstantMode={nodeData.fieldModes?.['skipEmbedding'] ?? true}
+              hideClearButton
             />
           </VarEditorFieldRow>
         </VarEditorField>

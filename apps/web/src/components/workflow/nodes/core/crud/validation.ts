@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/crud/validation.ts
 
+import { RelationUpdateMode } from '@auxx/types/custom-field'
 import type { CrudNodeData } from './types'
 
 /**
@@ -96,6 +97,20 @@ export const validateCrudNodeConfig = (data: CrudNodeData): ValidationResult => 
       message: 'Delete operations are irreversible. Ensure you have the correct resource ID.',
       type: 'warning',
     })
+  }
+
+  // Validate relation update modes
+  if (data.fieldUpdateModes) {
+    for (const [fieldKey, mode] of Object.entries(data.fieldUpdateModes)) {
+      // Dynamic mode requires a mode variable
+      if (mode === RelationUpdateMode.DYNAMIC && !data.fieldUpdateModeVars?.[fieldKey]) {
+        errors.push({
+          field: `data.${fieldKey}`,
+          message: 'Dynamic mode requires a mode variable',
+          type: 'warning',
+        })
+      }
+    }
   }
 
   return { isValid: errors.filter((e) => e.type === 'error').length === 0, errors }

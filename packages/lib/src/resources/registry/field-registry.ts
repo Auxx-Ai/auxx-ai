@@ -2,6 +2,7 @@
 
 import { type ModelType, ModelTypeMeta, ModelTypeValues } from '@auxx/database/enums'
 import type { FieldId } from '@auxx/types/field'
+import { ENTITY_DEFINITION_TYPES } from '@auxx/types/resource'
 import type { ResourceField, ResourceFieldRegistry, ResourceTableDefinition } from './field-types'
 import { CONTACT_FIELDS } from './resources/contact-fields'
 import { DATASET_FIELDS } from './resources/dataset-fields'
@@ -14,33 +15,29 @@ import { THREAD_FIELDS } from './resources/thread-fields'
 import { TICKET_FIELDS } from './resources/ticket-fields'
 import { USER_FIELDS } from './resources/user-fields'
 
-/**
- * Resource types to exclude from the table registry.
- * - 'entity' is the generic custom entity marker
- * - 'contact', 'part', 'ticket' are now stored in EntityDefinition table with entityType field
- */
-export const EXCLUDED_RESOURCE_TYPES = ['entity', 'contact', 'part', 'ticket'] as const
+/** Types excluded from RESOURCE_TABLE_REGISTRY: 'entity' (generic marker) + all EntityDefinition types */
+const excludedTypes = new Set<string>(['entity', ...ENTITY_DEFINITION_TYPES])
 
 /**
  * Resource Table Registry - Metadata about resource tables themselves
- * Derived from ModelTypeMeta for consistency (excludes types in EXCLUDED_RESOURCE_TYPES)
+ * Derived from ModelTypeMeta for consistency (excludes entity definition types)
  *
  * This is the single source of truth for table-level metadata (labels, icons, plurals, colors, apiSlugs, etc.)
  */
-export const RESOURCE_TABLE_REGISTRY = ModelTypeValues.filter(
-  (id) => !EXCLUDED_RESOURCE_TYPES.includes(id as any)
-).map((id) => ({
-  id,
-  label: ModelTypeMeta[id].label,
-  plural: ModelTypeMeta[id].plural,
-  icon: ModelTypeMeta[id].icon,
-  color: ModelTypeMeta[id].color,
-  apiSlug: ModelTypeMeta[id].apiSlug,
-  dbName: ModelTypeMeta[id].dbTable,
-}))
+export const RESOURCE_TABLE_REGISTRY = ModelTypeValues.filter((id) => !excludedTypes.has(id)).map(
+  (id) => ({
+    id,
+    label: ModelTypeMeta[id].label,
+    plural: ModelTypeMeta[id].plural,
+    icon: ModelTypeMeta[id].icon,
+    color: ModelTypeMeta[id].color,
+    apiSlug: ModelTypeMeta[id].apiSlug,
+    dbName: ModelTypeMeta[id].dbTable,
+  })
+)
 
 /**
- * TableId - valid system table identifiers (excludes types in EXCLUDED_RESOURCE_TYPES)
+ * TableId - valid system table identifiers (excludes 'entity' and EntityDefinition types)
  */
 export type TableId = Exclude<ModelType, 'entity'>
 

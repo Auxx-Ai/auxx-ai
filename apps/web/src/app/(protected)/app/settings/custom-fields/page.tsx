@@ -56,7 +56,7 @@ export default function CustomFieldsPage() {
               <EntityRow
                 key={resource.id}
                 label={resource.label}
-                type={resource.type === 'system' || resource.entityType ? 'System' : 'Custom'}
+                type={resource.entityType ? 'System' : 'Custom'}
                 iconId={resource.icon}
                 color={resource.color}
                 onClick={() => handleRowClick(resource.apiSlug)}

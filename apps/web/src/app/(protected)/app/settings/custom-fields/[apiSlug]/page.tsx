@@ -73,7 +73,7 @@ function CustomFieldsDetailPage() {
           { title: resource.label },
         ]}
         button={
-          resource.type === 'custom' ? (
+          !resource.entityType ? (
             <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>
               Edit Entity
             </Button>
@@ -87,7 +87,7 @@ function CustomFieldsDetailPage() {
       </SettingsPage>
 
       {/* Edit entity definition dialog (custom only) */}
-      {dialogOpen && resource.type === 'custom' && (
+      {dialogOpen && !resource.entityType && (
         <EntityDefinitionDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}

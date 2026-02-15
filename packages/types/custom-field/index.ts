@@ -425,6 +425,30 @@ export const relationshipOptionsSchema = z.object({
 })
 
 // =============================================================================
+// RELATION UPDATE MODES (for CRUD workflow node)
+// =============================================================================
+
+/** Supported relation update mode values as const array (for Zod schemas) */
+export const RELATION_UPDATE_MODES = ['replace', 'add', 'remove', 'dynamic'] as const
+
+/** Zod schema for relation update mode validation */
+export const relationUpdateModeSchema = z.enum(RELATION_UPDATE_MODES)
+
+/** Union type for relation update modes */
+export type RelationUpdateMode = (typeof RELATION_UPDATE_MODES)[number]
+
+/**
+ * Enum-like object for named access to relation update modes.
+ * Use `RelationUpdateMode.REPLACE` instead of string literal `'replace'`.
+ */
+export const RelationUpdateMode = {
+  REPLACE: 'replace',
+  ADD: 'add',
+  REMOVE: 'remove',
+  DYNAMIC: 'dynamic',
+} as const satisfies Record<string, RelationUpdateMode>
+
+// =============================================================================
 // UNIQUENESS
 // =============================================================================
 

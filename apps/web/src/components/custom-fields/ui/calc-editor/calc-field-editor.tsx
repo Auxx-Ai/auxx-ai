@@ -29,9 +29,9 @@ import { EditorContent } from '@tiptap/react'
 import { AlertCircle, HelpCircle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ResourcePickerInnerContent,
-  type ResourcePickerNavigationItem,
-} from '~/components/pickers/resource-picker'
+  FieldPickerInnerContent,
+  type FieldPickerNavigationItem,
+} from '~/components/pickers/field-picker'
 import { useCalcFormula } from './use-calc-formula'
 
 /** Options for a CALC field stored in field.options.calc */
@@ -277,8 +277,8 @@ export function CalcFieldEditor({
                     closeSuggestion()
                   }
                 }}>
-                <CommandNavigation<ResourcePickerNavigationItem>>
-                  <ResourcePickerInnerContent
+                <CommandNavigation<FieldPickerNavigationItem>>
+                  <FieldPickerInnerContent
                     entityDefinitionId={entityDefinitionId}
                     excludeFields={excludeFilters}
                     onSelect={handleSelectField}

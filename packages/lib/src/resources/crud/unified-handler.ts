@@ -6,6 +6,7 @@ import { checkUniqueValue } from '@auxx/services/custom-fields'
 import { getEntityDefinition } from '@auxx/services/entity-definitions'
 import { getEntityInstance, listEntityInstances } from '@auxx/services/entity-instances'
 import { ModelTypes } from '@auxx/types/custom-field'
+import { isEntityDefinitionType } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import type { ConditionGroup } from '../../conditions'
 import { publisher } from '../../events/publisher'
@@ -13,7 +14,6 @@ import { FieldValueService } from '../../field-values'
 import { getOrCreateSnapshot, getSnapshotChunk, invalidateSnapshots } from '../../snapshot'
 import { getCommonHooks, getSystemHooks } from '../hooks'
 import { RecordPickerService } from '../picker'
-import { NEW_SYSTEM_ENTITY_TYPES } from '../registry/entity-types'
 import type { TableId } from '../registry/field-registry'
 import { ResourceRegistryService } from '../registry/resource-registry-service'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
@@ -690,11 +690,7 @@ export class UnifiedCrudHandler {
     let entityDef: EntityDefinitionEntity
 
     // System types map to entityType column - query by entityType
-    if (
-      NEW_SYSTEM_ENTITY_TYPES.includes(
-        entityDefinitionId as (typeof NEW_SYSTEM_ENTITY_TYPES)[number]
-      )
-    ) {
+    if (isEntityDefinitionType(entityDefinitionId)) {
       const rows = await this.db
         .select()
         .from(schema.EntityDefinition)

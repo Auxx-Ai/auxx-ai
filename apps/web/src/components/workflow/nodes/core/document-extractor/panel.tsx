@@ -214,6 +214,7 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
               allowedTypes={[BaseType.BOOLEAN]}
               allowConstant
               isConstantMode={nodeData.fieldModes?.['preserveFormatting'] ?? true}
+              hideClearButton
             />
           </VarEditorFieldRow>
 
@@ -233,13 +234,19 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
               allowedTypes={[BaseType.BOOLEAN]}
               allowConstant
               isConstantMode={nodeData.fieldModes?.['extractImages'] ?? true}
+              hideClearButton
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
             title='Language Hint'
             description="Language code for OCR (e.g., 'en', 'es', 'fr'). Leave empty for auto-detect."
-            type={BaseType.STRING}>
+            type={BaseType.STRING}
+            onClear={
+              nodeData.language
+                ? () => handleLanguageChange('', nodeData.fieldModes?.['language'] ?? true)
+                : undefined
+            }>
             <VarEditor
               nodeId={nodeId}
               value={nodeData.language || ''}
@@ -251,6 +258,7 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
               placeholderConstant='Auto-detect'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['language'] ?? true}
+              hideClearButton
             />
           </VarEditorFieldRow>
         </VarEditorField>

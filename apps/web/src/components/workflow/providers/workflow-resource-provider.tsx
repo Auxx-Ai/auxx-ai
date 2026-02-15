@@ -41,9 +41,7 @@ export function WorkflowResourceProvider({ children }: WorkflowResourceProviderP
   const utils = api.useUtils()
 
   // Refetch function that invalidates the resource query
-  const refetch = () => {
-    utils.resource.getAllResourceTypes.invalidate()
-  }
+  const refetch = () => {}
 
   // Sync resources to var store for dynamic variable generation
   useEffect(() => {

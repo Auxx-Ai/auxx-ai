@@ -71,7 +71,7 @@ const ConditionItem = ({
       const newFieldDef = getFieldDefinition(fieldId)
       if (!newFieldDef) return
 
-      const firstOperator = newFieldDef.operators?.[0] || 'equals'
+      const firstOperator = newFieldDef.operators?.[0] || 'is'
       handleUpdate({
         fieldId,
         operator: firstOperator,

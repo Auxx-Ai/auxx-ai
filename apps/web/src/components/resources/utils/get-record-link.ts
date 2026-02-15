@@ -3,7 +3,7 @@
 'use client'
 
 import type { RecordId, Resource } from '@auxx/lib/resources/client'
-import { getDefinitionId, isSystemResource, parseRecordId } from '@auxx/lib/resources/client'
+import { getDefinitionId, parseRecordId } from '@auxx/lib/resources/client'
 import { useMemo } from 'react'
 import { useResourceStore } from '../store/resource-store'
 
@@ -96,9 +96,8 @@ export function getRecordLink(
 ): string {
   const { entityInstanceId } = parseRecordId(recordId)
 
-  // Build base path
-  const isSystem = isSystemResource(resource)
-  const basePath = isSystem
+  // Build base path - system entities (with entityType) use /app/<slug>, custom use /app/custom/<slug>
+  const basePath = resource.entityType
     ? `/app/${resource.apiSlug}/${entityInstanceId}`
     : `/app/custom/${resource.apiSlug}/${entityInstanceId}`
 
