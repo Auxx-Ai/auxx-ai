@@ -141,7 +141,12 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
             title='Content'
             description='The text content to split into chunks'
             type={BaseType.STRING}
-            isRequired>
+            isRequired
+            onClear={
+              nodeData.content
+                ? () => handleContentChange('', nodeData.fieldModes?.['content'] ?? false)
+                : undefined
+            }>
             <VarEditor
               nodeId={nodeId}
               value={nodeData.content || ''}
@@ -153,6 +158,7 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
               placeholderConstant='Enter text to chunk...'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['content'] ?? false}
+              hideClearButton
             />
           </VarEditorFieldRow>
         </VarEditorField>
@@ -166,7 +172,13 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
             isRequired
             title='Chunk Size'
             description='Maximum size of each chunk in characters'
-            type={BaseType.NUMBER}>
+            type={BaseType.NUMBER}
+            onClear={
+              nodeData.chunkSize != null && nodeData.chunkSize !== ''
+                ? () =>
+                    handleNumberChange('chunkSize', '', nodeData.fieldModes?.['chunkSize'] ?? true)
+                : undefined
+            }>
             <VarEditor
               nodeId={nodeId}
               value={nodeData.chunkSize}
@@ -180,6 +192,7 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
               placeholderConstant='Enter chunk size'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['chunkSize'] ?? true}
+              hideClearButton
             />
           </VarEditorFieldRow>
 
@@ -188,7 +201,17 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
             isRequired
             title='Chunk Overlap'
             description='Number of overlapping characters between chunks'
-            type={BaseType.NUMBER}>
+            type={BaseType.NUMBER}
+            onClear={
+              nodeData.chunkOverlap != null && nodeData.chunkOverlap !== ''
+                ? () =>
+                    handleNumberChange(
+                      'chunkOverlap',
+                      '',
+                      nodeData.fieldModes?.['chunkOverlap'] ?? true
+                    )
+                : undefined
+            }>
             <VarEditor
               nodeId={nodeId}
               value={nodeData.chunkOverlap}
@@ -202,6 +225,7 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
               placeholderConstant='Enter overlap'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['chunkOverlap'] ?? true}
+              hideClearButton
             />
           </VarEditorFieldRow>
 
@@ -210,7 +234,12 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
             isRequired
             title='Delimiter'
             description='Custom delimiter for splitting (e.g., \n\n for paragraphs). Leave empty for auto-detect.'
-            type={BaseType.STRING}>
+            type={BaseType.STRING}
+            onClear={
+              nodeData.delimiter
+                ? () => handleDelimiterChange('', nodeData.fieldModes?.['delimiter'] ?? true)
+                : undefined
+            }>
             <VarEditor
               nodeId={nodeId}
               value={nodeData.delimiter}
@@ -222,6 +251,7 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
               placeholderConstant='Auto-detect'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['delimiter'] ?? true}
+              hideClearButton
             />
           </VarEditorFieldRow>
 
@@ -242,6 +272,7 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
               allowedTypes={[BaseType.BOOLEAN]}
               allowConstant
               isConstantMode={nodeData.fieldModes?.['normalizeWhitespace'] ?? true}
+              hideClearButton
             />
           </VarEditorFieldRow>
 
@@ -262,6 +293,7 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
               allowedTypes={[BaseType.BOOLEAN]}
               allowConstant
               isConstantMode={nodeData.fieldModes?.['removeUrlsAndEmails'] ?? true}
+              hideClearButton
             />
           </VarEditorFieldRow>
         </VarEditorField>

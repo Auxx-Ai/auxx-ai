@@ -214,7 +214,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
 
   const renderField = useCallback(
     (field: ResourceField) => {
-      const value = nodeData.data[field.key] || ''
+      const value = nodeData.data[field.key] ?? ''
       const isRequired = field.capabilities?.required === true
       const fieldPath = `data.${field.key}`
       const fieldError = showValidation ? getFieldErrorMessage(fieldPath) : undefined
@@ -274,7 +274,12 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
           type={field.type}
           isRequired={isRequired}
           validationError={showValidation ? fieldError : undefined}
-          validationType={hasError ? 'error' : 'warning'}>
+          validationType={hasError ? 'error' : 'warning'}
+          onClear={
+            value != null && value !== ''
+              ? () => handleFieldChange(field.key, '', getFieldMode(field.key))
+              : undefined
+          }>
           {showUpdateMode ? (
             <div className='relative'>
               <div className='absolute right-full top-1/2 -translate-y-1/2 me-0.5 z-10'>
@@ -299,6 +304,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
                 placeholder={field.placeholder}
                 allowConstant={true}
                 isConstantMode={getFieldMode(field.key)}
+                hideClearButton
               />
             </div>
           ) : (
@@ -315,6 +321,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
               placeholder={field.placeholder}
               allowConstant={true}
               isConstantMode={getFieldMode(field.key)}
+              hideClearButton
             />
           )}
         </VarEditorFieldRow>
@@ -396,7 +403,12 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
                   type={BaseType.STRING}
                   isRequired
                   validationError={showValidation ? getFieldErrorMessage('resourceId') : undefined}
-                  validationType={hasFieldErrorOfType('resourceId', 'error') ? 'error' : 'warning'}>
+                  validationType={hasFieldErrorOfType('resourceId', 'error') ? 'error' : 'warning'}
+                  onClear={
+                    nodeData.resourceId
+                      ? () => handleResourceIdChange('', getFieldMode('resourceId'))
+                      : undefined
+                  }>
                   <VarEditor
                     nodeId={nodeId}
                     value={nodeData.resourceId || ''}
@@ -409,8 +421,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
                     mode={VAR_MODE.PICKER}
                     placeholder={`Select ${resource?.label || 'resource'} or enter ID`}
                     allowConstant={false}
-
-                    // onConstantModeChange={(isConstant) => setFieldMode('resourceId', isConstant)}
+                    hideClearButton
                   />
                 </VarEditorFieldRow>
               )}

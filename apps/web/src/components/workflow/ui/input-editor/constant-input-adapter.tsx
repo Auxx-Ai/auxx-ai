@@ -82,9 +82,17 @@ export const ConstantInputAdapter: React.FC<ConstantInputProps> = ({
     fieldOptions,
   })
 
+  // Deserialize string values to native types for input components
+  let inputValue = value
+  if (varType === BaseType.BOOLEAN) {
+    if (value === 'true' || value === true) inputValue = true
+    else if (value === 'false' || value === false) inputValue = false
+    else inputValue = null
+  }
+
   // Common props for all input components
   const commonProps = {
-    inputs: { _value: value },
+    inputs: { _value: inputValue },
     errors: errors,
     onChange: handleChange,
     onError: handleError,

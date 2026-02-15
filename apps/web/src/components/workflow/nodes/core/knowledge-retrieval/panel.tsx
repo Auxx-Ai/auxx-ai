@@ -231,7 +231,13 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
           <VarEditorFieldRow
             title='Search Type'
             description='Strategy for searching: hybrid combines vector and text search'
-            type={BaseType.ENUM}>
+            type={BaseType.ENUM}
+            onClear={
+              nodeData.searchType
+                ? () =>
+                    handleFieldChange('searchType', '', nodeData.fieldModes?.['searchType'] ?? true)
+                : undefined
+            }>
             <VarEditor
               nodeId={nodeId}
               value={nodeData.searchType}
@@ -244,13 +250,19 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
               placeholderConstant='Select search type'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['searchType'] ?? true}
+              hideClearButton
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
             title='Limit'
             description='Maximum number of results to return (1-100)'
-            type={BaseType.NUMBER}>
+            type={BaseType.NUMBER}
+            onClear={
+              nodeData.limit != null && nodeData.limit !== ''
+                ? () => handleNumberChange('limit', '', nodeData.fieldModes?.['limit'] ?? true)
+                : undefined
+            }>
             <VarEditor
               nodeId={nodeId}
               value={nodeData.limit}
@@ -262,13 +274,24 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
               placeholderConstant='20'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['limit'] ?? true}
+              hideClearButton
             />
           </VarEditorFieldRow>
 
           <VarEditorFieldRow
             title='Similarity Threshold'
             description='Minimum similarity score for vector search (0.0-1.0)'
-            type={BaseType.NUMBER}>
+            type={BaseType.NUMBER}
+            onClear={
+              nodeData.similarityThreshold != null && nodeData.similarityThreshold !== ''
+                ? () =>
+                    handleNumberChange(
+                      'similarityThreshold',
+                      '',
+                      nodeData.fieldModes?.['similarityThreshold'] ?? true
+                    )
+                : undefined
+            }>
             <VarEditor
               nodeId={nodeId}
               value={nodeData.similarityThreshold}
@@ -280,6 +303,7 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
               placeholderConstant='0.7'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['similarityThreshold'] ?? true}
+              hideClearButton
             />
           </VarEditorFieldRow>
         </VarEditorField>

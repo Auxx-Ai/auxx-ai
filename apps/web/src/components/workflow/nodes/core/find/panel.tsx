@@ -277,7 +277,13 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
                   className='pe-2'
                   title='Limit'
                   description='Maximum number of results to return'
-                  type={BaseType.NUMBER}>
+                  type={BaseType.NUMBER}
+                  onClear={
+                    nodeData.limit != null && nodeData.limit !== ''
+                      ? () =>
+                          handleNumberChange('limit', '', nodeData.fieldModes?.['limit'] ?? true)
+                      : undefined
+                  }>
                   <VarEditor
                     nodeId={nodeId}
                     value={nodeData.limit}
@@ -291,6 +297,7 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
                     placeholderConstant='Enter limit'
                     allowConstant
                     isConstantMode={nodeData.fieldModes?.['limit'] ?? true}
+                    hideClearButton
                   />
                 </VarEditorFieldRow>
               </VarEditorField>

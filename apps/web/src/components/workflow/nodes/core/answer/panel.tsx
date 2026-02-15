@@ -180,7 +180,15 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
               type={BaseType.RELATION}
               isRequired
               validationError={showValidation ? getFieldErrorMessage('resourceId') : undefined}
-              validationType={hasFieldErrorOfType('resourceId', 'error') ? 'error' : 'warning'}>
+              validationType={hasFieldErrorOfType('resourceId', 'error') ? 'error' : 'warning'}
+              onClear={
+                nodeData.resourceId
+                  ? () => {
+                      setNodeData({ ...nodeData, resourceId: '', resourceType: undefined })
+                      if (!showValidation) setShowValidation(true)
+                    }
+                  : undefined
+              }>
               <VarEditor
                 nodeId={nodeId}
                 value={nodeData.resourceId || ''}
@@ -200,6 +208,7 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
                 mode={VAR_MODE.PICKER}
                 placeholder='Select Thread or Message'
                 allowConstant={false}
+                hideClearButton
               />
               {/* Show detected resource type for user feedback */}
               {nodeData.resourceType && (
@@ -220,7 +229,15 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
             type={BaseType.STRING}
             isRequired={nodeData.messageType === 'new'}
             validationError={showValidation ? getFieldErrorMessage('subject') : undefined}
-            validationType={hasFieldErrorOfType('subject', 'error') ? 'error' : 'warning'}>
+            validationType={hasFieldErrorOfType('subject', 'error') ? 'error' : 'warning'}
+            onClear={
+              nodeData.subject
+                ? () => {
+                    setNodeData({ ...nodeData, subject: '' })
+                    if (!showValidation) setShowValidation(true)
+                  }
+                : undefined
+            }>
             <VarEditor
               nodeId={nodeId}
               value={nodeData.subject || ''}
@@ -233,6 +250,7 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
               mode={VAR_MODE.RICH}
               placeholder='Enter subject or use variables'
               allowConstant={true}
+              hideClearButton
             />
           </VarEditorFieldRow>
 
