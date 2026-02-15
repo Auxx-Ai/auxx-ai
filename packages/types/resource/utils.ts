@@ -63,6 +63,31 @@ export function getDefinitionId(recordId: RecordId): string {
 }
 
 /**
+ * System entity types that are stored in the EntityDefinition table.
+ * Each org gets one EntityDefinition row per type with entityType set.
+ * Custom (user-created) entities also use EntityDefinition but with entityType = null.
+ */
+export const ENTITY_DEFINITION_TYPES = [
+  'contact',
+  'entity_group',
+  'inbox',
+  'part',
+  'signature',
+  'tag',
+  'ticket',
+] as const
+
+/** Type for system entity types stored in EntityDefinition */
+export type EntityDefinitionType = (typeof ENTITY_DEFINITION_TYPES)[number]
+
+/**
+ * Check if a string is a system type stored in EntityDefinition.
+ */
+export function isEntityDefinitionType(type: string): type is EntityDefinitionType {
+  return (ENTITY_DEFINITION_TYPES as readonly string[]).includes(type)
+}
+
+/**
  * Check if an entityDefinitionId is a system ModelType.
  */
 export function isSystemModelType(entityDefinitionId: string): entityDefinitionId is ModelType {

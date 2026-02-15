@@ -111,6 +111,7 @@ export const RelationInput = createNodeInput<RelationInputProps>(
         disabled={isLoading}
         placeholder={placeholder}
         multi={false}
+        triggerProps={{ className: 'w-full pe-1 ps-0' }}
       />
     )
   }

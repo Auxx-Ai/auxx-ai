@@ -2,6 +2,7 @@
 
 'use client'
 
+import { getOperatorsForBaseType } from '@auxx/lib/conditions/client'
 import { produce } from 'immer'
 import type React from 'react'
 import { createContext, useCallback, useContext, useMemo } from 'react'
@@ -360,15 +361,18 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
     [groups, onGroupsChange, config, renumberGroups]
   )
 
-  // Operator resolution - derives operators from fieldType
+  // Operator resolution - derives operators from fieldType or baseType
   const getAvailableOperators = useCallback(
     (fieldId: string): OperatorDefinition[] => {
       const fieldDef = resolveFieldDefinition(fieldId)
       if (!fieldDef) return []
 
-      // Use fieldType (e.g., 'TEXT', 'DATE') to get operators
-      // fieldType is now required on MailViewFieldDefinition
-      return getOperatorsForFieldType(fieldDef.fieldType ?? fieldDef.type)
+      // Use fieldType (UPPERCASE FieldType enum) for resource mode,
+      // fall back to type (lowercase BaseType enum) for variable mode
+      if (fieldDef.fieldType) {
+        return getOperatorsForFieldType(fieldDef.fieldType)
+      }
+      return getOperatorsForBaseType(fieldDef.type)
     },
     [resolveFieldDefinition]
   )

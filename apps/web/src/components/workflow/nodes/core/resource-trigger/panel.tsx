@@ -3,7 +3,6 @@
 'use client'
 
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import {
   Select,
   SelectContent,
@@ -14,6 +13,7 @@ import {
 import { Info } from 'lucide-react'
 import type React from 'react'
 import { memo, useEffect, useMemo } from 'react'
+import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResource, useResourceFields } from '~/components/resources'
 import { useNodeCrud } from '~/components/workflow/hooks'
 import Field from '~/components/workflow/ui/field'
@@ -46,7 +46,7 @@ const ResourceTriggerPanelComponent: React.FC<ResourceTriggerPanelProps> = ({ no
   )
 
   // Get all resources dynamically (system + custom entities)
-  const { resources, isLoadingResources } = useWorkflowResources()
+  const { resources } = useWorkflowResources()
 
   // Get resourceType and operation from node.data
   const resourceType = nodeData.resourceType || 'contact'
@@ -55,17 +55,6 @@ const ResourceTriggerPanelComponent: React.FC<ResourceTriggerPanelProps> = ({ no
   // Get current resource and its fields
   const { resource: currentResource } = useResource(resourceType)
   const { fields } = useResourceFields(resourceType)
-
-  // Build resource options for select
-  const resourceOptions = useMemo(
-    () =>
-      resources.map((r) => ({
-        value: r.id,
-        label: r.label,
-        icon: r.icon,
-      })),
-    [resources]
-  )
 
   // Ensure node.data has resourceType, entityDefinitionId, and operation on mount
   // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount to initialize defaults
@@ -111,21 +100,8 @@ const ResourceTriggerPanelComponent: React.FC<ResourceTriggerPanelProps> = ({ no
     return { ...currentResource, fields }
   }, [currentResource, fields])
 
-  const operationConfig = RESOURCE_OPERATIONS[operation]
-
   // Generate trigger name for display
   const triggerName = getResourceTriggerName(resourceType, operation)
-
-  // Show loading state while resources are loading
-  if (isLoadingResources) {
-    return (
-      <BasePanel nodeId={nodeId} data={nodeData}>
-        <Section title='General'>
-          <div className='text-center py-8 text-sm text-muted-foreground'>Loading resources...</div>
-        </Section>
-      </BasePanel>
-    )
-  }
 
   return (
     <BasePanel nodeId={nodeId} data={nodeData}>
@@ -152,26 +128,12 @@ const ResourceTriggerPanelComponent: React.FC<ResourceTriggerPanelProps> = ({ no
                   </Select>
                 </div>
                 <div className='flex-1'>
-                  <Select value={resourceType} onValueChange={handleResourceTypeChange}>
-                    <SelectTrigger variant='transparent' size='xs'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {resourceOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value} className='ps-1'>
-                          <div className='flex items-center'>
-                            <EntityIcon
-                              iconId={option.icon}
-                              variant='full'
-                              size='sm'
-                              className='mr-1'
-                            />
-                            {option.label}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <ResourcePicker
+                    value={resourceType ? [resourceType] : []}
+                    onChange={(selected) => handleResourceTypeChange(selected[0] ?? '')}
+                    triggerProps={{ variant: 'transparent', className: 'w-full h-6 pe-2' }}
+                    emptyLabel='Select resource...'
+                  />
                 </div>
               </div>
             </VarEditorField>

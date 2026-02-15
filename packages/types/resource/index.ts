@@ -10,9 +10,12 @@ export type RecordId = string & { readonly __brand: 'RecordId' }
 
 export { recordIdSchema } from './schema'
 export {
+  ENTITY_DEFINITION_TYPES,
+  type EntityDefinitionType,
   getDefinitionId,
   getInstanceId,
   getModelType,
+  isEntityDefinitionType,
   isRecordId,
   isSystemModelType,
   parseRecordId,

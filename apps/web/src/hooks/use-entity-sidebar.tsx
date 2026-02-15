@@ -75,7 +75,7 @@ export function useEntitySidebar({ scope = 'SIDEBAR' }: UseEntitySidebarOptions 
         isStatic: false,
         isLocked: false,
         isVisible: visibilitySettings[resource.id] !== false,
-        href: `/app/custom/${resource.apiSlug}`,
+        href: resource.entityType ? `/app/${resource.apiSlug}` : `/app/custom/${resource.apiSlug}`,
       }))
 
     // Combine static + dynamic entities

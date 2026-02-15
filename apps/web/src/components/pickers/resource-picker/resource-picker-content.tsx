@@ -70,8 +70,8 @@ export function ResourcePickerContent({
   const filteredResources = useMemo(() => {
     return resources.filter((r) => {
       if (excludeIds.includes(r.id)) return false
-      if (r.type === 'system' && !includeSystem) return false
-      if (r.type === 'custom' && !includeCustom) return false
+      if (r.entityType && !includeSystem) return false
+      if (!r.entityType && !includeCustom) return false
       return true
     })
   }, [resources, excludeIds, includeSystem, includeCustom])
@@ -95,8 +95,8 @@ export function ResourcePickerContent({
       return true
     })
 
-    const system = available.filter((r) => r.type === 'system')
-    const custom = available.filter((r) => r.type === 'custom')
+    const system = available.filter((r) => !!r.entityType)
+    const custom = available.filter((r) => !r.entityType)
     return { system, custom }
   }, [filteredResources, search, wasInitiallySelected])
 

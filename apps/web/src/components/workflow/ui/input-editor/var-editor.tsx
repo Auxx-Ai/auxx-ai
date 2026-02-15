@@ -340,7 +340,7 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
             fieldOptions={fieldOptions}
             placeholder={placeholderConstant}
             disabled={disabled || readOnly}
-            className='flex-1'
+            // className='flex-1'
           />
         ) : mode === VAR_MODE.PICKER ? (
           <VariablePicker

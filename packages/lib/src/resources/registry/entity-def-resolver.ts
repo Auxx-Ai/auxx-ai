@@ -2,7 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
-import type { NewSystemEntityType } from './entity-types'
+import type { EntityDefinitionType } from '@auxx/types/resource'
 
 /** Cache key format: entity-def:{organizationId}:{entityType} */
 const ENTITY_DEF_CACHE_PREFIX = 'entity-def'
@@ -11,18 +11,18 @@ const ENTITY_DEF_CACHE_PREFIX = 'entity-def'
 const ENTITY_DEF_CACHE_TTL = 60 * 60 * 24 * 30
 
 /**
- * Resolves a new system entity type to its entityDefinitionId.
+ * Resolves an EntityDefinitionType to its entityDefinitionId (CUID).
  * Uses Redis caching with long TTL since these values never change.
  *
  * @param organizationId - The organization ID
- * @param entityType - The new system entity type (contact, part, ticket)
+ * @param entityType - The entity definition type (contact, part, ticket, etc.)
  * @param db - Database instance
  * @returns The entityDefinitionId (CUID)
  * @throws Error if EntityDefinition not found (indicates seeding problem)
  */
-export async function resolveNewSystemEntityDefId(
+export async function resolveEntityDefTypeId(
   organizationId: string,
-  entityType: NewSystemEntityType,
+  entityType: EntityDefinitionType,
   db: Database
 ): Promise<string> {
   const cacheKey = `${ENTITY_DEF_CACHE_PREFIX}:${organizationId}:${entityType}`

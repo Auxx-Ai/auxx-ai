@@ -9,11 +9,11 @@ import {
 } from '@auxx/database/enums'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
+import { ENTITY_DEFINITION_TYPES, isEntityDefinitionType } from '@auxx/types/resource'
 import { mapFieldTypeToBaseType } from '../../workflow-engine/utils/field-type-mapper'
 import { RESOURCE_DISPLAY_CONFIG } from './display-config'
-import { resolveNewSystemEntityDefId } from './entity-def-resolver'
+import { resolveEntityDefTypeId } from './entity-def-resolver'
 import { getEntityInstanceFields } from './entity-instance-fields'
-import { NEW_SYSTEM_ENTITY_TYPES, type NewSystemEntityType } from './entity-types'
 import { RESOURCE_FIELD_REGISTRY, RESOURCE_TABLE_REGISTRY, type TableId } from './field-registry'
 import type { ResourceField } from './field-types'
 import type {
@@ -29,7 +29,7 @@ import type {
  * These don't have an EntityDefinition row - the modelType IS the entityDefinitionId.
  */
 const OLD_SYSTEM_TYPES = ModelTypeValues.filter(
-  (t) => !NEW_SYSTEM_ENTITY_TYPES.includes(t as NewSystemEntityType) && t !== 'entity'
+  (t) => !isEntityDefinitionType(t) && t !== 'entity'
 ) as readonly ModelType[]
 
 /**
@@ -41,16 +41,16 @@ const OLD_SYSTEM_API_SLUG_MAP = Object.fromEntries(
 ) as Record<string, ModelType>
 
 /**
- * ApiSlug to EntityType mapping for new system types that have ModelTypeMeta entries.
+ * ApiSlug to EntityType mapping for entity definition types that have ModelTypeMeta entries.
  * e.g., 'contacts' -> 'contact', 'tickets' -> 'ticket'
- * Note: Some NEW_SYSTEM_ENTITY_TYPES (like 'entity_group') don't have ModelTypeMeta entries.
+ * Note: Some ENTITY_DEFINITION_TYPES (like 'entity_group') don't have ModelTypeMeta entries.
  */
-const NEW_SYSTEM_API_SLUG_MAP = Object.fromEntries(
-  NEW_SYSTEM_ENTITY_TYPES.filter((t) => t in ModelTypeMeta).map((t) => [
+const ENTITY_DEF_API_SLUG_MAP = Object.fromEntries(
+  ENTITY_DEFINITION_TYPES.filter((t) => t in ModelTypeMeta).map((t) => [
     ModelTypeMeta[t as keyof typeof ModelTypeMeta].apiSlug,
     t,
   ])
-) as Record<string, NewSystemEntityType>
+) as Record<string, (typeof ENTITY_DEFINITION_TYPES)[number]>
 
 /** CustomField entity from database */
 type CustomFieldRecord = {
@@ -108,15 +108,10 @@ function toDisplayFieldConfig(
 function toCustomResourceBase(
   def: Omit<EntityDefinitionWithFields, 'customFields'>
 ): Omit<CustomResource, 'fields'> {
-  // Determine type based on entityType field
-  // If entityType is defined (not null), it's a system resource
-  // If entityType is null, it's a custom resource
-  const resourceType = def.entityType ? 'system' : 'custom'
-
   return {
     id: def.id as CustomResourceId,
     apiSlug: def.apiSlug,
-    type: 'custom', // Type assertion for now - will be fixed when we update CustomResource type
+    type: 'custom',
     label: def.singular || ModelTypeMeta[def.entityType as ModelType]?.label || def.apiSlug,
     entityType: def.entityType ?? undefined,
     plural: def.plural,
@@ -660,13 +655,9 @@ export class ResourceRegistryService {
       return entityTypeOrDefId
     }
 
-    // 2. Check if it's a new system type - query DB with caching
-    if (NEW_SYSTEM_ENTITY_TYPES.includes(entityTypeOrDefId as NewSystemEntityType)) {
-      return resolveNewSystemEntityDefId(
-        this.organizationId,
-        entityTypeOrDefId as NewSystemEntityType,
-        this.db
-      )
+    // 2. Check if it's an entity definition type - query DB with caching
+    if (isEntityDefinitionType(entityTypeOrDefId)) {
+      return resolveEntityDefTypeId(this.organizationId, entityTypeOrDefId, this.db)
     }
 
     // 3. Assume it's an actual entityDefinitionId - return as-is
@@ -691,10 +682,10 @@ export class ResourceRegistryService {
       return oldSystemType
     }
 
-    // 2. Check if it's a new system apiSlug - query DB with caching (uses standalone function)
-    const newSystemType = NEW_SYSTEM_API_SLUG_MAP[apiSlug]
-    if (newSystemType) {
-      return resolveNewSystemEntityDefId(this.organizationId, newSystemType, this.db)
+    // 2. Check if it's an entity definition apiSlug - query DB with caching
+    const entityDefType = ENTITY_DEF_API_SLUG_MAP[apiSlug]
+    if (entityDefType) {
+      return resolveEntityDefTypeId(this.organizationId, entityDefType, this.db)
     }
 
     // 3. Custom entity apiSlug - query DB without caching (apiSlug can change)

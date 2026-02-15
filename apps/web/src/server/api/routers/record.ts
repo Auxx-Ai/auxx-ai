@@ -3,13 +3,15 @@
 import { schema } from '@auxx/database'
 import { conditionGroupSchema } from '@auxx/lib/conditions'
 import { getDescendantIds } from '@auxx/lib/field-values'
-import {
-  NEW_SYSTEM_ENTITY_TYPES,
-  RESOURCE_TABLE_REGISTRY,
-  UnifiedCrudHandler,
-} from '@auxx/lib/resources'
+import { RESOURCE_TABLE_REGISTRY, UnifiedCrudHandler } from '@auxx/lib/resources'
 import { type FieldId, parseResourceFieldId, resourceFieldIdSchema } from '@auxx/types/field'
-import { parseRecordId, type RecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
+import {
+  ENTITY_DEFINITION_TYPES,
+  parseRecordId,
+  type RecordId,
+  recordIdSchema,
+  toRecordId,
+} from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -23,7 +25,7 @@ const entityDefinitionIdSchema = z.string().refine(
     // System table IDs (thread, user, inbox, etc.)
     if (RESOURCE_TABLE_REGISTRY.some((r: { id: string }) => r.id === val)) return true
     // New system entity types (tag, contact, ticket, etc.) - resolved to UUIDs downstream
-    if (NEW_SYSTEM_ENTITY_TYPES.includes(val as any)) return true
+    if (ENTITY_DEFINITION_TYPES.includes(val as any)) return true
     // Custom entity IDs - UUID format (cuid2 minimum length)
     if (val.length >= 20) return true
     return false

@@ -4,10 +4,6 @@ import { isValidTableId, RESOURCE_FIELD_REGISTRY, type TableId } from './field-r
 import type { ResourceField } from './field-types'
 import { getFieldOptions, getOptionLabel, isValidOptionValue } from './option-helpers'
 
-// Re-export for easy access
-export { isValidTableId }
-export type { TableId }
-
 /**
  * Get all fields for a resource type
  */
@@ -158,9 +154,10 @@ export function isFieldSortable(resourceType: TableId, fieldKey: string): boolea
   return field?.capabilities.sortable === true
 }
 
+export type { TableId } from './field-registry'
 // Re-export types and registries
 export {
-  EXCLUDED_RESOURCE_TYPES,
+  isValidTableId,
   RESOURCE_FIELD_REGISTRY,
   RESOURCE_TABLE_MAP,
   RESOURCE_TABLE_REGISTRY,
@@ -185,6 +182,12 @@ export {
 
 // export * from './enum-values'
 
+// Re-export entity type constants from @auxx/types
+export {
+  ENTITY_DEFINITION_TYPES,
+  type EntityDefinitionType,
+  isEntityDefinitionType,
+} from '@auxx/types/resource'
 // Re-export common fields (shared across all entity types)
 export { CREATED_BY_FIELD } from './common-fields'
 // Re-export detail view configuration
@@ -213,11 +216,9 @@ export type {
   DrawerTabDefinition,
 } from './drawer-config-types'
 // Re-export entity definition resolver (server-side only)
-export { resolveNewSystemEntityDefId } from './entity-def-resolver'
+export { resolveEntityDefTypeId } from './entity-def-resolver'
 // Re-export entity instance system fields
 export { ENTITY_INSTANCE_FIELDS, getEntityInstanceFields } from './entity-instance-fields'
-// Re-export entity type constants (client-safe)
-export { NEW_SYSTEM_ENTITY_TYPES, type NewSystemEntityType } from './entity-types'
 // Re-export field utility functions
 export {
   getDisplayFields,
