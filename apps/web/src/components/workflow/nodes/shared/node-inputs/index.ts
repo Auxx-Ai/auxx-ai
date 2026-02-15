@@ -3,6 +3,7 @@
 export { ScheduledTriggerInput } from '../scheduled-trigger-input'
 // Export trigger inputs
 export { WebhookTriggerInput } from '../webhook-trigger-input'
+export { ActorInput } from './actor-input'
 export { AddressInput } from './address-input'
 // export { ContactInput } from './contact-input' // TODO: Implement
 // export { OrderInput } from './order-input' // TODO: Implement

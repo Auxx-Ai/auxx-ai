@@ -1,0 +1,72 @@
+// apps/web/src/components/workflow/nodes/shared/node-inputs/actor-input.tsx
+
+'use client'
+
+import { type ActorId, getActorRawId, isActorId, toActorId } from '@auxx/types/actor'
+import { useCallback, useMemo } from 'react'
+import { ActorPicker } from '~/components/pickers/actor-picker'
+import { createNodeInput, type NodeInputProps } from './base-node-input'
+
+interface ActorInputProps extends NodeInputProps {
+  /** Field name */
+  name: string
+  /** Placeholder text */
+  placeholder?: string
+  /** Actor target: 'user', 'group', or 'both' */
+  target?: 'user' | 'group' | 'both'
+  /** Multi-select mode */
+  multi?: boolean
+}
+
+/**
+ * Actor input for workflow nodes — wraps ActorPicker.
+ * Converts between raw user/group IDs (stored in workflow data)
+ * and ActorId format (used by ActorPicker).
+ */
+export const ActorInput = createNodeInput<ActorInputProps>(
+  ({ inputs, onChange, isLoading, name, placeholder, target = 'user', multi = false }) => {
+    const value = inputs[name] ?? ''
+
+    /** Convert stored value (raw UUID or ActorId) to ActorId[] for the picker */
+    const actorIds = useMemo((): ActorId[] => {
+      if (!value) return []
+
+      // Single value
+      if (typeof value === 'string') {
+        // Already an ActorId format (e.g., "user:abc123")
+        if (isActorId(value)) return [value]
+        // Raw UUID — wrap as user ActorId (assignee is always a user)
+        if (value.length > 0) return [toActorId(target === 'group' ? 'group' : 'user', value)]
+      }
+
+      return []
+    }, [value, target])
+
+    /** Convert ActorId[] back to raw ID for storage */
+    const handleChange = useCallback(
+      (selected: ActorId[]) => {
+        if (multi) {
+          const ids = selected.map(getActorRawId)
+          onChange(name, ids.length > 0 ? JSON.stringify(ids) : '')
+        } else {
+          // Single select: store raw UUID
+          const rawId = selected[0] ? getActorRawId(selected[0]) : ''
+          onChange(name, rawId)
+        }
+      },
+      [onChange, name, multi]
+    )
+
+    return (
+      <ActorPicker
+        value={actorIds}
+        onChange={handleChange}
+        target={target}
+        multi={multi}
+        disabled={isLoading}
+        emptyLabel={placeholder ?? 'Select...'}
+        triggerProps={{ className: 'w-full pe-1 ps-0', showClear: actorIds.length > 0 }}
+      />
+    )
+  }
+)

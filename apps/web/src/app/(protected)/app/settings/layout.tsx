@@ -11,8 +11,6 @@ import { usePathname } from 'next/navigation'
 import type * as React from 'react'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import { SETTINGS_MENU } from '~/constants/menu'
-import { useFeatureFlags } from '~/providers/feature-flag-provider'
-// type Props = { children: React.ReactNode; slug: string }
 
 export default function SettingsSidebar({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -20,7 +18,6 @@ export default function SettingsSidebar({ children }: { children: React.ReactNod
   const page = pages[3]
 
   const baseUrl = `${WEBAPP_URL}/app/settings`
-  const { features, isLoading, error, hasAccess, getLimit } = useFeatureFlags()
 
   return (
     <MainPage>
@@ -29,7 +26,7 @@ export default function SettingsSidebar({ children }: { children: React.ReactNod
           <MainPageBreadcrumbItem title='Settings' href='/app/settings/general' last />
         </MainPageBreadcrumb>
       </MainPageHeader>
-      <MainPageContent>
+      <MainPageContent className='max-w-6xl'>
         <div className='rounded-2xl border border-neutral-200/80 dark:border-primary-200/80 flex flex-col md:flex-row h-full w-full overflow-hidden shadow-lg max-w-6xl'>
           <SidebarSecondary
             items={SETTINGS_MENU}
