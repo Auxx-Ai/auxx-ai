@@ -14,7 +14,7 @@ import { isMultiValueFieldType, type TypedFieldValue, type TypedFieldValueInput 
 import { isSelfReferentialRelationship, type RelationshipConfig } from '@auxx/types/custom-field'
 import type { RecordId } from '@auxx/types/resource'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import {
   getBuiltInFieldHandler,
   getBuiltInFieldType,
@@ -383,6 +383,150 @@ export async function deleteValue(ctx: FieldValueContext, params: DeleteValueInp
         eq(schema.FieldValue.organizationId, ctx.organizationId)
       )
     )
+}
+
+// =============================================================================
+// RELATION ADD / REMOVE MUTATIONS
+// =============================================================================
+
+/**
+ * Add relation values to an existing multi-value relationship field (no duplicates).
+ * Appends new values after existing ones using fractional indexing.
+ * Syncs inverse relationships for additions only.
+ *
+ * @param ctx - Field value context
+ * @param params - Entity ID, field ID, and related entity IDs to add
+ */
+export async function addRelationValues(
+  ctx: FieldValueContext,
+  params: {
+    recordId: RecordId
+    fieldId: string
+    relatedEntityIds: string[]
+    relatedEntityDefinitionId: string
+  }
+): Promise<void> {
+  const { recordId, fieldId, relatedEntityIds, relatedEntityDefinitionId } = params
+  if (relatedEntityIds.length === 0) return
+
+  const { entityInstanceId } = parseRecordId(recordId)
+
+  // Get existing relation IDs to avoid duplicates
+  const existingIds = await getExistingRelatedIds(
+    { db: ctx.db, organizationId: ctx.organizationId },
+    entityInstanceId,
+    fieldId
+  )
+  const existingSet = new Set(existingIds)
+  const newIds = relatedEntityIds.filter((id) => !existingSet.has(id))
+  if (newIds.length === 0) return
+
+  // Get max sort key for appending
+  const existing = await ctx.db
+    .select({ sortKey: schema.FieldValue.sortKey })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.entityId, entityInstanceId),
+        eq(schema.FieldValue.fieldId, fieldId),
+        eq(schema.FieldValue.organizationId, ctx.organizationId)
+      )
+    )
+    .orderBy(asc(schema.FieldValue.sortKey))
+
+  // Generate sort keys and insert new values
+  const { entityDefinitionId } = parseRecordId(recordId)
+  let prevKey = existing.length > 0 ? existing[existing.length - 1]!.sortKey : null
+
+  const insertRows = newIds.map((relatedId) => {
+    const sortKey = generateKeyBetween(prevKey, null)
+    prevKey = sortKey
+    return {
+      organizationId: ctx.organizationId,
+      entityId: entityInstanceId,
+      entityDefinitionId,
+      fieldId,
+      relatedEntityId: relatedId,
+      relatedEntityDefinitionId,
+      sortKey,
+      valueText: null,
+      valueNumber: null,
+      valueBoolean: null,
+      valueDate: null,
+      valueJson: null,
+      optionId: null,
+      actorId: null,
+    }
+  })
+
+  await ctx.db.insert(schema.FieldValue).values(insertRows)
+
+  // Sync inverse relationships (additions only)
+  const field = await getField(ctx, fieldId)
+  const inverseInfo = await getInverseInfoFromField(ctx, field)
+  if (inverseInfo) {
+    await syncInverseRelationships(
+      { db: ctx.db, organizationId: ctx.organizationId },
+      {
+        entityId: entityInstanceId,
+        oldRelatedIds: existingIds,
+        newRelatedIds: [...existingIds, ...newIds],
+        inverseInfo,
+      }
+    )
+  }
+}
+
+/**
+ * Remove specific relation values from an existing multi-value relationship field.
+ * Deletes FieldValue rows matching the given relatedEntityIds.
+ * Syncs inverse relationships for removals only.
+ *
+ * @param ctx - Field value context
+ * @param params - Entity ID, field ID, and related entity IDs to remove
+ */
+export async function removeRelationValues(
+  ctx: FieldValueContext,
+  params: {
+    recordId: RecordId
+    fieldId: string
+    relatedEntityIds: string[]
+  }
+): Promise<void> {
+  const { recordId, fieldId, relatedEntityIds } = params
+  if (relatedEntityIds.length === 0) return
+
+  const { entityInstanceId } = parseRecordId(recordId)
+
+  // Capture existing IDs before removal (for inverse sync)
+  const existingIds = await getExistingRelatedIds(
+    { db: ctx.db, organizationId: ctx.organizationId },
+    entityInstanceId,
+    fieldId
+  )
+
+  // Delete matching relation values
+  await ctx.db
+    .delete(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.entityId, entityInstanceId),
+        eq(schema.FieldValue.fieldId, fieldId),
+        inArray(schema.FieldValue.relatedEntityId, relatedEntityIds),
+        eq(schema.FieldValue.organizationId, ctx.organizationId)
+      )
+    )
+
+  // Sync inverse relationships (removals only)
+  const field = await getField(ctx, fieldId)
+  const inverseInfo = await getInverseInfoFromField(ctx, field)
+  if (inverseInfo) {
+    const newRelatedIds = existingIds.filter((id) => !relatedEntityIds.includes(id))
+    await syncInverseRelationships(
+      { db: ctx.db, organizationId: ctx.organizationId },
+      { entityId: entityInstanceId, oldRelatedIds: existingIds, newRelatedIds, inverseInfo }
+    )
+  }
 }
 
 // =============================================================================

@@ -23,7 +23,8 @@
     "./strings": "./src/strings.ts",
     "./timezone": "./src/timezone.ts",
     "./task-date": "./src/task-date.ts",
-    "./calc-expression": "./src/calc-expression.ts"
+    "./calc-expression": "./src/calc-expression.ts",
+    "./relationships": "./src/relationships.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

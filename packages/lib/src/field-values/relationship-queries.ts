@@ -25,9 +25,8 @@ export function threadHasAnyTags(
     SELECT 1
     FROM ${schema.FieldValue} fv
     INNER JOIN ${schema.CustomField} cf ON fv."fieldId" = cf.id
-    INNER JOIN ${schema.EntityDefinition} ed ON cf."entityDefinitionId" = ed.id
     WHERE cf."systemAttribute" = 'thread_tags'
-      AND ed."organizationId" = ${organizationId}
+      AND cf."organizationId" = ${organizationId}
       AND fv."entityId" = ${threadIdExpr}
       AND fv."relatedEntityId" IS NOT NULL
   )`
@@ -50,9 +49,8 @@ export function threadHasNoTags(
     SELECT 1
     FROM ${schema.FieldValue} fv
     INNER JOIN ${schema.CustomField} cf ON fv."fieldId" = cf.id
-    INNER JOIN ${schema.EntityDefinition} ed ON cf."entityDefinitionId" = ed.id
     WHERE cf."systemAttribute" = 'thread_tags'
-      AND ed."organizationId" = ${organizationId}
+      AND cf."organizationId" = ${organizationId}
       AND fv."entityId" = ${threadIdExpr}
       AND fv."relatedEntityId" IS NOT NULL
   )`
@@ -83,9 +81,8 @@ export function threadHasTags(
       SELECT 1
       FROM ${schema.FieldValue} fv
       INNER JOIN ${schema.CustomField} cf ON fv."fieldId" = cf.id
-      INNER JOIN ${schema.EntityDefinition} ed ON cf."entityDefinitionId" = ed.id
       WHERE cf."systemAttribute" = 'thread_tags'
-        AND ed."organizationId" = ${organizationId}
+        AND cf."organizationId" = ${organizationId}
         AND fv."entityId" = ${threadIdExpr}
         AND fv."relatedEntityId" = ${tagIds[0]}
     )`
@@ -95,9 +92,8 @@ export function threadHasTags(
     SELECT 1
     FROM ${schema.FieldValue} fv
     INNER JOIN ${schema.CustomField} cf ON fv."fieldId" = cf.id
-    INNER JOIN ${schema.EntityDefinition} ed ON cf."entityDefinitionId" = ed.id
     WHERE cf."systemAttribute" = 'thread_tags'
-      AND ed."organizationId" = ${organizationId}
+      AND cf."organizationId" = ${organizationId}
       AND fv."entityId" = ${threadIdExpr}
       AND fv."relatedEntityId" IN (${sql.join(
         tagIds.map((id) => sql`${id}`),
@@ -130,9 +126,8 @@ export function threadDoesNotHaveTags(
       SELECT 1
       FROM ${schema.FieldValue} fv
       INNER JOIN ${schema.CustomField} cf ON fv."fieldId" = cf.id
-      INNER JOIN ${schema.EntityDefinition} ed ON cf."entityDefinitionId" = ed.id
       WHERE cf."systemAttribute" = 'thread_tags'
-        AND ed."organizationId" = ${organizationId}
+        AND cf."organizationId" = ${organizationId}
         AND fv."entityId" = ${threadIdExpr}
         AND fv."relatedEntityId" = ${tagIds[0]}
     )`
@@ -142,9 +137,8 @@ export function threadDoesNotHaveTags(
     SELECT 1
     FROM ${schema.FieldValue} fv
     INNER JOIN ${schema.CustomField} cf ON fv."fieldId" = cf.id
-    INNER JOIN ${schema.EntityDefinition} ed ON cf."entityDefinitionId" = ed.id
     WHERE cf."systemAttribute" = 'thread_tags'
-      AND ed."organizationId" = ${organizationId}
+      AND cf."organizationId" = ${organizationId}
       AND fv."entityId" = ${threadIdExpr}
       AND fv."relatedEntityId" IN (${sql.join(
         tagIds.map((id) => sql`${id}`),
@@ -170,14 +164,10 @@ export async function getThreadTagIds(
     .select({ tagId: schema.FieldValue.relatedEntityId })
     .from(schema.FieldValue)
     .innerJoin(schema.CustomField, eq(schema.FieldValue.fieldId, schema.CustomField.id))
-    .innerJoin(
-      schema.EntityDefinition,
-      eq(schema.CustomField.entityDefinitionId, schema.EntityDefinition.id)
-    )
     .where(
       and(
         eq(schema.CustomField.systemAttribute, 'thread_tags'),
-        eq(schema.EntityDefinition.organizationId, organizationId),
+        eq(schema.CustomField.organizationId, organizationId),
         eq(schema.FieldValue.entityId, threadId),
         isNotNull(schema.FieldValue.relatedEntityId)
       )
@@ -271,14 +261,10 @@ export async function getThreadsWithTag(
     .select({ threadId: schema.FieldValue.entityId })
     .from(schema.FieldValue)
     .innerJoin(schema.CustomField, eq(schema.FieldValue.fieldId, schema.CustomField.id))
-    .innerJoin(
-      schema.EntityDefinition,
-      eq(schema.CustomField.entityDefinitionId, schema.EntityDefinition.id)
-    )
     .where(
       and(
         eq(schema.CustomField.systemAttribute, 'thread_tags'),
-        eq(schema.EntityDefinition.organizationId, organizationId),
+        eq(schema.CustomField.organizationId, organizationId),
         eq(schema.FieldValue.relatedEntityId, tagId)
       )
     )
@@ -307,10 +293,9 @@ export function threadHasTagMatchingSearch(
     SELECT 1
     FROM ${schema.FieldValue} fv
     INNER JOIN ${schema.CustomField} cf ON fv."fieldId" = cf.id
-    INNER JOIN ${schema.EntityDefinition} ed ON cf."entityDefinitionId" = ed.id
     INNER JOIN ${schema.Tag} t ON fv."relatedEntityId" = t.id
     WHERE cf."systemAttribute" = 'thread_tags'
-      AND ed."organizationId" = ${organizationId}
+      AND cf."organizationId" = ${organizationId}
       AND fv."entityId" = ${threadIdExpr}
       AND (LOWER(t.title) LIKE LOWER(${likeTerm}) OR t.id = ${searchTerm})
   )`

@@ -2,8 +2,14 @@
 
 'use client'
 
+import { isMultiRelationship } from '@auxx/lib/field-values/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import {
+  getRelatedEntityDefinitionId,
+  type RelationshipConfig,
+  RelationUpdateMode,
+  type RelationUpdateMode as RelationUpdateModeType,
+} from '@auxx/types/custom-field'
 import {
   Select,
   SelectContent,
@@ -29,6 +35,7 @@ import Section from '~/components/workflow/ui/section'
 import { useWorkflowResources } from '../../../providers'
 import { BasePanel } from '../../shared/base/base-panel'
 import { DefaultValuesEditor } from './components/default-values-editor'
+import { RelationUpdateModeButton } from './components/relation-update-mode-button'
 import { getCrudNodeOutputVariables } from './output-variables'
 import { CrudErrorStrategy, type CrudNodeData } from './types'
 import { useCrudValidation } from './use-crud-validation'
@@ -88,6 +95,8 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
         draft.resourceType = resourceType
         draft.data = {} // Clear field data when resource type changes
         draft.fieldModes = {} // Clear field modes when resource type changes
+        draft.fieldUpdateModes = {} // Clear update modes when resource type changes
+        draft.fieldUpdateModeVars = {} // Clear update mode vars when resource type changes
 
         // Action-based resources only support update mode
         if (isActionBasedResource(resourceType)) {
@@ -167,6 +176,34 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
     [nodeData, setInputs]
   )
 
+  /** Handle relation update mode change */
+  const handleFieldUpdateModeChange = useCallback(
+    (fieldKey: string, mode: RelationUpdateModeType) => {
+      const newData = produce(nodeData, (draft) => {
+        if (!draft.fieldUpdateModes) draft.fieldUpdateModes = {}
+        draft.fieldUpdateModes[fieldKey] = mode
+        // Clear dynamic variable when switching away from dynamic
+        if (mode !== RelationUpdateMode.DYNAMIC && draft.fieldUpdateModeVars?.[fieldKey]) {
+          delete draft.fieldUpdateModeVars[fieldKey]
+        }
+      })
+      setInputs(newData)
+    },
+    [nodeData, setInputs]
+  )
+
+  /** Handle dynamic mode variable change */
+  const handleFieldUpdateModeVarChange = useCallback(
+    (fieldKey: string, value: string) => {
+      const newData = produce(nodeData, (draft) => {
+        if (!draft.fieldUpdateModeVars) draft.fieldUpdateModeVars = {}
+        draft.fieldUpdateModeVars[fieldKey] = value
+      })
+      setInputs(newData)
+    },
+    [nodeData, setInputs]
+  )
+
   // Field mode helpers
   const getFieldMode = useCallback(
     (fieldKey: string): boolean => {
@@ -183,17 +220,27 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
       const fieldError = showValidation ? getFieldErrorMessage(fieldPath) : undefined
       const hasError = showValidation && hasFieldErrorOfType(fieldPath, 'error')
 
-      // Build fieldOptions with enum and fieldReference embedded if applicable
+      // Build fieldOptions with enum, fieldReference, and relationshipType embedded if applicable
       const fieldOptions: {
         enum?: Array<{ label: string; value: string }>
         fieldReference?: string
+        relationshipType?: string
       } = {}
       if (field.options?.options?.length) {
         fieldOptions.enum = field.options.options
       }
       if (field.type === BaseType.RELATION) {
         fieldOptions.fieldReference = `${nodeData.resourceType}:${field.key}`
+        fieldOptions.relationshipType = field.relationship?.relationshipType
       }
+
+      // Detect multi-relation fields for update mode badge
+      const isMultiRelation =
+        field.type === BaseType.RELATION &&
+        field.relationship &&
+        isMultiRelationship(field.relationship.relationshipType)
+      const showUpdateMode = nodeData.mode === 'update' && isMultiRelation
+      const currentUpdateMode = nodeData.fieldUpdateModes?.[field.key] ?? RelationUpdateMode.REPLACE
 
       // Determine allowed types for type filtering
       const allowedTypes: BaseType[] = []
@@ -228,31 +275,64 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
           isRequired={isRequired}
           validationError={showValidation ? fieldError : undefined}
           validationType={hasError ? 'error' : 'warning'}>
-          <VarEditor
-            nodeId={nodeId}
-            value={value}
-            onChange={(newValue, isConstantMode) => {
-              handleFieldChange(field.key, newValue, isConstantMode)
-            }}
-            varType={field.type}
-            fieldOptions={Object.keys(fieldOptions).length > 0 ? fieldOptions : undefined}
-            allowedTypes={allowedTypes}
-            placeholderConstant={field.placeholder}
-            placeholder={field.placeholder}
-            allowConstant={true}
-            isConstantMode={getFieldMode(field.key)}
-          />
+          {showUpdateMode ? (
+            <div className='relative'>
+              <div className='absolute right-full top-1/2 -translate-y-1/2 me-0.5 z-10'>
+                <RelationUpdateModeButton
+                  mode={currentUpdateMode}
+                  onChange={(mode) => handleFieldUpdateModeChange(field.key, mode)}
+                  nodeId={nodeId}
+                  dynamicModeVar={nodeData.fieldUpdateModeVars?.[field.key]}
+                  onDynamicModeVarChange={(val) => handleFieldUpdateModeVarChange(field.key, val)}
+                />
+              </div>
+              <VarEditor
+                nodeId={nodeId}
+                value={value}
+                onChange={(newValue, isConstantMode) => {
+                  handleFieldChange(field.key, newValue, isConstantMode)
+                }}
+                varType={field.type}
+                fieldOptions={Object.keys(fieldOptions).length > 0 ? fieldOptions : undefined}
+                allowedTypes={allowedTypes}
+                placeholderConstant={field.placeholder}
+                placeholder={field.placeholder}
+                allowConstant={true}
+                isConstantMode={getFieldMode(field.key)}
+              />
+            </div>
+          ) : (
+            <VarEditor
+              nodeId={nodeId}
+              value={value}
+              onChange={(newValue, isConstantMode) => {
+                handleFieldChange(field.key, newValue, isConstantMode)
+              }}
+              varType={field.type}
+              fieldOptions={Object.keys(fieldOptions).length > 0 ? fieldOptions : undefined}
+              allowedTypes={allowedTypes}
+              placeholderConstant={field.placeholder}
+              placeholder={field.placeholder}
+              allowConstant={true}
+              isConstantMode={getFieldMode(field.key)}
+            />
+          )}
         </VarEditorFieldRow>
       )
     },
     [
       nodeData.data,
       nodeData.resourceType,
+      nodeData.mode,
+      nodeData.fieldUpdateModes,
+      nodeData.fieldUpdateModeVars,
       showValidation,
       getFieldErrorMessage,
       hasFieldErrorOfType,
       nodeId,
       handleFieldChange,
+      handleFieldUpdateModeChange,
+      handleFieldUpdateModeVarChange,
       getFieldMode,
     ]
   )

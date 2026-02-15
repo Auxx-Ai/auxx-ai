@@ -120,7 +120,7 @@ const VarEditorFieldRow: React.FC<VarEditorFieldRowProps> = ({
         </div>
         {description && <TooltipExplanation text={description} />}
       </div>
-      <div data-slot='field-row-content' className='w-full flex-1'>
+      <div data-slot='field-row-content' className='w-full flex-1 relative'>
         {children}
       </div>
       <ValidationErrorBadge error={validationError} type={validationType} />

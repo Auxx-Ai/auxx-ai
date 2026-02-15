@@ -262,11 +262,17 @@ export class ResourceRegistryService {
     const fieldsByEntityId = new Map<string, CustomFieldRecord[]>()
     const fieldsByModelType = new Map<string, CustomFieldRecord[]>()
 
+    // Static registry IDs — fields for these types always route to fieldsByModelType
+    // so the system resource picks them up (e.g., thread's CustomField-backed thread_tags)
+    const staticRegistryIds = new Set(RESOURCE_TABLE_REGISTRY.map((r) => r.id))
+
     for (const field of customFields as CustomFieldRecord[]) {
-      if (field.entityDefinitionId) {
+      if (field.entityDefinitionId && !staticRegistryIds.has(field.modelType)) {
+        // Custom entity field — group by entityDefinitionId
         const existing = fieldsByEntityId.get(field.entityDefinitionId) ?? []
         fieldsByEntityId.set(field.entityDefinitionId, [...existing, field])
       } else {
+        // System resource field OR no entityDefinitionId — group by modelType
         const existing = fieldsByModelType.get(field.modelType) ?? []
         fieldsByModelType.set(field.modelType, [...existing, field])
       }
@@ -294,9 +300,14 @@ export class ResourceRegistryService {
       }
     })
 
+    // Filter out EntityDefinitions that overlap with static registry resources (e.g., thread)
+    const filteredEntityDefs = entityDefinitions.filter(
+      (def) => !def.entityType || !staticRegistryIds.has(def.entityType)
+    )
+
     // Custom resources with fields from grouped map
     // Include implicit EntityInstance system fields (id, createdAt, updatedAt) before custom fields
-    const customResources: CustomResource[] = entityDefinitions.map((def) => {
+    const customResources: CustomResource[] = filteredEntityDefs.map((def) => {
       const instanceFields = getEntityInstanceFields()
       const hydratedInstanceFields = this.mapSystemFieldsToResourceFields(instanceFields, def.id)
 
@@ -339,8 +350,14 @@ export class ResourceRegistryService {
       },
     })
 
+    // Filter out EntityDefinitions that overlap with static registry resources (e.g., thread)
+    const staticRegistryIds = new Set(RESOURCE_TABLE_REGISTRY.map((r) => r.id))
+    const filteredEntityDefs = (entityDefinitions as EntityDefinitionWithFields[]).filter(
+      (def) => !def.entityType || !staticRegistryIds.has(def.entityType)
+    )
+
     // Include implicit EntityInstance system fields (id, createdAt, updatedAt) before custom fields
-    return (entityDefinitions as EntityDefinitionWithFields[]).map((def) => {
+    return filteredEntityDefs.map((def) => {
       const instanceFields = getEntityInstanceFields()
       const hydratedInstanceFields = this.mapSystemFieldsToResourceFields(instanceFields, def.id)
 
@@ -377,6 +394,10 @@ export class ResourceRegistryService {
     })
 
     if (!entityDef) return null
+
+    // Filter out EntityDefinitions that overlap with static registry resources (e.g., thread)
+    const staticRegistryIds = new Set(RESOURCE_TABLE_REGISTRY.map((r) => r.id))
+    if (entityDef.entityType && staticRegistryIds.has(entityDef.entityType)) return null
 
     // Include implicit EntityInstance system fields (id, createdAt, updatedAt) before custom fields
     const instanceFields = getEntityInstanceFields()
@@ -452,14 +473,13 @@ export class ResourceRegistryService {
         systemResourceBase.entityDefinitionId
       )
 
-      // Get custom fields from database
+      // Get custom fields from database (includes fields with entityDefinitionId, e.g., thread_tags)
       const customFields = await this.db.query.CustomField.findMany({
-        where: (f, { eq, and, isNull }) =>
+        where: (f, { eq, and }) =>
           and(
             eq(f.organizationId, this.organizationId),
             eq(f.modelType, tableId),
-            eq(f.active, true),
-            isNull(f.entityDefinitionId)
+            eq(f.active, true)
           ),
         orderBy: (f, { asc }) => [asc(f.sortOrder)],
       })
@@ -562,14 +582,13 @@ export class ResourceRegistryService {
       // Add resourceFieldId to system fields
       const hydratedSystemFields = this.mapSystemFieldsToResourceFields(staticFields, resourceId)
 
-      // Custom fields from database (where modelType matches and entityDefinitionId is null)
+      // Custom fields from database (includes fields with entityDefinitionId, e.g., thread_tags)
       const customFields = await this.db.query.CustomField.findMany({
-        where: (f, { eq, and, isNull }) =>
+        where: (f, { eq, and }) =>
           and(
             eq(f.organizationId, this.organizationId),
             eq(f.modelType, resourceId),
-            eq(f.active, true),
-            isNull(f.entityDefinitionId)
+            eq(f.active, true)
           ),
         orderBy: (f, { asc }) => [asc(f.sortOrder)],
       })

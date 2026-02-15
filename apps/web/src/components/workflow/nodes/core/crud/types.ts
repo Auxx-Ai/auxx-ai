@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/crud/types.ts
 
+import { type RelationUpdateMode, relationUpdateModeSchema } from '@auxx/types/custom-field'
 import { z } from 'zod'
 import type { TargetBranch } from '~/components/workflow/types'
 import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
@@ -50,6 +51,8 @@ export interface CrudNodeData extends BaseNodeData {
   resourceId?: string // For update/delete operations (VarEditor input)
   data: Record<string, any> // Field values
   fieldModes?: Record<string, boolean> // Track constant/variable mode per field
+  fieldUpdateModes?: Record<string, RelationUpdateMode> // Relation update mode per multi-relation field
+  fieldUpdateModeVars?: Record<string, string> // Dynamic mode variable per field
 
   // Error handling configuration
   error_strategy: CrudErrorStrategy
@@ -78,6 +81,8 @@ export const crudNodeDataSchema = z.object({
   resourceId: z.string().optional(),
   data: z.record(z.string(), z.any()),
   fieldModes: z.record(z.string(), z.boolean()).optional(),
+  fieldUpdateModes: z.record(z.string(), relationUpdateModeSchema).optional(),
+  fieldUpdateModeVars: z.record(z.string(), z.string()).optional(),
   error_strategy: z.enum(CrudErrorStrategy).default(CrudErrorStrategy.fail),
   default_values: z
     .array(

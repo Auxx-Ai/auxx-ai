@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/ui/input-editor/get-input-component.ts
 
+import type { RelationshipType } from '@auxx/types/custom-field'
 import {
   AddressInput,
   ArrayInput,
@@ -87,6 +88,8 @@ export interface FieldOptions {
   }
   /** For RELATION/REFERENCE types - reference to field in registry */
   fieldReference?: string
+  /** For RELATION types - relationship cardinality (has_many, belongs_to, etc.) */
+  relationshipType?: RelationshipType
 }
 
 /**
@@ -115,19 +118,22 @@ export function getSpecificPropsForType(
       return { options: fieldOptions?.enum || fieldOptions?.options }
 
     case BaseType.DATE:
-      return { type: 'date' }
+      return { type: 'date', triggerProps: { className: 'w-full ps-0' } }
 
     case BaseType.DATETIME:
-      return { type: 'datetime' }
+      return { type: 'datetime', triggerProps: { className: 'w-full ps-0' } }
 
     case BaseType.TIME:
-      return { type: 'time' }
+      return { type: 'time', triggerProps: { className: 'w-full ps-0' } }
 
     case BaseType.RELATION:
     case BaseType.REFERENCE:
-      // For RELATION types, pass fieldReference from fieldOptions
+      // For RELATION types, pass fieldReference and relationshipType from fieldOptions
+      // Hide clear button since VarEditor already provides its own
       return {
         fieldReference: fieldOptions?.fieldReference,
+        relationshipType: fieldOptions?.relationshipType,
+        showClear: false,
       }
 
     case BaseType.FILE:

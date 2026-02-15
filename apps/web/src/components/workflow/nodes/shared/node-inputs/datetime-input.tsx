@@ -45,7 +45,7 @@ export const DateTimeInput = createNodeInput<DateTimeInputProps>(
     onOpenChange,
   }) => {
     const value = inputs[name]
-    const error = errors[name]
+    // const error = errors[name]
 
     // Parse ISO string to Date object
     const dateValue = value ? new Date(value) : undefined

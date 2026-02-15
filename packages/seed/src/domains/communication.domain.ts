@@ -283,14 +283,10 @@ export class CommunicationDomain {
     const threadTagsField = await db
       .select({ id: schema.CustomField.id })
       .from(schema.CustomField)
-      .innerJoin(
-        schema.EntityDefinition,
-        eq(schema.CustomField.entityDefinitionId, schema.EntityDefinition.id)
-      )
       .where(
         and(
           eq(schema.CustomField.systemAttribute, 'thread_tags'),
-          eq(schema.EntityDefinition.organizationId, organizationId)
+          eq(schema.CustomField.organizationId, organizationId)
         )
       )
       .limit(1)
