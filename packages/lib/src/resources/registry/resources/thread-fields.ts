@@ -224,8 +224,8 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
     id: toFieldId('assignee'),
     key: 'assignee',
     label: 'Assignee',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
+    type: BaseType.ACTOR,
+    fieldType: FieldType.ACTOR,
     isSystem: true,
     systemAttribute: 'assignee_id',
     systemSortOrder: 'a3',
@@ -239,10 +239,11 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    relationship: {
-      inverseResourceFieldId: null,
-      relationshipType: 'belongs_to',
-      isInverse: false,
+    options: {
+      actor: {
+        target: 'user',
+        multiple: false,
+      },
     },
     description: 'Assign thread to a team member',
     placeholder: 'Select assignee',
@@ -268,7 +269,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
-      inverseResourceFieldId: null,
+      inverseResourceFieldId: 'inbox:inbox_threads' as ResourceFieldId,
       relationshipType: 'belongs_to',
       isInverse: false,
     },
@@ -345,7 +346,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
-      inverseResourceFieldId: 'tag:threads' as ResourceFieldId,
+      inverseResourceFieldId: 'tag:tag_threads' as ResourceFieldId,
       relationshipType: 'has_many',
       isInverse: false,
     },

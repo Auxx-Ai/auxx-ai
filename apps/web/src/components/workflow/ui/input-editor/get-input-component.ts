@@ -2,6 +2,7 @@
 
 import type { RelationshipType } from '@auxx/types/custom-field'
 import {
+  ActorInput,
   AddressInput,
   ArrayInput,
   BooleanInput,
@@ -25,6 +26,8 @@ import { BaseType } from '~/components/workflow/types'
  */
 export function getInputComponent(type: BaseType, fieldOptions?: FieldOptions) {
   switch (type) {
+    case BaseType.ACTOR:
+      return ActorInput
     case BaseType.RELATION:
     case BaseType.REFERENCE:
       return RelationInput
@@ -92,6 +95,8 @@ export interface FieldOptions {
   fieldReference?: string
   /** For RELATION types - relationship cardinality (has_many, belongs_to, etc.) */
   relationshipType?: RelationshipType
+  /** For ACTOR type — actor picker configuration */
+  actor?: { target?: 'user' | 'group' | 'both'; multiple?: boolean }
   /** For MULTI_SELECT type — triggers MultiSelectInput instead of ArrayInput */
   multiSelect?: boolean
 }
@@ -129,6 +134,12 @@ export function getSpecificPropsForType(
 
     case BaseType.TIME:
       return { type: 'time', triggerProps: { className: 'w-full ps-0' } }
+
+    case BaseType.ACTOR:
+      return {
+        target: fieldOptions?.actor?.target ?? 'user',
+        multi: fieldOptions?.actor?.multiple ?? false,
+      }
 
     case BaseType.RELATION:
     case BaseType.REFERENCE:

@@ -13,6 +13,9 @@ import { useResources } from '~/components/resources/hooks'
 
 const BASE_URL = `/app/settings/custom-fields`
 
+/** Entity types that shouldn't appear in the custom fields list */
+const HIDDEN_ENTITY_TYPES = ['signature', 'inbox', 'entity_group', 'tag']
+
 export default function CustomFieldsPage() {
   const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -50,18 +53,20 @@ export default function CustomFieldsPage() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {/* All resources (system + custom) from unified registry */}
+          {/* All resources (system + custom) from unified registry, excluding hidden system types */}
           {!isLoading &&
-            resources.map((resource) => (
-              <EntityRow
-                key={resource.id}
-                label={resource.label}
-                type={resource.entityType ? 'System' : 'Custom'}
-                iconId={resource.icon}
-                color={resource.color}
-                onClick={() => handleRowClick(resource.apiSlug)}
-              />
-            ))}
+            resources
+              .filter((r) => !r.entityType || !HIDDEN_ENTITY_TYPES.includes(r.entityType))
+              .map((resource) => (
+                <EntityRow
+                  key={resource.id}
+                  label={resource.label}
+                  type={resource.entityType ? 'System' : 'Custom'}
+                  iconId={resource.icon}
+                  color={resource.color}
+                  onClick={() => handleRowClick(resource.apiSlug)}
+                />
+              ))}
         </TableBody>
       </Table>
 

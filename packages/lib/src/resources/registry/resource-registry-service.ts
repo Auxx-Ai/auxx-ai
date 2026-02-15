@@ -279,24 +279,21 @@ export class ResourceRegistryService {
     }
 
     // System resources with merged fields (static registry + organization custom fields)
+    // DB CustomField versions take priority; static-only metadata is preserved via enrichment
     const systemResources: SystemResource[] = RESOURCE_TABLE_REGISTRY.map((r) => {
       const tableId = r.id as TableId
       const systemResourceBase = toSystemResourceBase(tableId)
       const fieldRegistry = RESOURCE_FIELD_REGISTRY[tableId]
       const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
-
-      // Add resourceFieldId to system fields
-      const hydratedSystemFields = this.mapSystemFieldsToResourceFields(
-        staticFields,
-        systemResourceBase.entityDefinitionId
-      )
-
       const orgCustomFields = fieldsByModelType.get(tableId) ?? []
-      const customResourceFields = this.mapCustomFieldsToResourceFields(orgCustomFields, tableId)
 
       return {
         ...systemResourceBase,
-        fields: [...hydratedSystemFields, ...customResourceFields],
+        fields: this.mergeSystemAndCustomFields(
+          staticFields,
+          orgCustomFields,
+          systemResourceBase.entityDefinitionId
+        ),
       }
     })
 
@@ -467,12 +464,6 @@ export class ResourceRegistryService {
       const fieldRegistry = RESOURCE_FIELD_REGISTRY[tableId]
       const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
 
-      // Add resourceFieldId to system fields
-      const hydratedSystemFields = this.mapSystemFieldsToResourceFields(
-        staticFields,
-        systemResourceBase.entityDefinitionId
-      )
-
       // Get custom fields from database (includes fields with entityDefinitionId, e.g., thread_tags)
       const customFields = await this.db.query.CustomField.findMany({
         where: (f, { eq, and }) =>
@@ -484,14 +475,13 @@ export class ResourceRegistryService {
         orderBy: (f, { asc }) => [asc(f.sortOrder)],
       })
 
-      const customResourceFields = this.mapCustomFieldsToResourceFields(
-        customFields as CustomFieldRecord[],
-        tableId
-      )
-
       resource = {
         ...systemResourceBase,
-        fields: [...hydratedSystemFields, ...customResourceFields],
+        fields: this.mergeSystemAndCustomFields(
+          staticFields,
+          customFields as CustomFieldRecord[],
+          systemResourceBase.entityDefinitionId
+        ),
       }
     } else {
       // Custom entity - treat as EntityDefinitionId (UUID) - no entity_ prefix needed
@@ -579,9 +569,6 @@ export class ResourceRegistryService {
       const fieldRegistry = RESOURCE_FIELD_REGISTRY[resourceId]
       const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
 
-      // Add resourceFieldId to system fields
-      const hydratedSystemFields = this.mapSystemFieldsToResourceFields(staticFields, resourceId)
-
       // Custom fields from database (includes fields with entityDefinitionId, e.g., thread_tags)
       const customFields = await this.db.query.CustomField.findMany({
         where: (f, { eq, and }) =>
@@ -593,12 +580,11 @@ export class ResourceRegistryService {
         orderBy: (f, { asc }) => [asc(f.sortOrder)],
       })
 
-      const customResourceFields = this.mapCustomFieldsToResourceFields(
+      fields = this.mergeSystemAndCustomFields(
+        staticFields,
         customFields as CustomFieldRecord[],
         resourceId
       )
-
-      fields = [...hydratedSystemFields, ...customResourceFields]
     } else if (this.isCustomResource(resourceId)) {
       // resourceId is now EntityDefinitionId (UUID) directly
       const entityDef = await this.db.query.EntityDefinition.findFirst({
@@ -731,6 +717,81 @@ export class ResourceRegistryService {
     }
 
     return entityDef.id
+  }
+
+  /**
+   * Merge static registry fields with DB CustomField records for system resources.
+   * DB CustomField versions take priority (they have real UUIDs needed for FieldValue writes).
+   * Static-only metadata (dynamicOptionsKey, operatorOverrides, showInPanel, etc.) is preserved
+   * by enriching the DB version. Truly custom fields (no static match) are appended.
+   *
+   * @param staticFields - Fields from field registry (THREAD_FIELDS, etc.)
+   * @param customFields - CustomField records from database
+   * @param entityDefinitionId - Entity ID to construct resourceFieldId
+   * @returns Deduplicated ResourceField[] — no duplicate systemAttribute entries
+   */
+  private mergeSystemAndCustomFields(
+    staticFields: ResourceField[],
+    customFields: CustomFieldRecord[],
+    entityDefinitionId: string
+  ): ResourceField[] {
+    // Build systemAttribute -> static field lookup for enrichment
+    const staticByAttr = new Map<string, ResourceField>()
+    for (const field of staticFields) {
+      if (field.systemAttribute) {
+        staticByAttr.set(field.systemAttribute, field)
+      }
+    }
+
+    // Track which systemAttributes are covered by DB fields
+    const matchedAttributes = new Set<string>()
+
+    // Map DB fields, enriching with static metadata where available
+    const dbFields = this.mapCustomFieldsToResourceFields(customFields, entityDefinitionId)
+    const enrichedDbFields = dbFields.map((dbField) => {
+      const staticField = dbField.systemAttribute
+        ? staticByAttr.get(dbField.systemAttribute)
+        : undefined
+
+      if (staticField) {
+        matchedAttributes.add(dbField.systemAttribute!)
+        // DB field takes priority, enrich with static-only properties
+        return {
+          ...dbField,
+          dbColumn: staticField.dbColumn,
+          dynamicOptionsKey: staticField.dynamicOptionsKey,
+          operatorOverrides: staticField.operatorOverrides,
+          showInPanel: staticField.showInPanel,
+          placeholder: staticField.placeholder,
+          nullable: staticField.nullable,
+          defaultValue: staticField.defaultValue,
+          // Merge relationship config — DB object exists but inverseResourceFieldId may be null
+          // when the seeder linker couldn't resolve it. Fall back to static definition.
+          relationship:
+            dbField.relationship || staticField.relationship
+              ? {
+                  ...(dbField.relationship ?? staticField.relationship),
+                  inverseResourceFieldId:
+                    dbField.relationship?.inverseResourceFieldId ??
+                    staticField.relationship?.inverseResourceFieldId ??
+                    null,
+                }
+              : undefined,
+        }
+      }
+
+      return dbField
+    })
+
+    // Static fields without a DB counterpart (e.g., 'id' excluded by seeder)
+    const unmatchedStaticFields = staticFields
+      .filter((f) => !f.systemAttribute || !matchedAttributes.has(f.systemAttribute))
+      .map((field) => ({
+        ...field,
+        resourceFieldId: toResourceFieldId(entityDefinitionId, field.id),
+      }))
+
+    return [...unmatchedStaticFields, ...enrichedDbFields]
   }
 
   /**

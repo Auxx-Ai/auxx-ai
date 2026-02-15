@@ -171,8 +171,9 @@ SelectLabel.displayName = SelectPrimitive.Label.displayName
 function SelectItem({
   className,
   children,
+  description,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Item>) {
+}: React.ComponentProps<typeof SelectPrimitive.Item> & { description?: string }) {
   return (
     <SelectPrimitive.Item
       className={cn(
@@ -185,7 +186,10 @@ function SelectItem({
           <Check className='size-4' />
         </SelectPrimitive.ItemIndicator>
       </span>
-      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+      <div className='flex flex-col'>
+        <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+        {description && <span className='text-xs text-muted-foreground'>{description}</span>}
+      </div>
     </SelectPrimitive.Item>
   )
 }
