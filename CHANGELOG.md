@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.3](https://github.com/auxxai/auxx-ai/compare/auxx-v0.1.2...auxx-v0.1.3) (2026-02-15)
+
+
+### Features
+
+* Feat/workflow crud ([#10](https://github.com/auxxai/auxx-ai/issues/10)) ([c5d300c](https://github.com/auxxai/auxx-ai/commit/c5d300cf803e73b6c8eb66575740a2e1c930244a))
+* update color defaults and add new configuration options ([#9](https://github.com/auxxai/auxx-ai/issues/9)) ([22b0e83](https://github.com/auxxai/auxx-ai/commit/22b0e834737a9fb06a3eed3b2041d5cef39e0435))
+
+
+### Bug Fixes
+
+* resolve useExhaustiveDependencies lint warnings across codebase ([#6](https://github.com/auxxai/auxx-ai/issues/6)) ([96fa3d9](https://github.com/auxxai/auxx-ai/commit/96fa3d9fdab47689a956dce0b3e5e4b1e44415eb))
+
 ## [0.1.2](https://github.com/auxxai/auxx-ai/compare/auxx-v0.1.1...auxx-v0.1.2) (2026-02-14)
 
 
