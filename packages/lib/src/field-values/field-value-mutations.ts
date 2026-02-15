@@ -530,6 +530,117 @@ export async function removeRelationValues(
 }
 
 // =============================================================================
+// OPTION ADD / REMOVE MUTATIONS (MULTI_SELECT)
+// =============================================================================
+
+/**
+ * Add option values to a multi-value select field (no duplicates).
+ * Appends new values after existing ones using fractional indexing.
+ *
+ * @param ctx - Field value context
+ * @param params - Record ID, field ID, and option IDs to add
+ */
+export async function addOptionValues(
+  ctx: FieldValueContext,
+  params: {
+    recordId: RecordId
+    fieldId: string
+    optionIds: string[]
+  }
+): Promise<void> {
+  const { recordId, fieldId, optionIds } = params
+  if (optionIds.length === 0) return
+
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+
+  // Get existing option IDs to avoid duplicates
+  const existingRows = await ctx.db
+    .select({ optionId: schema.FieldValue.optionId })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.entityId, entityInstanceId),
+        eq(schema.FieldValue.fieldId, fieldId),
+        eq(schema.FieldValue.organizationId, ctx.organizationId)
+      )
+    )
+
+  const existingSet = new Set(existingRows.map((r) => r.optionId).filter(Boolean))
+  const newIds = optionIds.filter((id) => !existingSet.has(id))
+  if (newIds.length === 0) return
+
+  // Get max sort key for appending
+  const existing = await ctx.db
+    .select({ sortKey: schema.FieldValue.sortKey })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.entityId, entityInstanceId),
+        eq(schema.FieldValue.fieldId, fieldId),
+        eq(schema.FieldValue.organizationId, ctx.organizationId)
+      )
+    )
+    .orderBy(asc(schema.FieldValue.sortKey))
+
+  // Generate sort keys and insert new values
+  let prevKey = existing.length > 0 ? existing[existing.length - 1]!.sortKey : null
+
+  const insertRows = newIds.map((optId) => {
+    const sortKey = generateKeyBetween(prevKey, null)
+    prevKey = sortKey
+    return {
+      organizationId: ctx.organizationId,
+      entityId: entityInstanceId,
+      entityDefinitionId,
+      fieldId,
+      optionId: optId,
+      sortKey,
+      valueText: null,
+      valueNumber: null,
+      valueBoolean: null,
+      valueDate: null,
+      valueJson: null,
+      relatedEntityId: null,
+      relatedEntityDefinitionId: null,
+      actorId: null,
+    }
+  })
+
+  await ctx.db.insert(schema.FieldValue).values(insertRows)
+}
+
+/**
+ * Remove specific option values from a multi-value select field.
+ *
+ * @param ctx - Field value context
+ * @param params - Record ID, field ID, and option IDs to remove
+ */
+export async function removeOptionValues(
+  ctx: FieldValueContext,
+  params: {
+    recordId: RecordId
+    fieldId: string
+    optionIds: string[]
+  }
+): Promise<void> {
+  const { recordId, fieldId, optionIds } = params
+  if (optionIds.length === 0) return
+
+  const { entityInstanceId } = parseRecordId(recordId)
+
+  await ctx.db
+    .delete(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.entityId, entityInstanceId),
+        eq(schema.FieldValue.fieldId, fieldId),
+        inArray(schema.FieldValue.optionId, optionIds),
+        eq(schema.FieldValue.organizationId, ctx.organizationId)
+      )
+    )
+}
+
+// =============================================================================
 // HIGH-LEVEL MUTATIONS
 // =============================================================================
 

@@ -225,6 +225,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
         enum?: Array<{ label: string; value: string }>
         fieldReference?: string
         relationshipType?: string
+        multiSelect?: boolean
       } = {}
       if (field.options?.options?.length) {
         fieldOptions.enum = field.options.options
@@ -234,12 +235,18 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
         fieldOptions.relationshipType = field.relationship?.relationshipType
       }
 
+      // Detect multi-select fields for dropdown input and update mode badge
+      const isMultiSelect = field.fieldType === 'MULTI_SELECT'
+      if (isMultiSelect) {
+        fieldOptions.multiSelect = true
+      }
+
       // Detect multi-relation fields for update mode badge
       const isMultiRelation =
         field.type === BaseType.RELATION &&
         field.relationship &&
         isMultiRelationship(field.relationship.relationshipType)
-      const showUpdateMode = nodeData.mode === 'update' && isMultiRelation
+      const showUpdateMode = nodeData.mode === 'update' && (isMultiRelation || isMultiSelect)
       const currentUpdateMode = nodeData.fieldUpdateModes?.[field.key] ?? RelationUpdateMode.REPLACE
 
       // Determine allowed types for type filtering

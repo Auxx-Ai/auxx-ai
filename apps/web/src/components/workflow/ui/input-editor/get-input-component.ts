@@ -9,6 +9,7 @@ import {
   DateTimeInput,
   EnumInput,
   FileInput,
+  MultiSelectInput,
   NumberInput,
   ObjectInput,
   PhoneInput,
@@ -22,7 +23,7 @@ import { BaseType } from '~/components/workflow/types'
  * Map BaseType to appropriate input component
  * Shared by both ConstantInput and VariableInput
  */
-export function getInputComponent(type: BaseType) {
+export function getInputComponent(type: BaseType, fieldOptions?: FieldOptions) {
   switch (type) {
     case BaseType.RELATION:
     case BaseType.REFERENCE:
@@ -38,6 +39,7 @@ export function getInputComponent(type: BaseType) {
     case BaseType.BOOLEAN:
       return BooleanInput
     case BaseType.ARRAY:
+      if (fieldOptions?.multiSelect) return MultiSelectInput
       return ArrayInput
     case BaseType.OBJECT:
     case BaseType.JSON:
@@ -90,6 +92,8 @@ export interface FieldOptions {
   fieldReference?: string
   /** For RELATION types - relationship cardinality (has_many, belongs_to, etc.) */
   relationshipType?: RelationshipType
+  /** For MULTI_SELECT type — triggers MultiSelectInput instead of ArrayInput */
+  multiSelect?: boolean
 }
 
 /**
@@ -153,6 +157,12 @@ export function getSpecificPropsForType(
     }
 
     case BaseType.ADDRESS:
+      return {}
+
+    case BaseType.ARRAY:
+      if (fieldOptions?.multiSelect) {
+        return { options: fieldOptions.enum || [] }
+      }
       return {}
 
     case BaseType.TAGS:

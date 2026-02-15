@@ -41,7 +41,7 @@ export const ConstantInputAdapter: React.FC<ConstantInputProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   // Get input component for type (includes RelationInput for RELATION type)
-  const InputComponent = getInputComponent(varType)
+  const InputComponent = getInputComponent(varType, fieldOptions)
 
   /**
    * Adapter for onChange handler

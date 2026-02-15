@@ -15,6 +15,7 @@ export { CurrencyInput } from './currency-input'
 export { DateTimeInput } from './datetime-input'
 export { EnumInput } from './enum-input'
 export { FileInput } from './file-input'
+export { MultiSelectInput } from './multi-select-input'
 export { NumberInput } from './number-input'
 export { ObjectInput } from './object-input'
 // Export complex input components

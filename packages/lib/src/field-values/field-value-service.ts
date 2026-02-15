@@ -135,6 +135,29 @@ export class FieldValueService {
   }
 
   /**
+   * Add option values to a multi-value select field (no duplicates).
+   * Appends new values after existing ones.
+   */
+  addOptionValues(params: {
+    recordId: RecordId
+    fieldId: string
+    optionIds: string[]
+  }): Promise<void> {
+    return mutations.addOptionValues(this.ctx, params)
+  }
+
+  /**
+   * Remove specific option values from a multi-value select field.
+   */
+  removeOptionValues(params: {
+    recordId: RecordId
+    fieldId: string
+    optionIds: string[]
+  }): Promise<void> {
+    return mutations.removeOptionValues(this.ctx, params)
+  }
+
+  /**
    * Set a field value with built-in field support and optional event publishing.
    * Primary entry point for setting field values - handles both built-in and custom fields.
    *

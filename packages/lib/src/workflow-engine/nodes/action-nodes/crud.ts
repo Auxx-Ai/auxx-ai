@@ -158,8 +158,24 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
         const resolvedValue = resolvedValues[index]
         const field = getField(config.resourceType, key)
 
+        // Handle MULTI_SELECT fields with update modes (similar to multi-relation)
+        if (field?.fieldType === 'MULTI_SELECT' && config.mode === 'update') {
+          const updateMode = resolvedFieldUpdateModes[key] ?? RelationUpdateMode.REPLACE
+          let values: string[] = []
+          if (typeof resolvedValue === 'string') {
+            try {
+              const parsed = JSON.parse(resolvedValue)
+              values = Array.isArray(parsed) ? parsed : parsed ? [parsed] : []
+            } catch {
+              values = resolvedValue ? [resolvedValue] : []
+            }
+          } else if (Array.isArray(resolvedValue)) {
+            values = resolvedValue
+          }
+          resolvedData[key] = { values, updateMode, fieldType: 'MULTI_SELECT' }
+        }
         // Transform RELATION fields: extract ID and map to dbColumn
-        if (field?.type === BaseType.RELATION && field.dbColumn) {
+        else if (field?.type === BaseType.RELATION && field.dbColumn) {
           const isMulti = isMultiRelationship(field.relationship?.relationshipType)
           const updateMode = resolvedFieldUpdateModes[key] ?? RelationUpdateMode.REPLACE
 
@@ -707,13 +723,18 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
           throw new Error('Resource ID required for update operation')
         }
 
-        // Separate multi-relation fields with add/remove modes from regular fields
+        // Separate mode-aware fields (relations + multi-select) from regular fields
         const regularData: Record<string, any> = {}
         const modeAwareRelations: Array<{
           fieldId: string
           values: string[]
           updateMode: RelationUpdateModeType
           relatedEntityDefinitionId: string
+        }> = []
+        const modeAwareOptions: Array<{
+          fieldId: string
+          values: string[]
+          updateMode: RelationUpdateModeType
         }> = []
 
         for (const [fieldId, value] of Object.entries(dataWithFieldIds)) {
@@ -723,12 +744,28 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
             'updateMode' in value &&
             'values' in value
           ) {
-            const { values, updateMode } = value as {
+            const { values, updateMode, fieldType } = value as {
               values: string[]
               updateMode: RelationUpdateModeType
+              fieldType?: string
             }
-            if (updateMode === RelationUpdateMode.ADD || updateMode === RelationUpdateMode.REMOVE) {
-              // Find relatedEntityDefinitionId from field definition
+
+            if (fieldType === 'MULTI_SELECT') {
+              // MULTI_SELECT field with update mode
+              if (
+                updateMode === RelationUpdateMode.ADD ||
+                updateMode === RelationUpdateMode.REMOVE
+              ) {
+                modeAwareOptions.push({ fieldId, values, updateMode })
+              } else {
+                // Replace mode: pass values through to regular handler
+                regularData[fieldId] = values
+              }
+            } else if (
+              updateMode === RelationUpdateMode.ADD ||
+              updateMode === RelationUpdateMode.REMOVE
+            ) {
+              // Relation field with add/remove mode
               const field = resource.fields.find((f) => f.id === fieldId || f.key === fieldId)
               const relatedEntityDefId = field?.relationship
                 ? getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
@@ -752,12 +789,12 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
         const result = await handler.updateValues(resourceId, regularData)
 
         // Execute mode-aware relation updates (add/remove)
-        if (modeAwareRelations.length > 0) {
+        if (modeAwareRelations.length > 0 || modeAwareOptions.length > 0) {
           const fieldValueService = new FieldValueService(organizationId, userId, database)
           const recordId = toRecordId(resource.entityDefinitionId, resourceId)
 
-          await Promise.all(
-            modeAwareRelations.map(({ fieldId, values, updateMode, relatedEntityDefinitionId }) => {
+          const relationPromises = modeAwareRelations.map(
+            ({ fieldId, values, updateMode, relatedEntityDefinitionId }) => {
               if (updateMode === RelationUpdateMode.ADD) {
                 return fieldValueService.addRelationValues({
                   recordId,
@@ -772,8 +809,18 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
                   relatedEntityIds: values,
                 })
               }
-            })
+            }
           )
+
+          const optionPromises = modeAwareOptions.map(({ fieldId, values, updateMode }) => {
+            if (updateMode === RelationUpdateMode.ADD) {
+              return fieldValueService.addOptionValues({ recordId, fieldId, optionIds: values })
+            } else {
+              return fieldValueService.removeOptionValues({ recordId, fieldId, optionIds: values })
+            }
+          })
+
+          await Promise.all([...relationPromises, ...optionPromises])
         }
 
         return {
