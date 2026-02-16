@@ -3,6 +3,7 @@
 import { API_URL, env, HOMEPAGE_URL, WEBAPP_URL } from '@auxx/config/client'
 import { type Database, database as ddb, schema } from '@auxx/database'
 import { getDeploymentMode } from '@auxx/deployment'
+import { execSync } from 'child_process'
 import { count, eq } from 'drizzle-orm'
 import { MediaAssetService } from '../files'
 import { createScopedLogger } from '../logger'
@@ -17,6 +18,22 @@ import type {
 } from './types'
 
 const logger = createScopedLogger('DehydrationService', { color: 'blue' })
+
+/** Cached local git info so we only shell out once per process */
+let cachedGitInfo: { sha: string; branch: string } | null = null
+
+/** Get git SHA and branch from local repo (dev only, cached) */
+function getLocalGitInfo(): { sha: string; branch: string } {
+  if (cachedGitInfo) return cachedGitInfo
+  try {
+    const sha = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
+    const branch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim()
+    cachedGitInfo = { sha, branch }
+    return cachedGitInfo
+  } catch {
+    return { sha: 'unknown', branch: 'dev' }
+  }
+}
 
 /**
  * Service for generating dehydrated state on the server
@@ -301,11 +318,16 @@ export class DehydrationService {
         bucket: env.NEXT_PUBLIC_S3_BUCKET || null,
         region: env.NEXT_PUBLIC_S3_REGION || null,
       },
-      version: {
-        commit: process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT || 'unknown',
-        buildTime: new Date().toISOString(),
-        nodeEnv: env.NEXT_PUBLIC_ENV || 'development',
-      },
+      version: (() => {
+        const isDev = !env.NEXT_PUBLIC_GIT_SHA
+        const git = isDev ? getLocalGitInfo() : null
+        return {
+          appVersion: env.NEXT_PUBLIC_APP_VERSION || git?.branch || 'dev',
+          commit: env.NEXT_PUBLIC_GIT_SHA || git?.sha || 'unknown',
+          buildTime: env.NEXT_PUBLIC_BUILD_TIME || new Date().toISOString(),
+          nodeEnv: env.NEXT_PUBLIC_ENV || 'development',
+        }
+      })(),
     }
   }
 

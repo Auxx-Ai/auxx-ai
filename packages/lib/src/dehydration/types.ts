@@ -52,6 +52,7 @@ export interface DehydratedEnvironment {
 
   // Build/version info
   version: {
+    appVersion: string
     commit: string
     buildTime: string
     nodeEnv: string

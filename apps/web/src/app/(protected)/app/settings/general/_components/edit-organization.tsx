@@ -34,6 +34,7 @@ const profileFormSchema = z.object({
     .string()
     .min(2, { error: 'Username must be at least 2 characters.' })
     .max(30, { error: 'Username must not be longer than 30 characters.' }),
+  // email: z.email({ message: 'Please enter a valid email address.' }),
 })
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>
@@ -41,7 +42,7 @@ type ProfileFormValues = z.infer<typeof profileFormSchema>
 // This can come from your database or API.
 const defaultValues: Partial<ProfileFormValues> = {
   username: '',
-  email: '',
+  // email: '',
 }
 
 export function EditOrganizationForm(): JSX.Element {
@@ -50,8 +51,8 @@ export function EditOrganizationForm(): JSX.Element {
   const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string | undefined>()
   const [emailDialogOpen, setEmailDialogOpen] = useState(false)
 
-  const { user, isLoading } = useUser()
-  console.log(user)
+  const { user } = useUser()
+
   const form = useForm<ProfileFormValues>({
     resolver: standardSchemaResolver(profileFormSchema),
     defaultValues,

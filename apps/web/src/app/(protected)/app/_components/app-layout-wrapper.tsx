@@ -4,6 +4,7 @@
 import type { DehydratedOrganization } from '@auxx/lib/dehydration'
 import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import type { ReactNode } from 'react'
+import { ViewStoreProvider } from '~/components/dynamic-table/context/view-store-provider'
 import { FilesystemProvider } from '~/components/files/provider/filesystem-provider'
 import { Dashboard } from '~/components/global/dashboard'
 import KBar from '~/components/kbar'
@@ -64,18 +65,20 @@ export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
 
   // Show normal dashboard for active subscriptions
   return (
-    <ResourceProvider>
-      <FilesystemProvider>
-        <PusherProvider>
-          <ThreadDataProvider>
-            <KBar>
-              <TooltipProvider>
-                <Dashboard user={user}>{children}</Dashboard>
-              </TooltipProvider>
-            </KBar>
-          </ThreadDataProvider>
-        </PusherProvider>
-      </FilesystemProvider>
-    </ResourceProvider>
+    <ViewStoreProvider>
+      <ResourceProvider>
+        <FilesystemProvider>
+          <PusherProvider>
+            <ThreadDataProvider>
+              <KBar>
+                <TooltipProvider>
+                  <Dashboard user={user}>{children}</Dashboard>
+                </TooltipProvider>
+              </KBar>
+            </ThreadDataProvider>
+          </PusherProvider>
+        </FilesystemProvider>
+      </ResourceProvider>
+    </ViewStoreProvider>
   )
 }

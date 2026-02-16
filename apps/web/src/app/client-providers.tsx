@@ -4,7 +4,6 @@
 import { Toaster } from '@auxx/ui/components/sonner'
 import { NuqsAdapter } from 'nuqs/adapters/next/app'
 import type React from 'react'
-import { ViewStoreProvider } from '~/components/dynamic-table/context/view-store-provider'
 import { ThemeProvider } from '~/providers/theme-provider'
 import { TRPCReactProvider } from '~/trpc/react'
 
@@ -19,9 +18,7 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
     <ThemeProvider attribute='class' defaultTheme='system' enableSystem disableTransitionOnChange>
       <Toaster />
       <NuqsAdapter>
-        <TRPCReactProvider>
-          <ViewStoreProvider>{children}</ViewStoreProvider>
-        </TRPCReactProvider>
+        <TRPCReactProvider>{children}</TRPCReactProvider>
       </NuqsAdapter>
     </ThemeProvider>
   )

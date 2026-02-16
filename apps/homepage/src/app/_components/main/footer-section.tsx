@@ -1,6 +1,7 @@
 // apps/homepage/src/app/_components/main/footer-section.tsx
 
 import Link from 'next/link'
+import { Badge } from '@/components/ui/badge'
 import { Logo } from '~/components/logo'
 import { config } from '~/lib/config'
 
@@ -61,10 +62,14 @@ export default function FooterSection() {
               <Logo />
               <span className='text-xl font-bold '>auxx.Ai</span>
             </Link>
-
-            <p className='text-muted-foreground text-balance text-sm'>
-              auxx.Ai is a all-in-one support and communication solution for small businesses.
-            </p>
+            <div>
+              <p className='text-muted-foreground text-balance text-sm mb-2'>
+                auxx.Ai is a all-in-one support and communication solution for small businesses.
+              </p>
+              <Badge variant='outline' className='text-muted-foreground'>
+                v{config.version.version}
+              </Badge>
+            </div>
           </div>
 
           <div className='col-span-3 grid gap-6 sm:grid-cols-3'>
