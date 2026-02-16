@@ -33,7 +33,7 @@ export default function PersonalOnboardingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Get existing user data from dehydrated state
-  const userData = useDehydratedUser()
+  const userData = useDehydratedUser()!
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: standardSchemaResolver(formSchema),

@@ -41,7 +41,7 @@ export function MessageClientWrapper({
 }: MessageClientWrapperProps) {
   const { store } = useInternalAppsContext()
   const environment = useEnvironment()
-  const user = useDehydratedUser()
+  const user = useDehydratedUser()!
   const organization = useDehydratedOrganization(organizationId)
   const messageClientRef = useRef<MessageClient>(null)
   const cleanupRef = useRef<(() => void)[]>([])

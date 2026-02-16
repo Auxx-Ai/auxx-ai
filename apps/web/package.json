@@ -124,6 +124,8 @@
     "openai": "catalog:",
     "papaparse": "^5.5.3",
     "pg": "catalog:",
+    "posthog-js": "catalog:",
+    "@posthog/react": "catalog:",
     "prosemirror-state": "^1.4.3",
     "pusher": "catalog:",
     "pusher-js": "catalog:",

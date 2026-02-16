@@ -1,115 +1,65 @@
-// import {
-//   captureException as sentryCaptureException,
-//   setUser,
-// } from '@sentry/nextjs'
-import type { z } from 'zod'
-// import { auth } from '~/server/auth'
-// cant use logger in this file
-// import { createScopedLogger } from './logger'
+// apps/web/src/utils/error.ts
 
-// const logger = createScopedLogger('middleware')
-
-export type ErrorMessage = { error: string; data?: any }
-export type ZodError = { error: { issues: { code: string; message: string }[] } }
 export type ApiErrorType = { type: string; message?: string; code: number }
 
-export function isError(value: any): value is ErrorMessage | ZodError {
-  return value?.error
-}
-
-export function isErrorMessage(value: any): value is ErrorMessage {
-  return typeof value?.error === 'string'
-}
-
-export function formatZodError(error: z.ZodError): string {
-  const formattedError = error.errors
-    .map((err) => `${err.path.join('.')}: ${err.message}`)
-    .join(', ')
-  return `Invalid data: ${formattedError}`
-}
-
-export async function logErrorToPosthog(type: 'api' | 'action', url: string, errorType: string) {
-  try {
-    // const session = await auth()
-    const session = { user: { email: '' } }
-    if (session?.user.email) {
-      // setUser({ email: session.user.email })
-      // await posthogCaptureEvent(session.user.email, errorType, {
-      //   $set: { isError: true, type, url },
-      // })
-      console.error('Logging error to PostHog:', { type, url, errorType })
-    }
-  } catch (error) {
-    console.error('Error logging to PostHog:', { error })
-  }
-}
-
-export function captureException(
-  error: unknown,
-  additionalInfo?: { extra?: Record<string, any> },
-  userEmail?: string
-) {
-  if (isKnownApiError(error)) {
-    console.warn(`Known API error. email: ${userEmail}`, error, additionalInfo)
-    return
-  }
-
-  // if (userEmail) setUser({ email: userEmail })
-  // sentryCaptureException(error, additionalInfo)
-}
-
 export type ActionError<E extends object = Record<string, unknown>> = { error: string } & E
-export type ServerActionResponse<T, E extends object = Record<string, unknown>> = ActionError<E> | T
 
+/** Checks if a value is an action error response (has an `error` string property) */
 export function isActionError(error: any): error is ActionError {
   return error && typeof error === 'object' && 'error' in error && error.error
 }
 
-// This class is used to throw error messages that are safe to expose to the client.
-export class SafeError extends Error {
-  constructor(
-    public safeMessage: string,
-    message?: string
-  ) {
-    super(message || safeMessage)
-    this.name = 'SafeError'
-  }
-}
+// ---------------------------------------------------------------------------
+// Error classifiers – useful for tRPC middleware / error handling integration
+// ---------------------------------------------------------------------------
 
+/** Gmail returned 'insufficientPermissions' */
 export function isGmailInsufficientPermissionsError(error: unknown): boolean {
   return (error as any)?.errors?.[0]?.reason === 'insufficientPermissions'
 }
 
+/** Gmail returned 'rateLimitExceeded' */
 export function isGmailRateLimitExceededError(error: unknown): boolean {
   return (error as any)?.errors?.[0]?.reason === 'rateLimitExceeded'
 }
 
+/** Gmail returned 'quotaExceeded' */
 export function isGmailQuotaExceededError(error: unknown): boolean {
   return (error as any)?.errors?.[0]?.reason === 'quotaExceeded'
 }
 
+/** OpenAI API key is incorrect */
 export function isIncorrectOpenAIAPIKeyError(error: unknown): boolean {
-  return error.message.includes('Incorrect API key provided')
+  return error instanceof Error && error.message.includes('Incorrect API key provided')
 }
 
+/** OpenAI model does not exist or no access */
 export function isInvalidOpenAIModelError(error: unknown): boolean {
-  return error.message.includes('does not exist or you do not have access to it')
+  return (
+    error instanceof Error &&
+    error.message.includes('does not exist or you do not have access to it')
+  )
 }
 
+/** OpenAI API key has been deactivated */
 export function isOpenAIAPIKeyDeactivatedError(error: unknown): boolean {
-  return error.message.includes('this API key has been deactivated')
+  return error instanceof Error && error.message.includes('this API key has been deactivated')
 }
 
+/** Anthropic credit balance too low */
 export function isAnthropicInsufficientBalanceError(error: unknown): boolean {
-  return error.message.includes('Your credit balance is too low to access the Anthropic API')
+  return (
+    error instanceof Error &&
+    error.message.includes('Your credit balance is too low to access the Anthropic API')
+  )
 }
 
-// Handling OpenAI retry errors on their own because this will be related to the user's own API quota,
-// rather than an error on our side (as we default to Anthropic atm).
+/** OpenAI quota exceeded (user's own API quota) */
 export function isOpenAIRetryError(error: unknown): boolean {
-  return error.message.includes('You exceeded your current quota')
+  return error instanceof Error && error.message.includes('You exceeded your current quota')
 }
 
+/** AWS ThrottlingException */
 export function isAWSThrottlingError(error: unknown): error is Error {
   return (
     error instanceof Error &&
@@ -119,25 +69,12 @@ export function isAWSThrottlingError(error: unknown): error is Error {
   )
 }
 
+/** AWS ServiceUnavailableException */
 export function isServiceUnavailableError(error: unknown): error is Error {
   return error instanceof Error && error.name === 'ServiceUnavailableException'
 }
 
-// // we don't want to capture these errors in Sentry
-// export function isKnownApiError(error: unknown): boolean {
-//   return (
-//     isGmailInsufficientPermissionsError(error) ||
-//     isGmailRateLimitExceededError(error) ||
-//     isGmailQuotaExceededError(error) ||
-//     (APICallError.isInstance(error) &&
-//       (isIncorrectOpenAIAPIKeyError(error) ||
-//         isInvalidOpenAIModelError(error) ||
-//         isOpenAIAPIKeyDeactivatedError(error) ||
-//         isAnthropicInsufficientBalanceError(error))) ||
-//     (RetryError.isInstance(error) && isOpenAIRetryError(error))
-//   )
-// }
-
+/** Checks for common API errors and returns a typed error object if matched */
 export function checkCommonErrors(error: unknown, url: string): ApiErrorType | null {
   if (isGmailInsufficientPermissionsError(error)) {
     console.warn(`Gmail insufficient permissions error for url: ${url}`)
@@ -163,15 +100,6 @@ export function checkCommonErrors(error: unknown, url: string): ApiErrorType | n
       code: 429,
     }
   }
-
-  // if (RetryError.isInstance(error) && isOpenAIRetryError(error)) {
-  //   console.warn(`OpenAI quota exceeded for url: ${url}`)
-  //   return {
-  //     type: 'OpenAI Quota Exceeded',
-  //     message: `OpenAI error: ${error.message}`,
-  //     code: 429,
-  //   }
-  // }
 
   return null
 }

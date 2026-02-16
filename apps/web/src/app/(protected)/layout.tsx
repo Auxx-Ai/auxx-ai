@@ -8,6 +8,7 @@ import type { ReactNode } from 'react'
 import { auth } from '~/auth/server'
 import { DehydratedStateProvider } from '~/providers/dehydrated-state-provider'
 import { FeatureFlagProvider, OrganizationIdProvider } from '~/providers/feature-flag-provider'
+import { PostHogProvider } from '~/providers/posthog-provider'
 
 interface ProtectedLayoutProps {
   children: ReactNode
@@ -48,7 +49,9 @@ export default async function ProtectedLayout({ children }: ProtectedLayoutProps
 
       <DehydratedStateProvider initialState={dehydratedState}>
         <OrganizationIdProvider initialOrganizationId={dehydratedState.organizationId}>
-          <FeatureFlagProvider>{children}</FeatureFlagProvider>
+          <FeatureFlagProvider>
+            <PostHogProvider>{children}</PostHogProvider>
+          </FeatureFlagProvider>
         </OrganizationIdProvider>
       </DehydratedStateProvider>
     </>

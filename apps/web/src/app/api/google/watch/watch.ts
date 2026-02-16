@@ -3,7 +3,6 @@ import { getGmailClient } from '@auxx/lib/google/client'
 import { unwatchGmail, watchGmail } from '@auxx/lib/google/watch'
 import { createScopedLogger } from '@auxx/logger'
 import type { gmail_v1 } from 'googleapis'
-import { captureException } from '~/utils/error'
 
 const logger = createScopedLogger('google/watch')
 /**
@@ -49,7 +48,6 @@ export async function unwatchEmails({
     }
 
     logger.error('Error unwatching emails', { userId, error })
-    captureException(error)
   }
 
   const userModel = new UserModel()

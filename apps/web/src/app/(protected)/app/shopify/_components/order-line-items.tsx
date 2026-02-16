@@ -10,10 +10,10 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
+import { formatCurrency } from '@auxx/utils/currency'
 import { AlertCircle, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 import { useOrder } from '~/components/orders/order-context'
-import { formatMoney } from '~/utils/strings'
 
 export default function OrderLineItems({ order: orderProp }: { order?: any } = {}) {
   // Use order from context if available, fallback to prop for backward compatibility
@@ -86,9 +86,9 @@ export default function OrderLineItems({ order: orderProp }: { order?: any } = {
                   </TableCell>
                   <TableCell className='text-center'>{item.quantity}</TableCell>
                   <TableCell className='text-right'>
-                    {formatMoney(item.originalUnitPrice)}
+                    {formatCurrency(item.originalUnitPrice)}
                   </TableCell>
-                  <TableCell className='text-right'>{formatMoney(item.originalTotal)}</TableCell>
+                  <TableCell className='text-right'>{formatCurrency(item.originalTotal)}</TableCell>
                   <TableCell className='text-right'>
                     {item.productId && (
                       <Link href={`/app/shopify/products/${item.productId}`} passHref>

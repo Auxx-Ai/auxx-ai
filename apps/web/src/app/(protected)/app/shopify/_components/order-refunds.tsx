@@ -10,10 +10,10 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
+import { formatCurrency } from '@auxx/utils/currency'
 import { format } from 'date-fns'
 import { AlertCircle, ArrowLeft, Receipt } from 'lucide-react'
 import { useOrder } from '~/components/orders/order-context'
-import { formatMoney } from '~/utils/strings'
 
 // Helper function to format dates
 function formatDate(date: Date | null | undefined) {
@@ -106,7 +106,7 @@ export default function OrderRefunds({ order: orderProp }: { order?: any } = {})
                 {order.refunds.map((refund: any) => (
                   <TableRow key={refund.id}>
                     <TableCell>{formatDate(refund.createdAt)}</TableCell>
-                    <TableCell>{formatMoney(refund.totalRefundedAmount)}</TableCell>
+                    <TableCell>{formatCurrency(refund.totalRefundedAmount)}</TableCell>
                     <TableCell>{refund.currencyCode}</TableCell>
                     <TableCell>
                       <Button variant='ghost' size='sm'>
@@ -121,7 +121,7 @@ export default function OrderRefunds({ order: orderProp }: { order?: any } = {})
             {/* Refund summary */}
             <div className='mt-4 flex justify-between border-t pt-4'>
               <span className='font-medium'>Total Refunded</span>
-              <span className='font-medium'>{formatMoney(order.totalRefunded)}</span>
+              <span className='font-medium'>{formatCurrency(order.totalRefunded)}</span>
             </div>
           </CardContent>
         </Card>
@@ -205,7 +205,7 @@ export default function OrderRefunds({ order: orderProp }: { order?: any } = {})
                       <TableCell>{formatDate(ticket.createdAt)}</TableCell>
                       <TableCell>
                         {ticket.refundCase.refundAmount
-                          ? formatMoney(ticket.refundCase.refundAmount)
+                          ? formatCurrency(ticket.refundCase.refundAmount)
                           : 'Not specified'}
                       </TableCell>
                       <TableCell>{getRefundStatusBadge(ticket.refundCase.refundStatus)}</TableCell>

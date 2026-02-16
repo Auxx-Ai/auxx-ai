@@ -10,7 +10,7 @@ import { useDehydratedUser } from '~/providers/dehydrated-state-provider'
  * Uses dehydrated user data for timezone and last login
  */
 export function UserPreferencesSection() {
-  const user = useDehydratedUser()
+  const user = useDehydratedUser()!
 
   return (
     <section>

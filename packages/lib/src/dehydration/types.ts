@@ -13,7 +13,7 @@ declare global {
  * Main dehydrated state interface injected server-side
  */
 export interface DehydratedState {
-  user: DehydratedUser
+  user?: DehydratedUser
   organizationId: string | null
   organizations: DehydratedOrganization[]
   settingsCatalog: Record<string, any>

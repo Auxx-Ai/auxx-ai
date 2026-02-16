@@ -26,6 +26,7 @@ import { z } from 'zod'
 import { client } from '~/auth/auth-client'
 import { PasswordField } from '~/components/credentials/password-fields'
 import { GithubIcon, GoogleIcon } from '~/constants/icons'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { GeneralSubmitButton } from './submit-button'
 
 // Schema for email-based signup validation
@@ -56,6 +57,7 @@ type PhoneSignUpFormValues = z.infer<typeof phoneFormSchema>
  */
 export function SignUpForm() {
   const router = useRouter()
+  const posthog = useAnalytics()
   const emailForm = useForm<EmailSignUpFormValues>({
     resolver: standardSchemaResolver(emailFormSchema),
     defaultValues: { email: '', password: '' },
@@ -151,6 +153,7 @@ export function SignUpForm() {
       if (err) {
         setError(err.message!)
       } else {
+        posthog?.capture('user_signed_up', { method: 'phone' })
         // On successful verification, create account
         // const { error: signupErr } = await client.signUp.phone({ phoneNumber: contact })
         router.push('/app/settings')
@@ -194,6 +197,7 @@ export function SignUpForm() {
           description: error.message || 'An unexpected error occurred during registration.',
         })
       } else {
+        posthog?.capture('user_signed_up', { method: 'email' })
         toastSuccess({
           title: 'Account Created',
           description: 'Verify your email!',
@@ -262,6 +266,7 @@ export function SignUpForm() {
                     variant='outline'
                     text='Login with Google'
                     onClick={() => {
+                      posthog?.capture('user_signed_up', { method: 'google' })
                       client.signIn.social({ provider: 'google' })
                     }}
                   />
@@ -271,6 +276,7 @@ export function SignUpForm() {
                     variant='outline'
                     text='Login with Github'
                     onClick={() => {
+                      posthog?.capture('user_signed_up', { method: 'github' })
                       client.signIn.social({ provider: 'github' })
                     }}
                   />

@@ -158,7 +158,7 @@ function OrganizationCard({
 
 export default function OrganizationsPage() {
   const organizations = useDehydratedOrganizations()
-  const user = useDehydratedUser()
+  const user = useDehydratedUser()!
   const { organizationId: currentOrgId, setOrganizationId } = useOrganizationIdContext()
   const router = useRouter()
   const [switching, setSwitching] = useState(false)

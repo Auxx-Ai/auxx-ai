@@ -14,6 +14,16 @@ const nextConfig = {
   generateBuildId: async () => {
     return process.env.NEXT_PUBLIC_GIT_SHA || 'development'
   },
+  // Required: PostHog endpoints use trailing slashes (/e/, /decide/).
+  // Without this, Next.js issues 308 redirects that break event capture.
+  skipTrailingSlashRedirect: true,
+  // Proxy PostHog requests through our domain to bypass ad-blockers
+  async rewrites() {
+    return [
+      { source: '/ph/static/:path*', destination: 'https://us-assets.i.posthog.com/static/:path*' },
+      { source: '/ph/:path*', destination: 'https://us.i.posthog.com/:path*' },
+    ]
+  },
   output: 'standalone',
   transpilePackages: [
     '@auxx/config',

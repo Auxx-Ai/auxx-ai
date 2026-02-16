@@ -45,9 +45,10 @@ export function useDehydratedState(): DehydratedState {
 }
 
 /**
- * Hook to access dehydrated user data
+ * Hook to access dehydrated user data.
+ * Returns undefined on unauthenticated pages (auth layout).
  */
-export function useDehydratedUser(): DehydratedUser {
+export function useDehydratedUser(): DehydratedUser | undefined {
   return useDehydratedState().user
 }
 

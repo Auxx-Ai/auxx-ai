@@ -43,6 +43,7 @@ import { useTheme } from 'next-themes'
 import { useEffect, useState } from 'react'
 // import { signOut } from 'next-auth/react'
 import { client } from '~/auth/auth-client' // Use the correct import for your auth library
+import { useAnalytics } from '~/hooks/use-analytics'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useUser } from '~/hooks/use-user'
 import { CreateOrganizationDialog } from '../create-org-dialog'
@@ -62,6 +63,7 @@ export function NavUser({ user }: Prop) {
   const [showNewOrgDialog, setShowNewOrgDialog] = useState(false)
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null)
   const router = useRouter()
+  const posthog = useAnalytics()
   const selfHosted = useIsSelfHosted()
   // const session = await auth();
   const {
@@ -240,6 +242,7 @@ export function NavUser({ user }: Prop) {
                   client.signOut({
                     fetchOptions: {
                       onSuccess: () => {
+                        posthog?.reset()
                         router.push('/') // redirect to login page
                       },
                     },
