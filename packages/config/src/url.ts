@@ -10,7 +10,8 @@ const DEFAULT_AUTH_APP_URL = 'http://localhost:3000'
 /** Default developer portal URL for local development. */
 const DEFAULT_DEV_PORTAL_URL = 'http://localhost:3006'
 
-/** Default API base URL for local development. */
+/** Default docs URL for local development. */
+const DEFAULT_DOCS_URL = 'http://localhost:3004'
 
 /** Default dedicated API server URL for local development (apps/api). */
 const DEFAULT_API_SERVER_URL = 'http://localhost:3007'
@@ -85,6 +86,13 @@ export const WEBAPP_URL = process.env.NEXT_PUBLIC_BASE_URL
 export const HOMEPAGE_URL = process.env.NEXT_PUBLIC_HOMEPAGE_URL
   ? process.env.NEXT_PUBLIC_HOMEPAGE_URL
   : DEFAULT_HOMEPAGE_URL
+
+/**
+ * Base public URL for the documentation site.
+ */
+export const DOCS_URL = process.env.NEXT_PUBLIC_DOCS_URL
+  ? process.env.NEXT_PUBLIC_DOCS_URL
+  : DEFAULT_DOCS_URL
 
 /**
  * Base public URL for the developer portal.

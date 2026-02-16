@@ -1,11 +1,11 @@
 // src/app/preview/widget/[integrationId]/page.tsx
 'use client'
 
-import { env, WEBAPP_URL } from '@auxx/config/client'
 import type { NextPage } from 'next'
 import { useParams, useSearchParams } from 'next/navigation'
 import Script from 'next/script' // Use Next.js Script component
 import { useRef } from 'react'
+import { useEnv } from '~/providers/dehydrated-state-provider'
 
 // Define props type for Client Component (params are direct, not Promises)
 interface PreviewWidgetPageProps {
@@ -16,6 +16,7 @@ interface PreviewWidgetPageProps {
 const PreviewWidgetPage: NextPage<PreviewWidgetPageProps> = () => {
   const params = useParams() // Get path parameters
   const queryParams = useSearchParams() // Get query parameters
+  const { appUrl, pusher } = useEnv()
 
   // Extract integrationId directly
   const integrationId = params?.integrationId as string | undefined
@@ -47,14 +48,14 @@ const PreviewWidgetPage: NextPage<PreviewWidgetPageProps> = () => {
     mobileFullScreen: queryParams.get('mobileFullScreen') !== 'false', // Default true unless explicitly false
     collectUserInfo: queryParams.get('collectUserInfo') === 'true',
     widgetId: integrationId, // Often same as integrationId, confirm if needed elsewhere
-    pusherKey: env.NEXT_PUBLIC_PUSHER_KEY,
-    pusherCluster: env.NEXT_PUBLIC_PUSHER_CLUSTER,
+    pusherKey: pusher.key,
+    pusherCluster: pusher.cluster,
     // API Endpoints - Constructed here for clarity
-    initEndpoint: `${WEBAPP_URL || ''}/api/trpc/chat.initialize`,
-    sendMessageEndpoint: `${WEBAPP_URL || ''}/api/trpc/chat.sendMessage`,
+    initEndpoint: `${appUrl}/api/trpc/chat.initialize`,
+    sendMessageEndpoint: `${appUrl}/api/trpc/chat.sendMessage`,
   }
 
-  const appBaseUrl = WEBAPP_URL || 'http://localhost:3000'
+  const appBaseUrl = appUrl
   const bundleUrl = `${appBaseUrl}/chat/bundle.js` // Path to your widget bundle
   const stylesUrl = `${appBaseUrl}/chat/styles.css` // Path to potential dynamic styles
 

@@ -1,5 +1,4 @@
 'use client'
-import { WEBAPP_URL } from '@auxx/config/client'
 import { Button } from '@auxx/ui/components/button'
 import { waitUntil } from '@vercel/functions'
 import axios from 'axios'
@@ -15,7 +14,7 @@ export default function StartSyncButton({ accountId }: Props) {
 
     waitUntil(
       axios
-        .post(`${WEBAPP_URL}/api/initial-sync`, { accountId })
+        .post('/api/initial-sync', { accountId })
         .then((res) => {
           console.log(res.data)
         })

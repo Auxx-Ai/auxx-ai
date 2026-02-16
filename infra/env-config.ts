@@ -133,6 +133,7 @@ export function getEnvVars(app: AppType = 'web') {
     NEXT_PUBLIC_BASE_URL: authAppUrl,
     NEXT_PUBLIC_APP_URL: authAppUrl, // Always web app URL for auth links
     NEXT_PUBLIC_HOMEPAGE_URL: homepageUrl,
+    NEXT_PUBLIC_DOCS_URL: getAppUrl('docs'),
     NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com',
   }
 }

@@ -1,5 +1,4 @@
 'use client'
-import { WEBAPP_URL } from '@auxx/config/client'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -17,7 +16,7 @@ export default function SettingsSidebar({ children }: { children: React.ReactNod
   const pages = pathname.split('/')
   const page = pages[3]
 
-  const baseUrl = `${WEBAPP_URL}/app/settings`
+  const baseUrl = '/app/settings'
 
   return (
     <MainPage>

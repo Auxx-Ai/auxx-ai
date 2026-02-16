@@ -2,7 +2,6 @@
 
 'use client'
 
-import { WEBAPP_URL } from '@auxx/config/client'
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import { BookTemplate, Mail, Ticket } from 'lucide-react'
 import { usePathname } from 'next/navigation'
@@ -36,7 +35,7 @@ export default function TicketSettingsLayout({ children }: { children: React.Rea
   const pages = pathname.split('/')
   const page = pages[pages.length - 1]
 
-  const baseUrl = `${WEBAPP_URL}/app/tickets/settings`
+  const baseUrl = '/app/tickets/settings'
 
   return (
     <MainPageContent>

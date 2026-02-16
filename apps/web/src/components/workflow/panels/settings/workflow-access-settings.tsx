@@ -1,6 +1,5 @@
 // apps/web/src/components/workflow/panels/settings/workflow-access-settings.tsx
 
-import { API_URL, WEBAPP_URL } from '@auxx/config/urls'
 import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -53,6 +52,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useWorkflowSave } from '~/components/workflow/hooks/use-workflow-save'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useEnv } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 import Field from '../../ui/field'
 import Section from '../../ui/section'
@@ -120,6 +120,8 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
   config: initialConfig,
   rateLimit: initialRateLimit,
 }: WorkflowAccessSettingsProps) {
+  const { appUrl, apiUrl } = useEnv()
+
   // Local state
   const [webEnabled, setWebEnabled] = useState(initialWebEnabled)
   const [apiEnabled, setApiEnabled] = useState(initialApiEnabled)
@@ -347,7 +349,7 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
   /** Open share link in new tab */
   const handleOpenLink = useCallback(() => {
     if (!shareToken) return
-    const shareUrl = `${WEBAPP_URL}/workflows/run/${shareToken}`
+    const shareUrl = `${appUrl}/workflows/run/${shareToken}`
     window.open(shareUrl, '_blank')
   }, [shareToken])
 
@@ -385,7 +387,7 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
     }
   }, [confirm, revokeToken, workflowAppId])
 
-  const shareUrl = shareToken ? `${WEBAPP_URL}/workflows/run/${shareToken}` : null
+  const shareUrl = shareToken ? `${appUrl}/workflows/run/${shareToken}` : null
 
   /** Create a new workflow API key */
   const handleCreateApiKey = useCallback(async () => {
@@ -640,7 +642,7 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
                 </InputGroupAddon>
                 <InputGroupInput
                   type='text'
-                  value={`${API_URL}/api/v1/workflows/run`}
+                  value={`${apiUrl}/workflows/run`}
                   readOnly
                   className='font-mono text-xs'
                   onFocus={(e) => e.target.select()}
@@ -651,7 +653,7 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
                       aria-label='Copy endpoint'
                       className='rounded-full'
                       size='icon-xs'
-                      onClick={() => copyEndpoint(`${API_URL}/api/v1/workflows/run`)}>
+                      onClick={() => copyEndpoint(`${apiUrl}/workflows/run`)}>
                       {copiedEndpoint ? <Check /> : <Copy />}
                     </InputGroupButton>
                   </Tooltip>

@@ -31,6 +31,7 @@ export interface DehydratedEnvironment {
   appUrl: string
   apiUrl: string
   homepageUrl: string
+  docsUrl: string
   cdnUrl: string
   // External services
   stripe: {

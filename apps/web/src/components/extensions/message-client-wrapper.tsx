@@ -7,7 +7,7 @@ import { setupServerFunctionHandler } from '~/lib/extensions/server-function-han
 import {
   useDehydratedOrganization,
   useDehydratedUser,
-  useEnvironment,
+  useEnv,
 } from '~/providers/dehydrated-state-provider'
 import { useInternalAppsContext } from '~/providers/extensions/internal-apps-context'
 
@@ -40,7 +40,7 @@ export function MessageClientWrapper({
   connectionDefinition,
 }: MessageClientWrapperProps) {
   const { store } = useInternalAppsContext()
-  const environment = useEnvironment()
+  const environment = useEnv()
   const user = useDehydratedUser()!
   const organization = useDehydratedOrganization(organizationId)
   const messageClientRef = useRef<MessageClient>(null)

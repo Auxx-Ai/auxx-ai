@@ -6,6 +6,7 @@ export {
   getSnapshotChunk,
   invalidateSnapshot,
   invalidateSnapshots,
+  markResourceDirty,
 } from './service'
 // Types
 export type {

@@ -1,8 +1,8 @@
 // apps/web/src/components/workflow/viewer/hooks/use-workflow-viewer.ts
 'use client'
-import { API_URL } from '@auxx/config/client'
 import type { Viewport } from '@xyflow/react'
 import { useCallback, useEffect, useState } from 'react'
+import { useEnv } from '~/providers/dehydrated-state-provider'
 import type { FlowEdge, FlowNode } from '../../types'
 import { initializeWorkflow } from '../../utils/workflow-initializer'
 
@@ -69,6 +69,7 @@ export const useWorkflowViewer = ({
   const [environmentVariables, setEnvironmentVariables] = useState<SanitizedEnvVar[] | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
+  const { apiUrl } = useEnv()
 
   const loadWorkflow = useCallback(async () => {
     // Data mode: use pre-loaded workflow data
@@ -106,7 +107,7 @@ export const useWorkflowViewer = ({
 
     try {
       // Fetch from Hono API endpoint
-      const response = await fetch(`${API_URL}/api/v1/workflows/public/${workflowId}`)
+      const response = await fetch(`${apiUrl}/workflows/public/${workflowId}`)
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
@@ -145,7 +146,7 @@ export const useWorkflowViewer = ({
     } finally {
       setIsLoading(false)
     }
-  }, [workflowId, workflow, initialViewport])
+  }, [workflowId, workflow, initialViewport, apiUrl])
 
   useEffect(() => {
     loadWorkflow()

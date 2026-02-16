@@ -1,5 +1,4 @@
 'use client'
-import { HOMEPAGE_URL, WEBAPP_URL } from '@auxx/config/client'
 import { BorderBeam } from '@auxx/ui/components/border-beam'
 import {
   DropdownMenu,
@@ -44,7 +43,7 @@ import { useState } from 'react'
 import { PlanChangeSummary } from '~/components/subscriptions/plan-change-summary'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useSubscription } from '~/hooks/use-subscription'
-import { useEnvironment } from '~/providers/dehydrated-state-provider'
+import { useEnv } from '~/providers/dehydrated-state-provider'
 import { NotificationCenter } from '../notifications/notification-center'
 
 type Props = {}
@@ -52,7 +51,7 @@ type Props = {}
 function AppFooter({}: Props) {
   const pathname = usePathname()
   const [isHelpOpen, setIsHelpOpen] = useState(false)
-  const { version } = useEnvironment()
+  const { version, homepageUrl, docsUrl } = useEnv()
 
   function isActive(url: string) {
     return pathname.startsWith(url) || pathname === url
@@ -98,7 +97,7 @@ function AppFooter({}: Props) {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link href={`${WEBAPP_URL}/docs`} target='_blank' rel='noopener noreferrer'>
+                  <Link href={docsUrl} target='_blank' rel='noopener noreferrer'>
                     <Book /> Read the help center
                     <ArrowUpRight className='text-muted-foreground' />
                   </Link>
@@ -110,7 +109,7 @@ function AppFooter({}: Props) {
                   RESOURCES
                 </DropdownMenuLabel>
                 <DropdownMenuItem asChild>
-                  <Link href={`${WEBAPP_URL}/docs`} target='_blank' rel='noopener noreferrer'>
+                  <Link href={docsUrl} target='_blank' rel='noopener noreferrer'>
                     <Code2 /> API docs
                     <ArrowUpRight className='text-muted-foreground' />
                   </Link>
@@ -123,7 +122,7 @@ function AppFooter({}: Props) {
                     </DropdownMenuSubTrigger>
                     <DropdownMenuSubContent className='w-56'>
                       <DropdownMenuItem asChild>
-                        <Link href={`${HOMEPAGE_URL}`} target='_blank' rel='noopener noreferrer'>
+                        <Link href={homepageUrl} target='_blank' rel='noopener noreferrer'>
                           <Globe />
                           Main site
                           <ArrowUpRight className='text-muted-foreground' />
@@ -131,7 +130,7 @@ function AppFooter({}: Props) {
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
                         <Link
-                          href={`${HOMEPAGE_URL}/changelog`}
+                          href={`${homepageUrl}/changelog`}
                           target='_blank'
                           rel='noopener noreferrer'>
                           <Rocket />
@@ -141,7 +140,7 @@ function AppFooter({}: Props) {
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
                         <Link
-                          href={`${HOMEPAGE_URL}/status`}
+                          href={`${homepageUrl}/status`}
                           target='_blank'
                           rel='noopener noreferrer'>
                           <HeartPulse />
@@ -161,7 +160,7 @@ function AppFooter({}: Props) {
                     <DropdownMenuSubContent className='w-56'>
                       <DropdownMenuItem asChild>
                         <Link
-                          href={`${HOMEPAGE_URL}/terms-of-service`}
+                          href={`${homepageUrl}/terms-of-service`}
                           target='_blank'
                           rel='noopener noreferrer'>
                           <BookCheck />
@@ -171,7 +170,7 @@ function AppFooter({}: Props) {
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
                         <Link
-                          href={`${HOMEPAGE_URL}/privacy-policy`}
+                          href={`${homepageUrl}/privacy-policy`}
                           target='_blank'
                           rel='noopener noreferrer'>
                           <BookLock />
@@ -191,7 +190,7 @@ function AppFooter({}: Props) {
                     <DropdownMenuSubContent className='w-56' side='bottom'>
                       {/* <DropdownMenuItem asChild>
                         <Link
-                          href={`${HOMEPAGE_URL}/terms-of-service`}
+                          href={`${homepageUrl}/terms-of-service`}
                           className=""
                           target="_blank"
                           rel="noopener noreferrer">
