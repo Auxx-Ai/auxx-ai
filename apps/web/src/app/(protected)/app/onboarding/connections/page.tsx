@@ -9,6 +9,7 @@ import { motion } from 'motion/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { PROVIDER_ICONS } from '~/constants/icons'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { useIntegration } from '~/hooks/use-integration'
 import { OnboardingNavigation } from '../_components/onboarding-navigation'
 import { useOnboarding } from '../_components/onboarding-provider'
@@ -48,6 +49,7 @@ const OutlookIcon = PROVIDER_ICONS.outlook
 
 export default function ConnectionsOnboardingPage() {
   const router = useRouter()
+  const posthog = useAnalytics()
   const { state, updateConnections, markStepCompleted, setCurrentStep } = useOnboarding()
   const [isConnecting, setIsConnecting] = useState<string | null>(null)
 
@@ -122,11 +124,13 @@ export default function ConnectionsOnboardingPage() {
   const handleSkip = () => {
     updateConnections({ skipped: true })
     markStepCompleted(3)
+    posthog?.capture('onboarding_step_completed', { step: 'connections' })
     setCurrentStep(4)
   }
 
   const handleContinue = () => {
     markStepCompleted(3)
+    posthog?.capture('onboarding_step_completed', { step: 'connections' })
     setCurrentStep(4)
   }
 

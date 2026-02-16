@@ -18,6 +18,7 @@ import { motion } from 'motion/react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { updateUser } from '~/auth/auth-client'
+import { useAnalytics } from '~/hooks/use-analytics'
 import {
   useDehydratedOrganization,
   useDehydratedOrganizationId,
@@ -32,6 +33,7 @@ interface TeamInvite {
 }
 export default function TeamOnboardingPage() {
   const router = useRouter()
+  const posthog = useAnalytics()
   const { state, updateTeam, markStepCompleted, resetState } = useOnboarding()
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -118,11 +120,15 @@ export default function TeamOnboardingPage() {
           }
         }
       }
-      // 4. Clear sessionStorage
+      // 4. Track completion
+      posthog?.capture('onboarding_step_completed', { step: 'team' })
+      posthog?.capture('onboarding_completed')
+
+      // 5. Clear sessionStorage
       resetState()
-      // 5. Update auth session to reflect completedOnboarding
+      // 6. Update auth session to reflect completedOnboarding
       await updateUser({ completedOnboarding: true })
-      // 6. Redirect to main app (full reload to get fresh dehydrated state)
+      // 7. Redirect to main app (full reload to get fresh dehydrated state)
       window.location.href = '/app'
     } catch (error) {
       console.error('Failed to complete onboarding:', error)

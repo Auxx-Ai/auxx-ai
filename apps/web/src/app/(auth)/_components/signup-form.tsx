@@ -137,12 +137,6 @@ export function SignUpForm() {
     setError('')
     setIsLoading(true)
 
-    // if (!name.trim()) {
-    //   setError('Please tell us your name.')
-    //   setIsLoading(false)
-    //   return
-    // }
-
     try {
       const { error: err, data } = await client.phoneNumber.verify({
         phoneNumber: contact,
@@ -155,17 +149,7 @@ export function SignUpForm() {
       } else {
         posthog?.capture('user_signed_up', { method: 'phone' })
         // On successful verification, create account
-        // const { error: signupErr } = await client.signUp.phone({ phoneNumber: contact })
         router.push('/app/settings')
-        // if (signupErr) {
-        //   setError(signupErr.message)
-        // } else {
-        //   toastSuccess({
-        //     title: 'Account Created',
-        //     description: 'Your account has been created successfully!',
-        //   })
-        //   router.push('/app/onboarding')
-        // }
       }
     } catch (err: any) {
       setError(err.message || 'Verification failed.')

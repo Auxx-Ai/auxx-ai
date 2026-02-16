@@ -26,6 +26,7 @@ import { z } from 'zod'
 import { client } from '~/auth/auth-client' // Use the cached auth
 import { PasswordInput } from '~/components/credentials/password-fields'
 import { GithubIcon, GoogleIcon } from '~/constants/icons'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { GeneralSubmitButton } from './submit-button'
 
 const loginSchema = z.object({
@@ -42,6 +43,7 @@ export default function LoginForm({
   errorMsg?: string
 }) {
   const router = useRouter()
+  const posthog = useAnalytics()
   const variants = {
     enter: { opacity: 0, x: 50 },
     center: { opacity: 1, x: 0 },
@@ -100,6 +102,7 @@ export default function LoginForm({
         autoFill: true,
         fetchOptions: {
           onSuccess: () => {
+            posthog?.capture('user_logged_in', { method: 'passkey' })
             if (isExternal) {
               window.location.href = redirectTo
             } else {
@@ -172,6 +175,7 @@ export default function LoginForm({
       // callbackURL: '/app/settings',
     })
     if (err) setError(err.message!)
+    else posthog?.capture('user_logged_in', { method: 'phone' })
     // on success Better Auth will redirect
   }
 
@@ -191,6 +195,8 @@ export default function LoginForm({
       setIsLoading(false)
       return
     }
+
+    posthog?.capture('user_logged_in', { method: 'email' })
 
     // For external callbacks, manually redirect
     if (isExternalCallback) {
@@ -344,6 +350,7 @@ export default function LoginForm({
                     variant='outline'
                     text='Login with Google'
                     onClick={() => {
+                      posthog?.capture('user_logged_in', { method: 'google' })
                       setIsLoading(true)
                       client.signIn.social({ provider: 'google', callbackURL: redirectToPath })
                     }}
@@ -354,6 +361,7 @@ export default function LoginForm({
                     variant='outline'
                     text='Login with Github'
                     onClick={() => {
+                      posthog?.capture('user_logged_in', { method: 'github' })
                       setIsLoading(true)
                       client.signIn.social({ provider: 'github', callbackURL: redirectToPath })
                     }}

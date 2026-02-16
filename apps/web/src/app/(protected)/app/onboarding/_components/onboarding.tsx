@@ -21,6 +21,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { updateUser } from '~/auth/auth-client' // Adjust the import based on your auth setup
 import { AvatarUpload } from '~/components/file-upload/ui/avatar-upload'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 
 const formSchema = z.object({
@@ -30,6 +31,7 @@ const formSchema = z.object({
 })
 export default function Onboarding() {
   const router = useRouter()
+  const posthog = useAnalytics()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const updateOrganization = api.organization.update.useMutation({
     // onSuccess: () => {
@@ -51,6 +53,7 @@ export default function Onboarding() {
         website: values.website || undefined,
       })
       await updateUser({ completedOnboarding: true })
+      posthog?.capture('onboarding_completed', { organization_type: values.orgType })
       router.push('/app') // Redirect to the main app dashboard
     } catch (error) {
       console.error('Failed to create organization:', error)

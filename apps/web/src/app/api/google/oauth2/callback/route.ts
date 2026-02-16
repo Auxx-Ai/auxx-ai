@@ -1,6 +1,7 @@
 // /api/google/oauth2/callback/route.ts
 
 import { requireAdminAccess } from '@auxx/lib/email'
+import { publisher } from '@auxx/lib/events'
 import { GoogleOAuthService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
 import { headers } from 'next/headers'
@@ -80,11 +81,31 @@ export async function GET(request: NextRequest) {
     const oauthService = GoogleOAuthService.getInstance()
     const result = await oauthService.handleCallback(code, stateString)
 
+    await publisher.publishLater({
+      type: 'integration:connected',
+      data: {
+        organizationId: state.orgId,
+        userId: session.user.id,
+        provider: 'google',
+      },
+    })
+
     // Redirect to the specified path or default
     const redirectPath = state.redirectPath || '/app/settings/integrations/new/google/result'
     return NextResponse.redirect(new URL(`${redirectPath}?success=true`, request.url))
-  } catch (error) {
+  } catch (error: any) {
     logger.error('OAuth callback error:', { error })
+
+    await publisher.publishLater({
+      type: 'integration:connection_failed',
+      data: {
+        organizationId: state?.orgId,
+        userId: session?.user?.id,
+        provider: 'google',
+        error: error?.message || 'connection_failed',
+      },
+    })
+
     return NextResponse.redirect(
       new URL(`${defaultRedirectPath}?success=false&error=connection_failed`, request.url)
     )

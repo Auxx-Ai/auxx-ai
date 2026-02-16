@@ -81,6 +81,11 @@ export const EventHandlers: IEventsHandlers = {
   'entity:created': [createTimelineEvent],
   'entity:updated': [createTimelineEvent],
   'entity:deleted': [createTimelineEvent],
+
+  // Integration events (analytics-only, no handlers needed)
+  'integration:connected': [],
+  'integration:connection_failed': [],
+  'shopify:connected': [],
 }
 
 // passwordReset, systemNotification, userNotification
