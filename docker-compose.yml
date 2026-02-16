@@ -9,7 +9,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-c2J-k5wYf5CxmJDU}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Run ./setup.sh to generate secrets}
       POSTGRES_DB: auxx-ai
     ports:
       - '${DATABASE_PORT:-5432}:5432'
@@ -28,7 +28,7 @@ services:
     image: redis:alpine
     container_name: auxx-redis
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:-c2J-k5wYf5CxmJDU}
+    command: redis-server --requirepass ${REDIS_PASSWORD:?Run ./setup.sh to generate secrets}
     ports:
       - '${REDIS_PORT:-6379}:6379'
     volumes:
@@ -53,11 +53,12 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://postgres:${DATABASE_PASSWORD:-c2J-k5wYf5CxmJDU}@postgres:5432/auxx-ai
+      DATABASE_URL: postgresql://postgres:${DATABASE_PASSWORD}@postgres:5432/auxx-ai
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-c2J-k5wYf5CxmJDU}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       NODE_ENV: production
+      LAMBDA_INVOKE_SECRET: ${LAMBDA_INVOKE_SECRET}
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,12 +80,13 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://postgres:${DATABASE_PASSWORD:-c2J-k5wYf5CxmJDU}@postgres:5432/auxx-ai
+      DATABASE_URL: postgresql://postgres:${DATABASE_PASSWORD}@postgres:5432/auxx-ai
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-c2J-k5wYf5CxmJDU}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       NODE_ENV: production
       PORT: 8080
+      LAMBDA_INVOKE_SECRET: ${LAMBDA_INVOKE_SECRET}
     depends_on:
       postgres:
         condition: service_healthy
@@ -105,10 +107,10 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://postgres:${DATABASE_PASSWORD:-c2J-k5wYf5CxmJDU}@postgres:5432/auxx-ai
+      DATABASE_URL: postgresql://postgres:${DATABASE_PASSWORD}@postgres:5432/auxx-ai
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-c2J-k5wYf5CxmJDU}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       NODE_ENV: production
       PORT: 3002
     depends_on:

@@ -1,15 +1,16 @@
 // apps/build/src/components/layouts/simple-layout.tsx
 'use client'
 
+// import { useEnvironment, useDehydratedOrganizations } from '~/providers/dehydrated-state-provider'
+// import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
+// import type { DehydratedOrganization } from '@auxx/lib/dehydration'
+import { WEBAPP_URL } from '@auxx/config/client'
 import { Button } from '@auxx/ui/components/button'
 // import { client } from '~/auth/auth-client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { Logo } from '~/components/logo'
-// import { useEnvironment, useDehydratedOrganizations } from '~/providers/dehydrated-state-provider'
-// import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
-// import type { DehydratedOrganization } from '@auxx/lib/dehydration'
 import { ColorfulBg } from './colorful-bg'
 
 interface SimpleLayoutProps {
@@ -70,7 +71,7 @@ export function SimpleLayout({ children, title, showBackToDashboard = true }: Si
             )} */}
 
             <Button variant='ghost' asChild size='sm'>
-              <Link href='/organizations'>Organizations</Link>
+              <Link href={`${WEBAPP_URL}/organizations`}>Organizations</Link>
             </Button>
 
             <Button variant='ghost' asChild size='sm'>

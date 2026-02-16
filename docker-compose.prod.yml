@@ -79,6 +79,7 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       NODE_ENV: production
+      LAMBDA_INVOKE_SECRET: ${LAMBDA_INVOKE_SECRET}
     depends_on:
       postgres:
         condition: service_healthy
@@ -115,7 +116,8 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       NODE_ENV: production
-      PORT: 8080
+      WORKERS_PORT: ${WORKERS_PORT:-3005}
+      LAMBDA_INVOKE_SECRET: ${LAMBDA_INVOKE_SECRET}
     depends_on:
       postgres:
         condition: service_healthy
@@ -132,7 +134,7 @@ services:
           cpus: '1'
           memory: 1G
     healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:8080/health']
+      test: ['CMD', 'curl', '-f', 'http://localhost:${WORKERS_PORT:-3005}/health']
       interval: 30s
       timeout: 10s
       retries: 3

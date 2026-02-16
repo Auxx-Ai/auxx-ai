@@ -1,14 +1,13 @@
 // infra/db.ts
 import { vpc } from './router-vpc'
 
-// postgresql://postgres:c2J-k5wYf5CxmJDU@localhost:5432/auxx-ai
 // postgresql://[user[:password]@][netloc][:port][/dbname][?param1=value1&...]
 
 export const rds = new sst.aws.Postgres('AuxxAiRds', {
   vpc,
   dev: {
     username: 'postgres',
-    password: 'c2J-k5wYf5CxmJDU',
+    password: process.env.DATABASE_PASSWORD || '',
     database: 'auxx-ai',
     host: 'localhost',
     port: 5432,
@@ -31,7 +30,7 @@ export const redis = new sst.aws.Redis('AuxxAiRedis', {
 
 // Create interpolated URLs at deploy time
 export const DATABASE_URL = $dev
-  ? 'postgresql://postgres:c2J-k5wYf5CxmJDU@localhost:5432/auxx-ai'
+  ? `postgresql://postgres:${process.env.DATABASE_PASSWORD || ''}@localhost:5432/auxx-ai`
   : $interpolate`postgresql://${rds.username}:${rds.password}@${rds.host}:${rds.port}/${rds.database}`
 
 export const REDIS_URL = $dev

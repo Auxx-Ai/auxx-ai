@@ -65,7 +65,7 @@ export function getEnvVars(app: AppType = 'web') {
 
     // Worker Configuration
     WORKERS_HOST: process.env.WORKERS_HOST || 'localhost',
-    WORKERS_PORT: process.env.WORKERS_PORT || '3001',
+    WORKERS_PORT: process.env.WORKERS_PORT || '3005',
 
     // Storage Configuration
     FILE_STORAGE_TYPE: process.env.FILE_STORAGE_TYPE || 's3',

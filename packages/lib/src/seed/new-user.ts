@@ -49,7 +49,7 @@ export async function seedNewUserDatabase(user: {
           .insert(schema.Organization)
           .values({
             type: OrganizationType.TEAM,
-            name: `${user.name || 'My'}'s Organization`,
+            name: '',
             createdById: user.id,
             updatedAt: new Date(),
           })
