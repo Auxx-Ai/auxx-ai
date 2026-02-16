@@ -1,4 +1,5 @@
 // packages/email/src/templates/billing/payment-failed-email.tsx
+import { WEBAPP_URL } from '@auxx/config/server'
 import { Container, Text } from '@react-email/components'
 import type React from 'react'
 import { EmailButton } from '../../components/email-button'
@@ -19,7 +20,7 @@ export async function PaymentFailedEmail({
   planName,
   amount,
   nextRetryDate,
-  billingPortalUrl = 'https://app.auxx.ai/settings/plans',
+  billingPortalUrl = `${WEBAPP_URL}/settings/plans`,
 }: PaymentFailedEmailProps): Promise<React.JSX.Element> {
   return (
     <EmailTemplate>
@@ -85,7 +86,7 @@ export function PaymentFailedText({
   planName,
   amount,
   nextRetryDate,
-  billingPortalUrl = 'https://app.auxx.ai/settings/plans',
+  billingPortalUrl = `${WEBAPP_URL}/settings/plans`,
 }: PaymentFailedEmailProps): string {
   return `
 Payment Failed for Your ${planName} Subscription

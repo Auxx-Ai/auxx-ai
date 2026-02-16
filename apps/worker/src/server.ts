@@ -83,7 +83,7 @@ async function initializeApp() {
   app.route('/admin/queues', serverAdapter.registerPlugin())
 
   const port = process.env.WORKERS_PORT ? parseInt(process.env.WORKERS_PORT, 10) : 3005
-  const host = process.env.WORKERS_HOST || 'localhost'
+  const host = process.env.WORKERS_HOST || '0.0.0.0'
 
   app.get('/health', (c) => {
     // You might want to add more checks here, e.g., worker health

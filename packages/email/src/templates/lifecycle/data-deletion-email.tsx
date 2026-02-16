@@ -1,5 +1,9 @@
 // packages/email/src/templates/lifecycle/data-deletion-email.tsx
+import { HOMEPAGE_URL, WEBAPP_URL } from '@auxx/config/server'
 import { Container, Text } from '@react-email/components'
+
+const supportEmail = process.env.SUPPORT_EMAIL || 'support@auxx.ai'
+
 import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
@@ -18,8 +22,8 @@ export async function DataDeletionEmail({
   name,
   organizationName,
   deletionDate,
-  reactivateUrl = 'https://app.auxx.ai/reactivate',
-  exportUrl = 'https://app.auxx.ai/settings/export',
+  reactivateUrl = `${WEBAPP_URL}/reactivate`,
+  exportUrl = `${WEBAPP_URL}/settings/export`,
 }: DataDeletionEmailProps): Promise<React.JSX.Element> {
   return (
     <EmailTemplate>
@@ -102,7 +106,7 @@ export async function DataDeletionEmail({
 
         <Text style={{ fontSize: '14px', color: '#64748b' }}>
           For more information about our data retention policy, please visit our{' '}
-          <a href='https://auxx.ai/privacy' style={{ color: '#3b82f6', textDecoration: 'none' }}>
+          <a href={`${HOMEPAGE_URL}/privacy`} style={{ color: '#3b82f6', textDecoration: 'none' }}>
             Privacy Policy
           </a>
           .
@@ -110,7 +114,7 @@ export async function DataDeletionEmail({
 
         <Text>
           If you have any questions or need assistance with data export, please contact our support
-          team immediately at support@auxx.ai.
+          team immediately at {supportEmail}.
         </Text>
 
         <EmailFooter />
@@ -124,8 +128,8 @@ export function DataDeletionText({
   name,
   organizationName,
   deletionDate,
-  reactivateUrl = 'https://app.auxx.ai/reactivate',
-  exportUrl = 'https://app.auxx.ai/settings/export',
+  reactivateUrl = `${WEBAPP_URL}/reactivate`,
+  exportUrl = `${WEBAPP_URL}/settings/export`,
 }: DataDeletionEmailProps): string {
   return `
 Important: Your Data Will Be Deleted Soon
@@ -156,9 +160,9 @@ Reactivate Account: ${reactivateUrl}
 
 Privacy Notice: In compliance with GDPR and data protection regulations, we will permanently delete all your data after the retention period. This action cannot be undone.
 
-For more information about our data retention policy, please visit our Privacy Policy at https://auxx.ai/privacy.
+For more information about our data retention policy, please visit our Privacy Policy at ${HOMEPAGE_URL}/privacy.
 
-If you have any questions or need assistance with data export, please contact our support team immediately at support@auxx.ai.
+If you have any questions or need assistance with data export, please contact our support team immediately at ${supportEmail}.
 
 --
 Best regards,

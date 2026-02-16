@@ -158,3 +158,73 @@ export function getLambdaExecutorUrl(path = ''): string {
   const base = process.env.SERVER_FUNCTION_EXECUTOR_URL || SERVER_FUNCTION_EXECUTOR_URL
   return buildUrl(base, path)
 }
+
+// ============= Domain Helpers for Self-Hosted =============
+
+/**
+ * Extracts hostname from WEBAPP_URL (e.g. "app.example.com")
+ */
+export function getAppHostname(): string {
+  try {
+    return new URL(WEBAPP_URL).hostname
+  } catch {
+    return 'localhost'
+  }
+}
+
+/**
+ * Returns cookie domain with leading dot (e.g. ".example.com") or undefined for localhost.
+ * Uses DOMAIN env var when available (ccTLD-safe), otherwise derives from WEBAPP_URL.
+ */
+export function getCookieDomain(): string | undefined {
+  const domain = readEnv('DOMAIN')
+  if (domain) return `.${domain}`
+
+  const hostname = getAppHostname()
+  if (hostname === 'localhost' || hostname === '127.0.0.1') return undefined
+
+  // Strip the first subdomain (e.g. "app.example.com" → ".example.com")
+  const parts = hostname.split('.')
+  if (parts.length >= 2) {
+    return `.${parts.slice(1).join('.')}`
+  }
+
+  return undefined
+}
+
+/**
+ * Returns all trusted hostnames for auth validation (app, api, build subdomains).
+ */
+export function getTrustedHostnames(): string[] {
+  const hostnames = new Set<string>()
+  hostnames.add('localhost')
+
+  for (const url of [WEBAPP_URL, DEV_PORTAL_URL, API_URL]) {
+    try {
+      hostnames.add(new URL(url).hostname)
+    } catch {
+      // skip invalid URLs
+    }
+  }
+
+  const domain = readEnv('DOMAIN')
+  if (domain) hostnames.add(domain)
+
+  return Array.from(hostnames)
+}
+
+/**
+ * Returns all trusted origins for CORS/auth (full URLs with protocol).
+ */
+export function getTrustedOrigins(): string[] {
+  return [WEBAPP_URL, DEV_PORTAL_URL, API_URL].filter(Boolean)
+}
+
+/**
+ * Checks if a hostname is trusted by matching against trusted hostnames.
+ * Supports exact match and subdomain match (e.g. "app.example.com" matches "example.com").
+ */
+export function isTrustedHostname(hostname: string): boolean {
+  const trusted = getTrustedHostnames()
+  return trusted.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))
+}

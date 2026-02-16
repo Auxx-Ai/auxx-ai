@@ -1,4 +1,6 @@
 // apps/web/src/auth/auth-client.ts
+
+import { WEBAPP_URL } from '@auxx/config/client'
 import {
   // organizationClient,
   passkeyClient,
@@ -11,15 +13,9 @@ import {
   // genericOAuthClient,
 } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
-import { getEnv } from '~/providers/dehydrated-state-provider'
-
-/** Get base URL from dehydrated environment or env fallback (SSR) */
-function getBaseUrl(): string {
-  return getEnv()?.appUrl ?? process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-}
 
 export const client = createAuthClient({
-  baseURL: getBaseUrl(),
+  baseURL: WEBAPP_URL,
   plugins: [
     passkeyClient(),
     phoneNumberClient(),

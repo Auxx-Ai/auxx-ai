@@ -61,7 +61,7 @@ export async function EmailTemplate({
           <Section className='mt-4 text-center text-sm'>
             <Link
               className='m-0 font-normal text-slate-500'
-              href='https://dev.auxx.ai/?utm_source=email_header&utm_medium=email'
+              href={`${WEBAPP_URL}?utm_source=email_footer&utm_medium=email`}
               target='_blank'
               rel='noopener noreferrer'>
               This email was sent via Auxx.ai.

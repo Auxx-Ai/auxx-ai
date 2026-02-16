@@ -1,5 +1,8 @@
 // packages/email/src/templates/lifecycle/trial-deletion-warning-email.tsx
 import { Container, Text } from '@react-email/components'
+
+const supportEmail = process.env.SUPPORT_EMAIL || 'support@auxx.ai'
+
 import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
@@ -74,7 +77,7 @@ export async function TrialDeletionWarningEmail({
         </Text>
 
         <Text style={{ fontSize: '14px', color: '#718096', marginTop: '24px' }}>
-          Questions? Reply to this email or contact us at support@auxx.ai
+          Questions? Reply to this email or contact us at {supportEmail}
         </Text>
 
         <EmailFooter />
@@ -107,7 +110,7 @@ ${reactivationLink}
 
 Don't want to upgrade right now? You can also export your data before deletion.
 
-Questions? Reply to this email or contact us at support@auxx.ai
+Questions? Reply to this email or contact us at ${supportEmail}
 
 Best regards,
 The Auxx.ai Team

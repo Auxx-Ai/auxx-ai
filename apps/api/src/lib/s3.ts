@@ -8,6 +8,7 @@ import {
   AWS_REGION,
   AWS_SECRET_ACCESS_KEY,
   S3_BUCKET_NAME as BUCKET_NAME,
+  S3_ENDPOINT,
 } from '../config'
 import type { AppVersionBundleError } from './errors'
 import { fromS3 } from './utils'
@@ -22,6 +23,7 @@ export const S3_BUCKET_NAME = BUCKET_NAME
  */
 export const s3Client = new S3Client({
   region: AWS_REGION,
+  ...(S3_ENDPOINT ? { endpoint: S3_ENDPOINT, forcePathStyle: true } : {}),
   credentials:
     AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY
       ? {

@@ -1,0 +1,33 @@
+# apps/lambda/Dockerfile.server
+# Self-hosted HTTP server variant of the Lambda runtime.
+# Compiles dev-server.ts (Deno HTTP server) instead of lambda-runtime.ts (AWS Lambda).
+
+FROM denoland/deno:alpine AS builder
+
+WORKDIR /app
+
+# Copy SDK files (needed by import map)
+COPY packages/sdk/lib ./packages/sdk/lib
+
+# Copy source files and config
+COPY apps/lambda/src ./apps/lambda/src
+COPY apps/lambda/deno.json ./apps/lambda/deno.json
+
+# Cache dependencies
+RUN deno cache apps/lambda/src/dev-server.ts
+
+# Compile to standalone binary
+RUN deno compile \
+  --target x86_64-unknown-linux-gnu \
+  --allow-net --allow-env --allow-read --allow-write=/tmp \
+  --output dist/server \
+  apps/lambda/src/dev-server.ts
+
+# Minimal runtime image
+FROM gcr.io/distroless/cc-debian12
+
+COPY --from=builder /app/dist/server /server
+
+EXPOSE 3008
+
+CMD ["/server"]

@@ -1,4 +1,5 @@
 // packages/email/src/templates/billing/trial-expired-email.tsx
+import { WEBAPP_URL } from '@auxx/config/server'
 import { Container, Text } from '@react-email/components'
 import type React from 'react'
 import { EmailButton } from '../../components/email-button'
@@ -15,7 +16,7 @@ interface TrialExpiredEmailProps {
 export async function TrialExpiredEmail({
   name,
   planName,
-  upgradeUrl = 'https://app.auxx.ai/settings/plans',
+  upgradeUrl = `${WEBAPP_URL}/settings/plans`,
 }: TrialExpiredEmailProps): Promise<React.JSX.Element> {
   return (
     <EmailTemplate>
@@ -60,7 +61,7 @@ export async function TrialExpiredEmail({
 export function TrialExpiredText({
   name,
   planName,
-  upgradeUrl = 'https://app.auxx.ai/settings/plans',
+  upgradeUrl = `${WEBAPP_URL}/settings/plans`,
 }: TrialExpiredEmailProps): string {
   return `
 Your ${planName} Trial Has Ended

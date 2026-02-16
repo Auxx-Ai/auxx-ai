@@ -1,4 +1,5 @@
 // packages/email/src/templates/billing/subscription-welcome-email.tsx
+import { WEBAPP_URL } from '@auxx/config/server'
 import { Container, Text } from '@react-email/components'
 import type React from 'react'
 import { EmailButton } from '../../components/email-button'
@@ -17,7 +18,7 @@ export async function SubscriptionWelcomeEmail({
   name,
   planName,
   billingCycle,
-  dashboardUrl = 'https://app.auxx.ai/dashboard',
+  dashboardUrl = `${WEBAPP_URL}/dashboard`,
 }: SubscriptionWelcomeEmailProps): Promise<React.JSX.Element> {
   return (
     <EmailTemplate>
@@ -64,7 +65,7 @@ export function SubscriptionWelcomeText({
   name,
   planName,
   billingCycle,
-  dashboardUrl = 'https://app.auxx.ai/dashboard',
+  dashboardUrl = `${WEBAPP_URL}/dashboard`,
 }: SubscriptionWelcomeEmailProps): string {
   return `
 Welcome to ${planName}!

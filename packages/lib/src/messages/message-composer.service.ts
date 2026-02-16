@@ -1,5 +1,6 @@
 // packages/lib/src/messages/message-composer.service.ts
 
+import { getAppHostname } from '@auxx/config/server'
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { ParticipantRole, SendStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
@@ -564,7 +565,7 @@ export class MessageComposerService {
   private generateMessageId(): string {
     const timestamp = Date.now()
     const uuid = crypto.randomUUID()
-    return `<auxx.${timestamp}.${uuid}@auxx.ai>`
+    return `<auxx.${timestamp}.${uuid}@${getAppHostname()}>`
   }
 
   /**

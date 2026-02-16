@@ -13,21 +13,29 @@ if ! command -v openssl &>/dev/null; then
   exit 1
 fi
 
+# ─── Mode detection ───────────────────────────────────────
+SELF_HOSTED=false
+FILL_MODE=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --self-hosted) SELF_HOSTED=true ;;
+    --fill) FILL_MODE=true ;;
+  esac
+done
+
 # ─── Guard against overwriting ─────────────────────────────
 if [ -f .env ]; then
   echo -e "${YELLOW}.env already exists.${NC}"
   echo "To regenerate, remove it first: rm .env"
   echo "To add missing vars only, run: ./setup.sh --fill"
 
-  if [ "${1:-}" = "--fill" ]; then
+  if [ "$FILL_MODE" = true ]; then
     echo ""
     echo "Filling missing secrets in existing .env..."
-    FILL_MODE=true
   else
     exit 1
   fi
-else
-  FILL_MODE=false
 fi
 
 # ─── Generate secrets ─────────────────────────────────────
@@ -122,7 +130,12 @@ if [ "$FILL_MODE" = true ]; then
 fi
 
 # ─── Fresh setup: copy template and fill everything ────────
-cp .env.example .env
+if [ "$SELF_HOSTED" = true ]; then
+  cp .env.self-hosted.example .env
+  echo -e "${GREEN}Using self-hosted template${NC}"
+else
+  cp .env.example .env
+fi
 
 # Platform-compatible sed (macOS vs Linux)
 do_sed() {
@@ -166,12 +179,24 @@ echo "    API_KEY_SALT        (used for API key generation)"
 echo "    LAMBDA_INVOKE_SECRET (used for Lambda executor auth)"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
-echo "  1. Review .env and configure any API keys you need:"
-echo "     - OPENAI_API_KEY        (required for AI features)"
-echo "     - ANTHROPIC_API_KEY     (optional, alternative AI model)"
-echo "     - SHOPIFY_API_KEY/SECRET (required for Shopify integration)"
-echo "     - GOOGLE_CLIENT_ID/SECRET (required for Gmail integration)"
-echo "  2. Start services:"
-echo "     docker compose up -d"
-echo "     pnpm install && pnpm dev"
+if [ "$SELF_HOSTED" = true ]; then
+  echo "  1. Edit .env and set:"
+  echo "     - DOMAIN               (your domain, e.g. example.com)"
+  echo "     - ACME_EMAIL           (for Let's Encrypt SSL)"
+  echo "     - S3 credentials       (S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, etc.)"
+  echo "     - ANTHROPIC_API_KEY    (or OPENAI_API_KEY)"
+  echo "  2. Create S3 buckets (see docs for setup guide)"
+  echo "  3. Point DNS: app.DOMAIN, api.DOMAIN, build.DOMAIN → server IP"
+  echo "  4. Launch:"
+  echo "     docker compose -f docker-compose.self-hosted.yml up -d"
+else
+  echo "  1. Review .env and configure any API keys you need:"
+  echo "     - OPENAI_API_KEY        (required for AI features)"
+  echo "     - ANTHROPIC_API_KEY     (optional, alternative AI model)"
+  echo "     - SHOPIFY_API_KEY/SECRET (required for Shopify integration)"
+  echo "     - GOOGLE_CLIENT_ID/SECRET (required for Gmail integration)"
+  echo "  2. Start services:"
+  echo "     docker compose up -d"
+  echo "     pnpm install && pnpm dev"
+fi
 echo ""

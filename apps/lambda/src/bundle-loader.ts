@@ -7,9 +7,13 @@
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { parseError } from './utils.ts'
 
+/** Custom S3 endpoint for non-AWS providers */
+const s3Endpoint = Deno.env.get('S3_ENDPOINT')
+
 /** S3 client instance (reused across invocations) */
 const s3Client = new S3Client({
   region: Deno.env.get('AWS_REGION') || 'us-west-1',
+  ...(s3Endpoint ? { endpoint: s3Endpoint, forcePathStyle: true } : {}),
   credentials:
     Deno.env.get('AWS_ACCESS_KEY_ID') && Deno.env.get('AWS_SECRET_ACCESS_KEY')
       ? {

@@ -1,4 +1,5 @@
 // packages/email/src/templates/lifecycle/trial-conversion-email.tsx
+import { WEBAPP_URL } from '@auxx/config/server'
 import { Container, Text } from '@react-email/components'
 import type React from 'react'
 import { EmailButton } from '../../components/email-button'
@@ -23,7 +24,7 @@ export async function TrialConversionEmail({
   totalTimeSaved = 0,
   recommendedPlan = 'Growth',
   monthlyPrice = 99,
-  billingUrl = 'https://app.auxx.ai/settings/plans',
+  billingUrl = `${WEBAPP_URL}/settings/plans`,
 }: TrialConversionEmailProps): Promise<React.JSX.Element> {
   const hasUsageData = totalTicketsResolved > 0 || totalTimeSaved > 0
 
@@ -171,7 +172,7 @@ export function TrialConversionText({
   totalTimeSaved = 0,
   recommendedPlan = 'Growth',
   monthlyPrice = 99,
-  billingUrl = 'https://app.auxx.ai/settings/plans',
+  billingUrl = `${WEBAPP_URL}/settings/plans`,
 }: TrialConversionEmailProps): string {
   const hasUsageData = totalTicketsResolved > 0 || totalTimeSaved > 0
   let achievementSection = ''

@@ -7,4 +7,3 @@ export type {
   OrganizationWithMetrics,
 } from './admin-service'
 export { AdminService } from './admin-service'
-export { SuperAdminService } from './super-admin-service'

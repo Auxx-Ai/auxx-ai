@@ -1,0 +1,235 @@
+# docker-compose.self-hosted.yml
+# Self-hosted Auxx.ai deployment with Traefik reverse proxy and auto SSL.
+# Pre-built images from GHCR. S3 storage is user-provided.
+#
+# Usage:
+#   docker compose -f docker-compose.self-hosted.yml up -d
+
+x-common-env: &common-env
+  DEPLOYMENT_MODE: self-hosted
+  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Run ./setup.sh to generate secrets}
+  WORKFLOW_CREDENTIAL_ENCRYPTION_KEY: ${WORKFLOW_CREDENTIAL_ENCRYPTION_KEY:-}
+  PUBLIC_WORKFLOW_JWT_SECRET: ${PUBLIC_WORKFLOW_JWT_SECRET:-}
+  API_KEY_SALT: ${API_KEY_SALT:?Run ./setup.sh to generate secrets}
+  LAMBDA_INVOKE_SECRET: ${LAMBDA_INVOKE_SECRET:?Run ./setup.sh to generate secrets}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+
+x-db-env: &db-env
+  DATABASE_URL: postgresql://postgres:${DATABASE_PASSWORD:?Set DATABASE_PASSWORD}@postgres:5432/auxxai
+
+x-redis-env: &redis-env
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+  CACHE_PROVIDER: hosted
+
+x-s3-env: &s3-env
+  S3_ENDPOINT: ${S3_ENDPOINT:-}
+  S3_REGION: ${S3_REGION:?Set S3_REGION}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?Set S3_ACCESS_KEY_ID}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?Set S3_SECRET_ACCESS_KEY}
+  S3_PUBLIC_BUCKET: ${S3_PUBLIC_BUCKET:?Set S3_PUBLIC_BUCKET}
+  S3_PRIVATE_BUCKET: ${S3_PRIVATE_BUCKET:?Set S3_PRIVATE_BUCKET}
+  NEXT_PUBLIC_CDN_URL: ${NEXT_PUBLIC_CDN_URL:?Set NEXT_PUBLIC_CDN_URL}
+  NEXT_PUBLIC_S3_PUBLIC_BUCKET: ${S3_PUBLIC_BUCKET}
+  NEXT_PUBLIC_S3_PRIVATE_BUCKET: ${S3_PRIVATE_BUCKET}
+  NEXT_PUBLIC_S3_REGION: ${S3_REGION}
+  FILE_STORAGE_TYPE: s3
+
+x-url-env: &url-env
+  DOMAIN: ${DOMAIN}
+  NEXT_PUBLIC_BASE_URL: https://app.${DOMAIN}
+  NEXT_PUBLIC_API_URL: https://api.${DOMAIN}
+  NEXT_PUBLIC_DEV_PORTAL_URL: https://build.${DOMAIN}
+  NEXT_PUBLIC_HOMEPAGE_URL: https://app.${DOMAIN}
+  NEXT_PUBLIC_APP_URL: https://app.${DOMAIN}
+  NEXT_PUBLIC_ENV: production
+  NEXT_PUBLIC_STORAGE_TYPE: s3
+  NEXT_PUBLIC_PUSHER_KEY: ${PUSHER_KEY:-}
+  NEXT_PUBLIC_PUSHER_CLUSTER: ${PUSHER_CLUSTER:-}
+
+services:
+  # ---- Infrastructure ----
+
+  traefik:
+    image: traefik:v3
+    command:
+      - --api.dashboard=false
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt_data:/letsencrypt
+    networks:
+      - auxx-network
+    restart: unless-stopped
+
+  postgres:
+    image: ankane/pgvector:latest
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: auxxai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - auxx-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - auxx-network
+    restart: unless-stopped
+
+  # ---- Init ----
+
+  migrate:
+    image: ghcr.io/auxx-ai/web:${VERSION:-latest}
+    command: ["pnpm", "drizzle-kit", "migrate"]
+    working_dir: /app/packages/database
+    environment:
+      <<: [*db-env]
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks:
+      - auxx-network
+    restart: "no"
+
+  # ---- Application Services ----
+
+  web:
+    image: ghcr.io/auxx-ai/web:${VERSION:-latest}
+    environment:
+      <<: [*common-env, *db-env, *redis-env, *s3-env, *url-env]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:3000/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.web.rule=Host(`app.${DOMAIN}`)
+      - traefik.http.routers.web.tls.certresolver=letsencrypt
+      - traefik.http.services.web.loadbalancer.server.port=3000
+    networks:
+      - auxx-network
+    restart: unless-stopped
+
+  api:
+    image: ghcr.io/auxx-ai/api:${VERSION:-latest}
+    environment:
+      <<: [*common-env, *db-env, *redis-env, *s3-env, *url-env]
+      SERVER_FUNCTION_EXECUTOR_URL: http://lambda:3008
+      ALLOWED_ORIGINS: https://app.${DOMAIN},https://build.${DOMAIN}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:3007/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.api.rule=Host(`api.${DOMAIN}`)
+      - traefik.http.routers.api.tls.certresolver=letsencrypt
+      - traefik.http.services.api.loadbalancer.server.port=3007
+    networks:
+      - auxx-network
+    restart: unless-stopped
+
+  build:
+    image: ghcr.io/auxx-ai/build:${VERSION:-latest}
+    environment:
+      <<: [*common-env, *db-env, *redis-env, *s3-env, *url-env]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:3006/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.build.rule=Host(`build.${DOMAIN}`)
+      - traefik.http.routers.build.tls.certresolver=letsencrypt
+      - traefik.http.services.build.loadbalancer.server.port=3006
+    networks:
+      - auxx-network
+    restart: unless-stopped
+
+  worker:
+    image: ghcr.io/auxx-ai/worker:${VERSION:-latest}
+    environment:
+      <<: [*common-env, *db-env, *redis-env, *s3-env, *url-env]
+      WORKERS_PORT: "3005"
+      WORKERS_HOST: "0.0.0.0"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:3005/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - auxx-network
+    restart: unless-stopped
+
+  lambda:
+    image: ghcr.io/auxx-ai/lambda-server:${VERSION:-latest}
+    environment:
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      AWS_REGION: ${S3_REGION}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      BUNDLES_BUCKET_NAME: ${S3_PRIVATE_BUCKET}
+      LAMBDA_API_URL: http://api:3007
+      LAMBDA_INVOKE_SECRET: ${LAMBDA_INVOKE_SECRET}
+    depends_on:
+      api: { condition: service_started }
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:3008/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - auxx-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  letsencrypt_data:
+
+networks:
+  auxx-network:
+    driver: bridge
