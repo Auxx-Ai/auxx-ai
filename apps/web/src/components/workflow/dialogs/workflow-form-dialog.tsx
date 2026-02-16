@@ -20,6 +20,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { useRouter } from 'next/navigation'
 import type React from 'react'
 import { useEffect, useState } from 'react'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 
 /**
@@ -55,6 +56,7 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
   const { open, onOpenChange } = props
   const router = useRouter()
   const utils = api.useUtils()
+  const posthog = useAnalytics()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -128,6 +130,7 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
       })
 
       if (result?.id) {
+        posthog?.capture('workflow_created', { workflow_id: result.id })
         router.push(`/app/workflows/${result.id}`)
       }
     } else {

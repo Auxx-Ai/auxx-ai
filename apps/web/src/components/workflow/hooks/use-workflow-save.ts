@@ -9,6 +9,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { debounce } from '@auxx/utils'
 import { useStoreApi } from '@xyflow/react'
 import { useCallback, useEffect, useRef } from 'react'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 import { useCanvasStore } from '../store/canvas-store'
 import { useTestInputStore } from '../store/test-input-store'
@@ -39,6 +40,7 @@ interface PendingChanges {
 export const useWorkflowSave = () => {
   const store = useStoreApi()
   const { isReadOnly } = useReadOnly()
+  const posthog = useAnalytics()
   const pendingRef = useRef<PendingChanges>({})
 
   const workflowAppId = useWorkflowStore((s) => s.workflowAppId)
@@ -62,6 +64,15 @@ export const useWorkflowSave = () => {
       // Critically, this updates the version number which is incremented on each save
       useWorkflowStore.getState().setWorkflow(updatedWorkflow)
       markClean()
+
+      // Track workflow save
+      if (workflowAppId) {
+        const nodes = store.getState().nodes
+        posthog?.capture('workflow_updated', {
+          workflow_id: workflowAppId,
+          node_count: nodes?.length ?? 0,
+        })
+      }
     },
   })
 

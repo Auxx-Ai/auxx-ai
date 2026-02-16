@@ -12,6 +12,7 @@ import {
   useMemo,
   useState,
 } from 'react'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 import { buildArticleTree, generateArticlePaths, getFullSlugPath, isArticleActive } from './helpers'
 
@@ -70,6 +71,7 @@ export function KBProvider({
   const utils = api.useUtils()
   const router = useRouter()
   const pathname = usePathname()
+  const posthog = useAnalytics()
 
   // --- Loading States ---
   const [isAddingArticle, setIsAddingArticle] = useState(false)
@@ -213,6 +215,7 @@ export function KBProvider({
   const createArticleMutation = api.kb.createArticle.useMutation({
     onSuccess: () => {
       utils.kb.getArticles.invalidate({ knowledgeBaseId })
+      posthog?.capture('kb_article_created', { knowledge_base_id: knowledgeBaseId })
     },
   })
 

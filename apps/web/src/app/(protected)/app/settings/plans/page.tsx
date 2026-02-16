@@ -15,6 +15,7 @@ import { CancelSubscriptionDialog } from '~/components/subscriptions/cancel-subs
 import { InvoiceList } from '~/components/subscriptions/invoice-list'
 import { PaymentMethodsCard } from '~/components/subscriptions/payment-methods-card'
 import { PlanChangeCard } from '~/components/subscriptions/plan-change-card'
+import { PlanViewTracker } from './_components/plan-view-tracker'
 import { UpgradeConfetti } from './_components/upgrade-confetti'
 
 export default function PlansPage() {
@@ -25,6 +26,7 @@ export default function PlansPage() {
       description='Manage your subscription, plan, and payment details'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Plans' }]}>
       <div className='p-6 space-y-10'>
+        <PlanViewTracker />
         <UpgradeConfetti />
         <Suspense fallback={<BillingCycleAlertSkeleton />}>
           <BillingCycleAlert />

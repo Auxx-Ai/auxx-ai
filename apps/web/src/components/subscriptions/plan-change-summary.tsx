@@ -16,6 +16,7 @@ import { Building2, Users } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 import { type Plan, PlanComparison } from './plan-comparison'
 
@@ -161,6 +162,7 @@ function PlanChangeSummaryContent({
 }: PlanChangeSummaryContentProps) {
   const router = useRouter()
   const utils = api.useUtils()
+  const posthog = useAnalytics()
   const stripe = useStripe()
   const elements = useElements()
 
@@ -261,6 +263,11 @@ function PlanChangeSummaryContent({
       toastError({ title: 'Error', description: 'Payment system not ready' })
       return
     }
+
+    posthog?.capture('plan_change_initiated', {
+      from_plan: currentSubscription?.plan?.name ?? 'none',
+      to_plan: selectedPlan?.name ?? 'unknown',
+    })
 
     try {
       // 1. Update billing address

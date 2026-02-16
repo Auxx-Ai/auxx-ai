@@ -46,7 +46,7 @@ import {
   Users,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import EntityFields from '~/components/fields/entity-fields'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
@@ -59,6 +59,7 @@ import {
 } from '~/components/tickets/ticket-badges'
 import { TimelineTab } from '~/components/timeline'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
@@ -183,6 +184,10 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
   const [activeTab, setActiveTab] = useState('overview')
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
+  const posthog = useAnalytics()
+
+  // Track ticket_viewed when drawer opens with loaded ticket
+  const trackedTicketIdRef = useRef<string | null>(null)
 
   // Create recordId for use throughout component
   const recordId = ticketId ? toRecordId('ticket', ticketId) : null
@@ -192,6 +197,15 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
     recordId: recordId,
     enabled: !!open && !!ticketId,
   })
+
+  // Track ticket_viewed when ticket loads in drawer
+  useEffect(() => {
+    if (open && ticket && ticket.id !== trackedTicketIdRef.current) {
+      trackedTicketIdRef.current = ticket.id
+      posthog?.capture('ticket_viewed', { ticket_id: ticket.id, status: ticket.status })
+    }
+    if (!open) trackedTicketIdRef.current = null
+  }, [open, ticket, posthog])
 
   // State for title editing
   const [editingTitle, setEditingTitle] = useState('')

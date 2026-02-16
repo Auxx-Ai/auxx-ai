@@ -5,6 +5,8 @@
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Ban, CheckCircle2, Plus, RefreshCw } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { useAnalytics } from '~/hooks/use-analytics'
 
 interface ImportCompleteCardProps {
   entityDefinitionId: string
@@ -24,6 +26,18 @@ export function ImportCompleteCard({
   statistics,
   onComplete,
 }: ImportCompleteCardProps) {
+  const posthog = useAnalytics()
+  const trackedRef = useRef(false)
+
+  // Track contacts_imported once when the card mounts
+  useEffect(() => {
+    if (!trackedRef.current && entityDefinitionId === 'contact') {
+      trackedRef.current = true
+      posthog?.capture('contacts_imported', {
+        count: statistics.created + statistics.updated,
+      })
+    }
+  }, [entityDefinitionId, statistics, posthog])
   return (
     <div className='flex flex-col items-center justify-center flex-1'>
       <div className='w-full max-w-[360px] border rounded-2xl overflow-hidden'>

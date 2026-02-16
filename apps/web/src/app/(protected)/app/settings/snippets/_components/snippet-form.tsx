@@ -17,6 +17,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { FolderIcon, Save, ShareIcon, UserIcon, UsersIcon } from 'lucide-react'
 import React from 'react'
 import { useForm } from 'react-hook-form'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 // Import the SnippetPlaceholder component
 import { SnippetPlaceholder } from './snippet-placeholder'
@@ -54,6 +55,7 @@ export function SnippetForm({ snippetId, initialValues, onSuccess, onCancel }: S
     },
   })
   const utils = api.useUtils()
+  const posthog = useAnalytics()
   const [isContentFocused, setIsContentFocused] = React.useState(false)
   const [isSharingDialogOpen, setIsSharingDialogOpen] = React.useState(false)
   // Get form values for sharing dialog
@@ -63,6 +65,7 @@ export function SnippetForm({ snippetId, initialValues, onSuccess, onCancel }: S
   // Create snippet mutation
   const createMutation = api.snippet.create.useMutation({
     onSuccess: (data) => {
+      posthog?.capture('snippet_created')
       toastSuccess({
         title: 'Snippet created',
         description: 'Your snippet has been created successfully',

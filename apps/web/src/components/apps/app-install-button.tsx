@@ -14,6 +14,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
 import { ChevronDown, Code } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 
 /**
@@ -43,6 +44,7 @@ export default function AppInstallButton({
 }: Props) {
   const router = useRouter()
   const utils = api.useUtils()
+  const posthog = useAnalytics()
 
   // Install mutation
   const install = api.apps.install.useMutation({
@@ -72,6 +74,7 @@ export default function AppInstallButton({
       appSlug,
       versionId,
     })
+    posthog?.capture('app_installed', { app_slug: appSlug })
     await utils.apps.getBySlug.invalidate({ appSlug })
     router.push(`/app/settings/apps/installed/${appSlug}`)
   }

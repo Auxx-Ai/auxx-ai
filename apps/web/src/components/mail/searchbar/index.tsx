@@ -12,6 +12,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Filter, Loader2, Search, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ConditionProvider } from '~/components/conditions/condition-context'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { useSaveSearchQuery, useSearchSuggestions } from './_hooks/use-search-suggestions'
 import { AdvancedFilterMode } from './advanced-filter-mode'
 import { SearchFilterInput } from './search-filter-input'
@@ -73,6 +74,8 @@ export function MailSearchBar({
   const displayText = useSearchStore(selectDisplayText)
   const conditions = useSearchStore((s) => s.conditions)
   const actions = useSearchActions()
+
+  const posthog = useAnalytics()
 
   // Build chips for display
   const chips = buildFilterChips(conditions)
@@ -140,6 +143,10 @@ export function MailSearchBar({
   const executeSearch = useCallback(() => {
     const query = displayText
     onSearch(query)
+    posthog?.capture('search_performed', {
+      context: 'tickets',
+      has_filters: conditions.length > 0,
+    })
     // Save conditions for recent searches
     if (conditions.length > 0) {
       saveSearchQuery(
@@ -152,7 +159,7 @@ export function MailSearchBar({
       )
     }
     setIsOpen(false)
-  }, [displayText, conditions, onSearch, saveSearchQuery])
+  }, [displayText, conditions, onSearch, saveSearchQuery, posthog])
 
   /** Handle input keydown for suggestion navigation and condition creation */
   const handleInputKeyDown = useCallback(

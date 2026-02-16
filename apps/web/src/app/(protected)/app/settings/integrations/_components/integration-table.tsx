@@ -33,6 +33,7 @@ import {
 import { Tooltip } from '~/components/global/tooltip'
 import type { InboxItem } from '~/components/threads/hooks'
 import { FacebookIcon, GoogleIcon, InstagramIcon, OutlookIcon } from '~/constants/icons'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { useIntegration } from '~/hooks/use-integration'
 
 // Define type for integration (simplified, adjust based on actual API response)
@@ -123,6 +124,7 @@ const isClickOnInteractiveElement = (event: React.MouseEvent): boolean => {
  */
 export default function IntegrationTable({ integrations, inboxes }: IntegrationTableProps) {
   const router = useRouter()
+  const posthog = useAnalytics()
   const { toggleIntegration, disconnectIntegration, syncMessages } = useIntegration()
   /** Find connected inbox for an integration using its inboxId */
   const getConnectedInbox = (integration: DisplayIntegration) => {
@@ -131,6 +133,8 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
   }
   // Handle toggle integration status
   const handleToggle = (id: string, currentState: boolean) => {
+    const provider = integrations.find((i) => i.id === id)?.provider ?? 'unknown'
+    posthog?.capture('integration_toggled', { provider, enabled: !currentState })
     toggleIntegration.mutate({ integrationId: id, enabled: !currentState })
   }
   // Handle edit integration
@@ -146,6 +150,8 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
         'Are you sure you want to disconnect this integration? This action cannot be undone.'
       )
     ) {
+      const provider = integrations.find((i) => i.id === id)?.provider ?? 'unknown'
+      posthog?.capture('integration_disconnected', { provider, integration_id: id })
       disconnectIntegration.mutate({ integrationId: id })
     }
   }

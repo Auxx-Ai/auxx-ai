@@ -1,8 +1,24 @@
-import { defaultShouldDehydrateQuery, QueryClient } from '@tanstack/react-query'
+import { defaultShouldDehydrateQuery, MutationCache, QueryClient } from '@tanstack/react-query'
+import posthog from 'posthog-js'
 import SuperJSON from 'superjson'
 
 export const createQueryClient = () =>
   new QueryClient({
+    mutationCache: new MutationCache({
+      onError: (error, _variables, _context, mutation) => {
+        if (!posthog.__loaded) return
+
+        const path = (mutation.options.mutationKey as string[] | undefined)?.join('.') ?? 'unknown'
+        const data = (error as any)?.data
+        const code = data?.code ?? data?.httpStatus ?? undefined
+
+        posthog.capture('trpc_error', {
+          path,
+          message: error.message,
+          code,
+        })
+      },
+    }),
     defaultOptions: {
       queries: {
         // With SSR, we usually want to set some default staleTime

@@ -2,6 +2,7 @@
 
 import type { SignatureVisibility } from '@auxx/types/signature'
 import { toastError } from '@auxx/ui/components/toast'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 
 /**
@@ -44,6 +45,7 @@ interface UpdateSignatureInput {
  */
 export function useSignatureMutations() {
   const utils = api.useUtils()
+  const posthog = useAnalytics()
 
   /** Invalidate signature queries after mutations */
   const invalidateSignatures = () => {
@@ -52,6 +54,7 @@ export function useSignatureMutations() {
 
   const createSignature = api.record.create.useMutation({
     onSuccess: () => {
+      posthog?.capture('signature_created')
       invalidateSignatures()
     },
     onError: (error) => {

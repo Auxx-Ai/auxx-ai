@@ -29,6 +29,7 @@ import { useWorkflowTrigger } from '~/components/workflow/hooks/use-workflow-tri
 import { usePanelStore } from '~/components/workflow/store/panel-store'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
 import CollapseWrap from '~/components/workflow/ui/collapse-wrap'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
@@ -90,6 +91,7 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
   // Dialog state
   const [confirm, ConfirmDialog] = useConfirm()
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false)
+  const posthog = useAnalytics()
 
   // Unified save hook for metadata, icon, and share settings
   const { saveMetadata, saveIcon } = useWorkflowSave()
@@ -151,6 +153,10 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
       id: workflowAppId,
       enabled: !workflow?.enabled,
     })
+    posthog?.capture('workflow_toggled', {
+      workflow_id: workflowAppId,
+      enabled: !workflow?.enabled,
+    })
   }
 
   /** Delete workflow with confirmation */
@@ -166,6 +172,7 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
     })
 
     if (confirmed) {
+      posthog?.capture('workflow_deleted', { workflow_id: workflowAppId })
       await deleteWorkflow.mutateAsync({ id: workflowAppId })
     }
   }
