@@ -52,7 +52,7 @@ export async function seedNewUserDatabase(user: {
     logger.info(`Create default organization: ${user.id}`)
     const pendingInvite = await getPendingInvite(user.email) // Check for pending invites
     const shouldSeed = await shouldSeedDefaultOrg(user.id, user.email, pendingInvite) // Check if we should seed the default organization
-    console.warn('SHOULD SEED:', shouldSeed)
+
     if (shouldSeed) {
       // Create default organization for the user first
       const organization = await db.transaction(async (tx) => {
