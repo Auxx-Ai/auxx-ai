@@ -43,6 +43,8 @@ export type SidebarProps = {
   access?: 'ADMIN' | 'USER'
   skipParentSlug?: boolean
   preventNavigation?: boolean
+  /** Hidden in self-hosted mode */
+  cloudOnly?: boolean
 } & FieldProps
 
 import type * as React from 'react'
@@ -272,6 +274,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
         slug: 'plans',
         icon: <Map />,
         access: 'ADMIN',
+        cloudOnly: true,
       },
     ],
   },

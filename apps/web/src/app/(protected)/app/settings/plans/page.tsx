@@ -1,7 +1,9 @@
 // app/(protected)/app/settings/plans/page.tsx
 
+import { isSelfHosted } from '@auxx/deployment'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Receipt, Wallet } from 'lucide-react'
+import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import { BillingAddressCard } from '~/components/subscriptions/billing-address-card'
@@ -16,6 +18,7 @@ import { PlanChangeCard } from '~/components/subscriptions/plan-change-card'
 import { UpgradeConfetti } from './_components/upgrade-confetti'
 
 export default function PlansPage() {
+  if (isSelfHosted()) redirect('/app/settings')
   return (
     <SettingsPage
       title='Billing'

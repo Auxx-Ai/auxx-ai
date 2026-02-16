@@ -25,6 +25,8 @@ export interface DehydratedState {
  * Environment configuration from NEXT_PUBLIC_* env vars and build info
  */
 export interface DehydratedEnvironment {
+  /** Deployment mode: 'cloud' (SaaS) or 'self-hosted' */
+  deploymentMode: import('@auxx/deployment/client').DeploymentMode
   // Public URLs
   appUrl: string
   apiUrl: string

@@ -1,11 +1,14 @@
 // app/(protected)/app/settings/plans/invoices/page.tsx
 
+import { isSelfHosted } from '@auxx/deployment'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import { InvoiceList } from '~/components/subscriptions/invoice-list'
 
 export default function InvoicesPage() {
+  if (isSelfHosted()) redirect('/app/settings')
   return (
     <SettingsPage
       title='Invoices'

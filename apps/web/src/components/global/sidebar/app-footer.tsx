@@ -42,7 +42,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { PlanChangeSummary } from '~/components/subscriptions/plan-change-summary'
-// import { PlanChangeSummary } from '~/app/(protected)/app/settings/plans/_components/plan-change-summary'
+import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useSubscription } from '~/hooks/use-subscription'
 import { NotificationCenter } from '../notifications/notification-center'
 
@@ -252,7 +252,11 @@ export default AppFooter
 
 function UpgradeButton() {
   const [dialogOpen, setDialogOpen] = useState(false)
+  const selfHosted = useIsSelfHosted()
   const subscription = useSubscription()
+
+  // Self-hosted deployments don't have trials
+  if (selfHosted) return null
 
   // Don't render if not in trial or trial has ended
   if (

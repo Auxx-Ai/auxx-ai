@@ -2,6 +2,7 @@
 
 import { API_URL, env, HOMEPAGE_URL, WEBAPP_URL } from '@auxx/config/client'
 import { type Database, database as ddb, schema } from '@auxx/database'
+import { getDeploymentMode } from '@auxx/deployment'
 import { count, eq } from 'drizzle-orm'
 import { MediaAssetService } from '../files'
 import { createScopedLogger } from '../logger'
@@ -279,6 +280,7 @@ export class DehydrationService {
    */
   private buildEnvironment(): DehydratedEnvironment {
     return {
+      deploymentMode: getDeploymentMode(),
       appUrl: WEBAPP_URL || '',
       apiUrl: `${API_URL}/api/v1` || '',
       homepageUrl: HOMEPAGE_URL || '',

@@ -5,6 +5,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { RocketIcon, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
+import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 
 export function UpgradeBanner({
   title = 'Upgrade to unlock new features',
@@ -14,7 +15,9 @@ export function UpgradeBanner({
   description?: string
 }) {
   const [isVisible, setIsVisible] = useState(true)
+  const selfHosted = useIsSelfHosted()
 
+  if (selfHosted) return null
   if (!isVisible) return null
 
   return (

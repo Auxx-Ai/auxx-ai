@@ -1,6 +1,7 @@
 // packages/lib/src/ai/quota/quota-service.ts
 
 import { type Database, schema } from '@auxx/database'
+import { isSelfHosted } from '@auxx/deployment'
 import { and, eq } from 'drizzle-orm'
 import { createScopedLogger } from '../../logger'
 import { DEFAULT_QUOTA_LIMITS, ProviderQuotaType } from '../providers/types'
@@ -131,6 +132,19 @@ export class QuotaService {
     percentUsed: number
     isExceeded: boolean
   } | null> {
+    // Self-hosted: unlimited quota without DB query
+    if (isSelfHosted()) {
+      return {
+        quotaType: ProviderQuotaType.PAID,
+        quotaUsed: 0,
+        quotaLimit: -1,
+        quotaPeriodStart: null,
+        quotaPeriodEnd: null,
+        percentUsed: 0,
+        isExceeded: false,
+      }
+    }
+
     const config = await this.db.query.ProviderConfiguration.findFirst({
       where: and(
         eq(schema.ProviderConfiguration.organizationId, this.organizationId),
@@ -162,6 +176,7 @@ export class QuotaService {
    * @returns true if quota is available, false if exceeded
    */
   async hasAvailableQuota(): Promise<boolean> {
+    if (isSelfHosted()) return true
     const status = await this.getQuotaStatus()
     if (!status) {
       return false

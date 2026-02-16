@@ -16,6 +16,7 @@
   "dependencies": {
     "stripe": "catalog:",
     "@auxx/database": "workspace:*",
+    "@auxx/deployment": "workspace:*",
     "@auxx/logger": "workspace:*",
     "drizzle-orm": "catalog:"
   },
