@@ -2,6 +2,7 @@
 
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useState } from 'react'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 
@@ -15,6 +16,7 @@ import { api } from '~/trpc/react'
 export function useShopifyIntegration() {
   const [isConnecting, setIsConnecting] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
+  const posthog = useAnalytics()
 
   // Get Shopify integrations query
   const {
@@ -91,6 +93,7 @@ export function useShopifyIntegration() {
     integrationId: string,
     type: 'products' | 'orders' | 'all' | 'customers'
   ) => {
+    posthog?.capture('shopify_sync_triggered', { sync_type: type })
     await syncMutation({ integrationId, type })
   }
 

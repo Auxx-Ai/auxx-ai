@@ -25,6 +25,7 @@ import { motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { useAnalytics } from '~/hooks/use-analytics'
 import {
   useDehydratedOrganization,
   useDehydratedOrganizationId,
@@ -45,6 +46,7 @@ const formSchema = z.object({
 })
 
 export default function OrganizationOnboardingPage() {
+  const posthog = useAnalytics()
   const { state, updateOrganization, markStepCompleted, setCurrentStep } = useOnboarding()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [handleAvailable, setHandleAvailable] = useState<boolean | null>(null)
@@ -164,6 +166,7 @@ export default function OrganizationOnboardingPage() {
 
       // Mark step as completed
       markStepCompleted(2)
+      posthog?.capture('onboarding_step_completed', { step: 'organization' })
 
       // Navigate to next step
       setCurrentStep(3)

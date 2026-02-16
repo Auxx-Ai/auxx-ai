@@ -59,6 +59,9 @@ export type Events =
   | 'entity:created'
   | 'entity:updated'
   | 'entity:deleted'
+  | 'integration:connected'
+  | 'integration:connection_failed'
+  | 'shopify:connected'
 export type AuxxEventGeneric<U extends Events, T extends Record<string, unknown>> = {
   type: U
   data: T
@@ -591,6 +594,40 @@ export type WebhookDeliveryCreatedEvent = AuxxEventGeneric<
     organizationId: string
   }
 >
+// Integration Connected Event
+export type IntegrationConnectedEvent = AuxxEventGeneric<
+  'integration:connected',
+  {
+    organizationId: string
+    userId: string
+    provider: string
+    identifier?: string // email, page name, username — whatever the provider returns
+    integrationId?: string
+  }
+>
+
+// Integration Connection Failed Event
+export type IntegrationConnectionFailedEvent = AuxxEventGeneric<
+  'integration:connection_failed',
+  {
+    organizationId?: string // May not be available in early failure paths
+    userId?: string // May not be available if session check fails
+    provider: string // Always known from the route
+    error: string
+  }
+>
+
+// Shopify Connected Event
+export type ShopifyConnectedEvent = AuxxEventGeneric<
+  'shopify:connected',
+  {
+    organizationId: string
+    userId: string
+    shopDomain: string
+    integrationId: string
+  }
+>
+
 export type AuxxEvent =
   | ProjectCreatedEvent
   | UserCreatedEvent
@@ -646,6 +683,9 @@ export type AuxxEvent =
   | EntityInstanceCreatedEvent
   | EntityInstanceUpdatedEvent
   | EntityInstanceDeletedEvent
+  | IntegrationConnectedEvent
+  | IntegrationConnectionFailedEvent
+  | ShopifyConnectedEvent
 export type EventHandler<E extends AuxxEvent> = ({ data }: { data: E }) => void
 export interface IEventsHandlers {
   'project:created': EventHandler<ProjectCreatedEvent>[]
@@ -702,4 +742,7 @@ export interface IEventsHandlers {
   'entity:created': EventHandler<EntityInstanceCreatedEvent>[]
   'entity:updated': EventHandler<EntityInstanceUpdatedEvent>[]
   'entity:deleted': EventHandler<EntityInstanceDeletedEvent>[]
+  'integration:connected': EventHandler<IntegrationConnectedEvent>[]
+  'integration:connection_failed': EventHandler<IntegrationConnectionFailedEvent>[]
+  'shopify:connected': EventHandler<ShopifyConnectedEvent>[]
 }

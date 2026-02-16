@@ -1,5 +1,6 @@
 import { env, WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
+import { publisher } from '@auxx/lib/events'
 import { setupShopifyWebhooks } from '@auxx/lib/shopify'
 import crypto from 'crypto'
 import { and, eq, gt, inArray } from 'drizzle-orm'
@@ -163,10 +164,31 @@ export async function GET(req: NextRequest) {
       // Continue anyway, we can set up webhooks later
     }
 
+    await publisher.publishLater({
+      type: 'shopify:connected',
+      data: {
+        organizationId,
+        userId,
+        shopDomain: shop!,
+        integrationId: integration.id,
+      },
+    })
+
     // Redirect back to the app's integration page
     return NextResponse.redirect(`${WEBAPP_URL}/app/settings/shopify?success=true`)
-  } catch (error) {
+  } catch (error: any) {
     logger.error('Shopify callback error:', { error })
+
+    await publisher.publishLater({
+      type: 'integration:connection_failed',
+      data: {
+        organizationId: storedState?.organizationId,
+        userId,
+        provider: 'shopify',
+        error: error?.message || 'Shopify connection failed',
+      },
+    })
+
     return NextResponse.redirect(`${WEBAPP_URL}/app/settings/shopify?error=true`)
   }
 }

@@ -2,11 +2,11 @@
 import type { Customer } from '@auxx/database/types'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { pluralize } from '@auxx/utils'
+import { formatCurrency } from '@auxx/utils/currency'
 import type { ColumnDef } from '@tanstack/react-table'
 import Link from 'next/link'
 // import { DataTableRowActions } from './data-table-row-actions'
 import { DataTableColumnHeader } from '~/components/data-table/data-table-column-header'
-import { formatMoney } from '~/utils/strings'
 // import { Customer } from './schema'
 import { DataTableRowActions } from './customers-data-table-row-actions'
 
@@ -150,7 +150,7 @@ export const columns: ColumnDef<Customer>[] = [
       // row.original.numberOfOrders
       return (
         <div className='flex space-x-2'>
-          {formatMoney(row.original.amountSpent || 0, '${{amount_no_decimals}}')}
+          {formatCurrency(row.original.amountSpent || 0, { decimalPlaces: 'no-decimal' })}
         </div>
       )
     },

@@ -2,6 +2,8 @@
 
 import { API_URL, env, HOMEPAGE_URL, WEBAPP_URL } from '@auxx/config/client'
 import { type Database, database as ddb, schema } from '@auxx/database'
+import { getDeploymentMode } from '@auxx/deployment'
+import { execSync } from 'child_process'
 import { count, eq } from 'drizzle-orm'
 import { MediaAssetService } from '../files'
 import { createScopedLogger } from '../logger'
@@ -16,6 +18,62 @@ import type {
 } from './types'
 
 const logger = createScopedLogger('DehydrationService', { color: 'blue' })
+
+/** Cached local git info so we only shell out once per process */
+let cachedGitInfo: { sha: string; branch: string } | null = null
+
+/** Get git SHA and branch from local repo (dev only, cached) */
+function getLocalGitInfo(): { sha: string; branch: string } {
+  if (cachedGitInfo) return cachedGitInfo
+  try {
+    const sha = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
+    const branch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim()
+    cachedGitInfo = { sha, branch }
+    return cachedGitInfo
+  } catch {
+    return { sha: 'unknown', branch: 'dev' }
+  }
+}
+
+/**
+ * Build environment configuration from env vars and build info.
+ * Pure function — no DB or cache dependencies.
+ */
+export function buildEnvironment(): DehydratedEnvironment {
+  return {
+    deploymentMode: getDeploymentMode(),
+    appUrl: WEBAPP_URL || '',
+    apiUrl: `${API_URL}/api/v1` || '',
+    homepageUrl: HOMEPAGE_URL || '',
+    cdnUrl: '',
+    stripe: {
+      publishableKey: env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '',
+    },
+    pusher: {
+      key: env.NEXT_PUBLIC_PUSHER_KEY || '',
+      cluster: env.NEXT_PUBLIC_PUSHER_CLUSTER || '',
+    },
+    posthog: {
+      key: env.NEXT_PUBLIC_POSTHOG_KEY || '',
+      host: env.NEXT_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com',
+    },
+    storage: {
+      type: (env.NEXT_PUBLIC_STORAGE_TYPE as 's3' | 'local') || 'local',
+      bucket: env.NEXT_PUBLIC_S3_BUCKET || null,
+      region: env.NEXT_PUBLIC_S3_REGION || null,
+    },
+    version: (() => {
+      const isDev = !env.NEXT_PUBLIC_GIT_SHA
+      const git = isDev ? getLocalGitInfo() : null
+      return {
+        appVersion: env.NEXT_PUBLIC_APP_VERSION || git?.branch || 'dev',
+        commit: env.NEXT_PUBLIC_GIT_SHA || git?.sha || 'unknown',
+        buildTime: env.NEXT_PUBLIC_BUILD_TIME || new Date().toISOString(),
+        nodeEnv: env.NEXT_PUBLIC_ENV || 'development',
+      }
+    })(),
+  }
+}
 
 /**
  * Service for generating dehydrated state on the server
@@ -274,37 +332,25 @@ export class DehydrationService {
   }
 
   /**
+   * Get environment-only state for unauthenticated pages (no DB queries).
+   * Async to future-proof for Redis lookups (e.g. feature flags, A/B config).
+   */
+  async getPublicState(): Promise<DehydratedState> {
+    return {
+      organizationId: null,
+      organizations: [],
+      settingsCatalog: {},
+      environment: this.buildEnvironment(),
+      timestamp: Date.now(),
+    }
+  }
+
+  /**
    * Build environment configuration from env vars and build info
-   * @private
+   * @private — delegates to the standalone buildEnvironment() function
    */
   private buildEnvironment(): DehydratedEnvironment {
-    return {
-      appUrl: WEBAPP_URL || '',
-      apiUrl: `${API_URL}/api/v1` || '',
-      homepageUrl: HOMEPAGE_URL || '',
-      cdnUrl: '',
-      stripe: {
-        publishableKey: env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '',
-      },
-      pusher: {
-        key: env.NEXT_PUBLIC_PUSHER_KEY || '',
-        cluster: env.NEXT_PUBLIC_PUSHER_CLUSTER || '',
-      },
-      posthog: {
-        key: env.NEXT_PUBLIC_POSTHOG_KEY || '',
-        host: env.NEXT_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com',
-      },
-      storage: {
-        type: (env.NEXT_PUBLIC_STORAGE_TYPE as 's3' | 'local') || 'local',
-        bucket: env.NEXT_PUBLIC_S3_BUCKET || null,
-        region: env.NEXT_PUBLIC_S3_REGION || null,
-      },
-      version: {
-        commit: process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT || 'unknown',
-        buildTime: new Date().toISOString(),
-        nodeEnv: env.NEXT_PUBLIC_ENV || 'development',
-      },
-    }
+    return buildEnvironment()
   }
 
   /**

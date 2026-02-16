@@ -21,6 +21,7 @@ import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { ArrowLeft, TestTube2 } from 'lucide-react'
 import Link from 'next/link'
 import { use, useState } from 'react'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 
 interface TestWorkflowPageProps {
@@ -29,6 +30,7 @@ interface TestWorkflowPageProps {
 
 export default function TestWorkflowPage({ params }: TestWorkflowPageProps) {
   const { workflowId } = use(params)
+  const posthog = useAnalytics()
   const [isTestRunning, setIsTestRunning] = useState(false)
   const [testResult, setTestResult] = useState<any>(null)
 
@@ -76,6 +78,7 @@ export default function TestWorkflowPage({ params }: TestWorkflowPageProps) {
   const handleRunTest = async () => {
     if (isTestRunning || !workflow) return
 
+    posthog?.capture('workflow_tested', { workflow_id: workflowId })
     setIsTestRunning(true)
     setTestResult(null)
 

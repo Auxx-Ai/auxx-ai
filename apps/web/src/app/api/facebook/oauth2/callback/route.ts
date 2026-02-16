@@ -1,6 +1,7 @@
 // src/app/api/facebook/oauth2/callback/route.ts
 
 import { WEBAPP_URL } from '@auxx/config/server'
+import { publisher } from '@auxx/lib/events'
 import type { FacebookIntegrationMetadata } from '@auxx/lib/providers'
 import { FacebookOAuthService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
@@ -105,6 +106,17 @@ export async function GET(req: NextRequest) {
       identifier,
     })
 
+    await publisher.publishLater({
+      type: 'integration:connected',
+      data: {
+        organizationId: parsedState?.orgId,
+        userId: parsedState?.userId,
+        provider: 'facebook',
+        identifier,
+        integrationId: result.integration.id,
+      },
+    })
+
     // Redirect to success page (e.g., integrations settings)
     return Response.redirect(
       new URL(
@@ -118,6 +130,17 @@ export async function GET(req: NextRequest) {
       stack: error.stack,
       state: parsedState,
     })
+
+    await publisher.publishLater({
+      type: 'integration:connection_failed',
+      data: {
+        organizationId: parsedState?.orgId,
+        userId: parsedState?.userId,
+        provider: 'facebook',
+        error: error.message || 'Failed to complete Facebook authorization process.',
+      },
+    })
+
     // Redirect with error information
     return Response.redirect(
       new URL(

@@ -1,6 +1,7 @@
 // src/app/api/instagram/oauth2/callback/route.ts
 
 import { WEBAPP_URL } from '@auxx/config/server'
+import { publisher } from '@auxx/lib/events'
 import type { InstagramIntegrationMetadata } from '@auxx/lib/providers'
 import { InstagramOAuthService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
@@ -85,6 +86,17 @@ export async function GET(req: NextRequest) {
       identifier,
     })
 
+    await publisher.publishLater({
+      type: 'integration:connected',
+      data: {
+        organizationId: parsedState?.orgId,
+        userId: parsedState?.userId,
+        provider: 'instagram',
+        identifier,
+        integrationId: result.integration.id,
+      },
+    })
+
     return Response.redirect(
       `${WEBAPP_URL}${redirectPath}?success=true&provider=instagram&identifier=${encodeURIComponent(identifier)}&integrationId=${result.integration.id}`
     )
@@ -94,6 +106,17 @@ export async function GET(req: NextRequest) {
       stack: error.stack,
       state: parsedState,
     })
+
+    await publisher.publishLater({
+      type: 'integration:connection_failed',
+      data: {
+        organizationId: parsedState?.orgId,
+        userId: parsedState?.userId,
+        provider: 'instagram',
+        error: error.message || 'Failed to complete Instagram authorization.',
+      },
+    })
+
     return Response.redirect(
       `${WEBAPP_URL}${redirectPath}?error=oauth_callback_failed&error_description=${encodeURIComponent(error.message || 'Failed to complete Instagram authorization.')}`
     )

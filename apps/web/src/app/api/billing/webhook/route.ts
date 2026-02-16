@@ -6,6 +6,7 @@
 import { WebhookService } from '@auxx/billing'
 import { env } from '@auxx/config/server'
 import { database } from '@auxx/database'
+import { isSelfHosted } from '@auxx/deployment'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 import '~/lib/stripe' // Initialize Stripe client
@@ -22,6 +23,10 @@ const logger = createScopedLogger('billing-webhook')
  * @returns Stripe-compatible JSON response describing success or failure.
  */
 export async function POST(req: NextRequest) {
+  if (isSelfHosted()) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
   try {
     const body = await req.text()
     const signature = req.headers.get('stripe-signature')

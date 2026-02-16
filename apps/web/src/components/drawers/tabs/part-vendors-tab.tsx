@@ -24,6 +24,7 @@ import {
 } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
 import { getContactDisplayName, pluralize } from '@auxx/utils'
+import { formatCurrency } from '@auxx/utils/currency'
 import { Edit, MoreHorizontal, Star, Store, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useState } from 'react'
@@ -31,7 +32,6 @@ import { Tooltip } from '~/components/global/tooltip'
 import { VendorPartDialog } from '~/components/manufacturing/parts/vendor-part-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { formatMoney } from '~/utils/strings'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /** Vendors tab content for parts drawer */
@@ -184,7 +184,7 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
                     <TableCell className='font-mono text-sm'>{vendorPart.vendorSku}</TableCell>
                     <TableCell className='text-right'>
                       {vendorPart.unitPrice ? (
-                        formatMoney(vendorPart.unitPrice)
+                        formatCurrency(vendorPart.unitPrice)
                       ) : (
                         <span className='text-muted-foreground'>—</span>
                       )}

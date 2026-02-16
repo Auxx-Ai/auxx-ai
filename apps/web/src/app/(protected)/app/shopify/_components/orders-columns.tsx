@@ -4,13 +4,13 @@ import type { Order } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
+import { formatCurrency } from '@auxx/utils/currency'
 import type { ColumnDef } from '@tanstack/react-table'
 import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
 import Link from 'next/link'
 import { ContactHoverCard } from '~/components/contacts/contact-hover-card'
 import { DataTableColumnHeader } from '~/components/data-table/data-table-column-header'
 import { formatRelativeDate } from '~/utils/date'
-import { formatMoney } from '~/utils/strings'
 // import { Order } from './schema'
 // import { DataTableRowActions } from './data-table-row-actions'
 // import { Order } from './schema'
@@ -162,7 +162,7 @@ export const columns: ColumnDef<Order>[] = [
       // const label = labels.find((label) => label.value === row.original.label)
       return (
         <div className='flex space-x-2 text-sm'>
-          {formatMoney(row.original.totalPrice || 0, '${{amount_no_decimals}}')}
+          {formatCurrency(row.original.totalPrice || 0, { decimalPlaces: 'no-decimal' })}
         </div>
       )
     },

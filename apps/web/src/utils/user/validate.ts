@@ -1,5 +1,4 @@
 // import { hasAiAccess } from '@/utils/premium'
-// import prisma from '@/utils/prisma'
 
 import { UserModel } from '@auxx/database/models'
 

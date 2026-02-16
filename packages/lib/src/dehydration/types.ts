@@ -13,7 +13,7 @@ declare global {
  * Main dehydrated state interface injected server-side
  */
 export interface DehydratedState {
-  user: DehydratedUser
+  user?: DehydratedUser
   organizationId: string | null
   organizations: DehydratedOrganization[]
   settingsCatalog: Record<string, any>
@@ -25,6 +25,8 @@ export interface DehydratedState {
  * Environment configuration from NEXT_PUBLIC_* env vars and build info
  */
 export interface DehydratedEnvironment {
+  /** Deployment mode: 'cloud' (SaaS) or 'self-hosted' */
+  deploymentMode: import('@auxx/deployment/client').DeploymentMode
   // Public URLs
   appUrl: string
   apiUrl: string
@@ -50,6 +52,7 @@ export interface DehydratedEnvironment {
 
   // Build/version info
   version: {
+    appVersion: string
     commit: string
     buildTime: string
     nodeEnv: string

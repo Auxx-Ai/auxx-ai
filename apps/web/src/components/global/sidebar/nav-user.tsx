@@ -43,6 +43,8 @@ import { useTheme } from 'next-themes'
 import { useEffect, useState } from 'react'
 // import { signOut } from 'next-auth/react'
 import { client } from '~/auth/auth-client' // Use the correct import for your auth library
+import { useAnalytics } from '~/hooks/use-analytics'
+import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useUser } from '~/hooks/use-user'
 import { CreateOrganizationDialog } from '../create-org-dialog'
 
@@ -61,6 +63,8 @@ export function NavUser({ user }: Prop) {
   const [showNewOrgDialog, setShowNewOrgDialog] = useState(false)
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null)
   const router = useRouter()
+  const posthog = useAnalytics()
+  const selfHosted = useIsSelfHosted()
   // const session = await auth();
   const {
     user: userData, // Full user data
@@ -130,15 +134,19 @@ export function NavUser({ user }: Prop) {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuItem asChild>
-                  <Link href='/app/settings/plans'>
-                    <Sparkles className='text-comparison-500' />
-                    Upgrade to Pro
-                  </Link>
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
+              {!selfHosted && (
+                <>
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem asChild>
+                      <Link href='/app/settings/plans'>
+                        <Sparkles className='text-comparison-500' />
+                        Upgrade to Pro
+                      </Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               <DropdownMenuGroup>
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger>
@@ -197,12 +205,14 @@ export function NavUser({ user }: Prop) {
                     Account
                   </DropdownMenuItem>
                 </Link>
-                <DropdownMenuItem asChild>
-                  <Link href='/app/settings/plans'>
-                    <CreditCard />
-                    Billing
-                  </Link>
-                </DropdownMenuItem>
+                {!selfHosted && (
+                  <DropdownMenuItem asChild>
+                    <Link href='/app/settings/plans'>
+                      <CreditCard />
+                      Billing
+                    </Link>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                   <SunMoon />
                   Theme
@@ -232,6 +242,7 @@ export function NavUser({ user }: Prop) {
                   client.signOut({
                     fetchOptions: {
                       onSuccess: () => {
+                        posthog?.reset()
                         router.push('/') // redirect to login page
                       },
                     },

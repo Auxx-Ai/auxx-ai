@@ -153,6 +153,7 @@
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@auxx/billing": "workspace:*",
     "@auxx/config": "workspace:*",
+    "@auxx/deployment": "workspace:*",
     "@auxx/credentials": "workspace:*",
     "@auxx/database": "workspace:*",
     "@auxx/email": "workspace:*",

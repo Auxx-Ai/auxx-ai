@@ -2,11 +2,11 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { formatCurrency } from '@auxx/utils/currency'
 import { format } from 'date-fns'
 import { ExternalLink, Mail, Phone, User } from 'lucide-react'
 import Link from 'next/link'
 import { useOrder } from '~/components/orders/order-context'
-import { formatMoney } from '~/utils/strings'
 
 export default function OrderCustomer({ order: orderProp }: { order?: any } = {}) {
   // Use order from context if available, fallback to prop for backward compatibility
@@ -98,7 +98,7 @@ export default function OrderCustomer({ order: orderProp }: { order?: any } = {}
               {customer.amountSpent !== undefined && (
                 <div className='flex justify-between'>
                   <span className='text-muted-foreground'>Total Spent</span>
-                  <span className='font-medium'>{formatMoney(customer.amountSpent)}</span>
+                  <span className='font-medium'>{formatCurrency(customer.amountSpent)}</span>
                 </div>
               )}
 

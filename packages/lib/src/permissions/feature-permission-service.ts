@@ -1,10 +1,11 @@
 // packages/lib/src/permissions/feature-permission-service.ts
 import { type Database, database as ddb, schema } from '@auxx/database'
+import { isSelfHosted } from '@auxx/deployment'
 import { getRedisClient } from '@auxx/redis'
 import { eq } from 'drizzle-orm'
 import { createScopedLogger } from '../logger'
 import type { FeatureDefinition, FeatureLimit, FeatureMapObject } from './types'
-import { DEFAULT_FREE_PLAN_FEATURES, type FeatureKey } from './types'
+import { DEFAULT_FREE_PLAN_FEATURES, FeatureKey } from './types'
 
 const logger = createScopedLogger('feature-permission-service')
 
@@ -32,6 +33,7 @@ export class FeaturePermissionService {
   }
 
   async getOrganizationFeaturesMap(organizationId: string): Promise<FeatureMap | null> {
+    if (isSelfHosted()) return mapToObject(this.createUnlimitedFeatureMap())
     const features = await this.getOrganizationFeatures(organizationId)
     if (!features) return null
     return mapToObject(features)
@@ -44,6 +46,8 @@ export class FeaturePermissionService {
    * @returns A Map of feature keys to their limits, or null if an error occurs.
    */
   async getOrganizationFeatures(organizationId: string): Promise<FeatureMap | null> {
+    if (isSelfHosted()) return this.createUnlimitedFeatureMap()
+
     const cacheKey = `${this.cachePrefix}${organizationId}`
 
     try {
@@ -176,6 +180,7 @@ export class FeaturePermissionService {
    * @returns True if access is granted, false otherwise.
    */
   async hasAccess(organizationId: string, featureKey: FeatureKey | string): Promise<boolean> {
+    if (isSelfHosted()) return true
     const features = await this.getOrganizationFeatures(organizationId)
     if (!features) return false // Default to no access on error
 
@@ -198,6 +203,7 @@ export class FeaturePermissionService {
     organizationId: string,
     featureKey: FeatureKey | string
   ): Promise<FeatureLimit | null> {
+    if (isSelfHosted()) return '+'
     const features = await this.getOrganizationFeatures(organizationId)
     if (!features) return null
 
@@ -223,6 +229,7 @@ export class FeaturePermissionService {
     featureKey: FeatureKey | string,
     currentUsage: number
   ): Promise<boolean> {
+    if (isSelfHosted()) return true
     const limit = await this.getLimit(organizationId, featureKey)
 
     if (limit === null || limit === false) {
@@ -267,6 +274,18 @@ export class FeaturePermissionService {
       })
       // Continue without error propagation
     }
+  }
+
+  /**
+   * Creates a feature map with all features set to unlimited.
+   * Used for self-hosted deployments where there are no plan restrictions.
+   */
+  private createUnlimitedFeatureMap(): FeatureMap {
+    const map: FeatureMap = new Map()
+    for (const key of Object.values(FeatureKey)) {
+      map.set(key, '+')
+    }
+    return map
   }
 
   // --- Helper Methods ---

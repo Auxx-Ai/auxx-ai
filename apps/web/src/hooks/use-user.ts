@@ -82,8 +82,8 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
   const router = useRouter()
   const pathname = usePathname()
 
-  // Get user from dehydrated state
-  const dehydratedUser = useDehydratedUser()
+  // Get user from dehydrated state (always present in protected routes)
+  const dehydratedUser = useDehydratedUser()!
 
   // Use organization ID context to share state with FeatureFlagProvider
   const { organizationId, setOrganizationId } = useOrganizationIdContext()

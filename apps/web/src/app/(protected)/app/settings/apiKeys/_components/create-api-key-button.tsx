@@ -26,6 +26,7 @@ import { useCallback, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { CopyInput } from '~/components/global/copy-input'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 
 type PointerDownOutsideEvent = CustomEvent<{
@@ -48,6 +49,7 @@ export function CreateAPIKeyButton({
   trigger,
 }: CreateAPIKeyButtonProps) {
   const utils = api.useUtils()
+  const posthog = useAnalytics()
   const form = useForm<CreateApiKeyBody>({
     resolver: standardSchemaResolver(createApiKeyBody),
     defaultValues: { name: '', hashedKey: '' },
@@ -72,6 +74,7 @@ export function CreateAPIKeyButton({
     onSuccess: async (data) => {
       setSecret(data.secretKey)
       toastSuccess({ description: 'API key created' })
+      posthog?.capture('api_key_created')
       utils.apiKey.getAll.invalidate()
     },
     onError: (error) => {

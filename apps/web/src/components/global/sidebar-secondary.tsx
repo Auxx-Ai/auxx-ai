@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import Link from 'next/link'
 import React, { useState } from 'react'
 import type { SidebarProps } from '~/constants/menu'
+import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useIsMobile } from '~/hooks/use-mobile'
 import { useUser } from '~/hooks/use-user'
 
@@ -12,6 +13,7 @@ type Props = { items: SidebarProps[]; baseUrl: string; title: string; current: s
 function SidebarSecondary({ items, baseUrl, title, current }: Props) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const isMobile = useIsMobile()
+  const selfHosted = useIsSelfHosted()
 
   const { isAdminOrOwner } = useUser({
     requireOrganization: true, // Require organization membership
@@ -51,7 +53,7 @@ function SidebarSecondary({ items, baseUrl, title, current }: Props) {
           )}>
           {items.map((group) => (
             <React.Fragment key={group.id}>
-              {createSidebarGroup(group, baseUrl, current, role)}
+              {createSidebarGroup(group, baseUrl, current, role, selfHosted)}
             </React.Fragment>
           ))}
         </div>
@@ -64,11 +66,13 @@ function createSidebarGroup(
   group: SidebarProps,
   baseUrl: string,
   current: string | undefined,
-  role: 'ADMIN' | 'USER'
+  role: 'ADMIN' | 'USER',
+  selfHosted: boolean
 ) {
   const title = group.label
-  const items = group.items
-  if (!items) {
+  // Filter out cloud-only items in self-hosted mode
+  const items = selfHosted ? group.items?.filter((item) => !item.cloudOnly) : group.items
+  if (!items || items.length === 0) {
     return null
   }
   if (group.access && role !== group.access) {

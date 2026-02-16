@@ -1,6 +1,7 @@
 // import { maintenanceQueue } from '@auxx/lib/queues'
 // import { startMaintenanceWorker } from './worker-definitions/maintenanceWorker'
 
+import { isSelfHosted } from '@auxx/deployment'
 import { Queues } from '@auxx/lib/jobs/queues/types'
 import { getQueue } from '@auxx/lib/queues'
 import { startDataImportWorker } from './worker-definitions/data-import-worker'
@@ -185,143 +186,108 @@ export async function setupSchedules() {
     }
   )
 
-  // Subscription scheduled changes job
+  // Billing, subscription, and trial jobs — SaaS-only
+  if (!isSelfHosted()) {
+    // Subscription scheduled changes job
+    // Every hour at 15 minutes past - Apply scheduled subscription changes
+    // Runs as backup to Stripe webhooks
+    await maintenanceQueue.upsertJobScheduler(
+      'applyScheduledSubscriptionChangesJob',
+      { pattern: '15 * * * *' },
+      {
+        data: { batchSize: 50, dryRun: false },
+        opts: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 60000 },
+          priority: 5,
+        },
+      }
+    )
 
-  // Every hour at 15 minutes past - Apply scheduled subscription changes
-  // Runs as backup to Stripe webhooks
-  await maintenanceQueue.upsertJobScheduler(
-    'applyScheduledSubscriptionChangesJob',
-    { pattern: '15 * * * *' }, // Every hour at :15 (e.g., 1:15, 2:15, 3:15)
-    {
-      data: {
-        batchSize: 50,
-        dryRun: false,
-      },
-      opts: {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 60000 }, // 1 min, 2 min, 4 min
-        priority: 5, // Higher priority than cleanup jobs (lower number = higher priority)
-      },
-    }
-  )
+    // Stripe subscription sync job
+    // Every hour at 45 minutes past - Sync subscription state with Stripe
+    await maintenanceQueue.upsertJobScheduler(
+      'stripeSubscriptionSyncJob',
+      { pattern: '45 * * * *' },
+      {
+        data: { batchSize: 50, dryRun: false },
+        opts: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 60000 },
+          priority: 5,
+          removeOnComplete: { count: 24 },
+          removeOnFail: { count: 168 },
+        },
+      }
+    )
 
-  // Stripe subscription sync job
+    // Expired trial account cleanup job
+    // Every day at 3 AM UTC - Clean up expired trial accounts after 14-day grace period
+    await maintenanceQueue.upsertJobScheduler(
+      'expiredTrialAccountCleanup',
+      { pattern: '0 3 * * *', tz: 'UTC' },
+      {
+        data: { dryRun: false, gracePeriodDays: 14, batchSize: 10, sendNotifications: true },
+        opts: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 60000 },
+          priority: 10,
+          removeOnComplete: { count: 7 },
+          removeOnFail: { count: 30 },
+        },
+      }
+    )
 
-  // Every hour at 45 minutes past - Sync subscription state with Stripe
-  // Acts as backup to webhooks to catch missed events and fix data discrepancies
-  await maintenanceQueue.upsertJobScheduler(
-    'stripeSubscriptionSyncJob',
-    { pattern: '45 * * * *' }, // Every hour at :45 (e.g., 1:45, 2:45, 3:45)
-    {
-      data: {
-        batchSize: 50,
-        dryRun: false,
-      },
-      opts: {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 60000 }, // 1 min, 2 min, 4 min
-        priority: 5, // Higher priority than cleanup jobs
-        removeOnComplete: { count: 24 }, // Keep last 24 hours of logs
-        removeOnFail: { count: 168 }, // Keep failed jobs for 7 days
-      },
-    }
-  )
+    // Lifecycle email jobs
 
-  // Expired trial account cleanup job
+    // Every 30 minutes - Send getting started emails to new trial users
+    await maintenanceQueue.upsertJobScheduler(
+      'sendGettingStartedEmailsJob',
+      { pattern: '*/30 * * * *', tz: 'UTC' },
+      {
+        data: { dryRun: false, batchSize: 50 },
+        opts: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 30000 },
+          priority: 5,
+          removeOnComplete: { count: 7 },
+          removeOnFail: { count: 14 },
+        },
+      }
+    )
 
-  // Every day at 3 AM UTC - Clean up expired trial accounts after 14-day grace period
-  await maintenanceQueue.upsertJobScheduler(
-    'expiredTrialAccountCleanup',
-    {
-      pattern: '0 3 * * *', // Daily at 3 AM UTC
-      tz: 'UTC',
-    },
-    {
-      data: {
-        dryRun: false,
-        gracePeriodDays: 14,
-        batchSize: 10,
-        sendNotifications: true,
-      },
-      opts: {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 60000 }, // 1 min, 2 min, 4 min
-        priority: 10, // Low priority, non-urgent
-        removeOnComplete: { count: 7 }, // Keep last 7 days of logs
-        removeOnFail: { count: 30 }, // Keep failed jobs for 30 days
-      },
-    }
-  )
+    // Every day at 10 AM UTC - Send mid-trial engagement emails
+    await maintenanceQueue.upsertJobScheduler(
+      'sendMidTrialEmailsJob',
+      { pattern: '0 10 * * *', tz: 'UTC' },
+      {
+        data: { dryRun: false, batchSize: 50, midTrialDay: 7 },
+        opts: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 60000 },
+          priority: 5,
+          removeOnComplete: { count: 7 },
+          removeOnFail: { count: 14 },
+        },
+      }
+    )
 
-  // Lifecycle email jobs
-
-  // Every 30 minutes - Send getting started emails to new trial users (1-2 hours after signup)
-  await maintenanceQueue.upsertJobScheduler(
-    'sendGettingStartedEmailsJob',
-    {
-      pattern: '*/30 * * * *', // Every 30 minutes
-      tz: 'UTC',
-    },
-    {
-      data: {
-        dryRun: false,
-        batchSize: 50,
-      },
-      opts: {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 30000 },
-        priority: 5, // Medium priority
-        removeOnComplete: { count: 7 },
-        removeOnFail: { count: 14 },
-      },
-    }
-  )
-
-  // Every day at 10 AM UTC - Send mid-trial engagement emails (day 7 of trial)
-  await maintenanceQueue.upsertJobScheduler(
-    'sendMidTrialEmailsJob',
-    {
-      pattern: '0 10 * * *', // Daily at 10 AM UTC
-      tz: 'UTC',
-    },
-    {
-      data: {
-        dryRun: false,
-        batchSize: 50,
-        midTrialDay: 7,
-      },
-      opts: {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 60000 },
-        priority: 5, // Medium priority
-        removeOnComplete: { count: 7 },
-        removeOnFail: { count: 14 },
-      },
-    }
-  )
-
-  // Every day at 10 AM UTC - Send trial conversion emails (3 days before trial ends)
-  await maintenanceQueue.upsertJobScheduler(
-    'sendTrialConversionEmailsJob',
-    {
-      pattern: '0 10 * * *', // Daily at 10 AM UTC
-      tz: 'UTC',
-    },
-    {
-      data: {
-        dryRun: false,
-        batchSize: 50,
-        daysBeforeEnd: 3,
-      },
-      opts: {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 60000 },
-        priority: 5, // Medium priority
-        removeOnComplete: { count: 7 },
-        removeOnFail: { count: 14 },
-      },
-    }
-  )
+    // Every day at 10 AM UTC - Send trial conversion emails
+    await maintenanceQueue.upsertJobScheduler(
+      'sendTrialConversionEmailsJob',
+      { pattern: '0 10 * * *', tz: 'UTC' },
+      {
+        data: { dryRun: false, batchSize: 50, daysBeforeEnd: 3 },
+        opts: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 60000 },
+          priority: 5,
+          removeOnComplete: { count: 7 },
+          removeOnFail: { count: 14 },
+        },
+      }
+    )
+  }
 
   // Dataset maintenance schedules
 

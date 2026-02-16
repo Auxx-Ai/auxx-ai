@@ -1,3 +1,4 @@
+// packages/lib/src/events/handlers/publish-to-analytics-job.ts
 import { env } from '@auxx/config/server'
 import type { Job } from 'bullmq'
 import { createScopedLogger } from '../../logger'
@@ -6,17 +7,29 @@ import type { AuxxEvent } from '../types'
 
 const logger = createScopedLogger('publish-to-analytics-job')
 
+/**
+ * Resolves a distinctId from event data.
+ * Prefers userId (matches frontend PostHog identify), falls back to email fields.
+ */
+function resolveDistinctId(data: Record<string, unknown>): string | null {
+  return (
+    (data.userId as string) ||
+    (data.createdById as string) ||
+    (data.invitedById as string) ||
+    (data.email as string) ||
+    (data.userEmail as string) ||
+    null
+  )
+}
+
+/** Publishes AuxxEvents to PostHog for analytics tracking. */
 export const publishToAnalyticsJob = async (job: Job<AuxxEvent>) => {
   const event = job.data
-  let userEmail, organizationId
-  if ('email' in event.data) {
-    userEmail = event.data.email
-  }
-  if ('organizationId' in event.data) {
-    organizationId = event.data.organizationId
-  }
+  const d = event.data as Record<string, unknown>
 
-  if (!userEmail) return
+  const distinctId = resolveDistinctId(d)
+  if (!distinctId) return
+
   if (env.NODE_ENV === 'development') {
     logger.info('Analytics event captured:', { type: event.type })
   }
@@ -24,10 +37,12 @@ export const publishToAnalyticsJob = async (job: Job<AuxxEvent>) => {
   const client = PostHogClient()
   if (!client) return
 
+  const { organizationId, ...properties } = d
   client.capture({
-    distinctId: userEmail,
+    distinctId,
     event: event.type,
-    properties: { data: event.data, organizationId },
+    properties,
+    groups: organizationId ? { organization: organizationId as string } : undefined,
   })
 
   await client.shutdown()

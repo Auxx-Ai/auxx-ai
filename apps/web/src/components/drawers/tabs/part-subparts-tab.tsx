@@ -21,13 +21,13 @@ import {
   TableRow,
 } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
+import { formatCurrency } from '@auxx/utils/currency'
 import { Edit, MoreHorizontal, Package, PlusCircle, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useState } from 'react'
 import { SubpartDialog } from '~/components/manufacturing/parts/subpart-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { formatMoney } from '~/utils/strings'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /** Subparts tab content for parts drawer */
@@ -149,9 +149,7 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
                     </TableCell>
                     <TableCell className='text-right font-medium'>{subpart.quantity}</TableCell>
                     <TableCell className='text-right'>
-                      {subpart.childPart?.cost
-                        ? formatMoney(subpart.childPart.cost, '${{amount}}')
-                        : '—'}
+                      {subpart.childPart?.cost ? formatCurrency(subpart.childPart.cost) : '—'}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>

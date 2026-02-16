@@ -1,5 +1,5 @@
 // apps/homepage/src/app/_components/config.ts
-import { getHomepageUrl, WEBAPP_URL } from '@auxx/config/client'
+import { getAppVersion, getHomepageUrl, WEBAPP_URL } from '@auxx/config/client'
 
 const buildAppUrl = (path: string) => {
   const normalized = path.startsWith('/') ? path : `/${path}`
@@ -38,4 +38,5 @@ export const config = {
     github: 'https://github.com/m4rkuskk/auxxai',
     docs: 'https://auxx-lift.com',
   },
+  version: getAppVersion(),
 }

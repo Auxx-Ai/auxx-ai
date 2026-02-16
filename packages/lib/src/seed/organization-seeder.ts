@@ -4,6 +4,7 @@ import { SubscriptionService } from '@auxx/billing'
 import { env, WEBAPP_URL } from '@auxx/config/server'
 import { type Database, schema } from '@auxx/database'
 import { EmailTemplateType } from '@auxx/database/enums'
+import { isSelfHosted } from '@auxx/deployment'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { DEFAULT_QUOTA_LIMITS, ProviderQuotaType } from '../ai/providers/types'
@@ -263,6 +264,12 @@ export class OrganizationSeeder {
    * @param organizationId The organization ID
    */
   private async seedTrialSubscription(organizationId: string): Promise<void> {
+    // Self-hosted: no trial subscriptions needed
+    if (isSelfHosted()) {
+      logger.info('Self-hosted mode, skipping trial subscription', { organizationId })
+      return
+    }
+
     const enableAutoTrial = env.ENABLE_AUTO_TRIAL !== 'false'
     if (!enableAutoTrial) {
       logger.info('Auto trial disabled, skipping trial subscription', { organizationId })
@@ -397,9 +404,12 @@ export class OrganizationSeeder {
 
     // Providers that support system credentials
     const providers = ['openai', 'anthropic']
+    // Self-hosted: unlimited quota (-1), Cloud: free tier default
+    const quotaLimit = isSelfHosted() ? -1 : DEFAULT_QUOTA_LIMITS[ProviderQuotaType.FREE]
+    const quotaType = isSelfHosted() ? ProviderQuotaType.PAID : ProviderQuotaType.FREE
 
     for (const provider of providers) {
-      // Create system provider configuration with free tier quota
+      // Create system provider configuration with quota
       await this.db
         .insert(schema.ProviderConfiguration)
         .values({
@@ -407,8 +417,8 @@ export class OrganizationSeeder {
           provider,
           providerType: 'SYSTEM',
           isEnabled: true,
-          quotaType: ProviderQuotaType.FREE,
-          quotaLimit: DEFAULT_QUOTA_LIMITS[ProviderQuotaType.FREE],
+          quotaType,
+          quotaLimit,
           quotaUsed: 0,
           quotaPeriodStart: now,
           quotaPeriodEnd: periodEnd,

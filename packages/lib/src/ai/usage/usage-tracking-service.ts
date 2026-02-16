@@ -1,6 +1,7 @@
 // packages/lib/src/ai/usage/usage-tracking-service.ts
 
 import { type Database, database as db, schema } from '@auxx/database'
+import { isSelfHosted } from '@auxx/deployment'
 import { and, count, eq, gte, isNotNull, lte, sql, sum } from 'drizzle-orm'
 import type { UsageSource, UsageTrackingRequest } from '../orchestrator/types'
 
@@ -39,6 +40,8 @@ export class UsageTrackingService {
     provider: string,
     estimatedTokens: number
   ): Promise<{ available: boolean; reason?: string }> {
+    if (isSelfHosted()) return { available: true }
+
     const config = await this.database.query.ProviderConfiguration.findFirst({
       where: and(
         eq(schema.ProviderConfiguration.organizationId, organizationId),

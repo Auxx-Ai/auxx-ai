@@ -4,6 +4,7 @@
 import type { DehydratedOrganization } from '@auxx/lib/dehydration'
 import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import type { ReactNode } from 'react'
+import { ViewStoreProvider } from '~/components/dynamic-table/context/view-store-provider'
 import { FilesystemProvider } from '~/components/files/provider/filesystem-provider'
 import { Dashboard } from '~/components/global/dashboard'
 import KBar from '~/components/kbar'
@@ -11,6 +12,7 @@ import { SimpleLayout } from '~/components/layouts/simple-layout'
 import { ResourceProvider } from '~/components/resources'
 import { SubscriptionEnded } from '~/components/subscriptions/subscription-ended'
 import { ThreadDataProvider } from '~/components/threads'
+import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useDehydratedOrganizations } from '~/providers/dehydrated-state-provider'
 import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
 import { PusherProvider } from '~/providers/pusher-provider'
@@ -39,11 +41,13 @@ function isTrialExpired(subscription: DehydratedOrganization['subscription']): b
 export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
   const organizations = useDehydratedOrganizations()
   const { organizationId: currentOrgId } = useOrganizationIdContext()
+  const selfHosted = useIsSelfHosted()
 
   const currentOrg = organizations.find((org) => org.id === currentOrgId)
 
-  const subscriptionExpired = isSubscriptionExpired(currentOrg?.subscription ?? null)
-  const trialExpired = isTrialExpired(currentOrg?.subscription ?? null)
+  // Self-hosted deployments skip subscription checks entirely
+  const subscriptionExpired = !selfHosted && isSubscriptionExpired(currentOrg?.subscription ?? null)
+  const trialExpired = !selfHosted && isTrialExpired(currentOrg?.subscription ?? null)
 
   // Show subscription ended screen if expired or trial ended
   if (subscriptionExpired || trialExpired) {
@@ -61,18 +65,20 @@ export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
 
   // Show normal dashboard for active subscriptions
   return (
-    <ResourceProvider>
-      <FilesystemProvider>
-        <PusherProvider>
-          <ThreadDataProvider>
-            <KBar>
-              <TooltipProvider>
-                <Dashboard user={user}>{children}</Dashboard>
-              </TooltipProvider>
-            </KBar>
-          </ThreadDataProvider>
-        </PusherProvider>
-      </FilesystemProvider>
-    </ResourceProvider>
+    <ViewStoreProvider>
+      <ResourceProvider>
+        <FilesystemProvider>
+          <PusherProvider>
+            <ThreadDataProvider>
+              <KBar>
+                <TooltipProvider>
+                  <Dashboard user={user}>{children}</Dashboard>
+                </TooltipProvider>
+              </KBar>
+            </ThreadDataProvider>
+          </PusherProvider>
+        </FilesystemProvider>
+      </ResourceProvider>
+    </ViewStoreProvider>
   )
 }

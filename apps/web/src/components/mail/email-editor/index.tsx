@@ -14,6 +14,7 @@ import { EditorToolbar } from '~/components/editor/editor-button'
 import { EditorProvider, useEditorContext } from '~/components/editor/editor-context'
 import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
 import { SignatureEditor } from '~/components/signatures/ui'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 // Local imports
@@ -88,6 +89,7 @@ function ReplyComposeEditorComponent({
   const { editor } = useEditorContext()
   const activeState = useEditorActiveStateContext()
   const [confirm, ConfirmDialog] = useConfirm()
+  const posthog = useAnalytics()
 
   // Query integrations when needed
   const { data: integrations } = api.integration.getIntegrations.useQuery(undefined, {
@@ -326,6 +328,10 @@ function ReplyComposeEditorComponent({
         if (prev.draftId === draftId && prev.threadId === nextThreadId) {
           return prev
         }
+        // Track email_draft_created when a draft is first saved
+        if (!prev.draftId && draftId) {
+          posthog?.capture('email_draft_created')
+        }
         return { ...prev, draftId, threadId: nextThreadId }
       })
       setIsDraftSaved(true)
@@ -408,6 +414,10 @@ function ReplyComposeEditorComponent({
     setError,
     clearError,
   } = useAIToolsState(editor)
+
+  // Track AI operation timing
+  const aiStartTimeRef = useRef<number>(0)
+
   // Process AI operation mutation
   const processAI = api.aiFeature.compose.useMutation({
     onSuccess: (response) => {
@@ -427,6 +437,12 @@ function ReplyComposeEditorComponent({
       setProcessing(false)
       setCurrentOperation(null)
       clearError()
+
+      // Track AI compose completion
+      posthog?.capture('ai_compose_completed', {
+        ticket_id: thread?.id || state.threadId || undefined,
+        duration_ms: aiStartTimeRef.current ? Date.now() - aiStartTimeRef.current : undefined,
+      })
     },
     onError: (error) => {
       toastError({
@@ -436,8 +452,21 @@ function ReplyComposeEditorComponent({
       setError(error.message)
       setProcessing(false)
       setCurrentOperation(null)
+
+      // Track AI compose failure
+      posthog?.capture('ai_compose_failed', {
+        ticket_id: thread?.id || state.threadId || undefined,
+        error: error.message,
+      })
     },
   })
+
+  // Wrapped undo handler with analytics tracking
+  const handleUndo = useCallback(() => {
+    undo()
+    posthog?.capture('ai_change_undone')
+  }, [undo, posthog])
+
   // Handle AI operation
   const handleAIOperation = useCallback(
     async (
@@ -457,11 +486,25 @@ function ReplyComposeEditorComponent({
         })
         return
       }
+
+      // Track AI events
+      const ticketId = thread?.id || state.threadId || undefined
+      if (operation === AI_OPERATION.COMPOSE) {
+        posthog?.capture('ai_compose_started', { ticket_id: ticketId })
+      } else {
+        posthog?.capture('ai_tool_used', {
+          operation: operation.toLowerCase(),
+          tone: options?.tone,
+          language: options?.language,
+        })
+      }
+
       // Save current state to history before AI operation
       // This ensures we can undo back to the state before the operation
       pushToHistory(currentContent, `before-${operation}`)
       setProcessing(true)
       setCurrentOperation(operation)
+      aiStartTimeRef.current = Date.now()
       await processAI.mutateAsync({
         operation,
         messageHtml: currentContent,
@@ -481,6 +524,7 @@ function ReplyComposeEditorComponent({
       setProcessing,
       setCurrentOperation,
       pushToHistory,
+      posthog,
     ]
   )
   const handleSendClick = useCallback(async () => {
@@ -662,7 +706,7 @@ function ReplyComposeEditorComponent({
                 state={aiToolsState}
                 canUndo={canUndo}
                 canRedo={canRedo}
-                onUndo={undo}
+                onUndo={handleUndo}
                 onRedo={redo}
               />
               {state.draftId && <span className='text-muted-foreground text-sm me-2'>Draft</span>}

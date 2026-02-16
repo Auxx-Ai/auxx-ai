@@ -13,6 +13,7 @@ import {
 import { Progress } from '@auxx/ui/components/progress'
 import { formatDate } from '@auxx/utils/date'
 import { AlertTriangle, Calendar, CreditCard, Key } from 'lucide-react'
+import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 
 interface QuotaInfo {
   /** Current usage amount */
@@ -59,6 +60,7 @@ export function QuotaExceededDialog({
   onSwitchToCustom,
   onUpgrade,
 }: QuotaExceededDialogProps) {
+  const selfHosted = useIsSelfHosted()
   const usagePercent = Math.round((quotaInfo.used / quotaInfo.limit) * 100)
   const resetDateStr = quotaInfo.periodEnd ? formatDate(quotaInfo.periodEnd, 'MMM d, yyyy') : 'soon'
 
@@ -112,16 +114,18 @@ export function QuotaExceededDialog({
               </Button>
             )}
 
-            <Button
-              variant='default'
-              className='w-full justify-start'
-              onClick={() => {
-                onUpgrade?.()
-                onOpenChange(false)
-              }}>
-              <CreditCard className='mr-2 h-4 w-4' />
-              Upgrade for more credits
-            </Button>
+            {!selfHosted && (
+              <Button
+                variant='default'
+                className='w-full justify-start'
+                onClick={() => {
+                  onUpgrade?.()
+                  onOpenChange(false)
+                }}>
+                <CreditCard className='mr-2 h-4 w-4' />
+                Upgrade for more credits
+              </Button>
+            )}
           </div>
         </div>
 

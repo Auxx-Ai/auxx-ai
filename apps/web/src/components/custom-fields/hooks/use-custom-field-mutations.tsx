@@ -18,6 +18,7 @@ import { arrayMove } from '@dnd-kit/sortable'
 import { useCallback, useRef } from 'react'
 import { useField } from '~/components/resources/hooks/use-field'
 import { getResourceStoreState } from '~/components/resources/store/resource-store'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 
 /** Props for useCustomFieldMutations hook */
@@ -32,6 +33,7 @@ interface UseCustomFieldMutationsProps {
  */
 export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMutationsProps) {
   const utils = api.useUtils()
+  const posthog = useAnalytics()
 
   /** Ref to prevent double-firing auto-set of primary display field */
   const autoSetInFlight = useRef(false)
@@ -239,6 +241,10 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
       // Only invalidate custom field queries, not full resource list
       invalidateCustomFieldQueries()
 
+      posthog?.capture('custom_field_created', {
+        field_type: result.type,
+        entity: effectiveEntityDefId,
+      })
       toastSuccess({
         title: 'Custom field created',
         description: 'The custom field has been created successfully',

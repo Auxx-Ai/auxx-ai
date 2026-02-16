@@ -1,6 +1,7 @@
 // app/api/outlook/oauth2/callback/route.ts
 
 import { WEBAPP_URL } from '@auxx/config/server'
+import { publisher } from '@auxx/lib/events'
 import { OutlookOAuthService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
 import type { NextRequest } from 'next/server'
@@ -66,6 +67,17 @@ export async function GET(req: NextRequest) {
       identifier,
     })
 
+    await publisher.publishLater({
+      type: 'integration:connected',
+      data: {
+        organizationId: parsedState?.orgId,
+        userId: parsedState?.userId,
+        provider: 'outlook',
+        identifier,
+        integrationId: result.integration.id,
+      },
+    })
+
     // Redirect to success page (e.g., integrations settings)
     return Response.redirect(
       `${WEBAPP_URL}${redirectPath}?success=true&identifier=${encodeURIComponent(identifier)}&integrationId=${result.integration.id}` // Pass back identifier and integration ID
@@ -75,6 +87,17 @@ export async function GET(req: NextRequest) {
       error: error.message,
       stack: error.stack,
     })
+
+    await publisher.publishLater({
+      type: 'integration:connection_failed',
+      data: {
+        organizationId: parsedState?.orgId,
+        userId: parsedState?.userId,
+        provider: 'outlook',
+        error: error.message || 'Failed to complete Microsoft authorization',
+      },
+    })
+
     // Redirect with error information
     return Response.redirect(
       `${WEBAPP_URL}${redirectPath}?error=oauth_failed&error_description=${encodeURIComponent(error.message || 'Failed to complete Microsoft authorization')}`

@@ -2,6 +2,7 @@
 
 import { BillingPortalService, SubscriptionService } from '@auxx/billing'
 import { schema } from '@auxx/database'
+import { isSelfHosted } from '@auxx/deployment'
 import { DehydrationService } from '@auxx/lib/dehydration'
 import { getUserOrganizationId } from '@auxx/lib/email'
 import { createScopedLogger } from '@auxx/logger'
@@ -13,9 +14,20 @@ import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('billing-router')
 
+/** Blocks all billing procedures in self-hosted mode */
+const cloudOnlyProcedure = protectedProcedure.use(async ({ next }) => {
+  if (isSelfHosted()) {
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message: 'Billing is not available in self-hosted mode',
+    })
+  }
+  return next()
+})
+
 export const billingRouter = createTRPCRouter({
   // Get all available plans
-  getPlans: protectedProcedure.query(async ({ ctx }) => {
+  getPlans: cloudOnlyProcedure.query(async ({ ctx }) => {
     try {
       return await ctx.db.query.Plan.findMany({
         orderBy: (plans, { asc }) => [asc(plans.hierarchyLevel)],
@@ -37,7 +49,7 @@ export const billingRouter = createTRPCRouter({
   }),
 
   // Get current subscription
-  getCurrentSubscription: protectedProcedure.query(async ({ ctx }) => {
+  getCurrentSubscription: cloudOnlyProcedure.query(async ({ ctx }) => {
     try {
       const organizationId = getUserOrganizationId(ctx.session)
       if (!organizationId) {
@@ -65,7 +77,7 @@ export const billingRouter = createTRPCRouter({
   }),
 
   // Get organization invoices
-  getInvoices: protectedProcedure
+  getInvoices: cloudOnlyProcedure
     .input(
       z.object({ limit: z.number().min(1).max(100).default(10), cursor: z.string().optional() })
     )
@@ -119,7 +131,7 @@ export const billingRouter = createTRPCRouter({
     }),
 
   // Check trial status
-  checkTrialStatus: protectedProcedure.query(async ({ ctx }) => {
+  checkTrialStatus: cloudOnlyProcedure.query(async ({ ctx }) => {
     try {
       const organizationId = getUserOrganizationId(ctx.session)
       if (!organizationId) {
@@ -166,7 +178,7 @@ export const billingRouter = createTRPCRouter({
   }),
 
   // Check trial eligibility
-  checkTrialEligibility: protectedProcedure
+  checkTrialEligibility: cloudOnlyProcedure
     .input(z.object({ planId: z.string() }))
     .query(async ({ ctx }) => {
       try {
@@ -209,7 +221,7 @@ export const billingRouter = createTRPCRouter({
     }),
 
   // Calculate subscription preview (pricing, tax, proration)
-  calculateSubscriptionPreview: protectedProcedure
+  calculateSubscriptionPreview: cloudOnlyProcedure
     .input(
       z.object({
         planName: z.string(),
@@ -245,7 +257,7 @@ export const billingRouter = createTRPCRouter({
     }),
 
   // Upgrade/change subscription
-  upgradeSubscription: protectedProcedure
+  upgradeSubscription: cloudOnlyProcedure
     .input(
       z.object({
         planName: z.string(),
@@ -286,7 +298,7 @@ export const billingRouter = createTRPCRouter({
     }),
 
   // Cancel subscription
-  cancelSubscription: protectedProcedure.mutation(async ({ ctx }) => {
+  cancelSubscription: cloudOnlyProcedure.mutation(async ({ ctx }) => {
     try {
       const organizationId = getUserOrganizationId(ctx.session)
       if (!organizationId) {
@@ -313,7 +325,7 @@ export const billingRouter = createTRPCRouter({
   }),
 
   // Restore canceled subscription
-  restoreSubscription: protectedProcedure.mutation(async ({ ctx }) => {
+  restoreSubscription: cloudOnlyProcedure.mutation(async ({ ctx }) => {
     try {
       const organizationId = getUserOrganizationId(ctx.session)
       if (!organizationId) {
@@ -336,7 +348,7 @@ export const billingRouter = createTRPCRouter({
   }),
 
   // Create billing portal session
-  createBillingPortal: protectedProcedure
+  createBillingPortal: cloudOnlyProcedure
     .input(
       z.object({
         returnUrl: z.string(),
@@ -368,7 +380,7 @@ export const billingRouter = createTRPCRouter({
     }),
 
   // Get billing details from Stripe customer
-  getBillingDetails: protectedProcedure.query(async ({ ctx }) => {
+  getBillingDetails: cloudOnlyProcedure.query(async ({ ctx }) => {
     try {
       const organizationId = getUserOrganizationId(ctx.session)
       if (!organizationId) {
@@ -407,7 +419,7 @@ export const billingRouter = createTRPCRouter({
   }),
 
   // Update billing address in Stripe
-  updateBillingAddress: protectedProcedure
+  updateBillingAddress: cloudOnlyProcedure
     .input(
       z.object({
         email: z.string().email(),
@@ -464,7 +476,7 @@ export const billingRouter = createTRPCRouter({
     }),
 
   // Get payment methods from Stripe
-  getPaymentMethods: protectedProcedure.query(async ({ ctx }) => {
+  getPaymentMethods: cloudOnlyProcedure.query(async ({ ctx }) => {
     try {
       const organizationId = getUserOrganizationId(ctx.session)
       if (!organizationId) {
@@ -512,7 +524,7 @@ export const billingRouter = createTRPCRouter({
   }),
 
   // Create setup intent for adding payment method
-  createSetupIntent: protectedProcedure.mutation(async ({ ctx }) => {
+  createSetupIntent: cloudOnlyProcedure.mutation(async ({ ctx }) => {
     try {
       const organizationId = getUserOrganizationId(ctx.session)
       if (!organizationId) {
@@ -546,7 +558,7 @@ export const billingRouter = createTRPCRouter({
   }),
 
   // Set default payment method
-  setDefaultPaymentMethod: protectedProcedure
+  setDefaultPaymentMethod: cloudOnlyProcedure
     .input(z.object({ paymentMethodId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       try {
@@ -583,7 +595,7 @@ export const billingRouter = createTRPCRouter({
     }),
 
   // Delete payment method
-  deletePaymentMethod: protectedProcedure
+  deletePaymentMethod: cloudOnlyProcedure
     .input(z.object({ paymentMethodId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       try {
@@ -608,7 +620,7 @@ export const billingRouter = createTRPCRouter({
     }),
 
   // Update subscription directly (without Stripe Checkout)
-  updateSubscriptionDirect: protectedProcedure
+  updateSubscriptionDirect: cloudOnlyProcedure
     .input(
       z.object({
         planName: z.string(),
@@ -653,7 +665,7 @@ export const billingRouter = createTRPCRouter({
     }),
 
   // Cancel scheduled plan change
-  cancelScheduledChange: protectedProcedure.mutation(async ({ ctx }) => {
+  cancelScheduledChange: cloudOnlyProcedure.mutation(async ({ ctx }) => {
     try {
       const organizationId = getUserOrganizationId(ctx.session)
       if (!organizationId) {
@@ -727,7 +739,7 @@ export const billingRouter = createTRPCRouter({
    * Get reactivation details for an organization
    * Used by the reactivation page to show org status and deletion timeline
    */
-  getReactivationDetails: protectedProcedure
+  getReactivationDetails: cloudOnlyProcedure
     .input(z.object({ organizationId: z.string() }))
     .query(async ({ ctx, input }) => {
       try {

@@ -6,11 +6,13 @@ import { useRouter } from 'next/navigation'
 import type React from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { client } from '~/auth/auth-client'
+import { useAnalytics } from '~/hooks/use-analytics'
 
 type Props = Record<string, unknown>
 
 function TwoFactorForm(_props: Props) {
   const router = useRouter()
+  const posthog = useAnalytics()
   const [otp, setOtp] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -63,6 +65,7 @@ function TwoFactorForm(_props: Props) {
         setOtp('')
       }
       if (data) {
+        posthog?.capture('two_factor_completed')
         router.push('/app/mail/inbox/open')
         console.log('Success: and redirect', data)
       }

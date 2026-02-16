@@ -18,6 +18,7 @@
     "@hono/node-server": "^1.13.7",
     "@auxx/billing": "workspace:*",
     "@auxx/config": "workspace:*",
+    "@auxx/deployment": "workspace:*",
     "@auxx/database": "workspace:*",
     "@auxx/lib": "workspace:*",
     "@auxx/logger": "workspace:*",

@@ -1,5 +1,6 @@
 // apps/web/src/hooks/use-subscription.ts
 
+import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import {
   useDehydratedOrganization,
   useDehydratedOrganizationId,
@@ -21,7 +22,9 @@ export function useSubscription() {
  * @returns True if subscription is active
  */
 export function useHasActiveSubscription(): boolean {
+  const selfHosted = useIsSelfHosted()
   const subscription = useSubscription()
+  if (selfHosted) return true // Always active for self-hosted
   if (!subscription) return false
 
   // Active statuses
@@ -34,7 +37,9 @@ export function useHasActiveSubscription(): boolean {
  * @returns True if subscription is expired or canceled
  */
 export function useIsSubscriptionExpired(): boolean {
+  const selfHosted = useIsSelfHosted()
   const subscription = useSubscription()
+  if (selfHosted) return false // Never expired for self-hosted
   if (!subscription) return false
 
   // Expired/inactive statuses
@@ -47,7 +52,9 @@ export function useIsSubscriptionExpired(): boolean {
  * @returns True if currently trialing and trial hasn't ended
  */
 export function useIsOnTrial(): boolean {
+  const selfHosted = useIsSelfHosted()
   const subscription = useSubscription()
+  if (selfHosted) return false // No trial concept for self-hosted
   if (!subscription) return false
 
   return subscription.status.toLowerCase() === 'trialing' && !subscription.hasTrialEnded
@@ -58,10 +65,24 @@ export function useIsOnTrial(): boolean {
  * @returns Detailed subscription status
  */
 export function useSubscriptionStatus() {
+  const selfHosted = useIsSelfHosted()
   const subscription = useSubscription()
+  // Call all hooks unconditionally (React rules of hooks)
   const isActive = useHasActiveSubscription()
   const isExpired = useIsSubscriptionExpired()
   const isOnTrial = useIsOnTrial()
+
+  if (selfHosted) {
+    return {
+      subscription: null,
+      isActive: true,
+      isExpired: false,
+      isOnTrial: false,
+      hasCanceled: false,
+      willCancelAtPeriodEnd: false,
+      hasScheduledChanges: false,
+    }
+  }
 
   return {
     subscription,

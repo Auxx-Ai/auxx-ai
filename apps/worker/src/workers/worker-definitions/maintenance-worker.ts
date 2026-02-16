@@ -1,10 +1,12 @@
 // import * as jobs from '@auxx/lib/jobs/definitions'
 
+import { isSelfHosted } from '@auxx/deployment'
 import {
   deletedFileCleanupJob,
   orphanedFileCleanupJob,
   storageQuotaCheckJob,
 } from '@auxx/lib/files'
+import type { JobHandler } from '@auxx/lib/jobs'
 import {
   applyScheduledSubscriptionChangesJob,
   cleanupExpiredMediaAssetsJob,
@@ -20,7 +22,21 @@ import {
   thumbnailCleanupJob,
 } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/queues/types'
+import { createScopedLogger } from '@auxx/logger'
 import { createWorker } from '../utils/createWorker'
+
+const logger = createScopedLogger('maintenance-worker')
+
+/** Wraps a job handler to skip execution in self-hosted mode (defense in depth) */
+function cloudOnly(handler: JobHandler): JobHandler {
+  return async (ctx) => {
+    if (isSelfHosted()) {
+      logger.info(`Skipping ${ctx.jobName} in self-hosted mode`)
+      return
+    }
+    return handler(ctx)
+  }
+}
 
 const jobMappings = {
   // File cleanup jobs
@@ -33,17 +49,17 @@ const jobMappings = {
   thumbnailCleanupJob,
   thumbnailVersionCleanupJob: thumbnailCleanupJob, // Same handler, different schedule
 
-  // Billing jobs
-  applyScheduledSubscriptionChangesJob,
-  stripeSubscriptionSyncJob,
+  // Billing jobs (cloud-only)
+  applyScheduledSubscriptionChangesJob: cloudOnly(applyScheduledSubscriptionChangesJob),
+  stripeSubscriptionSyncJob: cloudOnly(stripeSubscriptionSyncJob),
 
-  // Account management jobs
-  expiredTrialAccountCleanup: expiredTrialAccountCleanupJob,
+  // Account management jobs (cloud-only)
+  expiredTrialAccountCleanup: cloudOnly(expiredTrialAccountCleanupJob),
 
-  // Lifecycle email jobs
-  sendGettingStartedEmailsJob,
-  sendMidTrialEmailsJob,
-  sendTrialConversionEmailsJob,
+  // Lifecycle email jobs (cloud-only)
+  sendGettingStartedEmailsJob: cloudOnly(sendGettingStartedEmailsJob),
+  sendMidTrialEmailsJob: cloudOnly(sendMidTrialEmailsJob),
+  sendTrialConversionEmailsJob: cloudOnly(sendTrialConversionEmailsJob),
 
   // OAuth2 token refresh scanner
   oauth2TokenRefreshScannerJob,

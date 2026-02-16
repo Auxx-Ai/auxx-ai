@@ -26,6 +26,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { client } from '~/auth/auth-client'
+import { useAnalytics } from '~/hooks/use-analytics'
 
 // Schema for validation
 const formSchema = z.object({
@@ -35,6 +36,7 @@ const formSchema = z.object({
 type ForgotPasswordFormValues = z.infer<typeof formSchema>
 
 export function ForgotPasswordForm() {
+  const posthog = useAnalytics()
   const [isLoading, setIsLoading] = useState(false)
   const form = useForm<ForgotPasswordFormValues>({
     resolver: standardSchemaResolver(formSchema),
@@ -51,6 +53,7 @@ export function ForgotPasswordForm() {
       toastError({ title: 'Request Failed', description: error.message })
     }
     if (data) {
+      posthog?.capture('password_reset_requested')
       toastSuccess({
         title: 'Request Sent',
         description: 'If an account exists for this email, a password reset link has been sent.',

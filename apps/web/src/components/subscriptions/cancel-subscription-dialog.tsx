@@ -26,6 +26,7 @@ import { Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { useDehydratedOrganization } from '~/providers/dehydrated-state-provider'
 import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
@@ -50,6 +51,7 @@ const cancelReasons = [
 export function CancelSubscriptionDialog() {
   const router = useRouter()
   const utils = api.useUtils()
+  const posthog = useAnalytics()
   const [reason, setReason] = useState<string>('')
   const [feedback, setFeedback] = useState<string>('')
   const [confirmationText, setConfirmationText] = useState<string>('')
@@ -92,6 +94,10 @@ export function CancelSubscriptionDialog() {
    * Confirms the cancellation request with the backend.
    */
   const handleCancel = () => {
+    posthog?.capture('subscription_cancelled', {
+      plan: subscription?.plan ?? 'unknown',
+      reason: reason || undefined,
+    })
     cancelSubscription.mutate()
   }
 

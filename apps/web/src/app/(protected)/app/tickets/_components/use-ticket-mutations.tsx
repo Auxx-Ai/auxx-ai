@@ -4,6 +4,7 @@
 
 import { toastError } from '@auxx/ui/components/toast'
 import { useRecordInvalidation } from '~/components/resources'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 
 interface UseTicketMutationsOptions {
@@ -16,6 +17,7 @@ interface UseTicketMutationsOptions {
  */
 export function useTicketMutations(options?: UseTicketMutationsOptions) {
   const utils = api.useUtils()
+  const posthog = useAnalytics()
   const { onRecordUpdated, onRecordDeleted, onBulkUpdated, onBulkDeleted, onRecordCreated } =
     useRecordInvalidation()
 
@@ -37,6 +39,7 @@ export function useTicketMutations(options?: UseTicketMutationsOptions) {
     onSuccess: (_, { ticketIds }) => {
       onBulkDeleted('ticket', ticketIds)
       utils.ticket.list.invalidate()
+      posthog?.capture('tickets_bulk_action', { action: 'delete', count: ticketIds.length })
       options?.onSuccess?.()
     },
     onError: (error) => {
@@ -63,6 +66,7 @@ export function useTicketMutations(options?: UseTicketMutationsOptions) {
     onSuccess: (_, { ticketIds }) => {
       onBulkUpdated('ticket', ticketIds)
       utils.ticket.list.invalidate()
+      posthog?.capture('tickets_bulk_action', { action: 'status', count: ticketIds.length })
       options?.onSuccess?.()
     },
     onError: (error) => {
@@ -73,9 +77,10 @@ export function useTicketMutations(options?: UseTicketMutationsOptions) {
 
   // Update priority
   const updateTicketPriority = api.ticket.updatePriority.useMutation({
-    onSuccess: (_, { id }) => {
+    onSuccess: (_, { id, priority }) => {
       onRecordUpdated('ticket', id)
       utils.ticket.list.invalidate()
+      posthog?.capture('ticket_priority_changed', { ticket_id: id, to_priority: priority })
       options?.onSuccess?.()
     },
     onError: (error) => {
@@ -89,6 +94,7 @@ export function useTicketMutations(options?: UseTicketMutationsOptions) {
     onSuccess: (_, { ticketIds }) => {
       onBulkUpdated('ticket', ticketIds)
       utils.ticket.list.invalidate()
+      posthog?.capture('tickets_bulk_action', { action: 'priority', count: ticketIds.length })
       options?.onSuccess?.()
     },
     onError: (error) => {
@@ -115,6 +121,7 @@ export function useTicketMutations(options?: UseTicketMutationsOptions) {
     onSuccess: (_, { ticketIds }) => {
       onBulkUpdated('ticket', ticketIds)
       utils.ticket.list.invalidate()
+      posthog?.capture('tickets_bulk_action', { action: 'assign', count: ticketIds.length })
       options?.onSuccess?.()
     },
     onError: (error) => {
@@ -157,6 +164,7 @@ export function useTicketMutations(options?: UseTicketMutationsOptions) {
       onBulkDeleted('ticket', ticketIdsToMerge)
       onRecordUpdated('ticket', primaryTicketId)
       utils.ticket.list.invalidate()
+      posthog?.capture('ticket_merged', { merged_count: ticketIdsToMerge.length + 1 })
       options?.onSuccess?.()
     },
     onError: (error) => {

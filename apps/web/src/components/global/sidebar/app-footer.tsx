@@ -1,5 +1,5 @@
 'use client'
-import { getAppVersion, HOMEPAGE_URL, WEBAPP_URL } from '@auxx/config/client'
+import { HOMEPAGE_URL, WEBAPP_URL } from '@auxx/config/client'
 import { BorderBeam } from '@auxx/ui/components/border-beam'
 import {
   DropdownMenu,
@@ -42,8 +42,9 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { PlanChangeSummary } from '~/components/subscriptions/plan-change-summary'
-// import { PlanChangeSummary } from '~/app/(protected)/app/settings/plans/_components/plan-change-summary'
+import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useSubscription } from '~/hooks/use-subscription'
+import { useEnvironment } from '~/providers/dehydrated-state-provider'
 import { NotificationCenter } from '../notifications/notification-center'
 
 type Props = {}
@@ -51,7 +52,7 @@ type Props = {}
 function AppFooter({}: Props) {
   const pathname = usePathname()
   const [isHelpOpen, setIsHelpOpen] = useState(false)
-  const version = getAppVersion()
+  const { version } = useEnvironment()
 
   function isActive(url: string) {
     return pathname.startsWith(url) || pathname === url
@@ -77,7 +78,7 @@ function AppFooter({}: Props) {
           <DropdownMenu open={isHelpOpen} onOpenChange={setIsHelpOpen}>
             <DropdownMenuTrigger asChild>
               <SidebarMenuButton isActive={isHelpOpen || isActive('/app/help')} tooltip='Help'>
-                <CircleHelp className='h-4 w-4' />
+                <CircleHelp />
                 <span>Help and resources</span>
               </SidebarMenuButton>
             </DropdownMenuTrigger>
@@ -237,7 +238,7 @@ function AppFooter({}: Props) {
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <div className='px-2 py-1.5 text-[11px] text-muted-foreground/60'>
-                {version.version} ({version.sha})
+                {version.appVersion} ({version.commit})
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -252,7 +253,11 @@ export default AppFooter
 
 function UpgradeButton() {
   const [dialogOpen, setDialogOpen] = useState(false)
+  const selfHosted = useIsSelfHosted()
   const subscription = useSubscription()
+
+  // Self-hosted deployments don't have trials
+  if (selfHosted) return null
 
   // Don't render if not in trial or trial has ended
   if (

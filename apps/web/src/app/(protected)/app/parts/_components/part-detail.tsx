@@ -31,6 +31,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { pluralize } from '@auxx/utils'
+import { formatCurrency } from '@auxx/utils/currency'
 import {
   ArrowLeft,
   Blocks,
@@ -49,7 +50,6 @@ import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
-import { formatMoney } from '~/utils/strings'
 
 type SubpartWithChildPart = Subpart & {
   childPart: Part
@@ -252,7 +252,7 @@ export function PartDetail({
                     <dt className='text-sm font-medium text-muted-foreground'>Cost</dt>
                     <dd className='text-base'>
                       {part.cost ? (
-                        formatMoney(part.cost, '${{amount}}')
+                        formatCurrency(part.cost)
                       ) : (
                         <span className='text-muted-foreground'>—</span>
                       )}
@@ -439,7 +439,7 @@ export function PartDetail({
                             {subpart.quantity}
                           </TableCell>
                           <TableCell className='text-right font-medium'>
-                            {formatMoney(subpart.childPart.cost, '${{amount}}')}
+                            {formatCurrency(subpart.childPart.cost)}
                             {/* {subpart.childPart} */}
                           </TableCell>
 
@@ -597,7 +597,7 @@ export function PartDetail({
                           <TableCell>{vendorPart.vendorSku}</TableCell>
                           <TableCell className='text-right'>
                             {vendorPart.unitPrice ? (
-                              formatMoney(vendorPart.unitPrice)
+                              formatCurrency(vendorPart.unitPrice)
                             ) : (
                               <span className='text-muted-foreground'>—</span>
                             )}

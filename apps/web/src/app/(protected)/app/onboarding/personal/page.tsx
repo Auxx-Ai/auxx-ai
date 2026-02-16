@@ -18,6 +18,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { AvatarUpload } from '~/components/file-upload/ui/avatar-upload'
+import { useAnalytics } from '~/hooks/use-analytics'
 import { useDehydratedUser } from '~/providers/dehydrated-state-provider'
 import { OnboardingNavigation } from '../_components/onboarding-navigation'
 import { useOnboarding } from '../_components/onboarding-provider'
@@ -29,11 +30,12 @@ const formSchema = z.object({
 
 export default function PersonalOnboardingPage() {
   const router = useRouter()
+  const posthog = useAnalytics()
   const { state, updatePersonal, markStepCompleted, setCurrentStep } = useOnboarding()
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Get existing user data from dehydrated state
-  const userData = useDehydratedUser()
+  const userData = useDehydratedUser()!
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: standardSchemaResolver(formSchema),
@@ -55,6 +57,7 @@ export default function PersonalOnboardingPage() {
 
       // Mark step as completed
       markStepCompleted(1)
+      posthog?.capture('onboarding_step_completed', { step: 'personal' })
 
       // Navigate to next step
       setCurrentStep(2)

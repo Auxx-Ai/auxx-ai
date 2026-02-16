@@ -2,17 +2,9 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { formatCurrency } from '@auxx/utils/currency'
 import { format } from 'date-fns'
 import { useOrder } from '~/components/orders/order-context'
-import { formatMoney } from '~/utils/strings'
-
-// Helper function to format currency
-// function formatCurrency(amount: number) {
-//   return new Intl.NumberFormat('en-US', {
-//     style: 'currency',
-//     currency: 'USD',
-//   }).format(amount / 100) // Assuming amount is stored in cents
-// }
 
 // Helper function to format dates
 function formatDate(date: Date | null | undefined) {
@@ -118,34 +110,34 @@ export default function OrderSummary({ order: orderProp }: { order?: any } = {})
           <div className='space-y-4'>
             <div className='flex justify-between'>
               <span className='text-muted-foreground'>Subtotal</span>
-              <span className='font-medium'>{formatMoney(order.subtotalPrice)}</span>
+              <span className='font-medium'>{formatCurrency(order.subtotalPrice)}</span>
             </div>
             <div className='flex justify-between'>
               <span className='text-muted-foreground'>Shipping</span>
-              <span className='font-medium'>{formatMoney(order.totalShippingPrice)}</span>
+              <span className='font-medium'>{formatCurrency(order.totalShippingPrice)}</span>
             </div>
             {order.totalDiscounts > 0 && (
               <div className='flex justify-between'>
                 <span className='text-muted-foreground'>Discounts</span>
                 <span className='font-medium text-red-500'>
-                  -{formatMoney(order.totalDiscounts)}
+                  -{formatCurrency(order.totalDiscounts)}
                 </span>
               </div>
             )}
             <div className='flex justify-between'>
               <span className='text-muted-foreground'>Tax</span>
-              <span className='font-medium'>{formatMoney(order.totalTax)}</span>
+              <span className='font-medium'>{formatCurrency(order.totalTax)}</span>
             </div>
             <Separator />
             <div className='flex justify-between font-bold'>
               <span>Total</span>
-              <span>{formatMoney(order.totalPrice)}</span>
+              <span>{formatCurrency(order.totalPrice)}</span>
             </div>
             {order.totalRefunded > 0 && (
               <div className='flex justify-between'>
                 <span className='text-muted-foreground'>Refunded</span>
                 <span className='font-medium text-red-500'>
-                  -{formatMoney(order.totalRefunded)}
+                  -{formatCurrency(order.totalRefunded)}
                 </span>
               </div>
             )}

@@ -10,7 +10,7 @@ interface ColorfulBgProps {
 
 function ColorfulBg({ children }: ColorfulBgProps) {
   return (
-    <div data-theme='light'>
+    <div data-theme='light' className='relative min-h-screen overflow-hidden'>
       <div className='pointer-events-none fixed inset-0 overflow-hidden bg-white dark:bg-black transition-opacity duration-300 opacity-60'>
         <div className='absolute left-0 top-0 aspect-square w-full overflow-hidden sm:aspect-2/1 mask-[radial-gradient(70%_100%_at_50%_0%,black_70%,transparent)] opacity-15'>
           <div
