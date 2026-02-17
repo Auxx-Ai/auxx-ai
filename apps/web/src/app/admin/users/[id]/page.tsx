@@ -11,7 +11,9 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { type StatCardData, StatCards } from '@auxx/ui/components/stat-card'
 import {
   Table,
   TableBody,
@@ -22,12 +24,23 @@ import {
 } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatDistanceToNow } from 'date-fns'
-import { ArrowLeft, Book, Calendar, Mail, Phone, Shield, Trash2, User } from 'lucide-react'
+import {
+  ArrowLeft,
+  Book,
+  Building,
+  Calendar,
+  Mail,
+  MessageSquare,
+  Phone,
+  Shield,
+  Ticket,
+  Trash2,
+  User,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { use } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-
 /**
  * User detail page for admin
  */
@@ -181,6 +194,28 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
     )
   }
 
+  /** Metric cards for the StatCards component */
+  const metricCards: StatCardData[] = [
+    {
+      title: 'Organizations',
+      body: user.metrics.organizationCount,
+      icon: <Building className='size-4' />,
+      color: 'text-blue-500',
+    },
+    {
+      title: 'Messages',
+      body: user.metrics.messageCount,
+      icon: <MessageSquare className='size-4' />,
+      color: 'text-good-500',
+    },
+    {
+      title: 'Tickets',
+      body: user.metrics.ticketCount,
+      icon: <Ticket className='size-4' />,
+      color: 'text-comparison-500',
+    },
+  ]
+
   return (
     <>
       <ConfirmDialog />
@@ -203,7 +238,14 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className='flex flex-col'>
+          <div className='flex flex-col overflow-y-auto bg-card flex-1'>
+            <StatCards
+              className='sticky top-0 z-10'
+              cards={metricCards}
+              columns={{
+                default: 'grid-cols-3',
+              }}
+            />
             {/* Cards */}
             <div className='grid  md:grid-cols-2'>
               {/* User Information */}
@@ -371,31 +413,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                 </CardContent>
               </Card>
             </div>
-
-            {/* Metrics */}
-            <Card className='border-none rounded-none shadow-none'>
-              <CardHeader>
-                <CardTitle>Metrics</CardTitle>
-                <CardDescription>User activity and statistics</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className='grid grid-cols-3 gap-4'>
-                  <div>
-                    <p className='text-sm font-medium text-muted-foreground'>Organizations</p>
-                    <p className='text-2xl font-bold'>{user.metrics.organizationCount}</p>
-                  </div>
-                  <div>
-                    <p className='text-sm font-medium text-muted-foreground'>Messages</p>
-                    <p className='text-2xl font-bold'>{user.metrics.messageCount}</p>
-                  </div>
-                  <div>
-                    <p className='text-sm font-medium text-muted-foreground'>Tickets</p>
-                    <p className='text-2xl font-bold'>{user.metrics.ticketCount}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
+            <Separator />
             {/* Organizations */}
             <Card className='border-none rounded-none shadow-none'>
               <CardHeader>

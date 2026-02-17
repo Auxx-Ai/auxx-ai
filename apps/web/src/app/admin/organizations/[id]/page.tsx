@@ -5,6 +5,12 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import {
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
@@ -20,11 +26,27 @@ import {
 } from '@auxx/ui/components/select'
 import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { type StatCardData, StatCards } from '@auxx/ui/components/stat-card'
 import { Table, TableBody, TableCell, TableRow } from '@auxx/ui/components/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { toastError } from '@auxx/ui/components/toast'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
-import { ArrowLeft, CreditCard, LayoutDashboard, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  BookOpen,
+  ChevronDown,
+  Contact,
+  CreditCard,
+  Database,
+  FileText,
+  LayoutDashboard,
+  MessageSquare,
+  Plus,
+  Ticket,
+  Trash2,
+  Users,
+  Workflow,
+} from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -33,7 +55,7 @@ import { ActionHistoryPanel } from './_components/action-history-panel'
 import { EnterpriseManagementSection } from './_components/enterprise-management-section'
 import { MembersSection } from './_components/members-section'
 import { OrganizationAccessSection } from './_components/organization-access-section'
-import { OrganizationActionsSection } from './_components/organization-actions-section'
+
 import { SubscriptionManagementSection } from './_components/subscription-management-section'
 import { TrialManagementSection } from './_components/trial-management-section'
 
@@ -45,6 +67,7 @@ export default function OrganizationDetailsPage() {
   const router = useRouter()
   const id = params.id as string
   const [activeTab, setActiveTab] = useState('overview')
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
 
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
@@ -73,6 +96,18 @@ export default function OrganizationDetailsPage() {
     onError: (error) => {
       toastError({
         title: 'Failed to change plan',
+        description: error.message,
+      })
+    },
+  })
+
+  const seedOrganization = api.admin.seedOrganization.useMutation({
+    onSuccess: (data) => {
+      toastSuccess({ title: 'Seeding Completed', description: data.message })
+    },
+    onError: (error) => {
+      toastError({
+        title: 'Seeding Failed',
         description: error.message,
       })
     },
@@ -134,6 +169,49 @@ export default function OrganizationDetailsPage() {
     })
   }
 
+  /**
+   * Handle Reset and Seed action
+   */
+  const handleResetAndSeed = async () => {
+    const confirmed = await confirm({
+      title: 'Reset and Seed Organization?',
+      description: `This will delete ALL data for "${org?.name || 'this organization'}" and reseed with demo data. Billing data and subscriptions will be preserved. This action cannot be undone.`,
+      confirmText: 'Reset and Seed',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (confirmed) {
+      await seedOrganization.mutateAsync({
+        organizationId: id,
+        mode: 'reset',
+      })
+    }
+
+    setIsDropdownOpen(false)
+  }
+
+  /**
+   * Handle Add Seed Data action
+   */
+  const handleAddSeedData = async () => {
+    const confirmed = await confirm({
+      title: 'Add Seed Data?',
+      description: `This will add demo data to "${org?.name || 'this organization'}" without deleting existing data.`,
+      confirmText: 'Add Data',
+      cancelText: 'Cancel',
+    })
+
+    if (confirmed) {
+      await seedOrganization.mutateAsync({
+        organizationId: id,
+        mode: 'additive',
+      })
+    }
+
+    setIsDropdownOpen(false)
+  }
+
   if (isLoading) {
     return (
       <MainPage loading>
@@ -188,6 +266,52 @@ export default function OrganizationDetailsPage() {
     )
   }
 
+  /** Metric cards for the StatCards component */
+  const metricCards: StatCardData[] = [
+    {
+      title: 'Users',
+      body: org.metrics.userCount,
+      icon: <Users className='size-4' />,
+      color: 'text-blue-500',
+    },
+    {
+      title: 'Tickets',
+      body: org.metrics.ticketCount,
+      icon: <Ticket className='size-4' />,
+      color: 'text-comparison-500',
+    },
+    {
+      title: 'Messages',
+      body: org.metrics.messageCount,
+      icon: <MessageSquare className='size-4' />,
+      color: 'text-good-500',
+    },
+    {
+      title: 'Contacts',
+      body: org.metrics.contactCount,
+      icon: <Contact className='size-4' />,
+      color: 'text-fuchsia-500',
+    },
+    {
+      title: 'Workflows',
+      body: org.metrics.workflowCount,
+      icon: <Workflow className='size-4' />,
+      color: 'text-blue-500',
+    },
+    {
+      title: 'Datasets',
+      body: org.metrics.datasetCount,
+      icon: <BookOpen className='size-4' />,
+      color: 'text-comparison-500',
+    },
+    {
+      title: 'Documents',
+      body: org.metrics.documentCount,
+      icon: <FileText className='size-4' />,
+      color: 'text-good-500',
+    },
+  ]
+
   return (
     <>
       <ConfirmDialog />
@@ -228,12 +352,45 @@ export default function OrganizationDetailsPage() {
                 <CreditCard />
                 Billing Actions
               </TabsTrigger>
+              <div className='ml-auto pe-2'>
+                <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      disabled={seedOrganization.isPending}
+                      loading={seedOrganization.isPending}
+                      loadingText='Seeding...'>
+                      <Database />
+                      Seed Data
+                      <ChevronDown />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align='end'>
+                    <DropdownMenuItem onClick={handleResetAndSeed}>
+                      <Database />
+                      Reset and Seed
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleAddSeedData}>
+                      <Plus />
+                      Add Seed Data
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </TabsList>
 
+            {/* Metrics */}
+            <StatCards
+              cards={metricCards}
+              columns={{
+                default: 'grid-cols-4',
+                md: 'md:grid-cols-7',
+              }}
+            />
+
             {/* Overview Tab */}
-            <TabsContent
-              value='overview'
-              className='space-y-4 flex-1 flex flex-col min-h-0 overflow-y-auto'>
+            <TabsContent value='overview' className=' flex-1 flex flex-col min-h-0 overflow-y-auto'>
               <div className='grid md:grid-cols-2'>
                 {/* Actions */}
 
@@ -381,49 +538,10 @@ export default function OrganizationDetailsPage() {
                     )}
                   </CardContent>
                 </Card>
-                <OrganizationActionsSection organizationId={org.id} organizationName={org.name} />
-                <Separator />
-                {/* Metrics */}
-                <Card className='md:col-span-2 border-none rounded-none shadow-none'>
-                  <CardHeader>
-                    <CardTitle>Metrics</CardTitle>
-                    <CardDescription>Usage statistics and resource counts</CardDescription>
-                  </CardHeader>
-                  <CardContent className='grid grid-cols-2 md:grid-cols-4 gap-6'>
-                    <div className='space-y-1'>
-                      <div className='text-sm font-medium text-muted-foreground'>Users</div>
-                      <div className='text-3xl font-bold'>{org.metrics.userCount}</div>
-                    </div>
-                    <div className='space-y-1'>
-                      <div className='text-sm font-medium text-muted-foreground'>Tickets</div>
-                      <div className='text-3xl font-bold'>{org.metrics.ticketCount}</div>
-                    </div>
-                    <div className='space-y-1'>
-                      <div className='text-sm font-medium text-muted-foreground'>Messages</div>
-                      <div className='text-3xl font-bold'>{org.metrics.messageCount}</div>
-                    </div>
-                    <div className='space-y-1'>
-                      <div className='text-sm font-medium text-muted-foreground'>Contacts</div>
-                      <div className='text-3xl font-bold'>{org.metrics.contactCount}</div>
-                    </div>
-                    <div className='space-y-1'>
-                      <div className='text-sm font-medium text-muted-foreground'>Workflows</div>
-                      <div className='text-3xl font-bold'>{org.metrics.workflowCount}</div>
-                    </div>
-                    <div className='space-y-1'>
-                      <div className='text-sm font-medium text-muted-foreground'>Datasets</div>
-                      <div className='text-3xl font-bold'>{org.metrics.datasetCount}</div>
-                    </div>
-                    <div className='space-y-1'>
-                      <div className='text-sm font-medium text-muted-foreground'>Documents</div>
-                      <div className='text-3xl font-bold'>{org.metrics.documentCount}</div>
-                    </div>
-                  </CardContent>
-                </Card>
                 <Separator />
                 {/* Members */}
-                <MembersSection organizationId={org.id} />
               </div>
+              <MembersSection organizationId={org.id} />
             </TabsContent>
 
             {/* Billing Actions Tab */}
