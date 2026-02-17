@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.4](https://github.com/auxxai/auxx-ai/compare/auxx-v0.1.3...auxx-v0.1.4) (2026-02-17)
+
+
+### Bug Fixes
+
+* add ActorInput component and integrate into workflow nodes ([#11](https://github.com/auxxai/auxx-ai/issues/11)) ([d0b3f49](https://github.com/auxxai/auxx-ai/commit/d0b3f498ab4e883cd44e8a48e70645ab2f0eb825))
+* contacts and vendor parts services ([#15](https://github.com/auxxai/auxx-ai/issues/15)) ([7c20cee](https://github.com/auxxai/auxx-ai/commit/7c20cee2a8ccbafc5e9868a4e26b7917a631cb24))
+
 ## [0.1.3](https://github.com/auxxai/auxx-ai/compare/auxx-v0.1.2...auxx-v0.1.3) (2026-02-15)
 
 
