@@ -40,9 +40,10 @@ export const FolderFile = pgTable(
     currentVersionId: text().references((): AnyPgColumn => FileVersion.id, { onUpdate: 'cascade' }),
     isArchived: boolean().default(false).notNull(),
     deletedAt: timestamp({ precision: 3 }),
-    createdById: text()
-      .notNull()
-      .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'restrict' }),
+    createdById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 }).notNull(),
     provider: storageProvider(),

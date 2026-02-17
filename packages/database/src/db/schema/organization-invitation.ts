@@ -36,7 +36,10 @@ export const OrganizationInvitation = pgTable(
     invitedById: text()
       .notNull()
       .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
-    acceptedById: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    acceptedById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     acceptedAt: timestamp({ precision: 3 }),
   },
   (table) => [

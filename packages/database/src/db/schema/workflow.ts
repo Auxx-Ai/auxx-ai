@@ -35,7 +35,10 @@ export const Workflow = pgTable(
     entityDefinitionId: text(), // Entity identifier (system or custom) - nullable for form/scheduled/message-received triggers
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 }).notNull(),
-    createdById: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    createdById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     envVars: jsonb('env_vars'),
     graph: jsonb(),
     workflowAppId: text()

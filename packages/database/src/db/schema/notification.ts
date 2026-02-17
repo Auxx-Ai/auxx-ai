@@ -33,7 +33,10 @@ export const Notification = pgTable(
       .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
     entityId: text().notNull(),
     entityType: text().notNull(),
-    actorId: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    actorId: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),

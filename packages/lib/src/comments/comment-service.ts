@@ -232,18 +232,13 @@ export class CommentService {
       }
       // Publish timeline event
       // Determine contactId based on entity type
+      // TODO: Ticket/Contact tables dropped. Contact association via EntityInstance not yet implemented.
       let contactId: string | undefined
       const normalizedType = entityType.toLowerCase()
-      if (normalizedType === 'ticket') {
-        const ticket = await this.db.query.Ticket.findFirst({
-          where: eq(schema.Ticket.id, entityId),
-          columns: { contactId: true },
-        })
-        contactId = ticket?.contactId || undefined
-      } else if (normalizedType === 'contact') {
+      if (normalizedType === 'contact') {
         contactId = entityId
-      } else if (!isSystemEntityType(entityType)) {
-        // Custom entity - no contact association for now
+      } else {
+        // Ticket and custom entities - no contact association for now
         contactId = undefined
       }
 
@@ -369,14 +364,9 @@ export class CommentService {
 
       let contactId: string | undefined
       if (comment) {
+        // TODO: Ticket/Contact tables dropped. Contact association via EntityInstance not yet implemented.
         const normalizedType = comment.entityDefinitionId.toLowerCase()
-        if (normalizedType === 'ticket') {
-          const ticket = await this.db.query.Ticket.findFirst({
-            where: eq(schema.Ticket.id, comment.entityId),
-            columns: { contactId: true },
-          })
-          contactId = ticket?.contactId || undefined
-        } else if (normalizedType === 'contact') {
+        if (normalizedType === 'contact') {
           contactId = comment.entityId
         }
 
@@ -467,14 +457,9 @@ export class CommentService {
       // Publish event after deletion
       if (comment) {
         let contactId: string | undefined
+        // TODO: Ticket/Contact tables dropped. Contact association via EntityInstance not yet implemented.
         const normalizedType = comment.entityDefinitionId.toLowerCase()
-        if (normalizedType === 'ticket') {
-          const ticket = await this.db.query.Ticket.findFirst({
-            where: eq(schema.Ticket.id, comment.entityId),
-            columns: { contactId: true },
-          })
-          contactId = ticket?.contactId || undefined
-        } else if (normalizedType === 'contact') {
+        if (normalizedType === 'contact') {
           contactId = comment.entityId
         }
 

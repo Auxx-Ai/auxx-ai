@@ -30,7 +30,6 @@ import {
   SquarePen,
   Trash2,
 } from 'lucide-react'
-import { useParams } from 'next/navigation'
 import { useCallback, useMemo, useState } from 'react'
 import { BulkUpdateEntityInstanceDialog } from '~/components/custom-fields/ui/bulk-update-entity-instance-dialog'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
@@ -102,12 +101,21 @@ function HeaderActionsDropdown({ onNewField }: HeaderActionsDropdownProps) {
 }
 
 /**
+ * Props for RecordsView component
+ */
+interface RecordsViewProps {
+  /** Resource slug to load (e.g. 'contacts', 'orders') */
+  slug: string
+  /** Base URL path for breadcrumbs and import links. Defaults to /app/custom/${slug} */
+  basePath?: string
+}
+
+/**
  * RecordsView component
  * Displays the table of entity instances using data from context
  */
-export function RecordsView() {
-  const params = useParams<{ slug: string }>()
-  const slug = params.slug
+export function RecordsView({ slug, basePath }: RecordsViewProps) {
+  const resolvedBasePath = basePath ?? `/app/custom/${slug}`
 
   // Dock state
   const isDocked = useEffectiveDockState()
@@ -541,7 +549,7 @@ export function RecordsView() {
       <MainPage>
         <MainPageHeader>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title='Loading...' href={`/app/custom/${slug}`} last />
+            <MainPageBreadcrumbItem title='Loading...' href={resolvedBasePath} last />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
@@ -559,7 +567,7 @@ export function RecordsView() {
       <MainPage>
         <MainPageHeader>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title='Not Found' href={`/app/custom/${slug}`} last />
+            <MainPageBreadcrumbItem title='Not Found' href={resolvedBasePath} last />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
@@ -601,7 +609,7 @@ export function RecordsView() {
             </Button>
           }>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title={resource.plural} href={`/app/custom/${slug}`} last />
+            <MainPageBreadcrumbItem title={resource.plural} href={resolvedBasePath} last />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent
@@ -623,7 +631,7 @@ export function RecordsView() {
               isLoading={instancesLoading || isLoadingRecords}
               onRowSelectionChange={handleRowSelectionChange}
               showRowNumbers={false}
-              importHref={`/app/custom/${slug}/import`}
+              importHref={`${resolvedBasePath}/import`}
               onScrollToBottom={handleScrollToBottom}
               emptyState={<EmptyStateComponent />}
               headerActions={

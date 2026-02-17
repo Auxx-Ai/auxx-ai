@@ -23,7 +23,10 @@ export const ChatMessage = pgTable(
     sessionId: text()
       .notNull()
       .references((): AnyPgColumn => ChatSession.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
-    agentId: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    agentId: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     threadId: text()
       .notNull()
       .references((): AnyPgColumn => Thread.id, { onUpdate: 'cascade', onDelete: 'cascade' }),

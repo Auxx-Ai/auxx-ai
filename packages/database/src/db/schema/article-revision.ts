@@ -19,7 +19,10 @@ export const ArticleRevision = pgTable(
     articleId: text()
       .notNull()
       .references((): AnyPgColumn => Article.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
-    editorId: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    editorId: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),

@@ -1,5 +1,5 @@
-import type { Ticket } from '@auxx/database/types'
 // packages/lib/src/tickets/types.ts
+
 /**
  * Interface for Missing Item Case type-specific data
  */
@@ -13,6 +13,7 @@ export interface MissingItemCaseData {
   }>
   replacementSent?: boolean
 }
+
 /**
  * Interface for Shipping Issue Case type-specific data
  */
@@ -23,6 +24,7 @@ export interface ShippingIssueCaseData {
   carrier?: string
   issue: string
 }
+
 /**
  * Interface for Refund Case type-specific data
  */
@@ -33,6 +35,7 @@ export interface RefundCaseData {
   refundReason: string
   refundStatus?: 'PENDING' | 'APPROVED' | 'PROCESSED' | 'REJECTED'
 }
+
 /**
  * Interface for Return Case type-specific data
  */
@@ -57,6 +60,7 @@ export interface ReturnCaseData {
   returnLabelSent?: boolean
   returnTrackingNumber?: string
 }
+
 /**
  * Interface for Product Issue Case type-specific data
  */
@@ -67,6 +71,7 @@ export interface ProductIssueCaseData {
   issueDescription?: string
   productImages?: string[]
 }
+
 /**
  * Interface for Billing Case type-specific data
  */
@@ -76,6 +81,7 @@ export interface BillingCaseData {
   billingIssue: string
   amountDisputed?: number
 }
+
 /**
  * Interface for Technical Case type-specific data
  */
@@ -85,6 +91,7 @@ export interface TechnicalCaseData {
   errorMessage?: string
   stepsToReproduce?: string
 }
+
 /**
  * Union type for all type-specific data
  */
@@ -97,9 +104,14 @@ export type TicketTypeData =
   | BillingCaseData
   | TechnicalCaseData
   | Record<string, never> // For GENERAL tickets
+
 /**
- * Helper type for ticket with typed data
+ * Helper type for ticket with typed data.
+ * Since the Ticket table is dropped, tickets are now EntityInstance records.
+ * This type represents any ticket entity instance with typeData.
  */
-export interface TicketWithTypeData extends Omit<Ticket, 'typeData'> {
+export interface TicketWithTypeData {
+  id: string
   typeData: TicketTypeData
+  [key: string]: unknown
 }

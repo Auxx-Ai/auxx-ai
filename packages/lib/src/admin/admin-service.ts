@@ -325,11 +325,9 @@ export class AdminService {
       .from(schema.Message)
       .where(eq(schema.Message.organizationId, id))
 
-    // Get ticket count
-    const [ticketCountResult] = await this.db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(schema.Ticket)
-      .where(eq(schema.Ticket.organizationId, id))
+    // Ticket table has been dropped - count via EntityInstance where entityType = ticket's definition
+    // TODO: Replace with EntityInstance count query when ticket entityDefinitionId is known
+    const ticketCountResult = { count: 0 }
 
     // Get workflow count
     const [workflowCountResult] = await this.db
@@ -349,11 +347,9 @@ export class AdminService {
       .from(schema.Document)
       .where(eq(schema.Document.organizationId, id))
 
-    // Get contact count
-    const [contactCountResult] = await this.db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(schema.Contact)
-      .where(eq(schema.Contact.organizationId, id))
+    // Contact table has been dropped - count via EntityInstance where entityType = contact's definition
+    // TODO: Replace with EntityInstance count query when contact entityDefinitionId is known
+    const contactCountResult = { count: 0 }
 
     // Get subscription details
     const [subscription] = await this.db
@@ -623,11 +619,8 @@ export class AdminService {
     //   .from(schema.Message)
     //   .where(eq(schema.Message.userId, id))
 
-    // Get ticket count - count tickets where user created them
-    // const [ticketCountResult] = await this.db
-    //   .select({ count: sql<number>`count(*)::int` })
-    //   .from(schema.Ticket)
-    //   .where(eq(schema.Ticket.createdBy, id))
+    // Ticket table has been dropped - ticket count is no longer available via direct query
+    // TODO: Replace with EntityInstance count query when ticket entityDefinitionId is known
 
     const details: UserDetails = {
       id: user.id,
@@ -699,6 +692,7 @@ export class AdminService {
 
   /**
    * Delete user (non-system users only)
+   * Reassigns Organization.createdById before deleting.
    * @param id - User ID to delete
    * @throws Error if user is a system user or not found
    */
@@ -720,7 +714,47 @@ export class AdminService {
       throw new Error(`Cannot delete system user ${id}`)
     }
 
-    // Delete user - cascade deletion will handle related records
+    // Reassign Organization.createdById to the org's systemUserId (Group D)
+    // This column is NOT NULL, so we can't SET NULL — must transfer ownership.
+    const orgsCreatedByUser = await this.db
+      .select({ id: schema.Organization.id, systemUserId: schema.Organization.systemUserId })
+      .from(schema.Organization)
+      .where(eq(schema.Organization.createdById, id))
+
+    for (const org of orgsCreatedByUser) {
+      // Prefer the org's systemUserId; fall back to first admin/owner member
+      let newOwnerId = org.systemUserId
+      if (!newOwnerId) {
+        const [adminMember] = await this.db
+          .select({ userId: schema.OrganizationMember.userId })
+          .from(schema.OrganizationMember)
+          .where(
+            and(
+              eq(schema.OrganizationMember.organizationId, org.id),
+              sql`${schema.OrganizationMember.userId} != ${id}`
+            )
+          )
+          .limit(1)
+        newOwnerId = adminMember?.userId ?? null
+      }
+
+      if (!newOwnerId) {
+        logger.warn(`Organization ${org.id} has no alternate owner — deleting org along with user`)
+        await this.organizationService.deleteOrganization({
+          organizationId: org.id,
+          isSystemDeletion: true,
+          skipEmailConfirmation: true,
+        })
+        continue
+      }
+
+      await this.db
+        .update(schema.Organization)
+        .set({ createdById: newOwnerId })
+        .where(eq(schema.Organization.id, org.id))
+    }
+
+    // Delete user — DB constraints handle the rest automatically
     await this.db.delete(schema.User).where(eq(schema.User.id, id))
 
     logger.info(`Successfully deleted user ${id}`)

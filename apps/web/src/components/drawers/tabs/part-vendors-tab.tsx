@@ -79,7 +79,7 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
       })
       if (confirmed) {
         deleteVendorPart.mutate({
-          contactId: vendorPart.contactId,
+          entityInstanceId: vendorPart.entityInstanceId,
           id: vendorPart.id,
         })
       }
@@ -98,7 +98,7 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
     (vendorPart: any) => {
       updateVendorPart.mutate({
         id: vendorPart.id,
-        contactId: vendorPart.contactId,
+        entityInstanceId: vendorPart.entityInstanceId,
         partId: vendorPart.partId,
         vendorSku: vendorPart.vendorSku,
         isPreferred: true,
@@ -165,7 +165,7 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
                     <TableCell className='font-medium'>
                       <div className='flex items-center gap-2'>
                         <Link
-                          href={`/app/contacts?c=${vendorPart.contactId}&tab=parts`}
+                          href={`/app/contacts?c=${vendorPart.entityInstanceId}&tab=parts`}
                           className='truncate hover:underline'>
                           {getContactDisplayName(vendorPart.contact) ?? 'Unknown'}
                         </Link>

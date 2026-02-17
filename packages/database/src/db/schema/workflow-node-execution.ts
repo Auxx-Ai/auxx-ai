@@ -56,7 +56,10 @@ export const WorkflowNodeExecution = pgTable(
     executionMetadata: jsonb(),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     finishedAt: timestamp({ precision: 3 }),
-    createdById: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    createdById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
   },
   (table) => [
     index('WorkflowNodeExecution_nodeId_idx').using('btree', table.nodeId.asc().nullsLast()),

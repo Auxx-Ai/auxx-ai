@@ -20,9 +20,6 @@ import {
   Comment,
   CommentMention,
   CommentReaction,
-  Contact,
-  CustomerGroup,
-  CustomerSource,
   CustomField,
   CustomFieldValue,
   Dataset,
@@ -78,7 +75,6 @@ import {
   SearchHistory,
   ShopifyAuthState,
   ShopifyIntegration,
-  Signature,
   SignatureIntegrationShare,
   Snippet,
   SnippetFolder,
@@ -94,9 +90,6 @@ import {
   // TagsOnThread, // DEPRECATED: Tags now use FieldValue via RELATIONSHIP field
   Thread,
   ThreadReadStatus,
-  Ticket,
-  TicketAssignment,
-  TicketRelation,
   TicketReply,
   TicketSequence,
   TwoFactor,
@@ -139,7 +132,6 @@ export const userRelations = relations(User, ({ one, many }) => ({
   passwordResetTokens: many(PasswordResetToken),
   readStatuses: many(ThreadReadStatus),
   inboxUnreadCounts: many(UserInboxUnreadCount),
-  signatures: many(Signature),
   messages: many(Message),
   threads: many(Thread),
   articles: many(Article),
@@ -150,8 +142,6 @@ export const userRelations = relations(User, ({ one, many }) => ({
   articleRevisions: many(ArticleRevision),
   parts: many(Part),
   ticketReplies: many(TicketReply),
-  createdTickets: many(Ticket),
-  ticketAssignments: many(TicketAssignment),
   avatarAsset: one(MediaAsset, {
     fields: [User.avatarAssetId],
     references: [MediaAsset.id],
@@ -222,14 +212,10 @@ export const organizationRelations = relations(Organization, ({ one, many }) => 
   settings: many(OrganizationSetting),
   shopifyIntegrations: many(ShopifyIntegration),
   shopifyAuthStates: many(ShopifyAuthState),
-  contacts: many(Contact),
-  customerSources: many(CustomerSource),
-  customerGroups: many(CustomerGroup),
   participants: many(Participant),
   threadReadStatuses: many(ThreadReadStatus),
   userInboxUnreadCounts: many(UserInboxUnreadCount),
   labels: many(Label),
-  signatures: many(Signature),
   embedding_jobs: many(embedding_jobs),
   emails: many(Message),
   orders: many(Order),
@@ -254,7 +240,6 @@ export const organizationRelations = relations(Organization, ({ one, many }) => 
   vendorParts: many(VendorPart),
   inventories: many(Inventory),
   ticketSequences: many(TicketSequence),
-  tickets: many(Ticket),
   knowledgeBases: many(KnowledgeBase),
   mailDomains: many(MailDomain),
   emailTemplates: many(EmailTemplate),
@@ -353,7 +338,6 @@ export const integrationRelations = relations(Integration, ({ one, many }) => ({
     fields: [Integration.organizationId],
     references: [Organization.id],
   }),
-  signatures: many(SignatureIntegrationShare),
   chatWidget: one(ChatWidget),
 }))
 
@@ -369,19 +353,6 @@ export const passwordResetTokenRelations = relations(PasswordResetToken, ({ one 
     fields: [PasswordResetToken.userId],
     references: [User.id],
   }),
-}))
-
-export const signatureRelations = relations(Signature, ({ one, many }) => ({
-  createdBy: one(User, {
-    fields: [Signature.createdById],
-    references: [User.id],
-  }),
-  organization: one(Organization, {
-    fields: [Signature.organizationId],
-    references: [Organization.id],
-  }),
-  messages: many(Message),
-  sharedIntegrations: many(SignatureIntegrationShare),
 }))
 
 export const emailEmbeddingRelations = relations(EmailEmbedding, ({ one }) => ({
@@ -473,9 +444,9 @@ export const vendorPartRelations = relations(VendorPart, ({ one }) => ({
     fields: [VendorPart.partId],
     references: [Part.id],
   }),
-  contact: one(Contact, {
-    fields: [VendorPart.contactId],
-    references: [Contact.id],
+  contact: one(EntityInstance, {
+    fields: [VendorPart.entityInstanceId],
+    references: [EntityInstance.id],
   }),
 }))
 
@@ -502,72 +473,13 @@ export const ticketReplyRelations = relations(TicketReply, ({ one }) => ({
     fields: [TicketReply.createdById],
     references: [User.id],
   }),
-  ticket: one(Ticket, {
-    fields: [TicketReply.ticketId],
-    references: [Ticket.id],
-  }),
-}))
-
-export const ticketRelations = relations(Ticket, ({ one, many }) => ({
-  replies: many(TicketReply),
-  relatedToTickets: many(TicketRelation, {
-    relationName: 'ticketRelation_relatedTicketId_ticket_id',
-  }),
-  relatedTickets: many(TicketRelation, {
-    relationName: 'ticketRelation_ticketId_ticket_id',
-  }),
-  contact: one(Contact, {
-    fields: [Ticket.contactId],
-    references: [Contact.id],
-  }),
-  createdBy: one(User, {
-    fields: [Ticket.createdById],
-    references: [User.id],
-  }),
-  order: one(Order, {
-    fields: [Ticket.orderId],
-    references: [Order.id],
+  entityInstance: one(EntityInstance, {
+    fields: [TicketReply.entityInstanceId],
+    references: [EntityInstance.id],
   }),
   organization: one(Organization, {
-    fields: [Ticket.organizationId],
+    fields: [TicketReply.organizationId],
     references: [Organization.id],
-  }),
-  parentTicket: one(Ticket, {
-    fields: [Ticket.parentTicketId],
-    references: [Ticket.id],
-    relationName: 'ticket_parentTicketId_ticket_id',
-  }),
-  childTickets: many(Ticket, {
-    relationName: 'ticket_parentTicketId_ticket_id',
-  }),
-  shopifyCustomer: one(shopify_customers, {
-    fields: [Ticket.shopifyCustomerId],
-    references: [shopify_customers.id],
-  }),
-  assignments: many(TicketAssignment),
-}))
-
-export const ticketRelationRelations = relations(TicketRelation, ({ one }) => ({
-  relatedTicket: one(Ticket, {
-    fields: [TicketRelation.relatedTicketId],
-    references: [Ticket.id],
-    relationName: 'ticketRelation_relatedTicketId_ticket_id',
-  }),
-  ticket: one(Ticket, {
-    fields: [TicketRelation.ticketId],
-    references: [Ticket.id],
-    relationName: 'ticketRelation_ticketId_ticket_id',
-  }),
-}))
-
-export const ticketAssignmentRelations = relations(TicketAssignment, ({ one }) => ({
-  agent: one(User, {
-    fields: [TicketAssignment.agentId],
-    references: [User.id],
-  }),
-  ticket: one(Ticket, {
-    fields: [TicketAssignment.ticketId],
-    references: [Ticket.id],
   }),
 }))
 
@@ -584,20 +496,6 @@ export const emailTemplateRelations = relations(EmailTemplate, ({ one }) => ({
     references: [Organization.id],
   }),
 }))
-
-export const signatureIntegrationShareRelations = relations(
-  SignatureIntegrationShare,
-  ({ one }) => ({
-    integration: one(Integration, {
-      fields: [SignatureIntegrationShare.integrationId],
-      references: [Integration.id],
-    }),
-    signature: one(Signature, {
-      fields: [SignatureIntegrationShare.signatureId],
-      references: [Signature.id],
-    }),
-  })
-)
 
 export const mailViewRelations = relations(MailView, ({ one }) => ({
   organization: one(Organization, {

@@ -66,53 +66,25 @@ export async function findByUniqueValue(
       : sql`false`
   )
 
-  if (modelType === 'entity' && entityDefinitionId) {
-    const result = await database
-      .select({ entityId: schema.FieldValue.entityId })
-      .from(schema.FieldValue)
-      .innerJoin(schema.EntityInstance, eq(schema.FieldValue.entityId, schema.EntityInstance.id))
-      .where(
-        and(
-          eq(schema.FieldValue.fieldId, fieldId),
-          eq(schema.FieldValue.organizationId, organizationId),
-          eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId),
-          valueMatchCondition
-        )
-      )
-      .limit(1)
+  // All entity types (including contact and ticket) now use EntityInstance.
+  // The entityDefinitionId filter scopes to the correct entity type.
+  const effectiveEntityDefId = entityDefinitionId ?? modelType
 
-    entityId = result[0]?.entityId ?? null
-  } else if (modelType === 'contact') {
-    const result = await database
-      .select({ entityId: schema.FieldValue.entityId })
-      .from(schema.FieldValue)
-      .innerJoin(schema.Contact, eq(schema.FieldValue.entityId, schema.Contact.id))
-      .where(
-        and(
-          eq(schema.FieldValue.fieldId, fieldId),
-          eq(schema.FieldValue.organizationId, organizationId),
-          valueMatchCondition
-        )
+  const result = await database
+    .select({ entityId: schema.FieldValue.entityId })
+    .from(schema.FieldValue)
+    .innerJoin(schema.EntityInstance, eq(schema.FieldValue.entityId, schema.EntityInstance.id))
+    .where(
+      and(
+        eq(schema.FieldValue.fieldId, fieldId),
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.EntityInstance.entityDefinitionId, effectiveEntityDefId),
+        valueMatchCondition
       )
-      .limit(1)
+    )
+    .limit(1)
 
-    entityId = result[0]?.entityId ?? null
-  } else if (modelType === 'ticket') {
-    const result = await database
-      .select({ entityId: schema.FieldValue.entityId })
-      .from(schema.FieldValue)
-      .innerJoin(schema.Ticket, eq(schema.FieldValue.entityId, schema.Ticket.id))
-      .where(
-        and(
-          eq(schema.FieldValue.fieldId, fieldId),
-          eq(schema.FieldValue.organizationId, organizationId),
-          valueMatchCondition
-        )
-      )
-      .limit(1)
-
-    entityId = result[0]?.entityId ?? null
-  }
+  entityId = result[0]?.entityId ?? null
 
   return ok(entityId)
 }

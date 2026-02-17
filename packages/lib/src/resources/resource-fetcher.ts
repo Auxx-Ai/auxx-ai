@@ -1,14 +1,7 @@
 // packages/lib/src/resources/resource-fetcher.ts
 
 import { type Database, schema } from '@auxx/database'
-import {
-  ContactModel,
-  DatasetModel,
-  MessageModel,
-  ThreadModel,
-  TicketModel,
-  UserModel,
-} from '@auxx/database/models'
+import { DatasetModel, MessageModel, ThreadModel, UserModel } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
 import { getEntityInstance } from '@auxx/services/entity-instances'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
@@ -80,27 +73,8 @@ export async function executeResourceQuery(
 
   try {
     switch (resourceType) {
-      case 'contact': {
-        const model = new ContactModel(organizationId)
-        if (mode === 'findOne') {
-          const result = await model.findFirst({ where: whereSql, orderBy: orderSql, limit })
-          return result.ok ? enrichResource('contact', result.value) : null
-        } else {
-          const result = await model.findMany({ where: whereSql, orderBy: orderSql, limit })
-          return result.ok ? enrichResources('contact', result.value) : []
-        }
-      }
-
-      case 'ticket': {
-        const model = new TicketModel(organizationId)
-        if (mode === 'findOne') {
-          const result = await model.findFirst({ where: whereSql, orderBy: orderSql, limit })
-          return result.ok ? result.value : null
-        } else {
-          const result = await model.findMany({ where: whereSql, orderBy: orderSql, limit })
-          return result.ok ? result.value : []
-        }
-      }
+      // Contact and Ticket tables have been dropped.
+      // These entity types now use EntityInstance queries via custom entity path.
 
       case 'thread': {
         const model = new ThreadModel(organizationId)

@@ -23,9 +23,10 @@ export const ShopifyIntegration = pgTable(
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
-    createdById: text()
-      .notNull()
-      .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'restrict' }),
+    createdById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
   },
   (table) => [
     index('ShopifyIntegration_organizationId_idx').using(

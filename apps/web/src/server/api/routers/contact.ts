@@ -197,21 +197,20 @@ export const contactRouter = createTRPCRouter({
       }
     }),
 
-  // Get customer groups
+  // TODO: Customer groups (getGroups, createGroup, updateGroup, addToGroup, removeFromGroup,
+  // deleteGroup, getCustomerGroupsByIds) have been removed.
+  // CustomerGroup/CustomerGroupMember tables are deleted.
+  // Groups are now managed via EntityInstance + FieldValue (entity-group-member table).
+  // Stub endpoints below return empty data to prevent client errors during migration.
+
+  /** @deprecated CustomerGroup table deleted. Returns empty array. */
   getGroups: protectedProcedure
     .input(z.object({ search: z.string().optional() }))
-    .query(async ({ ctx, input }) => {
-      try {
-        const { organizationId, userId } = ctx.session
-        const contactService = new ContactService(organizationId, userId)
-
-        return await contactService.getCustomerGroups(input.search)
-      } catch (error: any) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message })
-      }
+    .query(async () => {
+      return [] as Array<{ id: string; name: string; description?: string; color?: string }>
     }),
 
-  // Create a customer group
+  /** @deprecated CustomerGroup table deleted. Returns stub. */
   createGroup: protectedProcedure
     .input(
       z.object({
@@ -220,105 +219,57 @@ export const contactRouter = createTRPCRouter({
         initialMemberIds: z.array(z.string()).optional(),
       })
     )
-    .mutation(async ({ ctx, input }) => {
-      try {
-        const { organizationId, userId } = ctx.session
-        const contactService = new ContactService(organizationId, userId)
-
-        return await contactService.createCustomerGroup(
-          input.name,
-          input.description,
-          input.initialMemberIds
-        )
-      } catch (error: any) {
-        if (error.message.includes('already exists')) {
-          throw new TRPCError({ code: 'CONFLICT', message: error.message })
-        }
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message })
-      }
+    .mutation(async () => {
+      throw new TRPCError({
+        code: 'UNIMPLEMENTED',
+        message: 'Customer groups have been migrated to entity groups',
+      })
     }),
 
-  // Update a customer group
+  /** @deprecated CustomerGroup table deleted. */
   updateGroup: protectedProcedure
     .input(
       z.object({ id: z.string(), name: z.string().optional(), description: z.string().optional() })
     )
-    .mutation(async ({ ctx, input }) => {
-      try {
-        const { organizationId, userId } = ctx.session
-        const contactService = new ContactService(organizationId, userId)
-
-        return await contactService.updateCustomerGroup(input.id, {
-          name: input.name,
-          description: input.description,
-        })
-      } catch (error: any) {
-        if (error.message.includes('not found')) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: error.message })
-        }
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message })
-      }
+    .mutation(async () => {
+      throw new TRPCError({
+        code: 'UNIMPLEMENTED',
+        message: 'Customer groups have been migrated to entity groups',
+      })
     }),
 
-  // Add contacts to a group
+  /** @deprecated CustomerGroup table deleted. */
   addToGroup: protectedProcedure
     .input(z.object({ groupId: z.string(), customerIds: z.array(z.string()) }))
-    .mutation(async ({ ctx, input }) => {
-      try {
-        const { organizationId, userId } = ctx.session
-        const contactService = new ContactService(organizationId, userId)
-
-        return await contactService.addToCustomerGroup(input.groupId, input.customerIds)
-      } catch (error: any) {
-        if (error.message.includes('not found')) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: error.message })
-        }
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message })
-      }
+    .mutation(async () => {
+      throw new TRPCError({
+        code: 'UNIMPLEMENTED',
+        message: 'Customer groups have been migrated to entity groups',
+      })
     }),
 
-  // Remove contacts from a group
+  /** @deprecated CustomerGroup table deleted. */
   removeFromGroup: protectedProcedure
     .input(z.object({ groupId: z.string(), customerIds: z.array(z.string()) }))
-    .mutation(async ({ ctx, input }) => {
-      try {
-        const { organizationId, userId } = ctx.session
-        const contactService = new ContactService(organizationId, userId)
-
-        return await contactService.removeFromCustomerGroup(input.groupId, input.customerIds)
-      } catch (error: any) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message })
-      }
+    .mutation(async () => {
+      throw new TRPCError({
+        code: 'UNIMPLEMENTED',
+        message: 'Customer groups have been migrated to entity groups',
+      })
     }),
 
-  // Delete a customer group
-  deleteGroup: protectedProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      try {
-        const { organizationId, userId } = ctx.session
-        const contactService = new ContactService(organizationId, userId)
+  /** @deprecated CustomerGroup table deleted. */
+  deleteGroup: protectedProcedure.input(z.object({ id: z.string() })).mutation(async () => {
+    throw new TRPCError({
+      code: 'UNIMPLEMENTED',
+      message: 'Customer groups have been migrated to entity groups',
+    })
+  }),
 
-        return await contactService.deleteCustomerGroup(input.id)
-      } catch (error: any) {
-        if (error.message.includes('not found')) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: error.message })
-        }
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message })
-      }
-    }),
-
-  // Get customer groups by contact IDs
+  /** @deprecated CustomerGroup table deleted. Returns empty array. */
   getCustomerGroupsByIds: protectedProcedure
     .input(z.object({ customerIds: z.array(z.string()) }))
-    .query(async ({ ctx, input }) => {
-      try {
-        const { organizationId, userId } = ctx.session
-        const contactService = new ContactService(organizationId, userId)
-
-        return await contactService.getCustomerGroupsByContactIds(input.customerIds)
-      } catch (error: any) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message })
-      }
+    .query(async () => {
+      return [] as Array<{ id: string; members: Array<{ contactId: string }> }>
     }),
 })

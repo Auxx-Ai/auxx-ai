@@ -1,7 +1,7 @@
 // apps/build/src/components/providers/dehydrated-state-provider.tsx
 'use client'
 
-import { createContext, type ReactNode, useCallback, useContext, useState } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from 'react'
 import type {
   BuildDehydratedState,
   DehydratedApp,
@@ -17,6 +17,7 @@ import type {
  */
 interface BuildDehydratedStateContextValue {
   state: BuildDehydratedState
+  addAccount: (account: DehydratedDeveloperAccount) => void
   addApp: (app: DehydratedApp) => void
 }
 
@@ -37,6 +38,19 @@ export function BuildDehydratedStateProvider({
 }) {
   const [state, setState] = useState<BuildDehydratedState>(initialState)
 
+  // Sync state when server re-renders with fresh data (e.g. after router.refresh())
+  useEffect(() => {
+    setState(initialState)
+  }, [initialState.timestamp])
+
+  const addAccount = useCallback((account: DehydratedDeveloperAccount) => {
+    setState((prev) => ({
+      ...prev,
+      developerAccounts: [...prev.developerAccounts, account],
+      timestamp: Date.now(),
+    }))
+  }, [])
+
   const addApp = useCallback((app: DehydratedApp) => {
     setState((prev) => ({
       ...prev,
@@ -47,6 +61,7 @@ export function BuildDehydratedStateProvider({
 
   const contextValue: BuildDehydratedStateContextValue = {
     state,
+    addAccount,
     addApp,
   }
 
@@ -73,6 +88,13 @@ function useBuildDehydratedStateContext(): BuildDehydratedStateContextValue {
  */
 export function useBuildDehydratedState(): BuildDehydratedState {
   return useBuildDehydratedStateContext().state
+}
+
+/**
+ * Hook to add a developer account to the dehydrated state
+ */
+export function useAddAccount(): (account: DehydratedDeveloperAccount) => void {
+  return useBuildDehydratedStateContext().addAccount
 }
 
 /**

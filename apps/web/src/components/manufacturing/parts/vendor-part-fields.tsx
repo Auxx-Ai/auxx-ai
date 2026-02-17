@@ -11,7 +11,7 @@ import { VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-edi
  * Default values for vendor part form fields
  */
 export const defaultVendorPartValues = {
-  contactId: '',
+  entityInstanceId: '',
   vendorSku: '',
   unitPrice: null as number | null,
   leadTime: null as number | null,
@@ -60,13 +60,13 @@ export function VendorPartFields({
         <VarEditorFieldRow
           title='Vendor'
           isRequired
-          validationError={errors?.contactId}
+          validationError={errors?.entityInstanceId}
           validationType='error'>
           <MultiRelationInput
             entityDefinitionId='contact'
-            value={values.contactId ? [toRecordId('contact', values.contactId)] : []}
+            value={values.entityInstanceId ? [toRecordId('contact', values.entityInstanceId)] : []}
             onChange={(recordIds: RecordId[]) =>
-              onChange('contactId', recordIds[0] ? getInstanceId(recordIds[0]) : '')
+              onChange('entityInstanceId', recordIds[0] ? getInstanceId(recordIds[0]) : '')
             }
             placeholder='Select contact...'
             disabled={disabled || disableContactEdit}

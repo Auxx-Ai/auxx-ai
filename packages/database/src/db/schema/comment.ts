@@ -29,7 +29,10 @@ export const Comment = pgTable(
     parentId: text().references((): AnyPgColumn => Comment.id, { onUpdate: 'cascade' }),
     isPinned: boolean().default(false).notNull(),
     pinnedAt: timestamp({ precision: 3 }),
-    pinnedById: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    pinnedById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
   },
   (table) => [
     index('Comment_createdById_idx').using('btree', table.createdById.asc().nullsLast()),

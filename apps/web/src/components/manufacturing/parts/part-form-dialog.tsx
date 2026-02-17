@@ -99,7 +99,7 @@ export function PartFormDialog({ open, onOpenChange, part, onSuccess }: PartForm
     // Validate vendor part fields if supplier section is shown
     const vpErrors: Record<string, string> = {}
     if (showSupplier) {
-      if (!vendorPartValues.contactId) vpErrors.contactId = 'Contact is required'
+      if (!vendorPartValues.entityInstanceId) vpErrors.entityInstanceId = 'Contact is required'
       if (!vendorPartValues.vendorSku) vpErrors.vendorSku = 'Supplier SKU is required'
     }
     setVendorPartErrors(vpErrors)

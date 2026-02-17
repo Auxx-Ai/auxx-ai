@@ -36,7 +36,10 @@ export const Thread = pgTable(
     integrationId: text()
       .notNull()
       .references((): AnyPgColumn => Integration.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
-    assigneeId: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    assigneeId: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     status: threadStatus().default('OPEN').notNull(),
     messageCount: integer().default(0).notNull(),
     participantCount: integer().default(0).notNull(),

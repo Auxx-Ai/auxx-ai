@@ -2,7 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { OrganizationRole, SignatureSharingType } from '@auxx/database/enums'
+import { OrganizationRole } from '@auxx/database/enums'
 import { TRPCError } from '@trpc/server'
 import { and, eq, inArray, placeholder } from 'drizzle-orm'
 import { createScopedLogger } from '../logger'
@@ -35,12 +35,8 @@ const createPreparedStatements = (db: Database) => ({
     },
   }).prepare('checkOrganizationMembershipStatement'),
 
-  getTicketStatement: db.query.Ticket.findFirst({
-    where: eq(schema.Ticket.id, placeholder('ticketId')),
-    columns: {
-      organizationId: true,
-    },
-  }).prepare('getTicketStatement'),
+  // Ticket table has been dropped - use EntityInstance queries instead
+  // TODO: Replace with EntityInstance-based ticket access check
 
   getThreadStatement: db.query.Thread.findFirst({
     where: eq(schema.Thread.id, placeholder('threadId')),
@@ -60,12 +56,8 @@ const createPreparedStatements = (db: Database) => ({
     },
   }).prepare('getIntegrationByIdStatement'),
 
-  getContactStatement: db.query.Contact.findFirst({
-    where: eq(schema.Contact.id, placeholder('contactId')),
-    columns: {
-      organizationId: true,
-    },
-  }).prepare('getContactStatement'),
+  // Contact table has been dropped - use EntityInstance queries instead
+  // TODO: Replace with EntityInstance-based contact access check
 
   getCommentStatement: db.query.Comment.findFirst({
     where: eq(schema.Comment.id, placeholder('commentId')),
@@ -75,9 +67,8 @@ const createPreparedStatements = (db: Database) => ({
     },
   }).prepare('getCommentStatement'),
 
-  getSignatureStatement: db.query.Signature.findFirst({
-    where: eq(schema.Signature.id, placeholder('signatureId')),
-  }).prepare('getSignatureStatement'),
+  // Signature table has been dropped - use EntityInstance queries instead
+  // TODO: Replace with EntityInstance-based signature access check
 
   getMediaAssetStatement: db.query.MediaAsset.findFirst({
     where: eq(schema.MediaAsset.id, placeholder('fileId')),
@@ -112,19 +103,8 @@ const createPreparedStatements = (db: Database) => ({
     },
   }).prepare('getOrganizationMemberByRoleStatement'),
 
-  getSignatureByIdStatement: db.query.Signature.findFirst({
-    where: eq(schema.Signature.id, placeholder('signatureId')),
-  }).prepare('getSignatureByIdStatement'),
-
-  getSignatureBasicStatement: db.query.Signature.findFirst({
-    where: eq(schema.Signature.id, placeholder('signatureId')),
-    columns: {
-      id: true,
-      createdById: true,
-      organizationId: true,
-      sharingType: true,
-    },
-  }).prepare('getSignatureBasicStatement'),
+  // Signature prepared statements removed - Signature table dropped
+  // TODO: Rewrite signature permission checks using EntityInstance queries
 
   getIntegrationBasicStatement: db.query.Integration.findFirst({
     where: eq(schema.Integration.id, placeholder('integrationId')),
@@ -220,23 +200,21 @@ export class PermissionService {
 
   /**
    * Check if user can access a ticket
+   * TODO: Ticket table dropped - rewrite using EntityInstance queries
    */
   private async canAccessTicket(ticketId: string): Promise<boolean> {
-    // Check if user is a member of the organization that owns the ticket
-    const ticket = await this.statements.getTicketStatement.execute({
-      ticketId,
+    // Ticket table has been dropped. Tickets are now EntityInstances.
+    // Use the generic EntityInstance access check.
+    const instance = await this.statements.getEntityInstanceStatement.execute({
+      instanceId: ticketId,
     })
+    if (!instance) return false
 
-    if (!ticket) return false
-
-    // Check if the ticket belongs to the user's current organization
-    if (ticket.organizationId !== this.organizationId) {
-      // Also check if user has access to other organizations
+    if (instance.organizationId !== this.organizationId) {
       const hasMembership = await this.statements.checkOrganizationMembershipStatement.execute({
         userId: this.userId,
-        organizationId: ticket.organizationId,
+        organizationId: instance.organizationId,
       })
-
       return !!hasMembership
     }
 
@@ -265,23 +243,21 @@ export class PermissionService {
 
   /**
    * Check if user can access a contact
+   * TODO: Contact table dropped - rewrite using EntityInstance queries
    */
   private async canAccessContact(contactId: string): Promise<boolean> {
-    // Check if contact belongs to the user's organization
-    const contact = await this.statements.getContactStatement.execute({
-      contactId,
+    // Contact table has been dropped. Contacts are now EntityInstances.
+    // Use the generic EntityInstance access check.
+    const instance = await this.statements.getEntityInstanceStatement.execute({
+      instanceId: contactId,
     })
+    if (!instance) return false
 
-    if (!contact) return false
-
-    // Check if the contact belongs to the user's current organization
-    if (contact.organizationId !== this.organizationId) {
-      // Also check if user has access to other organizations
+    if (instance.organizationId !== this.organizationId) {
       const hasMembership = await this.statements.checkOrganizationMembershipStatement.execute({
         userId: this.userId,
-        organizationId: contact.organizationId,
+        organizationId: instance.organizationId,
       })
-
       return !!hasMembership
     }
 
@@ -436,58 +412,39 @@ export class PermissionService {
       return false
     }
   }
-  async canViewSignature(signatureId: string): Promise<boolean> {
-    const signature = await this.statements.getSignatureByIdStatement.execute({
-      signatureId,
+  /**
+   * Check if user can view a signature
+   * TODO: Signature table dropped - rewrite using EntityInstance queries
+   */
+  async canViewSignature(_signatureId: string): Promise<boolean> {
+    // Signature table has been dropped. Signatures are now EntityInstances.
+    // For now, use EntityInstance access check.
+    const instance = await this.statements.getEntityInstanceStatement.execute({
+      instanceId: _signatureId,
     })
-
-    if (!signature) return false
-
-    // Creator can always view
-    if (signature.createdById === this.userId) return true
-
-    // Check if user is in the organization
-    const membership = await this.statements.checkOrganizationMembershipStatement.execute({
-      userId: this.userId,
-      organizationId: signature.organizationId,
-    })
-
-    if (!membership) return false
-
-    // If organization-wide or specific integrations, any organization member can view
-    return [
-      SignatureSharingType.ORGANIZATION_WIDE,
-      SignatureSharingType.SPECIFIC_INTEGRATIONS,
-    ].includes(signature.sharingType)
+    if (!instance) return false
+    return instance.organizationId === this.organizationId
   }
 
   /**
    * Check if a user can edit a signature
+   * TODO: Signature table dropped - rewrite using EntityInstance queries
    */
-  async canEditSignature(signatureId: string): Promise<boolean> {
-    const signature = await this.statements.getSignatureBasicStatement.execute({
-      signatureId,
+  async canEditSignature(_signatureId: string): Promise<boolean> {
+    // Stubbed - allow if user is in the same organization
+    const instance = await this.statements.getEntityInstanceStatement.execute({
+      instanceId: _signatureId,
     })
-
-    if (!signature) return false
-
-    // Creator can always edit
-    if (signature.createdById === this.userId) return true
-
-    // Admins can edit organization-wide signatures
-    if (signature.sharingType === SignatureSharingType.ORGANIZATION_WIDE) {
-      return await this.isAdmin()
-    }
-
-    // Only creator can edit other signatures
-    return false
+    if (!instance) return false
+    if (instance.organizationId !== this.organizationId) return false
+    return true
   }
 
   /**
    * Check if a user can delete a signature
+   * TODO: Signature table dropped - rewrite using EntityInstance queries
    */
   async canDeleteSignature(signatureId: string): Promise<boolean> {
-    // Same logic as edit - only creator or admin (for org-wide) can delete
     return this.canEditSignature(signatureId)
   }
 
@@ -495,43 +452,23 @@ export class PermissionService {
    * Check if a user can create an organization-wide signature
    */
   async canCreateOrgWideSignature(): Promise<boolean> {
-    // Only organization admins can create org-wide signatures
     return await this.isAdmin()
   }
 
   /**
    * Check if an integration can use a signature
+   * TODO: Signature table dropped - rewrite using EntityInstance queries
    */
-  async canIntegrationUseSignature(integrationId: string, signatureId: string): Promise<boolean> {
-    const signature = await this.statements.getSignatureByIdStatement.execute({
-      signatureId,
+  async canIntegrationUseSignature(_integrationId: string, _signatureId: string): Promise<boolean> {
+    // Stubbed - allow if signature entity instance is in the same org as integration
+    const instance = await this.statements.getEntityInstanceStatement.execute({
+      instanceId: _signatureId,
     })
+    if (!instance) return false
 
-    if (!signature) return false
-
-    // Check if organization-wide (all integrations can use)
-    if (signature.sharingType === SignatureSharingType.ORGANIZATION_WIDE) {
-      const integration = await this.statements.getIntegrationBasicStatement.execute({
-        integrationId,
-      })
-      return integration?.organizationId === signature.organizationId
-    }
-
-    // Check if shared with this specific integration
-    if (signature.sharingType === SignatureSharingType.SPECIFIC_INTEGRATIONS) {
-      // Query signature integration shares separately since we can't use relations
-      const shares = await this.db.query.SignatureIntegrationShare.findMany({
-        where: eq(schema.SignatureIntegrationShare.signatureId, signatureId),
-      })
-      return shares.some((share) => share.integrationId === integrationId)
-    }
-
-    // For private signatures, check if it belongs to the user who owns the integration
     const integration = await this.statements.getIntegrationBasicStatement.execute({
-      integrationId,
+      integrationId: _integrationId,
     })
-
-    // For now, we'll assume organization members can use private signatures with org integrations
-    return integration?.organizationId === signature.organizationId
+    return integration?.organizationId === instance.organizationId
   }
 }

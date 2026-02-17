@@ -1,12 +1,12 @@
-// src/server/services/ticketMergeService.ts
-// import { db } from '@/server/db'
+// packages/lib/src/tickets/ticket-merge.ts
 
-import { database as db, schema, type Transaction } from '@auxx/database'
 import { TRPCError } from '@trpc/server'
-import { and, eq, inArray } from 'drizzle-orm'
+import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
+import { type RecordId, toRecordId } from '../resources/resource-id'
 
 /**
- * Service for merging multiple tickets into a single primary ticket
+ * Service for merging multiple tickets into a single primary ticket.
+ * Delegates to UnifiedCrudHandler.merge() which handles EntityInstance merging.
  */
 export const ticketMergeService = {
   /**
@@ -14,10 +14,16 @@ export const ticketMergeService = {
    *
    * @param primaryTicketId - The ID of the ticket that will remain after merging
    * @param ticketsToMergeIds - Array of ticket IDs that will be merged into the primary ticket
-   * @param userId - ID of the organization performing the merge
-   * @returns The updated primary ticket
+   * @param userId - ID of the user performing the merge
+   * @param organizationId - Organization ID (required for UnifiedCrudHandler)
+   * @returns The updated primary ticket instance
    */
-  async mergeTickets(primaryTicketId: string, ticketsToMergeIds: string[], userId: string) {
+  async mergeTickets(
+    primaryTicketId: string,
+    ticketsToMergeIds: string[],
+    userId: string,
+    organizationId?: string
+  ) {
     // Validate inputs
     if (!primaryTicketId || !ticketsToMergeIds.length) {
       throw new TRPCError({
@@ -34,122 +40,21 @@ export const ticketMergeService = {
       })
     }
 
-    // Fetch all tickets involved in merge
-    const ticketIds = [primaryTicketId, ...ticketsToMergeIds]
-    const tickets = await db
-      .select()
-      .from(schema.Ticket)
-      .where(inArray(schema.Ticket.id, ticketIds))
-
-    // Verify all tickets exist
-    if (tickets.length !== ticketIds.length) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'One or more tickets could not be found' })
-    }
-
-    // Verify all tickets belong to the same organization
-    const primaryTicket = tickets.find((t) => t.id === primaryTicketId)
-    if (!primaryTicket) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Primary ticket not found' })
-    }
-
-    const organizationId = primaryTicket.organizationId
-    const allSameOrg = tickets.every((t) => t.organizationId === organizationId)
-    if (!allSameOrg) {
+    if (!organizationId) {
       throw new TRPCError({
-        code: 'FORBIDDEN',
-        message: 'Cannot merge tickets from different organizations',
+        code: 'BAD_REQUEST',
+        message: 'organizationId is required for ticket merge',
       })
     }
 
-    // Begin transaction
-    return await db.transaction(async (tx: Transaction) => {
-      // Transfer data from merged tickets to primary ticket
-      for (const ticket of tickets) {
-        if (ticket.id !== primaryTicketId) {
-          // Add agents from merged tickets to primary (if they're not already assigned)
-          const assignments = await tx
-            .select()
-            .from(schema.TicketAssignment)
-            .where(
-              and(
-                eq(schema.TicketAssignment.ticketId, ticket.id),
-                eq(schema.TicketAssignment.isActive, true as any)
-              )
-            )
-          for (const assignment of assignments) {
-            // Check if agent is already assigned to primary ticket
-            const [existingAssignment] = await tx
-              .select({ id: schema.TicketAssignment.id })
-              .from(schema.TicketAssignment)
-              .where(
-                and(
-                  eq(schema.TicketAssignment.ticketId, primaryTicketId),
-                  eq(schema.TicketAssignment.agentId, assignment.agentId),
-                  eq(schema.TicketAssignment.isActive, true as any)
-                )
-              )
-              .limit(1)
+    const handler = new UnifiedCrudHandler(organizationId, userId)
 
-            if (!existingAssignment) {
-              await tx.insert(schema.TicketAssignment).values({
-                ticketId: primaryTicketId,
-                agentId: assignment.agentId,
-                isActive: true as any,
-                updatedAt: new Date(),
-              })
-            }
-          }
+    const targetRecordId = toRecordId('ticket', primaryTicketId) as RecordId
+    const sourceRecordIds = ticketsToMergeIds.map((id) => toRecordId('ticket', id) as RecordId)
 
-          // Update any child tickets to point to the primary ticket instead
-          await tx
-            .update(schema.Ticket)
-            .set({ parentTicketId: primaryTicketId, updatedAt: new Date() })
-            .where(eq(schema.Ticket.parentTicketId, ticket.id))
+    await handler.merge(targetRecordId, sourceRecordIds)
 
-          // Update merged tickets to be children of the primary ticket and update their status
-          await tx
-            .update(schema.Ticket)
-            .set({
-              parentTicketId: primaryTicketId,
-              status: 'MERGED',
-              updatedAt: new Date(),
-            })
-            .where(eq(schema.Ticket.id, ticket.id))
-        }
-      }
-
-      // Return the updated primary ticket
-      const [primary] = await tx
-        .select()
-        .from(schema.Ticket)
-        .where(eq(schema.Ticket.id, primaryTicketId))
-        .limit(1)
-
-      const assignRows = await tx
-        .select({
-          id: schema.TicketAssignment.id,
-          ticketId: schema.TicketAssignment.ticketId,
-          agentId: schema.TicketAssignment.agentId,
-          isActive: schema.TicketAssignment.isActive,
-        })
-        .from(schema.TicketAssignment)
-        .where(
-          and(
-            eq(schema.TicketAssignment.ticketId, primaryTicketId),
-            eq(schema.TicketAssignment.isActive, true as any)
-          )
-        )
-
-      const childTickets = await tx
-        .select()
-        .from(schema.Ticket)
-        .where(eq(schema.Ticket.parentTicketId, primaryTicketId))
-
-      return {
-        ...primary,
-        assignments: assignRows.map((a) => ({ ...a })),
-        childTickets,
-      } as any
-    })
+    // Return the merged primary ticket
+    return handler.getById(targetRecordId)
   },
 }

@@ -59,7 +59,7 @@ interface EntityDefinitionDialogProps {
   /** Entity definition ID for edit mode, null/undefined for create mode */
   entityDefinitionId?: string | null
   /** Called after successful save */
-  onSuccess?: (entityDefinition: { id: string; singular: string }) => void
+  onSuccess?: (entityDefinition: { id: string; singular: string; apiSlug: string }) => void
 }
 
 /** Converts a string to a URL-friendly slug */
@@ -309,7 +309,11 @@ export function EntityDefinitionDialog({
   /** Handle update success */
   const handleUpdateSuccess = () => {
     onOpenChange(false)
-    onSuccess?.({ id: entityDefinitionId!, singular: singular.trim() })
+    onSuccess?.({
+      id: entityDefinitionId!,
+      singular: singular.trim(),
+      apiSlug: editingResource!.apiSlug,
+    })
   }
 
   /** Handle custom field dialog close - close both dialogs */
@@ -321,7 +325,7 @@ export function EntityDefinitionDialog({
       const savedId = createdEntityId
       setCreatedEntityId(null)
       onOpenChange(false)
-      onSuccess?.({ id: savedId, singular: savedSingular })
+      onSuccess?.({ id: savedId, singular: savedSingular, apiSlug: slug })
     }
   }
 

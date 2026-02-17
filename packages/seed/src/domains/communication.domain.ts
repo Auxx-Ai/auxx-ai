@@ -118,14 +118,14 @@ export class CommunicationDomain {
     const allParticipants = await db
       .select({
         id: schema.Participant.id,
-        contactId: schema.Participant.contactId,
+        entityInstanceId: schema.Participant.entityInstanceId,
         identifier: schema.Participant.identifier,
       })
       .from(schema.Participant)
       .where(sql`${schema.Participant.organizationId} = ${organizationId}`)
 
-    const customerParticipants = allParticipants.filter((p: any) => p.contactId !== null)
-    const supportParticipants = allParticipants.filter((p: any) => p.contactId === null)
+    const customerParticipants = allParticipants.filter((p: any) => p.entityInstanceId !== null)
+    const supportParticipants = allParticipants.filter((p: any) => p.entityInstanceId === null)
 
     console.log(
       `  📊 Participants: ${customerParticipants.length} customers, ${supportParticipants.length} support agents`
@@ -243,7 +243,7 @@ export class CommunicationDomain {
         identifierType: 'EMAIL',
         name: user.name, // Use actual user name
         organizationId: organizationId,
-        contactId: null, // Support users don't have contacts
+        entityInstanceId: null, // Support users don't have contact entities
         createdAt: new Date(),
         updatedAt: new Date(),
       })
@@ -466,7 +466,7 @@ export class CommunicationDomain {
           messageParticipants.push({
             messageId: messageId,
             participantId: customerParticipant.id,
-            contactId: customerParticipant.contactId, // Link to customer contact
+            entityInstanceId: customerParticipant.entityInstanceId, // Link to customer contact
             role: 'FROM',
           })
 
@@ -474,7 +474,7 @@ export class CommunicationDomain {
           messageParticipants.push({
             messageId: messageId,
             participantId: supportParticipant.id,
-            contactId: customerParticipant.contactId, // Link to customer contact
+            entityInstanceId: customerParticipant.entityInstanceId, // Link to customer contact
             role: 'TO',
           })
         } else {
@@ -505,7 +505,7 @@ export class CommunicationDomain {
           messageParticipants.push({
             messageId: messageId,
             participantId: supportParticipant.id,
-            contactId: customerParticipant.contactId, // Link to customer contact
+            entityInstanceId: customerParticipant.entityInstanceId, // Link to customer contact
             role: 'FROM',
           })
 
@@ -513,7 +513,7 @@ export class CommunicationDomain {
           messageParticipants.push({
             messageId: messageId,
             participantId: customerParticipant.id,
-            contactId: customerParticipant.contactId, // Link to customer contact
+            entityInstanceId: customerParticipant.entityInstanceId, // Link to customer contact
             role: 'TO',
           })
         }

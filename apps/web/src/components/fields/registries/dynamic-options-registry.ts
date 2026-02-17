@@ -29,19 +29,8 @@ interface DynamicOptionsEntry {
  * MIGRATED FROM: use-dynamic-field-options.ts QUERY_REGISTRY
  */
 export const DYNAMIC_OPTIONS_REGISTRY: Record<string, DynamicOptionsEntry> = {
-  // Contact groups (for customerGroups field)
-  contactGroups: {
-    useOptions: (enabled) => {
-      const { data, isLoading } = api.contact.getGroups.useQuery(
-        {},
-        { enabled, staleTime: 5 * 60 * 1000 }
-      )
-      return {
-        data: data?.map((g) => ({ value: g.id, label: g.name, color: g.color ?? undefined })),
-        isLoading,
-      }
-    },
-  },
+  // TODO: contactGroups entry removed - CustomerGroup table deleted.
+  // Groups are now managed via entity-group-member table.
 
   // Team members (for assignee fields on ticket/thread)
   teamMembers: {
@@ -52,23 +41,6 @@ export const DYNAMIC_OPTIONS_REGISTRY: Record<string, DynamicOptionsEntry> = {
       })
       return {
         data: data?.map((u) => ({ value: u.id, label: u.name ?? u.email })),
-        isLoading,
-      }
-    },
-  },
-
-  // Contacts (for ticket contact field)
-  contacts: {
-    useOptions: (enabled) => {
-      const { data, isLoading } = api.contact.getAll.useQuery(
-        { limit: 100, page: 1 },
-        { enabled, staleTime: 5 * 60 * 1000 }
-      )
-      return {
-        data: data?.contacts?.map((c) => ({
-          value: c.id,
-          label: c.firstName && c.lastName ? `${c.firstName} ${c.lastName}` : c.email,
-        })),
         isLoading,
       }
     },

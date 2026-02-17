@@ -63,6 +63,7 @@ export class OrganizationDomain {
    */
   async insertDirectly(db: any): Promise<void> {
     const { schema } = await import('@auxx/database')
+    const { UnifiedCrudHandler } = await import('@auxx/lib/resources')
     const users = [...this.context.auth.testUsers, ...this.context.auth.randomUsers]
 
     if (users.length === 0) {
@@ -71,8 +72,8 @@ export class OrganizationDomain {
 
     // Seed for each target organization
     for (const org of this.organizations) {
-      // Generate and insert Signatures
-      await this.seedSignatures(db, schema, org.id, users)
+      // Generate and insert Signatures via UnifiedCrudHandler
+      await this.seedSignatures(db, org.id, org.ownerId, users, UnifiedCrudHandler)
 
       // Generate and insert Snippets
       await this.seedSnippets(db, schema, org.id, users)
@@ -83,22 +84,25 @@ export class OrganizationDomain {
   }
 
   /**
-   * seedSignatures generates and inserts signature records.
+   * seedSignatures generates and creates signature records via UnifiedCrudHandler.
    * @param db - Drizzle database instance
-   * @param schema - Database schema
    * @param organizationId - Organization ID to associate signatures with
+   * @param ownerId - Organization owner user ID
    * @param users - Array of user records
+   * @param UnifiedCrudHandler - The handler class
    */
   private async seedSignatures(
     db: any,
-    schema: any,
     organizationId: string,
-    users: Array<{ id: string; email: string }>
+    ownerId: string,
+    users: Array<{ id: string; email: string }>,
+    UnifiedCrudHandler: any
   ): Promise<void> {
-    console.log('✍️  Generating signatures...')
+    console.log('✍️  Generating signatures via UnifiedCrudHandler...')
 
-    const signatures = []
+    const handler = new UnifiedCrudHandler(organizationId, ownerId, db)
     const signaturesPerUser = 2
+    let created = 0
 
     // Create 2 signatures for each of the first 3 users
     for (let userIndex = 0; userIndex < Math.min(3, users.length); userIndex++) {
@@ -108,35 +112,25 @@ export class OrganizationDomain {
         const isDefault = sigIndex === 0
         const name = isDefault ? 'Default Signature' : `Signature ${sigIndex + 1}`
 
-        signatures.push({
-          id: createId(),
-          name: name,
-          body: this.generateSignatureContent(user.email, isDefault),
-          isDefault: isDefault,
-          organizationId: organizationId,
-          createdById: user.id,
-          createdAt: new Date(Date.now() - signatures.length * 3600000),
-          updatedAt: new Date(),
-        })
+        try {
+          await handler.create(
+            'signature',
+            {
+              name: name,
+              body: this.generateSignatureContent(user.email, isDefault),
+              is_default: isDefault,
+              visibility: 'private',
+            },
+            { skipEvents: true }
+          )
+          created++
+        } catch (error: any) {
+          console.log(`⚠️  Failed to create signature: ${error.message}`)
+        }
       }
     }
 
-    if (signatures.length > 0) {
-      await db
-        .insert(schema.Signature)
-        .values(signatures)
-        .onConflictDoUpdate({
-          target: schema.Signature.id,
-          set: {
-            name: sql`excluded.name`,
-            body: sql`excluded.body`,
-            isDefault: sql`excluded."isDefault"`,
-            updatedAt: sql`excluded."updatedAt"`,
-          },
-        })
-
-      console.log(`✅ Upserted ${signatures.length} signatures`)
-    }
+    console.log(`✅ Created ${created} signatures via UnifiedCrudHandler`)
   }
 
   /**

@@ -31,7 +31,7 @@ export const ApprovalResponse = pgTable(
       }),
     userId: text()
       .notNull()
-      .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'restrict' }),
+      .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
     action: approvalAction().notNull(),
     comment: text(),
     respondedAt: timestamp({ precision: 3 }).defaultNow().notNull(),

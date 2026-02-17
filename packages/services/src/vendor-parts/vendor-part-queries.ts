@@ -9,13 +9,13 @@ import type { ListVendorPartsInput, VendorPartContext } from './types'
  * Get all vendor parts with optional filtering using relational queries
  */
 export async function getVendorParts(input: ListVendorPartsInput) {
-  const { organizationId, contactId, partId } = input
+  const { organizationId, entityInstanceId, partId } = input
 
   const result = await fromDatabase(
     database.query.VendorPart.findMany({
       where: (vendorParts, { eq, and }) => {
         const conditions = [eq(vendorParts.organizationId, organizationId)]
-        if (contactId) conditions.push(eq(vendorParts.contactId, contactId))
+        if (entityInstanceId) conditions.push(eq(vendorParts.entityInstanceId, entityInstanceId))
         if (partId) conditions.push(eq(vendorParts.partId, partId))
         return and(...conditions)
       },
@@ -66,19 +66,19 @@ export async function getVendorPartById(input: { id: string } & VendorPartContex
 }
 
 /**
- * Get vendor part by contact and part ID
+ * Get vendor part by entity instance and part ID
  */
-export async function getVendorPartByContactAndPart(
-  input: { contactId: string; partId: string } & VendorPartContext
+export async function getVendorPartByEntityInstanceAndPart(
+  input: { entityInstanceId: string; partId: string } & VendorPartContext
 ) {
-  const { contactId, partId, organizationId } = input
+  const { entityInstanceId, partId, organizationId } = input
 
   const result = await fromDatabase(
     database.query.VendorPart.findFirst({
       where: (vendorParts, { eq, and }) =>
         and(
           eq(vendorParts.organizationId, organizationId),
-          eq(vendorParts.contactId, contactId),
+          eq(vendorParts.entityInstanceId, entityInstanceId),
           eq(vendorParts.partId, partId)
         ),
       with: {
@@ -86,7 +86,7 @@ export async function getVendorPartByContactAndPart(
         part: true,
       },
     }),
-    'get-vendor-part-by-contact-and-part'
+    'get-vendor-part-by-entity-instance-and-part'
   )
 
   if (result.isErr()) return result
@@ -94,7 +94,7 @@ export async function getVendorPartByContactAndPart(
   if (!result.value) {
     return err({
       code: 'VENDOR_PART_NOT_FOUND' as const,
-      message: `Vendor part not found for contact ${contactId} and part ${partId}`,
+      message: `Vendor part not found for entity instance ${entityInstanceId} and part ${partId}`,
     })
   }
 
@@ -105,16 +105,16 @@ export async function getVendorPartByContactAndPart(
  * Check if vendor part association exists
  */
 export async function checkVendorPartExists(
-  input: { contactId: string; partId: string } & VendorPartContext
+  input: { entityInstanceId: string; partId: string } & VendorPartContext
 ) {
-  const { contactId, partId, organizationId } = input
+  const { entityInstanceId, partId, organizationId } = input
 
   const result = await fromDatabase(
     database.query.VendorPart.findFirst({
       where: (vendorParts, { eq, and }) =>
         and(
           eq(vendorParts.organizationId, organizationId),
-          eq(vendorParts.contactId, contactId),
+          eq(vendorParts.entityInstanceId, entityInstanceId),
           eq(vendorParts.partId, partId)
         ),
       columns: { id: true },

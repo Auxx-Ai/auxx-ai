@@ -32,8 +32,8 @@ interface VendorPartDialogProps {
   onOpenChange: (open: boolean) => void
   /** Part ID - provide for part-centric mode (user selects contact) */
   partId?: string
-  /** Contact ID - provide for contact-centric mode (user selects part) */
-  contactId?: string
+  /** Entity instance ID - provide for contact-centric mode (user selects part) */
+  entityInstanceId?: string
   /** VendorPart to edit (null for add mode) */
   vendorPart?: VendorPart | null
   /** Callback on successful save */
@@ -45,7 +45,7 @@ export function VendorPartDialog({
   open,
   onOpenChange,
   partId: partIdProp,
-  contactId: contactIdProp,
+  entityInstanceId: entityInstanceIdProp,
   vendorPart,
   onSuccess,
 }: VendorPartDialogProps) {
@@ -53,7 +53,7 @@ export function VendorPartDialog({
 
   // Determine mode: part-centric (select contact) or contact-centric (select part)
   const isPartMode = !!partIdProp
-  const isContactMode = !!contactIdProp
+  const isContactMode = !!entityInstanceIdProp
 
   // State - uses shared type plus partId for contact-centric mode
   const [values, setValues] = useState<VendorPartFormValues & { partId: string }>({
@@ -66,7 +66,7 @@ export function VendorPartDialog({
   useEffect(() => {
     if (open) {
       setValues({
-        contactId: (vendorPart as any)?.contactId ?? '',
+        entityInstanceId: (vendorPart as any)?.entityInstanceId ?? '',
         partId: (vendorPart as any)?.partId ?? '',
         vendorSku: vendorPart?.vendorSku ?? '',
         unitPrice: vendorPart?.unitPrice ?? null,
@@ -108,7 +108,7 @@ export function VendorPartDialog({
   // Validation
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {}
-    if (isPartMode && !values.contactId) newErrors.contactId = 'Contact is required'
+    if (isPartMode && !values.entityInstanceId) newErrors.entityInstanceId = 'Contact is required'
     if (isContactMode && !values.partId) newErrors.partId = 'Part is required'
     if (!values.vendorSku) newErrors.vendorSku = 'Supplier SKU is required'
     setErrors(newErrors)
@@ -142,12 +142,12 @@ export function VendorPartDialog({
   const handleSubmit = async () => {
     if (!validate()) return
 
-    // Resolve partId and contactId from props or state
+    // Resolve partId and entityInstanceId from props or state
     const resolvedPartId = partIdProp ?? values.partId
-    const resolvedContactId = contactIdProp ?? values.contactId
+    const resolvedEntityInstanceId = entityInstanceIdProp ?? values.entityInstanceId
 
     const payload = {
-      contactId: resolvedContactId,
+      entityInstanceId: resolvedEntityInstanceId,
       partId: resolvedPartId,
       vendorSku: values.vendorSku,
       unitPrice: values.unitPrice,

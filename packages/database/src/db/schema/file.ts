@@ -32,7 +32,10 @@ export const File = pgTable(
     updatedAt: timestamp({ precision: 3 }).notNull(),
     name: text(),
     hashedKey: text().notNull(),
-    createdById: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    createdById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
@@ -40,7 +43,10 @@ export const File = pgTable(
     type: text(),
     meta: jsonb().default({}).notNull(),
     deletedAt: timestamp({ precision: 3 }),
-    deletedById: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    deletedById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     entityId: text(),
     entityType: text(),
     articleId: text().references((): AnyPgColumn => Article.id, {

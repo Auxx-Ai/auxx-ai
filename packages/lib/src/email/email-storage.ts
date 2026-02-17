@@ -9,7 +9,6 @@ import {
   ThreadStatus,
 } from '@auxx/database/enums'
 import type {
-  ContactEntity as Contact,
   MessageEntity as Message,
   ParticipantEntity as Participant,
   ThreadEntity as Thread,
@@ -21,6 +20,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { SelectiveModeCache } from '../cache/selective-mode-cache'
 import { MessageReconcilerService } from '../messages/message-reconciler.service'
 import { ThreadManagerService } from '../messages/thread-manager.service'
+import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 
 const logger = createScopedLogger('message-storage')
 
@@ -123,6 +123,8 @@ export class MessageStorageService {
   private reconciler?: MessageReconcilerService
   private threadManager?: ThreadManagerService
   private organizationId?: string
+  /** Cached UnifiedCrudHandler instances per organization for batch performance */
+  private crudHandlerCache = new Map<string, UnifiedCrudHandler>()
 
   constructor(organizationId?: string) {
     this.selectiveCache = new SelectiveModeCache()
@@ -135,6 +137,16 @@ export class MessageStorageService {
       )
       this.threadManager = new ThreadManagerService(organizationId, db)
     }
+  }
+
+  /** Returns a cached UnifiedCrudHandler for the given organization. */
+  private getCrudHandler(organizationId: string): UnifiedCrudHandler {
+    let handler = this.crudHandlerCache.get(organizationId)
+    if (!handler) {
+      handler = new UnifiedCrudHandler(organizationId, 'system')
+      this.crudHandlerCache.set(organizationId, handler)
+    }
+    return handler
   }
 
   // ========================================================================
@@ -465,14 +477,6 @@ export class MessageStorageService {
     return null
   }
 
-  /** Decides if Contact name should be updated based on Participant name availability. */
-  private shouldUpdateContactName(
-    p: { name?: string | null },
-    c: { firstName?: string | null; lastName?: string | null }
-  ): boolean {
-    return !!p.name?.trim() && !c.firstName && !c.lastName
-  }
-
   /**
    * Sets the integration settings for this storage service instance.
    * @param settings The integration settings to use
@@ -553,130 +557,35 @@ export class MessageStorageService {
     return false
   }
 
-  /** Finds or creates Contact for a Participant, handling identifier association and selective mode. */
+  /**
+   * Finds or creates a Contact (EntityInstance) for a Participant.
+   * Uses UnifiedCrudHandler to query/create via EntityInstance + FieldValue.
+   * Respects integration record creation mode (none/selective/all).
+   */
   private async findOrCreateContactForParticipant(
     participant: Participant,
     organizationId: string,
     messageContext?: { isInbound: boolean; role: ParticipantRole }
   ): Promise<string | null> {
     try {
-      // Check record creation mode from settings
-      const mode = this.integrationSettings?.recordCreation?.mode || 'selective' // Default to selective mode
+      const mode = this.integrationSettings?.recordCreation?.mode || 'selective'
+      const handler = this.getCrudHandler(organizationId)
 
+      // Determine which system attribute to search by
+      const systemAttr =
+        participant.identifierType === IdentifierTypeEnum.PHONE ? 'phone' : 'primary_email'
+
+      // Mode: NONE — lookup only, never create
       if (mode === 'none') {
-        // Don't create any contacts automatically
-        // First check if there's a contact already linked via participant
-        const [existingViaParticipant] = await db
-          .select({ id: schema.Contact.id })
-          .from(schema.Contact)
-          .innerJoin(schema.Participant, eq(schema.Contact.id, schema.Participant.contactId))
-          .where(
-            and(
-              eq(schema.Contact.organizationId, organizationId),
-              eq(schema.Participant.id, participant.id)
-            )
-          )
-          .limit(1)
-
-        if (existingViaParticipant) {
-          return existingViaParticipant.id
-        }
-
-        // Check by email identifier
-        if (participant.identifierType === IdentifierTypeEnum.EMAIL) {
-          const [existingByEmail] = await db
-            .select({ id: schema.Contact.id })
-            .from(schema.Contact)
-            .where(
-              and(
-                eq(schema.Contact.organizationId, organizationId),
-                eq(schema.Contact.email, participant.identifier)
-              )
-            )
-            .limit(1)
-
-          if (existingByEmail) {
-            return existingByEmail.id
-          }
-        }
-
-        // Check by phone identifier
-        if (participant.identifierType === IdentifierTypeEnum.PHONE) {
-          const [existingByPhone] = await db
-            .select({ id: schema.Contact.id })
-            .from(schema.Contact)
-            .where(
-              and(
-                eq(schema.Contact.organizationId, organizationId),
-                eq(schema.Contact.phone, participant.identifier)
-              )
-            )
-            .limit(1)
-
-          if (existingByPhone) {
-            return existingByPhone.id
-          }
-        }
-
-        return null
+        const existing = await handler.findByField('contact', systemAttr, participant.identifier)
+        return existing?.id ?? null
       }
 
+      // Mode: SELECTIVE — only create for outbound recipients or previously-contacted participants
       if (mode === 'selective' && messageContext) {
-        // Only create contacts for recipients of our outbound messages or existing contacts
-        // First check if there's a contact already linked via participant
-        const [existingViaParticipant] = await db
-          .select({ id: schema.Contact.id })
-          .from(schema.Contact)
-          .innerJoin(schema.Participant, eq(schema.Contact.id, schema.Participant.contactId))
-          .where(
-            and(
-              eq(schema.Contact.organizationId, organizationId),
-              eq(schema.Participant.id, participant.id)
-            )
-          )
-          .limit(1)
+        const existing = await handler.findByField('contact', systemAttr, participant.identifier)
+        if (existing) return existing.id
 
-        if (existingViaParticipant) {
-          return existingViaParticipant.id
-        }
-
-        // Check by email identifier
-        if (participant.identifierType === IdentifierTypeEnum.EMAIL) {
-          const [existingByEmail] = await db
-            .select({ id: schema.Contact.id })
-            .from(schema.Contact)
-            .where(
-              and(
-                eq(schema.Contact.organizationId, organizationId),
-                eq(schema.Contact.email, participant.identifier)
-              )
-            )
-            .limit(1)
-
-          if (existingByEmail) {
-            return existingByEmail.id
-          }
-        }
-
-        // Check by phone identifier
-        if (participant.identifierType === IdentifierTypeEnum.PHONE) {
-          const [existingByPhone] = await db
-            .select({ id: schema.Contact.id })
-            .from(schema.Contact)
-            .where(
-              and(
-                eq(schema.Contact.organizationId, organizationId),
-                eq(schema.Contact.phone, participant.identifier)
-              )
-            )
-            .limit(1)
-
-          if (existingByPhone) {
-            return existingByPhone.id
-          }
-        }
-
-        // Check if this is an outbound recipient
         const isOutboundRecipient =
           !messageContext.isInbound &&
           [ParticipantRoleEnum.TO, ParticipantRoleEnum.CC, ParticipantRoleEnum.BCC].includes(
@@ -684,15 +593,12 @@ export class MessageStorageService {
           )
 
         if (!isOutboundRecipient) {
-          // Check if we've previously sent to this participant
           const hasSentBefore = await this.hasOrganizationSentToParticipant(
             participant.id,
             participant.identifier,
             organizationId
           )
-
           if (!hasSentBefore) {
-            // Don't create contact for inbound-only participants
             logger.info(
               `Skipping contact creation for inbound-only participant ${participant.id} (selective mode)`
             )
@@ -701,146 +607,22 @@ export class MessageStorageService {
         }
       }
 
-      // Proceed with normal contact creation (mode === 'all' or criteria met)
-      let contact: Contact | null = null
-
-      // First check if there's a contact already linked via participant
-      const [existingViaParticipant] = await db
-        .select()
-        .from(schema.Contact)
-        .innerJoin(schema.Participant, eq(schema.Contact.id, schema.Participant.contactId))
-        .where(
-          and(
-            eq(schema.Contact.organizationId, organizationId),
-            eq(schema.Participant.id, participant.id)
-          )
-        )
-        .limit(1)
-
-      if (existingViaParticipant) {
-        contact = existingViaParticipant.Contact
-      } else {
-        // Check by identifier type
-        if (participant.identifierType === IdentifierTypeEnum.EMAIL) {
-          const [existingByEmail] = await db
-            .select()
-            .from(schema.Contact)
-            .where(
-              and(
-                eq(schema.Contact.organizationId, organizationId),
-                eq(schema.Contact.email, participant.identifier)
-              )
-            )
-            .limit(1)
-
-          if (existingByEmail) {
-            contact = existingByEmail
-          }
-        } else if (participant.identifierType === IdentifierTypeEnum.PHONE) {
-          const [existingByPhone] = await db
-            .select()
-            .from(schema.Contact)
-            .where(
-              and(
-                eq(schema.Contact.organizationId, organizationId),
-                eq(schema.Contact.phone, participant.identifier)
-              )
-            )
-            .limit(1)
-
-          if (existingByPhone) {
-            contact = existingByPhone
-          }
-        }
+      // Mode: ALL (or selective criteria met) — find or create
+      const names = this.getNamesFromParticipant(participant)
+      const findBy: Record<string, unknown> = { [systemAttr]: participant.identifier }
+      const createValues: Record<string, unknown> = {
+        first_name: names.firstName,
+        last_name: names.lastName,
+        contact_status: 'ACTIVE',
       }
 
-      if (contact) {
-        // Found existing contact - update if needed
-        const needsUpdate =
-          this.shouldUpdateContactName(participant, contact) ||
-          (participant.identifierType === IdentifierTypeEnum.EMAIL &&
-            contact.emails &&
-            !contact.emails.includes(participant.identifier)) ||
-          (participant.identifierType === IdentifierTypeEnum.PHONE &&
-            contact.phone !== participant.identifier)
-
-        if (needsUpdate) {
-          const updateData: any = { updatedAt: new Date() }
-
-          if (this.shouldUpdateContactName(participant, contact)) {
-            Object.assign(updateData, this.getNamesFromParticipant(participant))
-          }
-
-          if (
-            participant.identifierType === IdentifierTypeEnum.EMAIL &&
-            contact.emails &&
-            !contact.emails.includes(participant.identifier)
-          ) {
-            updateData.emails = [...(contact.emails || []), participant.identifier]
-            if (!contact.email) updateData.email = participant.identifier
-          }
-
-          if (
-            participant.identifierType === IdentifierTypeEnum.PHONE &&
-            contact.phone !== participant.identifier
-          ) {
-            if (!contact.phone) updateData.phone = participant.identifier
-          }
-
-          await db.update(schema.Contact).set(updateData).where(eq(schema.Contact.id, contact.id))
-
-          logger.debug(`Updated contact ${contact.id} with info from participant ${participant.id}`)
-        }
-        return contact.id
-      } else {
-        // Create new Contact
-        logger.debug(`Creating new contact for participant ${participant.id}`)
-        const names = this.getNamesFromParticipant(participant)
-
-        const contactData: any = {
-          organizationId,
-          status: 'ACTIVE',
-          ...names,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }
-
-        if (participant.identifierType === IdentifierTypeEnum.EMAIL) {
-          contactData.email = participant.identifier
-          contactData.emails = [participant.identifier]
-        }
-
-        if (participant.identifierType === IdentifierTypeEnum.PHONE) {
-          contactData.phone = participant.identifier
-        }
-
-        const [newContact] = await db
-          .insert(schema.Contact)
-          .values(contactData)
-          .returning({ id: schema.Contact.id })
-
-        logger.info(`Created new contact ${newContact.id}`)
-
-        // Create source record - map IdentifierType to CustomerSource.source enum
-        const sourceMapping: Record<string, string> = {
-          [IdentifierTypeEnum.EMAIL]: 'EMAIL',
-          [IdentifierTypeEnum.FACEBOOK_PSID]: 'FACEBOOK_PSID',
-          [IdentifierTypeEnum.PHONE]: 'OTHER', // Map phone to OTHER since PHONE isn't in CustomerSource enum
-          [IdentifierTypeEnum.INSTAGRAM_IGSID]: 'OTHER',
-        }
-
-        await db.insert(schema.CustomerSource).values({
-          source: sourceMapping[participant.identifierType] || ('OTHER' as any),
-          sourceId: participant.identifier,
-          email:
-            participant.identifierType === IdentifierTypeEnum.EMAIL ? participant.identifier : null,
-          organizationId,
-          contactId: newContact.id!,
-          updatedAt: new Date(),
-        })
-
-        return newContact.id
+      // For phone contacts, ensure phone is in create values too
+      if (participant.identifierType === IdentifierTypeEnum.PHONE) {
+        createValues.phone = participant.identifier
       }
+
+      const { instance } = await handler.findOrCreate('contact', findBy, createValues)
+      return instance.id
     } catch (error) {
       logger.error('Error finding/creating contact for participant:', {
         error,
@@ -923,17 +705,17 @@ export class MessageStorageService {
       const participant = participantData[0]
 
       // Ensure linked to contact (if appropriate based on settings)
-      if (!participant.contactId) {
-        const contactId = await this.findOrCreateContactForParticipant(
+      if (!participant.entityInstanceId) {
+        const entityInstanceId = await this.findOrCreateContactForParticipant(
           participant,
           organizationId,
           messageContext
         )
         // Only update participant to link contact if a contact was created/found
-        if (contactId) {
+        if (entityInstanceId) {
           const updatedParticipants = await db
             .update(schema.Participant)
-            .set({ contactId: contactId, updatedAt: new Date() })
+            .set({ entityInstanceId, updatedAt: new Date() })
             .where(eq(schema.Participant.id, participant.id))
             .returning()
 
@@ -1644,41 +1426,43 @@ export class MessageStorageService {
     organizationId: string
   ): Promise<void> {
     try {
-      const participant = await db.query.Participant.findFirst({
-        where: (participants, { eq }) => eq(participants.id, participantId),
-        with: { contact: true },
-      })
+      const [participant] = await db
+        .select()
+        .from(schema.Participant)
+        .where(eq(schema.Participant.id, participantId))
+        .limit(1)
 
       if (!participant) {
         logger.warn(`Participant ${participantId} not found for retroactive contact creation`)
         return
       }
 
-      // Skip if already has contact
-      if (participant.contact) {
+      // Skip if already linked to a contact
+      if (participant.entityInstanceId) {
         return
       }
 
       // Create contact for this participant
-      const contactId = await this.findOrCreateContactForParticipant(
+      const entityInstanceId = await this.findOrCreateContactForParticipant(
         participant,
         organizationId,
-        { isInbound: false, role: ParticipantRoleEnum.TO } // Treat as outbound recipient
+        { isInbound: false, role: ParticipantRoleEnum.TO }
       )
 
-      if (contactId) {
-        // Update participant to link contact and mark as having received message
+      if (entityInstanceId) {
         await db
           .update(schema.Participant)
           .set({
-            contactId,
+            entityInstanceId,
             hasReceivedMessage: true,
             lastSentMessageAt: new Date(),
             updatedAt: new Date(),
           })
           .where(eq(schema.Participant.id, participantId))
 
-        logger.info(`Created retroactive contact ${contactId} for participant ${participantId}`)
+        logger.info(
+          `Created retroactive contact ${entityInstanceId} for participant ${participantId}`
+        )
       }
     } catch (error) {
       logger.error('Error creating retroactive contact:', {
@@ -1725,7 +1509,7 @@ export class MessageStorageService {
         )
         .limit(1)
 
-      if (participant && !participant.contactId) {
+      if (participant && !participant.entityInstanceId) {
         // Create contact for this participant since we're sending to them
         await this.createContactAfterOutboundMessage(participant.id, organizationId)
       }

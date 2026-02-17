@@ -67,7 +67,7 @@ export const developerAccountsRouter = createTRPCRouter({
    * Create developer account
    */
   create: protectedProcedure
-    .input(createDeveloperAccountInputSchema)
+    .input(createDeveloperAccountInputSchema.pick({ slug: true, title: true, logoId: true }))
     .mutation(async ({ ctx, input }) => {
       const result = await createDeveloperAccount({
         userId: ctx.session.userId,

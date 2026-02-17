@@ -1,5 +1,7 @@
 // apps/web/src/app/(protected)/app/contacts/_components/customer-sources-card.tsx
 
+'use client'
+
 import { Badge } from '@auxx/ui/components/badge'
 import { LinkIcon } from 'lucide-react'
 
