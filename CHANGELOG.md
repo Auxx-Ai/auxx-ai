@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.5](https://github.com/auxxai/auxx-ai/compare/auxx-v0.1.4...auxx-v0.1.5) (2026-02-17)
+
+
+### Features
+
+* add Docker image workflow and enhance organization details page… ([#17](https://github.com/auxxai/auxx-ai/issues/17)) ([4c3724b](https://github.com/auxxai/auxx-ai/commit/4c3724b59add769548819738d78c7ba455fe4768))
+
+
+### Bug Fixes
+
+* refine conditional logic for Docker image workflow steps ([#19](https://github.com/auxxai/auxx-ai/issues/19)) ([6c00005](https://github.com/auxxai/auxx-ai/commit/6c000054ee7237e965bfa85d5c73640e4f8da485))
+
 ## [0.1.4](https://github.com/auxxai/auxx-ai/compare/auxx-v0.1.3...auxx-v0.1.4) (2026-02-17)
 
 
