@@ -124,7 +124,7 @@ export function EnterpriseManagementSection({
                   </div>
                 </div>
 
-                <Button onClick={handleSetEnterprise} loading={setEnterprise.isPending}>
+                <Button size='sm' onClick={handleSetEnterprise} loading={setEnterprise.isPending}>
                   <Crown />
                   Set to Enterprise Plan
                 </Button>

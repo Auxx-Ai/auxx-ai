@@ -1,5 +1,6 @@
 // packages/lib/src/snapshot/service.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient, type RedisClient } from '@auxx/redis'
 import { generateId } from '@auxx/utils/generateId'
 import { createHash } from 'crypto'
@@ -12,6 +13,8 @@ import type {
   SnapshotChunkResult,
   SnapshotResult,
 } from './types'
+
+const logger = createScopedLogger('snapshot-service')
 
 /** TTL for snapshots in seconds */
 const SNAPSHOT_TTL_SECONDS = 120 // 2 minutes
@@ -45,13 +48,45 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Build Redis key for dirty marker
+ */
+function buildDirtyKey(orgId: string, resourceType: string): string {
+  return `snapshot:${orgId}:${resourceType}:dirty`
+}
+
+/**
+ * Check if a snapshot is stale because a mutation happened after it was created
+ */
+async function isSnapshotDirty(
+  client: RedisClient,
+  orgId: string,
+  resourceType: string,
+  snapshotCreatedAt: number
+): Promise<boolean> {
+  const dirtyKey = buildDirtyKey(orgId, resourceType)
+  const dirtyTimestamp = await client.get(dirtyKey)
+  if (!dirtyTimestamp) return false
+  return Number(dirtyTimestamp) > snapshotCreatedAt
+}
+
+/**
+ * Mark a resource type as dirty (called during invalidation)
+ * This is a simple SETEX that's extremely reliable — near-impossible to fail
+ */
+export async function markResourceDirty(orgId: string, resourceType: string): Promise<void> {
+  const client = await getClient()
+  const dirtyKey = buildDirtyKey(orgId, resourceType)
+  await client.setex(dirtyKey, SNAPSHOT_TTL_SECONDS, String(Date.now()))
+}
+
+/**
  * Get or create a query snapshot for a filter configuration
  *
  * Flow:
  * 1. Hash the filter config to create a cache key
  * 2. Check Redis for existing snapshot
- * 3. If found, return cached snapshot
- * 4. If not found, acquire lock, execute query, cache result, return
+ * 3. If found and not dirty, return cached snapshot
+ * 4. If not found or dirty, acquire lock, execute query, cache result, return
  */
 export async function getOrCreateSnapshot(
   input: GetOrCreateSnapshotInput
@@ -68,14 +103,19 @@ export async function getOrCreateSnapshot(
   const cachedMeta = await client.get(cacheKey)
   if (cachedMeta) {
     const cached: QuerySnapshot = JSON.parse(cachedMeta)
-    // Get all IDs from the list
-    const ids = await client.lrange(idsKey, 0, -1)
-    return {
-      snapshotId: cached.id,
-      ids,
-      total: cached.total,
-      fromCache: true,
+    // Check if snapshot has been dirtied by a mutation since it was created
+    const dirty = await isSnapshotDirty(client, organizationId, resourceType, cached.createdAt)
+    if (!dirty) {
+      const ids = await client.lrange(idsKey, 0, -1)
+      return {
+        snapshotId: cached.id,
+        ids,
+        total: cached.total,
+        fromCache: true,
+      }
     }
+    // Snapshot is stale — delete and fall through to create fresh one
+    await client.del([cacheKey, idsKey])
   }
 
   // Cache miss - try to acquire lock to prevent thundering herd
@@ -93,13 +133,18 @@ export async function getOrCreateSnapshot(
       const nowCached = await client.get(cacheKey)
       if (nowCached) {
         const cached: QuerySnapshot = JSON.parse(nowCached)
-        const ids = await client.lrange(idsKey, 0, -1)
-        return {
-          snapshotId: cached.id,
-          ids,
-          total: cached.total,
-          fromCache: true,
+        const dirty = await isSnapshotDirty(client, organizationId, resourceType, cached.createdAt)
+        if (!dirty) {
+          const ids = await client.lrange(idsKey, 0, -1)
+          return {
+            snapshotId: cached.id,
+            ids,
+            total: cached.total,
+            fromCache: true,
+          }
         }
+        // Stale snapshot from another process — delete and keep waiting/trying
+        await client.del([cacheKey, idsKey])
       }
       retries++
     }
@@ -192,23 +237,44 @@ export async function getSnapshotChunk(
 /**
  * Invalidate all snapshots for a resource type
  * Called when records are created/updated/deleted
- * Uses SCAN instead of KEYS to avoid blocking Redis
+ *
+ * Strategy: Set a dirty marker first (atomic, reliable), then attempt
+ * SCAN-based cleanup as best-effort. Even if SCAN fails, the dirty marker
+ * ensures getOrCreateSnapshot will skip stale data.
  */
 export async function invalidateSnapshots(input: InvalidateSnapshotsInput): Promise<void> {
   const client = await getClient()
-  const pattern = `snapshot:${input.organizationId}:${input.resourceType}:*`
+  const dirtyKey = buildDirtyKey(input.organizationId, input.resourceType)
 
-  let cursor = '0'
-  do {
-    const [newCursor, keys] = await client.scan(cursor, 'MATCH', pattern, 'COUNT', 100)
-    cursor = newCursor
+  // Step 1: Set dirty marker (atomic, reliable)
+  // This ensures getOrCreateSnapshot will skip stale snapshots
+  // even if the SCAN-based cleanup below fails
+  await client.setex(dirtyKey, SNAPSHOT_TTL_SECONDS, String(Date.now()))
 
-    if (keys && keys.length > 0) {
-      // Also delete the associated ID lists
-      const idsKeys = keys.map((k) => buildIdsKey(k))
-      await client.del([...keys, ...idsKeys])
-    }
-  } while (cursor !== '0')
+  // Step 2: Best-effort SCAN cleanup (reduces Redis memory usage)
+  try {
+    const pattern = `snapshot:${input.organizationId}:${input.resourceType}:*`
+    let cursor = '0'
+    do {
+      const [newCursor, keys] = await client.scan(cursor, 'MATCH', pattern, 'COUNT', 100)
+      cursor = newCursor
+
+      if (keys && keys.length > 0) {
+        // Filter out the dirty marker key itself
+        const snapshotKeys = keys.filter((k) => !k.endsWith(':dirty'))
+        if (snapshotKeys.length > 0) {
+          const idsKeys = snapshotKeys.map((k) => buildIdsKey(k))
+          await client.del([...snapshotKeys, ...idsKeys])
+        }
+      }
+    } while (cursor !== '0')
+  } catch (error) {
+    // SCAN cleanup is best-effort; dirty marker ensures correctness
+    logger.warn('Snapshot SCAN cleanup failed (dirty marker active)', {
+      resourceType: input.resourceType,
+      error: (error as Error).message,
+    })
+  }
 }
 
 /**

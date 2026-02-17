@@ -1,6 +1,12 @@
 // apps/web/src/app/admin/organizations/[id]/_components/trial-management-section.tsx
 'use client'
 
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@auxx/ui/components/accordion'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Input } from '@auxx/ui/components/input'
@@ -170,17 +176,15 @@ export function TrialManagementSection({
           </div>
 
           {/* Actions */}
-          {isOnTrial && (
-            <>
+          {isOnTrial ? (
+            <Accordion type='single' collapsible className='rounded-lg border'>
               {/* End Trial Immediately */}
-              <div className='space-y-3'>
-                <div>
-                  <h4 className='text-sm font-medium mb-1'>End Trial Immediately</h4>
+              <AccordionItem value='end-trial' className='border-b px-4 last:border-b-0'>
+                <AccordionTrigger>End Trial Immediately</AccordionTrigger>
+                <AccordionContent className='space-y-3'>
                   <p className='text-sm text-muted-foreground'>
                     Force trial to end now, requiring organization to upgrade
                   </p>
-                </div>
-                <div className='space-y-3'>
                   <div>
                     <Label htmlFor='end-reason'>Reason (Optional)</Label>
                     <Textarea
@@ -193,24 +197,21 @@ export function TrialManagementSection({
                   </div>
                   <Button
                     variant='destructive'
+                    size='sm'
                     onClick={handleEndTrial}
                     loading={endTrial.isPending}>
                     End Trial Now
                   </Button>
-                </div>
-              </div>
-
-              <div className='border-t' />
+                </AccordionContent>
+              </AccordionItem>
 
               {/* Extend Trial */}
-              <div className='space-y-3'>
-                <div>
-                  <h4 className='text-sm font-medium mb-1'>Extend Trial Period</h4>
+              <AccordionItem value='extend-trial' className='border-b px-4 last:border-b-0'>
+                <AccordionTrigger>Extend Trial Period</AccordionTrigger>
+                <AccordionContent className='space-y-3'>
                   <p className='text-sm text-muted-foreground'>
                     Give customer more time to evaluate the product
                   </p>
-                </div>
-                <div className='space-y-3'>
                   <div>
                     <Label htmlFor='extend-days'>Extend by (days)</Label>
                     <Input
@@ -237,35 +238,32 @@ export function TrialManagementSection({
                       rows={2}
                     />
                   </div>
-                  <Button onClick={handleExtendTrial} loading={extendTrial.isPending}>
+                  <Button onClick={handleExtendTrial} loading={extendTrial.isPending} size='sm'>
                     <Calendar />
                     Extend Trial
                   </Button>
-                </div>
-              </div>
-
-              <div className='border-t' />
+                </AccordionContent>
+              </AccordionItem>
 
               {/* Convert to Paid */}
-              <div className='space-y-3'>
-                <div>
-                  <h4 className='text-sm font-medium mb-1'>Convert Trial to Paid</h4>
+              <AccordionItem value='convert-paid' className='border-b px-4 last:border-b-0'>
+                <AccordionTrigger>Convert Trial to Paid</AccordionTrigger>
+                <AccordionContent className='space-y-3'>
                   <p className='text-sm text-muted-foreground'>
                     Manually convert trial to paid without payment (admin override)
                   </p>
-                </div>
-                <Button
-                  variant='outline'
-                  onClick={handleConvertToPaid}
-                  loading={convertTrial.isPending}>
-                  <CheckCircle />
-                  Convert to Paid
-                </Button>
-              </div>
-            </>
-          )}
-
-          {!isOnTrial && (
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={handleConvertToPaid}
+                    loading={convertTrial.isPending}>
+                    <CheckCircle />
+                    Convert to Paid
+                  </Button>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          ) : (
             <div className='text-center py-8 text-muted-foreground'>
               Organization is not currently on trial
             </div>

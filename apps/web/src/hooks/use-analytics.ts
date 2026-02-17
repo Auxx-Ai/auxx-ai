@@ -2,7 +2,7 @@
 
 import { usePostHog } from '@posthog/react'
 import type { PostHog } from 'posthog-js'
-import { useEnvironment } from '~/providers/dehydrated-state-provider'
+import { useEnv } from '~/providers/dehydrated-state-provider'
 
 /**
  * Convenience wrapper around usePostHog that returns null
@@ -13,7 +13,7 @@ import { useEnvironment } from '~/providers/dehydrated-state-provider'
  *   posthog?.capture('workflow_created', { nodeCount: 5 })
  */
 export function useAnalytics(): PostHog | null {
-  const { posthog: config } = useEnvironment()
+  const { posthog: config } = useEnv()
   const posthog = usePostHog()
   if (!config.key) return null
   return posthog

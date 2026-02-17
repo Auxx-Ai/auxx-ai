@@ -1,4 +1,5 @@
 // packages/email/src/templates/lifecycle/getting-started-email.tsx
+import { WEBAPP_URL } from '@auxx/config/server'
 import { Container, Text } from '@react-email/components'
 import type React from 'react'
 import { EmailButton } from '../../components/email-button'
@@ -15,7 +16,7 @@ interface GettingStartedEmailProps {
 export async function GettingStartedEmail({
   name,
   organizationName,
-  dashboardUrl = 'https://app.auxx.ai/dashboard',
+  dashboardUrl = `${WEBAPP_URL}/dashboard`,
 }: GettingStartedEmailProps): Promise<React.JSX.Element> {
   return (
     <EmailTemplate>
@@ -99,7 +100,7 @@ export async function GettingStartedEmail({
 export function GettingStartedText({
   name,
   organizationName,
-  dashboardUrl = 'https://app.auxx.ai/dashboard',
+  dashboardUrl = `${WEBAPP_URL}/dashboard`,
 }: GettingStartedEmailProps): string {
   return `
 Let's Get You Started with Auxx.ai!

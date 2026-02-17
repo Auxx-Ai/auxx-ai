@@ -1,5 +1,6 @@
+// apps/web/src/auth/auth-client.ts
+
 import { WEBAPP_URL } from '@auxx/config/client'
-// import { passkeyClient } from 'better-auth/client/plugins'
 import {
   // organizationClient,
   passkeyClient,

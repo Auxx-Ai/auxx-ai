@@ -1,10 +1,10 @@
 // apps/web/src/hooks/use-deployment-mode.ts
 import type { DeploymentMode } from '@auxx/deployment/client'
-import { useEnvironment } from '~/providers/dehydrated-state-provider'
+import { useEnv } from '~/providers/dehydrated-state-provider'
 
 /** Hook to check deployment mode from dehydrated state */
 export function useDeploymentMode(): DeploymentMode {
-  const env = useEnvironment()
+  const env = useEnv()
   return env.deploymentMode ?? 'cloud'
 }
 

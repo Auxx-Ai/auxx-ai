@@ -46,6 +46,21 @@ ARG NEXT_PUBLIC_GIT_SHA
 ARG NEXT_PUBLIC_APP_VERSION
 ARG NEXT_PUBLIC_BUILD_TIME
 
+# Build-time placeholders for NEXT_PUBLIC_* runtime env replacement (self-hosted)
+ARG NEXT_PUBLIC_BASE_URL=__RUNTIME_NEXT_PUBLIC_BASE_URL__
+ARG NEXT_PUBLIC_APP_URL=__RUNTIME_NEXT_PUBLIC_APP_URL__
+ARG NEXT_PUBLIC_API_URL=__RUNTIME_NEXT_PUBLIC_API_URL__
+ARG NEXT_PUBLIC_DEV_PORTAL_URL=__RUNTIME_NEXT_PUBLIC_DEV_PORTAL_URL__
+ARG NEXT_PUBLIC_HOMEPAGE_URL=__RUNTIME_NEXT_PUBLIC_HOMEPAGE_URL__
+ARG NEXT_PUBLIC_CDN_URL=__RUNTIME_NEXT_PUBLIC_CDN_URL__
+ARG NEXT_PUBLIC_S3_PUBLIC_BUCKET=__RUNTIME_NEXT_PUBLIC_S3_PUBLIC_BUCKET__
+ARG NEXT_PUBLIC_S3_PRIVATE_BUCKET=__RUNTIME_NEXT_PUBLIC_S3_PRIVATE_BUCKET__
+ARG NEXT_PUBLIC_S3_REGION=__RUNTIME_NEXT_PUBLIC_S3_REGION__
+ARG NEXT_PUBLIC_STORAGE_TYPE=__RUNTIME_NEXT_PUBLIC_STORAGE_TYPE__
+ARG NEXT_PUBLIC_ENV=__RUNTIME_NEXT_PUBLIC_ENV__
+ARG NEXT_PUBLIC_PUSHER_KEY=__RUNTIME_NEXT_PUBLIC_PUSHER_KEY__
+ARG NEXT_PUBLIC_PUSHER_CLUSTER=__RUNTIME_NEXT_PUBLIC_PUSHER_CLUSTER__
+
 ENV TURBO_TEAM=$TURBO_TEAM
 ENV TURBO_TOKEN=$TURBO_TOKEN
 ENV NEXT_PUBLIC_POSTHOG_KEY=$NEXT_PUBLIC_POSTHOG_KEY
@@ -54,9 +69,7 @@ ENV NEXT_PUBLIC_GIT_SHA=$NEXT_PUBLIC_GIT_SHA
 ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION
 ENV NEXT_PUBLIC_BUILD_TIME=$NEXT_PUBLIC_BUILD_TIME
 ENV DATABASE_URL="postgresql://postgres:password@localhost:5432/mock_db"
-ENV NEXT_PUBLIC_BASE_URL="https://dev.auxx.ai"
 ENV BETTER_AUTH_URL="https://dev.auxx.ai"
-#ENV NEXT_PUBLIC_APP_URL="https://dev.auxx.ai"
 
 # Add AI/API keys
 ENV OPENAI_API_KEY="sk-mock-openai-api-key-for-build-time"
@@ -181,6 +194,13 @@ COPY --from=builder --chown=nodejs:nextjs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nodejs:nextjs /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder --chown=nodejs:nextjs /app/apps/web/node_modules ./apps/web/node_modules
 
+# Copy packages/database for drizzle-kit migrations (used by migrate service)
+COPY --from=builder --chown=nodejs:nextjs /app/packages/database ./packages/database
+COPY --from=builder --chown=nodejs:nextjs /app/node_modules ./node_modules
+
+# Copy the docker entrypoint for runtime env replacement
+COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
 
 # Set permissions for local storage
 # User ID and Group ID 1001 is used to match the user 'nextjs' and group 'nodejs' in the runner image.
@@ -195,4 +215,5 @@ WORKDIR /app/apps/web
 
 EXPOSE 3000
 
+ENTRYPOINT ["../../docker-entrypoint.sh"]
 CMD ["node", "server.js"]

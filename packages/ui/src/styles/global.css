@@ -318,15 +318,6 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
-  /* --sidebar: rgb(240 240 240); */
-  --sidebar-foreground: 63 63 70;
-  --sidebar-primary: 1, 144, 254;
-  --sidebar-primary-foreground: 250 250 250;
-
-  --sidebar-accent: 230, 230, 230, 0.9;
-  --sidebar-accent-foreground: 0, 0, 0, 0.9;
-  --sidebar-border: 1, 144, 254;
-  --sidebar-ring: 56 120 255;
 
   --auxxai-highlight-default: #ffffff;
   --auxxai-highlight-purple: #f6f3f8;

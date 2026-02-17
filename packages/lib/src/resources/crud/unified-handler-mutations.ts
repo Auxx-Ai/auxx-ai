@@ -1,6 +1,7 @@
 // packages/lib/src/resources/crud/unified-handler-mutations.ts
 
 import type { Database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import {
   createEntityInstance,
   deleteEntityInstance,
@@ -15,6 +16,8 @@ import { extractEventData, findRelatedRecordId } from '../events/extract-event-d
 import type { MergeEntitiesResult } from '../merge'
 import { EntityMergeService } from '../merge'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
+
+const logger = createScopedLogger('unified-handler-mutations')
 
 // import type { EntityDefinitionEntity } from '@auxx/database/schema/entity-definition'
 // import type { EntityInstanceEntity } from '@auxx/database/schema/entity-instance'
@@ -137,7 +140,10 @@ function publishEvent(params: PublishEventParams): void {
 }
 
 /**
- * Invalidate snapshots for an entity definition
+ * Invalidate snapshots for an entity definition.
+ * Logs errors instead of silently swallowing them.
+ * Non-throwing — mutations should succeed even if cache invalidation fails.
+ * The dirty marker (set first in invalidateSnapshots) ensures eventual correctness.
  */
 async function invalidateEntitySnapshots(
   organizationId: string,
@@ -148,8 +154,12 @@ async function invalidateEntitySnapshots(
       organizationId,
       resourceType: entityDefinitionId,
     })
-  } catch {
-    // Non-critical
+  } catch (error) {
+    logger.error('Failed to invalidate snapshots', {
+      entityDefinitionId,
+      error: (error as Error).message,
+    })
+    // Don't re-throw — mutations should succeed even if cache invalidation fails
   }
 }
 

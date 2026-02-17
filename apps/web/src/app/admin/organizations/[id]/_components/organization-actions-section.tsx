@@ -106,6 +106,7 @@ export function OrganizationActionsSection({
               <DropdownMenuTrigger asChild>
                 <Button
                   variant='outline'
+                  size='sm'
                   disabled={seedOrganization.isPending}
                   loading={seedOrganization.isPending}
                   loadingText='Seeding...'>

@@ -1,4 +1,5 @@
 // packages/email/src/templates/billing/trial-started-email.tsx
+import { WEBAPP_URL } from '@auxx/config/server'
 import { Container, Text } from '@react-email/components'
 import type React from 'react'
 import { EmailButton } from '../../components/email-button'
@@ -17,7 +18,7 @@ export async function TrialStartedEmail({
   name,
   planName,
   trialDays,
-  dashboardUrl = 'https://app.auxx.ai/dashboard',
+  dashboardUrl = `${WEBAPP_URL}/dashboard`,
 }: TrialStartedEmailProps): Promise<React.JSX.Element> {
   return (
     <EmailTemplate>
@@ -65,7 +66,7 @@ export function TrialStartedText({
   name,
   planName,
   trialDays,
-  dashboardUrl = 'https://app.auxx.ai/dashboard',
+  dashboardUrl = `${WEBAPP_URL}/dashboard`,
 }: TrialStartedEmailProps): string {
   return `
 Your ${planName} Trial Has Started!

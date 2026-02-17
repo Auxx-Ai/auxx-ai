@@ -1,6 +1,5 @@
 'use client'
 
-import { WEBAPP_URL } from '@auxx/config/client'
 // import { toastError, toastSuccess } from '../toast'
 import { Button } from '@auxx/ui/components/button'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
@@ -17,7 +16,7 @@ export function SyncShopifyButton({ type, label }: { type: SyncType; label?: str
 
   async function handleSync(type: SyncType) {
     setIsLoading(true)
-    const res = await fetch(`${WEBAPP_URL}/api/sync/shopify/${type}`)
+    const res = await fetch(`/api/sync/shopify/${type}`)
     const data = await res.json()
 
     // const result = await syncAction.mutateAsync({ type })

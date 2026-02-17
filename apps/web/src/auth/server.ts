@@ -1,6 +1,14 @@
 // src/server/auth/config.ts
 
-import { API_URL, DEV_PORTAL_URL, env, WEBAPP_URL } from '@auxx/config/server'
+import {
+  API_URL,
+  DEV_PORTAL_URL,
+  env,
+  getAppHostname,
+  getCookieDomain,
+  getTrustedOrigins,
+  WEBAPP_URL,
+} from '@auxx/config/server'
 import { database, schema } from '@auxx/database' // Drizzle database for services
 import { accountModel, UserModel } from '@auxx/database/models'
 import {
@@ -36,15 +44,7 @@ const logger = createScopedLogger('auth')
 //     throw new Error(`Failed to send SMS (${res.status}): ${body}`)
 //   }
 // }
-const trustedOrigins = [
-  WEBAPP_URL,
-  DEV_PORTAL_URL,
-  API_URL, // Dedicated API server
-  process.env.NEXT_PUBLIC_BASE_URL!,
-  'https://app.dev.auxx.ai',
-  'https://auxx.ai',
-  'https://dev.auxx.ai',
-].filter(Boolean)
+const trustedOrigins = getTrustedOrigins()
 
 // export auth.api
 export const auth = betterAuth({
@@ -179,7 +179,7 @@ export const auth = betterAuth({
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      domain: process.env.NODE_ENV === 'production' ? '.auxx.ai' : undefined,
+      domain: process.env.NODE_ENV === 'production' ? getCookieDomain() : undefined,
     },
   },
   plugins: [
@@ -206,7 +206,7 @@ export const auth = betterAuth({
           modelName: 'Passkey',
         },
       },
-      rpID: env.NODE_ENV == 'production' ? WEBAPP_URL! : 'localhost',
+      rpID: env.NODE_ENV == 'production' ? getAppHostname() : 'localhost',
       rpName: 'Auxx.Ai',
       origin: WEBAPP_URL!,
 

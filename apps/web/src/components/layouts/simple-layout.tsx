@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { client } from '~/auth/auth-client'
 import { Logo } from '~/components/global/login/logo'
-import { useDehydratedOrganizations, useEnvironment } from '~/providers/dehydrated-state-provider'
+import { useDehydratedOrganizations, useEnv } from '~/providers/dehydrated-state-provider'
 import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
 import { ColorfulBg } from '../global/login/colorful-bg'
 
@@ -31,7 +31,7 @@ function hasActiveSubscription(subscription: DehydratedOrganization['subscriptio
  */
 export function SimpleLayout({ children, title, showBackToDashboard = true }: SimpleLayoutProps) {
   const router = useRouter()
-  const env = useEnvironment()
+  const env = useEnv()
   const organizations = useDehydratedOrganizations()
   const { organizationId: currentOrgId } = useOrganizationIdContext()
 

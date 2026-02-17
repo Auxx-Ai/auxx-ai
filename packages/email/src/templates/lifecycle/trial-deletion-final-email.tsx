@@ -1,5 +1,8 @@
 // packages/email/src/templates/lifecycle/trial-deletion-final-email.tsx
 import { Container, Text } from '@react-email/components'
+
+const supportEmail = process.env.SUPPORT_EMAIL || 'support@auxx.ai'
+
 import type React from 'react'
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
@@ -84,8 +87,8 @@ export async function TrialDeletionFinalEmail({
 
         <Text style={{ fontSize: '16px', color: '#e53e3e', fontWeight: '600', marginTop: '24px' }}>
           Need immediate help? Contact support at{' '}
-          <a href='mailto:support@auxx.ai' style={{ color: '#e53e3e', textDecoration: 'none' }}>
-            support@auxx.ai
+          <a href={`mailto:${supportEmail}`} style={{ color: '#e53e3e', textDecoration: 'none' }}>
+            {supportEmail}
           </a>{' '}
           right away.
         </Text>
@@ -123,7 +126,7 @@ What will be deleted:
 • Custom rules and automation
 • Analytics and reporting data
 
-Need immediate help? Contact support at support@auxx.ai right away.
+Need immediate help? Contact support at ${supportEmail} right away.
 
 The Auxx.ai Team
   `.trim()

@@ -1,4 +1,5 @@
 // packages/email/src/templates/billing/subscription-cancelled-email.tsx
+import { WEBAPP_URL } from '@auxx/config/server'
 import { Container, Text } from '@react-email/components'
 import type React from 'react'
 import { EmailButton } from '../../components/email-button'
@@ -17,7 +18,7 @@ export async function SubscriptionCancelledEmail({
   name,
   planName,
   endDate,
-  reactivateUrl = 'https://app.auxx.ai/settings/plans',
+  reactivateUrl = `${WEBAPP_URL}/settings/plans`,
 }: SubscriptionCancelledEmailProps): Promise<React.JSX.Element> {
   return (
     <EmailTemplate>
@@ -63,7 +64,7 @@ export function SubscriptionCancelledText({
   name,
   planName,
   endDate,
-  reactivateUrl = 'https://app.auxx.ai/settings/plans',
+  reactivateUrl = `${WEBAPP_URL}/settings/plans`,
 }: SubscriptionCancelledEmailProps): string {
   return `
 Subscription Cancelled

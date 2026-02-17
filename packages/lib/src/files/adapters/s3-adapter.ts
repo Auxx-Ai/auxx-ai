@@ -112,18 +112,21 @@ export class S3Adapter extends BaseStorageAdapter {
   }
 
   /**
-   * Build external URL for S3 object
+   * Build external URL for S3 object.
+   * Prefers CDN URL if configured, then falls back to AWS virtual-hosted-style URL.
    */
   buildExternalUrl(key: string, auth?: ProviderAuth): string {
-    const bucket = (auth as any)?.bucket || process.env.S3_BUCKET
-    const region = (auth as any)?.region || process.env.AWS_REGION || 'us-west-1'
+    const cdnUrl = process.env.NEXT_PUBLIC_CDN_URL
+    if (cdnUrl) {
+      return `${cdnUrl}/${key}`
+    }
 
+    const bucket = (auth as any)?.bucket || process.env.S3_BUCKET
     if (bucket) {
-      // Use virtual-hosted-style URL for S3
+      const region = (auth as any)?.region || process.env.AWS_REGION || 'us-west-1'
       return `https://${bucket}.s3.${region}.amazonaws.com/${key}`
     }
 
-    // If no bucket available, just return the key
     return key
   }
 

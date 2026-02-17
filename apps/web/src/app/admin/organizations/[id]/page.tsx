@@ -18,18 +18,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Table, TableBody, TableCell, TableRow } from '@auxx/ui/components/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
-import { ArrowLeft, Trash2 } from 'lucide-react'
+import { ArrowLeft, CreditCard, LayoutDashboard, Trash2 } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { ActionHistoryPanel } from './_components/action-history-panel'
 import { EnterpriseManagementSection } from './_components/enterprise-management-section'
+import { MembersSection } from './_components/members-section'
 import { OrganizationAccessSection } from './_components/organization-access-section'
 import { OrganizationActionsSection } from './_components/organization-actions-section'
 import { SubscriptionManagementSection } from './_components/subscription-management-section'
@@ -48,9 +50,6 @@ export default function OrganizationDetailsPage() {
   const utils = api.useUtils()
 
   const { data: org, isLoading } = api.admin.getOrganization.useQuery({ id })
-  const { data: members, isLoading: membersLoading } = api.admin.getOrganizationMembers.useQuery({
-    organizationId: id,
-  })
   const { data: plans } = api.admin.getPlans.useQuery()
 
   const deleteOrg = api.admin.deleteOrganization.useMutation({
@@ -216,14 +215,25 @@ export default function OrganizationDetailsPage() {
         </MainPageHeader>
         <MainPageContent>
           {/* Organization Details */}
-          <Tabs value={activeTab} onValueChange={setActiveTab} className='space-y-4'>
-            <TabsList>
-              <TabsTrigger value='overview'>Overview</TabsTrigger>
-              <TabsTrigger value='billing'>Billing Actions</TabsTrigger>
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className='flex-1 flex flex-col min-h-0'>
+            <TabsList className='border-b w-full justify-start rounded-b-none bg-primary-150'>
+              <TabsTrigger value='overview' variant='outline'>
+                <LayoutDashboard />
+                Overview
+              </TabsTrigger>
+              <TabsTrigger value='billing' variant='outline'>
+                <CreditCard />
+                Billing Actions
+              </TabsTrigger>
             </TabsList>
 
             {/* Overview Tab */}
-            <TabsContent value='overview' className='space-y-4'>
+            <TabsContent
+              value='overview'
+              className='space-y-4 flex-1 flex flex-col min-h-0 overflow-y-auto'>
               <div className='grid md:grid-cols-2'>
                 {/* Actions */}
 
@@ -372,7 +382,7 @@ export default function OrganizationDetailsPage() {
                   </CardContent>
                 </Card>
                 <OrganizationActionsSection organizationId={org.id} organizationName={org.name} />
-
+                <Separator />
                 {/* Metrics */}
                 <Card className='md:col-span-2 border-none rounded-none shadow-none'>
                   <CardHeader>
@@ -410,60 +420,16 @@ export default function OrganizationDetailsPage() {
                     </div>
                   </CardContent>
                 </Card>
-
+                <Separator />
                 {/* Members */}
-                <Card className='md:col-span-2 border-none rounded-none shadow-none'>
-                  <CardHeader>
-                    <CardTitle>Members</CardTitle>
-                    <CardDescription>Organization team members and their roles</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {membersLoading ? (
-                      <div className='space-y-2'>
-                        <Skeleton className='h-12 w-full' />
-                        <Skeleton className='h-12 w-full' />
-                        <Skeleton className='h-12 w-full' />
-                      </div>
-                    ) : members && members.length > 0 ? (
-                      <div className='space-y-2'>
-                        {members.map((member) => (
-                          <div
-                            key={member.id}
-                            className='flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors'>
-                            <div className='flex items-center gap-3'>
-                              <div className='size-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary'>
-                                {member.user?.name?.[0]?.toUpperCase() ||
-                                  member.user?.email?.[0]?.toUpperCase() ||
-                                  '?'}
-                              </div>
-                              <div>
-                                <div className='font-medium'>{member.user?.name || 'Unknown'}</div>
-                                <div className='text-sm text-muted-foreground'>
-                                  {member.user?.email}
-                                </div>
-                              </div>
-                            </div>
-                            <div className='flex items-center gap-2'>
-                              <Badge variant={member.role === 'OWNER' ? 'default' : 'outline'}>
-                                {member.role}
-                              </Badge>
-                              {member.status !== 'ACTIVE' && (
-                                <Badge variant='secondary'>{member.status}</Badge>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className='text-center py-8 text-muted-foreground'>No members found</div>
-                    )}
-                  </CardContent>
-                </Card>
+                <MembersSection organizationId={org.id} />
               </div>
             </TabsContent>
 
             {/* Billing Actions Tab */}
-            <TabsContent value='billing' className='space-y-4'>
+            <TabsContent
+              value='billing'
+              className='space-y-4 flex-1 flex flex-col min-h-0 overflow-y-auto p-4'>
               {/* Trial & Access Management - Side by Side */}
               <div className='grid gap-4 md:grid-cols-2'>
                 {org.subscription && (

@@ -8,7 +8,7 @@ import {
   useDehydratedOrganization,
   useDehydratedOrganizationId,
   useDehydratedUser,
-  useEnvironment,
+  useEnv,
 } from '~/providers/dehydrated-state-provider'
 
 /** Module-level flag to ensure posthog.init() is called only once */
@@ -41,7 +41,7 @@ function PostHogIdentify() {
  * Renders children directly (no-op) when PostHog key is not configured.
  */
 export function PostHogProvider({ children }: { children: ReactNode }) {
-  const { posthog: config } = useEnvironment()
+  const { posthog: config } = useEnv()
 
   // Skip PostHog when not configured (self-hosted without PostHog)
   if (!config.key) {

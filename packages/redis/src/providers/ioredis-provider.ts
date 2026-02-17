@@ -43,7 +43,6 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
     }
     logger.info('Creating hosted Redis client with enhanced support')
     const tls = env.ELASTICACHE_TLS === 'true'
-    console.log('host', host, 'port', port, 'tls', tls, 'pass')
 
     client = new Redis({
       tls: tls ? {} : undefined,

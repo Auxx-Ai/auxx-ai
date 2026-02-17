@@ -16,7 +16,7 @@ export async function EmailChangeVerificationEmail({
   name,
   newEmail,
   verificationLink,
-  supportEmail = 'support@auxx.ai',
+  supportEmail = process.env.SUPPORT_EMAIL || 'support@auxx.ai',
 }: EmailChangeVerificationEmailProps): Promise<React.JSX.Element> {
   return (
     <EmailTemplate>
@@ -110,7 +110,7 @@ export function EmailChangeVerificationText({
   name,
   newEmail,
   verificationLink,
-  supportEmail = 'support@auxx.ai',
+  supportEmail = process.env.SUPPORT_EMAIL || 'support@auxx.ai',
 }: EmailChangeVerificationEmailProps): string {
   return `
 Email Address Change Request

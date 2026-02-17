@@ -1,4 +1,5 @@
 // packages/email/src/templates/weekly-summary/weekly-summary-notification-email.tsx
+import { WEBAPP_URL } from '@auxx/config/server'
 import { Container, Hr, Text } from '@react-email/components'
 import type React from 'react'
 import { EmailButton } from '../../components/email-button'
@@ -27,7 +28,7 @@ export async function WeeklySummaryNotificationEmail({
   name,
   summaryPeriod,
   highlights,
-  ctaUrl = 'https://app.auxx.ai/dashboard',
+  ctaUrl = `${WEBAPP_URL}/dashboard`,
 }: WeeklySummaryNotificationEmailProps): Promise<React.JSX.Element> {
   return (
     <EmailTemplate>
@@ -73,7 +74,7 @@ export function WeeklySummaryNotificationText({
   name,
   summaryPeriod,
   highlights,
-  ctaUrl = 'https://app.auxx.ai/dashboard',
+  ctaUrl = `${WEBAPP_URL}/dashboard`,
 }: WeeklySummaryNotificationEmailProps): string {
   const highlightLines = highlights
     .map((highlight) => `${highlight.label}: ${highlight.value}`)

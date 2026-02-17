@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/share/hooks/use-workflow-share.ts
 
-import { API_URL } from '@auxx/config/urls'
 import { useCallback } from 'react'
+import { useEnv } from '~/providers/dehydrated-state-provider'
 
 /**
  * Shared workflow site info from API
@@ -55,24 +55,26 @@ export interface WorkflowRunResponse {
  * Hook for fetching shared workflow data from Hono API
  */
 export function useWorkflowShare(shareToken: string) {
+  const { apiUrl } = useEnv()
+
   /**
    * Fetch site info (public, no auth required)
    */
   const fetchSiteInfo = useCallback(async (): Promise<WorkflowSiteInfo> => {
-    const res = await fetch(`${API_URL}/api/v1/workflows/share/${shareToken}/site`)
+    const res = await fetch(`${apiUrl}/workflows/share/${shareToken}/site`)
     if (!res.ok) {
       const error = await res.json().catch(() => ({ message: 'Failed to fetch site info' }))
       throw new Error(error.message || 'Failed to fetch site info')
     }
     const { data } = await res.json()
     return data
-  }, [shareToken])
+  }, [shareToken, apiUrl])
 
   /**
    * Fetch or create passport (sets cookie)
    */
   const fetchPassport = useCallback(async (): Promise<PassportResponse> => {
-    const res = await fetch(`${API_URL}/api/v1/workflows/share/${shareToken}/passport`, {
+    const res = await fetch(`${apiUrl}/workflows/share/${shareToken}/passport`, {
       credentials: 'include',
     })
     if (!res.ok) {
@@ -83,14 +85,14 @@ export function useWorkflowShare(shareToken: string) {
     }
     const { data } = await res.json()
     return data
-  }, [shareToken])
+  }, [shareToken, apiUrl])
 
   /**
    * Get run status from Hono API
    */
   const getRunStatus = useCallback(
     async (passport: string, runId: string): Promise<WorkflowRunResponse> => {
-      const res = await fetch(`${API_URL}/api/v1/workflows/share/${shareToken}/runs/${runId}`, {
+      const res = await fetch(`${apiUrl}/workflows/share/${shareToken}/runs/${runId}`, {
         headers: {
           Authorization: `Bearer ${passport}`,
         },
@@ -102,7 +104,7 @@ export function useWorkflowShare(shareToken: string) {
       const { data } = await res.json()
       return data
     },
-    [shareToken]
+    [shareToken, apiUrl]
   )
 
   return {

@@ -46,7 +46,7 @@ export default function PlanEditPage() {
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>
-        <Card className='border-none rounded-none shadow-none'>
+        <Card className='border-none rounded-none shadow-none overflow-y-auto'>
           <CardHeader>
             <CardTitle>
               {isLoading ? <Skeleton className='h-7 w-48' /> : `Edit ${plan?.name}`}

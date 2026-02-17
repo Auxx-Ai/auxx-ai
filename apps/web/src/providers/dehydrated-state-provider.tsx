@@ -75,8 +75,19 @@ export function useDehydratedOrganization(
 /**
  * Hook to access environment configuration
  */
-export function useEnvironment(): DehydratedEnvironment {
+export function useEnv(): DehydratedEnvironment {
   return useDehydratedState().environment
+}
+
+/**
+ * Get environment from dehydrated state (browser) or return undefined (SSR).
+ * Use this in non-React contexts where hooks can't be called.
+ */
+export function getEnv(): DehydratedEnvironment | undefined {
+  if (typeof window !== 'undefined') {
+    return window.AUXX_DEHYDRATED_STATE?.environment
+  }
+  return undefined
 }
 
 /**

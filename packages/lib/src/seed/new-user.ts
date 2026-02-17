@@ -9,8 +9,7 @@ import {
 } from '@auxx/database/enums'
 import type { UserEntity } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, gt } from 'drizzle-orm'
-import { SuperAdminService } from '../admin/super-admin-service'
+import { and, eq, gt, ne } from 'drizzle-orm'
 import { MemberService } from '../members/member-service'
 import { SystemUserService } from '../users/system-user-service'
 import { OrganizationSeeder } from './organization-seeder'
@@ -29,19 +28,31 @@ export async function seedNewUserDatabase(user: {
   email?: string | null
   image?: string | null
 }): Promise<UserEntity | undefined> {
-  // user.
   logger.info(`Seeding database for new user: ${user.id}`)
   if (!user.id || !user.email) {
     console.error('Cannot seed database: User ID or Email missing.', user)
     return
   }
-  await checkSuperAdminUser(user.email)
+
+  // Auto-promote first user or env-var-matched user to super admin + skip email verification
+  const firstUser = await isFirstUser(user.id)
+  const superAdminEmail = (env.SUPER_ADMIN_EMAIL ?? '') + ''
+  const matchesEnvVar =
+    superAdminEmail && user.email.toLowerCase() === superAdminEmail.toLowerCase()
+  const shouldAutoPromote = firstUser || matchesEnvVar
+
+  if (shouldAutoPromote) {
+    logger.info('User eligible for auto-promotion', {
+      email: user.email,
+      reason: firstUser ? 'first-user' : 'env-match',
+    })
+  }
 
   try {
     logger.info(`Create default organization: ${user.id}`)
     const pendingInvite = await getPendingInvite(user.email) // Check for pending invites
     const shouldSeed = await shouldSeedDefaultOrg(user.id, user.email, pendingInvite) // Check if we should seed the default organization
-    console.warn('SHOULD SEED:', shouldSeed)
+
     if (shouldSeed) {
       // Create default organization for the user first
       const organization = await db.transaction(async (tx) => {
@@ -49,7 +60,7 @@ export async function seedNewUserDatabase(user: {
           .insert(schema.Organization)
           .values({
             type: OrganizationType.TEAM,
-            name: `${user.name || 'My'}'s Organization`,
+            name: '',
             createdById: user.id,
             updatedAt: new Date(),
           })
@@ -73,10 +84,14 @@ export async function seedNewUserDatabase(user: {
       )
       logger.info(`Created system user for org: ${organization!.id}`)
 
-      // Set as default organization for the user
+      // Set as default organization for the user (+ auto-promote if eligible)
       const [updatedUser] = await db
         .update(schema.User)
-        .set({ defaultOrganizationId: organizationId, completedOnboarding: false })
+        .set({
+          defaultOrganizationId: organizationId,
+          completedOnboarding: false,
+          ...(shouldAutoPromote && { isSuperAdmin: true, emailVerified: true }),
+        })
         .where(eq(schema.User.id, user.id))
         .returning()
 
@@ -104,7 +119,8 @@ export async function seedNewUserDatabase(user: {
         .update(schema.User)
         .set({
           defaultOrganizationId: organizationId,
-          completedOnboarding: true, // Needs onboarding for the *invited* org later
+          completedOnboarding: true,
+          ...(shouldAutoPromote && { isSuperAdmin: true, emailVerified: true }),
         })
         .where(eq(schema.User.id, user.id))
         .returning()
@@ -117,8 +133,9 @@ export async function seedNewUserDatabase(user: {
       const [updatedUser] = await db
         .update(schema.User)
         .set({
-          defaultOrganizationId: null, // Explicitly null
-          completedOnboarding: true, // Needs onboarding for the *invited* org later
+          defaultOrganizationId: null,
+          completedOnboarding: true,
+          ...(shouldAutoPromote && { isSuperAdmin: true, emailVerified: true }),
         })
         .where(eq(schema.User.id, user.id))
         .returning()
@@ -153,27 +170,19 @@ export async function seedNewUserDatabase(user: {
     logger.error('Error seeding database for new user:', { error })
   }
 }
-// async function setImage()
 type PendingInvite = {
   id: string
   organizationId: string
 }
 
-async function checkSuperAdminUser(email: string) {
-  // Check if this user should be promoted to super admin
-  const superAdminEmail = env.SUPER_ADMIN_EMAIL + ''
-  if (superAdminEmail && email && email.toLowerCase() === superAdminEmail.toLowerCase()) {
-    try {
-      const superAdminService = new SuperAdminService(db)
-      await superAdminService.promoteUserToSuperAdmin(email)
-      logger.info('Successfully promoted user to super admin', { email })
-    } catch (error) {
-      logger.error('Failed to promote user to super admin during seeding', {
-        email,
-        error,
-      })
-    }
-  }
+/** Check if this is the first user in the system (no other users exist) */
+async function isFirstUser(userId: string): Promise<boolean> {
+  const [otherUser] = await db
+    .select({ id: schema.User.id })
+    .from(schema.User)
+    .where(ne(schema.User.id, userId))
+    .limit(1)
+  return !otherUser
 }
 
 async function getPendingInvite(email: string): Promise<PendingInvite | null> {

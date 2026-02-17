@@ -23,6 +23,7 @@ services:
       # - LOCAL_BUNDLES_PATH=/bundles  # Commented out to test S3
       - PORT=3008
       - API_URL=${API_URL:-http://host.docker.internal:3007}
+      - LAMBDA_INVOKE_SECRET=${LAMBDA_INVOKE_SECRET:?Run ./setup.sh to generate secrets}
     volumes:
       # Mount source for hot reload
       - ./src:/app/src:ro

@@ -31,6 +31,8 @@ export interface DehydratedEnvironment {
   appUrl: string
   apiUrl: string
   homepageUrl: string
+  docsUrl: string
+  devPortalUrl: string
   cdnUrl: string
   // External services
   stripe: {
@@ -79,6 +81,7 @@ export interface DehydratedUser {
   // Auth metadata
   providers: string[]
   hasPassword: boolean
+  isSuperAdmin: boolean
   registrationMethod: 'oauth' | 'email' | 'phone' | 'mixed'
   memberships: Array<{
     id: string

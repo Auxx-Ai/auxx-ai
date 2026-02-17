@@ -1,4 +1,5 @@
 // packages/email/src/templates/billing/trial-ending-email.tsx
+import { WEBAPP_URL } from '@auxx/config/server'
 import { Container, Text } from '@react-email/components'
 import type React from 'react'
 import { EmailButton } from '../../components/email-button'
@@ -17,7 +18,7 @@ export async function TrialEndingEmail({
   name,
   planName,
   daysRemaining,
-  billingUrl = 'https://app.auxx.ai/settings/plans',
+  billingUrl = `${WEBAPP_URL}/settings/plans`,
 }: TrialEndingEmailProps): Promise<React.JSX.Element> {
   return (
     <EmailTemplate>
@@ -73,7 +74,7 @@ export function TrialEndingText({
   name,
   planName,
   daysRemaining,
-  billingUrl = 'https://app.auxx.ai/settings/plans',
+  billingUrl = `${WEBAPP_URL}/settings/plans`,
 }: TrialEndingEmailProps): string {
   return `
 Your Trial is Ending Soon

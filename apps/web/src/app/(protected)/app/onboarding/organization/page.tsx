@@ -60,7 +60,7 @@ export default function OrganizationOnboardingPage() {
     resolver: standardSchemaResolver(formSchema),
     mode: 'onTouched',
     defaultValues: {
-      name: state.organization.name || org?.name || '',
+      name: state.organization.name || '',
       handle: state.organization.handle || org?.handle || '',
       website: state.organization.website || org?.website || '',
     },

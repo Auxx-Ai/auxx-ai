@@ -23,7 +23,9 @@ export const databaseDeployFunction = new sst.aws.Function('DatabaseDeployFuncti
     bundle: true,
     external: ['pg-native'],
   },
-  url: true,
+  url: {
+    authorization: 'iam',
+  },
 })
 
 export const databaseDeployUrl = databaseDeployFunction.url

@@ -1,5 +1,6 @@
 // src/app/(auth)/login/page.tsx
 
+import { isTrustedHostname } from '@auxx/config/server'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react' // Import Suspense
@@ -31,11 +32,7 @@ const resolveRedirectTarget = (value: string | string[] | undefined): string => 
   if (candidate!.startsWith('http://') || candidate!.startsWith('https://')) {
     try {
       const url = new URL(candidate)
-      const trustedDomains = ['localhost', 'auxx.ai']
-      const isTrusted = trustedDomains.some(
-        (domain) => url.hostname === domain || url.hostname.endsWith(`.${domain}`)
-      )
-      if (isTrusted) {
+      if (isTrustedHostname(url.hostname)) {
         return candidate
       }
     } catch (e) {

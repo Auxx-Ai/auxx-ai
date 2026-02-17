@@ -43,6 +43,9 @@ export const isDevelopment = NODE_ENV === 'development'
 /** Is production environment */
 export const isProduction = NODE_ENV === 'production'
 
+/** Custom S3 endpoint for non-AWS providers (R2, DO Spaces, etc.) */
+export const S3_ENDPOINT = env.S3_ENDPOINT
+
 /** AWS Region for S3 */
 export const AWS_REGION = env.S3_REGION || 'us-west-1'
 

@@ -1,7 +1,7 @@
 // src/app/(auth)/login/_components/login-form.tsx
 'use client'
 // import { getCsrfToken } from 'next-auth/react' // Needed if CSRF protection is strict
-import { getHomepageUrl } from '@auxx/config/client'
+import { isTrustedHostname } from '@auxx/config/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -27,6 +27,7 @@ import { client } from '~/auth/auth-client' // Use the cached auth
 import { PasswordInput } from '~/components/credentials/password-fields'
 import { GithubIcon, GoogleIcon } from '~/constants/icons'
 import { useAnalytics } from '~/hooks/use-analytics'
+import { useEnv } from '~/providers/dehydrated-state-provider'
 import { GeneralSubmitButton } from './submit-button'
 
 const loginSchema = z.object({
@@ -44,6 +45,7 @@ export default function LoginForm({
 }) {
   const router = useRouter()
   const posthog = useAnalytics()
+  const { homepageUrl } = useEnv()
   const variants = {
     enter: { opacity: 0, x: 50 },
     center: { opacity: 1, x: 0 },
@@ -84,11 +86,7 @@ export default function LoginForm({
         } else if (processedUrl.startsWith('http://') || processedUrl.startsWith('https://')) {
           try {
             const url = new URL(processedUrl)
-            const trustedDomains = ['localhost', 'auxx.ai']
-            const isTrusted = trustedDomains.some(
-              (domain) => url.hostname === domain || url.hostname.endsWith(`.${domain}`)
-            )
-            if (isTrusted) {
+            if (isTrustedHostname(url.hostname)) {
               redirectTo = processedUrl
               isExternal = true
             }
@@ -253,11 +251,7 @@ export default function LoginForm({
       // Allow redirects to trusted domains only
       try {
         const url = new URL(initialCallbackUrl)
-        const trustedDomains = ['localhost', 'auxx.ai']
-        const isTrusted = trustedDomains.some(
-          (domain) => url.hostname === domain || url.hostname.endsWith(`.${domain}`)
-        )
-        if (isTrusted) {
+        if (isTrustedHostname(url.hostname)) {
           redirectToPath = initialCallbackUrl
           isExternalCallback = true
         } else {
@@ -556,7 +550,7 @@ export default function LoginForm({
             By clicking continue, you agree to our{' '}
             <Button variant='link' className='h-auto p-0 text-xs' asChild>
               <Link
-                href={getHomepageUrl('terms-of-service')}
+                href={`${homepageUrl}/terms-of-service`}
                 target='_blank'
                 rel='noopener noreferrer'>
                 terms and service
@@ -565,7 +559,7 @@ export default function LoginForm({
             and{' '}
             <Button variant='link' className='h-auto p-0 text-xs' asChild>
               <Link
-                href={getHomepageUrl('privacy-policy')}
+                href={`${homepageUrl}/privacy-policy`}
                 target='_blank'
                 rel='noopener noreferrer'>
                 privacy policy

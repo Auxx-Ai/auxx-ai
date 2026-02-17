@@ -1,4 +1,5 @@
 // packages/email/src/templates/lifecycle/mid-trial-email.tsx
+import { WEBAPP_URL } from '@auxx/config/server'
 import { Container, Text } from '@react-email/components'
 import type React from 'react'
 import { EmailButton } from '../../components/email-button'
@@ -22,7 +23,7 @@ export async function MidTrialEmail({
   ticketsResolved = 0,
   timeSaved = 0,
   aiAccuracy = 0,
-  dashboardUrl = 'https://app.auxx.ai/dashboard',
+  dashboardUrl = `${WEBAPP_URL}/dashboard`,
   scheduleCallUrl = 'https://calendly.com/auxx-ai/demo',
 }: MidTrialEmailProps): Promise<React.JSX.Element> {
   return (
@@ -159,7 +160,7 @@ export function MidTrialText({
   ticketsResolved = 0,
   timeSaved = 0,
   aiAccuracy = 0,
-  dashboardUrl = 'https://app.auxx.ai/dashboard',
+  dashboardUrl = `${WEBAPP_URL}/dashboard`,
   scheduleCallUrl = 'https://calendly.com/auxx-ai/demo',
 }: MidTrialEmailProps): string {
   let impactSection = ''

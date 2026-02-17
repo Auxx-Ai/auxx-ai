@@ -1,6 +1,13 @@
 // packages/lib/src/dehydration/service.ts
 
-import { API_URL, env, HOMEPAGE_URL, WEBAPP_URL } from '@auxx/config/client'
+import {
+  API_URL,
+  DEV_PORTAL_URL,
+  DOCS_URL,
+  env,
+  HOMEPAGE_URL,
+  WEBAPP_URL,
+} from '@auxx/config/client'
 import { type Database, database as ddb, schema } from '@auxx/database'
 import { getDeploymentMode } from '@auxx/deployment'
 import { execSync } from 'child_process'
@@ -45,6 +52,8 @@ export function buildEnvironment(): DehydratedEnvironment {
     appUrl: WEBAPP_URL || '',
     apiUrl: `${API_URL}/api/v1` || '',
     homepageUrl: HOMEPAGE_URL || '',
+    docsUrl: DOCS_URL || '',
+    devPortalUrl: DEV_PORTAL_URL || '',
     cdnUrl: '',
     stripe: {
       publishableKey: env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '',
@@ -220,6 +229,7 @@ export class DehydrationService {
       preferredTimezone: user.preferredTimezone,
       providers: oauthProviders,
       hasPassword,
+      isSuperAdmin: user.isSuperAdmin,
       registrationMethod,
       memberships: memberships.map((m) => ({
         id: m.id,

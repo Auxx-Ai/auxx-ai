@@ -46,6 +46,7 @@ const baseEnv = createEnv({
   server: {
     BETTER_AUTH_SECRET: z.string().optional(),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    DOMAIN: z.string().optional(), // Root domain for self-hosted (e.g. example.com)
 
     // API Server Configuration
     PORT: z.coerce.number().default(3007),
@@ -130,6 +131,7 @@ const baseEnv = createEnv({
     // AWS S3 - Dual Bucket Configuration
     FILE_STORAGE_TYPE: z.string().optional(), // 'local' or 's3'
     LOCAL_STORAGE_PUBLIC_PATH: z.string().optional(),
+    S3_ENDPOINT: z.string().optional(), // Custom S3 endpoint for non-AWS providers (R2, DO Spaces, etc.)
     S3_PUBLIC_BUCKET: z.string().optional(), // Public bucket for avatars, logos, thumbnails
     S3_PRIVATE_BUCKET: z.string().optional(), // Private bucket for attachments
     S3_REGION: z.string().optional(),
@@ -188,7 +190,10 @@ const baseEnv = createEnv({
   client: {
     NEXT_PUBLIC_BASE_URL: z.string().optional(),
     NEXT_PUBLIC_APP_URL: z.string().optional(),
+    NEXT_PUBLIC_API_URL: z.string().optional(),
+    NEXT_PUBLIC_DEV_PORTAL_URL: z.string().optional(),
     NEXT_PUBLIC_HOMEPAGE_URL: z.string().optional(),
+    NEXT_PUBLIC_ENV: z.string().optional(),
 
     NEXT_PUBLIC_PUSHER_KEY: z.string().optional(),
     NEXT_PUBLIC_PUSHER_CLUSTER: z.string().optional(),
@@ -216,12 +221,16 @@ const baseEnv = createEnv({
    */
   runtimeEnv: {
     BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
+    DOMAIN: process.env.DOMAIN,
     DATABASE_URL: process.env.DATABASE_URL,
     VERCEL_URL: process.env.VERCEL_URL,
     NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
     NODE_ENV: process.env.NODE_ENV,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+    NEXT_PUBLIC_DEV_PORTAL_URL: process.env.NEXT_PUBLIC_DEV_PORTAL_URL,
     NEXT_PUBLIC_HOMEPAGE_URL: process.env.NEXT_PUBLIC_HOMEPAGE_URL,
+    NEXT_PUBLIC_ENV: process.env.NEXT_PUBLIC_ENV,
 
     // API Server
     PORT: process.env.PORT,
@@ -320,6 +329,7 @@ const baseEnv = createEnv({
     // AWS S3 - Dual Bucket Configuration
     LOCAL_STORAGE_PUBLIC_PATH: process.env.LOCAL_STORAGE_PUBLIC_PATH,
     FILE_STORAGE_TYPE: process.env.FILE_STORAGE_TYPE,
+    S3_ENDPOINT: process.env.S3_ENDPOINT,
     S3_PUBLIC_BUCKET: process.env.S3_PUBLIC_BUCKET,
     S3_PRIVATE_BUCKET: process.env.S3_PRIVATE_BUCKET,
     S3_REGION: process.env.S3_REGION,
