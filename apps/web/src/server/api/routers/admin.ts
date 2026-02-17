@@ -710,13 +710,25 @@ export const adminRouter = createTRPCRouter({
     seedInitialPlans: superAdminProcedure.mutation(async ({ ctx }) => {
       const { BillingDomain, ScenarioBuilder } = await import('@auxx/seed')
 
-      // Create a simple scenario for seeding
-      const scenario = new ScenarioBuilder()
-        .withName('admin-seed')
-        .withDescription('Admin-initiated plan seeding')
-        .build()
+      // Use static builder with a valid scenario name
+      const scenario = ScenarioBuilder.build('demo')
 
-      const billingDomain = new BillingDomain(scenario, { db: ctx.db }, { plansOnly: false })
+      // Empty context — BillingDomain requires it but doesn't use it for plan seeding
+      const context = {
+        auth: {
+          testUsers: [],
+          randomUsers: [],
+          credentials: { message: '', password: '', accounts: [] },
+        },
+        services: {
+          organizations: [],
+          integrations: [],
+          inboxes: [],
+          shopifyIntegrations: [],
+        },
+      }
+
+      const billingDomain = new BillingDomain(scenario, context, { plansOnly: false })
       const plansCreated = await billingDomain.insertDirectly(ctx.db)
 
       return {

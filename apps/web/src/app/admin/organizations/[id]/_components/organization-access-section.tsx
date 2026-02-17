@@ -1,6 +1,12 @@
 // apps/web/src/app/admin/organizations/[id]/_components/organization-access-section.tsx
 'use client'
 
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@auxx/ui/components/accordion'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
@@ -201,54 +207,55 @@ export function OrganizationAccessSection({
           )}
 
           {/* Actions */}
-          {!isDisabled ? (
-            <div className='space-y-3'>
-              <div>
-                <h4 className='text-sm font-medium mb-1'>Disable Organization</h4>
-                <p className='text-sm text-muted-foreground'>
-                  Suspend access for policy violations or payment issues
-                </p>
-              </div>
-              <div className='space-y-3'>
-                <div>
-                  <Label htmlFor='disable-reason'>
-                    Reason <span className='text-destructive'>*</span>
-                  </Label>
-                  <Textarea
-                    id='disable-reason'
-                    placeholder='Why are you disabling this organization? (minimum 10 characters)'
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    rows={3}
-                  />
-                  <p className='text-xs text-muted-foreground mt-1'>
-                    This reason will be logged and visible to admins
+          <Accordion type='single' collapsible className='rounded-lg border'>
+            {!isDisabled ? (
+              <AccordionItem value='disable' className='border-b px-4 last:border-b-0'>
+                <AccordionTrigger>Disable Organization</AccordionTrigger>
+                <AccordionContent className='space-y-3'>
+                  <p className='text-sm text-muted-foreground'>
+                    Suspend access for policy violations or payment issues
                   </p>
-                </div>
-                <Button
-                  variant='destructive'
-                  onClick={handleDisable}
-                  loading={disableOrg.isPending}
-                  disabled={!reason || reason.length < 10}>
-                  <Ban />
-                  Disable Organization
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className='space-y-3'>
-              <div>
-                <h4 className='text-sm font-medium mb-1'>Enable Organization</h4>
-                <p className='text-sm text-muted-foreground'>
-                  Restore access after suspension has been resolved
-                </p>
-              </div>
-              <Button onClick={handleEnable} loading={enableOrg.isPending}>
-                <CheckCircle />
-                Enable Organization
-              </Button>
-            </div>
-          )}
+                  <div>
+                    <Label htmlFor='disable-reason'>
+                      Reason <span className='text-destructive'>*</span>
+                    </Label>
+                    <Textarea
+                      id='disable-reason'
+                      placeholder='Why are you disabling this organization? (minimum 10 characters)'
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                      rows={3}
+                    />
+                    <p className='text-xs text-muted-foreground mt-1'>
+                      This reason will be logged and visible to admins
+                    </p>
+                  </div>
+                  <Button
+                    variant='destructive'
+                    size='sm'
+                    onClick={handleDisable}
+                    loading={disableOrg.isPending}
+                    disabled={!reason || reason.length < 10}>
+                    <Ban />
+                    Disable Organization
+                  </Button>
+                </AccordionContent>
+              </AccordionItem>
+            ) : (
+              <AccordionItem value='enable' className='border-b px-4 last:border-b-0'>
+                <AccordionTrigger>Enable Organization</AccordionTrigger>
+                <AccordionContent className='space-y-3'>
+                  <p className='text-sm text-muted-foreground'>
+                    Restore access after suspension has been resolved
+                  </p>
+                  <Button size='sm' onClick={handleEnable} loading={enableOrg.isPending}>
+                    <CheckCircle />
+                    Enable Organization
+                  </Button>
+                </AccordionContent>
+              </AccordionItem>
+            )}
+          </Accordion>
         </CardContent>
       </Card>
     </>

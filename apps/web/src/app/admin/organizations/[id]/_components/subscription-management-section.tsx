@@ -1,6 +1,12 @@
 // apps/web/src/app/admin/organizations/[id]/_components/subscription-management-section.tsx
 'use client'
 
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@auxx/ui/components/accordion'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
@@ -238,143 +244,138 @@ export function SubscriptionManagementSection({
             )}
           </div>
 
-          {/* Cancel or Reactivate */}
-          {!isCanceled ? (
-            <div className='space-y-3'>
-              <div>
-                <h4 className='text-sm font-medium mb-1'>Cancel Subscription Immediately</h4>
+          <Accordion type='single' collapsible className='rounded-lg border'>
+            {/* Cancel or Reactivate */}
+            {!isCanceled ? (
+              <AccordionItem value='cancel' className='border-b px-4 last:border-b-0'>
+                <AccordionTrigger>Cancel Subscription Immediately</AccordionTrigger>
+                <AccordionContent className='space-y-3'>
+                  <p className='text-sm text-muted-foreground'>
+                    Terminate subscription right now, not at period end
+                  </p>
+                  <div>
+                    <Label htmlFor='cancel-reason'>Reason (Optional)</Label>
+                    <Textarea
+                      id='cancel-reason'
+                      placeholder='Why are you canceling this subscription?'
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      rows={2}
+                    />
+                  </div>
+                  <Button
+                    variant='destructive'
+                    size='sm'
+                    onClick={handleCancelImmediate}
+                    loading={cancelImmediate.isPending}>
+                    <Ban />
+                    Cancel Immediately
+                  </Button>
+                </AccordionContent>
+              </AccordionItem>
+            ) : (
+              <AccordionItem value='reactivate' className='border-b px-4 last:border-b-0'>
+                <AccordionTrigger>Reactivate Subscription</AccordionTrigger>
+                <AccordionContent className='space-y-3'>
+                  <p className='text-sm text-muted-foreground'>Restore a canceled subscription</p>
+                  <Button size='sm' onClick={handleReactivate} loading={reactivate.isPending}>
+                    <RefreshCw />
+                    Reactivate Subscription
+                  </Button>
+                </AccordionContent>
+              </AccordionItem>
+            )}
+
+            {/* Force Status Change */}
+            <AccordionItem value='force-status' className='border-b px-4 last:border-b-0'>
+              <AccordionTrigger>Force Status Change</AccordionTrigger>
+              <AccordionContent className='space-y-3'>
                 <p className='text-sm text-muted-foreground'>
-                  Terminate subscription right now, not at period end
+                  Manually override subscription status (use with caution)
                 </p>
-              </div>
-              <div className='space-y-3'>
                 <div>
-                  <Label htmlFor='cancel-reason'>Reason (Optional)</Label>
+                  <Label htmlFor='new-status'>New Status</Label>
+                  <Select value={newStatus} onValueChange={setNewStatus}>
+                    <SelectTrigger>
+                      <SelectValue placeholder='Select new status' />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='active'>Active</SelectItem>
+                      <SelectItem value='ACTIVE'>ACTIVE</SelectItem>
+                      <SelectItem value='canceled'>Canceled</SelectItem>
+                      <SelectItem value='past_due'>Past Due</SelectItem>
+                      <SelectItem value='incomplete'>Incomplete</SelectItem>
+                      <SelectItem value='trialing'>Trialing</SelectItem>
+                      <SelectItem value='TRIALING'>TRIALING</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor='status-reason'>
+                    Reason <span className='text-destructive'>*</span>
+                  </Label>
                   <Textarea
-                    id='cancel-reason'
-                    placeholder='Why are you canceling this subscription?'
-                    value={cancelReason}
-                    onChange={(e) => setCancelReason(e.target.value)}
+                    id='status-reason'
+                    placeholder='Why are you changing the status? (minimum 10 characters)'
+                    value={statusChangeReason}
+                    onChange={(e) => setStatusChangeReason(e.target.value)}
                     rows={2}
                   />
                 </div>
                 <Button
-                  variant='destructive'
-                  onClick={handleCancelImmediate}
-                  loading={cancelImmediate.isPending}>
-                  <Ban />
-                  Cancel Immediately
+                  variant='outline'
+                  size='sm'
+                  onClick={handleForceStatus}
+                  loading={forceStatus.isPending}
+                  disabled={!newStatus || !statusChangeReason || statusChangeReason.length < 10}>
+                  <AlertCircle />
+                  Force Status Change
                 </Button>
-              </div>
-            </div>
-          ) : (
-            <div className='space-y-3'>
-              <div>
-                <h4 className='text-sm font-medium mb-1'>Reactivate Subscription</h4>
-                <p className='text-sm text-muted-foreground'>Restore a canceled subscription</p>
-              </div>
-              <Button onClick={handleReactivate} loading={reactivate.isPending}>
-                <RefreshCw />
-                Reactivate Subscription
-              </Button>
-            </div>
-          )}
+              </AccordionContent>
+            </AccordionItem>
 
-          <div className='border-t' />
-
-          {/* Force Status Change */}
-          <div className='space-y-3'>
-            <div>
-              <h4 className='text-sm font-medium mb-1'>Force Status Change</h4>
-              <p className='text-sm text-muted-foreground'>
-                Manually override subscription status (use with caution)
-              </p>
-            </div>
-            <div className='space-y-3'>
-              <div>
-                <Label htmlFor='new-status'>New Status</Label>
-                <Select value={newStatus} onValueChange={setNewStatus}>
-                  <SelectTrigger>
-                    <SelectValue placeholder='Select new status' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='active'>Active</SelectItem>
-                    <SelectItem value='ACTIVE'>ACTIVE</SelectItem>
-                    <SelectItem value='canceled'>Canceled</SelectItem>
-                    <SelectItem value='past_due'>Past Due</SelectItem>
-                    <SelectItem value='incomplete'>Incomplete</SelectItem>
-                    <SelectItem value='trialing'>Trialing</SelectItem>
-                    <SelectItem value='TRIALING'>TRIALING</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor='status-reason'>
-                  Reason <span className='text-destructive'>*</span>
-                </Label>
-                <Textarea
-                  id='status-reason'
-                  placeholder='Why are you changing the status? (minimum 10 characters)'
-                  value={statusChangeReason}
-                  onChange={(e) => setStatusChangeReason(e.target.value)}
-                  rows={2}
-                />
-              </div>
-              <Button
-                variant='outline'
-                onClick={handleForceStatus}
-                loading={forceStatus.isPending}
-                disabled={!newStatus || !statusChangeReason || statusChangeReason.length < 10}>
-                <AlertCircle />
-                Force Status Change
-              </Button>
-            </div>
-          </div>
-
-          <div className='border-t' />
-
-          {/* Credit Adjustment */}
-          <div className='space-y-3'>
-            <div>
-              <h4 className='text-sm font-medium mb-1'>Apply Credit Adjustment</h4>
-              <p className='text-sm text-muted-foreground'>
-                Add or deduct credits (current balance: {subscription.creditsBalance})
-              </p>
-            </div>
-            <div className='space-y-3'>
-              <div>
-                <Label htmlFor='credit-amount'>Credit Amount</Label>
-                <input
-                  id='credit-amount'
-                  type='number'
-                  className='flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm'
-                  placeholder='Enter amount (positive to add, negative to deduct)'
-                  value={creditAmount}
-                  onChange={(e) => setCreditAmount(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor='credit-reason'>
-                  Reason <span className='text-destructive'>*</span>
-                </Label>
-                <Textarea
-                  id='credit-reason'
-                  placeholder='Why are you adjusting credits? (minimum 10 characters)'
-                  value={creditReason}
-                  onChange={(e) => setCreditReason(e.target.value)}
-                  rows={2}
-                />
-              </div>
-              <Button
-                variant='outline'
-                onClick={handleApplyCredit}
-                loading={applyCredit.isPending}
-                disabled={!creditAmount || !creditReason || creditReason.length < 10}>
-                <DollarSign />
-                Apply Credit
-              </Button>
-            </div>
-          </div>
+            {/* Credit Adjustment */}
+            <AccordionItem value='credit' className='border-b px-4 last:border-b-0'>
+              <AccordionTrigger>Apply Credit Adjustment</AccordionTrigger>
+              <AccordionContent className='space-y-3'>
+                <p className='text-sm text-muted-foreground'>
+                  Add or deduct credits (current balance: {subscription.creditsBalance})
+                </p>
+                <div>
+                  <Label htmlFor='credit-amount'>Credit Amount</Label>
+                  <input
+                    id='credit-amount'
+                    type='number'
+                    className='flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm'
+                    placeholder='Enter amount (positive to add, negative to deduct)'
+                    value={creditAmount}
+                    onChange={(e) => setCreditAmount(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor='credit-reason'>
+                    Reason <span className='text-destructive'>*</span>
+                  </Label>
+                  <Textarea
+                    id='credit-reason'
+                    placeholder='Why are you adjusting credits? (minimum 10 characters)'
+                    value={creditReason}
+                    onChange={(e) => setCreditReason(e.target.value)}
+                    rows={2}
+                  />
+                </div>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={handleApplyCredit}
+                  loading={applyCredit.isPending}
+                  disabled={!creditAmount || !creditReason || creditReason.length < 10}>
+                  <DollarSign />
+                  Apply Credit
+                </Button>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </CardContent>
       </Card>
     </>

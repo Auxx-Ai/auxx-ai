@@ -28,10 +28,12 @@ import {
   BadgeCheck,
   Building2,
   ChevronsUpDown,
+  Code,
   CreditCard,
   LogOut,
   Moon,
   Plus,
+  Shield,
   Sparkles,
   Sun,
   SunMoon,
@@ -46,6 +48,7 @@ import { client } from '~/auth/auth-client' // Use the correct import for your a
 import { useAnalytics } from '~/hooks/use-analytics'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useUser } from '~/hooks/use-user'
+import { useEnv } from '~/providers/dehydrated-state-provider'
 import { CreateOrganizationDialog } from '../create-org-dialog'
 
 type Prop = {
@@ -65,19 +68,17 @@ export function NavUser({ user }: Prop) {
   const router = useRouter()
   const posthog = useAnalytics()
   const selfHosted = useIsSelfHosted()
+  const { devPortalUrl } = useEnv()
   // const session = await auth();
   const {
     user: userData, // Full user data
     organizationId, // Active organization ID
     isLoading, // Whether data is still loading
     switchOrganization, // Function to switch organizations
+    isSuperAdmin, // Whether user is a super admin
   } = useUser({
     requireOrganization: true, // Require organization membership
-    //requireRoles: ['ADMIN', 'OWNER'], // Require specific roles (optional)
   })
-  // const handleLogout = async () => {
-  //   "use server";
-  // };
 
   const initials = getInitialsFromName(user.name, 'U')
 
@@ -89,7 +90,6 @@ export function NavUser({ user }: Prop) {
   const handleClickOrganization = (organizationId: string) => {
     if (organizationId !== activeOrgId) {
       setActiveOrgId(organizationId)
-      // setDefaultOrg.mutate({ organizationId })
       switchOrganization(organizationId) // Update the active organization
     }
   }
@@ -205,6 +205,20 @@ export function NavUser({ user }: Prop) {
                     Account
                   </DropdownMenuItem>
                 </Link>
+                <Link href={devPortalUrl} target='_blank' rel='noopener noreferrer'>
+                  <DropdownMenuItem>
+                    <Code />
+                    Developer Portal
+                  </DropdownMenuItem>
+                </Link>
+                {isSuperAdmin && (
+                  <Link href='/admin' target='_blank' rel='noopener noreferrer'>
+                    <DropdownMenuItem>
+                      <Shield />
+                      Admin
+                    </DropdownMenuItem>
+                  </Link>
+                )}
                 {!selfHosted && (
                   <DropdownMenuItem asChild>
                     <Link href='/app/settings/plans'>

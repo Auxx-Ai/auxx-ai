@@ -79,17 +79,15 @@ if [ "$FILL_MODE" = true ]; then
   fill_if_empty "API_KEY_SALT" "$API_KEY_SALT"
   fill_if_empty "LAMBDA_INVOKE_SECRET" "$LAMBDA_INVOKE_SECRET"
 
-  # Rebuild DATABASE_URL if it contains the old hardcoded password
-  if grep -q "c2J-k5wYf5CxmJDU" .env; then
-    DB_PASS=$(grep "^DATABASE_PASSWORD=" .env | cut -d'=' -f2-)
-    if [ -n "$DB_PASS" ]; then
-      if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' "s|c2J-k5wYf5CxmJDU|${DB_PASS}|g" .env
-      else
-        sed -i "s|c2J-k5wYf5CxmJDU|${DB_PASS}|g" .env
-      fi
-      echo -e "  ${GREEN}✓${NC} Replaced hardcoded password in DATABASE_URL"
+  # Rebuild DATABASE_URL if it contains a stale password
+  DB_PASS=$(grep "^DATABASE_PASSWORD=" .env | cut -d'=' -f2- | tr -d '"')
+  if [ -n "$DB_PASS" ]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      sed -i '' "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:${DB_PASS}@localhost:5432/auxx-ai|" .env
+    else
+      sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:${DB_PASS}@localhost:5432/auxx-ai|" .env
     fi
+    echo -e "  ${GREEN}✓${NC} Rebuilt DATABASE_URL with current DATABASE_PASSWORD"
   fi
 
   # ─── Sync LAMBDA_INVOKE_SECRET to apps/lambda/.env ────────

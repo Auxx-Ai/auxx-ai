@@ -68,6 +68,8 @@ interface UseUserResult {
   isAdminOrOwner: boolean
   /** Whether user is an owner in the current organization */
   isOwner: boolean
+  /** Whether user is a super admin */
+  isSuperAdmin: boolean
   features: FeatureMapObject | null
   hasIntegrations: boolean | null
   settings: Settings | null
@@ -222,6 +224,7 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
     switchOrganization,
     isAdminOrOwner,
     isOwner,
+    isSuperAdmin: dehydratedUser.isSuperAdmin,
     settings: org?.settings || null,
     features: org?.features || null,
     hasIntegrations: org?.hasIntegrations ?? null,
