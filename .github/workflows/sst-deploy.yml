@@ -19,8 +19,8 @@ jobs:
       STAGE: dev
       AWS_REGION: us-west-1
       SST_APP_NAME: auxxai-app
-      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID || '716542960845' }}
-      AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN || 'arn:aws:iam::716542960845:role/AuxxGithubDeployRole' }}
+      EXPECTED_AWS_ACCOUNT_ID: '716542960845'
+      AWS_DEPLOY_ROLE_ARN: arn:aws:iam::716542960845:role/AuxxGithubDeployRole
     permissions:
       id-token: write
       contents: read
@@ -51,7 +51,7 @@ jobs:
           echo "Expected account: ${EXPECTED_AWS_ACCOUNT_ID}"
           if [ "$ACTUAL_ACCOUNT_ID" != "${EXPECTED_AWS_ACCOUNT_ID}" ]; then
             echo "ERROR: Account mismatch. CI is running in account $ACTUAL_ACCOUNT_ID but expected ${EXPECTED_AWS_ACCOUNT_ID}."
-            echo "Check repository variables AWS_ACCOUNT_ID/AWS_DEPLOY_ROLE_ARN."
+            echo "Check OIDC role trust and role-to-assume configuration."
             exit 1
           fi
 

@@ -54,6 +54,7 @@ const DrawerComments = ({
     { recordId },
     { enabled: !!recordId }
   )
+  console.log('Fetched comments for recordId', recordId, commentsData?.comments)
 
   // Loading state
   if (isLoading) {

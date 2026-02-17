@@ -20,6 +20,9 @@ import CommentComposer from './comment-composer'
 /** Helper to convert userId to ActorId format */
 const toUserActorId = (userId: string): ActorId => `user:${userId}` as ActorId
 
+/** Cast string to ActorId */
+const asActorId = (id: string): ActorId => id as ActorId
+
 interface CommentItemProps {
   comment?: CommentType
   commentId?: string
@@ -81,8 +84,8 @@ export function CommentItem({
 
   // Use actor hooks to resolve creator and pinner info
   const { actor: creator } = useActor({
-    actorId: comment?.createdById ? toUserActorId(comment.createdById) : null,
-    enabled: !!comment?.createdById,
+    actorId: comment?.actorId ? asActorId(comment.actorId) : null,
+    enabled: !!comment?.actorId,
   })
   const { actor: pinner } = useActor({
     actorId: comment?.pinnedById ? toUserActorId(comment.pinnedById) : null,

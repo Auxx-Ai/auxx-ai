@@ -3,7 +3,7 @@ import { vpc } from './router-vpc'
 
 // postgresql://[user[:password]@][netloc][:port][/dbname][?param1=value1&...]
 
-export const rds = new sst.aws.Postgres('AuxxAiRds', {
+export const rds = new sst.aws.Postgres('AuxxAiRdsV2', {
   vpc,
   dev: {
     username: 'postgres',
@@ -18,7 +18,7 @@ export const rds = new sst.aws.Postgres('AuxxAiRds', {
   username: 'postgres',
 })
 
-export const redis = new sst.aws.Redis('AuxxAiRedis', {
+export const redis = new sst.aws.Redis('AuxxAiRedisV2', {
   vpc,
   dev: {
     host: 'localhost',

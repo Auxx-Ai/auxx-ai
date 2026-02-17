@@ -237,7 +237,7 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
     { enabled: !!open && !!ticketId, refetchOnWindowFocus: false, retry: 1 }
   )
   const relatedTicketIds =
-    ticketWithRelations?.relatedTickets.map((r: any) => r.relatedTicketId) || []
+    ticketWithRelations?.relatedTickets?.map((r: any) => r.relatedTicketId) ?? []
 
   const handleRename = async () => {
     if (!ticket) return
