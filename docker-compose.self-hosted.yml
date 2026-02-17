@@ -8,15 +8,15 @@
 x-common-env: &common-env
   DEPLOYMENT_MODE: self-hosted
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Run ./setup.sh to generate secrets}
-  WORKFLOW_CREDENTIAL_ENCRYPTION_KEY: ${WORKFLOW_CREDENTIAL_ENCRYPTION_KEY:-}
-  PUBLIC_WORKFLOW_JWT_SECRET: ${PUBLIC_WORKFLOW_JWT_SECRET:-}
+  WORKFLOW_CREDENTIAL_ENCRYPTION_KEY: ${WORKFLOW_CREDENTIAL_ENCRYPTION_KEY:?Run ./setup.sh --self-hosted to generate secrets}
+  PUBLIC_WORKFLOW_JWT_SECRET: ${PUBLIC_WORKFLOW_JWT_SECRET:?Run ./setup.sh --self-hosted to generate secrets}
   API_KEY_SALT: ${API_KEY_SALT:?Run ./setup.sh to generate secrets}
   LAMBDA_INVOKE_SECRET: ${LAMBDA_INVOKE_SECRET:?Run ./setup.sh to generate secrets}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
 
 x-db-env: &db-env
-  DATABASE_URL: postgresql://postgres:${DATABASE_PASSWORD:?Set DATABASE_PASSWORD}@postgres:5432/auxxai
+  DATABASE_URL: postgresql://postgres:${DATABASE_PASSWORD:?Set DATABASE_PASSWORD}@postgres:5432/auxx-ai
 
 x-redis-env: &redis-env
   REDIS_HOST: redis
@@ -36,6 +36,11 @@ x-s3-env: &s3-env
   NEXT_PUBLIC_S3_PRIVATE_BUCKET: ${S3_PRIVATE_BUCKET}
   NEXT_PUBLIC_S3_REGION: ${S3_REGION}
   FILE_STORAGE_TYPE: s3
+  NEXT_PUBLIC_STORAGE_TYPE: s3
+
+x-pusher-env: &pusher-env
+  NEXT_PUBLIC_PUSHER_KEY: ${PUSHER_KEY:-}
+  NEXT_PUBLIC_PUSHER_CLUSTER: ${PUSHER_CLUSTER:-}
 
 x-url-env: &url-env
   DOMAIN: ${DOMAIN}
@@ -45,9 +50,6 @@ x-url-env: &url-env
   NEXT_PUBLIC_HOMEPAGE_URL: https://app.${DOMAIN}
   NEXT_PUBLIC_APP_URL: https://app.${DOMAIN}
   NEXT_PUBLIC_ENV: production
-  NEXT_PUBLIC_STORAGE_TYPE: s3
-  NEXT_PUBLIC_PUSHER_KEY: ${PUSHER_KEY:-}
-  NEXT_PUBLIC_PUSHER_CLUSTER: ${PUSHER_CLUSTER:-}
 
 services:
   # ---- Infrastructure ----
@@ -79,7 +81,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
-      POSTGRES_DB: auxxai
+      POSTGRES_DB: auxx-ai
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -97,7 +99,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', 'ping']
+      test: ['CMD-SHELL', 'REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep PONG']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -123,8 +125,10 @@ services:
 
   web:
     image: ghcr.io/auxx-ai/web:${VERSION:-latest}
+    env_file:
+      - .env
     environment:
-      <<: [*common-env, *db-env, *redis-env, *s3-env, *url-env]
+      <<: [*common-env, *db-env, *redis-env, *s3-env, *url-env, *pusher-env]
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -144,8 +148,10 @@ services:
 
   api:
     image: ghcr.io/auxx-ai/api:${VERSION:-latest}
+    env_file:
+      - .env
     environment:
-      <<: [*common-env, *db-env, *redis-env, *s3-env, *url-env]
+      <<: [*common-env, *db-env, *redis-env, *s3-env, *url-env, *pusher-env]
       SERVER_FUNCTION_EXECUTOR_URL: http://lambda:3008
       ALLOWED_ORIGINS: https://app.${DOMAIN},https://build.${DOMAIN}
     depends_on:
@@ -167,8 +173,10 @@ services:
 
   build:
     image: ghcr.io/auxx-ai/build:${VERSION:-latest}
+    env_file:
+      - .env
     environment:
-      <<: [*common-env, *db-env, *redis-env, *s3-env, *url-env]
+      <<: [*common-env, *db-env, *redis-env, *s3-env, *url-env, *pusher-env]
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -188,8 +196,10 @@ services:
 
   worker:
     image: ghcr.io/auxx-ai/worker:${VERSION:-latest}
+    env_file:
+      - .env
     environment:
-      <<: [*common-env, *db-env, *redis-env, *s3-env, *url-env]
+      <<: [*common-env, *db-env, *redis-env, *s3-env, *url-env, *pusher-env]
       WORKERS_PORT: "3005"
       WORKERS_HOST: "0.0.0.0"
     depends_on:
@@ -206,6 +216,8 @@ services:
 
   lambda:
     image: ghcr.io/auxx-ai/lambda-server:${VERSION:-latest}
+    env_file:
+      - .env
     environment:
       S3_ENDPOINT: ${S3_ENDPOINT:-}
       AWS_REGION: ${S3_REGION}

@@ -7,7 +7,7 @@ export type Comment = {
   content: string
   createdAt: Date
   updatedAt: Date
-  createdById: string
+  actorId: string
   isPinned: boolean
   pinnedById?: string | null
   pinnedAt?: Date | null
@@ -46,14 +46,14 @@ export function groupConsecutiveComments(comments: Comment[]): CommentGroup[] {
     // 4. Comment is a reply (replies break grouping)
     const shouldStartNewGroup =
       !lastGroup ||
-      lastGroup.senderId !== comment.createdById ||
+      lastGroup.senderId !== comment.actorId ||
       comment.isPinned ||
       comment.parentId !== null
 
     if (shouldStartNewGroup) {
       // Start a new group
       groups.push({
-        senderId: comment.createdById,
+        senderId: comment.actorId,
         comments: [comment],
         startIndex: index,
       })

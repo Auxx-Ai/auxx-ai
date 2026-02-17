@@ -78,7 +78,7 @@ export type Comment = {
   recordId: string
   createdAt: Date
   updatedAt: Date
-  createdById: string // User ID - use useActor to resolve user info
+  actorId: string // ActorId (e.g. "user:abc123") - use useActor to resolve
   isPinned: boolean
   pinnedById?: string | null // User ID - use useActor to resolve user info
   pinnedAt?: Date | null

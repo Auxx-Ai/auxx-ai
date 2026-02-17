@@ -96,7 +96,7 @@ function getStatusDisplay(status: string) {
         icon: Clock,
         bg: 'bg-gray-100',
         text: 'text-gray-800',
-        label: status.replace(/_/g, ' '),
+        label: (status + '').replace(/_/g, ' '),
       }
   }
 }

@@ -24,6 +24,18 @@ for arg in "$@"; do
   esac
 done
 
+DB_NAME='auxx-ai'
+DB_HOST='localhost'
+
+if [ "$SELF_HOSTED" = true ]; then
+  DB_HOST='postgres'
+elif [ -f .env ]; then
+  EXISTING_DEPLOYMENT_MODE=$(grep -E "^DEPLOYMENT_MODE=" .env | tail -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)
+  if [ "$EXISTING_DEPLOYMENT_MODE" = "self-hosted" ]; then
+    DB_HOST='postgres'
+  fi
+fi
+
 # ─── Guard against overwriting ─────────────────────────────
 if [ -f .env ]; then
   echo -e "${YELLOW}.env already exists.${NC}"
@@ -48,6 +60,8 @@ REDIS_PASSWORD=$(generate_secret 16)
 BETTER_AUTH_SECRET=$(generate_secret 32)
 API_KEY_SALT=$(generate_secret 16)
 LAMBDA_INVOKE_SECRET=$(generate_secret 32)
+WORKFLOW_CREDENTIAL_ENCRYPTION_KEY=$(generate_secret 16)
+PUBLIC_WORKFLOW_JWT_SECRET=$(generate_secret 32)
 
 # ─── Fill mode: only set vars that are empty/missing ───────
 if [ "$FILL_MODE" = true ]; then
@@ -78,14 +92,25 @@ if [ "$FILL_MODE" = true ]; then
   fill_if_empty "BETTER_AUTH_SECRET" "$BETTER_AUTH_SECRET"
   fill_if_empty "API_KEY_SALT" "$API_KEY_SALT"
   fill_if_empty "LAMBDA_INVOKE_SECRET" "$LAMBDA_INVOKE_SECRET"
+  fill_if_empty "WORKFLOW_CREDENTIAL_ENCRYPTION_KEY" "$WORKFLOW_CREDENTIAL_ENCRYPTION_KEY"
+  fill_if_empty "PUBLIC_WORKFLOW_JWT_SECRET" "$PUBLIC_WORKFLOW_JWT_SECRET"
 
   # Rebuild DATABASE_URL if it contains a stale password
   DB_PASS=$(grep "^DATABASE_PASSWORD=" .env | cut -d'=' -f2- | tr -d '"')
   if [ -n "$DB_PASS" ]; then
+    DB_URL="postgresql://postgres:${DB_PASS}@${DB_HOST}:5432/${DB_NAME}"
     if [[ "$OSTYPE" == "darwin"* ]]; then
-      sed -i '' "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:${DB_PASS}@localhost:5432/auxx-ai|" .env
+      if grep -q "^DATABASE_URL=" .env; then
+        sed -i '' "s|^DATABASE_URL=.*|DATABASE_URL=${DB_URL}|" .env
+      else
+        echo "DATABASE_URL=${DB_URL}" >> .env
+      fi
     else
-      sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:${DB_PASS}@localhost:5432/auxx-ai|" .env
+      if grep -q "^DATABASE_URL=" .env; then
+        sed -i "s|^DATABASE_URL=.*|DATABASE_URL=${DB_URL}|" .env
+      else
+        echo "DATABASE_URL=${DB_URL}" >> .env
+      fi
     fi
     echo -e "  ${GREEN}✓${NC} Rebuilt DATABASE_URL with current DATABASE_PASSWORD"
 
@@ -93,9 +118,9 @@ if [ "$FILL_MODE" = true ]; then
     for dir in "apps/web" "apps/build" "apps/api" "apps/worker" "apps/kb" "packages/database"; do
       if [ -f "${dir}/.env" ]; then
         if [[ "$OSTYPE" == "darwin"* ]]; then
-          sed -i '' "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:${DB_PASS}@localhost:5432/auxx-ai|" "${dir}/.env"
+          sed -i '' "s|^DATABASE_URL=.*|DATABASE_URL=${DB_URL}|" "${dir}/.env"
         else
-          sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:${DB_PASS}@localhost:5432/auxx-ai|" "${dir}/.env"
+          sed -i "s|^DATABASE_URL=.*|DATABASE_URL=${DB_URL}|" "${dir}/.env"
         fi
         echo -e "  ${GREEN}✓${NC} Synced DATABASE_URL in ${dir}/.env"
       fi
@@ -162,9 +187,11 @@ do_sed "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=${REDIS_PASSWORD}|" .env
 do_sed "s|^BETTER_AUTH_SECRET=.*|BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}|" .env
 do_sed "s|^API_KEY_SALT=.*|API_KEY_SALT=${API_KEY_SALT}|" .env
 do_sed "s|^LAMBDA_INVOKE_SECRET=.*|LAMBDA_INVOKE_SECRET=${LAMBDA_INVOKE_SECRET}|" .env
+do_sed "s|^WORKFLOW_CREDENTIAL_ENCRYPTION_KEY=.*|WORKFLOW_CREDENTIAL_ENCRYPTION_KEY=${WORKFLOW_CREDENTIAL_ENCRYPTION_KEY}|" .env
+do_sed "s|^PUBLIC_WORKFLOW_JWT_SECRET=.*|PUBLIC_WORKFLOW_JWT_SECRET=${PUBLIC_WORKFLOW_JWT_SECRET}|" .env
 
 # ─── Build DATABASE_URL from generated password ───────────
-do_sed "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:${DATABASE_PASSWORD}@localhost:5432/auxx-ai|" .env
+do_sed "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:${DATABASE_PASSWORD}@${DB_HOST}:5432/${DB_NAME}|" .env
 
 # ─── Set sensible defaults ────────────────────────────────
 do_sed "s|^NEXT_PUBLIC_BASE_URL=.*|NEXT_PUBLIC_BASE_URL=http://localhost:3000|" .env
@@ -178,7 +205,7 @@ if [ -f apps/lambda/.env.example ]; then
 fi
 
 # ─── Sync DATABASE_URL to all app .env files ─────────────
-DB_URL="postgresql://postgres:${DATABASE_PASSWORD}@localhost:5432/auxx-ai"
+DB_URL="postgresql://postgres:${DATABASE_PASSWORD}@${DB_HOST}:5432/${DB_NAME}"
 APP_DIRS=("apps/web" "apps/build" "apps/api" "apps/worker" "apps/kb" "packages/database")
 
 for dir in "${APP_DIRS[@]}"; do
@@ -205,6 +232,8 @@ echo "    REDIS_PASSWORD      (used by Redis)"
 echo "    BETTER_AUTH_SECRET  (used by BetterAuth)"
 echo "    API_KEY_SALT        (used for API key generation)"
 echo "    LAMBDA_INVOKE_SECRET (used for Lambda executor auth)"
+echo "    WORKFLOW_CREDENTIAL_ENCRYPTION_KEY (used for credential encryption)"
+echo "    PUBLIC_WORKFLOW_JWT_SECRET (used for workflow passport signing)"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
 if [ "$SELF_HOSTED" = true ]; then

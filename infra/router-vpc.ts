@@ -1,6 +1,10 @@
 import { domain } from './dns'
 
-export const vpc = new sst.aws.Vpc('AuxxAiVpc', { bastion: true, nat: 'ec2' })
+// Keep legacy VPC declared to avoid failed delete during migration.
+// Active infrastructure uses AuxxAiVpcV2 below.
+export const legacyVpc = new sst.aws.Vpc('AuxxAiVpc', { bastion: true, nat: 'ec2' })
+
+export const vpc = new sst.aws.Vpc('AuxxAiVpcV2', { bastion: true, nat: 'ec2' })
 
 // Import existing CloudFront distribution
 // export const router = sst.aws.Router.get('AuxxAiRouter', 'E1UUUL5E15V4KL')

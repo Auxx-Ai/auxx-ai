@@ -38,7 +38,7 @@ declare module "sst" {
       "type": "sst.aws.Nextjs"
       "url": string
     }
-    "AuxxAiRds": {
+    "AuxxAiRdsV2": {
       "database": string
       "host": string
       "password": string
@@ -46,7 +46,7 @@ declare module "sst" {
       "type": "sst.aws.Postgres"
       "username": string
     }
-    "AuxxAiRedis": {
+    "AuxxAiRedisV2": {
       "host": string
       "password": string
       "port": number
@@ -58,6 +58,10 @@ declare module "sst" {
       "url": string
     }
     "AuxxAiVpc": {
+      "bastion": string
+      "type": "sst.aws.Vpc"
+    }
+    "AuxxAiVpcV2": {
       "bastion": string
       "type": "sst.aws.Vpc"
     }

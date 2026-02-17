@@ -23,6 +23,7 @@ export function CommentList({
   // Use the hook directly
   const { comments, isFetchingComments } = useComments({ recordId, onCommentAdded })
 
+  console.log('CommentList - comments for recordId', recordId, comments, isFetchingComments)
   if (isFetchingComments) {
     return (
       <div className={className}>
@@ -35,7 +36,7 @@ export function CommentList({
   // Group consecutive comments from the same sender
   // Type guard to ensure comments have the right structure
   const validComments = comments.filter(
-    (c): c is Comment => c && typeof c === 'object' && 'createdById' in c && !!c.createdById
+    (c): c is Comment => c && typeof c === 'object' && 'actorId' in c && !!c.actorId
   )
   // Cast to any to handle type mismatch between the two Comment types
   const groups = groupConsecutiveComments(validComments as any)
