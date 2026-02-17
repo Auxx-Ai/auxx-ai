@@ -15,10 +15,9 @@ const logger = createScopedLogger('find-existing-record')
  * Map of system resource IDs to their Drizzle table definitions.
  * Used for querying system tables during import planning.
  */
+// Contact and Ticket tables have been dropped - they now use EntityInstance.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const SYSTEM_TABLE_MAP: Record<string, PgTableWithColumns<any>> = {
-  contact: schema.Contact,
-  ticket: schema.Ticket,
   thread: schema.Thread,
   user: schema.User,
   inbox: schema.Inbox,

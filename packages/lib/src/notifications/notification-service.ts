@@ -351,12 +351,14 @@ export class NotificationService {
           return comment?.organizationId || null
         }
         case 'Ticket': {
-          const [ticket] = await this.database
-            .select({ organizationId: schema.Ticket.organizationId })
-            .from(schema.Ticket)
-            .where(eq(schema.Ticket.id, entityId))
+          // Ticket table has been dropped. Tickets are now EntityInstances.
+          // TODO: Query EntityInstance for organizationId instead.
+          const [instance] = await this.database
+            .select({ organizationId: schema.EntityInstance.organizationId })
+            .from(schema.EntityInstance)
+            .where(eq(schema.EntityInstance.id, entityId))
             .limit(1)
-          return ticket?.organizationId || null
+          return instance?.organizationId || null
         }
         case 'Thread': {
           const [thread] = await this.database

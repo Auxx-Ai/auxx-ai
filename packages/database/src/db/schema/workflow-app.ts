@@ -83,7 +83,10 @@ export const WorkflowApp = pgTable(
     name: text().notNull(),
     description: text(),
     enabled: boolean().default(true).notNull(),
-    createdById: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    createdById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     isPublic: boolean().default(false).notNull(),
     isUniversal: boolean().default(false).notNull(),
     workflowId: text().references((): AnyPgColumn => Workflow.id, { onUpdate: 'cascade' }),

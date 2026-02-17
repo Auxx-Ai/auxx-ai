@@ -246,9 +246,8 @@ export function getTableSchema(tableId: TableId) {
   const tableInfo = RESOURCE_TABLE_MAP[tableId]
   if (!tableInfo) return undefined
 
+  // Contact and Ticket tables have been dropped - they now use EntityInstance.
   const tableMap: Record<string, any> = {
-    Contact: schema.Contact,
-    Ticket: schema.Ticket,
     Inbox: schema.Inbox,
     User: schema.User,
     Thread: schema.Thread,

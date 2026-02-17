@@ -36,7 +36,10 @@ export const Article = pgTable(
     contentJson: jsonb(),
     excerpt: text(),
     isCategory: boolean().default(false).notNull(),
-    authorId: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    authorId: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     status: articleStatus().default('DRAFT').notNull(),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 }).notNull(),

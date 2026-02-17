@@ -49,9 +49,10 @@ export const WorkflowRun = pgTable(
     elapsedTime: doublePrecision(),
     totalTokens: integer().default(0).notNull(),
     totalSteps: integer().default(0).notNull(),
-    createdBy: text()
-      .notNull()
-      .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'restrict' }),
+    createdBy: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     finishedAt: timestamp({ precision: 3 }),
     pausedAt: timestamp({ precision: 3 }),

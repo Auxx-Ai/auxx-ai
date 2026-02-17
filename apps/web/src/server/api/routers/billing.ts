@@ -837,10 +837,14 @@ export const billingRouter = createTRPCRouter({
  */
 async function getOrganizationStats(db: any, organizationId: string) {
   try {
-    // Get ticket count
-    const ticketCount = await db.query.Ticket.findMany({
-      where: (tickets: any, { eq }: any) => eq(tickets.organizationId, organizationId),
-    }).then((tickets: any[]) => tickets.length)
+    // Get ticket count via EntityInstance (Ticket table deleted)
+    const ticketCount = await db.query.EntityInstance.findMany({
+      where: (instances: any, { eq, and }: any) =>
+        and(
+          eq(instances.organizationId, organizationId),
+          eq(instances.entityDefinitionId, 'ticket')
+        ),
+    }).then((instances: any[]) => instances.length)
 
     // Get member count
     const memberCount = await db.query.OrganizationMember.findMany({

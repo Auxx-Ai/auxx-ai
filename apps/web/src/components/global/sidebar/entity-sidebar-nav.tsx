@@ -358,6 +358,11 @@ export function EntitySidebarNav() {
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           entityDefinitionId={editingEntityId}
+          onSuccess={({ apiSlug }) => {
+            if (!editingEntityId) {
+              router.push(`/app/custom/${apiSlug}`)
+            }
+          }}
         />
       )}
 

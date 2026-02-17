@@ -1,53 +1,13 @@
 // apps/web/src/app/(protected)/app/contacts/_components/groups/customer-groups-card.tsx
+// @deprecated CustomerGroup/CustomerGroupMember tables deleted.
+// This component is dead code - no longer imported anywhere.
+// TODO: Remove this file.
 
-import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
-import { Plus } from 'lucide-react'
-
-interface CustomerGroupsCardProps {
-  customer: any // Replace with proper type
-  isMerged: boolean
-  onManageGroups: () => void
-}
+'use client'
 
 /**
- * CustomerGroupsCard displays the groups a customer belongs to.
- * Header (h4) is rendered by the parent component.
+ * @deprecated CustomerGroupsCard - groups are now managed via entity-group-member table.
  */
-export default function CustomerGroupsCard({
-  customer,
-  isMerged,
-  onManageGroups,
-}: CustomerGroupsCardProps) {
-  const hasGroups = customer.customerGroups && customer.customerGroups.length > 0
-
-  return (
-    <div className='bg-primary-100/50 rounded-2xl border py-2 px-3'>
-      {hasGroups ? (
-        <div className='space-y-2'>
-          <div className='flex flex-wrap gap-1'>
-            {customer.customerGroups.map((membership: any) => (
-              <Badge key={membership.customerGroupId} variant='secondary'>
-                {membership.customerGroup.name}
-              </Badge>
-            ))}
-          </div>
-          {!isMerged && (
-            <Button variant='ghost' size='sm' onClick={onManageGroups}>
-              <Plus /> Manage Groups
-            </Button>
-          )}
-        </div>
-      ) : (
-        <div className='flex items-center justify-between'>
-          <span className='text-sm text-muted-foreground'>No groups</span>
-          {!isMerged && (
-            <Button variant='ghost' size='sm' onClick={onManageGroups}>
-              <Plus /> Add to Group
-            </Button>
-          )}
-        </div>
-      )}
-    </div>
-  )
+export default function CustomerGroupsCard(_props: Record<string, unknown>) {
+  return null
 }

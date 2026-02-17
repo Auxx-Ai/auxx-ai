@@ -35,20 +35,19 @@ import type { DrawerTabProps } from '../drawer-tab-registry'
  * Parts tab for contact drawer - shows parts this contact supplies
  */
 export function ContactPartsTab({ entityInstanceId }: DrawerTabProps) {
-  const contactId = entityInstanceId
   const utils = api.useUtils()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingVendorPart, setEditingVendorPart] = useState<VendorPart | null>(null)
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
 
-  // Fetch vendor parts for this contact
-  const { data, isLoading } = api.vendorPart.all.useQuery({ query: { contactId } })
+  // Fetch vendor parts for this entity instance
+  const { data, isLoading } = api.vendorPart.all.useQuery({ query: { entityInstanceId } })
   const vendorParts = data?.vendorParts ?? []
 
   // Delete vendor part mutation
   const deleteVendorPart = api.vendorPart.delete.useMutation({
     onSuccess: () => {
-      utils.vendorPart.all.invalidate({ query: { contactId } })
+      utils.vendorPart.all.invalidate({ query: { entityInstanceId } })
     },
     onError: (error) => {
       toastError({ title: 'Error removing part', description: error.message })
@@ -58,7 +57,7 @@ export function ContactPartsTab({ entityInstanceId }: DrawerTabProps) {
   // Update vendor part mutation (for setting preferred)
   const updateVendorPart = api.vendorPart.update.useMutation({
     onSuccess: () => {
-      utils.vendorPart.all.invalidate({ query: { contactId } })
+      utils.vendorPart.all.invalidate({ query: { entityInstanceId } })
     },
     onError: (error) => {
       toastError({ title: 'Error updating part', description: error.message })
@@ -77,7 +76,7 @@ export function ContactPartsTab({ entityInstanceId }: DrawerTabProps) {
       })
       if (confirmed) {
         deleteVendorPart.mutate({
-          contactId: vendorPart.contactId,
+          entityInstanceId: vendorPart.entityInstanceId,
           id: vendorPart.id,
         })
       }
@@ -96,7 +95,7 @@ export function ContactPartsTab({ entityInstanceId }: DrawerTabProps) {
     (vendorPart: any) => {
       updateVendorPart.mutate({
         id: vendorPart.id,
-        contactId: vendorPart.contactId,
+        entityInstanceId: vendorPart.entityInstanceId,
         partId: vendorPart.partId,
         vendorSku: vendorPart.vendorSku,
         isPreferred: true,
@@ -233,10 +232,10 @@ export function ContactPartsTab({ entityInstanceId }: DrawerTabProps) {
       <VendorPartDialog
         open={isDialogOpen}
         onOpenChange={handleDialogOpenChange}
-        contactId={contactId}
+        entityInstanceId={entityInstanceId}
         vendorPart={editingVendorPart}
         onSuccess={() => {
-          utils.vendorPart.all.invalidate({ query: { contactId } })
+          utils.vendorPart.all.invalidate({ query: { entityInstanceId } })
         }}
       />
 

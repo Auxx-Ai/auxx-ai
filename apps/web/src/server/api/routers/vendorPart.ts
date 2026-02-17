@@ -3,7 +3,6 @@
 import { database as db, schema } from '@auxx/database'
 import { handleVendorPartChange, handleVendorPartDelete } from '@auxx/lib/bom'
 import { createScopedLogger } from '@auxx/logger'
-import * as contactDb from '@auxx/services/contacts'
 import * as vendorPartDb from '@auxx/services/vendor-parts'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
@@ -16,7 +15,7 @@ export const vendorPartRouter = createTRPCRouter({
   create: protectedProcedure
     .input(
       z.object({
-        contactId: z.string().min(1),
+        entityInstanceId: z.string().min(1),
         partId: z.string().min(1),
         vendorSku: z.string().min(1),
         unitPrice: z.number().nullable().optional(),
@@ -27,18 +26,19 @@ export const vendorPartRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const { contactId, partId, vendorSku, leadTime, minOrderQty, isPreferred } = input
+      const { entityInstanceId, partId, vendorSku, leadTime, minOrderQty, isPreferred } = input
       const { unitPrice } = input
 
-      // Check if contact exists
-      const contactResult = await contactDb.getContactById({
-        contactId,
-        organizationId,
+      // Check if entity instance exists
+      const entityInstance = await db.query.EntityInstance.findFirst({
+        where: and(
+          eq(schema.EntityInstance.id, entityInstanceId),
+          eq(schema.EntityInstance.organizationId, organizationId)
+        ),
       })
-      if (contactResult.isErr()) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Contact not found' })
+      if (!entityInstance) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Entity instance not found' })
       }
-      const contact = contactResult.value
 
       // Check if part exists
       const part = await db.query.Part.findFirst({
@@ -50,21 +50,21 @@ export const vendorPartRouter = createTRPCRouter({
 
       // Check if association already exists
       const existsResult = await vendorPartDb.checkVendorPartExists({
-        contactId,
+        entityInstanceId,
         partId,
         organizationId,
       })
       if (existsResult.isOk() && existsResult.value) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'This contact is already associated with this part',
+          message: 'This entity instance is already associated with this part',
         })
       }
 
       // Create the association
       const createResult = await vendorPartDb.insertVendorPart({
         organizationId,
-        contactId,
+        entityInstanceId,
         partId,
         vendorSku,
         unitPrice,
@@ -94,14 +94,14 @@ export const vendorPartRouter = createTRPCRouter({
         })
       }
 
-      return { vendorPart: { ...vendorPart, contact, part } }
+      return { vendorPart: { ...vendorPart, contact: entityInstance, part } }
     }),
 
   update: protectedProcedure
     .input(
       z.object({
         id: z.string(),
-        contactId: z.string().min(1),
+        entityInstanceId: z.string().min(1),
         partId: z.string().min(1),
         vendorSku: z.string().min(1),
         unitPrice: z.number().nullable().optional(),
@@ -167,7 +167,7 @@ export const vendorPartRouter = createTRPCRouter({
         .object({
           query: z
             .object({
-              contactId: z.string().optional(),
+              entityInstanceId: z.string().optional(),
               partId: z.string().optional(),
             })
             .optional(),
@@ -176,12 +176,12 @@ export const vendorPartRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const { contactId, partId } = input?.query || {}
+      const { entityInstanceId, partId } = input?.query || {}
 
       // Use service function with relational queries
       const result = await vendorPartDb.getVendorParts({
         organizationId,
-        contactId,
+        entityInstanceId,
         partId,
       })
 
@@ -195,25 +195,25 @@ export const vendorPartRouter = createTRPCRouter({
       return { vendorParts: result.value }
     }),
 
-  byPartAndContact: protectedProcedure
+  byPartAndEntityInstance: protectedProcedure
     .input(
       z.object({
-        contactId: z.string().min(1),
+        entityInstanceId: z.string().min(1),
         partId: z.string().min(1),
       })
     )
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const { contactId, partId } = input
+      const { entityInstanceId, partId } = input
 
-      const result = await vendorPartDb.getVendorPartByContactAndPart({
-        contactId,
+      const result = await vendorPartDb.getVendorPartByEntityInstanceAndPart({
+        entityInstanceId,
         partId,
         organizationId,
       })
 
       if (result.isErr()) {
-        logger.error('Vendor-part association not found', { contactId, partId })
+        logger.error('Vendor-part association not found', { entityInstanceId, partId })
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Vendor-part association not found' })
       }
 
@@ -237,7 +237,7 @@ export const vendorPartRouter = createTRPCRouter({
   }),
 
   delete: protectedProcedure
-    .input(z.object({ contactId: z.string(), id: z.string() }))
+    .input(z.object({ entityInstanceId: z.string(), id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       const { id } = input

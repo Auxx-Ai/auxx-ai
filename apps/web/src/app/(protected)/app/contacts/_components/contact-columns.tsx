@@ -7,7 +7,6 @@ import { Badge } from '@auxx/ui/components/badge'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import {
   Calendar,
-  Database,
   Mail,
   PanelRight,
   ShieldAlert,
@@ -15,7 +14,6 @@ import {
   Tag,
   Trash2,
   User,
-  Users,
 } from 'lucide-react'
 import { getCustomerStatusVariant } from '~/components/contacts/contact-status'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
@@ -33,16 +31,6 @@ export type Contact = {
   updatedAt: string
   phone: string | null
   status: CustomerStatus
-  customerSources: {
-    id: string
-    source: string
-  }[]
-  customerGroups: {
-    customerGroupId: string
-    customerGroup: {
-      name: string
-    }
-  }[]
   customFieldValues?: Array<{
     fieldId: string
     value: any
@@ -54,7 +42,6 @@ export type Contact = {
  */
 export interface ContactColumnActions {
   onViewDetails: (id: string) => void
-  onManageGroups: (id: string) => void
   onMarkAsSpam: (id: string) => void
   onDelete: (id: string) => void
 }
@@ -82,11 +69,6 @@ export function createContactColumns(actions: ContactColumnActions): ExtendedCol
               <PanelRight />
               View Details
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => actions.onManageGroups(row.original.id)}>
-              <Users />
-              Manage Groups
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
             <DropdownMenuItem
               variant='destructive'
               onClick={() => actions.onMarkAsSpam(row.original.id)}>
@@ -146,53 +128,6 @@ export function createContactColumns(actions: ContactColumnActions): ExtendedCol
       columnType: 'phone',
       fieldType: 'PHONE_INTL',
       icon: Smartphone,
-    },
-    {
-      accessorKey: 'sources',
-      header: 'Sources',
-      cell: ({ row }) => (
-        <FormattedCell
-          value={null}
-          fieldType='ITEMS'
-          columnId='sources'
-          items={row.original.customerSources}
-          renderItem={(source: { id: string; source: string }) => (
-            <Badge variant='gray' size='sm'>
-              {source.source}
-            </Badge>
-          )}
-        />
-      ),
-      enableSorting: true,
-      enableResizing: true,
-      size: 150,
-      columnType: 'text',
-      icon: Database,
-    },
-    {
-      id: 'groups',
-      header: 'Groups',
-      cell: ({ row }) => (
-        <FormattedCell
-          value={null}
-          fieldType='ITEMS'
-          columnId='groups'
-          items={row.original.customerGroups.map((g) => ({
-            id: g.customerGroupId,
-            name: g.customerGroup.name,
-          }))}
-          renderItem={(group: { id: string; name: string }) => (
-            <Badge variant='pill' shape='tag'>
-              {group.name}
-            </Badge>
-          )}
-        />
-      ),
-      enableSorting: true,
-      enableResizing: true,
-      size: 150,
-      columnType: 'text',
-      icon: Users,
     },
     {
       accessorKey: 'status',

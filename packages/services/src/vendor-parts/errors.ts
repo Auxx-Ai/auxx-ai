@@ -15,7 +15,7 @@ export type VendorPartNotFoundError = {
 export type VendorPartAlreadyExistsError = {
   code: 'VENDOR_PART_ALREADY_EXISTS'
   message: string
-  contactId: string
+  entityInstanceId: string
   partId: string
 }
 

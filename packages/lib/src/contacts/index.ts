@@ -6,7 +6,6 @@ export {
   type ContactWithDetails,
   type CreateContactInput,
   type GetAllContactsInput,
-  type MergeContactsInput,
   type PaginatedBasicContactsResult,
   type PaginatedContactsResult,
   type PaginatedContactsWithFieldsResult,

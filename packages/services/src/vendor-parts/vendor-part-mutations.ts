@@ -12,7 +12,7 @@ import type { CreateVendorPartInput, UpdateVendorPartInput, VendorPartContext } 
 export async function insertVendorPart(input: CreateVendorPartInput) {
   const {
     organizationId,
-    contactId,
+    entityInstanceId,
     partId,
     vendorSku,
     unitPrice,
@@ -26,7 +26,7 @@ export async function insertVendorPart(input: CreateVendorPartInput) {
       .insert(schema.VendorPart)
       .values({
         organizationId,
-        contactId,
+        entityInstanceId,
         partId,
         vendorSku,
         unitPrice,
@@ -46,7 +46,7 @@ export async function insertVendorPart(input: CreateVendorPartInput) {
 export async function insertVendorPartTx(tx: Transaction, input: CreateVendorPartInput) {
   const {
     organizationId,
-    contactId,
+    entityInstanceId,
     partId,
     vendorSku,
     unitPrice,
@@ -59,7 +59,7 @@ export async function insertVendorPartTx(tx: Transaction, input: CreateVendorPar
     .insert(schema.VendorPart)
     .values({
       organizationId,
-      contactId,
+      entityInstanceId,
       partId,
       vendorSku,
       unitPrice,

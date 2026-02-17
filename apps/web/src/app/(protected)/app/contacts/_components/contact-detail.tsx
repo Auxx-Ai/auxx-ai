@@ -20,7 +20,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { getFullName } from '@auxx/utils/contact'
 import { formatDistanceToNow } from 'date-fns'
-import { Ban, User, UserCircle, Users } from 'lucide-react'
+import { Ban, User, UserCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import React, { useState } from 'react'
@@ -35,8 +35,6 @@ import CustomerOrdersTab from './customer-orders-tab'
 import CustomerSourcesCard from './customer-sources-card'
 import CustomerSpamDialog from './customer-spam-dialog'
 import CustomerTicketsTab from './customer-tickets-tab'
-import CustomerGroupsCard from './groups/customer-groups-card'
-import GroupManagementDialog from './groups/group-management-dialog'
 import { useContactMutations } from './use-contact-mutations'
 
 // Memoized EntityFields for performance
@@ -48,13 +46,11 @@ const MemoEntityFields = React.memo(EntityFields)
 function ContactDetailActions({
   isMerged,
   isSpam,
-  onGroupsClick,
   onMergeClick,
   onSpamClick,
 }: {
   isMerged: boolean
   isSpam: boolean
-  onGroupsClick: () => void
   onMergeClick: () => void
   onSpamClick: () => void
 }) {
@@ -62,9 +58,6 @@ function ContactDetailActions({
 
   return (
     <div className='flex gap-2'>
-      <Button variant='outline' size='sm' onClick={onGroupsClick}>
-        <Users /> Groups
-      </Button>
       <Button variant='outline' size='sm' onClick={onMergeClick}>
         <UserCircle /> Merge
       </Button>
@@ -78,17 +71,9 @@ function ContactDetailActions({
 }
 
 /**
- * ContactDetailSidebar - sidebar component with person card, entity fields, groups, and sources
+ * ContactDetailSidebar - sidebar component with person card and entity fields
  */
-function ContactDetailSidebar({
-  customer,
-  isMerged,
-  onManageGroups,
-}: {
-  customer: any
-  isMerged: boolean
-  onManageGroups: () => void
-}) {
+function ContactDetailSidebar({ customer }: { customer: any }) {
   const createdAtText = React.useMemo(
     () => `Created ${formatDistanceToNow(new Date(customer.createdAt), { addSuffix: true })}`,
     [customer.createdAt]
@@ -112,21 +97,10 @@ function ContactDetailSidebar({
       {/* Entity Fields - directly below person card, no tabs */}
       <MemoEntityFields recordId={toRecordId('contact', customer.id)} className='m-4' />
 
-      {/* Groups and Sources Sections - matching ticket-detail-drawer.tsx pattern */}
-      <div className='space-y-4 p-4 pt-0'>
-        <div className='space-y-1'>
-          <h4 className='text-sm'>Groups</h4>
-          <CustomerGroupsCard
-            customer={customer}
-            isMerged={isMerged}
-            onManageGroups={onManageGroups}
-          />
-        </div>
-
-        <div className='space-y-1'>
-          <h4 className='text-sm'>Connected Sources</h4>
-          <CustomerSourcesCard customer={customer} />
-        </div>
+      {/* Sources */}
+      <div className='px-4 pb-4'>
+        <h4 className='text-sm font-medium mb-2'>Sources</h4>
+        <CustomerSourcesCard customer={customer} />
       </div>
     </div>
   )
@@ -148,7 +122,6 @@ export function ContactDetail({ id }: { id: string }) {
 
   // State for dialogs
   const [isSpamDialogOpen, setIsSpamDialogOpen] = useState(false)
-  const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false)
 
   // Query customer data
   const { data: customer, isLoading, refetch } = api.contact.getById.useQuery({ id })
@@ -187,7 +160,6 @@ export function ContactDetail({ id }: { id: string }) {
             <ContactDetailActions
               isMerged={isMerged}
               isSpam={isSpam}
-              onGroupsClick={() => setIsGroupDialogOpen(true)}
               onMergeClick={
                 () => {}
                 // toast({ title: 'Merge feature coming soon', description: 'This feature is currently being redesigned.' })
@@ -206,13 +178,7 @@ export function ContactDetail({ id }: { id: string }) {
         dockedPanels={[
           {
             key: 'sidebar',
-            content: (
-              <ContactDetailSidebar
-                customer={customer}
-                isMerged={isMerged}
-                onManageGroups={() => setIsGroupDialogOpen(true)}
-              />
-            ),
+            content: <ContactDetailSidebar customer={customer} />,
             width: dockedWidth,
             onWidthChange: setDockedWidth,
             minWidth,
@@ -259,13 +225,6 @@ export function ContactDetail({ id }: { id: string }) {
         open={isSpamDialogOpen}
         onOpenChange={setIsSpamDialogOpen}
         onConfirm={handleMarkAsSpam}
-      />
-
-      <GroupManagementDialog
-        open={isGroupDialogOpen}
-        onOpenChange={setIsGroupDialogOpen}
-        customerIds={[id]}
-        onSuccess={() => refetch()}
       />
     </MainPage>
   )

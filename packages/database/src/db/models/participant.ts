@@ -1,8 +1,7 @@
 // packages/database/src/db/models/participant.ts
 // Participant model built on BaseModel (org-scoped)
 
-import { and, eq, ilike, or, type SQL } from 'drizzle-orm'
-import { Contact } from '../schema/contact'
+import { and, ilike, or, type SQL } from 'drizzle-orm'
 import { Participant } from '../schema/participant'
 import { BaseModel } from '../utils/base-model'
 import { Result, type TypedResult } from '../utils/result'
@@ -29,20 +28,11 @@ export class ParticipantModel extends BaseModel<
     return Participant
   }
 
-  /** Suggest participants by identifier/name/displayName or contact fields */
+  /** Suggest participants by identifier/name/displayName */
   async listSuggestions(
     q?: string,
     limit: number = 10
-  ): Promise<
-    TypedResult<
-      Array<
-        ParticipantEntity & {
-          contact?: Pick<typeof Contact.$inferSelect, 'id' | 'firstName' | 'lastName' | 'email'>
-        }
-      >,
-      Error
-    >
-  > {
+  ): Promise<TypedResult<ParticipantEntity[], Error>> {
     try {
       this.requireOrgIfScoped()
       const whereParts: SQL<unknown>[] = []
@@ -53,31 +43,11 @@ export class ParticipantModel extends BaseModel<
           or(
             ilike(Participant.identifier as any, needle),
             ilike(Participant.name as any, needle),
-            ilike(Participant.displayName as any, needle),
-            ilike(Contact.firstName as any, needle),
-            ilike(Contact.lastName as any, needle),
-            ilike(Contact.email as any, needle)
+            ilike(Participant.displayName as any, needle)
           ) as any
         )
       }
-      let qy = this.db
-        .select({
-          id: Participant.id,
-          identifier: Participant.identifier,
-          identifierType: Participant.identifierType,
-          name: Participant.name,
-          displayName: Participant.displayName,
-          contact: {
-            id: Contact.id,
-            firstName: Contact.firstName,
-            lastName: Contact.lastName,
-            email: Contact.email,
-          },
-        })
-        .from(Participant)
-        .leftJoin(Contact, eq(Contact.id, Participant.entityInstanceId))
-        .limit(limit)
-        .$dynamic()
+      let qy = this.db.select().from(Participant).limit(limit).$dynamic()
       if (whereParts.length === 1) qy = qy.where(whereParts[0])
       else if (whereParts.length > 1) qy = qy.where(and(...whereParts))
       const rows = (await qy) as any[]

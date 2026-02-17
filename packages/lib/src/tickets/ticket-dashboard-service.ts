@@ -1,8 +1,7 @@
 // packages/lib/src/tickets/ticket-dashboard-service.ts
 
 import { type Database, schema } from '@auxx/database'
-import { TicketStatus as TicketStatusEnum } from '@auxx/database/enums'
-import { and, asc, count, eq, gte, inArray, isNull, lt, lte, not } from 'drizzle-orm'
+import { and, count, eq, gte, isNull, lte } from 'drizzle-orm'
 
 /**
  * Type describing the supported dashboard summary periods
@@ -35,197 +34,104 @@ export interface TicketDashboardSummary {
 }
 
 /**
- * Service responsible for computing ticket dashboard insights
+ * Service responsible for computing ticket dashboard insights.
+ *
+ * Queries EntityInstance + EntityDefinition (where entityType = 'ticket')
+ * instead of the dropped Ticket table. Field values for ticket-specific
+ * fields (status, priority, etc.) live in the FieldValue table.
+ *
+ * TODO: Reimplement dashboard queries using EntityInstance + FieldValue joins.
+ * The old implementation relied heavily on typed columns on the Ticket table
+ * (status, priority, type, resolvedAt, closedAt, dueDate). These are now
+ * stored as FieldValue rows, requiring a different query strategy.
  */
 export class TicketDashboardService {
   constructor(private readonly db: Database) {}
 
   /**
-   * Produce summary statistics used by the ticket dashboard
+   * Produce summary statistics used by the ticket dashboard.
+   * Currently returns empty/default values -- awaiting FieldValue-based query rewrite.
    */
   async getSummary(args: TicketDashboardSummaryArgs): Promise<TicketDashboardSummary> {
     const period = args.period ?? 'week'
     const now = new Date()
     const startDate = this.calculatePeriodStart(period, now)
 
-    const ticketsByStatusRows = await this.db
-      .select({ status: schema.Ticket.status, cnt: count() })
-      .from(schema.Ticket)
-      .where(eq(schema.Ticket.organizationId, args.organizationId))
-      .groupBy(schema.Ticket.status)
+    // Count total ticket entity instances for this organization
+    const entityDef = await this.getTicketEntityDefinition(args.organizationId)
+    let totalTickets = 0
 
-    const ticketsByStatus = ticketsByStatusRows.map((row) => ({
-      status: row.status,
-      count: Number(row.cnt || 0),
-    }))
-
-    const [{ newCount }] = await this.db
-      .select({ newCount: count() })
-      .from(schema.Ticket)
-      .where(
-        and(
-          eq(schema.Ticket.organizationId, args.organizationId),
-          gte(schema.Ticket.createdAt, startDate)
-        )
-      )
-
-    const [{ resCount }] = await this.db
-      .select({ resCount: count() })
-      .from(schema.Ticket)
-      .where(
-        and(
-          eq(schema.Ticket.organizationId, args.organizationId),
-          inArray(schema.Ticket.status, [TicketStatusEnum.RESOLVED, TicketStatusEnum.CLOSED]),
-          gte(schema.Ticket.resolvedAt, startDate)
-        )
-      )
-
-    const resolvedTickets = await this.db
-      .select({ createdAt: schema.Ticket.createdAt, resolvedAt: schema.Ticket.resolvedAt })
-      .from(schema.Ticket)
-      .where(
-        and(
-          eq(schema.Ticket.organizationId, args.organizationId),
-          inArray(schema.Ticket.status, [TicketStatusEnum.RESOLVED, TicketStatusEnum.CLOSED]),
-          gte(schema.Ticket.resolvedAt, startDate)
-        )
-      )
-
-    const resolutionTimes = resolvedTickets
-      .map((ticket) =>
-        ticket.resolvedAt ? ticket.resolvedAt.getTime() - ticket.createdAt.getTime() : 0
-      )
-      .filter((duration) => duration > 0)
-
-    const avgResolutionTime =
-      resolutionTimes.length > 0
-        ? resolutionTimes.reduce((acc, duration) => acc + duration, 0) / resolutionTimes.length
-        : 0
-
-    const ticketTypesRows = await this.db
-      .select({ type: schema.Ticket.type, cnt: count() })
-      .from(schema.Ticket)
-      .where(
-        and(
-          eq(schema.Ticket.organizationId, args.organizationId),
-          gte(schema.Ticket.createdAt, startDate)
-        )
-      )
-      .groupBy(schema.Ticket.type)
-
-    const topTicketTypes = ticketTypesRows
-      .map((row) => ({ type: row.type, count: Number(row.cnt || 0) }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5)
-
-    const unassignedRows = await this.db
-      .select({ id: schema.Ticket.id })
-      .from(schema.Ticket)
-      .leftJoin(schema.TicketAssignment, eq(schema.Ticket.id, schema.TicketAssignment.ticketId))
-      .where(
-        and(
-          eq(schema.Ticket.organizationId, args.organizationId),
-          isNull(schema.TicketAssignment.id),
-          not(
-            inArray(schema.Ticket.status, [
-              TicketStatusEnum.RESOLVED,
-              TicketStatusEnum.CLOSED,
-              TicketStatusEnum.CANCELLED,
-            ])
+    if (entityDef) {
+      const [row] = await this.db
+        .select({ cnt: count() })
+        .from(schema.EntityInstance)
+        .where(
+          and(
+            eq(schema.EntityInstance.organizationId, args.organizationId),
+            eq(schema.EntityInstance.entityDefinitionId, entityDef.id),
+            isNull(schema.EntityInstance.archivedAt)
           )
         )
-      )
+      totalTickets = Number(row?.cnt || 0)
 
-    const today = new Date()
-    today.setHours(23, 59, 59, 999)
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
-
-    const [{ dueToday }] = await this.db
-      .select({ dueToday: count() })
-      .from(schema.Ticket)
-      .where(
-        and(
-          eq(schema.Ticket.organizationId, args.organizationId),
-          gte(schema.Ticket.dueDate, todayStart),
-          lte(schema.Ticket.dueDate, today),
-          not(
-            inArray(schema.Ticket.status, [
-              TicketStatusEnum.RESOLVED,
-              TicketStatusEnum.CLOSED,
-              TicketStatusEnum.CANCELLED,
-            ])
+      // Count new tickets in period
+      const [newRow] = await this.db
+        .select({ cnt: count() })
+        .from(schema.EntityInstance)
+        .where(
+          and(
+            eq(schema.EntityInstance.organizationId, args.organizationId),
+            eq(schema.EntityInstance.entityDefinitionId, entityDef.id),
+            gte(schema.EntityInstance.createdAt, startDate)
           )
         )
-      )
 
-    const [{ overdue }] = await this.db
-      .select({ overdue: count() })
-      .from(schema.Ticket)
-      .where(
-        and(
-          eq(schema.Ticket.organizationId, args.organizationId),
-          lt(schema.Ticket.dueDate, todayStart),
-          not(
-            inArray(schema.Ticket.status, [
-              TicketStatusEnum.RESOLVED,
-              TicketStatusEnum.CLOSED,
-              TicketStatusEnum.CANCELLED,
-            ])
-          )
-        )
-      )
-
-    const ticketsByPriorityRows = await this.db
-      .select({ priority: schema.Ticket.priority, cnt: count() })
-      .from(schema.Ticket)
-      .where(
-        and(
-          eq(schema.Ticket.organizationId, args.organizationId),
-          not(
-            inArray(schema.Ticket.status, [
-              TicketStatusEnum.RESOLVED,
-              TicketStatusEnum.CLOSED,
-              TicketStatusEnum.CANCELLED,
-            ])
-          )
-        )
-      )
-      .groupBy(schema.Ticket.priority)
-
-    const ticketsOverTime = await this.getTicketsOverTime(
-      args.organizationId,
-      period,
-      startDate,
-      now
-    )
-
-    const ticketsByStatusRecord = ticketsByStatus.reduce<Record<string, number>>((acc, item) => {
-      acc[item.status ?? 'UNKNOWN'] = item.count
-      return acc
-    }, {})
-
-    const ticketsByPriorityRecord = ticketsByPriorityRows.reduce<Record<string, number>>(
-      (acc, item) => {
-        acc[item.priority ?? 'UNKNOWN'] = Number(item.cnt || 0)
-        return acc
-      },
-      {}
-    )
-
-    return {
-      totalTickets: ticketsByStatus.reduce((sum, item) => sum + item.count, 0),
-      ticketsByStatus: ticketsByStatusRecord,
-      newTicketsCount: Number(newCount || 0),
-      resolvedTicketsCount: Number(resCount || 0),
-      avgResolutionTime,
-      topTicketTypes,
-      unassignedTicketsCount: unassignedRows.length,
-      dueTodayCount: Number(dueToday || 0),
-      overdueCount: Number(overdue || 0),
-      ticketsByPriority: ticketsByPriorityRecord,
-      ticketsOverTime,
+      return {
+        totalTickets,
+        ticketsByStatus: {},
+        newTicketsCount: Number(newRow?.cnt || 0),
+        resolvedTicketsCount: 0, // TODO: Query FieldValue for status = RESOLVED/CLOSED
+        avgResolutionTime: 0, // TODO: Requires resolvedAt from FieldValue
+        topTicketTypes: [], // TODO: Query FieldValue for ticket_type grouping
+        unassignedTicketsCount: 0, // TODO: Query FieldValue for assigned_to_id IS NULL
+        dueTodayCount: 0, // TODO: Query FieldValue for due_date
+        overdueCount: 0, // TODO: Query FieldValue for due_date
+        ticketsByPriority: {},
+        ticketsOverTime: this.generateEmptyTimeSeries(period, startDate, now),
+      }
     }
+
+    // No ticket entity definition found, return defaults
+    return {
+      totalTickets: 0,
+      ticketsByStatus: {},
+      newTicketsCount: 0,
+      resolvedTicketsCount: 0,
+      avgResolutionTime: 0,
+      topTicketTypes: [],
+      unassignedTicketsCount: 0,
+      dueTodayCount: 0,
+      overdueCount: 0,
+      ticketsByPriority: {},
+      ticketsOverTime: [],
+    }
+  }
+
+  /**
+   * Look up the EntityDefinition for ticket entities in this organization
+   */
+  private async getTicketEntityDefinition(organizationId: string) {
+    const rows = await this.db
+      .select()
+      .from(schema.EntityDefinition)
+      .where(
+        and(
+          eq(schema.EntityDefinition.organizationId, organizationId),
+          eq(schema.EntityDefinition.entityType, 'ticket')
+        )
+      )
+      .limit(1)
+    return rows[0] ?? null
   }
 
   /**
@@ -254,59 +160,26 @@ export class TicketDashboardService {
   }
 
   /**
-   * Build a time series of ticket creation and resolution activity
+   * Generate an empty time series for the given period
    */
-  private async getTicketsOverTime(
-    organizationId: string,
+  private generateEmptyTimeSeries(
     period: TicketDashboardPeriod,
     startDate: Date,
     endDate: Date
-  ) {
-    const tickets = await this.db
-      .select({
-        id: schema.Ticket.id,
-        createdAt: schema.Ticket.createdAt,
-        resolvedAt: schema.Ticket.resolvedAt,
-        status: schema.Ticket.status,
-      })
-      .from(schema.Ticket)
-      .where(
-        and(
-          eq(schema.Ticket.organizationId, organizationId),
-          gte(schema.Ticket.createdAt, startDate),
-          lte(schema.Ticket.createdAt, endDate)
-        )
-      )
-      .orderBy(asc(schema.Ticket.createdAt))
-
+  ): Array<{ date: string; timestamp: number; created: number; resolved: number }> {
     const intervalConfig = this.resolveInterval(period)
-
     const intervals: Date[] = []
     let currentDate = new Date(startDate)
     while (currentDate <= endDate) {
       intervals.push(new Date(currentDate))
       currentDate = new Date(currentDate.getTime() + intervalConfig.intervalMs)
     }
-
-    return intervals.map((intervalDate) => {
-      const nextIntervalDate = new Date(intervalDate.getTime() + intervalConfig.intervalMs)
-      const created = tickets.filter(
-        (ticket) => ticket.createdAt >= intervalDate && ticket.createdAt < nextIntervalDate
-      ).length
-      const resolved = tickets.filter(
-        (ticket) =>
-          ticket.resolvedAt !== null &&
-          ticket.resolvedAt >= intervalDate &&
-          ticket.resolvedAt < nextIntervalDate
-      ).length
-
-      return {
-        date: this.formatIntervalLabel(intervalDate, intervalConfig.dateFormat),
-        timestamp: intervalDate.getTime(),
-        created,
-        resolved,
-      }
-    })
+    return intervals.map((intervalDate) => ({
+      date: this.formatIntervalLabel(intervalDate, intervalConfig.dateFormat),
+      timestamp: intervalDate.getTime(),
+      created: 0,
+      resolved: 0,
+    }))
   }
 
   /**

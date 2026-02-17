@@ -4,10 +4,6 @@
 import { relations } from 'drizzle-orm/relations'
 import {
   Address,
-  Contact,
-  CustomerGroup,
-  CustomerGroupMember,
-  CustomerSource,
   EntityInstance,
   FulfillmentTracking,
   Invoice,
@@ -31,7 +27,6 @@ import {
   ShopifyIntegration,
   Subscription,
   shopify_customers,
-  Ticket,
   User,
   VendorPart,
   WebhookEvent,
@@ -63,48 +58,6 @@ export const shopifyAuthStateRelations = relations(ShopifyAuthState, ({ one }) =
   user: one(User, {
     fields: [ShopifyAuthState.userId],
     references: [User.id],
-  }),
-}))
-
-export const contactRelations = relations(Contact, ({ one, many }) => ({
-  organization: one(Organization, {
-    fields: [Contact.organizationId],
-    references: [Organization.id],
-  }),
-  customerSources: many(CustomerSource),
-  customerGroups: many(CustomerGroupMember),
-  shopifyCustomers: many(shopify_customers),
-  tickets: many(Ticket),
-  vendorParts: many(VendorPart),
-}))
-
-export const customerSourceRelations = relations(CustomerSource, ({ one }) => ({
-  contact: one(Contact, {
-    fields: [CustomerSource.contactId],
-    references: [Contact.id],
-  }),
-  organization: one(Organization, {
-    fields: [CustomerSource.organizationId],
-    references: [Organization.id],
-  }),
-}))
-
-export const customerGroupRelations = relations(CustomerGroup, ({ one, many }) => ({
-  organization: one(Organization, {
-    fields: [CustomerGroup.organizationId],
-    references: [Organization.id],
-  }),
-  members: many(CustomerGroupMember),
-}))
-
-export const customerGroupMemberRelations = relations(CustomerGroupMember, ({ one }) => ({
-  contact: one(Contact, {
-    fields: [CustomerGroupMember.contactId],
-    references: [Contact.id],
-  }),
-  customerGroup: one(CustomerGroup, {
-    fields: [CustomerGroupMember.customerGroupId],
-    references: [CustomerGroup.id],
   }),
 }))
 
@@ -158,7 +111,6 @@ export const orderRelations = relations(Order, ({ one, many }) => ({
   lineItems: many(OrderLineItem),
   fulfillments: many(OrderFulfillment),
   trackings: many(FulfillmentTracking),
-  tickets: many(Ticket),
 }))
 
 export const addressRelations = relations(Address, ({ one, many }) => ({
@@ -190,10 +142,6 @@ export const shopifyCustomersRelations = relations(shopify_customers, ({ one, ma
   orders: many(Order, {
     relationName: 'order_customerId_shopifyCustomers_id',
   }),
-  contact: one(Contact, {
-    fields: [shopify_customers.contactId],
-    references: [Contact.id],
-  }),
   defaultAddress: one(Address, {
     fields: [shopify_customers.defaultAddressId],
     references: [Address.id],
@@ -215,7 +163,6 @@ export const shopifyCustomersRelations = relations(shopify_customers, ({ one, ma
   addresses: many(Address, {
     relationName: 'address_customerId_shopifyCustomers_id',
   }),
-  tickets: many(Ticket),
 }))
 
 export const productRelations = relations(Product, ({ one, many }) => ({

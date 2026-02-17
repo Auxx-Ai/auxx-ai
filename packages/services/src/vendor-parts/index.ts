@@ -24,7 +24,7 @@ export {
 // Query operations
 export {
   checkVendorPartExists,
-  getVendorPartByContactAndPart,
+  getVendorPartByEntityInstanceAndPart,
   getVendorPartById,
   getVendorParts,
 } from './vendor-part-queries'

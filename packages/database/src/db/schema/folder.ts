@@ -30,9 +30,10 @@ export const Folder = pgTable(
     parentId: text().references((): AnyPgColumn => Folder.id, { onUpdate: 'cascade' }),
     path: text(),
     depth: integer().default(0).notNull(),
-    createdById: text()
-      .notNull()
-      .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'restrict' }),
+    createdById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 }).notNull(),
     deletedAt: timestamp({ precision: 3 }),

@@ -38,7 +38,10 @@ export const MediaAsset = pgTable(
     currentVersionId: text().references((): AnyPgColumn => MediaAssetVersion.id, {
       onUpdate: 'cascade',
     }),
-    createdById: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    createdById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 }).notNull(),
     expiresAt: timestamp({ precision: 3 }),

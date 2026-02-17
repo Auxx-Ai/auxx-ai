@@ -53,7 +53,10 @@ export const Document = pgTable(
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
-    uploadedById: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    uploadedById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     enabled: boolean().default(true).notNull(),
     metadata: jsonb(),
     /** Optional document-specific chunk settings (overrides dataset defaults when set) */

@@ -11,7 +11,7 @@ export interface VendorPartContext {
  * Input for creating a vendor part
  */
 export interface CreateVendorPartInput extends VendorPartContext {
-  contactId: string
+  entityInstanceId: string
   partId: string
   vendorSku: string
   unitPrice?: number | null
@@ -36,6 +36,6 @@ export interface UpdateVendorPartInput extends VendorPartContext {
  * Query options for listing vendor parts
  */
 export interface ListVendorPartsInput extends VendorPartContext {
-  contactId?: string
+  entityInstanceId?: string
   partId?: string
 }

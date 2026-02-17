@@ -3,6 +3,13 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@auxx/ui/components/empty'
 import { Building } from 'lucide-react'
 import Link from 'next/link'
 import { useDeveloperAccounts } from '~/components/providers/dehydrated-state-provider'
@@ -19,10 +26,14 @@ export function AccountsCard() {
       <div className='mx-auto min-w-md max-w-xl p-6 space-y-3'>
         <Card className='shadow-md shadow-black/20 border-transparent'>
           <CardHeader className='text-center'>
-            <CardTitle className='text-lg'>Developer accounts</CardTitle>
-            <CardDescription>
-              Jump into an existing developer account or add a new one
-            </CardDescription>
+            {accounts.length > 0 && (
+              <>
+                <CardTitle className='text-lg'>Developer accounts</CardTitle>
+                <CardDescription>
+                  Jump into an existing developer account or add a new one
+                </CardDescription>
+              </>
+            )}
           </CardHeader>
           <CardContent className=''>
             <div className='w-full max-w-md'>
@@ -57,9 +68,15 @@ export function AccountsCard() {
                   </Link>
                 ))
               ) : (
-                <div className='text-center text-sm text-muted-foreground py-8'>
-                  No developer accounts yet. Create your first one below!
-                </div>
+                <Empty className='border-0'>
+                  <EmptyHeader>
+                    <EmptyMedia variant='icon'>
+                      <Building />
+                    </EmptyMedia>
+                    <EmptyTitle>No developer accounts yet</EmptyTitle>
+                    <EmptyDescription>Create your first one below to get started!</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
               )}
             </div>
           </CardContent>

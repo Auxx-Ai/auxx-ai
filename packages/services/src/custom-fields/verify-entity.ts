@@ -28,16 +28,24 @@ export async function verifyEntityExistsQuery(input: VerifyEntityInput) {
   let entityResult
 
   switch (modelType) {
+    // Contact and Ticket tables have been dropped - they now use EntityInstance.
+    // Fall through to ENTITY case for these types.
     case ModelTypes.CONTACT:
+    case ModelTypes.TICKET:
+    case ModelTypes.ENTITY:
+      // All entity types (contact, ticket, custom) are verified via EntityInstance table
       entityResult = await fromDatabase(
         database
-          .select({ id: schema.Contact.id })
-          .from(schema.Contact)
+          .select({ id: schema.EntityInstance.id })
+          .from(schema.EntityInstance)
           .where(
-            and(eq(schema.Contact.id, entityId), eq(schema.Contact.organizationId, organizationId))
+            and(
+              eq(schema.EntityInstance.id, entityId),
+              eq(schema.EntityInstance.organizationId, organizationId)
+            )
           )
           .limit(1),
-        'verify-contact'
+        'verify-entity-instance'
       )
       break
 
@@ -51,36 +59,6 @@ export async function verifyEntityExistsQuery(input: VerifyEntityInput) {
           )
           .limit(1),
         'verify-thread'
-      )
-      break
-
-    case ModelTypes.TICKET:
-      entityResult = await fromDatabase(
-        database
-          .select({ id: schema.Ticket.id })
-          .from(schema.Ticket)
-          .where(
-            and(eq(schema.Ticket.id, entityId), eq(schema.Ticket.organizationId, organizationId))
-          )
-          .limit(1),
-        'verify-ticket'
-      )
-      break
-
-    case ModelTypes.ENTITY:
-      // Custom entities are verified via EntityInstance table
-      entityResult = await fromDatabase(
-        database
-          .select({ id: schema.EntityInstance.id })
-          .from(schema.EntityInstance)
-          .where(
-            and(
-              eq(schema.EntityInstance.id, entityId),
-              eq(schema.EntityInstance.organizationId, organizationId)
-            )
-          )
-          .limit(1),
-        'verify-entity-instance'
       )
       break
 

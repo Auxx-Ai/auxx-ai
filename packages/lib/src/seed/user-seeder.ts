@@ -1,11 +1,8 @@
 // packages/lib/src/seed/user-seeder.ts
 import { type Database, database as defaultDb, schema } from '@auxx/database'
-import { SignatureSharingType } from '@auxx/database/enums'
 import type { UserEntity as User } from '@auxx/database/models'
-import { SignatureModel } from '@auxx/database/models'
 import { and, eq, inArray } from 'drizzle-orm'
 import { createScopedLogger } from '../logger'
-import { SignatureService } from '../signatures'
 import { UserAvatarService } from '../users/user-avatar-service'
 
 const logger = createScopedLogger('user-seeder')
@@ -135,7 +132,8 @@ export class UserSeeder {
     }
   }
   /**
-   * Setup default signature for the user
+   * Setup default signature for the user via UnifiedCrudHandler.
+   * Creates a default signature EntityInstance with the user's name.
    */
   private async setupDefaultSignature(): Promise<{
     created: boolean
@@ -143,31 +141,24 @@ export class UserSeeder {
     error?: string
   }> {
     try {
-      // Check if user already has a default signature
-      const sigModel = new SignatureModel(this.organizationId)
-      const existingRes = await sigModel.findDefaultByUser(this.user.id)
-      const existingDefault = existingRes.ok ? existingRes.value : null
-      if (existingDefault) {
-        logger.debug('User already has a default signature', {
-          userId: this.user.id,
-          signatureId: existingDefault.id,
-        })
-        return { created: false, signatureId: existingDefault.id }
-      }
-      // Create default signature
-      const signatureService = new SignatureService(this.db, this.organizationId, this.user.id)
-      const signature = await signatureService.createSignature({
-        name: 'Default Signature',
-        body: `Thank you,\n${this.user.name || this.user.email || 'Your Team'}`,
-        isDefault: true,
-        sharingType: SignatureSharingType.PRIVATE,
+      const { UnifiedCrudHandler } = await import('../resources/crud')
+      const handler = new UnifiedCrudHandler(this.organizationId, this.user.id, this.db)
+
+      const displayName = this.user.name || this.user.email || 'User'
+      const result = await handler.create('signature', {
+        name: `${displayName} - Default`,
+        body: `<p>Best regards,<br>${displayName}</p>`,
+        is_default: true,
+        visibility: 'private',
       })
-      logger.info('Created default signature for user', {
+
+      logger.info('Created default signature', {
         userId: this.user.id,
         organizationId: this.organizationId,
-        signatureId: signature.id,
+        signatureId: result.id,
       })
-      return { created: true, signatureId: signature.id }
+
+      return { created: true, signatureId: result.id }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
       logger.error('Failed to create default signature', {
@@ -175,10 +166,7 @@ export class UserSeeder {
         organizationId: this.organizationId,
         error: errorMsg,
       })
-      return {
-        created: false,
-        error: `Default signature creation failed: ${errorMsg}`,
-      }
+      return { created: false, signatureId: null, error: `Signature creation failed: ${errorMsg}` }
     }
   }
   // Future methods can be added here:

@@ -1,29 +1,36 @@
 // packages/services/src/contacts/contact-queries.ts
 
 import { database, schema } from '@auxx/database'
-import { and, asc, count, desc, eq, ilike, inArray, or, type SQL, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNull, or, type SQL, sql } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { ContactContext, GetAllContactsInput, SearchContactsInput } from './types'
 
 /**
- * Search contacts with lightweight results
+ * Search contacts (EntityInstance where entityType = 'contact') with lightweight results.
+ * Uses EntityInstance.displayName and searchText for matching.
  */
 export async function searchContacts(input: SearchContactsInput) {
   const { organizationId, limit, cursor, search } = input
   const take = limit + 1
 
-  const conditions: SQL[] = [eq(schema.Contact.organizationId, organizationId)]
+  // First resolve the contact EntityDefinition ID
+  const entityDefResult = await getContactEntityDefinitionId(organizationId)
+  if (entityDefResult.isErr()) return entityDefResult
+  const contactDefId = entityDefResult.value
+
+  const conditions: SQL[] = [
+    eq(schema.EntityInstance.organizationId, organizationId),
+    eq(schema.EntityInstance.entityDefinitionId, contactDefId),
+    isNull(schema.EntityInstance.archivedAt),
+  ]
 
   if (search) {
     const term = search.trim()
     conditions.push(
       or(
-        ilike(schema.Contact.name, `%${term}%`),
-        ilike(schema.Contact.firstName, `%${term}%`),
-        ilike(schema.Contact.lastName, `%${term}%`),
-        ilike(schema.Contact.email, `%${term}%`),
-        ilike(schema.Contact.phone, `%${term}%`)
+        ilike(schema.EntityInstance.displayName, `%${term}%`),
+        ilike(schema.EntityInstance.searchText, `%${term}%`)
       )!
     )
   }
@@ -33,8 +40,11 @@ export async function searchContacts(input: SearchContactsInput) {
     if (timestamp && id) {
       conditions.push(
         or(
-          sql`${schema.Contact.updatedAt} < ${timestamp}`,
-          and(sql`${schema.Contact.updatedAt} = ${timestamp}`, sql`${schema.Contact.id} < ${id}`)
+          sql`${schema.EntityInstance.updatedAt} < ${timestamp}`,
+          and(
+            sql`${schema.EntityInstance.updatedAt} = ${timestamp}`,
+            sql`${schema.EntityInstance.id} < ${id}`
+          )
         )!
       )
     }
@@ -43,17 +53,14 @@ export async function searchContacts(input: SearchContactsInput) {
   const result = await fromDatabase(
     database
       .select({
-        id: schema.Contact.id,
-        firstName: schema.Contact.firstName,
-        lastName: schema.Contact.lastName,
-        email: schema.Contact.email,
-        phone: schema.Contact.phone,
-        status: schema.Contact.status,
-        updatedAt: schema.Contact.updatedAt,
+        id: schema.EntityInstance.id,
+        displayName: schema.EntityInstance.displayName,
+        secondaryDisplayValue: schema.EntityInstance.secondaryDisplayValue,
+        updatedAt: schema.EntityInstance.updatedAt,
       })
-      .from(schema.Contact)
+      .from(schema.EntityInstance)
       .where(and(...conditions))
-      .orderBy(desc(schema.Contact.updatedAt))
+      .orderBy(desc(schema.EntityInstance.updatedAt))
       .limit(take),
     'search-contacts'
   )
@@ -72,46 +79,41 @@ export async function searchContacts(input: SearchContactsInput) {
 }
 
 /**
- * Valid sortable fields for contacts
+ * Valid sortable fields for contacts (mapped to EntityInstance columns)
  */
-const SORTABLE_FIELDS = [
-  'firstName',
-  'lastName',
-  'email',
-  'phone',
-  'status',
-  'createdAt',
-  'updatedAt',
-] as const
+const SORTABLE_FIELDS = ['displayName', 'createdAt', 'updatedAt'] as const
 type SortableField = (typeof SORTABLE_FIELDS)[number]
 
 /**
- * Get all contacts with full relations
+ * Get all contacts (EntityInstance where entityType = 'contact') with pagination
  */
 export async function getAllContacts(input: GetAllContactsInput) {
-  const { organizationId, limit, cursor, search, status, sortField, sortDirection = 'desc' } = input
+  const { organizationId, limit, cursor, search, sortField, sortDirection = 'desc' } = input
 
   // Validate and normalize sort field
   const validSortField: SortableField = SORTABLE_FIELDS.includes(sortField as SortableField)
     ? (sortField as SortableField)
     : 'updatedAt'
 
-  const result = await fromDatabase(
-    database.query.Contact.findMany({
-      where: (contacts, { eq, and, or, ilike, sql }) => {
-        const conditions = [eq(contacts.organizationId, organizationId)]
+  // Resolve contact EntityDefinition ID
+  const entityDefResult = await getContactEntityDefinitionId(organizationId)
+  if (entityDefResult.isErr()) return entityDefResult
+  const contactDefId = entityDefResult.value
 
-        if (status) conditions.push(eq(contacts.status, status))
+  const result = await fromDatabase(
+    database.query.EntityInstance.findMany({
+      where: (instances, { eq, and, isNull, ilike, or, sql }) => {
+        const conditions = [
+          eq(instances.organizationId, organizationId),
+          eq(instances.entityDefinitionId, contactDefId),
+          isNull(instances.archivedAt),
+        ]
 
         if (search) {
           conditions.push(
             or(
-              ilike(contacts.email, `%${search}%`),
-              sql`${search} = ANY(${contacts.emails})`,
-              ilike(contacts.name, `%${search}%`),
-              ilike(contacts.firstName, `%${search}%`),
-              ilike(contacts.lastName, `%${search}%`),
-              ilike(contacts.phone, `%${search}%`)
+              ilike(instances.displayName, `%${search}%`),
+              ilike(instances.searchText, `%${search}%`)
             )!
           )
         }
@@ -121,8 +123,8 @@ export async function getAllContacts(input: GetAllContactsInput) {
           if (timestamp && id) {
             conditions.push(
               or(
-                sql`${contacts.updatedAt} < ${timestamp}`,
-                and(sql`${contacts.updatedAt} = ${timestamp}`, sql`${contacts.id} < ${id}`)
+                sql`${instances.updatedAt} < ${timestamp}`,
+                and(sql`${instances.updatedAt} = ${timestamp}`, sql`${instances.id} < ${id}`)
               )!
             )
           }
@@ -130,16 +132,9 @@ export async function getAllContacts(input: GetAllContactsInput) {
 
         return and(...conditions)
       },
-      with: {
-        shopifyCustomers: true,
-        customerSources: {
-          columns: { id: true, source: true, email: true, sourceId: true },
-        },
-        customerGroups: { with: { customerGroup: true } },
-      },
-      orderBy: (contacts, { desc, asc }) => {
+      orderBy: (instances, { desc, asc }) => {
         const orderFn = sortDirection === 'asc' ? asc : desc
-        return [orderFn(contacts[validSortField])]
+        return [orderFn(instances[validSortField])]
       },
       limit: limit + 1,
     }),
@@ -160,20 +155,15 @@ export async function getAllContacts(input: GetAllContactsInput) {
 }
 
 /**
- * Get contact by ID with relations
+ * Get contact (EntityInstance) by ID
  */
 export async function getContactById(input: { contactId: string } & ContactContext) {
   const { contactId, organizationId } = input
 
   const result = await fromDatabase(
-    database.query.Contact.findFirst({
-      where: (contacts, { eq, and }) =>
-        and(eq(contacts.id, contactId), eq(contacts.organizationId, organizationId)),
-      with: {
-        shopifyCustomers: true,
-        customerSources: true,
-        customerGroups: { with: { customerGroup: true } },
-      },
+    database.query.EntityInstance.findFirst({
+      where: (instances, { eq, and }) =>
+        and(eq(instances.id, contactId), eq(instances.organizationId, organizationId)),
     }),
     'get-contact-by-id'
   )
@@ -192,7 +182,7 @@ export async function getContactById(input: { contactId: string } & ContactConte
 }
 
 /**
- * Get contacts by IDs with relations
+ * Get contacts (EntityInstance) by IDs
  */
 export async function getContactsByIds(input: { contactIds: string[] } & ContactContext) {
   const { contactIds, organizationId } = input
@@ -200,16 +190,9 @@ export async function getContactsByIds(input: { contactIds: string[] } & Contact
   if (contactIds.length === 0) return ok([])
 
   const result = await fromDatabase(
-    database.query.Contact.findMany({
-      where: (contacts, { inArray, eq, and }) =>
-        and(inArray(contacts.id, contactIds), eq(contacts.organizationId, organizationId)),
-      with: {
-        shopifyCustomers: true,
-        customerSources: {
-          columns: { id: true, source: true, email: true, sourceId: true },
-        },
-        customerGroups: { with: { customerGroup: true } },
-      },
+    database.query.EntityInstance.findMany({
+      where: (instances, { inArray, eq, and }) =>
+        and(inArray(instances.id, contactIds), eq(instances.organizationId, organizationId)),
     }),
     'get-contacts-by-ids'
   )
@@ -218,9 +201,14 @@ export async function getContactsByIds(input: { contactIds: string[] } & Contact
 }
 
 /**
- * Get custom fields for organization
+ * Get custom fields for organization contacts
  */
 export async function getCustomFieldsForContacts(organizationId: string) {
+  // First resolve the contact EntityDefinition ID
+  const entityDefResult = await getContactEntityDefinitionId(organizationId)
+  if (entityDefResult.isErr()) return entityDefResult
+  const contactDefId = entityDefResult.value
+
   return fromDatabase(
     database
       .select()
@@ -228,7 +216,7 @@ export async function getCustomFieldsForContacts(organizationId: string) {
       .where(
         and(
           eq(schema.CustomField.organizationId, organizationId),
-          eq(schema.CustomField.modelType, 'contact'),
+          eq(schema.CustomField.entityDefinitionId, contactDefId),
           eq(schema.CustomField.active, true)
         )
       )
@@ -238,7 +226,7 @@ export async function getCustomFieldsForContacts(organizationId: string) {
 }
 
 /**
- * Get custom field values for contacts
+ * Get custom field values for contacts using FieldValue table
  */
 export async function getCustomFieldValuesForContacts(contactIds: string[], fieldIds: string[]) {
   if (contactIds.length === 0 || fieldIds.length === 0) return ok([])
@@ -246,11 +234,11 @@ export async function getCustomFieldValuesForContacts(contactIds: string[], fiel
   return fromDatabase(
     database
       .select()
-      .from(schema.CustomFieldValue)
+      .from(schema.FieldValue)
       .where(
         and(
-          inArray(schema.CustomFieldValue.entityId, contactIds),
-          inArray(schema.CustomFieldValue.fieldId, fieldIds)
+          inArray(schema.FieldValue.entityId, contactIds),
+          inArray(schema.FieldValue.fieldId, fieldIds)
         )
       ),
     'get-custom-field-values'
@@ -258,63 +246,107 @@ export async function getCustomFieldValuesForContacts(contactIds: string[], fiel
 }
 
 /**
- * Get ticket counts for contacts
- */
-export async function getTicketCountsForContacts(contactIds: string[]) {
-  if (contactIds.length === 0) return ok(new Map<string, number>())
-
-  const result = await fromDatabase(
-    database
-      .select({
-        contactId: schema.Ticket.contactId,
-        count: count(),
-      })
-      .from(schema.Ticket)
-      .where(inArray(schema.Ticket.contactId, contactIds))
-      .groupBy(schema.Ticket.contactId),
-    'get-ticket-counts'
-  )
-
-  if (result.isErr()) return result
-
-  return ok(new Map(result.value.map((tc) => [tc.contactId, Number(tc.count)])))
-}
-
-/**
- * Get recent tickets for a contact
- */
-export async function getRecentTickets(contactId: string, limit = 5) {
-  return fromDatabase(
-    database.query.Ticket.findMany({
-      where: (tickets, { eq }) => eq(tickets.contactId, contactId),
-      orderBy: (tickets, { desc }) => [desc(tickets.createdAt)],
-      limit,
-    }),
-    'get-recent-tickets'
-  )
-}
-
-/**
- * Find existing contact by email
+ * Find existing contact (EntityInstance) by email via FieldValue lookup.
+ * Searches for an EntityInstance with a FieldValue matching the email
+ * on the primary_email system attribute field.
  */
 export async function findContactByEmail(input: { email: string } & ContactContext) {
   const { email, organizationId } = input
 
-  const result = await fromDatabase(
+  // Resolve the contact EntityDefinition
+  const entityDefResult = await getContactEntityDefinitionId(organizationId)
+  if (entityDefResult.isErr()) return entityDefResult
+  const contactDefId = entityDefResult.value
+
+  // Find the primary_email field for this entity definition
+  const emailFieldResult = await fromDatabase(
     database
-      .select()
-      .from(schema.Contact)
+      .select({ id: schema.CustomField.id })
+      .from(schema.CustomField)
       .where(
         and(
-          eq(schema.Contact.organizationId, organizationId),
-          or(eq(schema.Contact.email, email), sql`${email} = ANY(${schema.Contact.emails})`),
-          sql`${schema.Contact.status} != 'MERGED'`
+          eq(schema.CustomField.entityDefinitionId, contactDefId),
+          eq(schema.CustomField.organizationId, organizationId),
+          eq(schema.CustomField.systemAttribute, 'primary_email')
+        )
+      )
+      .limit(1),
+    'find-email-field'
+  )
+
+  if (emailFieldResult.isErr()) return emailFieldResult
+  if (emailFieldResult.value.length === 0) return ok(null)
+
+  const emailFieldId = emailFieldResult.value[0]!.id
+
+  // Look up FieldValue for matching email
+  const fieldValueResult = await fromDatabase(
+    database
+      .select({ entityId: schema.FieldValue.entityId })
+      .from(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.fieldId, emailFieldId),
+          eq(schema.FieldValue.organizationId, organizationId),
+          eq(schema.FieldValue.valueText, email)
+        )
+      )
+      .limit(1),
+    'find-contact-by-email-field-value'
+  )
+
+  if (fieldValueResult.isErr()) return fieldValueResult
+  if (fieldValueResult.value.length === 0) return ok(null)
+
+  const entityId = fieldValueResult.value[0]!.entityId
+
+  // Fetch the EntityInstance
+  const instanceResult = await fromDatabase(
+    database
+      .select()
+      .from(schema.EntityInstance)
+      .where(
+        and(
+          eq(schema.EntityInstance.id, entityId),
+          eq(schema.EntityInstance.organizationId, organizationId),
+          isNull(schema.EntityInstance.archivedAt)
         )
       )
       .limit(1),
     'find-contact-by-email'
   )
 
+  if (instanceResult.isErr()) return instanceResult
+  return ok(instanceResult.value[0] ?? null)
+}
+
+/**
+ * Helper: resolve the EntityDefinition ID for contacts in this organization.
+ * Contacts have entityType = 'contact' on the EntityDefinition.
+ */
+async function getContactEntityDefinitionId(organizationId: string) {
+  const result = await fromDatabase(
+    database
+      .select({ id: schema.EntityDefinition.id })
+      .from(schema.EntityDefinition)
+      .where(
+        and(
+          eq(schema.EntityDefinition.organizationId, organizationId),
+          eq(schema.EntityDefinition.entityType, 'contact')
+        )
+      )
+      .limit(1),
+    'get-contact-entity-definition'
+  )
+
   if (result.isErr()) return result
-  return ok(result.value[0] ?? null)
+  if (result.value.length === 0) {
+    return err({
+      code: 'CONTACT_NOT_FOUND' as const,
+      message: 'Contact entity definition not found for organization',
+      contactId: undefined as unknown as string,
+    })
+  }
+
+  return ok(result.value[0]!.id)
 }

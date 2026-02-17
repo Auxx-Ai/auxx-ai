@@ -332,24 +332,11 @@ export class DrizzleSeeder {
       console.log('  ↳ Deleting threads...')
       await this.db.delete(schema.Thread).where(eq(schema.Thread.organizationId, organizationId))
 
-      // 3. Ticket domain
-      console.log('  ↳ Deleting ticket relations...')
-      await this.db
-        .delete(schema.TicketRelation)
-        .where(eq(schema.TicketRelation.organizationId, organizationId))
-
-      console.log('  ↳ Deleting ticket assignments...')
-      await this.db
-        .delete(schema.TicketAssignment)
-        .where(eq(schema.TicketAssignment.organizationId, organizationId))
-
+      // 3. Ticket replies (references EntityInstance.id)
       console.log('  ↳ Deleting ticket replies...')
       await this.db
         .delete(schema.TicketReply)
         .where(eq(schema.TicketReply.organizationId, organizationId))
-
-      console.log('  ↳ Deleting tickets...')
-      await this.db.delete(schema.Ticket).where(eq(schema.Ticket.organizationId, organizationId))
 
       // 4. Commerce domain (Orders → Addresses → Products/Customers)
       console.log('  ↳ Deleting orders...')
@@ -366,26 +353,26 @@ export class DrizzleSeeder {
         .delete(schema.shopify_customers)
         .where(eq(schema.shopify_customers.organizationId, organizationId))
 
-      // 5. CRM domain (Participants → Contacts)
+      // 5. CRM domain (Participants → FieldValues → EntityInstances)
       console.log('  ↳ Deleting participants...')
       await this.db
         .delete(schema.Participant)
         .where(eq(schema.Participant.organizationId, organizationId))
 
-      console.log('  ↳ Deleting contacts...')
-      await this.db.delete(schema.Contact).where(eq(schema.Contact.organizationId, organizationId))
+      // 6. FieldValues and EntityInstances (covers contacts, tickets, signatures, parts, tags, etc.)
+      console.log('  ↳ Deleting field values...')
+      await this.db
+        .delete(schema.FieldValue)
+        .where(eq(schema.FieldValue.organizationId, organizationId))
 
-      // 6. Organization domain entities
+      console.log('  ↳ Deleting entity instances...')
+      await this.db
+        .delete(schema.EntityInstance)
+        .where(eq(schema.EntityInstance.organizationId, organizationId))
+
+      // 7. Organization domain entities
       console.log('  ↳ Deleting snippets...')
       await this.db.delete(schema.Snippet).where(eq(schema.Snippet.organizationId, organizationId))
-
-      console.log('  ↳ Deleting signatures...')
-      await this.db
-        .delete(schema.Signature)
-        .where(eq(schema.Signature.organizationId, organizationId))
-
-      console.log('  ↳ Deleting tags...')
-      await this.db.delete(schema.Tag).where(eq(schema.Tag.organizationId, organizationId))
 
       console.log(`✅ Organization data reset complete for: ${organizationId}`)
     } catch (error) {

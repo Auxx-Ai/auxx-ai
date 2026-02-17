@@ -59,12 +59,12 @@ const getStatusDescription = (status: string): string => {
   }
   return descriptions[status] || ''
 }
-// Helper function to get display name with Contact priority
+// Helper function to get display name with entity instance (contact) priority
 const getParticipantDisplayName = (participant: any) => {
-  if (participant.contact) {
-    const contactName = [participant.contact.firstName, participant.contact.lastName]
-      .filter(Boolean)
-      .join(' ')
+  // Try entityInstance (was contact before migration)
+  const entity = participant.entityInstance || participant.contact
+  if (entity) {
+    const contactName = [entity.firstName, entity.lastName].filter(Boolean).join(' ')
     if (contactName) return contactName
   }
   return participant.displayName || participant.name || participant.identifier
@@ -313,7 +313,7 @@ export const searchRouter = createTRPCRouter({
         identifier: p.identifier,
         displayName: getParticipantDisplayName(p),
         identifierType: p.identifierType,
-        contactId: p.contactId,
+        contactId: p.entityInstanceId,
         contact: p.contact || null,
       }))
     }),

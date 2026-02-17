@@ -4099,38 +4099,6 @@
 //   ]
 // )
 
-// export const ticketView = pgTable(
-//   'TicketView',
-//   {
-//     id: text().primaryKey().notNull(),
-//     name: text().notNull(),
-//     organizationId: text().notNull(),
-//     userId: text().notNull(),
-//     isPublic: boolean().default(false).notNull(),
-//     filters: jsonb().notNull(),
-//     createdAt: timestamp({ precision: 3, mode: 'string' })
-//       .default(sql`CURRENT_TIMESTAMP`)
-//       .notNull(),
-//     updatedAt: timestamp({ precision: 3, mode: 'string' }).notNull(),
-//   },
-//   (table) => [
-//     foreignKey({
-//       columns: [table.organizationId],
-//       foreignColumns: [organization.id],
-//       name: 'TicketView_organizationId_fkey',
-//     })
-//       .onUpdate('cascade')
-//       .onDelete('cascade'),
-//     foreignKey({
-//       columns: [table.userId],
-//       foreignColumns: [user.id],
-//       name: 'TicketView_userId_fkey',
-//     })
-//       .onUpdate('cascade')
-//       .onDelete('cascade'),
-//   ]
-// )
-
 // export const ticketNote = pgTable(
 //   'TicketNote',
 //   {

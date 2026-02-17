@@ -16,6 +16,7 @@ import { toastError, toastInfo, toastSuccess } from '@auxx/ui/components/toast'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import { arrayMove } from '@dnd-kit/sortable'
 import { useCallback, useRef } from 'react'
+import { useEntityDefinitionMutations } from '~/components/resources/hooks/use-entity-definition-mutations'
 import { useField } from '~/components/resources/hooks/use-field'
 import { getResourceStoreState } from '~/components/resources/store/resource-store'
 import { useAnalytics } from '~/hooks/use-analytics'
@@ -38,13 +39,8 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
   /** Ref to prevent double-firing auto-set of primary display field */
   const autoSetInFlight = useRef(false)
 
-  /** Mutation for auto-setting primaryDisplayField on first eligible field creation */
-  const setPrimaryDisplayField = api.entityDefinition.update.useMutation({
-    onSuccess: () => {
-      utils.entityDefinition.getAll.invalidate()
-      utils.entityDefinition.getById.invalidate()
-    },
-  })
+  /** Use entity definition mutations for optimistic display field updates */
+  const { updateEntity } = useEntityDefinitionMutations()
 
   /** Invalidate custom field queries to ensure components using direct queries get updated */
   const invalidateCustomFieldQueries = () => {
@@ -259,7 +255,7 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
         PRIMARY_DISPLAY_ELIGIBLE_TYPES.includes(result.type as FieldType)
       ) {
         autoSetInFlight.current = true
-        setPrimaryDisplayField.mutate(
+        updateEntity.mutate(
           { id: effectiveEntityDefId, data: { primaryDisplayFieldId: result.id } },
           {
             onSettled: () => {

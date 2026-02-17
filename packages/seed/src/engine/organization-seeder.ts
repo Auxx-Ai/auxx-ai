@@ -3,7 +3,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray, isNotNull } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import type { SeedingResult } from '../types'
 import { OrganizationWebhookCoordinator } from '../utils/organization-webhook-coordinator'
 
@@ -157,77 +157,28 @@ export class OrganizationSeeder {
           )
         )
 
-      console.log('  ↳ Deleting thread tag associations (via FieldValue)...')
-      // Delete FieldValue records for thread_tags (RELATIONSHIP field)
-      // Find thread IDs for this organization
-      const threadIds = await db
-        .select({ id: schema.Thread.id })
-        .from(schema.Thread)
-        .where(eq(schema.Thread.organizationId, organizationId))
-
-      if (threadIds.length > 0) {
-        // Delete FieldValue records where entityId is a thread and relatedEntityId is set (tag relationship)
-        await db.delete(schema.FieldValue).where(
-          and(
-            inArray(
-              schema.FieldValue.entityId,
-              threadIds.map((t) => t.id)
-            ),
-            isNotNull(schema.FieldValue.relatedEntityId)
-          )
-        )
-      }
-
       console.log('  ↳ Deleting messages...')
       await db.delete(schema.Message).where(eq(schema.Message.organizationId, organizationId))
 
       console.log('  ↳ Deleting threads...')
       await db.delete(schema.Thread).where(eq(schema.Thread.organizationId, organizationId))
 
-      // 3. Ticket domain
-      console.log('  ↳ Deleting ticket relations...')
-      await db
-        .delete(schema.TicketRelation)
-        .where(
-          eq(
-            schema.TicketRelation.ticketId,
-            db
-              .select({ id: schema.Ticket.id })
-              .from(schema.Ticket)
-              .where(eq(schema.Ticket.organizationId, organizationId))
-          )
-        )
-
-      console.log('  ↳ Deleting ticket assignments...')
-      await db
-        .delete(schema.TicketAssignment)
-        .where(
-          eq(
-            schema.TicketAssignment.ticketId,
-            db
-              .select({ id: schema.Ticket.id })
-              .from(schema.Ticket)
-              .where(eq(schema.Ticket.organizationId, organizationId))
-          )
-        )
-
+      // 3. Ticket replies (tickets are now EntityInstances)
       console.log('  ↳ Deleting ticket replies...')
       await db
         .delete(schema.TicketReply)
-        .where(
-          eq(
-            schema.TicketReply.ticketId,
-            db
-              .select({ id: schema.Ticket.id })
-              .from(schema.Ticket)
-              .where(eq(schema.Ticket.organizationId, organizationId))
-          )
-        )
+        .where(eq(schema.TicketReply.organizationId, organizationId))
 
-      console.log('  ↳ Deleting tickets...')
-      await db.delete(schema.Ticket).where(eq(schema.Ticket.organizationId, organizationId))
+      // 4. Entity data (FieldValues first, then EntityInstances - covers contacts, tickets, signatures)
+      console.log('  ↳ Deleting field values...')
+      await db.delete(schema.FieldValue).where(eq(schema.FieldValue.organizationId, organizationId))
 
-      // 4. Commerce domain (Orders → Addresses → Products/Customers)
+      console.log('  ↳ Deleting entity instances...')
+      await db
+        .delete(schema.EntityInstance)
+        .where(eq(schema.EntityInstance.organizationId, organizationId))
+
+      // 5. Commerce domain (Orders → Addresses → Products/Customers)
       console.log('  ↳ Deleting orders...')
       await db.delete(schema.Order).where(eq(schema.Order.organizationId, organizationId))
 
@@ -242,21 +193,15 @@ export class OrganizationSeeder {
         .delete(schema.shopify_customers)
         .where(eq(schema.shopify_customers.organizationId, organizationId))
 
-      // 5. CRM domain (Participants → Contacts)
+      // 6. CRM domain (Participants)
       console.log('  ↳ Deleting participants...')
       await db
         .delete(schema.Participant)
         .where(eq(schema.Participant.organizationId, organizationId))
 
-      console.log('  ↳ Deleting contacts...')
-      await db.delete(schema.Contact).where(eq(schema.Contact.organizationId, organizationId))
-
-      // 6. Organization domain entities
+      // 7. Organization domain entities
       console.log('  ↳ Deleting snippets...')
       await db.delete(schema.Snippet).where(eq(schema.Snippet.organizationId, organizationId))
-
-      console.log('  ↳ Deleting signatures...')
-      await db.delete(schema.Signature).where(eq(schema.Signature.organizationId, organizationId))
 
       console.log('  ↳ Deleting tags...')
       await db.delete(schema.Tag).where(eq(schema.Tag.organizationId, organizationId))

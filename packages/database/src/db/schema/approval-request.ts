@@ -34,7 +34,7 @@ export const ApprovalRequest = pgTable(
     workflowName: text().notNull(),
     createdById: text()
       .notNull()
-      .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'restrict' }),
+      .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
     metadata: jsonb(),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     expiresAt: timestamp({ precision: 3 }),

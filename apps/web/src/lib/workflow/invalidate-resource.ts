@@ -49,11 +49,6 @@ export function invalidateResource(recordId: RecordId) {
       queryClient.invalidateQueries({
         queryKey: getQueryKey(api.contact.getById, { id: entityInstanceId }, 'query'),
       })
-      // Invalidate contact lists
-      queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.contact.getAll),
-        exact: false,
-      })
       break
 
     case 'ticket':
@@ -139,10 +134,6 @@ export function invalidateBatchResources(recordIds: RecordId[]) {
         queryClient.invalidateQueries({
           queryKey: getQueryKey(api.contact.getById, { id: entityInstanceId }, 'query'),
         })
-      })
-      queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.contact.getAll),
-        exact: false,
       })
       break
 

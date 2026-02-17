@@ -86,59 +86,26 @@ export async function checkUniqueValue(
       : sql`false`
   )
 
-  if (modelType === 'entity' && entityDefinitionId) {
-    // Custom entity - join with EntityInstance
-    const result = await database
-      .select({ entityId: schema.FieldValue.entityId })
-      .from(schema.FieldValue)
-      .innerJoin(schema.EntityInstance, eq(schema.FieldValue.entityId, schema.EntityInstance.id))
-      .where(
-        and(
-          eq(schema.FieldValue.fieldId, fieldId),
-          eq(schema.FieldValue.organizationId, organizationId),
-          eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId),
-          valueMatchCondition,
-          excludeEntityId ? ne(schema.FieldValue.entityId, excludeEntityId) : sql`true`
-        )
-      )
-      .limit(1)
+  // All entity types (including contact and ticket) now use EntityInstance.
+  // The entityDefinitionId filter scopes to the correct entity type.
+  const effectiveEntityDefId = entityDefinitionId ?? modelType
 
-    existingEntityId = result[0]?.entityId ?? null
-  } else if (modelType === 'contact') {
-    // Contact - use FieldValue with organizationId filter
-    const result = await database
-      .select({ entityId: schema.FieldValue.entityId })
-      .from(schema.FieldValue)
-      .innerJoin(schema.Contact, eq(schema.FieldValue.entityId, schema.Contact.id))
-      .where(
-        and(
-          eq(schema.FieldValue.fieldId, fieldId),
-          eq(schema.FieldValue.organizationId, organizationId),
-          valueMatchCondition,
-          excludeEntityId ? ne(schema.FieldValue.entityId, excludeEntityId) : sql`true`
-        )
+  const result = await database
+    .select({ entityId: schema.FieldValue.entityId })
+    .from(schema.FieldValue)
+    .innerJoin(schema.EntityInstance, eq(schema.FieldValue.entityId, schema.EntityInstance.id))
+    .where(
+      and(
+        eq(schema.FieldValue.fieldId, fieldId),
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.EntityInstance.entityDefinitionId, effectiveEntityDefId),
+        valueMatchCondition,
+        excludeEntityId ? ne(schema.FieldValue.entityId, excludeEntityId) : sql`true`
       )
-      .limit(1)
+    )
+    .limit(1)
 
-    existingEntityId = result[0]?.entityId ?? null
-  } else if (modelType === 'ticket') {
-    // Ticket - use FieldValue with organizationId filter
-    const result = await database
-      .select({ entityId: schema.FieldValue.entityId })
-      .from(schema.FieldValue)
-      .innerJoin(schema.Ticket, eq(schema.FieldValue.entityId, schema.Ticket.id))
-      .where(
-        and(
-          eq(schema.FieldValue.fieldId, fieldId),
-          eq(schema.FieldValue.organizationId, organizationId),
-          valueMatchCondition,
-          excludeEntityId ? ne(schema.FieldValue.entityId, excludeEntityId) : sql`true`
-        )
-      )
-      .limit(1)
-
-    existingEntityId = result[0]?.entityId ?? null
-  }
+  existingEntityId = result[0]?.entityId ?? null
 
   if (existingEntityId) {
     return err({
@@ -169,51 +136,21 @@ export async function checkExistingDuplicates(
   modelType: string,
   entityDefinitionId?: string | null
 ): Promise<boolean> {
-  let query
+  // All entity types now use EntityInstance - use entityDefinitionId to scope.
+  const effectiveEntityDefId = entityDefinitionId ?? modelType
 
-  // Use COALESCE to check both text and number columns
-  // valueText is the primary column for uniqueable types (TEXT, EMAIL, URL, PHONE_INTL)
-  // valueNumber is used for NUMBER type
-  if (modelType === 'entity' && entityDefinitionId) {
-    query = sql`
-      SELECT COALESCE(fv."valueText", fv."valueNumber"::text) as val, COUNT(*) as cnt
-      FROM "FieldValue" fv
-      JOIN "EntityInstance" ei ON fv."entityId" = ei.id
-      WHERE fv."fieldId" = ${fieldId}
-        AND fv."organizationId" = ${organizationId}
-        AND ei."entityDefinitionId" = ${entityDefinitionId}
-        AND (fv."valueText" IS NOT NULL OR fv."valueNumber" IS NOT NULL)
-      GROUP BY COALESCE(fv."valueText", fv."valueNumber"::text)
-      HAVING COUNT(*) > 1
-      LIMIT 1
-    `
-  } else if (modelType === 'contact') {
-    query = sql`
-      SELECT COALESCE(fv."valueText", fv."valueNumber"::text) as val, COUNT(*) as cnt
-      FROM "FieldValue" fv
-      JOIN "Contact" c ON fv."entityId" = c.id
-      WHERE fv."fieldId" = ${fieldId}
-        AND fv."organizationId" = ${organizationId}
-        AND (fv."valueText" IS NOT NULL OR fv."valueNumber" IS NOT NULL)
-      GROUP BY COALESCE(fv."valueText", fv."valueNumber"::text)
-      HAVING COUNT(*) > 1
-      LIMIT 1
-    `
-  } else if (modelType === 'ticket') {
-    query = sql`
-      SELECT COALESCE(fv."valueText", fv."valueNumber"::text) as val, COUNT(*) as cnt
-      FROM "FieldValue" fv
-      JOIN "Ticket" t ON fv."entityId" = t.id
-      WHERE fv."fieldId" = ${fieldId}
-        AND fv."organizationId" = ${organizationId}
-        AND (fv."valueText" IS NOT NULL OR fv."valueNumber" IS NOT NULL)
-      GROUP BY COALESCE(fv."valueText", fv."valueNumber"::text)
-      HAVING COUNT(*) > 1
-      LIMIT 1
-    `
-  } else {
-    return false
-  }
+  const query = sql`
+    SELECT COALESCE(fv."valueText", fv."valueNumber"::text) as val, COUNT(*) as cnt
+    FROM "FieldValue" fv
+    JOIN "EntityInstance" ei ON fv."entityId" = ei.id
+    WHERE fv."fieldId" = ${fieldId}
+      AND fv."organizationId" = ${organizationId}
+      AND ei."entityDefinitionId" = ${effectiveEntityDefId}
+      AND (fv."valueText" IS NOT NULL OR fv."valueNumber" IS NOT NULL)
+    GROUP BY COALESCE(fv."valueText", fv."valueNumber"::text)
+    HAVING COUNT(*) > 1
+    LIMIT 1
+  `
 
   const result = await database.execute(query)
   return result.rows.length > 0

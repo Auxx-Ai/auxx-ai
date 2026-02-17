@@ -21,6 +21,10 @@ import { Spinner } from '@auxx/ui/components/spinner'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { toastError } from '~/components/global/toast'
+import {
+  useAddAccount,
+  useAuthenticatedUser,
+} from '~/components/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 
 /** Slugify helper function */
@@ -48,6 +52,8 @@ export default function NewPage() {
   }, [title, slugTouched])
 
   const utils = api.useUtils()
+  const addAccount = useAddAccount()
+  const user = useAuthenticatedUser()
 
   // Check if slug exists (debounced)
   const { data: slugCheck, isLoading: isCheckingSlug } = api.developerAccounts.slugExists.useQuery(
@@ -61,9 +67,37 @@ export default function NewPage() {
   // Create mutation
   const createAccount = api.developerAccounts.create.useMutation({
     onSuccess: (data) => {
+      // Add the new account to dehydrated state immediately
+      addAccount({
+        id: data.account.id,
+        title: data.account.title,
+        slug: data.account.slug,
+        logoId: data.account.logoId,
+        logoUrl: data.account.logoUrl,
+        featureFlags: data.account.featureFlags as Record<string, boolean> | null,
+        createdAt: data.account.createdAt,
+        updatedAt: data.account.updatedAt,
+        userMember: {
+          id: data.member.id,
+          userId: user.id,
+          accessLevel: data.member.accessLevel as 'admin' | 'member',
+          createdAt: data.member.createdAt,
+        },
+        members: [
+          {
+            id: data.member.id,
+            userId: user.id,
+            userName: user.name,
+            userEmail: user.email,
+            userImage: user.image,
+            accessLevel: data.member.accessLevel as 'admin' | 'member',
+            createdAt: data.member.createdAt,
+          },
+        ],
+      })
       // Invalidate accounts list
       utils.developerAccounts.list.invalidate()
-      // Redirect to onboarding flow for the new account
+      // Navigate to onboarding
       router.push(`/${data.account.slug}/onboarding/first-app`)
     },
     onError: (error) => {

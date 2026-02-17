@@ -31,7 +31,10 @@ export const ChatSession = pgTable(
     status: text().default('ACTIVE').notNull(),
     lastActivityAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     closedAt: timestamp({ precision: 3 }),
-    closedById: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    closedById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     visitorId: text().notNull(),
     visitorName: text(),
     visitorEmail: text(),

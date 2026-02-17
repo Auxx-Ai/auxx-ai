@@ -42,7 +42,7 @@ export function hydrateFieldValues({ resource, recordId, recordData }: Hydration
     // Skip undefined values (but not null - null is a valid "empty" value)
     if (rawValue === undefined) continue
 
-    // Handle relationship fields with nested objects (e.g., customerGroups)
+    // Handle relationship fields with nested objects
     if (Array.isArray(rawValue) && field.relationship) {
       rawValue = rawValue.map((item: unknown) => {
         // Extract ID from nested relation object if present

@@ -533,6 +533,20 @@
       "when": 1770228553893,
       "tag": "0075_add_table_view",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1771307343957,
+      "tag": "0076_blushing_boomer",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1771308231733,
+      "tag": "0077_worried_scarecrow",
+      "breakpoints": true
     }
   ]
 }

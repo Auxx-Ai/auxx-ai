@@ -1,5 +1,5 @@
 // packages/seed/src/domains/ticket.domain.ts
-// Ticket domain refinements for tickets and related entities with comprehensive seeding
+// Ticket domain refinements via UnifiedCrudHandler
 
 import { createId } from '@paralleldrive/cuid2'
 import { sql } from 'drizzle-orm'
@@ -79,119 +79,102 @@ export class TicketDomain {
   }
 
   /**
-   * insertDirectly performs direct database inserts bypassing drizzle-seed.
+   * insertDirectly creates tickets via UnifiedCrudHandler and replies via direct inserts.
    * @param db - Drizzle database instance
    */
   async insertDirectly(db: any): Promise<void> {
     const { schema } = await import('@auxx/database')
+    const { UnifiedCrudHandler } = await import('@auxx/lib/resources')
     const organizationId = this.services.organizations[0]!.id
+    const userId = this.services.organizations[0]!.ownerId
 
-    // Seed tickets first
-    await this.seedTickets(db, schema, organizationId)
+    // Seed tickets via UnifiedCrudHandler
+    await this.seedTickets(db, schema, organizationId, userId, UnifiedCrudHandler)
 
-    // Then seed related entities
+    // Seed ticket replies (TicketReply stays as its own table)
     await this.seedTicketReplies(db, schema, organizationId)
-    await this.seedTicketAssignments(db, schema, organizationId)
-    await this.seedTicketRelations(db, schema, organizationId)
   }
 
   /**
-   * seedTickets generates and inserts ticket records.
+   * seedTickets generates and creates ticket records via UnifiedCrudHandler.
    * @param db - Drizzle database instance
    * @param schema - Database schema
    * @param organizationId - Organization ID to associate tickets with
+   * @param userId - User ID for the handler
+   * @param UnifiedCrudHandler - The handler class
    */
-  private async seedTickets(db: any, schema: any, organizationId: string): Promise<void> {
-    console.log('🎫 Generating tickets...')
+  private async seedTickets(
+    db: any,
+    schema: any,
+    organizationId: string,
+    userId: string,
+    UnifiedCrudHandler: any
+  ): Promise<void> {
+    console.log('🎫 Generating tickets via UnifiedCrudHandler...')
 
-    // Get existing contacts for linking
+    const handler = new UnifiedCrudHandler(organizationId, userId, db)
+
+    // Get existing contact EntityInstances for linking
     const contacts = await db
-      .select({ id: schema.Contact.id })
-      .from(schema.Contact)
-      .where(sql`${schema.Contact.organizationId} = ${organizationId}`)
+      .select({ id: schema.EntityInstance.id })
+      .from(schema.EntityInstance)
+      .innerJoin(
+        schema.EntityDefinition,
+        sql`${schema.EntityInstance.entityDefinitionId} = ${schema.EntityDefinition.id}`
+      )
+      .where(
+        sql`${schema.EntityDefinition.entityType} = 'contact' AND ${schema.EntityInstance.organizationId} = ${organizationId}`
+      )
 
     if (contacts.length === 0) {
       console.log('⚠️  No contacts found, skipping ticket generation')
       return
     }
 
-    // Get existing orders for linking (optional)
-    const orders = await db
-      .select({ id: schema.Order.id })
-      .from(schema.Order)
-      .where(sql`${schema.Order.organizationId} = ${organizationId}`)
-      .limit(100) // Only get recent orders
-
     const ticketCount = this.scenario.scales.tickets || 10
-    const tickets = []
+    const ticketValues = []
 
     for (let i = 0; i < ticketCount; i++) {
       const type = this.generateTicketType(i)
       const priority = this.generateTicketPriority(i)
       const status = this.generateTicketStatus(i)
       const createdAt = this.generateTicketCreatedAt(i, ticketCount)
-      const timestamps = this.generateTicketTimestamps(status, createdAt)
 
       // Link to contact (round-robin)
       const contact = contacts[i % contacts.length]!
 
-      // 40% of tickets are linked to orders (when orders exist)
-      const orderId = orders.length > 0 && i % 10 < 4 ? orders[i % orders.length]!.id : null
+      // 80% of tickets have an assignee
+      const assigneeId = i % 10 < 8 ? this.users[i % this.users.length]! : undefined
 
-      // 80% of tickets have a creator
-      const createdById = i % 10 < 8 ? this.users[i % this.users.length]! : null
-
-      tickets.push({
-        id: createId(),
-        number: this.generateTicketNumber(i),
-        title: this.generateTicketTitle(type, i),
-        description: this.generateTicketDescription(type, i),
-        type,
-        priority,
-        status,
-        createdAt,
-        updatedAt: new Date(),
-        dueDate: this.generateTicketDueDate(status, priority, createdAt),
-        resolvedAt: timestamps.resolvedAt,
-        closedAt: timestamps.closedAt,
-        organizationId,
-        contactId: contact.id,
-        orderId,
-        createdById,
-        emailThreadId: null,
-        mailgunMessageId: null,
-        internalReference: null,
-        shopifyCustomerId: null,
-        typeData: this.generateTypeData(type),
-        typeStatus: null,
+      ticketValues.push({
+        ticket_title: this.generateTicketTitle(type, i),
+        ticket_description: this.generateTicketDescription(type, i),
+        ticket_type: type,
+        ticket_status: status,
+        ticket_priority: priority,
+        ticket_contact: contact.id,
+        ...(assigneeId ? { assigned_to_id: assigneeId } : {}),
+        due_date: this.generateTicketDueDate(status, priority, createdAt),
       })
     }
 
-    if (tickets.length > 0) {
-      const BATCH_SIZE = 1000
-      console.log(`📦 Inserting ${tickets.length} tickets...`)
+    if (ticketValues.length > 0) {
+      const { created, errors } = await handler.bulkCreate('ticket', ticketValues, {
+        skipEvents: true,
+      })
 
-      for (let i = 0; i < tickets.length; i += BATCH_SIZE) {
-        const batch = tickets.slice(i, i + BATCH_SIZE)
-        await db
-          .insert(schema.Ticket)
-          .values(batch)
-          .onConflictDoUpdate({
-            target: schema.Ticket.id,
-            set: {
-              title: sql`excluded.title`,
-              status: sql`excluded.status`,
-              updatedAt: sql`excluded."updatedAt"`,
-            },
-          })
+      if (errors.length > 0) {
+        console.log(`⚠️  ${errors.length} ticket creation errors:`)
+        errors.slice(0, 5).forEach((e: any) => console.log(`    [${e.index}] ${e.error}`))
       }
 
-      console.log(`✅ Upserted ${tickets.length} tickets`)
+      console.log(`✅ Created ${created.length} tickets via UnifiedCrudHandler`)
     }
   }
 
   /**
    * seedTicketReplies generates and inserts ticket reply records.
+   * Uses EntityInstance IDs from ticket entities.
    * @param db - Drizzle database instance
    * @param schema - Database schema
    * @param organizationId - Organization ID to filter tickets
@@ -199,22 +182,24 @@ export class TicketDomain {
   private async seedTicketReplies(db: any, schema: any, organizationId: string): Promise<void> {
     console.log('💬 Generating ticket replies...')
 
-    // Get existing tickets
+    // Get ticket EntityInstances
     const tickets = await db
-      .select({
-        id: schema.Ticket.id,
-        type: schema.Ticket.type,
-        contactId: schema.Ticket.contactId,
-      })
-      .from(schema.Ticket)
-      .where(sql`${schema.Ticket.organizationId} = ${organizationId}`)
+      .select({ id: schema.EntityInstance.id })
+      .from(schema.EntityInstance)
+      .innerJoin(
+        schema.EntityDefinition,
+        sql`${schema.EntityInstance.entityDefinitionId} = ${schema.EntityDefinition.id}`
+      )
+      .where(
+        sql`${schema.EntityDefinition.entityType} = 'ticket' AND ${schema.EntityInstance.organizationId} = ${organizationId}`
+      )
 
     if (tickets.length === 0) {
       console.log('⚠️  No tickets found, skipping reply generation')
       return
     }
 
-    const replies = []
+    const replies: any[] = []
 
     tickets.forEach((ticket: any, ticketIndex: number) => {
       // Generate 1-5 replies per ticket
@@ -226,16 +211,16 @@ export class TicketDomain {
 
         replies.push({
           id: createId(),
-          content: this.generateReplyContent(ticket.type, i, isFromCustomer),
+          content: this.generateReplyContent(i, isFromCustomer),
           createdAt: sentTime,
           messageId: null,
           senderEmail: null,
           isFromCustomer,
-          ticketId: ticket.id,
+          entityInstanceId: ticket.id,
+          organizationId: organizationId,
           recipientEmail: null,
           ccEmails: [],
           createdById: isFromCustomer ? null : this.users[ticketIndex % this.users.length]!,
-          mailgunMessageId: null,
           inReplyTo: null,
           references: null,
         })
@@ -263,151 +248,7 @@ export class TicketDomain {
     }
   }
 
-  /**
-   * seedTicketAssignments generates and inserts ticket assignment records.
-   * @param db - Drizzle database instance
-   * @param schema - Database schema
-   * @param organizationId - Organization ID to filter tickets
-   */
-  private async seedTicketAssignments(db: any, schema: any, organizationId: string): Promise<void> {
-    console.log('👤 Generating ticket assignments...')
-
-    const tickets = await db
-      .select({ id: schema.Ticket.id })
-      .from(schema.Ticket)
-      .where(sql`${schema.Ticket.organizationId} = ${organizationId}`)
-
-    if (tickets.length === 0) {
-      console.log('⚠️  No tickets found, skipping assignment generation')
-      return
-    }
-
-    const assignments = []
-
-    tickets.forEach((ticket: any, ticketIndex: number) => {
-      // 80% of tickets are assigned
-      if (ticketIndex % 10 < 8) {
-        const agent = this.users[ticketIndex % this.users.length]!
-
-        // Create active assignment
-        assignments.push({
-          id: createId(),
-          ticketId: ticket.id,
-          agentId: agent,
-          isActive: true,
-          assignedAt: new Date(Date.now() - 3600000), // 1 hour ago
-          updatedAt: new Date(),
-        })
-
-        // 20% of tickets have a reassignment history (inactive assignment)
-        if (ticketIndex % 10 < 2 && this.users.length > 1) {
-          const previousAgent = this.users[(ticketIndex + 1) % this.users.length]!
-          assignments.push({
-            id: createId(),
-            ticketId: ticket.id,
-            agentId: previousAgent,
-            isActive: false,
-            assignedAt: new Date(Date.now() - 86400000), // 24 hours ago
-            updatedAt: new Date(Date.now() - 3600000), // Deactivated 1 hour ago
-          })
-        }
-      }
-    })
-
-    if (assignments.length > 0) {
-      const BATCH_SIZE = 2000
-      console.log(`📦 Inserting ${assignments.length} ticket assignments...`)
-
-      for (let i = 0; i < assignments.length; i += BATCH_SIZE) {
-        const batch = assignments.slice(i, i + BATCH_SIZE)
-        await db
-          .insert(schema.TicketAssignment)
-          .values(batch)
-          .onConflictDoUpdate({
-            target: [
-              schema.TicketAssignment.ticketId,
-              schema.TicketAssignment.agentId,
-              schema.TicketAssignment.isActive,
-            ],
-            set: {
-              updatedAt: sql`excluded."updatedAt"`,
-            },
-          })
-      }
-
-      console.log(`✅ Upserted ${assignments.length} ticket assignments`)
-    }
-  }
-
-  /**
-   * seedTicketRelations generates and inserts ticket relation records.
-   * @param db - Drizzle database instance
-   * @param schema - Database schema
-   * @param organizationId - Organization ID to filter tickets
-   */
-  private async seedTicketRelations(db: any, schema: any, organizationId: string): Promise<void> {
-    console.log('🔗 Generating ticket relations...')
-
-    const tickets = await db
-      .select({ id: schema.Ticket.id })
-      .from(schema.Ticket)
-      .where(sql`${schema.Ticket.organizationId} = ${organizationId}`)
-
-    if (tickets.length < 2) {
-      console.log('⚠️  Need at least 2 tickets for relations, skipping')
-      return
-    }
-
-    const relations = []
-    const relationTypes = ['DUPLICATE', 'RELATED', 'BLOCKS', 'BLOCKED_BY']
-
-    // Create relations for ~30% of tickets
-    tickets.forEach((ticket: any, ticketIndex: number) => {
-      if (ticketIndex % 10 < 3 && ticketIndex > 0) {
-        // Link to a previous ticket
-        const relatedTicket = tickets[ticketIndex - 1]!
-        const relationType = relationTypes[ticketIndex % relationTypes.length]!
-
-        relations.push({
-          id: createId(),
-          ticketId: ticket.id,
-          relatedTicketId: relatedTicket.id,
-          relation: relationType,
-          createdAt: new Date(),
-        })
-
-        // For BLOCKS/BLOCKED_BY, create bidirectional relationship
-        if (relationType === 'BLOCKS') {
-          relations.push({
-            id: createId(),
-            ticketId: relatedTicket.id,
-            relatedTicketId: ticket.id,
-            relation: 'BLOCKED_BY',
-            createdAt: new Date(),
-          })
-        }
-      }
-    })
-
-    if (relations.length > 0) {
-      const BATCH_SIZE = 2000
-      console.log(`📦 Inserting ${relations.length} ticket relations...`)
-
-      for (let i = 0; i < relations.length; i += BATCH_SIZE) {
-        const batch = relations.slice(i, i + BATCH_SIZE)
-        await db.insert(schema.TicketRelation).values(batch).onConflictDoNothing() // Unique constraint handles duplicates
-      }
-
-      console.log(`✅ Upserted ${relations.length} ticket relations`)
-    }
-  }
-
   // ---- Generator Methods ----
-
-  /** generateTicketNumber creates formatted ticket numbers. */
-  private generateTicketNumber(index: number): string {
-    return `TKT-${String(index + 1).padStart(4, '0')}`
-  }
 
   /** generateTicketType creates realistic ticket type distribution. */
   private generateTicketType(index: number): string {
@@ -459,33 +300,6 @@ export class TicketDomain {
   private generateTicketCreatedAt(index: number, total: number): Date {
     const daysAgo = Math.floor((total - index) / 2) // Spread over time
     return new Date(Date.now() - daysAgo * 86400000)
-  }
-
-  /** generateTicketTimestamps creates status-appropriate timestamps. */
-  private generateTicketTimestamps(
-    status: string,
-    createdAt: Date
-  ): {
-    resolvedAt: Date | null
-    closedAt: Date | null
-  } {
-    const baseTime = createdAt.getTime()
-
-    if (status === 'RESOLVED') {
-      return {
-        resolvedAt: new Date(baseTime + 172800000), // 2 days later
-        closedAt: null,
-      }
-    }
-
-    if (status === 'CLOSED') {
-      return {
-        resolvedAt: new Date(baseTime + 172800000), // 2 days later
-        closedAt: new Date(baseTime + 259200000), // 3 days later
-      }
-    }
-
-    return { resolvedAt: null, closedAt: null }
   }
 
   /** generateTicketDueDate creates priority-based due dates. */
@@ -601,24 +415,8 @@ export class TicketDomain {
     return typeTemplates[index % typeTemplates.length]!
   }
 
-  /** generateTypeData creates type-specific metadata. */
-  private generateTypeData(type: string): Record<string, unknown> {
-    switch (type) {
-      case 'MISSING_ITEM':
-        return { missingItems: ['Product A', 'Product B'] }
-      case 'RETURN':
-        return { returnReason: 'Not as expected', refundMethod: 'original_payment' }
-      case 'REFUND':
-        return { refundAmount: 99.99, refundMethod: 'credit_card' }
-      case 'SHIPPING_ISSUE':
-        return { expectedDelivery: new Date(), actualDelivery: null }
-      default:
-        return {}
-    }
-  }
-
   /** generateReplyContent creates realistic reply content. */
-  private generateReplyContent(type: string, index: number, isFromCustomer: boolean): string {
+  private generateReplyContent(index: number, isFromCustomer: boolean): string {
     if (isFromCustomer) {
       return [
         'Hello, I need help with my recent order.',

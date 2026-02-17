@@ -22,7 +22,7 @@ import {
   Organization,
   Participant,
   PromptHistory,
-  Signature,
+  // Signature,
   // Tag, // Only used by TagsOnThread relations (deprecated)
   // TagsOnThread, // DEPRECATED: Tags now use FieldValue via RELATIONSHIP field
   Thread,
@@ -136,10 +136,10 @@ export const messageRelations = relations(Message, ({ one, many }) => ({
     references: [Participant.id],
     relationName: 'message_replyToId_participant_id',
   }),
-  signature: one(Signature, {
-    fields: [Message.signatureId],
-    references: [Signature.id],
-  }),
+  // signature: one(Signature, {
+  //   fields: [Message.signatureId],
+  //   references: [Signature.id],
+  // }),
   thread: one(Thread, {
     fields: [Message.threadId],
     references: [Thread.id],

@@ -23,7 +23,6 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
   const markAsSpam = api.contact.markAsSpam.useMutation({
     onSuccess: (_, { id }) => {
       onRecordUpdated('contact', id)
-      utils.contact.getAll.invalidate()
       options?.onSuccess?.()
     },
     onError: (error) => {
@@ -39,7 +38,6 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
   const bulkMarkAsSpam = api.contact.bulkMarkAsSpam.useMutation({
     onSuccess: (data, { ids }) => {
       onBulkUpdated('contact', ids)
-      utils.contact.getAll.invalidate()
       options?.onSuccess?.()
     },
     onError: (error) => {
@@ -55,7 +53,6 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
   const deleteContact = api.contact.deleteContact.useMutation({
     onSuccess: (_, { id }) => {
       onRecordDeleted('contact', id)
-      utils.contact.getAll.invalidate()
       options?.onSuccess?.()
     },
     onError: (error) => {
@@ -71,7 +68,6 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
   const bulkDeleteContacts = api.contact.bulkDelete.useMutation({
     onSuccess: (_, { ids }) => {
       onBulkDeleted('contact', ids)
-      utils.contact.getAll.invalidate()
       options?.onSuccess?.()
     },
     onError: (error) => {
@@ -87,7 +83,6 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
   const createContact = api.contact.create.useMutation({
     onSuccess: () => {
       onRecordCreated('contact')
-      utils.contact.getAll.invalidate()
       options?.onSuccess?.()
     },
     onError: (error) => {
@@ -103,7 +98,6 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
   const updateContact = api.contact.update.useMutation({
     onSuccess: (_, { id }) => {
       onRecordUpdated('contact', id)
-      utils.contact.getAll.invalidate()
       utils.contact.getById.invalidate()
       options?.onSuccess?.()
     },
@@ -116,69 +110,9 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
     },
   })
 
-  // Add contacts to group mutation
-  const addToGroup = api.contact.addToGroup.useMutation({
-    onSuccess: (_, { contactIds }) => {
-      onBulkUpdated('contact', contactIds)
-      utils.contact.getAll.invalidate()
-      utils.contact.getGroups.invalidate()
-      options?.onSuccess?.()
-    },
-    onError: (error) => {
-      toastError({
-        title: 'Error adding to group',
-        description: error.message,
-      })
-      options?.onError?.(error)
-    },
-  })
-
-  // Remove contacts from group mutation
-  const removeFromGroup = api.contact.removeFromGroup.useMutation({
-    onSuccess: (_, { contactIds }) => {
-      onBulkUpdated('contact', contactIds)
-      utils.contact.getAll.invalidate()
-      utils.contact.getGroups.invalidate()
-      options?.onSuccess?.()
-    },
-    onError: (error) => {
-      toastError({
-        title: 'Error removing from group',
-        description: error.message,
-      })
-      options?.onError?.(error)
-    },
-  })
-
-  // Create group mutation
-  const createGroup = api.contact.createGroup.useMutation({
-    onSuccess: () => {
-      utils.contact.getGroups.invalidate()
-      options?.onSuccess?.()
-    },
-    onError: (error) => {
-      toastError({
-        title: 'Error creating group',
-        description: error.message,
-      })
-      options?.onError?.(error)
-    },
-  })
-
-  // Update group mutation
-  const updateGroup = api.contact.updateGroup.useMutation({
-    onSuccess: () => {
-      utils.contact.getGroups.invalidate()
-      options?.onSuccess?.()
-    },
-    onError: (error) => {
-      toastError({
-        title: 'Error updating group',
-        description: error.message,
-      })
-      options?.onError?.(error)
-    },
-  })
+  // TODO: Group mutations (addToGroup, removeFromGroup, createGroup, updateGroup) removed.
+  // CustomerGroup/CustomerGroupMember tables have been deleted.
+  // Groups are now managed via entity-group-member table.
 
   return {
     // Contact mutations
@@ -189,12 +123,6 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
     createContact,
     updateContact,
 
-    // Group mutations
-    addToGroup,
-    removeFromGroup,
-    createGroup,
-    updateGroup,
-
     // Mutation states
     isLoading:
       markAsSpam.isPending ||
@@ -202,10 +130,6 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
       deleteContact.isPending ||
       bulkDeleteContacts.isPending ||
       createContact.isPending ||
-      updateContact.isPending ||
-      addToGroup.isPending ||
-      removeFromGroup.isPending ||
-      createGroup.isPending ||
-      updateGroup.isPending,
+      updateContact.isPending,
   }
 }

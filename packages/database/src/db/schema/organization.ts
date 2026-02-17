@@ -33,7 +33,10 @@ export const Organization = pgTable(
     createdById: text()
       .notNull()
       .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'restrict' }),
-    systemUserId: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    systemUserId: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     handle: text(),
     disabledAt: timestamp({ precision: 3 }),
     disabledReason: text(),

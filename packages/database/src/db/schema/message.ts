@@ -16,10 +16,10 @@ import {
   timestamp,
   uniqueIndex,
 } from './_shared'
+import { EntityInstance } from './entity-instance'
 import { Integration } from './integration'
 import { Organization } from './organization'
 import { Participant } from './participant'
-import { Signature } from './signature'
 import { Thread } from './thread'
 import { User } from './user'
 
@@ -47,7 +47,10 @@ export const Message = pgTable(
     internetMessageId: text(),
     snippet: text(),
     metadata: jsonb(),
-    createdById: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    createdById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
@@ -62,7 +65,7 @@ export const Message = pgTable(
     updatedAt: timestamp({ precision: 3 }).notNull(),
     sentAt: timestamp({ precision: 3 }),
     receivedAt: timestamp({ precision: 3 }),
-    signatureId: text().references((): AnyPgColumn => Signature.id, { onUpdate: 'cascade' }),
+    signatureId: text().references((): AnyPgColumn => EntityInstance.id, { onUpdate: 'cascade' }),
     hasAttachments: boolean().default(false).notNull(),
     attempts: integer().default(0).notNull(),
     lastAttemptAt: timestamp({ precision: 3 }),

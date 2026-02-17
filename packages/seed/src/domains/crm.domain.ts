@@ -1,20 +1,14 @@
 // packages/seed/src/domains/crm.domain.ts
-// CRM domain refinements for contacts and participants with comprehensive seeding
+// CRM domain refinements for contacts and participants via UnifiedCrudHandler
 
 import { createId } from '@paralleldrive/cuid2'
 import { sql } from 'drizzle-orm'
-import { ContentEngine } from '../generators/content-engine'
 import type { SeedingContext, SeedingScenario } from '../types'
-import { BusinessDistributions } from '../utils/business-distributions'
 
 /** CrmDomain encapsulates contact and participant refinements. */
 export class CrmDomain {
   /** scenario stores the resolved scenario definition. */
   private readonly scenario: SeedingScenario
-  /** distributions provides realistic business data patterns. */
-  private readonly distributions: BusinessDistributions
-  /** content generates realistic business content. */
-  private readonly content: ContentEngine
   /** context stores the seeding context with foreign key references. */
   private readonly context: SeedingContext
   /** organizationId targets seeding to a specific organization. */
@@ -34,8 +28,6 @@ export class CrmDomain {
     options?: { organizationId?: string }
   ) {
     this.scenario = scenario
-    this.distributions = new BusinessDistributions(scenario.dataQuality)
-    this.content = new ContentEngine(scenario.dataQuality)
     this.context = context
     this.organizationId = options?.organizationId
 
@@ -54,87 +46,71 @@ export class CrmDomain {
   }
 
   /**
-   * insertDirectly performs direct database inserts bypassing drizzle-seed.
+   * insertDirectly creates contacts via UnifiedCrudHandler and participants via direct inserts.
    * @param db - Drizzle database instance
    */
   async insertDirectly(db: any): Promise<void> {
     const { schema } = await import('@auxx/database')
+    const { UnifiedCrudHandler } = await import('@auxx/lib/resources')
 
     // Seed for each target organization
     for (const org of this.organizations) {
-      // Generate and insert Contacts
-      await this.seedContacts(db, schema, org.id)
+      // Create contacts via UnifiedCrudHandler
+      await this.seedContacts(db, org.id, org.ownerId, UnifiedCrudHandler)
 
-      // Generate and insert Participants
+      // Create participants (direct insert, not an entity type)
       await this.seedParticipants(db, schema, org.id)
     }
   }
 
   /**
-   * seedContacts generates and inserts contact records.
+   * seedContacts generates and creates contact records via UnifiedCrudHandler.
    * @param db - Drizzle database instance
-   * @param schema - Database schema
    * @param organizationId - Organization ID to associate contacts with
+   * @param userId - User ID for the handler (system user / owner)
+   * @param UnifiedCrudHandler - The handler class
    */
-  private async seedContacts(db: any, schema: any, organizationId: string): Promise<void> {
-    console.log('📇 Generating contacts...')
+  private async seedContacts(
+    db: any,
+    organizationId: string,
+    userId: string,
+    UnifiedCrudHandler: any
+  ): Promise<void> {
+    console.log('📇 Generating contacts via UnifiedCrudHandler...')
 
+    const handler = new UnifiedCrudHandler(organizationId, userId, db)
     const contactCount = this.scenario.scales.customers
-    const contacts = []
 
+    const contactValues = []
     for (let i = 0; i < contactCount; i++) {
       const firstName = this.generateFirstName(i)
       const lastName = this.generateLastName(i)
-      const email = this.generateEmail(firstName, lastName, i)
 
-      contacts.push({
-        id: createId(),
-        email: email,
-        firstName: firstName,
-        lastName: lastName,
+      contactValues.push({
+        primary_email: this.generateEmail(firstName, lastName, i),
+        first_name: firstName,
+        last_name: lastName,
         phone: this.generatePhone(i),
-        organizationId: organizationId,
-        createdAt: new Date(Date.now() - (contactCount - i) * 3600000),
-        updatedAt: new Date(),
-        status: 'ACTIVE',
+        contact_status: 'ACTIVE',
       })
     }
 
-    if (contacts.length > 0) {
-      const BATCH_SIZE = 2000
+    if (contactValues.length > 0) {
+      const { created, errors } = await handler.bulkCreate('contact', contactValues, {
+        skipEvents: true,
+      })
 
-      if (contacts.length > BATCH_SIZE) {
-        console.log(`📦 Inserting ${contacts.length} contacts in batches of ${BATCH_SIZE}...`)
+      if (errors.length > 0) {
+        console.log(`⚠️  ${errors.length} contact creation errors:`)
+        errors.slice(0, 5).forEach((e: any) => console.log(`    [${e.index}] ${e.error}`))
       }
 
-      for (let i = 0; i < contacts.length; i += BATCH_SIZE) {
-        const batch = contacts.slice(i, i + BATCH_SIZE)
-        await db
-          .insert(schema.Contact)
-          .values(batch)
-          .onConflictDoUpdate({
-            target: [schema.Contact.organizationId, schema.Contact.email],
-            set: {
-              firstName: sql`excluded."firstName"`,
-              lastName: sql`excluded."lastName"`,
-              phone: sql`excluded.phone`,
-              updatedAt: sql`excluded."updatedAt"`,
-            },
-          })
-
-        if (contacts.length > BATCH_SIZE) {
-          console.log(
-            `  ✓ Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(contacts.length / BATCH_SIZE)} complete`
-          )
-        }
-      }
-
-      console.log(`✅ Upserted ${contacts.length} contacts`)
+      console.log(`✅ Created ${created.length} contacts via UnifiedCrudHandler`)
     }
   }
 
   /**
-   * seedParticipants generates and inserts participant records.
+   * seedParticipants generates and inserts participant records linked to contact EntityInstances.
    * @param db - Drizzle database instance
    * @param schema - Database schema
    * @param organizationId - Organization ID to associate participants with
@@ -142,45 +118,64 @@ export class CrmDomain {
   private async seedParticipants(db: any, schema: any, organizationId: string): Promise<void> {
     console.log('👥 Generating participants...')
 
-    // Get existing contacts to link participants to
-    const contacts = await db
+    // Query contact EntityInstances with their field values for email/name
+    const contactInstances = await db
       .select({
-        id: schema.Contact.id,
-        email: schema.Contact.email,
-        firstName: schema.Contact.firstName,
-        lastName: schema.Contact.lastName,
+        id: schema.EntityInstance.id,
+        displayName: schema.EntityInstance.displayName,
+        secondaryDisplayValue: schema.EntityInstance.secondaryDisplayValue,
       })
-      .from(schema.Contact)
-      .where(sql`${schema.Contact.organizationId} = ${organizationId}`)
+      .from(schema.EntityInstance)
+      .innerJoin(
+        schema.EntityDefinition,
+        sql`${schema.EntityInstance.entityDefinitionId} = ${schema.EntityDefinition.id}`
+      )
+      .where(
+        sql`${schema.EntityDefinition.entityType} = 'contact' AND ${schema.EntityInstance.organizationId} = ${organizationId}`
+      )
 
-    const participants = []
+    // Get email field values for each contact
+    const contactEmails = await db
+      .select({
+        entityId: schema.FieldValue.entityId,
+        valueText: schema.FieldValue.valueText,
+      })
+      .from(schema.FieldValue)
+      .innerJoin(schema.CustomField, sql`${schema.FieldValue.fieldId} = ${schema.CustomField.id}`)
+      .where(
+        sql`${schema.CustomField.systemAttribute} = 'primary_email' AND ${schema.CustomField.organizationId} = ${organizationId}`
+      )
 
-    // Create one participant per contact (using contact's email)
-    contacts.forEach((contact: any, index: number) => {
+    // Build email lookup
+    const emailMap = new Map<string, string>()
+    contactEmails.forEach((row: any) => {
+      if (row.valueText) emailMap.set(row.entityId, row.valueText)
+    })
+
+    const participants: any[] = []
+
+    contactInstances.forEach((contact: any, index: number) => {
+      const email = emailMap.get(contact.id)
+      if (!email) return
+
       participants.push({
         id: createId(),
-        identifier: contact.email,
+        identifier: email,
         identifierType: 'EMAIL',
-        name: `${contact.firstName} ${contact.lastName}`,
+        name: contact.displayName || '',
         organizationId: organizationId,
-        contactId: contact.id, // Link to the contact
-        createdAt: new Date(Date.now() - (contacts.length - index) * 3600000),
+        entityInstanceId: contact.id,
+        createdAt: new Date(Date.now() - (contactInstances.length - index) * 3600000),
         updatedAt: new Date(),
       })
     })
 
     console.log(
-      `  📊 Creating ${participants.length} customer participants linked to ${contacts.length} contacts`
+      `  📊 Creating ${participants.length} customer participants linked to ${contactInstances.length} contacts`
     )
 
     if (participants.length > 0) {
       const BATCH_SIZE = 2000
-
-      if (participants.length > BATCH_SIZE) {
-        console.log(
-          `📦 Inserting ${participants.length} participants in batches of ${BATCH_SIZE}...`
-        )
-      }
 
       for (let i = 0; i < participants.length; i += BATCH_SIZE) {
         const batch = participants.slice(i, i + BATCH_SIZE)
@@ -195,16 +190,10 @@ export class CrmDomain {
             ],
             set: {
               name: sql`excluded.name`,
-              contactId: sql`excluded."contactId"`,
+              entityInstanceId: sql`excluded."entityInstanceId"`,
               updatedAt: sql`excluded."updatedAt"`,
             },
           })
-
-        if (participants.length > BATCH_SIZE) {
-          console.log(
-            `  ✓ Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(participants.length / BATCH_SIZE)} complete`
-          )
-        }
       }
 
       console.log(`✅ Upserted ${participants.length} participants`)

@@ -33,7 +33,10 @@ export const AiUsage = pgTable(
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
-    userId: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
+    userId: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     endpoint: text(),
     inputTokens: integer().default(0).notNull(),
     modelType: text().default('llm').notNull(),
