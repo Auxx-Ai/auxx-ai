@@ -2,12 +2,9 @@
 ARG PROJECT="docs"
 ARG PROJECT_PATH="apps/docs"
 
-FROM node:22-alpine AS alpine
+FROM node:22.22-bookworm-slim AS slim
 
-# Install build dependencies
-RUN apk add --no-cache libc6-compat
-
-FROM alpine AS base
+FROM slim AS base
 
 # Install pnpm and turbo
 RUN npm install -g corepack@0.31.0 && corepack enable
@@ -53,7 +50,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 # Prune dev dependencies
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm prune --prod --no-optional
 
-FROM alpine AS runner
+FROM slim AS runner
 
 ARG PROJECT_PATH
 
@@ -65,8 +62,8 @@ ENV HOSTNAME=0.0.0.0
 WORKDIR /app
 
 # Create user and group
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN groupadd --system --gid 1001 nodejs && \
+    useradd --system --uid 1001 --gid nodejs nextjs
 
 # Set up directories
 RUN mkdir -p ${PROJECT_PATH}/.next

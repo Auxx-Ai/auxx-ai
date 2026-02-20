@@ -2,7 +2,7 @@
 ARG PROJECT="api"
 
 # Base stage with pnpm
-FROM node:22-bookworm-slim AS base
+FROM node:22.22-bookworm-slim AS base
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -40,7 +40,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 RUN pnpm --filter @auxx/api... --workspace-concurrency=1 build
 
 # Deploy stage - create standalone package (clean base without build tools)
-FROM node:22-bookworm-slim AS deploy
+FROM node:22.22-bookworm-slim AS deploy
 
 RUN corepack enable && corepack prepare pnpm@10.17.0 --activate
 ENV PNPM_HOME="/pnpm"
@@ -64,7 +64,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     rm -rf /deployed/node_modules/.cache /deployed/node_modules/.package-lock.json
 
 # Runner stage - minimal production image
-FROM node:22-bookworm-slim AS runner
+FROM node:22.22-bookworm-slim AS runner
 
 ENV NODE_ENV=production
 ENV PORT=3007
