@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.6](https://github.com/auxxai/auxx-ai/compare/auxx-v0.1.5...auxx-v0.1.6) (2026-02-20)
+
+
+### Bug Fixes
+
+* update Dockerfiles and entrypoint for improved builds and runtim… ([#20](https://github.com/auxxai/auxx-ai/issues/20)) ([68d3c6c](https://github.com/auxxai/auxx-ai/commit/68d3c6c3cf5d20fbfd51e93b80490d3af7c43e35))
+* update Dockerfiles to use consistent base image and improve depe… ([#22](https://github.com/auxxai/auxx-ai/issues/22)) ([accaaff](https://github.com/auxxai/auxx-ai/commit/accaaff28769dfa352850800ffbcc10576ce6174))
+
 ## [0.1.5](https://github.com/auxxai/auxx-ai/compare/auxx-v0.1.4...auxx-v0.1.5) (2026-02-17)
 
 
