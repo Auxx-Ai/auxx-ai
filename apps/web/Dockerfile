@@ -1,13 +1,9 @@
 ARG PROJECT="web"
 ARG PROJECT_PATH="apps/web"
 
-FROM node:22-alpine AS alpine
+FROM node:22.22-bookworm-slim AS slim
 
-# Install build dependencies
-RUN apk add --update --no-cache \
-  libc6-compat 
-
-FROM alpine AS base
+FROM slim AS base
 
 # Will be used to cache pnpm store
 RUN npm install -g corepack@0.31.0 && corepack enable
@@ -147,7 +143,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 # PRODUCTION
 # Standalone output bundles its own node_modules — no need to prune.
 # Keeping devDeps ensures drizzle-kit stays available for the migrate service.
-FROM alpine AS runner
+FROM slim AS runner
 
 ARG PROJECT_PATH
 
@@ -160,19 +156,15 @@ ENV PORT=3000
 WORKDIR /app
 
 
-# Install runtime dependencies (aws-cli removed — web uses @aws-sdk JS SDK, not CLI)
-RUN apk add --no-cache \
-  curl \
-  libc6-compat \
-  nodejs \
-  npm
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 # Install pnpm globally
 RUN npm install -g pnpm
 
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN groupadd --system --gid 1001 nodejs && \
+    useradd --system --uid 1001 --gid nodejs nextjs
 
 # COPY --from=builder /app/packages/core/src/assets /app/packages/core/src/assets
 COPY --from=builder /app/apps/web/public ./apps/web/public

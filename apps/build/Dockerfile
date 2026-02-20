@@ -2,11 +2,9 @@
 ARG PROJECT="build"
 ARG PROJECT_PATH="apps/build"
 
-FROM node:22-alpine AS alpine
+FROM node:22.22-bookworm-slim AS slim
 
-RUN apk add --update --no-cache libc6-compat
-
-FROM alpine AS base
+FROM slim AS base
 
 RUN npm install -g corepack@0.31.0 && corepack enable
 
@@ -85,7 +83,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
   pnpm --filter=@auxx/build run build
 
 # PRODUCTION
-FROM alpine AS runner
+FROM slim AS runner
 
 ARG PROJECT_PATH
 
@@ -96,10 +94,10 @@ ENV PORT=3006
 
 WORKDIR /app
 
-RUN apk add --no-cache curl libc6-compat nodejs npm
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN groupadd --system --gid 1001 nodejs && \
+    useradd --system --uid 1001 --gid nodejs nextjs
 
 COPY --from=builder /app/apps/build/public ./apps/build/public
 
