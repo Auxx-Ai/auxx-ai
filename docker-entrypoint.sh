@@ -8,7 +8,11 @@ replace_env() {
   local value="$(printenv "$1" 2>/dev/null || true)"
 
   if [ -n "$value" ] && [ "$value" != "$placeholder" ]; then
-    find /app/.next -name '*.js' -exec sed -i "s|${placeholder}|${value}|g" {} +
+    # Replace both "https://__RUNTIME_*__" (URL placeholders) and bare "__RUNTIME_*__"
+    find /app/.next -name '*.js' -exec sed -i \
+      -e "s|https://${placeholder}|${value}|g" \
+      -e "s|${placeholder}|${value}|g" \
+      {} +
   fi
 }
 

@@ -38,8 +38,12 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 # Build worker and its workspace dependencies (one at a time to limit memory)
 RUN pnpm --filter @auxx/worker... --workspace-concurrency=1 build
 
-# Deploy stage - create standalone package
-FROM base AS deploy
+# Deploy stage - create standalone package (clean base without build tools)
+FROM node:22-bookworm-slim AS deploy
+
+RUN corepack enable && corepack prepare pnpm@10.17.0 --activate
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
 
 WORKDIR /app
 
@@ -57,13 +61,17 @@ ENV PNPM_NETWORK_CONCURRENCY=4 \
 # Use pnpm deploy to create a standalone worker package with all dependencies
 # Drizzle doesn't require runtime client generation
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm --filter @auxx/worker --prod deploy --legacy /deployed
+    pnpm --filter @auxx/worker --prod deploy --legacy /deployed && \
+    rm -rf /deployed/node_modules/.cache /deployed/node_modules/.package-lock.json
 
 # Runner stage - minimal production image
 FROM node:22-bookworm-slim AS runner
 
 ENV NODE_ENV=production
 ENV PORT=8080
+
+# Install curl for docker-compose healthchecks
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN groupadd --system --gid 1001 nodejs && \
