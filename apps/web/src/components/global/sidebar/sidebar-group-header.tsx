@@ -83,7 +83,7 @@ export function SidebarGroupHeader({
               variant='ghost'
               size='icon'
               className={cn(
-                'size-6 me-1 rounded-md opacity-0 transition-opacity hover:bg-sidebar-accent focus-visible:ring-primary/10 group-hover:opacity-100 hover:bg-primary-200/50',
+                'size-6 me-0.75 rounded-md opacity-0 transition-opacity hover:bg-sidebar-accent focus-visible:ring-primary/10 group-hover:opacity-100 hover:bg-primary-200/50',
                 {
                   'bg-primary-200 opacity-100': popoverOpen,
                   'group-hover/item:opacity-100': !popoverOpen,

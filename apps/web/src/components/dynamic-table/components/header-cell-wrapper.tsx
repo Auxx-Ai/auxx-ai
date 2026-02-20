@@ -39,7 +39,7 @@ export function HeaderCellWrapper<TData>({ header }: HeaderCellWrapperProps<TDat
         minWidth: columnDef.minSize,
         maxWidth: columnDef.maxSize,
       }}
-      className={cn('relative shrink-0 border-t', isDragging && 'opacity-30 z-50')}>
+      className={cn('relative shrink-0', isDragging && 'opacity-30 z-50')}>
       <div
         className='group min-w-min py-2 h-full font-inter font-medium w-full'
         {...(!isCheckboxColumn ? attributes : {})}

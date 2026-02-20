@@ -38,8 +38,9 @@ async function handleRequest(req: Request): Promise<Response> {
       const event = (await req.json()) as unknown as LambdaEvent
 
       console.log('[DevServer] Received request:', {
-        functionIdentifier: event.functionIdentifier,
-        bundleKey: event.bundleKey,
+        type: event.type,
+        ...('functionIdentifier' in event && { functionIdentifier: event.functionIdentifier }),
+        ...('bundleKey' in event && { bundleKey: event.bundleKey }),
       })
 
       // Call the same handler as Lambda

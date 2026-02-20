@@ -31,7 +31,7 @@ COPY . .
 # - A folder named json with the pruned workspace's package.json files.
 # - A folder named full with the pruned workspace's package.json files.
 # - A pnpm-lock.yaml file with the pruned workspace's lockfile.
-RUN turbo prune web --docker
+RUN turbo prune @auxx/web --docker
 
 # BUILDER stage
 # ------------------------------------------------------
@@ -47,12 +47,12 @@ ARG NEXT_PUBLIC_APP_VERSION
 ARG NEXT_PUBLIC_BUILD_TIME
 
 # Build-time placeholders for NEXT_PUBLIC_* runtime env replacement (self-hosted)
-ARG NEXT_PUBLIC_BASE_URL=__RUNTIME_NEXT_PUBLIC_BASE_URL__
-ARG NEXT_PUBLIC_APP_URL=__RUNTIME_NEXT_PUBLIC_APP_URL__
-ARG NEXT_PUBLIC_API_URL=__RUNTIME_NEXT_PUBLIC_API_URL__
-ARG NEXT_PUBLIC_DEV_PORTAL_URL=__RUNTIME_NEXT_PUBLIC_DEV_PORTAL_URL__
-ARG NEXT_PUBLIC_HOMEPAGE_URL=__RUNTIME_NEXT_PUBLIC_HOMEPAGE_URL__
-ARG NEXT_PUBLIC_CDN_URL=__RUNTIME_NEXT_PUBLIC_CDN_URL__
+ARG NEXT_PUBLIC_BASE_URL=https://__RUNTIME_NEXT_PUBLIC_BASE_URL__
+ARG NEXT_PUBLIC_APP_URL=https://__RUNTIME_NEXT_PUBLIC_APP_URL__
+ARG NEXT_PUBLIC_API_URL=https://__RUNTIME_NEXT_PUBLIC_API_URL__
+ARG NEXT_PUBLIC_DEV_PORTAL_URL=https://__RUNTIME_NEXT_PUBLIC_DEV_PORTAL_URL__
+ARG NEXT_PUBLIC_HOMEPAGE_URL=https://__RUNTIME_NEXT_PUBLIC_HOMEPAGE_URL__
+ARG NEXT_PUBLIC_CDN_URL=https://__RUNTIME_NEXT_PUBLIC_CDN_URL__
 ARG NEXT_PUBLIC_S3_PUBLIC_BUCKET=__RUNTIME_NEXT_PUBLIC_S3_PUBLIC_BUCKET__
 ARG NEXT_PUBLIC_S3_PRIVATE_BUCKET=__RUNTIME_NEXT_PUBLIC_S3_PRIVATE_BUCKET__
 ARG NEXT_PUBLIC_S3_REGION=__RUNTIME_NEXT_PUBLIC_S3_REGION__
@@ -134,7 +134,7 @@ RUN BUILDING_CONTAINER=true pnpm --filter="@auxx/workflow-nodes" run generate
 # Build dependencies first 
 RUN BUILDING_CONTAINER=true pnpm turbo build --filter="@auxx/config" --filter="@auxx/workflow-nodes"
 
-# Then build the web app using webpack (not turbopack) for lower memory usage
+# Build the web app (uses Turbopack, Next.js 16.1 default)
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
   BUILDING_CONTAINER=true \
   NEXT_TELEMETRY_DISABLED=1 \
@@ -144,12 +144,9 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
   NODE_OPTIONS="--max-old-space-size=8192" \
   pnpm --filter=web run build:prod
 
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-  BUILDING_CONTAINER=true \
-  pnpm prune --prod --no-optional
-
 # PRODUCTION
-# no 
+# Standalone output bundles its own node_modules — no need to prune.
+# Keeping devDeps ensures drizzle-kit stays available for the migrate service.
 FROM alpine AS runner
 
 ARG PROJECT_PATH
@@ -163,11 +160,8 @@ ENV PORT=3000
 WORKDIR /app
 
 
-# Install AWS CLI using Alpine package manager and pnpm
+# Install runtime dependencies (aws-cli removed — web uses @aws-sdk JS SDK, not CLI)
 RUN apk add --no-cache \
-  aws-cli \
-  groff \
-  less \ 
   curl \
   libc6-compat \
   nodejs \
@@ -189,14 +183,13 @@ RUN mkdir -p apps/web/.next/cache
 RUN chown nextjs:nodejs apps/web/.next
 RUN chown nextjs:nodejs apps/web/.next/cache
 
-# Copy the standalone server and node_modules
+# Copy the standalone server and static assets
 COPY --from=builder --chown=nodejs:nextjs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nodejs:nextjs /app/apps/web/.next/static ./apps/web/.next/static
-COPY --from=builder --chown=nodejs:nextjs /app/apps/web/node_modules ./apps/web/node_modules
 
 # Copy packages/database for drizzle-kit migrations (used by migrate service)
+# The database package includes its own node_modules — no need for the full monorepo node_modules (~1.4GB)
 COPY --from=builder --chown=nodejs:nextjs /app/packages/database ./packages/database
-COPY --from=builder --chown=nodejs:nextjs /app/node_modules ./node_modules
 
 # Copy the docker entrypoint for runtime env replacement
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh

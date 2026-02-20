@@ -3,9 +3,16 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { cn } from '@auxx/ui/lib/utils'
-import { RefreshCw, Save, Upload } from 'lucide-react'
+import { ArrowDownUp, Download, RefreshCw, Save, Upload } from 'lucide-react'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
@@ -110,7 +117,7 @@ export function TableToolbar<TData = any>({
   return (
     <div
       className={cn(
-        'flex @container/controls items-start gap-1.5 py-2 px-3 bg-background overflow-x-auto no-scrollbar w-full',
+        'flex @container/controls border-b items-start gap-1.5 py-2 px-3 bg-background overflow-x-auto no-scrollbar w-full',
         className
       )}>
       {/* View Selector - Always shown */}
@@ -152,16 +159,33 @@ export function TableToolbar<TData = any>({
       {/* Columns/Settings Button - different component for kanban vs table */}
       {isKanbanView ? <KanbanViewSettings /> : <ColumnManager />}
 
-      {/* Import Button - Link to import page if href provided, otherwise file picker */}
+      {/* Import / Export Dropdown */}
       {enableImport && importHref && (
-        <Tooltip content='Import data'>
-          <Button variant='ghost' size='sm' asChild>
-            <Link href={importHref}>
-              <Upload className='size-3' />
-              <span className='hidden @lg/controls:block'>Import</span>
-            </Link>
-          </Button>
-        </Tooltip>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant='ghost' size='sm'>
+              <ArrowDownUp />
+              <span className='hidden @lg/controls:block'>Import / Export</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align='start'>
+            <DropdownMenuItem asChild>
+              <Link href={importHref}>
+                <Upload />
+                Import data
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem disabled>
+              <Download />
+              Export current view as CSV
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled>
+              <Download />
+              Export all records as CSV
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
       {/* Custom Filter */}
       {customFilter}

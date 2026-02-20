@@ -32,14 +32,19 @@ ENV NODE_OPTIONS=--max-old-space-size=1536
 COPY . .
 
 # Install ALL dependencies (dev + prod)
+# --ignore-scripts prevents @postman/node-keytar arm64 prebuild failure
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --no-frozen-lockfile --filter @auxx/api...
+    pnpm install --no-frozen-lockfile --ignore-scripts --filter @auxx/api...
 
 # Build api and its workspace dependencies
 RUN pnpm --filter @auxx/api... --workspace-concurrency=1 build
 
-# Deploy stage - create standalone package
-FROM base AS deploy
+# Deploy stage - create standalone package (clean base without build tools)
+FROM node:22-bookworm-slim AS deploy
+
+RUN corepack enable && corepack prepare pnpm@10.17.0 --activate
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
 
 WORKDIR /app
 
@@ -53,14 +58,19 @@ ENV PNPM_NETWORK_CONCURRENCY=4 \
     PNPM_PREFER_OFFLINE=true
 
 # Use pnpm deploy to create a standalone api package with all dependencies
+# --ignore-scripts prevents @postman/node-keytar arm64 prebuild failure
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm --filter @auxx/api --prod deploy --legacy /deployed
+    pnpm --filter @auxx/api --prod deploy --legacy --ignore-scripts /deployed && \
+    rm -rf /deployed/node_modules/.cache /deployed/node_modules/.package-lock.json
 
 # Runner stage - minimal production image
 FROM node:22-bookworm-slim AS runner
 
 ENV NODE_ENV=production
 ENV PORT=3007
+
+# Install curl for docker-compose healthchecks
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN groupadd --system --gid 1001 nodejs && \

@@ -9,19 +9,18 @@ WORKDIR /app
 # Copy SDK files (needed by import map)
 COPY packages/sdk/lib ./packages/sdk/lib
 
-# Copy source files and config
-COPY apps/lambda/src ./apps/lambda/src
-COPY apps/lambda/deno.json ./apps/lambda/deno.json
+# Copy source files and config (flat layout to match deno.json import map paths)
+COPY apps/lambda/src ./src
+COPY apps/lambda/deno.json ./deno.json
 
 # Cache dependencies
-RUN deno cache apps/lambda/src/dev-server.ts
+RUN deno cache src/dev-server.ts
 
 # Compile to standalone binary
 RUN deno compile \
-  --target x86_64-unknown-linux-gnu \
   --allow-net --allow-env --allow-read --allow-write=/tmp \
   --output dist/server \
-  apps/lambda/src/dev-server.ts
+  src/dev-server.ts
 
 # Minimal runtime image
 FROM gcr.io/distroless/cc-debian12

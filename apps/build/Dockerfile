@@ -27,12 +27,12 @@ RUN turbo prune @auxx/build --docker
 FROM base AS builder
 
 # Build-time placeholders for NEXT_PUBLIC_* runtime env replacement
-ARG NEXT_PUBLIC_BASE_URL=__RUNTIME_NEXT_PUBLIC_BASE_URL__
-ARG NEXT_PUBLIC_APP_URL=__RUNTIME_NEXT_PUBLIC_APP_URL__
-ARG NEXT_PUBLIC_API_URL=__RUNTIME_NEXT_PUBLIC_API_URL__
-ARG NEXT_PUBLIC_DEV_PORTAL_URL=__RUNTIME_NEXT_PUBLIC_DEV_PORTAL_URL__
-ARG NEXT_PUBLIC_HOMEPAGE_URL=__RUNTIME_NEXT_PUBLIC_HOMEPAGE_URL__
-ARG NEXT_PUBLIC_CDN_URL=__RUNTIME_NEXT_PUBLIC_CDN_URL__
+ARG NEXT_PUBLIC_BASE_URL=https://__RUNTIME_NEXT_PUBLIC_BASE_URL__
+ARG NEXT_PUBLIC_APP_URL=https://__RUNTIME_NEXT_PUBLIC_APP_URL__
+ARG NEXT_PUBLIC_API_URL=https://__RUNTIME_NEXT_PUBLIC_API_URL__
+ARG NEXT_PUBLIC_DEV_PORTAL_URL=https://__RUNTIME_NEXT_PUBLIC_DEV_PORTAL_URL__
+ARG NEXT_PUBLIC_HOMEPAGE_URL=https://__RUNTIME_NEXT_PUBLIC_HOMEPAGE_URL__
+ARG NEXT_PUBLIC_CDN_URL=https://__RUNTIME_NEXT_PUBLIC_CDN_URL__
 ARG NEXT_PUBLIC_S3_PUBLIC_BUCKET=__RUNTIME_NEXT_PUBLIC_S3_PUBLIC_BUCKET__
 ARG NEXT_PUBLIC_S3_PRIVATE_BUCKET=__RUNTIME_NEXT_PUBLIC_S3_PRIVATE_BUCKET__
 ARG NEXT_PUBLIC_S3_REGION=__RUNTIME_NEXT_PUBLIC_S3_REGION__
@@ -84,10 +84,6 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
   NODE_OPTIONS="--max-old-space-size=4096" \
   pnpm --filter=@auxx/build run build
 
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-  BUILDING_CONTAINER=true \
-  pnpm prune --prod --no-optional
-
 # PRODUCTION
 FROM alpine AS runner
 
@@ -102,8 +98,6 @@ WORKDIR /app
 
 RUN apk add --no-cache curl libc6-compat nodejs npm
 
-RUN npm install -g pnpm
-
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
@@ -114,10 +108,9 @@ RUN mkdir -p apps/build/.next/cache
 RUN chown nextjs:nodejs apps/build/.next
 RUN chown nextjs:nodejs apps/build/.next/cache
 
-# Copy the standalone server and node_modules
+# Copy the standalone server and static assets
 COPY --from=builder --chown=nodejs:nextjs /app/apps/build/.next/standalone ./
 COPY --from=builder --chown=nodejs:nextjs /app/apps/build/.next/static ./apps/build/.next/static
-COPY --from=builder --chown=nodejs:nextjs /app/apps/build/node_modules ./apps/build/node_modules
 
 # Copy the docker entrypoint for runtime env replacement
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
