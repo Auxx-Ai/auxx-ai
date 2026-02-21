@@ -1,7 +1,9 @@
 // packages/database/drizzle.config.ts
 import { defineConfig } from 'drizzle-kit'
+import { ensureDatabaseEnv } from './scripts/load-database-env'
 
-import 'dotenv/config'
+/** Loads DATABASE_URL from process env, then root .env, then derived local fallback. */
+ensureDatabaseEnv()
 
 export default defineConfig({
   dialect: 'postgresql',

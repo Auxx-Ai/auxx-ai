@@ -13,6 +13,11 @@ if ! command -v openssl &>/dev/null; then
   exit 1
 fi
 
+if ! command -v node &>/dev/null; then
+  echo -e "${RED}Error: node is required but not installed.${NC}"
+  exit 1
+fi
+
 # ─── Mode detection ───────────────────────────────────────
 SELF_HOSTED=false
 FILL_MODE=false
@@ -113,18 +118,6 @@ if [ "$FILL_MODE" = true ]; then
       fi
     fi
     echo -e "  ${GREEN}✓${NC} Rebuilt DATABASE_URL with current DATABASE_PASSWORD"
-
-    # Sync DATABASE_URL to all app .env files
-    for dir in "apps/web" "apps/build" "apps/api" "apps/worker" "apps/kb" "packages/database"; do
-      if [ -f "${dir}/.env" ]; then
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-          sed -i '' "s|^DATABASE_URL=.*|DATABASE_URL=${DB_URL}|" "${dir}/.env"
-        else
-          sed -i "s|^DATABASE_URL=.*|DATABASE_URL=${DB_URL}|" "${dir}/.env"
-        fi
-        echo -e "  ${GREEN}✓${NC} Synced DATABASE_URL in ${dir}/.env"
-      fi
-    done
   fi
 
   # ─── Sync LAMBDA_INVOKE_SECRET to apps/lambda/.env ────────
@@ -158,6 +151,10 @@ if [ "$FILL_MODE" = true ]; then
       echo -e "  ${GREEN}✓${NC} Created apps/lambda/.env with LAMBDA_INVOKE_SECRET"
     fi
   fi
+
+  echo ""
+  echo "Syncing DATABASE_URL across app env files..."
+  node scripts/sync-db-env.mjs
 
   echo ""
   echo -e "${GREEN}Done.${NC} Missing secrets have been filled."
@@ -204,23 +201,8 @@ if [ -f apps/lambda/.env.example ]; then
   echo -e "${GREEN}✓ apps/lambda/.env created${NC}"
 fi
 
-# ─── Sync DATABASE_URL to all app .env files ─────────────
-DB_URL="postgresql://postgres:${DATABASE_PASSWORD}@${DB_HOST}:5432/${DB_NAME}"
-APP_DIRS=("apps/web" "apps/build" "apps/api" "apps/worker" "apps/kb" "packages/database")
-
-for dir in "${APP_DIRS[@]}"; do
-  if [ -f "${dir}/.env" ]; then
-    do_sed "s|^DATABASE_URL=.*|DATABASE_URL=\"${DB_URL}\"|" "${dir}/.env"
-    echo -e "  ${GREEN}✓${NC} Updated DATABASE_URL in ${dir}/.env"
-  elif [ -f "${dir}/.env.example" ]; then
-    cp "${dir}/.env.example" "${dir}/.env"
-    do_sed "s|^DATABASE_URL=.*|DATABASE_URL=\"${DB_URL}\"|" "${dir}/.env"
-    echo -e "  ${GREEN}✓${NC} Created ${dir}/.env with DATABASE_URL"
-  else
-    echo "DATABASE_URL=\"${DB_URL}\"" > "${dir}/.env"
-    echo -e "  ${GREEN}✓${NC} Created ${dir}/.env with DATABASE_URL"
-  fi
-done
+echo "Syncing DATABASE_URL across app env files..."
+node scripts/sync-db-env.mjs
 
 # ─── Output ───────────────────────────────────────────────
 echo ""

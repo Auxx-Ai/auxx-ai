@@ -89,6 +89,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
     networks:
       - auxx-network
     restart: unless-stopped
@@ -103,6 +108,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
     networks:
       - auxx-network
     restart: unless-stopped
@@ -111,7 +121,7 @@ services:
 
   migrate:
     image: ghcr.io/auxx-ai/web:${VERSION:-latest}
-    command: ["pnpm", "drizzle-kit", "migrate"]
+    command: ["npx", "drizzle-kit", "migrate"]
     working_dir: /app/packages/database
     environment:
       <<: [*db-env]
@@ -137,6 +147,11 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
     labels:
       - traefik.enable=true
       - traefik.http.routers.web.rule=Host(`app.${DOMAIN}`)
@@ -162,6 +177,11 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
     labels:
       - traefik.enable=true
       - traefik.http.routers.api.rule=Host(`api.${DOMAIN}`)
@@ -185,6 +205,11 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
     labels:
       - traefik.enable=true
       - traefik.http.routers.build.rule=Host(`build.${DOMAIN}`)
@@ -210,6 +235,11 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
     networks:
       - auxx-network
     restart: unless-stopped

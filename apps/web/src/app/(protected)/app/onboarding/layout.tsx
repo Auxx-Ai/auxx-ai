@@ -9,22 +9,10 @@ type Props = { children: React.ReactNode }
 
 function layout({ children }: Props) {
   return (
-    <>
-      <ColorfulBg />
-      {/* <AnimatedGridPattern
-        numSquares={100}
-        maxOpacity={0.3}
-        duration={3}
-        repeatDelay={1}
-        className={cn(
-          '[mask-image:radial-gradient(500px_circle_at_center,white,transparent)]',
-
-          'inset-x-0 h-full skew-y-12'
-        )}
-      /> */}
+    <ColorfulBg>
       <OnboardingProvider>
         <div className='flex min-h-screen flex-col relative z-30'>
-          <div className='min-h-screen h-full flex flex-col items-center justify-start gap-8 py-8 overflow-hidden'>
+          <div className='h-full flex flex-col items-center justify-start gap-8 py-8 overflow-hidden'>
             <Logo />
             <div className='flex flex-col items-center justify-center w-full max-w-4xl px-4'>
               <OnboardingProgress />
@@ -38,7 +26,7 @@ function layout({ children }: Props) {
           </div>
         </div>
       </OnboardingProvider>
-    </>
+    </ColorfulBg>
   )
 }
 
