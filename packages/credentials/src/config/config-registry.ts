@@ -97,6 +97,7 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     group: ConfigVariableGroup.DATABASE,
     isSensitive: true,
     isEnvOnly: true,
+    infraManaged: true,
   },
   DATABASE_PASSWORD: {
     key: 'DATABASE_PASSWORD',
@@ -105,6 +106,7 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     group: ConfigVariableGroup.DATABASE,
     isSensitive: true,
     isEnvOnly: true,
+    infraManaged: true,
   },
 
   // ── REDIS ───────────────────────────────────────────────
@@ -116,6 +118,7 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     defaultValue: 'localhost',
     isSensitive: false,
     isEnvOnly: true,
+    infraManaged: true,
   },
   REDIS_PORT: {
     key: 'REDIS_PORT',
@@ -125,6 +128,7 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     defaultValue: 6379,
     isSensitive: false,
     isEnvOnly: true,
+    infraManaged: true,
     min: 1,
     max: 65535,
   },
@@ -135,6 +139,7 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     group: ConfigVariableGroup.REDIS,
     isSensitive: true,
     isEnvOnly: true,
+    infraManaged: true,
   },
 
   // ── AUTH ─────────────────────────────────────────────────
@@ -226,6 +231,14 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     isSensitive: true,
     isEnvOnly: false,
   },
+  GRAVATAR_API_KEY: {
+    key: 'GRAVATAR_API_KEY',
+    description: 'Gravatar API key for avatar fetching',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.AUTH,
+    isSensitive: true,
+    isEnvOnly: false,
+  },
 
   // ── GOOGLE WORKSPACE ──────────────────────────────────────
   GOOGLE_CLIENT_ID: {
@@ -278,6 +291,14 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     isSensitive: true,
     isEnvOnly: false,
   },
+  GOOGLE_PUBSUB_SERVICE_ACCOUNT_EMAIL: {
+    key: 'GOOGLE_PUBSUB_SERVICE_ACCOUNT_EMAIL',
+    description: 'Service account email used as JWT audience for PubSub push verification',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.GOOGLE_WORKSPACE,
+    isSensitive: false,
+    isEnvOnly: false,
+  },
   GOOGLE_CLIENT_EMAIL: {
     key: 'GOOGLE_CLIENT_EMAIL',
     description: 'Service account email for Google APIs',
@@ -317,6 +338,24 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     description: 'Outlook webhook signing secret',
     type: ConfigVariableType.STRING,
     group: ConfigVariableGroup.OUTLOOK,
+    isSensitive: true,
+    isEnvOnly: false,
+  },
+
+  // ── DROPBOX ──────────────────────────────────────────────
+  DROPBOX_CLIENT_ID: {
+    key: 'DROPBOX_CLIENT_ID',
+    description: 'Dropbox OAuth2 client ID',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.DROPBOX,
+    isSensitive: false,
+    isEnvOnly: false,
+  },
+  DROPBOX_CLIENT_SECRET: {
+    key: 'DROPBOX_CLIENT_SECRET',
+    description: 'Dropbox OAuth2 client secret',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.DROPBOX,
     isSensitive: true,
     isEnvOnly: false,
   },
@@ -552,6 +591,14 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     isSensitive: false,
     isEnvOnly: false,
   },
+  CDN_URL: {
+    key: 'CDN_URL',
+    description: 'CDN URL for serving public assets',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.STORAGE,
+    isSensitive: false,
+    isEnvOnly: false,
+  },
   S3_ACCESS_KEY_ID: {
     key: 'S3_ACCESS_KEY_ID',
     description: 'S3 access key ID',
@@ -705,6 +752,14 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     isSensitive: true,
     isEnvOnly: false,
   },
+  STRIPE_PUBLISHABLE_KEY: {
+    key: 'STRIPE_PUBLISHABLE_KEY',
+    description: 'Stripe publishable key (public, safe for client)',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.BILLING,
+    isSensitive: false,
+    isEnvOnly: false,
+  },
   STRIPE_WEBHOOK_SECRET: {
     key: 'STRIPE_WEBHOOK_SECRET',
     description: 'Stripe webhook signing secret',
@@ -787,14 +842,34 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     isEnvOnly: true,
   },
 
+  // ── ANALYTICS ────────────────────────────────────────────
+  POSTHOG_KEY: {
+    key: 'POSTHOG_KEY',
+    description: 'PostHog analytics project API key',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.ANALYTICS,
+    isSensitive: false,
+    isEnvOnly: false,
+  },
+  POSTHOG_HOST: {
+    key: 'POSTHOG_HOST',
+    description: 'PostHog analytics host URL',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.ANALYTICS,
+    defaultValue: 'https://app.posthog.com',
+    isSensitive: false,
+    isEnvOnly: false,
+  },
+
   // ── CACHE ─────────────────────────────────────────────────
   CACHE_PROVIDER: {
     key: 'CACHE_PROVIDER',
-    description: 'Cache provider (redis, kv, elasticache)',
+    description: 'Cache provider (hosted, upstash, aws)',
     type: ConfigVariableType.STRING,
     group: ConfigVariableGroup.CACHE,
     isSensitive: false,
     isEnvOnly: true,
+    defaultValue: 'hosted',
   },
   KV_URL: {
     key: 'KV_URL',
@@ -877,14 +952,14 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     isEnvOnly: true,
   },
 
-  // ── FRONTEND ─────────────────────────────────────────────
+  // ── FRONTEND (Group A — URL vars, deploy-time constants) ──
   NEXT_PUBLIC_API_URL: {
     key: 'NEXT_PUBLIC_API_URL',
     description: 'API service URL (used by client for API calls)',
     type: ConfigVariableType.STRING,
     group: ConfigVariableGroup.FRONTEND,
     isSensitive: false,
-    isEnvOnly: false,
+    isEnvOnly: true,
   },
   NEXT_PUBLIC_HOMEPAGE_URL: {
     key: 'NEXT_PUBLIC_HOMEPAGE_URL',
@@ -892,7 +967,7 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     type: ConfigVariableType.STRING,
     group: ConfigVariableGroup.FRONTEND,
     isSensitive: false,
-    isEnvOnly: false,
+    isEnvOnly: true,
   },
   NEXT_PUBLIC_DEV_PORTAL_URL: {
     key: 'NEXT_PUBLIC_DEV_PORTAL_URL',
@@ -900,7 +975,7 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     type: ConfigVariableType.STRING,
     group: ConfigVariableGroup.FRONTEND,
     isSensitive: false,
-    isEnvOnly: false,
+    isEnvOnly: true,
   },
   NEXT_PUBLIC_DOCS_URL: {
     key: 'NEXT_PUBLIC_DOCS_URL',
@@ -908,127 +983,28 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     type: ConfigVariableType.STRING,
     group: ConfigVariableGroup.FRONTEND,
     isSensitive: false,
-    isEnvOnly: false,
-  },
-  NEXT_PUBLIC_ENV: {
-    key: 'NEXT_PUBLIC_ENV',
-    description: 'Environment name exposed to client (production, development, test)',
-    type: ConfigVariableType.ENUM,
-    group: ConfigVariableGroup.FRONTEND,
-    isSensitive: false,
     isEnvOnly: true,
-    options: ['development', 'production', 'test'],
   },
-  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: {
-    key: 'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY',
-    description: 'Stripe publishable key (public, safe for client)',
-    type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.FRONTEND,
-    isSensitive: false,
-    isEnvOnly: false,
-  },
-  NEXT_PUBLIC_PUSHER_KEY: {
-    key: 'NEXT_PUBLIC_PUSHER_KEY',
-    description: 'Pusher app key for client-side real-time',
-    type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.FRONTEND,
-    isSensitive: false,
-    isEnvOnly: false,
-  },
-  NEXT_PUBLIC_PUSHER_CLUSTER: {
-    key: 'NEXT_PUBLIC_PUSHER_CLUSTER',
-    description: 'Pusher cluster region for client',
-    type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.FRONTEND,
-    defaultValue: 'us3',
-    isSensitive: false,
-    isEnvOnly: false,
-  },
-  NEXT_PUBLIC_POSTHOG_KEY: {
-    key: 'NEXT_PUBLIC_POSTHOG_KEY',
-    description: 'PostHog analytics project API key',
-    type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.FRONTEND,
-    isSensitive: false,
-    isEnvOnly: false,
-  },
-  NEXT_PUBLIC_POSTHOG_HOST: {
-    key: 'NEXT_PUBLIC_POSTHOG_HOST',
-    description: 'PostHog analytics host URL',
-    type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.FRONTEND,
-    defaultValue: 'https://app.posthog.com',
-    isSensitive: false,
-    isEnvOnly: false,
-  },
-  NEXT_PUBLIC_STORAGE_TYPE: {
-    key: 'NEXT_PUBLIC_STORAGE_TYPE',
-    description: 'File storage type exposed to client (local or s3)',
-    type: ConfigVariableType.ENUM,
-    group: ConfigVariableGroup.FRONTEND,
-    defaultValue: 'local',
-    isSensitive: false,
-    isEnvOnly: false,
-    options: ['local', 's3'],
-  },
-  NEXT_PUBLIC_S3_PUBLIC_BUCKET: {
-    key: 'NEXT_PUBLIC_S3_PUBLIC_BUCKET',
-    description: 'Public S3 bucket name exposed to client',
-    type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.FRONTEND,
-    isSensitive: false,
-    isEnvOnly: false,
-  },
-  NEXT_PUBLIC_S3_PRIVATE_BUCKET: {
-    key: 'NEXT_PUBLIC_S3_PRIVATE_BUCKET',
-    description: 'Private S3 bucket name exposed to client',
-    type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.FRONTEND,
-    isSensitive: false,
-    isEnvOnly: false,
-  },
-  NEXT_PUBLIC_S3_REGION: {
-    key: 'NEXT_PUBLIC_S3_REGION',
-    description: 'S3 region exposed to client',
-    type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.FRONTEND,
-    isSensitive: false,
-    isEnvOnly: false,
-  },
-  NEXT_PUBLIC_CDN_URL: {
-    key: 'NEXT_PUBLIC_CDN_URL',
-    description: 'CDN URL for public assets',
-    type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.FRONTEND,
-    isSensitive: false,
-    isEnvOnly: false,
-  },
-  NEXT_PUBLIC_SUPPORT_DOMAIN: {
-    key: 'NEXT_PUBLIC_SUPPORT_DOMAIN',
-    description: 'Support/help domain exposed to client',
-    type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.FRONTEND,
-    isSensitive: false,
-    isEnvOnly: false,
-  },
-  NEXT_PUBLIC_GIT_SHA: {
-    key: 'NEXT_PUBLIC_GIT_SHA',
+
+  // ── FRONTEND (Group B — build info, truly build-time) ─────
+  GIT_SHA: {
+    key: 'GIT_SHA',
     description: 'Git commit SHA (set at build time)',
     type: ConfigVariableType.STRING,
     group: ConfigVariableGroup.FRONTEND,
     isSensitive: false,
     isEnvOnly: true,
   },
-  NEXT_PUBLIC_BUILD_TIME: {
-    key: 'NEXT_PUBLIC_BUILD_TIME',
+  BUILD_TIME: {
+    key: 'BUILD_TIME',
     description: 'Build timestamp (set at build time)',
     type: ConfigVariableType.STRING,
     group: ConfigVariableGroup.FRONTEND,
     isSensitive: false,
     isEnvOnly: true,
   },
-  NEXT_PUBLIC_APP_VERSION: {
-    key: 'NEXT_PUBLIC_APP_VERSION',
+  APP_VERSION: {
+    key: 'APP_VERSION',
     description: 'Application version (set at build time)',
     type: ConfigVariableType.STRING,
     group: ConfigVariableGroup.FRONTEND,
@@ -1063,6 +1039,7 @@ export const CONFIG_GROUP_META: Record<
   },
   OUTLOOK: { label: 'Outlook', description: 'Microsoft Outlook email integration', iconId: 'mail' },
   FACEBOOK: { label: 'Facebook', description: 'Facebook/Instagram integration', iconId: 'globe' },
+  DROPBOX: { label: 'Dropbox', description: 'Dropbox OAuth2 integration', iconId: 'cloud' },
   EMAIL: {
     label: 'Email Sending',
     description: 'Outbound email provider and system email settings',
@@ -1093,6 +1070,11 @@ export const CONFIG_GROUP_META: Record<
     description: 'Pusher real-time notifications (server-side)',
     iconId: 'zap',
   },
+  ANALYTICS: {
+    label: 'Analytics',
+    description: 'PostHog analytics and tracking configuration',
+    iconId: 'bar-chart',
+  },
   CACHE: {
     label: 'Cache',
     description: 'Cache provider settings (Redis, KV, ElastiCache)',
@@ -1105,7 +1087,7 @@ export const CONFIG_GROUP_META: Record<
   },
   FRONTEND: {
     label: 'Frontend',
-    description: 'Client-side NEXT_PUBLIC_ settings (inlined at build time)',
+    description: 'URL constants and build info (NEXT_PUBLIC_ vars)',
     iconId: 'layout',
   },
 }

@@ -1,6 +1,6 @@
 // packages/redis/src/providers/upstash-provider.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { Redis } from '@upstash/redis'
 import { logger, type RedisClient } from '../types'
 
@@ -9,8 +9,8 @@ import { logger, type RedisClient } from '../types'
  * Upstash doesn't support native pub/sub, so we use lists as message queues
  */
 export function createUpstashClient(): RedisClient {
-  const restUrl = env.KV_REST_API_URL
-  const restToken = env.KV_REST_API_TOKEN
+  const restUrl = configService.get<string>('KV_REST_API_URL')
+  const restToken = configService.get<string>('KV_REST_API_TOKEN')
 
   if (!restUrl || !restToken) {
     throw new Error('KV_REST_API_URL and KV_REST_API_TOKEN are required for Upstash Redis')

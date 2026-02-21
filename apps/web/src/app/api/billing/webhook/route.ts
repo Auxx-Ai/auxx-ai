@@ -4,7 +4,7 @@
  */
 
 import { WebhookService } from '@auxx/billing'
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
 import { createScopedLogger } from '@auxx/logger'
@@ -37,20 +37,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No signature' }, { status: 400 })
     }
 
-    const webhookService = new WebhookService(database, env.STRIPE_WEBHOOK_SECRET!, {
-      /**
-       * Logs successful invoice payments for observability.
-       */
-      onInvoicePaid: async (event) => {
-        logger.info('Invoice paid event processed', { eventId: event.id })
-      },
-      /**
-       * Warns about failed invoice payments so they can be retried manually.
-       */
-      onInvoicePaymentFailed: async (event) => {
-        logger.warn('Invoice payment failed', { eventId: event.id })
-      },
-    })
+    const webhookService = new WebhookService(
+      database,
+      configService.get<string>('STRIPE_WEBHOOK_SECRET')!,
+      {
+        /**
+         * Logs successful invoice payments for observability.
+         */
+        onInvoicePaid: async (event) => {
+          logger.info('Invoice paid event processed', { eventId: event.id })
+        },
+        /**
+         * Warns about failed invoice payments so they can be retried manually.
+         */
+        onInvoicePaymentFailed: async (event) => {
+          logger.warn('Invoice payment failed', { eventId: event.id })
+        },
+      }
+    )
 
     await webhookService.processWebhook(body, signature)
 

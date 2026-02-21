@@ -1,6 +1,6 @@
 // packages/lib/src/mail-domains/domains-service.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import crypto from 'crypto'
@@ -10,8 +10,8 @@ import { MailgunApiService } from '../providers/mailgun/mailgun-api-service'
 const logger = createScopedLogger('domain-service')
 
 /** Base domain for provider-supplied domains */
-const MAILGUN_DOMAIN = env.MAILGUN_DOMAIN || ''
-const APP_URL = env.NEXT_PUBLIC_APP_URL
+const MAILGUN_DOMAIN = configService.get<string>('MAILGUN_DOMAIN') || ''
+const APP_URL = configService.get<string>('NEXT_PUBLIC_APP_URL')
 
 /**
  * Service for managing email domains.

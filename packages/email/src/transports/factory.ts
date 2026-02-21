@@ -1,6 +1,6 @@
 // packages/lib/src/email/transports/factory.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { createScopedLogger } from '@auxx/logger'
 import { SESv2Client } from '@aws-sdk/client-sesv2'
 import nodemailer from 'nodemailer'
@@ -17,7 +17,7 @@ export class TransportFactory {
    * Create a transporter for the configured provider
    */
   static create(): nodemailer.Transporter {
-    const provider = env.EMAIL_PROVIDER || 'mailgun'
+    const provider = configService.get<string>('EMAIL_PROVIDER') || 'mailgun'
 
     switch (provider) {
       case 'ses':
@@ -37,9 +37,13 @@ export class TransportFactory {
    * Create AWS SES transport using AWS SDK v3
    */
   private static createSesTransport(): nodemailer.Transporter {
-    const region = env.AWS_REGION || 'us-west-1'
-    const accessKeyId = env.AWS_SES_ACCESS_KEY_ID || env.AWS_ACCESS_KEY_ID
-    const secretAccessKey = env.AWS_SES_SECRET_ACCESS_KEY || env.AWS_SECRET_ACCESS_KEY
+    const region = configService.get<string>('AWS_REGION') || 'us-west-1'
+    const accessKeyId =
+      configService.get<string>('AWS_SES_ACCESS_KEY_ID') ||
+      configService.get<string>('AWS_ACCESS_KEY_ID')
+    const secretAccessKey =
+      configService.get<string>('AWS_SES_SECRET_ACCESS_KEY') ||
+      configService.get<string>('AWS_SECRET_ACCESS_KEY')
 
     const sesv2 = new SESv2Client({
       region,
@@ -61,8 +65,8 @@ export class TransportFactory {
   private static createMailgunTransport(): nodemailer.Transporter {
     // Validate required environment variables
     const requiredVars = {
-      MAILGUN_API_KEY: env.MAILGUN_API_KEY,
-      SYSTEM_FROM_EMAIL: env.SYSTEM_FROM_EMAIL,
+      MAILGUN_API_KEY: configService.get<string>('MAILGUN_API_KEY'),
+      SYSTEM_FROM_EMAIL: configService.get<string>('SYSTEM_FROM_EMAIL'),
     }
 
     const missingVars = Object.entries(requiredVars)
@@ -74,7 +78,7 @@ export class TransportFactory {
     }
 
     // Derive sending domain from SYSTEM_FROM_EMAIL
-    const fromEmail = env.SYSTEM_FROM_EMAIL!
+    const fromEmail = configService.get<string>('SYSTEM_FROM_EMAIL')!
     const sendingDomain = fromEmail.split('@')[1]
 
     if (!sendingDomain) {
@@ -82,13 +86,16 @@ export class TransportFactory {
     }
 
     const auth = {
-      api_key: env.MAILGUN_API_KEY,
+      api_key: configService.get<string>('MAILGUN_API_KEY'),
       domain: sendingDomain,
     }
 
     // Use MAILGUN_DOMAIN as the API host per repository convention
     const host =
-      env.MAILGUN_DOMAIN || (env.MAILGUN_REGION === 'eu' ? 'api.eu.mailgun.net' : 'api.mailgun.net')
+      configService.get<string>('MAILGUN_DOMAIN') ||
+      (configService.get<string>('MAILGUN_REGION') === 'eu'
+        ? 'api.eu.mailgun.net'
+        : 'api.mailgun.net')
 
     logger.info('Creating Mailgun transporter', { host, sendingDomain })
 
@@ -102,10 +109,13 @@ export class TransportFactory {
    * Create SMTP transport with connection pooling
    */
   private static createSmtpTransport(): nodemailer.Transporter {
-    if (!env.SMTP_HOST) throw new Error('SMTP_HOST is required for SMTP transport')
+    if (!configService.get<string>('SMTP_HOST'))
+      throw new Error('SMTP_HOST is required for SMTP transport')
 
-    const secureFlag = parseBoolean(env.SMTP_SECURE)
-    const explicitPort = env.SMTP_PORT ? Number(env.SMTP_PORT) : undefined
+    const secureFlag = parseBoolean(configService.get<string>('SMTP_SECURE'))
+    const explicitPort = configService.get<string>('SMTP_PORT')
+      ? Number(configService.get<string>('SMTP_PORT'))
+      : undefined
     let port = explicitPort ?? (secureFlag ? 465 : 587)
     const useImplicitTls = secureFlag === true
 
@@ -115,14 +125,14 @@ export class TransportFactory {
     }
     const requireTls = !useImplicitTls
     const transporter = nodemailer.createTransport({
-      host: env.SMTP_HOST,
+      host: configService.get<string>('SMTP_HOST'),
       port,
       secure: useImplicitTls,
       requireTLS: requireTls,
-      auth: env.SMTP_USER
+      auth: configService.get<string>('SMTP_USER')
         ? {
-            user: env.SMTP_USER,
-            pass: env.SMTP_PASS || '',
+            user: configService.get<string>('SMTP_USER'),
+            pass: configService.get<string>('SMTP_PASS') || '',
           }
         : undefined,
       pool: true,
@@ -134,7 +144,7 @@ export class TransportFactory {
     })
 
     logger.info('Creating SMTP transporter', {
-      host: env.SMTP_HOST,
+      host: configService.get<string>('SMTP_HOST'),
       port,
       secure: useImplicitTls,
       mode: useImplicitTls ? 'implicit-tls' : 'starttls',

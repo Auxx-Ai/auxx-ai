@@ -1,5 +1,6 @@
 // packages/lib/src/files/adapters/s3-adapter.ts
 
+import { configService } from '@auxx/credentials'
 import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
@@ -116,14 +117,14 @@ export class S3Adapter extends BaseStorageAdapter {
    * Prefers CDN URL if configured, then falls back to AWS virtual-hosted-style URL.
    */
   buildExternalUrl(key: string, auth?: ProviderAuth): string {
-    const cdnUrl = process.env.NEXT_PUBLIC_CDN_URL
+    const cdnUrl = configService.get<string>('CDN_URL')
     if (cdnUrl) {
       return `${cdnUrl}/${key}`
     }
 
-    const bucket = (auth as any)?.bucket || process.env.S3_BUCKET
+    const bucket = (auth as any)?.bucket || configService.get<string>('S3_PUBLIC_BUCKET')
     if (bucket) {
-      const region = (auth as any)?.region || process.env.AWS_REGION || 'us-west-1'
+      const region = (auth as any)?.region || configService.get<string>('S3_REGION') || 'us-west-1'
       return `https://${bucket}.s3.${region}.amazonaws.com/${key}`
     }
 

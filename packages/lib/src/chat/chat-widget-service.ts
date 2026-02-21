@@ -1,6 +1,6 @@
 // packages/lib/src/chat/chat-widget-service.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { type Database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { databaseErrorCodes } from '../errors'
@@ -355,7 +355,7 @@ export class ChatWidgetService {
         throw new ChatWidgetError('Chat widget integration not found', 'INTEGRATION_NOT_FOUND')
       }
 
-      const baseUrl = env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      const baseUrl = configService.get<string>('NEXT_PUBLIC_APP_URL') || 'http://localhost:3000'
       const scriptSrc = `${baseUrl}/api/integrations/chat/${integration.id}/script.js`
       const script = `<script src="${scriptSrc}" async defer></script>`
 

@@ -1,6 +1,6 @@
 // apps/web/src/app/api/instagram/webhook/route.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import type { MessageData } from '@auxx/lib/email'
 import { MessageStorageService } from '@auxx/lib/email'
@@ -24,7 +24,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   logger.info('Received Instagram (via Facebook) webhook verification request', { mode, token })
 
-  if (mode === 'subscribe' && token === env.FACEBOOK_WEBHOOK_VERIFY_TOKEN) {
+  if (
+    mode === 'subscribe' &&
+    token === configService.get<string>('FACEBOOK_WEBHOOK_VERIFY_TOKEN')
+  ) {
     logger.info('Instagram webhook verification successful.')
     return new NextResponse(challenge, { status: 200 })
   } else {
@@ -47,7 +50,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
   const bodyText = await req.text()
   const expectedHash = crypto
-    .createHmac('sha256', env.FACEBOOK_APP_SECRET!)
+    .createHmac('sha256', configService.get<string>('FACEBOOK_APP_SECRET')!)
     .update(bodyText)
     .digest('hex')
 

@@ -39,12 +39,14 @@ export const ConfigVariableGroupValues = [
   'GOOGLE_WORKSPACE',
   'OUTLOOK',
   'FACEBOOK',
+  'DROPBOX',
   'EMAIL',
   'STORAGE',
   'AI',
   'SHOPIFY',
   'BILLING',
   'REALTIME',
+  'ANALYTICS',
   'CACHE',
   'WORKER',
   'FRONTEND',
@@ -59,23 +61,26 @@ export const ConfigVariableGroup = {
   GOOGLE_WORKSPACE: 'GOOGLE_WORKSPACE',
   OUTLOOK: 'OUTLOOK',
   FACEBOOK: 'FACEBOOK',
+  DROPBOX: 'DROPBOX',
   EMAIL: 'EMAIL',
   STORAGE: 'STORAGE',
   AI: 'AI',
   SHOPIFY: 'SHOPIFY',
   BILLING: 'BILLING',
   REALTIME: 'REALTIME',
+  ANALYTICS: 'ANALYTICS',
   CACHE: 'CACHE',
   WORKER: 'WORKER',
   FRONTEND: 'FRONTEND',
 } as const
 
 /** Where the active value came from */
-export const ConfigSourceValues = ['DATABASE', 'ENVIRONMENT', 'DEFAULT'] as const
+export const ConfigSourceValues = ['DATABASE', 'ENVIRONMENT', 'SST_RESOURCE', 'DEFAULT'] as const
 export type ConfigSource = (typeof ConfigSourceValues)[number]
 
 export const ConfigSource = {
   DATABASE: 'DATABASE',
   ENVIRONMENT: 'ENVIRONMENT',
+  SST_RESOURCE: 'SST_RESOURCE',
   DEFAULT: 'DEFAULT',
 } as const

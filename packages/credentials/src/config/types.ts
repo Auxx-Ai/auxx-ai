@@ -22,6 +22,8 @@ export interface ConfigVariableDefinition {
   isSensitive: boolean
   /** If true, cannot be overridden via DB — env var or default only */
   isEnvOnly: boolean
+  /** If true, SST/infra owns this value (e.g. DATABASE_URL, bucket names) */
+  infraManaged?: boolean
   /** For ENUM type: allowed values */
   options?: string[]
   /** Validation: for NUMBER type */

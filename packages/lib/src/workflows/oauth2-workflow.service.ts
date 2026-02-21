@@ -1,8 +1,8 @@
 // packages/lib/src/workflows/oauth2-workflow.service.ts
 
-import { env, WEBAPP_URL } from '@auxx/config/server'
+import { WEBAPP_URL } from '@auxx/config/server'
 // import { CredentialService } from '../workflow-engine/services/credential-service'
-import { CredentialService, CredentialTypeRegistry } from '@auxx/credentials' //'../credentials/credential-type-registry'
+import { CredentialService, CredentialTypeRegistry, configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { URLTemplateService } from '@auxx/workflow-nodes/server'
@@ -280,14 +280,14 @@ export class OAuth2WorkflowService {
    * Get system client ID from environment
    */
   private getSystemClientId(oauth2Config: OAuth2Config): string | null {
-    return (env as any)[oauth2Config.systemClientIdEnv] || null
+    return configService.get<string>(oauth2Config.systemClientIdEnv) || null
   }
 
   /**
    * Get system client secret from environment
    */
   private getSystemClientSecret(oauth2Config: OAuth2Config): string | null {
-    return (env as any)[oauth2Config.systemClientSecretEnv] || null
+    return configService.get<string>(oauth2Config.systemClientSecretEnv) || null
   }
 
   /**

@@ -1,5 +1,6 @@
 // src/server/api/routers/widget.ts
 
+import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { widgetSchema } from '@auxx/lib/widgets/types'
 import { createScopedLogger } from '@auxx/logger'
@@ -384,7 +385,7 @@ export const widgetRouter = createTRPCRouter({
         }
 
         // Generate installation script
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        const baseUrl = WEBAPP_URL
         const script = `<script src="${baseUrl}/api/widget/${widget.organizationId}/${widget.id}"></script>`
 
         return { script }

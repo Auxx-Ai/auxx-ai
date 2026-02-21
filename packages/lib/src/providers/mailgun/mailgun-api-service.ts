@@ -1,6 +1,6 @@
 // packages/lib/src/providers/mailgun/mailgun-api-service.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { createScopedLogger } from '@auxx/logger'
 import formData from 'form-data'
 import Mailgun from 'mailgun.js'
@@ -22,8 +22,8 @@ export class MailgunApiService implements EmailProvider {
   public readonly id = 'mailgun'
 
   private constructor() {
-    this.apiKey = env.MAILGUN_API_KEY || ''
-    this.region = env.MAILGUN_REGION || 'us'
+    this.apiKey = configService.get<string>('MAILGUN_API_KEY') || ''
+    this.region = configService.get<string>('MAILGUN_REGION') || 'us'
 
     if (!this.apiKey) {
       throw new Error('Mailgun API key not configured')

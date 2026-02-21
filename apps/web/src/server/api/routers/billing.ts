@@ -1,6 +1,7 @@
 // ~/server/api/routers/billing.ts
 
 import { BillingPortalService, SubscriptionService } from '@auxx/billing'
+import { WEBAPP_URL } from '@auxx/config/server'
 import { schema } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
 import { DehydrationService } from '@auxx/lib/dehydration'
@@ -236,10 +237,7 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
-        const subscriptionService = new SubscriptionService(
-          ctx.db,
-          process.env.NEXT_PUBLIC_BASE_URL!
-        )
+        const subscriptionService = new SubscriptionService(ctx.db, WEBAPP_URL)
 
         return await subscriptionService.calculateSubscriptionPreview({
           organizationId,
@@ -275,10 +273,7 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
-        const subscriptionService = new SubscriptionService(
-          ctx.db,
-          process.env.NEXT_PUBLIC_BASE_URL!
-        )
+        const subscriptionService = new SubscriptionService(ctx.db, WEBAPP_URL)
 
         return await subscriptionService.createCheckoutSession(
           {
@@ -305,7 +300,7 @@ export const billingRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
       }
 
-      const subscriptionService = new SubscriptionService(ctx.db, process.env.NEXT_PUBLIC_BASE_URL!)
+      const subscriptionService = new SubscriptionService(ctx.db, WEBAPP_URL)
 
       await subscriptionService.cancelSubscription({
         organizationId,
@@ -332,7 +327,7 @@ export const billingRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
       }
 
-      const subscriptionService = new SubscriptionService(ctx.db, process.env.NEXT_PUBLIC_BASE_URL!)
+      const subscriptionService = new SubscriptionService(ctx.db, WEBAPP_URL)
 
       await subscriptionService.restoreSubscription({ organizationId })
       return { success: true }
@@ -362,7 +357,7 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
-        const portalService = new BillingPortalService(ctx.db, process.env.NEXT_PUBLIC_BASE_URL!)
+        const portalService = new BillingPortalService(ctx.db, WEBAPP_URL)
 
         return await portalService.createSession({
           organizationId,
@@ -637,10 +632,7 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
-        const subscriptionService = new SubscriptionService(
-          ctx.db,
-          process.env.NEXT_PUBLIC_BASE_URL!
-        )
+        const subscriptionService = new SubscriptionService(ctx.db, WEBAPP_URL)
 
         const result = await subscriptionService.updateSubscriptionDirect({
           organizationId,

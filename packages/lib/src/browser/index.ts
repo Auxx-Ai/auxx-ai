@@ -1,6 +1,6 @@
 // packages/lib/src/browser/index.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { jwtVerify } from 'jose'
 import { Result } from '../result'
 
@@ -9,8 +9,9 @@ export const TOKEN_TYPES = { websocket: 'websocket', websocketRefresh: 'websocke
 type TokenType = 'websocket' | 'websocketRefresh'
 
 const SECRET_TOKENS: Record<TokenType, string> = {
-  websocket: env.BETTER_AUTH_SECRET || 'default-websocket-secret',
-  websocketRefresh: env.BETTER_AUTH_SECRET || 'default-websocket-refresh-secret',
+  websocket: configService.get<string>('BETTER_AUTH_SECRET') || 'default-websocket-secret',
+  websocketRefresh:
+    configService.get<string>('BETTER_AUTH_SECRET') || 'default-websocket-refresh-secret',
 }
 
 export type WebSocketData = { userId: string; workspaceId: number }
@@ -146,7 +147,9 @@ export async function verifyWebsocketToken({
 
 export async function verifyWorkerWebsocketToken(token: string) {
   try {
-    const secret = new TextEncoder().encode(env.BETTER_AUTH_SECRET || 'default-worker-secret')
+    const secret = new TextEncoder().encode(
+      configService.get<string>('BETTER_AUTH_SECRET') || 'default-worker-secret'
+    )
     const { payload } = await jwtVerify<Record<string, unknown>>(token, secret)
 
     return Result.ok({ payload })

@@ -1,6 +1,6 @@
 // packages/lib/src/jobs/maintenance/integration-token-refresh-job.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
@@ -112,7 +112,7 @@ export const integrationTokenRefreshJob = async (
         const emailProvider = await providerRegistry.getProvider(integrationId)
 
         // Build callback URL (same logic as WebhookManagerService)
-        const baseUrl = env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        const baseUrl = configService.get<string>('NEXT_PUBLIC_APP_URL') || 'http://localhost:3000'
         const callbackUrl = `${baseUrl}/api/${provider}/webhook`
 
         if (provider === 'google') {

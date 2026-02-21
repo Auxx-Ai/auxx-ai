@@ -24,8 +24,9 @@ const CACHE_REFRESH_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
  * Resolves values using:
  * 1. DB override (if enabled and not env-only) — from in-memory cache
  * 2. process.env[key] — read at call time (not a static snapshot)
- * 3. Default value from registry
- * 4. Fallback param
+ * 3. SST Resource (if in SST runtime) — sst.Secret resources only
+ * 4. Default value from registry
+ * 5. Fallback param
  *
  * Usage:
  *   import { configService } from '@auxx/credentials'
@@ -82,8 +83,9 @@ export class ConfigService {
    * Resolution order:
    * 1. DB override (if enabled and not env-only) — from in-memory cache
    * 2. process.env[key] — read at call time (not a static snapshot)
-   * 3. Default from registry
-   * 4. Fallback param
+   * 3. SST Resource (if in SST runtime) — sst.Secret resources only
+   * 4. Default from registry
+   * 5. Fallback param
    */
   get<T extends string | number | boolean | string[] = string>(
     key: string,
@@ -109,12 +111,24 @@ export class ConfigService {
       return envRaw as T
     }
 
-    // 3. Try default from registry
+    // 3. Try SST Resource (if in SST runtime)
+    if (this.isSstRuntime) {
+      const resourceValue = this.getSstResourceValue(key)
+      if (resourceValue !== undefined) {
+        if (definition) {
+          const converted = convertEnvValue(resourceValue, definition.type)
+          if (converted !== undefined) return converted as T
+        }
+        return resourceValue as T
+      }
+    }
+
+    // 4. Try default from registry
     if (definition?.defaultValue !== undefined) {
       return definition.defaultValue as T
     }
 
-    // 4. Fallback param
+    // 5. Fallback param
     return fallback
   }
 
@@ -224,6 +238,16 @@ export class ConfigService {
       }
     }
 
+    // 2.5 Check SST Resource (if no DB or env value)
+    if (value === null && this.isSstRuntime) {
+      const resourceValue = this.getSstResourceValue(definition.key)
+      if (resourceValue !== undefined) {
+        const converted = convertEnvValue(resourceValue, definition.type)
+        value = definition.isSensitive ? '••••••••' : (converted ?? resourceValue)
+        source = ConfigSource.SST_RESOURCE
+      }
+    }
+
     // 3. Fall back to default
     if (value === null && definition.defaultValue !== undefined) {
       value = definition.defaultValue
@@ -231,6 +255,23 @@ export class ConfigService {
     }
 
     return { definition, value: value as any, source, hasDbOverride }
+  }
+
+  /** Guard: only true in deployed Lambda or `sst dev`, never during Next.js build */
+  private get isSstRuntime(): boolean {
+    return process.env.SST === '1' && process.env.NEXT_PHASE !== 'phase-production-build'
+  }
+
+  /** Only sst.Secret resources have .value — buckets have .name, RDS has .host etc. */
+  private getSstResourceValue(key: string): string | undefined {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { Resource } = require('sst')
+      const res = (Resource as any)[key]
+      return typeof res?.value === 'string' ? res.value : undefined
+    } catch {
+      return undefined
+    }
   }
 
   /** Validate a value against its definition. */

@@ -16,7 +16,7 @@ export function convertEnvValue(
       return raw
     case 'NUMBER': {
       const num = Number(raw)
-      return isNaN(num) ? undefined : num
+      return Number.isNaN(num) ? undefined : num
     }
     case 'BOOLEAN':
       return raw === 'true' || raw === '1' || raw === 'yes'

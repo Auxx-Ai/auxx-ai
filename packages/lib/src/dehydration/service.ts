@@ -1,13 +1,7 @@
 // packages/lib/src/dehydration/service.ts
 
-import {
-  API_URL,
-  DEV_PORTAL_URL,
-  DOCS_URL,
-  env,
-  HOMEPAGE_URL,
-  WEBAPP_URL,
-} from '@auxx/config/client'
+import { API_URL, DEV_PORTAL_URL, DOCS_URL, HOMEPAGE_URL, WEBAPP_URL } from '@auxx/config/client'
+import { configService } from '@auxx/credentials'
 import { type Database, database as ddb, schema } from '@auxx/database'
 import { getDeploymentMode } from '@auxx/deployment'
 import { execSync } from 'child_process'
@@ -54,31 +48,32 @@ export function buildEnvironment(): DehydratedEnvironment {
     homepageUrl: HOMEPAGE_URL || '',
     docsUrl: DOCS_URL || '',
     devPortalUrl: DEV_PORTAL_URL || '',
-    cdnUrl: '',
+    cdnUrl: configService.get<string>('CDN_URL') || '',
     stripe: {
-      publishableKey: env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '',
+      publishableKey: configService.get<string>('STRIPE_PUBLISHABLE_KEY') || '',
     },
     pusher: {
-      key: env.NEXT_PUBLIC_PUSHER_KEY || '',
-      cluster: env.NEXT_PUBLIC_PUSHER_CLUSTER || '',
+      key: configService.get<string>('PUSHER_KEY') || '',
+      cluster: configService.get<string>('PUSHER_CLUSTER') || '',
     },
     posthog: {
-      key: env.NEXT_PUBLIC_POSTHOG_KEY || '',
-      host: env.NEXT_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com',
+      key: configService.get<string>('POSTHOG_KEY') || '',
+      host: configService.get<string>('POSTHOG_HOST') || 'https://app.posthog.com',
     },
     storage: {
-      type: (env.NEXT_PUBLIC_STORAGE_TYPE as 's3' | 'local') || 'local',
-      bucket: env.NEXT_PUBLIC_S3_BUCKET || null,
-      region: env.NEXT_PUBLIC_S3_REGION || null,
+      type: (configService.get<string>('FILE_STORAGE_TYPE') as 's3' | 'local') || 'local',
+      bucket: configService.get<string>('S3_PUBLIC_BUCKET') || null,
+      region: configService.get<string>('S3_REGION') || null,
     },
     version: (() => {
-      const isDev = !env.NEXT_PUBLIC_GIT_SHA
+      const gitSha = configService.get<string>('GIT_SHA')
+      const isDev = !gitSha
       const git = isDev ? getLocalGitInfo() : null
       return {
-        appVersion: env.NEXT_PUBLIC_APP_VERSION || git?.branch || 'dev',
-        commit: env.NEXT_PUBLIC_GIT_SHA || git?.sha || 'unknown',
-        buildTime: env.NEXT_PUBLIC_BUILD_TIME || new Date().toISOString(),
-        nodeEnv: env.NEXT_PUBLIC_ENV || 'development',
+        appVersion: configService.get<string>('APP_VERSION') || git?.branch || 'dev',
+        commit: gitSha || git?.sha || 'unknown',
+        buildTime: configService.get<string>('BUILD_TIME') || new Date().toISOString(),
+        nodeEnv: configService.get<string>('NODE_ENV') || 'development',
       }
     })(),
   }

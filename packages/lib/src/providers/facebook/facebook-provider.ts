@@ -1,6 +1,6 @@
 // src/lib/providers/facebook/facebook-provider.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { IntegrationProviderType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
@@ -20,7 +20,7 @@ import { getProviderCapabilities, type ProviderCapabilities } from '../provider-
 import { type FacebookIntegrationMetadata, FacebookOAuthService } from './facebook-oauth'
 
 const logger = createScopedLogger('facebook-provider')
-const API_VERSION = env.FACEBOOK_GRAPH_API_VERSION || 'v19.0'
+const API_VERSION = configService.get<string>('FACEBOOK_GRAPH_API_VERSION') || 'v19.0'
 // --- Interface Definitions (for clarity, align with Graph API responses) ---
 interface FacebookSendMessagePayload {
   recipient: {

@@ -1,5 +1,5 @@
 // packages/redis/src/client.ts
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { RedisClientFactory } from './core/redis-client-factory'
 import { parseRedisUrl, type RedisUrlComponents } from './parse-redis-url'
 import { logger, type RedisClient } from './types'
@@ -39,11 +39,14 @@ let subscriptionClient: RedisClient | null = null
  */
 export function detectRedisProvider(): 'upstash' | 'aws' | 'hosted' {
   // Only access environment variables when function is called
-  if (env.KV_REST_API_URL && env.KV_REST_API_TOKEN) {
+  if (
+    configService.get<string>('KV_REST_API_URL') &&
+    configService.get<string>('KV_REST_API_TOKEN')
+  ) {
     return 'upstash'
-  } else if (env.ELASTICACHE_URL) {
+  } else if (configService.get<string>('ELASTICACHE_URL')) {
     return 'aws'
-  } else if (env.REDIS_HOST) {
+  } else if (configService.get<string>('REDIS_HOST')) {
     return 'hosted'
   }
 
@@ -52,8 +55,9 @@ export function detectRedisProvider(): 'upstash' | 'aws' | 'hosted' {
 }
 
 export function getRedisProvider(): 'upstash' | 'aws' | 'hosted' {
-  if (env.CACHE_PROVIDER) {
-    return env.CACHE_PROVIDER as 'upstash' | 'aws' | 'hosted'
+  const cacheProvider = configService.get<string>('CACHE_PROVIDER')
+  if (cacheProvider) {
+    return cacheProvider as 'upstash' | 'aws' | 'hosted'
   }
   return detectRedisProvider()
 }
@@ -61,9 +65,9 @@ export function getRedisProvider(): 'upstash' | 'aws' | 'hosted' {
 type RedisConnectionOptions = Pick<RedisUrlComponents, 'host' | 'password' | 'port'>
 
 export const WORKER_CONNECTION_CONFIG: RedisConnectionOptions = {
-  host: env.REDIS_HOST!,
-  port: env.REDIS_PORT!,
-  password: env.REDIS_PASSWORD!,
+  host: configService.get<string>('REDIS_HOST')!,
+  port: configService.get<number>('REDIS_PORT')!,
+  password: configService.get<string>('REDIS_PASSWORD')!,
 }
 
 export function getConnectionOptions() {
@@ -72,7 +76,7 @@ export function getConnectionOptions() {
   let connectionConfig: RedisConnectionOptions
   switch (provider) {
     case 'upstash': {
-      const { host, password, port } = parseRedisUrl(env.KV_URL!)
+      const { host, password, port } = parseRedisUrl(configService.get<string>('KV_URL')!)
       connectionConfig = { host, password, port }
       break
     }

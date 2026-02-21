@@ -1,6 +1,6 @@
 // packages/lib/src/email/nodemailer-service.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { createScopedLogger } from '@auxx/logger'
 import type nodemailer from 'nodemailer'
 import { TransportFactory } from './transports/factory'
@@ -81,7 +81,7 @@ export class NodemailerService {
         html: options.html,
         attachments: options.attachments as any,
         headers: options.headers,
-        replyTo: options.replyTo || env.EMAIL_REPLY_TO,
+        replyTo: options.replyTo || configService.get<string>('EMAIL_REPLY_TO'),
         inReplyTo: options.inReplyTo,
         references: options.references,
         messageId: options.messageId,
@@ -118,8 +118,11 @@ export class NodemailerService {
    * Compose the default From header
    */
   private getDefaultFrom(): string {
-    const email = env.SYSTEM_FROM_EMAIL || 'noreply@example.com'
-    const name = env.SYSTEM_FROM_NAME || env.SUPPORT_NAME || 'System'
+    const email = configService.get<string>('SYSTEM_FROM_EMAIL') || 'noreply@example.com'
+    const name =
+      configService.get<string>('SYSTEM_FROM_NAME') ||
+      configService.get<string>('SUPPORT_NAME') ||
+      'System'
     return `${name} <${email}>`
   }
 }

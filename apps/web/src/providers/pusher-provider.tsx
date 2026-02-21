@@ -1,6 +1,5 @@
 // ~/hooks/use-pusher.ts (or @auxx/lib/pusher/context.tsx)
 
-import { env } from '@auxx/config/client'
 import { useQueryClient } from '@tanstack/react-query'
 import Pusher, { type Channel } from 'pusher-js'
 import React, {
@@ -13,6 +12,7 @@ import React, {
   useState,
 } from 'react'
 import { useUser } from '~/hooks/use-user' // Adjust path
+import { useEnv } from '~/providers/dehydrated-state-provider'
 
 // Define the shape of the context value
 interface PusherContextProps {
@@ -22,10 +22,6 @@ interface PusherContextProps {
 }
 
 const PusherContext = createContext<PusherContextProps | undefined>(undefined)
-
-// Configuration
-const PUSHER_APP_KEY = env.NEXT_PUBLIC_PUSHER_KEY || ''
-const PUSHER_CLUSTER = env.NEXT_PUBLIC_PUSHER_CLUSTER || 'us3'
 
 interface PusherProviderProps {
   children: ReactNode
@@ -39,6 +35,9 @@ export const PusherProvider: React.FC<PusherProviderProps> = ({ children }) => {
 
   const queryClient = useQueryClient()
   const { user, organizationId, isLoading: userLoading } = useUser()
+  const { pusher: pusherConfig } = useEnv()
+  const PUSHER_APP_KEY = pusherConfig.key || ''
+  const PUSHER_CLUSTER = pusherConfig.cluster || 'us3'
 
   const isAuthenticatedAndReady = !userLoading && !!user && !!organizationId
 

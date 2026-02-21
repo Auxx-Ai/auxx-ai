@@ -2,14 +2,13 @@
 /// <reference path="../.sst/platform/config.d.ts" />
 
 import { emailDomain } from './dns'
-import { getEnvValue } from './secrets'
 
 /**
  * Email configuration for Auxx.ai
  * Only provisions AWS SES when EMAIL_PROVIDER === 'ses'.
  */
-const EMAIL_PROVIDER = getEnvValue('EMAIL_PROVIDER')
-const useSes = (EMAIL_PROVIDER || 'mailgun') === 'ses'
+const EMAIL_PROVIDER = process.env.EMAIL_PROVIDER || 'mailgun'
+const useSes = EMAIL_PROVIDER === 'ses'
 
 export const email = useSes
   ? new sst.aws.Email('AuxxAiEmail', {

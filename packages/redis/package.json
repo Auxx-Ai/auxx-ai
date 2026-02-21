@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@auxx/config": "workspace:*",
+    "@auxx/credentials": "workspace:*",
     "@auxx/logger": "workspace:*",
     "@upstash/redis": "catalog:",
     "ioredis": "catalog:"

@@ -1,5 +1,6 @@
 // import { getServerAuthSession } from '~/server/auth'
-import { env, WEBAPP_URL } from '@auxx/config/server'
+import { WEBAPP_URL } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import crypto from 'crypto'
 import { and, eq, gt, inArray } from 'drizzle-orm'
@@ -64,7 +65,7 @@ export async function GET(req: NextRequest) {
 
       // Build the authorization URL
       const shopifyAuthUrl = new URL(`https://${shopParam}/admin/oauth/authorize`)
-      shopifyAuthUrl.searchParams.append('client_id', env.SHOPIFY_API_KEY)
+      shopifyAuthUrl.searchParams.append('client_id', configService.get<string>('SHOPIFY_API_KEY')!)
       shopifyAuthUrl.searchParams.append('scope', scopes)
       shopifyAuthUrl.searchParams.append('redirect_uri', redirectUrl)
       shopifyAuthUrl.searchParams.append('state', state)
@@ -125,7 +126,7 @@ async function handleCallback(req: NextRequest, userId: string) {
         .join('&')
 
       const generatedHmac = crypto
-        .createHmac('sha256', env.SHOPIFY_API_SECRET)
+        .createHmac('sha256', configService.get<string>('SHOPIFY_API_SECRET')!)
         .update(message)
         .digest('hex')
 
@@ -139,8 +140,8 @@ async function handleCallback(req: NextRequest, userId: string) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        client_id: env.SHOPIFY_API_KEY,
-        client_secret: env.SHOPIFY_API_SECRET,
+        client_id: configService.get<string>('SHOPIFY_API_KEY')!,
+        client_secret: configService.get<string>('SHOPIFY_API_SECRET')!,
         code,
       }),
     })

@@ -1,6 +1,6 @@
 // packages/lib/src/providers/google/webhooks/setup-webhook.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
@@ -22,9 +22,12 @@ export async function setupWebhook(params: {
 }): Promise<void> {
   const { gmail, integrationId, integration } = params
 
-  const topicName = `projects/${env.GOOGLE_PROJECT_ID}/topics/${env.GOOGLE_PUBSUB_TOPIC}`
+  const topicName = `projects/${configService.get<string>('GOOGLE_PROJECT_ID')}/topics/${configService.get<string>('GOOGLE_PUBSUB_TOPIC')}`
 
-  if (!env.GOOGLE_PROJECT_ID || !env.GOOGLE_PUBSUB_TOPIC) {
+  if (
+    !configService.get<string>('GOOGLE_PROJECT_ID') ||
+    !configService.get<string>('GOOGLE_PUBSUB_TOPIC')
+  ) {
     logger.error(
       'Google Project ID or Pub/Sub Topic Name not configured in environment. Cannot set up webhook.'
     )

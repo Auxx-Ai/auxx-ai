@@ -1,5 +1,6 @@
 // src/lib/email/providers/facebook-oauth.ts
-import { env, WEBAPP_URL } from '@auxx/config/server'
+import { WEBAPP_URL } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { InboxService } from '@auxx/lib/inboxes'
 import { createScopedLogger } from '@auxx/logger'
@@ -7,7 +8,7 @@ import crypto from 'crypto'
 import { and, eq } from 'drizzle-orm'
 
 const logger = createScopedLogger('facebook-oauth')
-const API_VERSION = env.FACEBOOK_GRAPH_API_VERSION || 'v19.0' // Use a recent, stable version
+const API_VERSION = configService.get<string>('FACEBOOK_GRAPH_API_VERSION') || 'v19.0' // Use a recent, stable version
 
 // Interface describing the data stored for Facebook integration authentication
 export interface FacebookIntegrationMetadata {
@@ -34,8 +35,8 @@ export class FacebookOAuthService {
   ]
 
   private constructor() {
-    this.clientId = env.FACEBOOK_APP_ID || ''
-    this.clientSecret = env.FACEBOOK_APP_SECRET || ''
+    this.clientId = configService.get<string>('FACEBOOK_APP_ID') || ''
+    this.clientSecret = configService.get<string>('FACEBOOK_APP_SECRET') || ''
     // Define the callback route for Facebook
     this.redirectUri = `${WEBAPP_URL}/api/facebook/oauth2/callback`
 

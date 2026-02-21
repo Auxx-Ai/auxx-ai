@@ -1,4 +1,4 @@
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import {
   ShopifyIntegrationModel,
   SubscriptionModel,
@@ -35,7 +35,7 @@ export const POST = async (req: NextRequest) => {
   // x-shopify-webhook-id: e8d56838-1314-4d40-b0f4-f28c555feeed
   const dbTopic = SHOPIFY_WEBHOOK_EVENTS[topic]
 
-  const shopifySecret = env.SHOPIFY_API_SECRET as string
+  const shopifySecret = configService.get<string>('SHOPIFY_API_SECRET') as string
 
   const headers: Record<string, string> = {}
   for (const [key, value] of req.headers.entries()) {

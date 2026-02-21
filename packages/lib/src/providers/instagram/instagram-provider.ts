@@ -1,6 +1,6 @@
 // src/lib/providers/instagram/instagram-provider.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { IntegrationProviderType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
@@ -21,7 +21,7 @@ import { getProviderCapabilities, type ProviderCapabilities } from '../provider-
 import { type InstagramIntegrationMetadata, InstagramOAuthService } from './instagram-oauth'
 
 const logger = createScopedLogger('instagram-provider')
-const API_VERSION = env.FACEBOOK_GRAPH_API_VERSION || 'v19.0'
+const API_VERSION = configService.get<string>('FACEBOOK_GRAPH_API_VERSION') || 'v19.0'
 // --- Interface Definitions (Align with Graph API) ---
 interface InstagramSendMessagePayload {
   recipient: {

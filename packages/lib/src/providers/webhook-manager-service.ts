@@ -1,6 +1,6 @@
 // packages/lib/src/providers/webhook-manager-service.ts
 // packages/lib/src/providers/webhook-manager-service.ts
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
@@ -40,7 +40,7 @@ export class WebhookManagerService {
   ): Promise<void> {
     try {
       // Build callback URL based on environment and provider type
-      const baseUrl = env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      const baseUrl = configService.get<string>('NEXT_PUBLIC_APP_URL') || 'http://localhost:3000'
       const callbackUrl = `${baseUrl}/api/${integrationType}/webhook`
 
       if (integrationId) {
@@ -250,7 +250,7 @@ export class WebhookManagerService {
    * Build callback URL for a specific provider type
    */
   private buildCallbackUrl(providerType: IntegrationProviderType): string {
-    const baseUrl = env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const baseUrl = configService.get<string>('NEXT_PUBLIC_APP_URL') || 'http://localhost:3000'
     return `${baseUrl}/api/${providerType}/webhook`
   }
 

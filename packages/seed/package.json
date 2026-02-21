@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@auxx/config": "workspace:*",
+    "@auxx/credentials": "workspace:*",
     "@auxx/database": "workspace:*",
     "@auxx/deployment": "workspace:*",
     "@auxx/logger": "workspace:*",

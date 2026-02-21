@@ -1,5 +1,5 @@
 // packages/redis/src/providers/provider-detector.ts
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { logger, type RedisProvider, type RedisProviderCapabilities } from '../types'
 
 /**
@@ -7,19 +7,22 @@ import { logger, type RedisProvider, type RedisProviderCapabilities } from '../t
  */
 export function detectRedisProvider(): RedisProvider {
   // Check for Upstash configuration
-  if (env.KV_REST_API_URL && env.KV_REST_API_TOKEN) {
+  if (
+    configService.get<string>('KV_REST_API_URL') &&
+    configService.get<string>('KV_REST_API_TOKEN')
+  ) {
     logger.info('Detected Upstash Redis provider via KV_REST_API_URL and KV_REST_API_TOKEN')
     return 'upstash'
   }
 
   // Check for AWS ElastiCache configuration
-  if (env.ELASTICACHE_URL) {
+  if (configService.get<string>('ELASTICACHE_URL')) {
     logger.info('Detected AWS ElastiCache Redis provider via ELASTICACHE_URL')
     return 'aws'
   }
 
   // Check for hosted Redis configuration
-  if (env.REDIS_HOST) {
+  if (configService.get<string>('REDIS_HOST')) {
     logger.info('Detected hosted Redis provider via REDIS_HOST')
     return 'hosted'
   }
@@ -32,17 +35,16 @@ export function detectRedisProvider(): RedisProvider {
  * Get Redis provider from environment variable or auto-detect
  */
 export function getRedisProvider(): RedisProvider {
-  if (env.CACHE_PROVIDER) {
-    const envProvider = env.CACHE_PROVIDER.toLowerCase()
+  const cacheProvider = configService.get<string>('CACHE_PROVIDER')
+  if (cacheProvider) {
+    const envProvider = cacheProvider.toLowerCase()
 
     // Validate the provider value
     if (isValidRedisProvider(envProvider)) {
       logger.info(`Using Redis provider from CACHE_PROVIDER: ${envProvider}`)
       return envProvider
     } else {
-      logger.warn(
-        `Invalid CACHE_PROVIDER value "${env.CACHE_PROVIDER}", falling back to auto-detection`
-      )
+      logger.warn(`Invalid CACHE_PROVIDER value "${cacheProvider}", falling back to auto-detection`)
     }
   }
 
@@ -191,13 +193,16 @@ export function getProviderCapabilities(provider: RedisProvider): RedisProviderC
 export function validateProviderConfiguration(provider: RedisProvider): boolean {
   switch (provider) {
     case 'upstash':
-      return !!(env.KV_REST_API_URL && env.KV_REST_API_TOKEN)
+      return !!(
+        configService.get<string>('KV_REST_API_URL') &&
+        configService.get<string>('KV_REST_API_TOKEN')
+      )
 
     case 'aws':
-      return !!env.ELASTICACHE_URL
+      return !!configService.get<string>('ELASTICACHE_URL')
 
     case 'hosted':
-      return !!env.REDIS_HOST
+      return !!configService.get<string>('REDIS_HOST')
 
     default:
       return false
@@ -213,21 +218,21 @@ export function getConnectionOptions(provider?: RedisProvider) {
   switch (detectedProvider) {
     case 'upstash':
       return {
-        restApiUrl: env.KV_REST_API_URL,
-        restApiToken: env.KV_REST_API_TOKEN,
-        url: env.KV_URL,
+        restApiUrl: configService.get<string>('KV_REST_API_URL'),
+        restApiToken: configService.get<string>('KV_REST_API_TOKEN'),
+        url: configService.get<string>('KV_URL'),
       }
 
     case 'aws':
       return {
-        url: env.ELASTICACHE_URL,
+        url: configService.get<string>('ELASTICACHE_URL'),
       }
 
     case 'hosted':
       return {
-        host: env.REDIS_HOST,
-        port: env.REDIS_PORT ? parseInt(env.REDIS_PORT, 10) : 6379,
-        password: env.REDIS_PASSWORD,
+        host: configService.get<string>('REDIS_HOST'),
+        port: configService.get<number>('REDIS_PORT', 6379),
+        password: configService.get<string>('REDIS_PASSWORD'),
       }
 
     default:

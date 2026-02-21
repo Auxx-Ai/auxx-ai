@@ -239,11 +239,11 @@ export function ConfigDrawer({ variableKey, open, onOpenChange, isDbEnabled }: C
                     <InputGroupInput
                       type='text'
                       value={
-                        definition.isSensitive
-                          ? '••••••••'
-                          : variable.value !== null
-                            ? String(variable.value)
-                            : ''
+                        variable.value === null
+                          ? ''
+                          : definition.isSensitive
+                            ? '••••••••'
+                            : String(variable.value)
                       }
                       placeholder='not set'
                       readOnly

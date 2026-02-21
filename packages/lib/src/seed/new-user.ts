@@ -1,6 +1,6 @@
 // packages/lib/src/seed/new-user.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import {
   InvitationStatus,
@@ -36,7 +36,7 @@ export async function seedNewUserDatabase(user: {
 
   // Auto-promote first user or env-var-matched user to super admin + skip email verification
   const firstUser = await isFirstUser(user.id)
-  const superAdminEmail = (env.SUPER_ADMIN_EMAIL ?? '') + ''
+  const superAdminEmail = (configService.get<string>('SUPER_ADMIN_EMAIL') ?? '') + ''
   const matchesEnvVar =
     superAdminEmail && user.email.toLowerCase() === superAdminEmail.toLowerCase()
   const shouldAutoPromote = firstUser || matchesEnvVar

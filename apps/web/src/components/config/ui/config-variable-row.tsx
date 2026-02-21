@@ -23,12 +23,12 @@ export function ConfigVariableRow({ variable, onClick }: ConfigVariableRowProps)
       </TableCell>
       <TableCell>
         <span className='font-mono text-sm truncate max-w-[300px] block'>
-          {definition.isSensitive ? (
-            '••••••••'
-          ) : value !== null ? (
-            String(value)
-          ) : (
+          {value === null ? (
             <span className='text-muted-foreground italic'>not set</span>
+          ) : definition.isSensitive ? (
+            '••••••••'
+          ) : (
+            String(value)
           )}
         </span>
       </TableCell>

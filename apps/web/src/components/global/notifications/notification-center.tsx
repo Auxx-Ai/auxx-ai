@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { HumanConfirmationDialog } from '~/components/workflow/dialogs/human-confirmation-dialog'
+import { useEnv } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 
 /** Icon config for each notification type */
@@ -381,8 +382,9 @@ export const NotificationCenter = () => {
 }
 export function useNotificationSubscription(userId: string) {
   const utils = api.useUtils()
+  const { pusher: pusherEnv } = useEnv()
   useEffect(() => {
-    const pusher = getPusherClient()
+    const pusher = getPusherClient(pusherEnv.key, pusherEnv.cluster)
     if (!pusher) return
     const channel = pusher.subscribe(`private-user-${userId}`)
     channel.bind('notification', () => {
@@ -394,5 +396,5 @@ export function useNotificationSubscription(userId: string) {
       channel.unbind_all()
       pusher.unsubscribe(`private-user-${userId}`)
     }
-  }, [userId, utils])
+  }, [userId, utils, pusherEnv.key, pusherEnv.cluster])
 }

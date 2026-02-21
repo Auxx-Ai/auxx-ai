@@ -1,6 +1,7 @@
 // src/lib/email/providers/google-oauth.ts
 
-import { env, WEBAPP_URL } from '@auxx/config/server'
+import { WEBAPP_URL } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { InboxService } from '@auxx/lib/inboxes'
 import { createScopedLogger } from '@auxx/logger'
@@ -33,8 +34,8 @@ export class GoogleOAuthService {
    * Private constructor for the Google OAuth provider.
    */
   private constructor() {
-    this.clientId = env.GOOGLE_CLIENT_ID || ''
-    this.clientSecret = env.GOOGLE_CLIENT_SECRET || ''
+    this.clientId = configService.get<string>('GOOGLE_CLIENT_ID') || ''
+    this.clientSecret = configService.get<string>('GOOGLE_CLIENT_SECRET') || ''
     this.redirectUri = `${WEBAPP_URL}/api/google/oauth2/callback` // env.GOOGLE_REDIRECT_URI || ''
 
     if (!this.clientId || !this.clientSecret || !this.redirectUri) {
@@ -466,7 +467,7 @@ export class GoogleOAuthService {
       const oauth2Client = await this.getClientFromIntegrationId(integrationId)
       const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
 
-      const topicName = `projects/${env.GOOGLE_PROJECT_ID}/topics/${env.GOOGLE_PUBSUB_TOPIC}`
+      const topicName = `projects/${configService.get<string>('GOOGLE_PROJECT_ID')}/topics/${configService.get<string>('GOOGLE_PUBSUB_TOPIC')}`
 
       await gmail.users.watch({
         userId: 'me',

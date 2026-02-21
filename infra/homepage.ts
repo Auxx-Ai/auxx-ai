@@ -2,14 +2,14 @@
 
 import { getHomepageDomain } from './dns'
 import { router, vpc } from './router-vpc'
-import { getHomepageSecretsForLinking, getSelectedEnvVars } from './secrets'
+import { getSecretsForLinking, getSelectedEnvVars } from './secrets'
 
 export const homepage = new sst.aws.Nextjs('AuxxAiHomepage', {
   vpc,
   path: 'apps/homepage',
   buildCommand: 'pnpm run build:opennext',
   environment: getSelectedEnvVars('homepage'),
-  link: getHomepageSecretsForLinking(),
+  link: getSecretsForLinking('homepage'),
   openNextVersion: '3.9.15',
   dev: {
     autostart: false,

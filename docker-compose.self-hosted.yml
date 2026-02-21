@@ -12,8 +12,6 @@ x-common-env: &common-env
   PUBLIC_WORKFLOW_JWT_SECRET: ${PUBLIC_WORKFLOW_JWT_SECRET:?Run ./setup.sh --self-hosted to generate secrets}
   API_KEY_SALT: ${API_KEY_SALT:?Run ./setup.sh to generate secrets}
   LAMBDA_INVOKE_SECRET: ${LAMBDA_INVOKE_SECRET:?Run ./setup.sh to generate secrets}
-  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
 
 x-db-env: &db-env
   DATABASE_URL: postgresql://postgres:${DATABASE_PASSWORD:?Set DATABASE_PASSWORD}@postgres:5432/auxx-ai
@@ -24,32 +22,15 @@ x-redis-env: &redis-env
   REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
   CACHE_PROVIDER: hosted
 
-x-s3-env: &s3-env
-  S3_ENDPOINT: ${S3_ENDPOINT:-}
-  S3_REGION: ${S3_REGION:?Set S3_REGION}
-  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?Set S3_ACCESS_KEY_ID}
-  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?Set S3_SECRET_ACCESS_KEY}
-  S3_PUBLIC_BUCKET: ${S3_PUBLIC_BUCKET:?Set S3_PUBLIC_BUCKET}
-  S3_PRIVATE_BUCKET: ${S3_PRIVATE_BUCKET:?Set S3_PRIVATE_BUCKET}
-  NEXT_PUBLIC_CDN_URL: ${NEXT_PUBLIC_CDN_URL:?Set NEXT_PUBLIC_CDN_URL}
-  NEXT_PUBLIC_S3_PUBLIC_BUCKET: ${S3_PUBLIC_BUCKET}
-  NEXT_PUBLIC_S3_PRIVATE_BUCKET: ${S3_PRIVATE_BUCKET}
-  NEXT_PUBLIC_S3_REGION: ${S3_REGION}
-  FILE_STORAGE_TYPE: s3
-  NEXT_PUBLIC_STORAGE_TYPE: s3
-
-x-pusher-env: &pusher-env
-  NEXT_PUBLIC_PUSHER_KEY: ${PUSHER_KEY:-}
-  NEXT_PUBLIC_PUSHER_CLUSTER: ${PUSHER_CLUSTER:-}
 
 x-url-env: &url-env
   DOMAIN: ${DOMAIN}
   NEXT_PUBLIC_BASE_URL: https://app.${DOMAIN}
+  NEXT_PUBLIC_APP_URL: https://app.${DOMAIN}
+  NEXT_PUBLIC_HOMEPAGE_URL: https://app.${DOMAIN}
   NEXT_PUBLIC_API_URL: https://api.${DOMAIN}
   NEXT_PUBLIC_DEV_PORTAL_URL: https://build.${DOMAIN}
-  NEXT_PUBLIC_HOMEPAGE_URL: https://app.${DOMAIN}
-  NEXT_PUBLIC_APP_URL: https://app.${DOMAIN}
-  NEXT_PUBLIC_ENV: production
+  NEXT_PUBLIC_DOCS_URL: https://docs.${DOMAIN}
 
 services:
   # ---- Infrastructure ----
@@ -138,7 +119,7 @@ services:
     env_file:
       - .env
     environment:
-      <<: [*common-env, *db-env, *redis-env, *s3-env, *url-env, *pusher-env]
+      <<: [*common-env, *db-env, *redis-env, *url-env]
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -166,7 +147,7 @@ services:
     env_file:
       - .env
     environment:
-      <<: [*common-env, *db-env, *redis-env, *s3-env, *url-env, *pusher-env]
+      <<: [*common-env, *db-env, *redis-env, *url-env]
       SERVER_FUNCTION_EXECUTOR_URL: http://lambda:3008
       ALLOWED_ORIGINS: https://app.${DOMAIN},https://build.${DOMAIN}
     depends_on:
@@ -196,7 +177,7 @@ services:
     env_file:
       - .env
     environment:
-      <<: [*common-env, *db-env, *redis-env, *s3-env, *url-env, *pusher-env]
+      <<: [*common-env, *db-env, *redis-env, *url-env]
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -224,7 +205,7 @@ services:
     env_file:
       - .env
     environment:
-      <<: [*common-env, *db-env, *redis-env, *s3-env, *url-env, *pusher-env]
+      <<: [*common-env, *db-env, *redis-env, *url-env]
       WORKERS_PORT: "3005"
       WORKERS_HOST: "0.0.0.0"
     depends_on:

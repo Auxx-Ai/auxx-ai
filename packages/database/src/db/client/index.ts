@@ -1,7 +1,6 @@
 // packages/database/src/db/client/index.ts
 // Drizzle database client singleton with optional read replicas
 
-import { env } from '@auxx/config'
 import { createScopedLogger } from '@auxx/logger'
 import type { Logger as DrizzleLogger } from 'drizzle-orm/logger'
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
@@ -95,17 +94,19 @@ class SanitizedDrizzleLogger implements DrizzleLogger {
 /** Shared instance of the sanitized Drizzle logger. */
 const sanitizedDrizzleLogger = new SanitizedDrizzleLogger()
 
-/** Primary write pool initialized from DATABASE_URL */
+/** Primary write pool initialized from DATABASE_URL.
+ * Uses process.env directly because @auxx/credentials depends on @auxx/database,
+ * so importing configService here would create a circular dependency. */
 const writePool = new Pool({
   ...POOL_CONFIG,
-  connectionString: env.DATABASE_URL,
+  connectionString: process.env.DATABASE_URL,
 })
 
 /** Collect optional read replicas if configured */
 const readReplicas: Connection[] = []
 
-if (env.READ_DATABASE_URL) {
-  const read1 = new Pool({ ...POOL_CONFIG, connectionString: env.READ_DATABASE_URL })
+if (process.env.READ_DATABASE_URL) {
+  const read1 = new Pool({ ...POOL_CONFIG, connectionString: process.env.READ_DATABASE_URL })
   readReplicas.push(
     drizzle(read1, {
       schema: { ...schema, ...relations },
@@ -115,8 +116,8 @@ if (env.READ_DATABASE_URL) {
   )
 }
 
-if (env.READ_2_DATABASE_URL) {
-  const read2 = new Pool({ ...POOL_CONFIG, connectionString: env.READ_2_DATABASE_URL })
+if (process.env.READ_2_DATABASE_URL) {
+  const read2 = new Pool({ ...POOL_CONFIG, connectionString: process.env.READ_2_DATABASE_URL })
   readReplicas.push(
     drizzle(read2, {
       schema: { ...schema, ...relations },

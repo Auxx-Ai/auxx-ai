@@ -2,7 +2,7 @@
 
 import 'server-only'
 
-import { configService } from '@auxx/credentials'
+import { configService } from '@auxx/credentials/config'
 import { createScopedLogger } from '@auxx/logger'
 
 const logger = createScopedLogger('web-bootstrap')
