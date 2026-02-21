@@ -3,7 +3,7 @@
 
 import { DATABASE_URL, REDIS_HOST, REDIS_PASSWORD, REDIS_PORT, REDIS_URL } from './db'
 import { getAppDomain } from './dns'
-import { type AppType, getEnvVars } from './env-config'
+import { type AppType, getAppUrl } from './env-config'
 
 /**
  * Centralized secrets configuration
@@ -151,9 +151,8 @@ export const secretsConfig = {
     secret: new sst.Secret('STRIPE_WEBHOOK_SECRET'),
     description: 'Stripe webhook endpoint secret',
   },
-  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: {
-    secret: new sst.Secret('NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'),
-    isPublic: true,
+  STRIPE_PUBLISHABLE_KEY: {
+    secret: new sst.Secret('STRIPE_PUBLISHABLE_KEY'),
     description: 'Stripe publishable key for client-side',
   },
 
@@ -170,17 +169,11 @@ export const secretsConfig = {
     secret: new sst.Secret('PUSHER_SECRET'),
     description: 'Pusher application secret',
   },
-  NEXT_PUBLIC_PUSHER_KEY: {
-    secret: new sst.Secret('NEXT_PUBLIC_PUSHER_KEY'),
-    isPublic: true,
-    description: 'Pusher key for client-side',
-  },
 
   // PostHog
-  NEXT_PUBLIC_POSTHOG_KEY: {
-    secret: new sst.Secret('NEXT_PUBLIC_POSTHOG_KEY'),
-    isPublic: true,
-    description: 'PostHog project API key for client-side',
+  POSTHOG_KEY: {
+    secret: new sst.Secret('POSTHOG_KEY'),
+    description: 'PostHog project API key',
   },
 
   // Mailgun
@@ -217,7 +210,6 @@ export const secretsConfig = {
  */
 export type SecretConfig = {
   secret: ReturnType<typeof sst.Secret>
-  isPublic?: boolean
   description: string
 }
 
@@ -232,59 +224,45 @@ export type SecretName = keyof typeof secretsConfig
 export const SECRET_KEYS = Object.keys(secretsConfig) as SecretName[]
 
 /**
- * Get all secrets for linking to resources
- * @returns Array of all secret resources
+ * Get secrets for linking to resources based on app tier.
+ * Static sites (homepage, docs) need no secrets; full apps get all.
  */
-export function getAllSecretsForLinking() {
+export function getSecretsForLinking(app: AppType = 'web') {
+  if (app === 'homepage' || app === 'docs') return []
   return Object.values(secretsConfig).map((c) => c.secret)
-}
-
-export function getHomepageSecretsForLinking() {
-  return []
 }
 
 /**
  * Minimal Lambda environment for staying far under the 4KB limit.
- * Relies on `link: getAllSecretsForLinking()` for secret access via Resource.
+ * configService resolves most config at runtime via SST Resource or DB.
+ * Static sites only need URLs; full apps add boot-critical vars.
  */
 export function getSelectedEnvVars(app: AppType = 'web'): Record<string, string> {
-  const vars = getEnvVars(app)
-  return {
-    // Mark SST runtime explicitly for the env proxy
+  const base: Record<string, string> = {
     SST: '1',
-
-    // Node runtime tweaks
     NODE_ENV: 'production',
-    NODE_NO_DEPRECATION: vars.NODE_NO_DEPRECATION || '1',
-    NODE_NO_WARNINGS: vars.NODE_NO_WARNINGS || '1',
+    NODE_NO_DEPRECATION: '1',
+    NODE_NO_WARNINGS: '1',
+    // URLs (computed from domain)
+    NEXT_PUBLIC_BASE_URL: `https://${getAppDomain()}`,
+    NEXT_PUBLIC_APP_URL: getAppUrl('web'),
+    NEXT_PUBLIC_HOMEPAGE_URL: getAppUrl('homepage'),
+    NEXT_PUBLIC_DOCS_URL: getAppUrl('docs'),
+  }
 
-    // Authentication (needed at module load time, can't wait for async Resource access)
+  // Static sites only need URLs
+  if (app === 'homepage' || app === 'docs') return base
+
+  // Full apps: add boot-critical vars (needed before configService.init())
+  return {
+    ...base,
     BETTER_AUTH_SECRET: getSecretValue('BETTER_AUTH_SECRET'),
-    //BETTER_AUTH_URL: `https://${getAppDomain()}`, //vars.NEXT_PUBLIC_BASE_URL,
-    //NEXT_PUBLIC_BETTER_AUTH_URL: `https://${getAppDomain()}`, //vars.NEXT_PUBLIC_BASE_URL,
-    // Database and cache (drizzle/Redis need these at boot)
     DATABASE_URL,
     REDIS_URL,
     REDIS_HOST,
     REDIS_PORT,
     REDIS_PASSWORD,
-    ELASTICACHE_TLS: vars.ELASTICACHE_TLS,
-    // Public URLs used by web/clients
-    NEXT_PUBLIC_BASE_URL: `https://${getAppDomain()}`,
-    // NEXT_PUBLIC_BASE_URL: vars.NEXT_PUBLIC_BASE_URL,
-    NEXT_PUBLIC_APP_URL: vars.NEXT_PUBLIC_APP_URL,
-    NEXT_PUBLIC_HOMEPAGE_URL: vars.NEXT_PUBLIC_HOMEPAGE_URL,
-
-    // Core service configuration
-    EMAIL_PROVIDER: vars.EMAIL_PROVIDER,
-    FILE_STORAGE_TYPE: vars.FILE_STORAGE_TYPE,
-    CACHE_PROVIDER: vars.CACHE_PROVIDER,
-
-    // Model defaults
-    ANTHROPIC_MODEL: vars.ANTHROPIC_MODEL,
-    OPENAI_MODEL: vars.OPENAI_MODEL,
-
-    // Admin configuration
+    ELASTICACHE_TLS: process.env.ELASTICACHE_TLS || 'true',
     SUPER_ADMIN_EMAIL: getSecretValue('SUPER_ADMIN_EMAIL'),
   }
 }
@@ -296,14 +274,4 @@ export function getSelectedEnvVars(app: AppType = 'web'): Record<string, string>
  */
 export function getSecretValue(name: keyof typeof secretsConfig): string {
   return secretsConfig[name]?.secret.value || ''
-}
-
-/**
- * Helper to get specific env var value by name
- * @param name - Environment variable name
- * @returns Environment variable value or empty string
- */
-export function getEnvValue(name: string): string {
-  const envVars = getEnvVars()
-  return (envVars as any)[name] || ''
 }

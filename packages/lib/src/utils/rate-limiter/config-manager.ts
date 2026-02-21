@@ -1,6 +1,6 @@
 // packages/lib/src/utils/rate-limiter/config-manager.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { IntegrationProviderType as IntegrationProviderTypeEnum } from '@auxx/database/enums'
 import type { IntegrationProviderType } from '@auxx/database/types'
 import { createScopedLogger } from '../../logger'
@@ -45,7 +45,7 @@ export class RateLimiterConfigManager {
    */
   private loadEnvironmentOverrides(): void {
     // Global enable/disable
-    if (env.DISABLE_RATE_LIMITING === 'true') {
+    if (configService.get<string>('DISABLE_RATE_LIMITING') === 'true') {
       this.globalEnabled = false
       this.logger.warn('⚠️ Rate limiting is DISABLED via environment variable')
       return
@@ -70,27 +70,31 @@ export class RateLimiterConfigManager {
   private loadGmailOverrides(): void {
     const gmailConfig = this.config.get(IntegrationProviderTypeEnum.google) || {}
 
-    if (env.GMAIL_RATE_LIMIT_PER_SECOND) {
-      gmailConfig.requestsPerSecond = parseInt(env.GMAIL_RATE_LIMIT_PER_SECOND, 10)
+    const gmailRatePerSecond = configService.get<string>('GMAIL_RATE_LIMIT_PER_SECOND')
+    if (gmailRatePerSecond) {
+      gmailConfig.requestsPerSecond = parseInt(gmailRatePerSecond, 10)
       this.logger.info('Gmail rate limit per second overridden', {
         value: gmailConfig.requestsPerSecond,
       })
     }
 
-    if (env.GMAIL_RATE_LIMIT_PER_MINUTE) {
-      gmailConfig.requestsPerMinute = parseInt(env.GMAIL_RATE_LIMIT_PER_MINUTE, 10)
+    const gmailRatePerMinute = configService.get<string>('GMAIL_RATE_LIMIT_PER_MINUTE')
+    if (gmailRatePerMinute) {
+      gmailConfig.requestsPerMinute = parseInt(gmailRatePerMinute, 10)
       this.logger.info('Gmail rate limit per minute overridden', {
         value: gmailConfig.requestsPerMinute,
       })
     }
 
-    if (env.GMAIL_BATCH_SIZE) {
-      gmailConfig.batchSize = parseInt(env.GMAIL_BATCH_SIZE, 10)
+    const gmailBatchSize = configService.get<string>('GMAIL_BATCH_SIZE')
+    if (gmailBatchSize) {
+      gmailConfig.batchSize = parseInt(gmailBatchSize, 10)
       this.logger.info('Gmail batch size overridden', { value: gmailConfig.batchSize })
     }
 
-    if (env.GMAIL_MAX_CONCURRENT) {
-      gmailConfig.concurrentRequests = parseInt(env.GMAIL_MAX_CONCURRENT, 10)
+    const gmailMaxConcurrent = configService.get<string>('GMAIL_MAX_CONCURRENT')
+    if (gmailMaxConcurrent) {
+      gmailConfig.concurrentRequests = parseInt(gmailMaxConcurrent, 10)
       this.logger.info('Gmail max concurrent requests overridden', {
         value: gmailConfig.concurrentRequests,
       })
@@ -105,22 +109,25 @@ export class RateLimiterConfigManager {
   private loadOutlookOverrides(): void {
     const outlookConfig = this.config.get(IntegrationProviderTypeEnum.outlook) || {}
 
-    if (env.OUTLOOK_RATE_LIMIT_PER_MINUTE) {
-      outlookConfig.requestsPerMinute = parseInt(env.OUTLOOK_RATE_LIMIT_PER_MINUTE, 10)
+    const outlookRatePerMinute = configService.get<string>('OUTLOOK_RATE_LIMIT_PER_MINUTE')
+    if (outlookRatePerMinute) {
+      outlookConfig.requestsPerMinute = parseInt(outlookRatePerMinute, 10)
       this.logger.info('Outlook rate limit per minute overridden', {
         value: outlookConfig.requestsPerMinute,
       })
     }
 
-    if (env.OUTLOOK_RATE_LIMIT_PER_HOUR) {
-      outlookConfig.requestsPerHour = parseInt(env.OUTLOOK_RATE_LIMIT_PER_HOUR, 10)
+    const outlookRatePerHour = configService.get<string>('OUTLOOK_RATE_LIMIT_PER_HOUR')
+    if (outlookRatePerHour) {
+      outlookConfig.requestsPerHour = parseInt(outlookRatePerHour, 10)
       this.logger.info('Outlook rate limit per hour overridden', {
         value: outlookConfig.requestsPerHour,
       })
     }
 
-    if (env.OUTLOOK_BATCH_SIZE) {
-      outlookConfig.batchSize = parseInt(env.OUTLOOK_BATCH_SIZE, 10)
+    const outlookBatchSize = configService.get<string>('OUTLOOK_BATCH_SIZE')
+    if (outlookBatchSize) {
+      outlookConfig.batchSize = parseInt(outlookBatchSize, 10)
       this.logger.info('Outlook batch size overridden', { value: outlookConfig.batchSize })
     }
 
@@ -133,8 +140,9 @@ export class RateLimiterConfigManager {
   private loadFacebookOverrides(): void {
     const facebookConfig = this.config.get(IntegrationProviderTypeEnum.facebook) || {}
 
-    if (env.FACEBOOK_RATE_LIMIT_PER_HOUR) {
-      facebookConfig.requestsPerHour = parseInt(env.FACEBOOK_RATE_LIMIT_PER_HOUR, 10)
+    const fbRatePerHour = configService.get<string>('FACEBOOK_RATE_LIMIT_PER_HOUR')
+    if (fbRatePerHour) {
+      facebookConfig.requestsPerHour = parseInt(fbRatePerHour, 10)
       this.logger.info('Facebook rate limit per hour overridden', {
         value: facebookConfig.requestsPerHour,
       })
@@ -149,8 +157,9 @@ export class RateLimiterConfigManager {
   private loadShopifyOverrides(): void {
     const shopifyConfig = this.config.get(IntegrationProviderTypeEnum.shopify) || {}
 
-    if (env.SHOPIFY_RATE_LIMIT_PER_SECOND) {
-      shopifyConfig.requestsPerSecond = parseInt(env.SHOPIFY_RATE_LIMIT_PER_SECOND, 10)
+    const shopifyRatePerSecond = configService.get<string>('SHOPIFY_RATE_LIMIT_PER_SECOND')
+    if (shopifyRatePerSecond) {
+      shopifyConfig.requestsPerSecond = parseInt(shopifyRatePerSecond, 10)
       this.logger.info('Shopify rate limit per second overridden', {
         value: shopifyConfig.requestsPerSecond,
       })
@@ -232,16 +241,21 @@ export class RateLimiterConfigManager {
     const config = { ...DEFAULT_RETRY_CONFIG }
 
     // Override from environment if available
-    if (env[`${providerType.toUpperCase()}_MAX_RETRIES`]) {
-      config.maxRetries = parseInt(env[`${providerType.toUpperCase()}_MAX_RETRIES`], 10)
+    const maxRetries = configService.get<string>(`${providerType.toUpperCase()}_MAX_RETRIES`)
+    if (maxRetries) {
+      config.maxRetries = parseInt(maxRetries, 10)
     }
 
-    if (env[`${providerType.toUpperCase()}_BACKOFF_INITIAL_DELAY`]) {
-      config.initialDelay = parseInt(env[`${providerType.toUpperCase()}_BACKOFF_INITIAL_DELAY`], 10)
+    const initialDelay = configService.get<string>(
+      `${providerType.toUpperCase()}_BACKOFF_INITIAL_DELAY`
+    )
+    if (initialDelay) {
+      config.initialDelay = parseInt(initialDelay, 10)
     }
 
-    if (env[`${providerType.toUpperCase()}_BACKOFF_MAX_DELAY`]) {
-      config.maxDelay = parseInt(env[`${providerType.toUpperCase()}_BACKOFF_MAX_DELAY`], 10)
+    const maxDelay = configService.get<string>(`${providerType.toUpperCase()}_BACKOFF_MAX_DELAY`)
+    if (maxDelay) {
+      config.maxDelay = parseInt(maxDelay, 10)
     }
 
     return config
@@ -254,10 +268,10 @@ export class RateLimiterConfigManager {
    */
   private getCircuitBreakerConfig(providerType: IntegrationProviderType) {
     return {
-      failureThreshold: parseInt(env.CIRCUIT_BREAKER_FAILURE_THRESHOLD || '5', 10),
-      resetTimeout: parseInt(env.CIRCUIT_BREAKER_RESET_TIMEOUT || '60000', 10),
-      halfOpenRequests: parseInt(env.CIRCUIT_BREAKER_HALF_OPEN_REQUESTS || '2', 10),
-      monitoringWindow: parseInt(env.CIRCUIT_BREAKER_MONITORING_WINDOW || '300000', 10),
+      failureThreshold: configService.get<number>('CIRCUIT_BREAKER_FAILURE_THRESHOLD', 5),
+      resetTimeout: configService.get<number>('CIRCUIT_BREAKER_RESET_TIMEOUT', 60000),
+      halfOpenRequests: configService.get<number>('CIRCUIT_BREAKER_HALF_OPEN_REQUESTS', 2),
+      monitoringWindow: configService.get<number>('CIRCUIT_BREAKER_MONITORING_WINDOW', 300000),
     }
   }
 
@@ -266,7 +280,7 @@ export class RateLimiterConfigManager {
    * @returns true if rate limiting is enabled
    */
   isRateLimitingEnabled(): boolean {
-    return this.globalEnabled && env.DISABLE_RATE_LIMITING !== 'true'
+    return this.globalEnabled && configService.get<string>('DISABLE_RATE_LIMITING') !== 'true'
   }
 
   /**
@@ -274,7 +288,7 @@ export class RateLimiterConfigManager {
    * @returns true if metrics are enabled
    */
   isMetricsEnabled(): boolean {
-    return env.RATE_LIMITER_METRICS_ENABLED === 'true'
+    return configService.get<string>('RATE_LIMITER_METRICS_ENABLED') === 'true'
   }
 
   /**
@@ -282,7 +296,7 @@ export class RateLimiterConfigManager {
    * @returns true if coalescing is enabled
    */
   isCoalescingEnabled(): boolean {
-    return env.RATE_LIMITER_COALESCING_ENABLED !== 'false' // Default to true
+    return configService.get<string>('RATE_LIMITER_COALESCING_ENABLED') !== 'false' // Default to true
   }
 
   /**
@@ -290,7 +304,7 @@ export class RateLimiterConfigManager {
    * @returns Coalescing window in milliseconds
    */
   getCoalescingWindow(): number {
-    return parseInt(env.RATE_LIMITER_COALESCING_WINDOW || '100', 10)
+    return configService.get<number>('RATE_LIMITER_COALESCING_WINDOW', 100)
   }
 
   /**

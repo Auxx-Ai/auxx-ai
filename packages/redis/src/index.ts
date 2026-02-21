@@ -10,6 +10,7 @@ export {
   getRedisData,
   getRedisProvider,
   getSubscriptionClient,
+  isRedisAvailable,
   // Constants
   KEYS,
   SESSION_EXPIRATION,

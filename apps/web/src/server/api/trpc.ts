@@ -14,6 +14,7 @@ import superjson from 'superjson'
 import { ZodError } from 'zod'
 
 import { auth } from '~/auth/server'
+import { ensureWebAppInitialized } from '~/server/bootstrap'
 
 type CreateContextOptions = {
   session: Awaited<ReturnType<typeof auth>> | null
@@ -42,11 +43,10 @@ const createInnerTRPCContext = (opts: CreateContextOptions) => {
  * @see https://trpc.io/docs/server/context
  */
 export const createTRPCContext = async (opts: { headers: Headers }) => {
+  await ensureWebAppInitialized() // defensive fallback
   const session = await auth.api.getSession({ headers: opts.headers })
 
   return createInnerTRPCContext({ session, ...opts, headers: opts.headers })
-
-  // return { db, session, ...opts }
 }
 
 /**

@@ -1,4 +1,5 @@
-import { env, WEBAPP_URL } from '@auxx/config/server'
+import { WEBAPP_URL } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { publisher } from '@auxx/lib/events'
 import { setupShopifyWebhooks } from '@auxx/lib/shopify'
@@ -60,7 +61,7 @@ export async function GET(req: NextRequest) {
         .join('&')
 
       const generatedHmac = crypto
-        .createHmac('sha256', env.SHOPIFY_API_SECRET)
+        .createHmac('sha256', configService.get<string>('SHOPIFY_API_SECRET')!)
         .update(message)
         .digest('hex')
 
@@ -74,8 +75,8 @@ export async function GET(req: NextRequest) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        client_id: env.SHOPIFY_API_KEY,
-        client_secret: env.SHOPIFY_API_SECRET,
+        client_id: configService.get<string>('SHOPIFY_API_KEY')!,
+        client_secret: configService.get<string>('SHOPIFY_API_SECRET')!,
         code,
       }),
     })

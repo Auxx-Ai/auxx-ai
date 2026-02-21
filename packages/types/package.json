@@ -14,7 +14,8 @@
     "./resource": "./resource/index.ts",
     "./task": "./task/index.ts",
     "./draft": "./draft/index.ts",
-    "./signature": "./signature/index.ts"
+    "./signature": "./signature/index.ts",
+    "./config": "./config/index.ts"
   },
   "dependencies": {
     "@auxx/database": "workspace:*",

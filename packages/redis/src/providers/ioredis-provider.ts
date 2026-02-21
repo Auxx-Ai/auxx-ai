@@ -1,6 +1,6 @@
 // packages/redis/src/providers/ioredis-provider.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { Redis } from 'ioredis'
 import { logger, type RedisClient } from '../types'
 
@@ -12,8 +12,8 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
   let client: Redis
 
   if (provider === 'aws') {
-    const url = env.ELASTICACHE_URL
-    const tls = env.ELASTICACHE_TLS === 'true'
+    const url = configService.get<string>('ELASTICACHE_URL')
+    const tls = configService.get<string>('ELASTICACHE_TLS') === 'true'
 
     if (!url) {
       throw new Error('ELASTICACHE_URL environment variable is required for AWS ElastiCache')
@@ -34,15 +34,15 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
     })
   } else {
     // hosted
-    const host = env.REDIS_HOST
-    const port = Number(env.REDIS_PORT || 6379)
-    const password = env.REDIS_PASSWORD
+    const host = configService.get<string>('REDIS_HOST')
+    const port = configService.get<number>('REDIS_PORT', 6379)
+    const password = configService.get<string>('REDIS_PASSWORD')
 
     if (!host) {
       throw new Error('REDIS_HOST environment variable is required for hosted Redis')
     }
     logger.info('Creating hosted Redis client with enhanced support')
-    const tls = env.ELASTICACHE_TLS === 'true'
+    const tls = configService.get<string>('ELASTICACHE_TLS') === 'true'
 
     client = new Redis({
       tls: tls ? {} : undefined,
@@ -95,6 +95,7 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
     expire: async (key: string, seconds: number) => await client.expire(key, seconds),
     ping: async () => await client.ping(),
     quit: async () => await client.quit(),
+    info: async (section?: string) => (section ? await client.info(section) : await client.info()),
 
     // Pub/Sub operations (supported by IORedis)
     publish: async (channel: string, message: string) =>

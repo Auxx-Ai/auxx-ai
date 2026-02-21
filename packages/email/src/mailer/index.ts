@@ -1,4 +1,4 @@
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { createScopedLogger } from '@auxx/logger'
 import { render } from '@react-email/components'
 import {
@@ -70,11 +70,12 @@ export const sendEmail = async (options: SendEmailDataProps): Promise<boolean> =
 
   // Get configuration from environment variables
 
-  const fromEmail = env.SYSTEM_FROM_EMAIL || 'noreply@example.com'
+  const fromEmail = configService.get<string>('SYSTEM_FROM_EMAIL') || 'noreply@example.com'
   const domain = fromEmail.split('@')[1] || 'example.com'
 
-  const replyToEmail = env.EMAIL_REPLY_TO || env.SUPPORT_EMAIL
-  const supportName = env.SUPPORT_NAME || 'Support Team'
+  const replyToEmail =
+    configService.get<string>('EMAIL_REPLY_TO') || configService.get<string>('SUPPORT_EMAIL')
+  const supportName = configService.get<string>('SUPPORT_NAME') || 'Support Team'
 
   try {
     // Set up the from address with a friendly name

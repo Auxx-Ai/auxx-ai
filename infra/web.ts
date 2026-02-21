@@ -3,7 +3,7 @@
 import { rds, redis } from './db'
 import { getAppDomain } from './dns'
 import { router, vpc } from './router-vpc'
-import { getAllSecretsForLinking, getSelectedEnvVars } from './secrets'
+import { getSecretsForLinking, getSelectedEnvVars } from './secrets'
 import { privateBucket, publicBucket } from './storage'
 
 export const web = new sst.aws.Nextjs('AuxxAiWeb', {
@@ -13,7 +13,7 @@ export const web = new sst.aws.Nextjs('AuxxAiWeb', {
   // Minimal env; secrets come via Resource links
   environment: getSelectedEnvVars('web'),
   // Link secrets and database resources for Resource access
-  link: [...getAllSecretsForLinking(), rds, redis, publicBucket, privateBucket],
+  link: [...getSecretsForLinking('web'), rds, redis, publicBucket, privateBucket],
   openNextVersion: '3.9.15',
   dev: {
     autostart: true,

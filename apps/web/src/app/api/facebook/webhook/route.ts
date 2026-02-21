@@ -1,6 +1,6 @@
 // apps/web/src/app/api/facebook/webhook/route.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import type { MessageData } from '@auxx/lib/email'
 import { MessageStorageService } from '@auxx/lib/email'
@@ -22,7 +22,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   // Check if mode and token are present
   if (mode && token) {
     // Check the mode and token sent are correct
-    if (mode === 'subscribe' && token === env.FACEBOOK_WEBHOOK_VERIFY_TOKEN) {
+    if (
+      mode === 'subscribe' &&
+      token === configService.get<string>('FACEBOOK_WEBHOOK_VERIFY_TOKEN')
+    ) {
       // Respond with the challenge token from the request
       logger.info('Facebook webhook verification successful.')
       return new NextResponse(challenge, { status: 200 })
@@ -49,7 +52,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
   const bodyText = await req.text() // Read body as text for signature verification
   const expectedHash = crypto
-    .createHmac('sha256', env.FACEBOOK_APP_SECRET!) // Ensure App Secret is set
+    .createHmac('sha256', configService.get<string>('FACEBOOK_APP_SECRET')!) // Ensure App Secret is set
     .update(bodyText)
     .digest('hex')
   if (signature !== `sha256=${expectedHash}`) {

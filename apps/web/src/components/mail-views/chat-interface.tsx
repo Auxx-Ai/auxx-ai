@@ -1,6 +1,6 @@
 // ~/components/mail/chat-interface.tsx
 'use client'
-import { getPusherClient } from '@auxx/lib/realtime/client' // Import Pusher client helper
+import { getPusherClient } from '@auxx/lib/realtime/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
@@ -24,6 +24,7 @@ import {
 import type { Channel } from 'pusher-js' // Import Pusher types
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSession } from '~/auth/auth-client'
+import { useEnv } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 import { ChatMessageBubble } from './chat-message-bubble'
 
@@ -50,6 +51,7 @@ interface ChatInterfaceProps {
 }
 // --- Main Chat Interface Component ---
 export default function ChatInterface({ threadId }: ChatInterfaceProps) {
+  const { pusher: pusherEnv } = useEnv()
   const [newMessage, setNewMessage] = useState('')
   const [messages, setMessages] = useState<ChatMessageType[]>([])
   const [isSending, setIsSending] = useState(false)
@@ -173,7 +175,7 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
     if (!visitorSessionId) {
       return // Don't setup Pusher until we have the session ID
     }
-    const pusherClient = getPusherClient()
+    const pusherClient = getPusherClient(pusherEnv.key, pusherEnv.cluster)
     let channel: Channel | null = null
     if (pusherClient) {
       const channelName = `private-chat-${visitorSessionId}`
@@ -249,7 +251,15 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
         pusherClient.unsubscribe(channelName)
       }
     }
-  }, [visitorSessionId, threadId, utils, scrollToBottom, isScrolledToBottom]) // Add dependencies
+  }, [
+    visitorSessionId,
+    threadId,
+    utils,
+    scrollToBottom,
+    isScrolledToBottom,
+    pusherEnv.key,
+    pusherEnv.cluster,
+  ])
   const sendMessageMutation = api.chat.sendAgentMessage.useMutation({
     onMutate: () => {
       setIsSending(true)

@@ -1,6 +1,7 @@
 // apps/web/src/app/api/google/webhook/route.ts
 
-import { env, WEBAPP_URL } from '@auxx/config/server'
+import { WEBAPP_URL } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { type IntegrationProviderType, MessageService } from '@auxx/lib/email' // Renamed imports
 import { createScopedLogger } from '@auxx/logger'
@@ -54,7 +55,7 @@ async function verifyGoogleWebhook(req: NextRequest): Promise<boolean> {
         WEBAPP_URL,
         // 'https://auxx.ai',
         AUDIENCE,
-        env.GOOGLE_PUBSUB_SERVICE_ACCOUNT_EMAIL,
+        configService.get<string>('GOOGLE_PUBSUB_SERVICE_ACCOUNT_EMAIL'),
         // env.NEXT_PUBLIC_APP_URL,
       ].filter(Boolean), // Allow multiple valid audiences
       issuer: ['https://accounts.google.com', 'googleidtoken.googleapis.com'], // Valid issuers
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   logger.info('Received Google webhook request')
   // 1. Verify the request comes from Google Pub/Sub
   // Skip verification in development?
-  if (env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === 'production') {
     const isValid = await verifyGoogleWebhook(req)
     if (!isValid) {
       logger.warn('Google webhook verification failed.')

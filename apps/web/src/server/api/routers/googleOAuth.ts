@@ -1,7 +1,8 @@
 // src/server/api/routers/googleOAuth.ts
 // TODO: DELETE
 
-import { env, WEBAPP_URL } from '@auxx/config/server'
+import { WEBAPP_URL } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
@@ -33,8 +34,8 @@ export const googleOAuthRouter = createTRPCRouter({
 
         // Create OAuth client
         const oauth2Client = new google.auth.OAuth2(
-          env.GOOGLE_CLIENT_ID,
-          env.GOOGLE_CLIENT_SECRET,
+          configService.get<string>('GOOGLE_CLIENT_ID'),
+          configService.get<string>('GOOGLE_CLIENT_SECRET'),
           WEBAPP_URL + '/api/google/oauth2/callback'
         )
 
@@ -112,8 +113,8 @@ export const googleOAuthRouter = createTRPCRouter({
       // Test the connection by making a simple API call
       try {
         const oauth2Client = new google.auth.OAuth2(
-          env.GOOGLE_CLIENT_ID,
-          env.GOOGLE_CLIENT_SECRET,
+          configService.get<string>('GOOGLE_CLIENT_ID'),
+          configService.get<string>('GOOGLE_CLIENT_SECRET'),
           WEBAPP_URL + '/api/google/oauth2/callback'
         )
 
@@ -177,8 +178,8 @@ export const googleOAuthRouter = createTRPCRouter({
       if (integration.routingEnabled && integration.routingId) {
         try {
           const oauth2Client = new google.auth.OAuth2(
-            env.GOOGLE_CLIENT_ID,
-            env.GOOGLE_CLIENT_SECRET,
+            configService.get<string>('GOOGLE_CLIENT_ID'),
+            configService.get<string>('GOOGLE_CLIENT_SECRET'),
             WEBAPP_URL + '/api/google/oauth2/callback'
           )
 

@@ -105,9 +105,9 @@ jobs:
 
       - name: Export environment variables (dev)
         run: |
-          echo "NEXT_PUBLIC_GIT_SHA=${{ github.sha }}" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_BUILD_TIME=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_APP_VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
+          echo "GIT_SHA=${{ github.sha }}" >> $GITHUB_ENV
+          echo "BUILD_TIME=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
+          echo "APP_VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
           echo "STAGE=dev" >> $GITHUB_ENV
           echo "AWS_REGION=us-west-1" >> $GITHUB_ENV
           echo "CLOUDFRONT_CERT_ARN=${{ vars.CLOUDFRONT_CERT_ARN }}" >> $GITHUB_ENV
@@ -120,8 +120,8 @@ jobs:
           echo "NEXT_PUBLIC_S3_BUCKET=${{ vars.NEXT_PUBLIC_S3_BUCKET }}" >> $GITHUB_ENV
           echo "NEXT_PUBLIC_PUSHER_KEY=${{ vars.NEXT_PUBLIC_PUSHER_KEY }}" >> $GITHUB_ENV
           echo "NEXT_PUBLIC_PUSHER_CLUSTER=${{ vars.NEXT_PUBLIC_PUSHER_CLUSTER }}" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_POSTHOG_KEY=${{ vars.NEXT_PUBLIC_POSTHOG_KEY }}" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_POSTHOG_HOST=${{ vars.NEXT_PUBLIC_POSTHOG_HOST }}" >> $GITHUB_ENV
+          echo "POSTHOG_KEY=${{ vars.POSTHOG_KEY }}" >> $GITHUB_ENV
+          echo "POSTHOG_HOST=${{ vars.POSTHOG_HOST }}" >> $GITHUB_ENV
           echo "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}" >> $GITHUB_ENV
           # Storage & data
           echo "REDIS_HOST=${{ vars.REDIS_HOST }}" >> $GITHUB_ENV

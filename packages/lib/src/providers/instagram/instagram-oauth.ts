@@ -1,5 +1,6 @@
 // src/lib/providers/instagram/instagram-oauth.ts
-import { env, WEBAPP_URL } from '@auxx/config/server'
+import { WEBAPP_URL } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { InboxService } from '@auxx/lib/inboxes'
 import { createScopedLogger } from '@auxx/logger'
@@ -7,7 +8,7 @@ import crypto from 'crypto'
 import { and, eq } from 'drizzle-orm'
 
 const logger = createScopedLogger('instagram-oauth')
-const API_VERSION = env.FACEBOOK_GRAPH_API_VERSION || 'v19.0' // Use a recent, stable version
+const API_VERSION = configService.get<string>('FACEBOOK_GRAPH_API_VERSION') || 'v19.0' // Use a recent, stable version
 
 // Interface describing the data stored for Instagram integration authentication
 // Managed via a Facebook Page
@@ -38,8 +39,8 @@ export class InstagramOAuthService {
   ]
 
   private constructor() {
-    this.clientId = env.FACEBOOK_APP_ID || ''
-    this.clientSecret = env.FACEBOOK_APP_SECRET || ''
+    this.clientId = configService.get<string>('FACEBOOK_APP_ID') || ''
+    this.clientSecret = configService.get<string>('FACEBOOK_APP_SECRET') || ''
     // Define the callback route for Instagram via Facebook Login
     this.redirectUri = `${WEBAPP_URL}/api/instagram/oauth2/callback` // Specific callback
 
@@ -48,7 +49,10 @@ export class InstagramOAuthService {
         'Facebook/Instagram OAuth credentials (App ID, App Secret) not properly configured'
       )
     }
-    if (env.NODE_ENV === 'production' && !this.redirectUri.startsWith('https')) {
+    if (
+      configService.get<string>('NODE_ENV') === 'production' &&
+      !this.redirectUri.startsWith('https')
+    ) {
       logger.error('Instagram OAuth redirect URI MUST be HTTPS in production.')
       // Consider throwing an error in production if not HTTPS
     }

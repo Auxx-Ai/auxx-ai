@@ -15,6 +15,7 @@
     "@aws-sdk/client-sesv2": "catalog:",
     "@react-email/components": "^0.5.5",
     "@auxx/config": "workspace:",
+    "@auxx/credentials": "workspace:",
     "@auxx/database": "workspace:",
     "@auxx/logger": "workspace:",
     "clsx": "^2.1.1",

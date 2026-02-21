@@ -1,5 +1,5 @@
 // packages/lib/src/events/handlers/publish-to-analytics-job.ts
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import type { Job } from 'bullmq'
 import { createScopedLogger } from '../../logger'
 import { PostHogClient } from '../../posthog/posthog-client'
@@ -30,7 +30,7 @@ export const publishToAnalyticsJob = async (job: Job<AuxxEvent>) => {
   const distinctId = resolveDistinctId(d)
   if (!distinctId) return
 
-  if (env.NODE_ENV === 'development') {
+  if (configService.get<string>('NODE_ENV') === 'development') {
     logger.info('Analytics event captured:', { type: event.type })
   }
 

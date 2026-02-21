@@ -2,7 +2,7 @@
 
 import { rds, redis } from './db'
 import { cluster } from './router-vpc'
-import { getAllSecretsForLinking, getSelectedEnvVars } from './secrets'
+import { getSecretsForLinking, getSelectedEnvVars } from './secrets'
 import { privateBucket, publicBucket } from './storage'
 
 /**
@@ -17,5 +17,5 @@ export const worker = $dev
       cpu: '0.25 vCPU',
       memory: '0.5 GB',
       environment: getSelectedEnvVars('worker'),
-      link: [...getAllSecretsForLinking(), rds, redis, publicBucket, privateBucket],
+      link: [...getSecretsForLinking('worker'), rds, redis, publicBucket, privateBucket],
     })

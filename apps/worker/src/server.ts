@@ -1,6 +1,7 @@
 // apps/worker/src/server.ts
 
 import { stripeClient } from '@auxx/billing'
+import { configService } from '@auxx/credentials'
 import { closeAllQueues, closeFlowProducer, getQueue, Queues } from '@auxx/lib/queues'
 import { createBullBoard } from '@bull-board/api'
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter'
@@ -23,6 +24,8 @@ let workersInstance: Worker[] // Use a different name to avoid conflict with the
 
 // --- Wrap async setup in an async function ---
 async function initializeApp() {
+  await configService.init()
+
   // Initialize Stripe client for billing jobs
   if (process.env.STRIPE_SECRET_KEY) {
     stripeClient.initialize(process.env.STRIPE_SECRET_KEY)

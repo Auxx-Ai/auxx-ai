@@ -1,14 +1,7 @@
 // src/server/auth/config.ts
 
-import {
-  API_URL,
-  DEV_PORTAL_URL,
-  env,
-  getAppHostname,
-  getCookieDomain,
-  getTrustedOrigins,
-  WEBAPP_URL,
-} from '@auxx/config/server'
+import { getAppHostname, getCookieDomain, getTrustedOrigins, WEBAPP_URL } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database, schema } from '@auxx/database' // Drizzle database for services
 import { accountModel, UserModel } from '@auxx/database/models'
 import {
@@ -49,7 +42,7 @@ const trustedOrigins = getTrustedOrigins()
 // export auth.api
 export const auth = betterAuth({
   database: drizzleAdapter(database, { provider: 'pg', schema }), // use your dialect
-  secret: env.BETTER_AUTH_SECRET || env.BETTER_AUTH_SECRET, // encryption secret - fallback to process.env
+  secret: configService.get<string>('BETTER_AUTH_SECRET')!, // encryption secret
   baseURL: WEBAPP_URL,
   trustedOrigins,
   databaseHooks: {
@@ -100,15 +93,18 @@ export const auth = betterAuth({
   }, // enable email/password auth
   socialProviders: {
     google: {
-      clientId: env.AUTH_GOOGLE_ID!,
-      clientSecret: env.AUTH_GOOGLE_SECRET!,
+      clientId: configService.get<string>('AUTH_GOOGLE_ID')!,
+      clientSecret: configService.get<string>('AUTH_GOOGLE_SECRET')!,
       mapProfileToUser: (profile) => {
         return { firstName: profile.given_name, lastName: profile.family_name }
       },
       accessType: 'offline',
       prompt: 'select_account consent',
     },
-    github: { clientId: env.AUTH_GITHUB_ID!, clientSecret: env.AUTH_GITHUB_SECRET! },
+    github: {
+      clientId: configService.get<string>('AUTH_GITHUB_ID')!,
+      clientSecret: configService.get<string>('AUTH_GITHUB_SECRET')!,
+    },
     // add other providers as needed
   },
   emailVerification: {
@@ -206,7 +202,7 @@ export const auth = betterAuth({
           modelName: 'Passkey',
         },
       },
-      rpID: env.NODE_ENV == 'production' ? getAppHostname() : 'localhost',
+      rpID: configService.get<string>('NODE_ENV') === 'production' ? getAppHostname() : 'localhost',
       rpName: 'Auxx.Ai',
       origin: WEBAPP_URL!,
 
@@ -343,7 +339,8 @@ export const auth = betterAuth({
           clientId: 'auxx-sdk-cli',
           // Public clients don't use clientSecret for auth (PKCE only), but better-auth
           // still needs it to sign the ID token. This secret is never sent by the SDK.
-          clientSecret: env.SDK_CLIENT_SECRET || 'auxx-sdk-cli-secret-for-jwt-signing',
+          clientSecret:
+            configService.get<string>('SDK_CLIENT_SECRET') || 'auxx-sdk-cli-secret-for-jwt-signing',
           name: 'Auxx SDK CLI',
           type: 'public', // Public client - uses PKCE, not clientSecret for auth
           redirectURLs: [
@@ -376,7 +373,8 @@ export const auth = betterAuth({
         },
         {
           clientId: 'test-app-connection',
-          clientSecret: env.TEST_APP_CLIENT_SECRET || 'test-app-connection-secret',
+          clientSecret:
+            configService.get<string>('TEST_APP_CLIENT_SECRET') || 'test-app-connection-secret',
           name: 'Test App Connection',
           type: 'web', // Web application - uses client_id + client_secret
           redirectURLs: [

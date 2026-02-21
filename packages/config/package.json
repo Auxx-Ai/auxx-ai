@@ -19,11 +19,7 @@
     "clean": "rm -rf node_modules dist *.tsbuildinfo .turbo"
   },
   "dependencies": {
-    "@t3-oss/env-nextjs": "catalog:",
-    "dotenv": "catalog:",
-    "server-only": "catalog:",
-    "sst": "^3.17.12",
-    "zod": "catalog:"
+    "sst": "^3.17.12"
   },
   "devDependencies": {
     "@auxx/typescript-config": "workspace:*",

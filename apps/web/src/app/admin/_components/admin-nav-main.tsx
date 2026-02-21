@@ -3,11 +3,13 @@
 
 import { SidebarGroup, SidebarMenu, SidebarMenuItem } from '@auxx/ui/components/sidebar'
 import {
+  Activity,
   Building2,
   CreditCard,
   LayoutDashboard,
   type LucideIcon,
   Package,
+  Settings,
   Users,
   Workflow,
 } from 'lucide-react'
@@ -63,6 +65,18 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
     label: 'Plans',
     slug: 'plans',
     icon: CreditCard,
+  },
+  {
+    id: 'config',
+    label: 'Config',
+    slug: 'config',
+    icon: Settings,
+  },
+  {
+    id: 'health',
+    label: 'Health',
+    slug: 'health',
+    icon: Activity,
   },
 ]
 

@@ -1,6 +1,6 @@
 // @auxx/lib/realtime/realtime-service.ts
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { createScopedLogger } from '@auxx/logger'
 import Pusher from 'pusher'
 
@@ -31,21 +31,25 @@ export class RealTimeService {
   private initializePusher() {
     try {
       // Check if Pusher credentials are available
-      if (env.PUSHER_APP_ID && env.PUSHER_KEY && env.PUSHER_SECRET && env.PUSHER_CLUSTER) {
+      const pusherAppId = configService.get<string>('PUSHER_APP_ID')
+      const pusherKey = configService.get<string>('PUSHER_KEY')
+      const pusherSecret = configService.get<string>('PUSHER_SECRET')
+      const pusherCluster = configService.get<string>('PUSHER_CLUSTER')
+      if (pusherAppId && pusherKey && pusherSecret && pusherCluster) {
         this.pusher = new Pusher({
-          appId: env.PUSHER_APP_ID,
-          key: env.PUSHER_KEY,
-          secret: env.PUSHER_SECRET,
-          cluster: env.PUSHER_CLUSTER,
+          appId: pusherAppId,
+          key: pusherKey,
+          secret: pusherSecret,
+          cluster: pusherCluster,
           useTLS: true,
         })
         logger.info('Pusher initialized successfully')
       } else {
         logger.warn('Pusher credentials not found, real-time service disabled', {
-          appId: !!env.PUSHER_APP_ID,
-          key: !!env.PUSHER_KEY,
-          secret: !!env.PUSHER_SECRET,
-          cluster: !!env.PUSHER_CLUSTER,
+          appId: !!pusherAppId,
+          key: !!pusherKey,
+          secret: !!pusherSecret,
+          cluster: !!pusherCluster,
         })
         this.pusher = null
       }

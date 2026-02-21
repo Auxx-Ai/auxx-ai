@@ -3,9 +3,7 @@
 import { Button } from '@auxx/ui/components/button'
 import Link from 'next/link'
 import { Logo } from '~/components/global/login/logo'
-// import Logo from '~/../public/logo_color.png' // Adjust path if needed
 import { SignUpForm } from '../_components/signup-form'
-// import { WEBAPP_URL } from '@auxx/config/client'
 
 export default function SignUpPage() {
   return (

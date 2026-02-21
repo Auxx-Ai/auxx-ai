@@ -6,6 +6,7 @@ import '@auxx/ui/global.css'
 import '~/styles/react-flow.css'
 import '~/lib/immer-config' // Enable Immer MapSet plugin
 
+import { WEBAPP_URL } from '@auxx/config/server'
 import { IS_MAC_SCRIPT } from '@auxx/utils'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
@@ -15,7 +16,7 @@ const inter = Inter({ subsets: ['latin'], weight: ['400', '500', '700'] })
 import { ClientProviders } from './client-providers'
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://app.auxx.ai'),
+  metadataBase: new URL(WEBAPP_URL),
   title: {
     default: 'Auxx.ai - AI Customer Support',
     template: '%s | Auxx.ai',
@@ -51,7 +52,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    url: process.env.NEXT_PUBLIC_APP_URL || 'https://app.auxx.ai',
+    url: WEBAPP_URL,
     title: 'Auxx.ai - AI Customer Support',
     description: 'AI-powered email support ticket automation for Shopify businesses',
     siteName: 'Auxx.ai',
@@ -63,7 +64,7 @@ export const metadata: Metadata = {
     creator: '@auxxlift',
   },
   alternates: {
-    canonical: process.env.NEXT_PUBLIC_APP_URL || 'https://app.auxx.ai',
+    canonical: WEBAPP_URL,
   },
 }
 

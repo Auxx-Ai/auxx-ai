@@ -12,7 +12,7 @@ const dirName = path.dirname(fileName)
 /** @type {import("next").NextConfig} */
 const nextConfig = {
   generateBuildId: async () => {
-    return process.env.NEXT_PUBLIC_GIT_SHA || 'development'
+    return process.env.GIT_SHA || 'development'
   },
   // Required: PostHog endpoints use trailing slashes (/e/, /decide/).
   // Without this, Next.js issues 308 redirects that break event capture.

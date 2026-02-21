@@ -24,35 +24,20 @@ RUN turbo prune @auxx/build --docker
 # BUILDER stage
 FROM base AS builder
 
-# Build-time placeholders for NEXT_PUBLIC_* runtime env replacement
+# Build-time placeholders for NEXT_PUBLIC_* runtime env replacement (self-hosted)
+# Group A: URL vars — replaced at container start by docker-entrypoint.sh
 ARG NEXT_PUBLIC_BASE_URL=https://__RUNTIME_NEXT_PUBLIC_BASE_URL__
 ARG NEXT_PUBLIC_APP_URL=https://__RUNTIME_NEXT_PUBLIC_APP_URL__
 ARG NEXT_PUBLIC_API_URL=https://__RUNTIME_NEXT_PUBLIC_API_URL__
 ARG NEXT_PUBLIC_DEV_PORTAL_URL=https://__RUNTIME_NEXT_PUBLIC_DEV_PORTAL_URL__
 ARG NEXT_PUBLIC_HOMEPAGE_URL=https://__RUNTIME_NEXT_PUBLIC_HOMEPAGE_URL__
-ARG NEXT_PUBLIC_CDN_URL=https://__RUNTIME_NEXT_PUBLIC_CDN_URL__
-ARG NEXT_PUBLIC_S3_PUBLIC_BUCKET=__RUNTIME_NEXT_PUBLIC_S3_PUBLIC_BUCKET__
-ARG NEXT_PUBLIC_S3_PRIVATE_BUCKET=__RUNTIME_NEXT_PUBLIC_S3_PRIVATE_BUCKET__
-ARG NEXT_PUBLIC_S3_REGION=__RUNTIME_NEXT_PUBLIC_S3_REGION__
-ARG NEXT_PUBLIC_STORAGE_TYPE=__RUNTIME_NEXT_PUBLIC_STORAGE_TYPE__
-ARG NEXT_PUBLIC_ENV=__RUNTIME_NEXT_PUBLIC_ENV__
-ARG NEXT_PUBLIC_PUSHER_KEY=__RUNTIME_NEXT_PUBLIC_PUSHER_KEY__
-ARG NEXT_PUBLIC_PUSHER_CLUSTER=__RUNTIME_NEXT_PUBLIC_PUSHER_CLUSTER__
+ARG NEXT_PUBLIC_DOCS_URL=https://__RUNTIME_NEXT_PUBLIC_DOCS_URL__
 
-# Mock build-time env vars
+# Build-time mocks for modules that read env at import time
 ENV DATABASE_URL="postgresql://postgres:password@localhost:5432/mock_db"
-ENV OPENAI_API_KEY="sk-mock-openai-api-key-for-build-time"
-ENV ANTHROPIC_API_KEY="sk-ant-mock-anthropic-api-key-for-build-time"
-ENV API_KEY_SALT="mock-api-key-salt-for-build"
 ENV BETTER_AUTH_SECRET="mock-better-auth-secret-for-build"
 ENV REDIS_HOST="localhost"
 ENV REDIS_PORT="6379"
-ENV S3_REGION="us-east-1"
-ENV FILE_STORAGE_TYPE="local"
-ENV MAILGUN_API_KEY="mock-mailgun-api-key"
-ENV MAILGUN_DOMAIN="mail.example.com"
-ENV SYSTEM_FROM_EMAIL="no-reply@example.com"
-ENV SUPPORT_EMAIL="support@example.com"
 ENV NEXT_TELEMETRY_DISABLED="1"
 
 WORKDIR /app

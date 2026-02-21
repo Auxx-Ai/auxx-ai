@@ -1,8 +1,5 @@
 // packages/config/src/client.ts
 
-import { clientEnv } from './client-env'
-
-export { clientEnv as env } from './client-env'
 export { constants, RESERVED_API_SLUGS, type ReservedApiSlug } from './constants'
 export {
   CURRENCIES,
@@ -20,8 +17,8 @@ export * from './url'
 /** Returns build metadata for display in UI and debugging */
 export function getAppVersion() {
   return {
-    version: clientEnv.NEXT_PUBLIC_APP_VERSION || 'dev',
-    sha: clientEnv.NEXT_PUBLIC_GIT_SHA?.slice(0, 7) || 'local',
-    buildTime: clientEnv.NEXT_PUBLIC_BUILD_TIME || null,
+    version: process.env.APP_VERSION || 'dev',
+    sha: process.env.GIT_SHA?.slice(0, 7) || 'local',
+    buildTime: process.env.BUILD_TIME || null,
   }
 }

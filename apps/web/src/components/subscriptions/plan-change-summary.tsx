@@ -17,11 +17,12 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useAnalytics } from '~/hooks/use-analytics'
+import { getEnv } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 import { type Plan, PlanComparison } from './plan-comparison'
 
 /** Initialize Stripe */
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
+const stripePromise = loadStripe(getEnv()?.stripe.publishableKey || '')
 
 /** Billing address form data type */
 type BillingAddressFormData = {

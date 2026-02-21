@@ -1,6 +1,7 @@
 // src/lib/providers/outlook/outlook-oauth.ts
 
-import { env, WEBAPP_URL } from '@auxx/config/server'
+import { WEBAPP_URL } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import type { MessageType } from '@auxx/database/enums'
 import type { IntegrationEntity } from '@auxx/database/models'
@@ -45,13 +46,16 @@ export class OutlookOAuthService {
     'User.Read', // To get user profile (email)
   ]
   private constructor() {
-    this.clientId = env.OUTLOOK_CLIENT_ID || ''
-    this.clientSecret = env.OUTLOOK_CLIENT_SECRET || ''
+    this.clientId = configService.get<string>('OUTLOOK_CLIENT_ID') || ''
+    this.clientSecret = configService.get<string>('OUTLOOK_CLIENT_SECRET') || ''
     this.redirectUri = `${WEBAPP_URL}/api/outlook/oauth2/callback`
     if (!this.clientId || !this.clientSecret || !this.redirectUri) {
       throw new Error('Outlook OAuth credentials not properly configured')
     }
-    if (env.NODE_ENV === 'production' && !this.redirectUri.startsWith('https')) {
+    if (
+      configService.get<string>('NODE_ENV') === 'production' &&
+      !this.redirectUri.startsWith('https')
+    ) {
       logger.error('Outlook OAuth redirect URI MUST be HTTPS in production.')
     }
     const msalConfig = {
@@ -66,7 +70,10 @@ export class OutlookOAuthService {
         tokenRenewalOffsetSeconds: 600,
         // Add logging level if needed for debugging
         loggerOptions: {
-          logLevel: env.NODE_ENV === 'development' ? LogLevel.Verbose : LogLevel.Error,
+          logLevel:
+            configService.get<string>('NODE_ENV') === 'development'
+              ? LogLevel.Verbose
+              : LogLevel.Error,
           piiLoggingEnabled: false,
         },
       },

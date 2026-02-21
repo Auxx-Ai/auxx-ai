@@ -30,6 +30,7 @@ import {
   SquarePen,
   Trash2,
 } from 'lucide-react'
+import { parseAsString, useQueryState } from 'nuqs'
 import { useCallback, useMemo, useState } from 'react'
 import { BulkUpdateEntityInstanceDialog } from '~/components/custom-fields/ui/bulk-update-entity-instance-dialog'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
@@ -140,9 +141,12 @@ export function RecordsView({ slug, basePath }: RecordsViewProps) {
   const [editingInstance, setEditingInstance] = useState<EntityRow | null>(null)
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set())
 
-  // Drawer state - use ID instead of full object for stability
-  const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined)
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  // Drawer state - synced to URL via ?id= param
+  const [selectedInstanceId, setSelectedInstanceId] = useQueryState(
+    'id',
+    parseAsString.withDefault('')
+  )
+  const isDrawerOpen = !!selectedInstanceId
 
   // Kanban card selection state (lives here to persist across drawer open/close)
   const [selectedKanbanCardIds, setSelectedKanbanCardIds] = useState<Set<string>>(new Set())
@@ -211,9 +215,8 @@ export function RecordsView({ slug, basePath }: RecordsViewProps) {
 
   // Memoized callbacks for operations hook (must be stable to prevent infinite loops)
   const handleOperationsDrawerClose = useCallback(() => {
-    setIsDrawerOpen(false)
-    setSelectedInstanceId(undefined)
-  }, [])
+    setSelectedInstanceId(null)
+  }, [setSelectedInstanceId])
 
   const handleOperationsClearSelection = useCallback(() => {
     setSelectedRowIds(new Set())
@@ -272,10 +275,12 @@ export function RecordsView({ slug, basePath }: RecordsViewProps) {
   /**
    * Handle opening drawer from primary display cell
    */
-  const handleOpenDrawer = useCallback((row: EntityRow) => {
-    setSelectedInstanceId(row.id)
-    setIsDrawerOpen(true)
-  }, [])
+  const handleOpenDrawer = useCallback(
+    (row: EntityRow) => {
+      setSelectedInstanceId(row.id)
+    },
+    [setSelectedInstanceId]
+  )
 
   /**
    * Handle opening edit dialog from primary display cell
@@ -288,12 +293,12 @@ export function RecordsView({ slug, basePath }: RecordsViewProps) {
   /**
    * Handle drawer close
    */
-  const handleDrawerOpenChange = useCallback((open: boolean) => {
-    setIsDrawerOpen(open)
-    if (!open) {
-      setSelectedInstanceId(undefined)
-    }
-  }, [])
+  const handleDrawerOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) setSelectedInstanceId(null)
+    },
+    [setSelectedInstanceId]
+  )
 
   /**
    * Handle row selection change

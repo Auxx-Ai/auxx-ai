@@ -1,13 +1,14 @@
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { PostHog } from 'posthog-node'
 
 export function PostHogClient() {
-  if (!env.NEXT_PUBLIC_POSTHOG_KEY) {
+  const posthogKey = configService.get<string>('POSTHOG_KEY')
+  if (!posthogKey) {
     return null
   }
 
-  return new PostHog(env.NEXT_PUBLIC_POSTHOG_KEY, {
-    host: env.NEXT_PUBLIC_POSTHOG_HOST,
+  return new PostHog(posthogKey, {
+    host: configService.get<string>('POSTHOG_HOST'),
     flushAt: 1,
     flushInterval: 0,
   })

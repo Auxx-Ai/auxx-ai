@@ -13,9 +13,9 @@ export async function GET(): Promise<NextResponse> {
       {
         status: 'healthy',
         timestamp: new Date().toISOString(),
-        version: process.env.NEXT_PUBLIC_APP_VERSION || 'dev',
-        sha: process.env.NEXT_PUBLIC_GIT_SHA?.slice(0, 7) || 'local',
-        buildTime: process.env.NEXT_PUBLIC_BUILD_TIME || null,
+        version: process.env.APP_VERSION || 'dev',
+        sha: process.env.GIT_SHA?.slice(0, 7) || 'local',
+        buildTime: process.env.BUILD_TIME || null,
         services: { database: 'connected' },
       },
       { status: 200 }

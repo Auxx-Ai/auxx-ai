@@ -1,14 +1,5 @@
 import { NextResponse } from 'next/server'
 
-// console.log('Redis host:', process.env.REDIS_HOST)
-// const redisOptions: { connection: { host: string; port: number; password: string } } = {
-//   connection: {
-//     host: process.env.REDIS_HOST!,
-//     port: Number(process.env.REDIS_PORT),
-//     password: process.env.REDIS_PASSWORD!,
-//   },
-// }
-
 // Create a queue instance
 // const queue = new Queue('emailQueue', redisOptions)
 

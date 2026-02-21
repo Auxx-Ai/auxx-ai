@@ -2,13 +2,14 @@
 
 import { subdomain } from './dns'
 import { router, vpc } from './router-vpc'
-import { getSelectedEnvVars } from './secrets'
+import { getSecretsForLinking, getSelectedEnvVars } from './secrets'
 
 export const docs = new sst.aws.Nextjs('AuxxAiDocs', {
   vpc,
   path: 'apps/docs',
   buildCommand: 'pnpm run build:opennext',
   environment: getSelectedEnvVars('docs'),
+  link: getSecretsForLinking('docs'),
   openNextVersion: '3.9.15',
   dev: {
     autostart: false, // Optional: set to true if you want auto-start

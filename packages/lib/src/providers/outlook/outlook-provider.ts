@@ -1,6 +1,6 @@
 // src/lib/providers/outlook/outlook-provider.ts // Adjusted path
 
-import { env } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { IntegrationProviderType } from '@auxx/database/enums'
 import type { IntegrationEntity } from '@auxx/database/models'
@@ -436,7 +436,7 @@ export class OutlookProvider
     await this.ensureInitialized()
     const webhookSecret =
       (this.integration?.metadata as any)?.webhookSecret ||
-      env.OUTLOOK_WEBHOOK_SECRET ||
+      configService.get<string>('OUTLOOK_WEBHOOK_SECRET') ||
       crypto.randomBytes(20).toString('hex') // Use stored or fallback/generate secret
     const subscriptionPayload = {
       changeType: 'created,updated', // Notify on new and potentially updated messages

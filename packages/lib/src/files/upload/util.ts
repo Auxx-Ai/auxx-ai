@@ -1,4 +1,5 @@
 // packages/lib/src/files/upload/util.ts
+import { configService } from '@auxx/credentials'
 
 /**
  * Utility functions for the unified processor system
@@ -60,30 +61,20 @@ export const deriveStorageKey = (
  */
 export const getBucketForVisibility = (visibility: 'PUBLIC' | 'PRIVATE'): string => {
   if (visibility === 'PUBLIC') {
-    return (
-      process.env.S3_PUBLIC_BUCKET ||
-      process.env.NEXT_PUBLIC_S3_PUBLIC_BUCKET ||
-      process.env.S3_BUCKET ||
-      ''
-    )
+    return configService.get<string>('S3_PUBLIC_BUCKET') || ''
   }
-  return (
-    process.env.S3_PRIVATE_BUCKET ||
-    process.env.NEXT_PUBLIC_S3_PRIVATE_BUCKET ||
-    process.env.S3_BUCKET ||
-    ''
-  )
+  return configService.get<string>('S3_PRIVATE_BUCKET') || ''
 }
 
 /**
  * Generate public CDN URL for public files
  */
 export const getPublicCdnUrl = (storageKey: string): string => {
-  const cdnBase = process.env.NEXT_PUBLIC_CDN_URL
+  const cdnBase = configService.get<string>('CDN_URL')
   if (!cdnBase) {
     // Fallback to direct S3 URL
     const bucket = getBucketForVisibility('PUBLIC')
-    const region = process.env.S3_REGION || 'us-west-1'
+    const region = configService.get<string>('S3_REGION') || 'us-west-1'
     return `https://${bucket}.s3.${region}.amazonaws.com/${storageKey}`
   }
   return `${cdnBase}/${storageKey}`

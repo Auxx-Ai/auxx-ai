@@ -278,6 +278,9 @@ importers:
       '@auxx/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@auxx/credentials':
+        specifier: workspace:*
+        version: link:../../packages/credentials
       '@auxx/database':
         specifier: workspace:*
         version: link:../../packages/database
@@ -1140,6 +1143,9 @@ importers:
       '@auxx/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@auxx/credentials':
+        specifier: workspace:*
+        version: link:../../packages/credentials
       '@auxx/database':
         specifier: workspace:*
         version: link:../../packages/database
@@ -1299,6 +1305,9 @@ importers:
       '@auxx/logger':
         specifier: workspace:*
         version: link:../logger
+      '@auxx/types':
+        specifier: workspace:*
+        version: link:../types
       '@auxx/workflow-nodes':
         specifier: workspace:*
         version: link:../workflow-nodes
@@ -1379,6 +1388,9 @@ importers:
       '@auxx/config':
         specifier: 'workspace:'
         version: link:../config
+      '@auxx/credentials':
+        specifier: 'workspace:'
+        version: link:../credentials
       '@auxx/database':
         specifier: 'workspace:'
         version: link:../database
@@ -1707,6 +1719,9 @@ importers:
       '@auxx/config':
         specifier: workspace:*
         version: link:../config
+      '@auxx/credentials':
+        specifier: workspace:*
+        version: link:../credentials
       '@auxx/logger':
         specifier: workspace:*
         version: link:../logger
@@ -1868,6 +1883,9 @@ importers:
       '@auxx/config':
         specifier: workspace:*
         version: link:../config
+      '@auxx/credentials':
+        specifier: workspace:*
+        version: link:../credentials
       '@auxx/database':
         specifier: workspace:*
         version: link:../database

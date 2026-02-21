@@ -1,7 +1,8 @@
 // lib/organization/organization-seeder.ts
 
 import { SubscriptionService } from '@auxx/billing'
-import { env, WEBAPP_URL } from '@auxx/config/server'
+import { WEBAPP_URL } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
 import { type Database, schema } from '@auxx/database'
 import { EmailTemplateType } from '@auxx/database/enums'
 import { isSelfHosted } from '@auxx/deployment'
@@ -270,7 +271,7 @@ export class OrganizationSeeder {
       return
     }
 
-    const enableAutoTrial = env.ENABLE_AUTO_TRIAL !== 'false'
+    const enableAutoTrial = configService.get<string>('ENABLE_AUTO_TRIAL') !== 'false'
     if (!enableAutoTrial) {
       logger.info('Auto trial disabled, skipping trial subscription', { organizationId })
       return
@@ -282,14 +283,14 @@ export class OrganizationSeeder {
     }
 
     // Check if Stripe is configured
-    if (!env.STRIPE_SECRET_KEY) {
+    if (!configService.get<string>('STRIPE_SECRET_KEY')) {
       logger.warn('Stripe not configured, skipping trial subscription', { organizationId })
       return
     }
 
     const baseUrl = WEBAPP_URL
-    const trialPlan = env.TRIAL_PLAN_NAME || 'Growth'
-    const trialDays = parseInt(env.TRIAL_DAYS || '14', 10)
+    const trialPlan = configService.get<string>('TRIAL_PLAN_NAME') || 'Growth'
+    const trialDays = parseInt(configService.get<string>('TRIAL_DAYS') || '14', 10)
 
     logger.info('Creating trial subscription for organization', {
       organizationId,
@@ -300,7 +301,7 @@ export class OrganizationSeeder {
     try {
       // Initialize Stripe client if not already initialized
       const { stripeClient } = await import('@auxx/billing')
-      stripeClient.initialize(env.STRIPE_SECRET_KEY)
+      stripeClient.initialize(configService.get<string>('STRIPE_SECRET_KEY')!)
 
       const subscriptionService = new SubscriptionService(this.db, baseUrl)
 

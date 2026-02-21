@@ -1,7 +1,7 @@
 // packages/seed/src/engine/drizzle-seeder.ts
 // Core orchestrator that coordinates reset, service integrations, auth seeding, and drizzle-seed generation
 
-import { env } from '@auxx/config'
+import { configService } from '@auxx/credentials'
 import { schema } from '@auxx/database'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import { reset, seed } from 'drizzle-seed'
@@ -40,7 +40,7 @@ export class DrizzleSeeder {
     this.authSeeder = new AuthSeeder(config)
     this.serviceIntegrator = new ServiceIntegrator(config, this.scenario)
 
-    const connectionString = env.DATABASE_URL ?? process.env.DATABASE_URL
+    const connectionString = configService.get<string>('DATABASE_URL') ?? process.env.DATABASE_URL
     if (!connectionString) {
       throw new Error('DATABASE_URL is required to run the seeder')
     }

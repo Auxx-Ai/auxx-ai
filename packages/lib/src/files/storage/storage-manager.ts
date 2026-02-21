@@ -1,6 +1,6 @@
 // packages/lib/src/files/storage/storage-manager.ts
 
-import { credentialManager } from '@auxx/credentials'
+import { configService, credentialManager } from '@auxx/credentials'
 import type { StorageLocationEntity as StorageLocation } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
 import type {
@@ -1003,11 +1003,8 @@ export class StorageManager {
 
     if (!bucket) {
       bucket =
-        process.env.S3_PRIVATE_BUCKET ||
-        process.env.NEXT_PUBLIC_S3_PRIVATE_BUCKET ||
-        process.env.S3_PUBLIC_BUCKET ||
-        process.env.NEXT_PUBLIC_S3_PUBLIC_BUCKET ||
-        process.env.S3_BUCKET ||
+        configService.get<string>('S3_PRIVATE_BUCKET') ||
+        configService.get<string>('S3_PUBLIC_BUCKET') ||
         undefined
     }
 
@@ -2246,11 +2243,8 @@ export class StorageManager {
         metadata?.s3Bucket ||
         metadata?.publicBucket ||
         metadata?.privateBucket ||
-        process.env.S3_PRIVATE_BUCKET ||
-        process.env.NEXT_PUBLIC_S3_PRIVATE_BUCKET ||
-        process.env.S3_PUBLIC_BUCKET ||
-        process.env.NEXT_PUBLIC_S3_PUBLIC_BUCKET ||
-        process.env.S3_BUCKET
+        configService.get<string>('S3_PRIVATE_BUCKET') ||
+        configService.get<string>('S3_PUBLIC_BUCKET')
 
       if (bucketCandidate) {
         if (!metadata) {
