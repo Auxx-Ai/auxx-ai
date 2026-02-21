@@ -1299,6 +1299,9 @@ importers:
       '@auxx/logger':
         specifier: workspace:*
         version: link:../logger
+      '@auxx/types':
+        specifier: workspace:*
+        version: link:../types
       '@auxx/workflow-nodes':
         specifier: workspace:*
         version: link:../workflow-nodes

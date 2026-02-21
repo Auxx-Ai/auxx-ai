@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   type LucideIcon,
   Package,
+  Settings,
   Users,
   Workflow,
 } from 'lucide-react'
@@ -63,6 +64,12 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
     label: 'Plans',
     slug: 'plans',
     icon: CreditCard,
+  },
+  {
+    id: 'config',
+    label: 'Config',
+    slug: 'config',
+    icon: Settings,
   },
 ]
 

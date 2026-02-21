@@ -14,6 +14,7 @@ import { billingRouter } from './routers/billing'
 import { bomRouter } from './routers/bom'
 import { chatRouter } from './routers/chat'
 import { commentRouter } from './routers/comment'
+import { configVariableRouter } from './routers/config-variable'
 import { contactRouter } from './routers/contact'
 import { credentialsRouter } from './routers/credentials'
 import { customerRouter } from './routers/customer'
@@ -93,6 +94,7 @@ export const appRouter = createTRPCRouter({
   bom: bomRouter,
   chat: chatRouter,
   comment: commentRouter,
+  configVariable: configVariableRouter,
   contact: contactRouter,
   credentials: credentialsRouter,
   customField: customFieldRouter,

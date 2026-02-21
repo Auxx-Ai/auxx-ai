@@ -25,3 +25,23 @@ export const credentialManager = new CredentialManager()
 
 // Factory function for creating instances with specific configurations
 export const createCredentialManager = () => new CredentialManager()
+
+export type {
+  ConfigVariableDefinition,
+  ConfigVariableGroupData,
+  ResolvedConfigVariable,
+} from './config'
+// Config system
+export {
+  CONFIG_GROUP_META,
+  CONFIG_VARIABLES,
+  ConfigCache,
+  ConfigService,
+  ConfigStorage,
+  configService,
+  convertEnvValue,
+  getAllConfigDefinitions,
+  getConfigDefinition,
+  getConfigDefinitionsByGroup,
+  valueToString,
+} from './config'

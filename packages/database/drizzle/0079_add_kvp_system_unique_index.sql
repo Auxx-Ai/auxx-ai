@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "KeyValuePair_key_system_unique" ON "KeyValuePair" USING btree ("key") WHERE "userId" IS NULL AND "organizationId" IS NULL;
