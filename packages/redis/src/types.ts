@@ -17,6 +17,7 @@ export interface RedisClient {
   expire(key: string, seconds: number): Promise<number>
   ping(): Promise<string>
   quit(): Promise<string>
+  info(section?: string): Promise<string>
 
   // Optional pub/sub operations (not all providers support these)
   publish(channel: string, message: string): Promise<number>

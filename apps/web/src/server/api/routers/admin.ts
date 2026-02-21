@@ -7,6 +7,7 @@ import { OrganizationSeeder } from '@auxx/seed'
 import { z } from 'zod'
 import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
 import { adminAppsRouter } from './admin-apps'
+import { adminHealthRouter } from './admin-health'
 import { adminWorkflowTemplatesRouter } from './admin-workflow-templates'
 
 /**
@@ -533,6 +534,11 @@ export const adminRouter = createTRPCRouter({
    * Apps management router
    */
   apps: adminAppsRouter,
+
+  /**
+   * Health monitoring router
+   */
+  health: adminHealthRouter,
 
   /**
    * Workflow templates management router

@@ -95,6 +95,7 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
     expire: async (key: string, seconds: number) => await client.expire(key, seconds),
     ping: async () => await client.ping(),
     quit: async () => await client.quit(),
+    info: async (section?: string) => (section ? await client.info(section) : await client.info()),
 
     // Pub/Sub operations (supported by IORedis)
     publish: async (channel: string, message: string) =>

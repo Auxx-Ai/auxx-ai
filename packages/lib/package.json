@@ -126,7 +126,11 @@
     "./sync-manager": "./src/sync-manager.ts",
     "./batch-processor": "./src/batch-processor.ts",
     "./import": "./src/import/index.ts",
-    "./import/client": "./src/import/client.ts"
+    "./import/client": "./src/import/client.ts",
+    "./health": "./src/health/index.ts",
+    "./health/client": "./src/health/types.ts",
+    "./health/health-service": "./src/health/health-service.ts",
+    "./health/queue-metrics": "./src/health/queue-metrics.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -3,6 +3,7 @@
 
 import { SidebarGroup, SidebarMenu, SidebarMenuItem } from '@auxx/ui/components/sidebar'
 import {
+  Activity,
   Building2,
   CreditCard,
   LayoutDashboard,
@@ -70,6 +71,12 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
     label: 'Config',
     slug: 'config',
     icon: Settings,
+  },
+  {
+    id: 'health',
+    label: 'Health',
+    slug: 'health',
+    icon: Activity,
   },
 ]
 

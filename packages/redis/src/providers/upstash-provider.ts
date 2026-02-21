@@ -84,6 +84,11 @@ export function createUpstashClient(): RedisClient {
       return 'PONG'
     },
 
+    info: async () => {
+      // Upstash REST API does not support the INFO command
+      return ''
+    },
+
     quit: async () => {
       logger.info('Disconnecting Upstash Redis client')
       // Upstash REST client doesn't need explicit disconnection
