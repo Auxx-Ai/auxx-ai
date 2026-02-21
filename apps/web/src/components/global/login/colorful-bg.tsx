@@ -12,7 +12,7 @@ function ColorfulBg({ children }: ColorfulBgProps) {
   return (
     <div data-theme='light' className='relative min-h-screen overflow-hidden'>
       <div className='pointer-events-none fixed inset-0 overflow-hidden bg-white dark:bg-black transition-opacity duration-300 opacity-60'>
-        <div className='absolute left-0 top-0 aspect-square w-full overflow-hidden sm:aspect-2/1 mask-[radial-gradient(70%_100%_at_50%_0%,black_70%,transparent)] opacity-15'>
+        <div className='absolute inset-0 overflow-hidden mask-[radial-gradient(70%_100%_at_50%_0%,black_70%,transparent)] opacity-15'>
           <div
             className='absolute inset-0 saturate-150'
             style={{
@@ -25,7 +25,7 @@ function ColorfulBg({ children }: ColorfulBgProps) {
           {/* <img alt="" loading="lazy" width="1750" height="1046" decoding="async" data-nimg="1" className="absolute inset-0" src="https://assets.dub.co/misc/welcome-background-grid.svg" style="color: transparent;">
       <img alt="" loading="lazy" width="1750" height="1046" decoding="async" data-nimg="1" className="relative min-w-[1000px] max-w-(--breakpoint-2xl) transition-opacity duration-300 opacity-0" src="https://assets.dub.co/misc/welcome-background.svg" style="color: transparent;"> */}
         </div>
-        <div className='absolute left-0 top-0 aspect-square w-full overflow-hidden sm:aspect-2/1 mask-[radial-gradient(70%_100%_at_50%_0%,black_70%,transparent)] opacity-100 mix-blend-soft-light'>
+        <div className='absolute inset-0 overflow-hidden mask-[radial-gradient(70%_100%_at_50%_0%,black_70%,transparent)] opacity-100 mix-blend-soft-light'>
           <div
             className='absolute inset-0 saturate-150'
             style={{
