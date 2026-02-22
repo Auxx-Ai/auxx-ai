@@ -1,9 +1,9 @@
-# Enhanced Claude Project Instructions
+# Claude Project Instructions
 
-## Very important rules
+## Important Rules
 
 - Do not lie to me, that is being dishonest.
-- Do not tell me I'm right when I'm not right
+- Do not tell me I'm right when I'm not right.
 - If my idea is inferior to your idea, let me know.
 
 ## Project Overview
@@ -14,236 +14,269 @@ Auxx.ai is an open-source AI-powered email support ticket answer service for Sho
 
 - **Framework**: Next.js v16.1 with React Server Components and app router
 - **API**: tRPC v11 with React Query
-- **Database**: PostgreSQL with Drizzle ORM v.0.31.0
-- **Frontend**: TailwindCSS v4 and shadcn component library
+- **Database**: PostgreSQL with Drizzle ORM v0.44, pgvector
+- **Auth**: Better-auth v1.3 (Google, GitHub, Email/Password, Passkey, 2FA)
+- **Frontend**: TailwindCSS v4, shadcn component library
 - **Forms**: react-hook-form v7.54
+- **State**: Zustand
 - **Caching**: Redis
-- **Package Manager**: pnpm
+- **Linting**: Biome (2-space indent, 100-char line width, single quotes)
+- **Build**: Turborepo, pnpm
+- **Infra**: AWS (SST), Docker
+
+## Monorepo Structure
+
+### Apps
+
+| App | Port | Purpose |
+|-----|------|---------|
+| `apps/web` | 3000 | Main Next.js application |
+| `apps/api` | 3007 | Express REST API |
+| `apps/worker` | 3005 | Job/queue worker (BullMQ) |
+| `apps/lambda` | 3008 | AWS Lambda handlers |
+| `apps/build` | 3006 | Build-time utilities |
+| `apps/homepage` | 3001 | Marketing site |
+| `apps/kb` | 3002 | Knowledge base |
+| `apps/docs` | 3004 | Documentation |
+
+### Key Packages
+
+| Package | Purpose |
+|---------|---------|
+| `@auxx/database` | Drizzle schema, models, migrations |
+| `@auxx/lib` | Shared business logic (~70 feature modules) |
+| `@auxx/ui` | Shadcn component library |
+| `@auxx/types` | Shared TypeScript types |
+| `@auxx/services` | Business service layer |
+| `@auxx/config` | Configuration management |
+| `@auxx/credentials` | Credential/secret management |
+| `@auxx/redis` | Redis client wrapper |
+| `@auxx/email` | Email service (Mailgun, SES, SMTP) |
+| `@auxx/billing` | Stripe integration |
+| `@auxx/sdk` | Public SDK |
+
+### Key Paths
+
+| What | Where |
+|------|-------|
+| Next.js app routes | `apps/web/src/app/` |
+| tRPC routers | `apps/web/src/server/api/routers/` |
+| tRPC root router | `apps/web/src/server/api/root.ts` |
+| tRPC setup & middleware | `apps/web/src/server/api/trpc.ts` |
+| Auth config | `apps/web/src/auth/server.ts` |
+| DB schema files | `packages/database/src/db/schema/` |
+| DB models | `packages/database/src/db/models/` |
+| Shared lib modules | `packages/lib/src/` |
+| UI components | `packages/ui/src/components/` |
+| Infrastructure (SST) | `infra/` |
+| CI/CD workflows | `.github/workflows/` |
+| Environment template | `.env.example` |
+
+---
 
 # Coding Standards
 
 ## General
 
-- Use TypeScript for all code
-- Implement responsive designs for all components
-- As this is an early-stage startup, YOU MUST prioritize simple, readable code with minimal abstraction—avoid premature optimization. Strive for elegant, minimal solutions that reduce complexity.Focus on clear implementation that’s easy to understand and iterate on as the product evolves.
-- DO NOT use preserve backward compatibility unless the user specifically requests it
-- You MUST strive for elegant, minimal solutions that eliminate complexity and bugs. Remove all backward compatibility and legacy code. YOU MUST prioritize simple, readable code with minimal abstraction—avoid premature optimization. Focus on clear implementation that’s easy to understand and iterate on as the product evolves. think hard
+- Use TypeScript for all code.
+- Implement responsive designs for all components.
+- This is an early-stage startup. Prioritize simple, readable code with minimal abstraction. Strive for elegant, minimal solutions. No premature optimization. No backward compatibility unless specifically requested.
+- Add JSDoc to exported public APIs. Prefer self-documenting code over inline comments.
+- At the top of each file, comment the file-path/file-name.
+
+## Client vs Server Imports
+
+**CRITICAL**: Never import from `@auxx/lib/<module>` in client-side code. Barrel exports pull in server-only dependencies (bullmq, sharp, etc.) and will break the build.
+
+```typescript
+// WRONG — pulls in server-only deps:
+import { something } from '@auxx/lib/custom-fields'
+
+// CORRECT — client-safe export:
+import { something } from '@auxx/lib/custom-fields/client'
+```
+
+If a constant/type doesn't exist in the `/client` export yet, add it there first, then import from `/client`. See `packages/lib/package.json` exports field for all available subpaths.
 
 ## Component Architecture
 
-- Create reusable and modular components
-- Break large components into smaller ones for better maintainability
-- File naming: use kebab-case for files (e.g., `user-profile.tsx`)
-- At the top of each file, comment the file-path/file-name.file_type
-- Component naming: use PascalCase for components (e.g., `UserProfile`)
+- File naming: kebab-case (e.g., `user-profile.tsx`)
+- Component naming: PascalCase (e.g., `UserProfile`)
 - Add `'use client'` directive for any components using client-side hooks or state
-- Comment every function, interface, type, and global variable
+- Split components when: file exceeds 800 lines, UI is reused, or it has a clear single responsibility
 
 ## API & Data Handling
 
-- Use tRPC protected procedures for authenticated routes
+### tRPC Procedure Types
+
+| Procedure | Use for |
+|-----------|---------|
+| `publicProcedure` | Unauthenticated routes |
+| `protectedProcedure` | Authenticated routes (verifies session + organization) |
+| `adminProcedure` | Admin/owner only (checks via `OrganizationMemberModel.isAdminOrOwner()`) |
+| `superAdminProcedure` | Super admin only (checks `isSuperAdmin` flag) |
+
+### tRPC Context
+
+```typescript
+ctx.db        // Drizzle database instance
+ctx.session   // Better-auth session (user, defaultOrganizationId, isSuperAdmin)
+ctx.headers   // Request headers
+```
+
+### Conventions
+
 - Access DB in protected procedures with `ctx.db.<tableName>` (singular form)
-- Import tRPC client with `import { api } from '~/trpc/react'`
-- For mutations, use simplified naming:
+- Import tRPC client: `import { api } from '~/trpc/react'`
+- Mutation naming — use the action name, not suffixed with "Mutation":
   ```typescript
-  // Do this:
+  // Do:
   const sendReply = api.ticketAttachment.sendTicketReply.useMutation()
-  // Not this:
+  // Don't:
   const sendReplyMutation = api.ticketAttachment.sendTicketReply.useMutation()
   ```
 
+## Error Handling
+
+### AuxxError Classes (`@auxx/lib/errors`)
+
+Use the appropriate error class. All extend `AuxxError`:
+
+| Class | Status | Use for |
+|-------|--------|---------|
+| `BadRequestError` | 400 | Invalid input |
+| `UnauthorizedError` | 401 | Not authenticated |
+| `ForbiddenError` | 403 | Not authorized |
+| `NotFoundError` | 404 | Resource not found |
+| `ConflictError` | 409 | Duplicate/conflict |
+| `UnprocessableEntityError` | 422 | Validation failure |
+| `RateLimitError` | 429 | Too many requests |
+
+### Result Pattern (`@auxx/lib/result`)
+
+Database models return `TypedResult<V, E>` instead of throwing:
+
+```typescript
+const result = await model.findById(id)
+if (result.ok) {
+  const value = result.value
+} else {
+  const error = result.error // Error instance
+}
+
+// Creating results:
+Result.ok(value)
+Result.error(new NotFoundError('Not found'))
+Result.nil() // Ok with undefined value
+```
+
+## Database Models
+
+Models extend `BaseModel` with typed CRUD operations and org-scoped queries:
+
+```typescript
+export class ApiKeyModel extends BaseModel<typeof ApiKey, CreateInput, Entity, UpdateInput> {
+  get table() { return ApiKey }
+
+  async listActiveByUser(userId: string): Promise<TypedResult<ApiKeyEntity[], Error>> {
+    // Uses this.db, this.scopeFilter, Result.ok/error
+  }
+}
+```
+
 ## Module Exports
 
-- Inside index.ts files when exporting files, explicitly export methods, types instead of export _. e.g. export { X, Y } from './xy' instead of export _ from './xy'
+In `index.ts` files, use explicit named exports:
 
-## Utility Methods
+```typescript
+// Do:
+export { X, Y } from './xy'
+// Don't:
+export * from './xy'
+```
 
-**IMPORTANT**: Before creating any utility functions, check `packages/lib/src/utils` for existing helpers:
+## Zustand Stores
 
-- **date.ts** - Date formatting and relative time
-- **email.ts** - Email parsing, validation, and formatting
-- **file.ts** - File operations and path utilities
-- **generateId.ts** - Unique ID generation
-- **strings.ts** - String manipulation (titleize, pluralize, whitespace)
-- **contact.ts** - Name, phone, and address formatting
+Always use selectors to avoid unnecessary re-renders:
+
+```typescript
+// CORRECT:
+const markDirty = useWorkflowStore((state) => state.markDirty)
+
+// WRONG — causes re-renders on every state change:
+const { markDirty } = useWorkflowStore()
+```
 
 ## UI Components
 
 - Import shadcn components from `'@auxx/ui/components/<component>'`
-- Every `<SelectItem>` component must have a `value` prop
+- Every `<SelectItem>` must have a `value` prop
 
-### **toast**: Use the toast system for notifications:
+### Toast (errors only)
 
 ```typescript
 import { toastError } from '@auxx/ui/components/toast'
 
-// Success Message: do not have toast for success. only error.
-
-// Error notification
+// No success toasts. Only error:
 toastError({ title: 'Error sending reply', description: error.message })
 ```
 
-### debugging:
-
-We often encounter errors when not using zustand store correctly e.g.
-do this const markDirty = useWorkflowStore((state) => state.markDirty)
-instead of this: const {markDirty} = useWorkflowStore(). Which will cause many many re-renders!!!!
-
-### **confirmations**: For delete confirmations use, the
+### Delete Confirmations
 
 ```typescript
 import { useConfirm } from '~/hooks/use-confirm'
+
 const [confirm, ConfirmDialog] = useConfirm()
 const confirmed = await confirm({
-  title: 'TEXT?',
-  description: 'TEXT',
+  title: 'Delete item?',
+  description: 'This action cannot be undone.',
   confirmText: 'Remove',
   cancelText: 'Cancel',
   destructive: true,
 })
-
-if (confirmed) {
-  // do the deleting code
-}
+if (confirmed) { /* delete */ }
 ```
 
-### **Buttons**: For disabling buttons while loading do this:
+### Buttons
 
 ```typescript
-<Button
-  variant="outline"
-  loading={isPending}
-  loadingText="Connecting...">
+// Loading state:
+<Button variant="outline" loading={isPending} loadingText="Connecting...">
   Connect
 </Button>
-```
 
-### **Buttons**: Using icons in buttons. Do NOT add any className to the <Icon />.
-
-```typescript
-<Button
-  variant="outline">
-  <Icon /> // <!-- No h-4 w-4 added. Its handled by Button.
+// Icons — do NOT add className to the icon, Button handles sizing:
+<Button variant="outline">
+  <Icon />
 </Button>
 ```
 
-### When to create new components
+## Design Patterns
 
-1. **If the tsx file exceeds 800 lines**
-2. **If the ui is used more than once**
-3. **If it has a clear single responsibility**
+For provider/manager patterns (AI providers, storage, etc.), follow the existing implementations:
 
-### Design patterns
+- **AI providers**: `packages/lib/src/ai/providers/provider-manager.ts`
+- **File storage**: `packages/lib/src/files/storage/storage-manager.ts`
 
-Abstract patterns
+Pattern: Feature modules use a Manager class that lazily loads and caches provider instances, with a `Provider` interface defining `id`, optional `init()`, and `execute()`.
 
-```typescript
-export interface Provider<I, O> {
-  /** Unique id like "local" or "s3" */
-  id: string
+---
 
-  /** Optional warm-up step (e.g., clients, keys) */
-  init?(config?: unknown): Promise<void> | void
+# Development Commands
 
-  /** Do the thing */
-  execute(input: I): Promise<O> | O
-}
-```
-
-Use of dynamic loaders:
-
-```typescript
-export const loaders = {
-  local: async () => (await import('./local')).default, // => class LocalProvider
-  s3: async () => (await import('./s3')).default, // => class S3Provider
-} as const
-
-export type ProviderId = keyof typeof loaders
-```
-
-Manager pattern:
-
-```typescript
-import { loaders, type ProviderId } from '../providers/manifest'
-import type { Provider } from './types'
-import type { LocalInput, LocalOutput } from '../providers/local'
-import type { S3Input, S3Output } from '../providers/s3'
-
-export type ManagerOptions = {
-  config?: Partial<Record<ProviderId, unknown>>
-}
-
-export class ProviderManager {
-  private cache = new Map<ProviderId, Provider<any, any>>()
-  constructor(private opts: ManagerOptions = {}) {}
-
-  private async get(id: ProviderId): Promise<Provider<any, any>> {
-    let instance = this.cache.get(id)
-    if (instance) return instance
-
-    const Cls = await loaders[id]()
-    instance = new Cls()
-    if (typeof instance.init === 'function') {
-      await instance.init(this.opts.config?.[id])
-    }
-    this.cache.set(id, instance)
-    return instance
-  }
-
-  // ---- Overloads keep types nice but code simple ----
-  async execute(id: 'local', input: LocalInput): Promise<LocalOutput>
-  async execute(id: 's3', input: S3Input): Promise<S3Output>
-  async execute(id: ProviderId, input: any): Promise<any> {
-    const provider = await this.get(id)
-    return provider.execute(input)
-  }
-}
-```
-
-## Performance Considerations
-
-- Implement Redis caching for frequently accessed data
-- Use optimistic updates with React Query where appropriate
-- Implement proper data prefetching strategies
-- Consider code splitting for larger components
-
-## Project Structure
-
-- Organize code by feature rather than by type
-- Keep related files close together
-- Implement a clear and consistent folder structure
-- Create helper functions in dedicated utility files for reusability
-
-## Documentation
-
-- Document all API endpoints
-- Add JSDoc comments to all exported functions, types, and interfaces
-- Document database schema changes
-- Keep README and documentation up to date
-
-When implementing features, focus on solving the specific business problems of Auxx.ai: handling email support tickets, integrating with Shopify, and delivering AI-powered responses to customer inquiries.
-
-## Common Development Commands
-
-### Getting Started
-
-````bash
+```bash
 # Install dependencies
 pnpm install
 
-
-### Build & Testing
-
-- **DO NOT RUN ANY typescript tsc type checking EVER.**
-
-```bash
-# Type checking: Be specific with file. we have too many typescript errors. It will run out of memory!!
 # Run tests
 pnpm test
+
+# Lint (Biome)
+pnpm lint
 ```
 
-### Utility Commands
+### Rules
 
-- **Do NOT build the program yourself to check for errors ever.**
+- **Do NOT run `tsc` type checking.** Too many errors — it will run out of memory.
+- **Do NOT build the program to check for errors.**
 - **Do NOT stop the dev server.**
