@@ -12,9 +12,6 @@
   },
   "dependencies": {
     "@aws-sdk/s3-presigned-post": "catalog:",
-    "@bull-board/api": "^6.7.9",
-    "@bull-board/hono": "^6.12.7",
-    "@bull-board/ui": "^6.12.7",
     "@hono/node-server": "^1.13.7",
     "@auxx/billing": "workspace:*",
     "@auxx/config": "workspace:*",

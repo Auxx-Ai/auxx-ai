@@ -117,7 +117,8 @@ services:
   web:
     image: ghcr.io/auxx-ai/web:${VERSION:-latest}
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       <<: [*common-env, *db-env, *redis-env, *url-env]
     depends_on:
@@ -145,7 +146,8 @@ services:
   api:
     image: ghcr.io/auxx-ai/api:${VERSION:-latest}
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       <<: [*common-env, *db-env, *redis-env, *url-env]
       SERVER_FUNCTION_EXECUTOR_URL: http://lambda:3008
@@ -175,7 +177,8 @@ services:
   build:
     image: ghcr.io/auxx-ai/build:${VERSION:-latest}
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       <<: [*common-env, *db-env, *redis-env, *url-env]
     depends_on:
@@ -203,7 +206,8 @@ services:
   worker:
     image: ghcr.io/auxx-ai/worker:${VERSION:-latest}
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       <<: [*common-env, *db-env, *redis-env, *url-env]
       WORKERS_PORT: "3005"
@@ -228,7 +232,8 @@ services:
   lambda:
     image: ghcr.io/auxx-ai/lambda-server:${VERSION:-latest}
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       S3_ENDPOINT: ${S3_ENDPOINT:-}
       AWS_REGION: ${S3_REGION}

@@ -83,7 +83,7 @@ export function HealthDetailDrawer({ indicatorId, open, onOpenChange }: HealthDe
       </div>
 
       <ScrollArea className='flex-1'>
-        <div className='p-4'>
+        <div className=''>
           {isLoading ? (
             <div className='space-y-3'>
               {Array.from({ length: 4 }).map((_, i) => (

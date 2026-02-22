@@ -933,25 +933,6 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     isSensitive: false,
     isEnvOnly: true,
   },
-  BULL_ADMIN_USER: {
-    key: 'BULL_ADMIN_USER',
-    description: 'Bull Board admin username',
-    type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.WORKER,
-    defaultValue: 'admin',
-    isSensitive: false,
-    isEnvOnly: true,
-  },
-  BULL_ADMIN_PASS: {
-    key: 'BULL_ADMIN_PASS',
-    description: 'Bull Board admin password',
-    type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.WORKER,
-    defaultValue: 'admin',
-    isSensitive: true,
-    isEnvOnly: true,
-  },
-
   // ── FRONTEND (Group A — URL vars, deploy-time constants) ──
   NEXT_PUBLIC_API_URL: {
     key: 'NEXT_PUBLIC_API_URL',

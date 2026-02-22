@@ -67,7 +67,7 @@ export const PusherProvider: React.FC<PusherProviderProps> = ({ children }) => {
     // --- 3. Initialize Pusher ---
 
     if (!PUSHER_APP_KEY) {
-      console.error('[PusherProvider] Error: NEXT_PUBLIC_PUSHER_KEY is not configured.')
+      console.error('[PusherProvider] Error: PUSHER_APP_KEY is not configured.')
       return
     }
 

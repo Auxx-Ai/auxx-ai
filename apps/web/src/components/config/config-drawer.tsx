@@ -149,13 +149,28 @@ export function ConfigDrawer({ variableKey, open, onOpenChange, isDbEnabled }: C
         <div className='flex gap-3 py-2 px-3 flex-row items-center justify-start border-b'>
           <EntityIcon iconId='settings' color='gray' className='size-10' />
           <div className='flex flex-col align-start w-full'>
-            <div className='text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate'>
+            <div className='group/key flex items-center gap-1.5 text-lg font-medium text-neutral-900 dark:text-neutral-400'>
               {!variable ? (
                 <div className='mb-1'>
                   <Skeleton className='h-6 w-80' />
                 </div>
               ) : (
-                (definition?.key ?? 'Untitled')
+                <>
+                  <span className='truncate'>{definition?.key ?? 'Untitled'}</span>
+                  {definition?.key && (
+                    <button
+                      type='button'
+                      className='shrink-0 opacity-0 group-hover/key:opacity-100 transition-opacity text-muted-foreground hover:text-foreground'
+                      onClick={() => copy(definition.key)}
+                      aria-label='Copy key'>
+                      {copied ? (
+                        <Check className='h-3.5 w-3.5' />
+                      ) : (
+                        <Copy className='h-3.5 w-3.5' />
+                      )}
+                    </button>
+                  )}
+                </>
               )}
             </div>
             <div className='text-xs text-neutral-500'>

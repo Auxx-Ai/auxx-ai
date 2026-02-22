@@ -2,12 +2,8 @@
 
 import { stripeClient } from '@auxx/billing'
 import { configService } from '@auxx/credentials'
-import { closeAllQueues, closeFlowProducer, getQueue, Queues } from '@auxx/lib/queues'
-import { createBullBoard } from '@bull-board/api'
-import { BullMQAdapter } from '@bull-board/api/bullMQAdapter'
-import { HonoAdapter } from '@bull-board/hono'
+import { closeAllQueues, closeFlowProducer } from '@auxx/lib/queues'
 import { serve } from '@hono/node-server'
-import { serveStatic } from '@hono/node-server/serve-static'
 import type { Worker } from 'bullmq'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
@@ -49,42 +45,6 @@ async function initializeApp() {
   // Enable CORS for all routes
   app.use('*', cors())
 
-  // Setup Bull Board UI
-  const serverAdapter = new HonoAdapter(serveStatic)
-  serverAdapter.setBasePath('/admin/queues')
-
-  createBullBoard({
-    queues: Object.values(Queues).map((q) => {
-      // Ensure the queue is created
-      return new BullMQAdapter(getQueue(q))
-    }), // Assuming 'queues' is an object of BullMQ Queue instances
-    serverAdapter,
-  })
-
-  // Basic Auth Middleware for Bull Board
-  const basicAuth = async (c: any, next: any) => {
-    const authHeader = c.req.header('authorization')
-    // Use ?? for nullish coalescing, ensure env vars are loaded
-    const expectedAuth = `Basic ${Buffer.from(`${process.env.BULL_ADMIN_USER ?? ''}:${process.env.BULL_ADMIN_PASS ?? ''}`).toString('base64')}`
-
-    if (!process.env.BULL_ADMIN_USER || !process.env.BULL_ADMIN_PASS) {
-      console.warn('Bull Board admin user/pass not set, dashboard is unprotected!')
-      await next()
-      return
-    }
-
-    if (!authHeader || authHeader !== expectedAuth) {
-      c.header('WWW-Authenticate', 'Basic realm="Bull Board"')
-      return c.text('Authentication required', 401)
-    }
-
-    await next()
-  }
-
-  // Mount the Bull Board UI with authentication
-  app.use('/admin/queues/*', basicAuth)
-  app.route('/admin/queues', serverAdapter.registerPlugin())
-
   const port = process.env.WORKERS_PORT ? parseInt(process.env.WORKERS_PORT, 10) : 3005
   const host = process.env.WORKERS_HOST || '0.0.0.0'
 
@@ -112,10 +72,7 @@ async function initializeApp() {
       hostname: host,
     },
     (info) => {
-      console.log(
-        `Worker admin UI and health check server running on http://${info.address}:${info.port}`
-      )
-      console.log(`Bull Board UI available at http://${info.address}:${info.port}/admin/queues`)
+      console.log(`Worker health check server running on http://${info.address}:${info.port}`)
     }
   )
 }

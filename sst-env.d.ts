@@ -85,14 +85,6 @@ declare module "sst" {
       "type": "sst.sst.Secret"
       "value": string
     }
-    "BULL_ADMIN_PASS": {
-      "type": "sst.sst.Secret"
-      "value": string
-    }
-    "BULL_ADMIN_USER": {
-      "type": "sst.sst.Secret"
-      "value": string
-    }
     "DROPBOX_CLIENT_ID": {
       "type": "sst.sst.Secret"
       "value": string
@@ -159,10 +151,6 @@ declare module "sst" {
       "value": string
     }
     "NEXT_PUBLIC_POSTHOG_KEY": {
-      "type": "sst.sst.Secret"
-      "value": string
-    }
-    "NEXT_PUBLIC_PUSHER_KEY": {
       "type": "sst.sst.Secret"
       "value": string
     }

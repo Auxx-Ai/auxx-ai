@@ -1,7 +1,7 @@
 // apps/web/src/components/health/ui/app-details.tsx
 'use client'
 
-import { Separator } from '@auxx/ui/components/separator'
+import { Section } from '@auxx/ui/components/section'
 import { StatRow } from './stat-row'
 
 interface AppDetailsProps {
@@ -15,19 +15,15 @@ export function AppDetails({ details }: AppDetailsProps) {
   const { system, overview } = details
 
   return (
-    <div className='space-y-6'>
-      <div>
-        <h4 className='text-sm font-medium mb-2'>Runtime</h4>
+    <>
+      <Section title='Runtime' description='Node.js version and environment' initialOpen>
         <StatRow label='Node.js' value={system?.nodeVersion ?? 'Unknown'} />
         <StatRow label='Environment' value={system?.environment ?? 'Unknown'} />
-      </div>
+      </Section>
 
-      <Separator />
-
-      <div>
-        <h4 className='text-sm font-medium mb-2'>Overview</h4>
+      <Section title='Overview' description='High-level application statistics' initialOpen>
         <StatRow label='Organizations' value={overview?.totalOrganizations ?? 0} />
-      </div>
-    </div>
+      </Section>
+    </>
   )
 }
