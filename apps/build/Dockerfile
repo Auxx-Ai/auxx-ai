@@ -57,7 +57,7 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 ENV TURBO_TELEMETRY_DISABLED=1
 
 # Build dependencies first
-RUN BUILDING_CONTAINER=true pnpm turbo build --filter="@auxx/config"
+RUN BUILDING_CONTAINER=true pnpm turbo build --filter="@auxx/build^..."
 
 # Build the build app
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \

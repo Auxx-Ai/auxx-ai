@@ -83,7 +83,7 @@ ENV TURBO_TELEMETRY_DISABLED=1
 RUN BUILDING_CONTAINER=true pnpm --filter="@auxx/workflow-nodes" run generate
 
 # Build dependencies first 
-RUN BUILDING_CONTAINER=true pnpm turbo build --filter="@auxx/config" --filter="@auxx/workflow-nodes"
+RUN BUILDING_CONTAINER=true pnpm turbo build --filter="@auxx/web^..."
 
 # Build the web app (uses Turbopack, Next.js 16.1 default)
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \

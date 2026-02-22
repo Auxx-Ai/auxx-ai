@@ -1,3 +1,14 @@
+# Build @auxx/sdk artifacts for runtime import-map resolution
+FROM node:22-slim AS sdk-builder
+RUN npm install -g corepack@0.31.0 && corepack enable
+WORKDIR /app
+COPY package.json ./package.json
+COPY pnpm-lock.yaml ./pnpm-lock.yaml
+COPY pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY packages/sdk ./packages/sdk
+RUN pnpm install --frozen-lockfile --ignore-scripts --filter @auxx/sdk...
+RUN pnpm --filter @auxx/sdk build
+
 # Base stage with Deno
 FROM denoland/deno:debian-1.45.5 AS base
 
@@ -6,8 +17,10 @@ FROM base AS builder
 
 WORKDIR /app
 
-# Copy SDK files (needed by import map)
-COPY packages/sdk/lib ./packages/sdk/lib
+# Copy SDK files (needed by import map and SDK subpath exports)
+COPY --from=sdk-builder /app/packages/sdk/lib ./packages/sdk/lib
+COPY --from=sdk-builder /app/packages/sdk/package.json ./packages/sdk/package.json
+COPY --from=sdk-builder /app/packages/sdk/lint.cjs ./packages/sdk/lint.cjs
 
 # Copy source files
 COPY apps/lambda/src ./src
