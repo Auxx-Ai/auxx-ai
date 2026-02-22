@@ -182,16 +182,6 @@ export const secretsConfig = {
     description: 'Mailgun API key for email sending',
   },
 
-  // Bull Dashboard
-  BULL_ADMIN_USER: {
-    secret: new sst.Secret('BULL_ADMIN_USER'),
-    description: 'Bull dashboard admin username',
-  },
-  BULL_ADMIN_PASS: {
-    secret: new sst.Secret('BULL_ADMIN_PASS'),
-    description: 'Bull dashboard admin password',
-  },
-
   // Gravatar
   GRAVATAR_API_KEY: {
     secret: new sst.Secret('GRAVATAR_API_KEY'),

@@ -27,7 +27,7 @@ export async function GET() {
             const sendMessageEndpoint = config.sendMessageEndpoint || \`\${baseTrpcUrl}/chat.sendMessage\`; 
             
             // Pusher config
-            const pusherKey = config.pusherKey || window.NEXT_PUBLIC_PUSHER_KEY;
+            const pusherKey = config.pusherKey;
             const pusherCluster = config.pusherCluster || 'us3';
 
             // Find or create root element

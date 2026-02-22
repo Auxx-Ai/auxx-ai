@@ -58,7 +58,7 @@
       const baseTrpcUrl = config.trpcBaseUrl || window.location.origin + '/api/trpc'
       const initEndpoint = config.initEndpoint || `${baseTrpcUrl}/chat.initialize`
       const sendMessageEndpoint = config.sendMessageEndpoint || `${baseTrpcUrl}/chat.sendMessage`
-      const pusherKey = config.pusherKey || window.NEXT_PUBLIC_PUSHER_KEY
+      const pusherKey = config.pusherKey
       const pusherCluster = config.pusherCluster || 'us3'
       const widgetId = config.widgetId || config.integrationId || 'preview'
 

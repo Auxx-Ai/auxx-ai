@@ -12,9 +12,11 @@ interface StatRowProps {
  */
 export function StatRow({ label, value, muted }: StatRowProps) {
   return (
-    <div className='flex items-center justify-between py-1.5'>
-      <span className='text-sm text-muted-foreground'>{label}</span>
-      <span className={`text-sm font-mono ${muted ? 'text-muted-foreground' : ''}`}>{value}</span>
+    <div className='flex items-center justify-between py-1.5 gap-10'>
+      <span className='text-sm text-muted-foreground shrink-0'>{label}</span>
+      <span className={`text-sm break-all font-mono ${muted ? 'text-muted-foreground' : ''}`}>
+        {value}
+      </span>
     </div>
   )
 }
