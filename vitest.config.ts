@@ -3,9 +3,12 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    // This is just a fallback config for the root level
-    // Individual packages use their own configs via the workspace
-    globals: true,
-    environment: 'node',
+    projects: [
+      './apps/web/vitest.config.ts',
+      './packages/billing/vitest.config.ts',
+      './packages/lib/vitest.config.ts',
+      './packages/workflow-nodes/vitest.config.ts',
+      './packages/database/vitest.config.ts',
+    ],
   },
 })

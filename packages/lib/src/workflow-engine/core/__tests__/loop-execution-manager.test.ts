@@ -55,6 +55,7 @@ describe('LoopExecutionManager', () => {
 
       let capturedCallback: any
       const mockProcessor = {
+        preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
           // Capture the callback while it exists
           capturedCallback = mockProcessor.executeLoopBodyCallback
@@ -82,7 +83,7 @@ describe('LoopExecutionManager', () => {
       expect(typeof capturedCallback).toBe('function')
 
       // Verify processor was executed
-      expect(mockProcessor.execute).toHaveBeenCalledWith(loopNode, contextManager)
+      expect(mockProcessor.execute).toHaveBeenCalledWith(loopNode, contextManager, {})
     })
 
     it('should inject progressCallback when onNodeComplete is provided', async () => {
@@ -96,6 +97,7 @@ describe('LoopExecutionManager', () => {
 
       let capturedProgressCallback: any
       const mockProcessor = {
+        preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
           // Capture the progress callback while it exists
           capturedProgressCallback = mockProcessor.progressCallback
@@ -134,6 +136,7 @@ describe('LoopExecutionManager', () => {
       }
 
       const mockProcessor = {
+        preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockResolvedValue({
           nodeId: 'loop-1',
           status: NodeRunningStatus.Succeeded,
@@ -167,6 +170,7 @@ describe('LoopExecutionManager', () => {
       }
 
       const mockProcessor = {
+        preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockRejectedValue(new Error('Execution failed')),
       }
 
@@ -192,6 +196,7 @@ describe('LoopExecutionManager', () => {
 
       let capturedProgressCallback: any
       const mockProcessor = {
+        preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
           // Capture the progress callback
           capturedProgressCallback = mockProcessor.progressCallback
@@ -263,6 +268,7 @@ describe('LoopExecutionManager', () => {
       } as Workflow
 
       const mockProcessor = {
+        preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
           // Call the callback
           return await mockProcessor.executeLoopBodyCallback(loopNode, contextManager)
@@ -301,6 +307,7 @@ describe('LoopExecutionManager', () => {
 
       let result: any
       const mockProcessor = {
+        preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
           // Call the callback and capture result
           result = await mockProcessor.executeLoopBodyCallback(loopNode, contextManager)
@@ -395,6 +402,7 @@ describe('LoopExecutionManager', () => {
 
       let result: any
       const mockProcessor = {
+        preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
           result = await mockProcessor.executeLoopBodyCallback(loopNode, contextManager)
           return {
@@ -495,6 +503,7 @@ describe('LoopExecutionManager', () => {
 
       let result: any
       const mockProcessor = {
+        preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
           result = await mockProcessor.executeLoopBodyCallback(loopNode, contextManager)
           return {
@@ -575,6 +584,7 @@ describe('LoopExecutionManager', () => {
       })
 
       const mockProcessor = {
+        preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
           return await mockProcessor.executeLoopBodyCallback(loopNode, contextManager)
         }),
@@ -638,6 +648,7 @@ describe('LoopExecutionManager', () => {
       })
 
       const mockProcessor = {
+        preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
           return await mockProcessor.executeLoopBodyCallback(loopNode, contextManager)
         }),

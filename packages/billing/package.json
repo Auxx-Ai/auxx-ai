@@ -11,6 +11,8 @@
   },
   "scripts": {
     "dev": "pnpm exec dotenv -e ../../.env -e .env -- bash -lc 'echo \"NGROK_URL=$NGROK_URL\" && ngrok http --url=$NGROK_URL 3000'",
+    "test": "vitest",
+    "test:run": "vitest run",
     "clean": "rm -rf node_modules"
   },
   "dependencies": {
@@ -24,6 +26,8 @@
     "dotenv": "catalog:",
     "@auxx/typescript-config": "workspace:*",
     "concurrently": "^9.1.2",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "vite-tsconfig-paths": "catalog:"
   }
 }

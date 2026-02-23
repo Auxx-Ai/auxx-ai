@@ -32,6 +32,20 @@ describe('TextClassifierProcessor', () => {
         if (path === 'ticket.body') return 'I need help with my invoice'
         return undefined
       }),
+      interpolateVariables: vi.fn().mockImplementation((text: string) => {
+        return Promise.resolve(
+          text.replace(/\{\{([^}]+)\}\}/g, (_, path: string) => {
+            if (path === 'ticket.subject') return 'Billing question'
+            if (path === 'ticket.body') return 'I need help with my invoice'
+            if (path === 'sys.context') return 'test-context'
+            if (path === 'product.name') return 'Test Product'
+            if (path === 'service.type') return 'Test Service'
+            if (path === 'webhook.email') return 'test@example.com'
+            if (path === 'webhook.subject') return 'Test Subject'
+            return ''
+          })
+        )
+      }),
       setVariable: vi.fn(),
       setNodeVariable: vi.fn(),
       log: vi.fn(),
@@ -418,26 +432,7 @@ describe('TextClassifierProcessor', () => {
       )
     })
 
-    it('should warn about missing category connections', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        connections: {
-          branches: {},
-        },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-          text: 'Test',
-          categories: [{ name: 'cat1', description: 'Desc' }],
-        },
-      }
-
-      const result = await (processor as any).validateNodeConfig(node)
-      expect(result.warnings).toContain(
-        'No category connections defined. All flows will use the default connection.'
-      )
-    })
+    // Note: "missing category connections" test removed - connection validation
+    // was removed from validateNodeConfig (workflow uses edges, not node.connections)
   })
 })

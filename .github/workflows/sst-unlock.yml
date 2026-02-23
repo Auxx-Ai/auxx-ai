@@ -1,0 +1,83 @@
+# .github/workflows/sst-unlock.yml
+name: SST Unlock
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'SST stage to unlock'
+        required: true
+        default: dev
+        type: string
+      confirm:
+        description: 'Type I UNDERSTAND to confirm lock removal'
+        required: true
+        type: string
+
+concurrency:
+  group: sst-unlock-${{ github.event.inputs.stage }}
+  cancel-in-progress: false
+
+jobs:
+  unlock:
+    name: Unlock ${{ github.event.inputs.stage }}
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-west-1
+      EXPECTED_AWS_ACCOUNT_ID: '716542960845'
+      AWS_DEPLOY_ROLE_ARN: arn:aws:iam::716542960845:role/AuxxGithubDeployRole
+      STAGE: ${{ github.event.inputs.stage }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Validate confirmation
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event.inputs.confirm }}" != "I UNDERSTAND" ]; then
+            echo "Confirmation mismatch. To unlock, type exactly: I UNDERSTAND"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS identity
+        run: |
+          set -euo pipefail
+          ASSUMED_ARN=$(aws sts get-caller-identity --query 'Arn' --output text)
+          ACTUAL_ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+          echo "Assumed identity: $ASSUMED_ARN"
+          echo "Expected account: ${EXPECTED_AWS_ACCOUNT_ID}"
+          if [ "$ACTUAL_ACCOUNT_ID" != "${EXPECTED_AWS_ACCOUNT_ID}" ]; then
+            echo "ERROR: Account mismatch. CI is running in account $ACTUAL_ACCOUNT_ID but expected ${EXPECTED_AWS_ACCOUNT_ID}."
+            exit 1
+          fi
+
+      - name: Install deps
+        run: pnpm i --frozen-lockfile=false
+
+      - name: Unlock SST stage
+        run: pnpm exec sst unlock --stage="${STAGE}"
+
+      - name: Log unlock audit details
+        run: |
+          set -euo pipefail
+          echo "Unlocked stage: ${STAGE}"
+          echo "Triggered by: ${{ github.actor }}"
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Run attempt: ${{ github.run_attempt }}"

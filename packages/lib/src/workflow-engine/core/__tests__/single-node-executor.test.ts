@@ -1,16 +1,76 @@
 // packages/lib/src/workflow-engine/core/__tests__/single-node-executor.test.ts
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NodeProcessorRegistry } from '../node-processor-registry'
 import { executeSingleNode } from '../single-node-executor'
 import type { WorkflowNode } from '../types'
+import { NodeRunningStatus, WorkflowNodeType } from '../types'
+
+/**
+ * Mock processor for variable-set nodes used in tests
+ * Avoids pulling in all default processors and their server-only dependencies
+ */
+class MockVariableSetProcessor {
+  readonly type = WorkflowNodeType.VARIABLE_SET
+
+  async preprocessNode(node: WorkflowNode) {
+    const config = node.data
+    const variables = config.variables || {}
+
+    // Simple preprocessing: treat variableName/value as a single variable
+    if (config.variableName) {
+      return {
+        inputs: {
+          resolvedVariables: { [config.variableName]: config.value },
+          failedVariables: [],
+          stopOnError: true,
+        },
+        metadata: { nodeType: 'variable-set', totalVariables: 1 },
+      }
+    }
+
+    return {
+      inputs: {
+        resolvedVariables: variables,
+        failedVariables: [],
+        stopOnError: true,
+      },
+      metadata: { nodeType: 'variable-set', totalVariables: Object.keys(variables).length },
+    }
+  }
+
+  async execute(node: WorkflowNode, contextManager: any, preprocessedData?: any) {
+    const inputs = preprocessedData?.inputs
+    const setVariables: Record<string, any> = {}
+
+    if (inputs?.resolvedVariables) {
+      for (const [key, value] of Object.entries(inputs.resolvedVariables)) {
+        contextManager.setVariable(key, value)
+        setVariables[key] = value
+      }
+    }
+
+    return {
+      nodeId: node.nodeId,
+      status: NodeRunningStatus.Succeeded,
+      output: { variablesSet: setVariables, variableCount: Object.keys(setVariables).length },
+      processData: { resolvedVariables: setVariables },
+      outputHandle: 'source',
+      executionTime: 0,
+    }
+  }
+
+  async validate() {
+    return { valid: true, errors: [], warnings: [] }
+  }
+}
 
 describe('executeSingleNode', () => {
   let registry: NodeProcessorRegistry
 
-  beforeEach(async () => {
+  beforeEach(() => {
     registry = new NodeProcessorRegistry()
-    await registry.initializeWithDefaults()
+    registry.registerProcessor(new MockVariableSetProcessor())
   })
 
   it('should execute a variable-set node', async () => {

@@ -29,6 +29,16 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
         if (path === 'webhook.assignee') return 'user_def456'
         return undefined
       }),
+      interpolateVariables: vi.fn().mockImplementation((text: string) => {
+        // Replace {{variable}} patterns with values from getVariable
+        return Promise.resolve(
+          text.replace(/\{\{([^}]+)\}\}/g, (_, path: string) => {
+            if (path === 'webhook.contact') return 'contact_abc123'
+            if (path === 'webhook.assignee') return 'user_def456'
+            return ''
+          })
+        )
+      }),
       setNodeVariable: vi.fn(),
       log: vi.fn(),
       getContext: vi.fn(() => ({

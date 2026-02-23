@@ -9,6 +9,22 @@ import { TokenBucket } from '../token-bucket'
 import { CircuitBreakerError, RateLimitError } from '../types'
 import { UniversalThrottler } from '../universal-throttler'
 
+// Mock logger to prevent actual logging
+vi.mock('@auxx/logger', () => ({
+  createScopedLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }),
+}))
+
+// Mock Redis to prevent real connections
+vi.mock('@auxx/redis', () => ({
+  getRedisClient: vi.fn().mockResolvedValue(null),
+  getRedisProvider: vi.fn().mockReturnValue('hosted'),
+}))
+
 describe('TokenBucket', () => {
   it('should initialize with full capacity', () => {
     const bucket = new TokenBucket(10, 0.1) // 10 tokens, 0.1 token/ms
@@ -134,10 +150,12 @@ describe('ExponentialBackoff', () => {
     })
 
     const promise = backoff.executeWithRetry(fn)
+    // When shouldRetry returns false (attempt >= maxRetries), the original error is re-thrown
+    const expectation = expect(promise).rejects.toThrow('rate limit')
 
     await vi.runAllTimersAsync()
 
-    await expect(promise).rejects.toThrow(/Max retries \(2\) exceeded/)
+    await expectation
     expect(fn).toHaveBeenCalledTimes(3) // Initial + 2 retries
   })
 
@@ -709,11 +727,12 @@ describe('UniversalThrottler', () => {
     })
 
     const promise = throttler.execute('test', fn, { timeout: 100 })
+    const expectation = expect(promise).rejects.toThrow('Operation timed out')
 
     // Wait for timeout
     await vi.advanceTimersByTimeAsync(150)
 
-    await expect(promise).rejects.toThrow('Operation timed out')
+    await expectation
 
     // Clean up
     if (resolveFn) resolveFn('cleanup')

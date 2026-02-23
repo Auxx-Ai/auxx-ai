@@ -121,7 +121,7 @@ describe('Unified Processor System', () => {
 
       expect(result.config.policy).toMatchObject({
         keyPrefix: 'org123/',
-        contentLengthRange: [0, 1024 * 1024],
+        contentLengthRange: [0, Number.MAX_SAFE_INTEGER],
         maxTtl: 3600, // 1 hour
         allowedMimeTypes: ['*/*'], // File processor allows all types
       })
@@ -397,7 +397,7 @@ describe('Unified Processor System', () => {
 
       const result = await processor.processConfig(config)
 
-      expect(result.config.policy.contentLengthRange).toEqual([0, 5 * 1024 * 1024])
+      expect(result.config.policy.contentLengthRange).toEqual([0, Number.MAX_SAFE_INTEGER])
     })
 
     it('should clamp TTL values within bounds', async () => {

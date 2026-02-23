@@ -317,7 +317,7 @@ describe('StatePersistenceManager', () => {
   })
 
   describe('restoreContext', () => {
-    it('should recreate ExecutionContextManager with all variables', () => {
+    it('should recreate ExecutionContextManager with all variables', async () => {
       contextManager.setVariable('globalVar', 'globalValue')
       contextManager.setVariable('numberVar', 42)
       contextManager.setVariable('objectVar', { key: 'value' })
@@ -325,12 +325,12 @@ describe('StatePersistenceManager', () => {
       const state = manager.saveState('exec-456', contextManager, {})
       const restored = manager.restoreContext(state)
 
-      expect(restored.getVariable('globalVar')).toBe('globalValue')
-      expect(restored.getVariable('numberVar')).toBe(42)
-      expect(restored.getVariable('objectVar')).toEqual({ key: 'value' })
+      expect(await restored.getVariable('globalVar')).toBe('globalValue')
+      expect(await restored.getVariable('numberVar')).toBe(42)
+      expect(await restored.getVariable('objectVar')).toEqual({ key: 'value' })
     })
 
-    it('should restore node variables', () => {
+    it('should restore node variables', async () => {
       contextManager.setNodeVariable('node-1', 'nodeVar1', 'value1')
       contextManager.setNodeVariable('node-1', 'nodeVar2', 'value2')
       contextManager.setNodeVariable('node-2', 'nodeVar3', 'value3')
@@ -338,9 +338,9 @@ describe('StatePersistenceManager', () => {
       const state = manager.saveState('exec-456', contextManager, {})
       const restored = manager.restoreContext(state)
 
-      expect(restored.getNodeVariable('node-1', 'nodeVar1')).toBe('value1')
-      expect(restored.getNodeVariable('node-1', 'nodeVar2')).toBe('value2')
-      expect(restored.getNodeVariable('node-2', 'nodeVar3')).toBe('value3')
+      expect(await restored.getNodeVariable('node-1', 'nodeVar1')).toBe('value1')
+      expect(await restored.getNodeVariable('node-1', 'nodeVar2')).toBe('value2')
+      expect(await restored.getNodeVariable('node-2', 'nodeVar3')).toBe('value3')
     })
 
     it('should restore visited nodes', () => {
@@ -447,7 +447,7 @@ describe('StatePersistenceManager', () => {
   })
 
   describe('complex workflow scenario', () => {
-    it('should handle full save-restore cycle with complete context', () => {
+    it('should handle full save-restore cycle with complete context', async () => {
       // Set up complex context
       contextManager.setVariable('counter', 5)
       contextManager.setVariable('items', ['a', 'b', 'c'])
@@ -486,10 +486,10 @@ describe('StatePersistenceManager', () => {
       const restored = manager.restoreContext(state)
 
       // Verify all data restored correctly
-      expect(restored.getVariable('counter')).toBe(5)
-      expect(restored.getVariable('items')).toEqual(['a', 'b', 'c'])
-      expect(restored.getNodeVariable('loop-node', 'iteration')).toBe(2)
-      expect(restored.getNodeVariable('if-node', 'condition')).toBe(true)
+      expect(await restored.getVariable('counter')).toBe(5)
+      expect(await restored.getVariable('items')).toEqual(['a', 'b', 'c'])
+      expect(await restored.getNodeVariable('loop-node', 'iteration')).toBe(2)
+      expect(await restored.getNodeVariable('if-node', 'condition')).toBe(true)
 
       const restoredContext = restored.getContext()
       expect(restoredContext.visitedNodes).toContain('start')

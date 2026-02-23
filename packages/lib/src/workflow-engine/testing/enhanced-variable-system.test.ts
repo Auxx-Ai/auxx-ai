@@ -41,17 +41,17 @@ describe('Enhanced Variable System', () => {
   })
 
   describe('ExecutionContextManager', () => {
-    it('should initialize system variables', () => {
+    it('should initialize system variables', async () => {
       contextManager.initializeSystemVariables()
 
-      expect(contextManager.getVariable('sys.currentTime')).toBeDefined()
-      expect(contextManager.getVariable('sys.userId')).toBe('user-1')
-      expect(contextManager.getVariable('sys.organizationId')).toBe('org-1')
-      expect(contextManager.getVariable('sys.workflowId')).toBe('workflow-1')
-      expect(contextManager.getVariable('sys.executionId')).toBe('exec-1')
+      expect(await contextManager.getVariable('sys.currentTime')).toBeDefined()
+      expect(await contextManager.getVariable('sys.userId')).toBe('user-1')
+      expect(await contextManager.getVariable('sys.organizationId')).toBe('org-1')
+      expect(await contextManager.getVariable('sys.workflowId')).toBe('workflow-1')
+      expect(await contextManager.getVariable('sys.executionId')).toBe('exec-1')
     })
 
-    it('should initialize environment variables', () => {
+    it('should initialize environment variables', async () => {
       const envVars = [
         { name: 'API_KEY', value: 'secret-123', type: 'secret' },
         { name: 'COMPANY_NAME', value: 'Acme Corp', type: 'string' },
@@ -62,14 +62,14 @@ describe('Enhanced Variable System', () => {
 
       contextManager.initializeEnvironmentVariables(envVars)
 
-      expect(contextManager.getVariable('env.API_KEY')).toBe('secret-123')
-      expect(contextManager.getVariable('env.COMPANY_NAME')).toBe('Acme Corp')
-      expect(contextManager.getVariable('env.MAX_RETRIES')).toBe(5)
-      expect(contextManager.getVariable('env.FEATURES')).toEqual(['feature1', 'feature2'])
-      expect(contextManager.getVariable('env.DEBUG_MODE')).toBe(true)
+      expect(await contextManager.getVariable('env.API_KEY')).toBe('secret-123')
+      expect(await contextManager.getVariable('env.COMPANY_NAME')).toBe('Acme Corp')
+      expect(await contextManager.getVariable('env.MAX_RETRIES')).toBe(5)
+      expect(await contextManager.getVariable('env.FEATURES')).toEqual(['feature1', 'feature2'])
+      expect(await contextManager.getVariable('env.DEBUG_MODE')).toBe(true)
     })
 
-    it('should initialize schema variables', () => {
+    it('should initialize schema variables', async () => {
       const messageData = {
         id: 'msg-123',
         subject: 'Test Subject',
@@ -82,15 +82,15 @@ describe('Enhanced Variable System', () => {
 
       contextManager.initializeSchemaVariables('message', messageData)
 
-      expect(contextManager.getVariable('message.id')).toBe('msg-123')
-      expect(contextManager.getVariable('message.subject')).toBe('Test Subject')
-      expect(contextManager.getVariable('message.content')).toEqual({ text: 'Hello world' })
-      expect(contextManager.getVariable('message.from')).toEqual({
+      expect(await contextManager.getVariable('message.id')).toBe('msg-123')
+      expect(await contextManager.getVariable('message.subject')).toBe('Test Subject')
+      expect(await contextManager.getVariable('message.content')).toEqual({ text: 'Hello world' })
+      expect(await contextManager.getVariable('message.from')).toEqual({
         email: 'test@example.com',
         name: 'John Doe',
       })
-      expect(contextManager.getVariable('message.hasAttachments')).toBe(true)
-      expect(contextManager.getVariable('message.wordCount')).toBe(25)
+      expect(await contextManager.getVariable('message.hasAttachments')).toBe(true)
+      expect(await contextManager.getVariable('message.wordCount')).toBe(25)
     })
   })
 
@@ -111,63 +111,69 @@ describe('Enhanced Variable System', () => {
       })
     })
 
-    it('should resolve simple variable paths', () => {
-      expect(testProcessor.testResolveVariablePath('sys.userId', contextManager)).toBe('user-1')
-      expect(testProcessor.testResolveVariablePath('env.API_KEY', contextManager)).toBe(
+    it('should resolve simple variable paths', async () => {
+      expect(await testProcessor.testResolveVariablePath('sys.userId', contextManager)).toBe(
+        'user-1'
+      )
+      expect(await testProcessor.testResolveVariablePath('env.API_KEY', contextManager)).toBe(
         'secret-123'
       )
-      expect(testProcessor.testResolveVariablePath('message.id', contextManager)).toBe('msg-123')
-      expect(testProcessor.testResolveVariablePath('message.subject', contextManager)).toBe(
+      expect(await testProcessor.testResolveVariablePath('message.id', contextManager)).toBe(
+        'msg-123'
+      )
+      expect(await testProcessor.testResolveVariablePath('message.subject', contextManager)).toBe(
         'Order Confirmation'
       )
     })
 
-    it('should resolve nested object paths', () => {
-      expect(testProcessor.testResolveVariablePath('message.content.text', contextManager)).toBe(
-        'Your order has been confirmed'
-      )
-      expect(testProcessor.testResolveVariablePath('message.from.email', contextManager)).toBe(
-        'orders@shop.com'
-      )
-      expect(testProcessor.testResolveVariablePath('message.from.name', contextManager)).toBe(
+    it('should resolve nested object paths', async () => {
+      expect(
+        await testProcessor.testResolveVariablePath('message.content.text', contextManager)
+      ).toBe('Your order has been confirmed')
+      expect(
+        await testProcessor.testResolveVariablePath('message.from.email', contextManager)
+      ).toBe('orders@shop.com')
+      expect(await testProcessor.testResolveVariablePath('message.from.name', contextManager)).toBe(
         'Shop Orders'
       )
     })
 
-    it('should resolve array access paths', () => {
-      expect(testProcessor.testResolveVariablePath('message.to[0].email', contextManager)).toBe(
-        'customer@example.com'
-      )
-      expect(testProcessor.testResolveVariablePath('message.to[0].name', contextManager)).toBe(
-        'John Customer'
-      )
+    it('should resolve array access paths', async () => {
+      expect(
+        await testProcessor.testResolveVariablePath('message.to[0].email', contextManager)
+      ).toBe('customer@example.com')
+      expect(
+        await testProcessor.testResolveVariablePath('message.to[0].name', contextManager)
+      ).toBe('John Customer')
     })
 
-    it('should interpolate variables in templates', () => {
+    it('should interpolate variables in templates', async () => {
       const template1 = 'Hello {{message.from.name}}, your order {{message.id}} is confirmed!'
-      const result1 = testProcessor.testResolveVariableValue(template1, contextManager)
+      const result1 = await testProcessor.testResolveVariableValue(template1, contextManager)
       expect(result1).toBe('Hello Shop Orders, your order msg-123 is confirmed!')
 
       const template2 = 'API Key: {{env.API_KEY}}, Company: {{env.COMPANY_NAME}}'
-      const result2 = testProcessor.testResolveVariableValue(template2, contextManager)
+      const result2 = await testProcessor.testResolveVariableValue(template2, contextManager)
       expect(result2).toBe('API Key: secret-123, Company: Acme Corp')
 
       const template3 = 'Subject: {{message.subject}}, Text: {{message.content.text}}'
-      const result3 = testProcessor.testResolveVariableValue(template3, contextManager)
+      const result3 = await testProcessor.testResolveVariableValue(template3, contextManager)
       expect(result3).toBe('Subject: Order Confirmation, Text: Your order has been confirmed')
     })
 
-    it('should handle missing variables gracefully', () => {
+    it('should handle missing variables gracefully', async () => {
       const template = 'Value: {{nonexistent.variable}}'
-      const result = testProcessor.testResolveVariableValue(template, contextManager)
+      const result = await testProcessor.testResolveVariableValue(template, contextManager)
       // Should return original template when variable not found
       expect(result).toBe('Value: {{nonexistent.variable}}')
     })
 
-    it('should handle non-string values', () => {
-      expect(testProcessor.testResolveVariableValue(123, contextManager)).toBe(123)
-      expect(testProcessor.testResolveVariableValue(true, contextManager)).toBe(true)
-      expect(testProcessor.testResolveVariableValue({ test: 'value' }, contextManager)).toEqual({
+    it('should handle non-string values', async () => {
+      expect(await testProcessor.testResolveVariableValue(123, contextManager)).toBe(123)
+      expect(await testProcessor.testResolveVariableValue(true, contextManager)).toBe(true)
+      expect(
+        await testProcessor.testResolveVariableValue({ test: 'value' }, contextManager)
+      ).toEqual({
         test: 'value',
       })
     })
@@ -208,7 +214,7 @@ describe('Enhanced Variable System', () => {
   })
 
   describe('Integration Test', () => {
-    it('should work end-to-end with all variable types', () => {
+    it('should work end-to-end with all variable types', async () => {
       // Set up complete variable environment
       contextManager.initializeSystemVariables()
       contextManager.initializeEnvironmentVariables([
@@ -232,7 +238,7 @@ describe('Enhanced Variable System', () => {
         Max Items: {{env.MAX_ITEMS}}
       `.trim()
 
-      const result = testProcessor.testResolveVariableValue(complexTemplate, contextManager)
+      const result = await testProcessor.testResolveVariableValue(complexTemplate, contextManager)
 
       expect(result).toContain('Execution: exec-1')
       expect(result).toContain('Support Email: support@company.com')

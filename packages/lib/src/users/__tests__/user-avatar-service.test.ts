@@ -4,22 +4,42 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { UserAvatarService } from '../user-avatar-service'
 
 // Mock dependencies
+const mockLimit = vi.fn()
+const mockWhere = vi.fn(() => ({ limit: mockLimit }))
+const mockFrom = vi.fn(() => ({ where: mockWhere }))
+const mockSelect = vi.fn(() => ({ from: mockFrom }))
+const mockInsertReturning = vi.fn()
+const mockInsertValues = vi.fn(() => ({ returning: mockInsertReturning }))
+
 vi.mock('@auxx/database', () => ({
   database: {
-    query: {
-      User: {
-        findFirst: vi.fn(),
-        findMany: vi.fn(),
-      },
-      StorageLocation: {
-        findFirst: vi.fn(),
-        findMany: vi.fn(),
-      },
-    },
-    insert: vi.fn(),
+    select: (...args: any[]) => mockSelect(...args),
+    insert: vi.fn(() => ({ values: mockInsertValues })),
     update: vi.fn(),
     delete: vi.fn(),
   },
+  schema: {
+    User: {
+      id: 'id',
+      image: 'image',
+      avatarAssetId: 'avatarAssetId',
+      defaultOrganizationId: 'defaultOrganizationId',
+    },
+    StorageLocation: {},
+  },
+}))
+
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn(),
+}))
+
+vi.mock('../../logger', () => ({
+  createScopedLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }),
 }))
 
 vi.mock('../../files/adapters/s3-adapter', () => ({
@@ -133,14 +153,14 @@ describe('UserAvatarService', () => {
 
   describe('checkAndMigrateAvatar', () => {
     it('should skip migration if user already has avatarAssetId', async () => {
-      const { database } = await import('@auxx/database')
-
-      ;(database.query.User.findFirst as any).mockResolvedValue({
-        id: 'test-user',
-        image: 'https://example.com/avatar.jpg',
-        avatarAssetId: 'existing-asset',
-        defaultOrganizationId: 'test-org',
-      })
+      mockLimit.mockResolvedValue([
+        {
+          id: 'test-user',
+          image: 'https://example.com/avatar.jpg',
+          avatarAssetId: 'existing-asset',
+          defaultOrganizationId: 'test-org',
+        },
+      ])
 
       const result = await UserAvatarService.checkAndMigrateAvatar('test-user')
 
@@ -148,14 +168,14 @@ describe('UserAvatarService', () => {
     })
 
     it('should skip migration if user has no image URL', async () => {
-      const { database } = await import('@auxx/database')
-
-      ;(database.query.User.findFirst as any).mockResolvedValue({
-        id: 'test-user',
-        image: null,
-        avatarAssetId: null,
-        defaultOrganizationId: 'test-org',
-      })
+      mockLimit.mockResolvedValue([
+        {
+          id: 'test-user',
+          image: null,
+          avatarAssetId: null,
+          defaultOrganizationId: 'test-org',
+        },
+      ])
 
       const result = await UserAvatarService.checkAndMigrateAvatar('test-user')
 

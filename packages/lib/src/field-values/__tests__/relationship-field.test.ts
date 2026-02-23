@@ -128,8 +128,7 @@ describe('type guards', () => {
   it('isRelationshipFieldValue checks structure', () => {
     const valid: RelationshipFieldValue = {
       type: 'relationship',
-      relatedEntityId: 'abc',
-      relatedEntityDefinitionId: 'res',
+      recordId: 'res:abc' as any,
       id: '1',
       entityId: 'e1',
       fieldId: 'f1',
@@ -138,7 +137,7 @@ describe('type guards', () => {
       updatedAt: '2024-01-01T00:00:00Z',
     }
     expect(isRelationshipFieldValue(valid)).toBe(true)
-    expect(isRelationshipFieldValue({ relatedEntityId: 'abc' })).toBe(false) // Missing type
+    expect(isRelationshipFieldValue({ type: 'relationship', relatedEntityId: 'abc' })).toBe(false) // Missing recordId
     expect(isRelationshipFieldValue('string')).toBe(false)
   })
 
@@ -146,8 +145,7 @@ describe('type guards', () => {
     const valid: RelationshipFieldValue[] = [
       {
         type: 'relationship',
-        relatedEntityId: 'a',
-        relatedEntityDefinitionId: 'res',
+        recordId: 'res:a' as any,
         id: '1',
         entityId: 'e1',
         fieldId: 'f1',
@@ -157,8 +155,7 @@ describe('type guards', () => {
       },
       {
         type: 'relationship',
-        relatedEntityId: 'b',
-        relatedEntityDefinitionId: 'res',
+        recordId: 'res:b' as any,
         id: '2',
         entityId: 'e1',
         fieldId: 'f1',
@@ -169,10 +166,7 @@ describe('type guards', () => {
     ]
     expect(isRelationshipFieldValueArray(valid)).toBe(true)
 
-    const invalid = [
-      { type: 'relationship' as const, relatedEntityId: 'a', relatedEntityDefinitionId: 'res' },
-      'string',
-    ]
+    const invalid = [{ type: 'relationship' as const, recordId: 'res:a' }, 'string']
     expect(isRelationshipFieldValueArray(invalid)).toBe(false)
   })
 })

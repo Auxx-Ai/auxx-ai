@@ -3,15 +3,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { BaseNodeProcessor } from '../../nodes/base-node'
 import type { ExecutionContextManager } from '../execution-context'
-import { NodeProcessorRegistry } from '../node-processor-registry'
-import type {
-  NodeExecutionResult,
-  NodeRunningStatus,
-  Workflow,
-  WorkflowNode,
-  WorkflowNodeType,
-  WorkflowTriggerType,
-} from '../types'
+import type { NodeProcessorRegistry } from '../node-processor-registry'
+import type { NodeExecutionResult, Workflow, WorkflowNode, WorkflowTriggerType } from '../types'
+import { type NodeRunningStatus, WorkflowNodeType } from '../types'
 import { WorkflowEngine } from '../workflow-engine'
 
 // Mock processors for testing
@@ -93,17 +87,18 @@ describe('Diamond Pattern Execution', () => {
   let registry: NodeProcessorRegistry
 
   beforeEach(() => {
-    registry = new NodeProcessorRegistry()
+    engine = new WorkflowEngine()
+    registry = engine.getNodeRegistry()
     registry.registerProcessor(new MockTriggerProcessor())
     registry.registerProcessor(new MockActionProcessor())
     registry.registerProcessor(new MockJoinProcessor())
-
-    engine = new WorkflowEngine()
   })
 
   it('should execute basic diamond pattern successfully', async () => {
     const workflow: Workflow = {
       id: 'diamond-test',
+      workflowId: 'diamond-test',
+      workflowAppId: 'test-app',
       organizationId: 'test-org',
       name: 'Diamond Pattern Test',
       enabled: true,
@@ -226,6 +221,8 @@ describe('Diamond Pattern Execution', () => {
 
     const workflow: Workflow = {
       id: 'diamond-fail-test',
+      workflowId: 'diamond-fail-test',
+      workflowAppId: 'test-app',
       organizationId: 'test-org',
       name: 'Diamond Pattern Fail Test',
       enabled: true,
@@ -352,6 +349,8 @@ describe('Diamond Pattern Execution', () => {
 
     const workflow: Workflow = {
       id: 'merge-test',
+      workflowId: 'merge-test',
+      workflowAppId: 'test-app',
       organizationId: 'test-org',
       name: 'Context Merge Test',
       enabled: true,

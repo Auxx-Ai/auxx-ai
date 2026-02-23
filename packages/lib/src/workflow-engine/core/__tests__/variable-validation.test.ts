@@ -346,8 +346,8 @@ describe('Variable Validation - Integration Tests', () => {
         },
       }
 
-      // Get optimized context using the helper method
-      const optimizedContext = (processor as any).getOptimizedContext(node, contextManager)
+      // Get optimized context using the helper method (async since buildOptimizedContext is async)
+      const optimizedContext = await (processor as any).getOptimizedContext(node, contextManager)
 
       // Should only include the one variable used in the prompt
       expect(optimizedContext.size).toBe(1)
@@ -375,7 +375,7 @@ describe('Variable Validation - Integration Tests', () => {
         },
       }
 
-      const optimizedContext = (processor as any).getOptimizedContext(node, contextManager)
+      const optimizedContext = await (processor as any).getOptimizedContext(node, contextManager)
       const contextObject = (processor as any).buildContextObject(optimizedContext)
 
       expect(contextObject).toEqual({

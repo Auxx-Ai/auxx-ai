@@ -41,6 +41,15 @@ describe('AIProcessorV2', () => {
       })),
       getAllVariables: vi.fn(() => ({})),
       buildOptimizedContext: vi.fn(() => new Map()),
+      interpolateVariables: vi.fn().mockImplementation((text: string) => {
+        if (!text || typeof text !== 'string') return Promise.resolve(text)
+        const result = text.replace(/\{\{([^}]+)\}\}/g, (_match: string, path: string) => {
+          const value = mockContextManager.getVariable(path.trim())
+          if (value === undefined || value === null) return _match
+          return typeof value === 'object' ? JSON.stringify(value) : String(value)
+        })
+        return Promise.resolve(result)
+      }),
     }
   })
 

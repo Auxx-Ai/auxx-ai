@@ -11,6 +11,7 @@ export default defineConfig({
     name: 'billing',
     globals: true,
     environment: 'node',
+    setupFiles: ['./src/test/setup.ts'],
     include: [
       'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts}',
       'src/**/__tests__/**/*.{js,mjs,cjs,ts,mts,cts}',
