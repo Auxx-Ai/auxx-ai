@@ -9,7 +9,8 @@ import { privateBucket, publicBucket } from './storage'
 export const web = new sst.aws.Nextjs('AuxxAiWeb', {
   vpc,
   path: 'apps/web',
-  buildCommand: 'pnpm run build:opennext',
+  buildCommand:
+    'if [ "${SST_USE_PREBUILT_OPENNEXT:-0}" = "1" ] && [ -d ".open-next" ]; then echo "Using pre-built OpenNext artifacts"; else pnpm run build:opennext; fi',
   // Minimal env; secrets come via Resource links
   environment: getSelectedEnvVars('web'),
   // Link secrets and database resources for Resource access

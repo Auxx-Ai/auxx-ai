@@ -36,6 +36,7 @@ const nextConfig = {
   ],
   experimental: {
     turbopackFileSystemCacheForDev: true,
+    webpackMemoryOptimizations: true,
   },
   poweredByHeader: false,
   reactStrictMode: true,

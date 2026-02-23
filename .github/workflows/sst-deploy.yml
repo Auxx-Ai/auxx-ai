@@ -9,26 +9,11 @@ on:
         required: false
         type: string
         default: dev
-      lock_wait_seconds:
-        description: Seconds to wait before retrying after lock contention
-        required: false
-        type: number
-        default: 90
       lock_max_attempts:
         description: Number of deploy attempts when lock contention is detected
         required: false
         type: number
         default: 3
-      auto_unlock_on_final_lock:
-        description: If true, run unlock and do one final deploy retry when lock retries are exhausted
-        required: false
-        type: boolean
-        default: true
-      post_unlock_wait_seconds:
-        description: Seconds to wait after unlock before the final deploy retry
-        required: false
-        type: number
-        default: 15
   workflow_dispatch:
     inputs:
       stage:
@@ -41,25 +26,10 @@ on:
         required: false
         default: false
         type: boolean
-      lock_wait_seconds:
-        description: Seconds to wait before retrying after lock contention
-        required: false
-        default: 90
-        type: number
       lock_max_attempts:
         description: Number of deploy attempts when lock contention is detected
         required: false
         default: 3
-        type: number
-      auto_unlock_on_final_lock:
-        description: If true, run unlock and do one final deploy retry when lock retries are exhausted
-        required: false
-        default: true
-        type: boolean
-      post_unlock_wait_seconds:
-        description: Seconds to wait after unlock before the final deploy retry
-        required: false
-        default: 15
         type: number
 
 concurrency:
@@ -70,6 +40,7 @@ jobs:
   deploy-dev:
     name: Deploy dev (us-west-1)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     environment: dev
     env:
       STAGE: ${{ inputs.stage || 'dev' }}
@@ -137,11 +108,29 @@ jobs:
       - name: Build workspace packages
         run: pnpm --filter @auxx/services build
 
-      - name: Check OpenNext build (web)
-        run: pnpm run check:opennext:web
+      - name: Pre-build OpenNext (web)
+        env:
+          NODE_OPTIONS: '--max-old-space-size=6144'
+          SKIP_ENV_VALIDATION: '1'
+          BUILDING_CONTAINER: 'true'
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: pnpm -F @auxx/web run build:opennext
 
-      - name: Check OpenNext build (docs)
-        run: pnpm run check:opennext:docs
+      - name: Pre-build OpenNext (docs)
+        env:
+          NODE_OPTIONS: '--max-old-space-size=6144'
+          SKIP_ENV_VALIDATION: '1'
+          BUILDING_CONTAINER: 'true'
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: pnpm -F @auxx/docs run build:opennext
+
+      - name: Pre-build OpenNext (homepage)
+        env:
+          NODE_OPTIONS: '--max-old-space-size=6144'
+          SKIP_ENV_VALIDATION: '1'
+          BUILDING_CONTAINER: 'true'
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: pnpm -F homepage run build:opennext
 
       - name: Setup Deno
         uses: denoland/setup-deno@v2
@@ -221,13 +210,11 @@ jobs:
           SST_PRINT_LOGS: '1'
           PULUMI_MAX_CONCURRENT_REQUESTS: '20'
           SST_TELEMETRY_DISABLED: '1'
+          SST_USE_PREBUILT_OPENNEXT: '1'
           SST_DEPLOY_CMD: 'pnpm sst:deploy'
-          SST_LOCK_WAIT_SECONDS: '${{ inputs.lock_wait_seconds || 90 }}'
           SST_LOCK_MAX_ATTEMPTS: '${{ inputs.lock_max_attempts || 3 }}'
-          SST_LOCK_AUTO_UNLOCK_ON_FINAL_LOCK: '${{ inputs.auto_unlock_on_final_lock || true }}'
-          SST_LOCK_POST_UNLOCK_WAIT_SECONDS: '${{ inputs.post_unlock_wait_seconds || 15 }}'
           SST_UNLOCK_CMD: 'pnpm exec sst unlock --stage=${STAGE}'
-          SST_ENABLE_SIGNAL_UNLOCK_TRAP: 'true'
+          SST_ENABLE_SIGNAL_UNLOCK_TRAP: 'false'
         run: bash scripts/ci/sst-deploy-with-lock-retry.sh
 
       - name: Run DB migrations (dev)
@@ -264,3 +251,27 @@ jobs:
           fi
 
           echo "Migrations completed successfully."
+
+      - name: Post-deploy unlock cleanup
+        if: ${{ cancelled() || failure() }}
+        run: bash scripts/ci/sst-force-unlock.sh
+
+      - name: Deploy diagnostics
+        if: ${{ always() }}
+        run: |
+          echo "=== Deploy diagnostics ==="
+          echo "run_id:       ${{ github.run_id }}"
+          echo "run_attempt:  ${{ github.run_attempt }}"
+          echo "event_name:   ${{ github.event_name }}"
+          echo "actor:        ${{ github.actor }}"
+          echo "job_status:   ${{ job.status }}"
+          echo "stage:        ${STAGE}"
+          echo "=== Memory snapshot ==="
+          free -h || true
+          cat /proc/meminfo | head -5 || true
+
+      - name: Cancellation marker
+        if: ${{ cancelled() }}
+        run: |
+          echo "DEPLOY_CANCELLED_PATH_ENTERED=1"
+          echo "Deploy was cancelled. run_id=${{ github.run_id }} stage=${STAGE}"

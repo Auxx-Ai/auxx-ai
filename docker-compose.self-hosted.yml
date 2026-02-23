@@ -29,7 +29,6 @@ x-url-env: &url-env
   NEXT_PUBLIC_APP_URL: https://app.${DOMAIN}
   NEXT_PUBLIC_HOMEPAGE_URL: https://app.${DOMAIN}
   NEXT_PUBLIC_API_URL: https://api.${DOMAIN}
-  NEXT_PUBLIC_DEV_PORTAL_URL: https://build.${DOMAIN}
   NEXT_PUBLIC_DOCS_URL: https://docs.${DOMAIN}
 
 services:
@@ -169,35 +168,6 @@ services:
       - traefik.http.routers.api.rule=Host(`api.${DOMAIN}`)
       - traefik.http.routers.api.tls.certresolver=letsencrypt
       - traefik.http.services.api.loadbalancer.server.port=3007
-    networks:
-      - auxx-network
-    restart: unless-stopped
-
-  build:
-    image: ghcr.io/auxx-ai/build:${VERSION:-latest}
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      <<: [*common-env, *db-env, *redis-env, *url-env]
-    depends_on:
-      migrate: { condition: service_completed_successfully }
-      redis: { condition: service_healthy }
-    healthcheck:
-      test: ['CMD-SHELL', 'curl -f http://localhost:3006/health || exit 1']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          cpus: "1"
-          memory: 1G
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.build.rule=Host(`build.${DOMAIN}`)
-      - traefik.http.routers.build.tls.certresolver=letsencrypt
-      - traefik.http.services.build.loadbalancer.server.port=3006
     networks:
       - auxx-network
     restart: unless-stopped
