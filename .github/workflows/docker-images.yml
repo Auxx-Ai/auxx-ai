@@ -85,7 +85,7 @@ jobs:
 
       - name: Checkout
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.image == 'all' || github.event.inputs.image == matrix.name }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Validate compose files
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.image == 'all' || github.event.inputs.image == matrix.name }}

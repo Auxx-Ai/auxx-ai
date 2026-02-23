@@ -20,10 +20,10 @@ jobs:
     if: ${{ github.event.inputs.confirm == 'I UNDERSTAND' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
 
@@ -34,7 +34,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::716542960845:role/AuxxGithubDeployRole
           aws-region: us-west-1

@@ -40,9 +40,9 @@ vi.mock('@auxx/database', () => ({
 }))
 
 vi.mock('../../mail-views/mail-view-service', () => ({
-  MailViewService: vi.fn().mockImplementation(() => ({
-    getMailView: vi.fn().mockResolvedValue(null),
-  })),
+  MailViewService: class {
+    getMailView = vi.fn().mockResolvedValue(null)
+  },
 }))
 
 vi.mock('@auxx/database/enums', () => ({
@@ -71,9 +71,9 @@ vi.mock('../../mail-query/draft-condition-builder', () => ({
 }))
 
 vi.mock('../../resources/registry/resource-registry-service', () => ({
-  ResourceRegistryService: vi.fn().mockImplementation(() => ({
-    resolveEntityDefId: vi.fn().mockResolvedValue('inbox'),
-  })),
+  ResourceRegistryService: class {
+    resolveEntityDefId = vi.fn().mockResolvedValue('inbox')
+  },
 }))
 
 vi.mock('@auxx/types/actor', () => ({

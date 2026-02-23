@@ -132,7 +132,7 @@
     "sonner": "^2.0.7",
     "vaul": "^1.1.2",
     "react-day-picker": "^9.8.1",
-    "react-phone-number-input": "^3.4.12",
+    "react-phone-number-input": "^3.4.14",
     "libphonenumber-js": "catalog:",
     "input-otp": "^1.4.2",
     "cmdk": "1.1.1",
