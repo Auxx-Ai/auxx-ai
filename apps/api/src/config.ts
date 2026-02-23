@@ -29,12 +29,6 @@ export const BETTER_AUTH_USERINFO_URL = `${BETTER_AUTH_BASE_URL}/oauth2/userinfo
 /** Better-auth secret (optional, for JWT verification if needed) */
 export const BETTER_AUTH_SECRET = configService.get<string>('BETTER_AUTH_SECRET')
 
-/** Parsed allowed origins for CORS */
-export const allowedOrigins = (configService.get<string>('ALLOWED_ORIGINS') || '')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean)
-
 /** SDK Client Secret (for OIDC token signing) */
 export const SDK_CLIENT_SECRET =
   configService.get<string>('SDK_CLIENT_SECRET') || 'auxx-sdk-cli-secret-for-jwt-signing'

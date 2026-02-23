@@ -6,10 +6,10 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { logger } from 'hono/logger'
 import { prettyJSON } from 'hono/pretty-json'
-import { allowedOrigins, NODE_ENV, PORT } from './config'
+import { NODE_ENV, PORT } from './config'
 
 // Middleware
-import { corsMiddleware } from './middleware/cors'
+import { allowedOrigins, corsMiddleware } from './middleware/cors'
 import { errorMiddleware } from './middleware/error'
 import appRuntime from './routes/app-runtime'
 import apps from './routes/apps'
@@ -87,7 +87,7 @@ async function main() {
   // Start server
   log.info(`Starting Auxx API server on port ${PORT}`)
   log.info(`Environment: ${NODE_ENV}`)
-  log.info(`Allowed origins: ${allowedOrigins.join(', ')}`)
+  log.info(`Allowed origins: ${[...allowedOrigins].join(', ')}`)
 
   const server = serve(
     {

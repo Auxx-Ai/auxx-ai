@@ -151,7 +151,6 @@ services:
     environment:
       <<: [*common-env, *db-env, *redis-env, *url-env]
       SERVER_FUNCTION_EXECUTOR_URL: http://lambda:3008
-      ALLOWED_ORIGINS: https://app.${DOMAIN},https://build.${DOMAIN}
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }

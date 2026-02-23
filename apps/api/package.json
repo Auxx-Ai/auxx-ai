@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --clear-screen=false src/index.ts",
+    "dev": "node --env-file .env --import tsx/esm --watch src/index.ts",
     "build": "esbuild src/index.ts --bundle --platform=node --outdir=dist --format=esm --packages=external",
     "build:platform-runtime": "NODE_ENV=development tsx build-platform-runtime.ts",
     "dev:platform-runtime": "NODE_ENV=development tsx build-platform-runtime.ts --watch --include ../../packages/sdk/src --include ../../packages/sdk/lib",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist *.tsbuildinfo"
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "vitest run"
   },
   "dependencies": {
     "@auxx/config": "workspace:*",
@@ -38,6 +39,7 @@
     "@types/node": "catalog:",
     "esbuild": "^0.25.11",
     "tsx": "^4.19.2",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }
