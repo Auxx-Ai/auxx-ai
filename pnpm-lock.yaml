@@ -321,8 +321,8 @@ importers:
         specifier: ^4.7.11
         version: 4.9.12
       jose:
-        specifier: ^6.1.0
-        version: 6.1.0
+        specifier: ^6.1.3
+        version: 6.1.3
       neverthrow:
         specifier: ^8.2.0
         version: 8.2.0
@@ -1312,8 +1312,8 @@ importers:
         specifier: 'catalog:'
         version: 0.44.5(@opentelemetry/api@1.9.0)(@types/pg@8.15.5)(@upstash/redis@1.35.6)(kysely@0.28.8)(pg@8.16.3)(postgres@3.4.7)
       jose:
-        specifier: ^5.9.6
-        version: 5.10.0
+        specifier: ^6.1.3
+        version: 6.1.3
       neverthrow:
         specifier: ^6.2.2
         version: 6.2.2
@@ -1573,8 +1573,8 @@ importers:
         specifier: ^9.0.5
         version: 9.0.5
       jose:
-        specifier: ^6.0.11
-        version: 6.1.0
+        specifier: ^6.1.3
+        version: 6.1.3
       jsdom:
         specifier: 'catalog:'
         version: 28.1.0(@noble/hashes@2.0.1)
@@ -10120,8 +10120,8 @@ packages:
   jose@5.2.3:
     resolution: {integrity: sha512-KUXdbctm1uHVL8BYhnyHkgp3zDX5KW8ZhAKVFEfUbU2P8Alpzjb+48hHvjOdQIyPshoblhzsuqOwEEAbtHVirA==}
 
-  jose@6.1.0:
-    resolution: {integrity: sha512-TTQJyoEoKcC1lscpVDCSsVgYzUDg/0Bt3WE//WiTPK6uOCQC2KZS4MpugbMWt/zyjkopgZoXhZuCi00gLudfUA==}
+  jose@6.1.3:
+    resolution: {integrity: sha512-0TpaTfihd4QMNwrz/ob2Bp7X04yuxJkjRGi4aKmOqwhov54i6u79oCv7T+C7lo70MKH6BesI3vscD1yb/yzKXQ==}
 
   jotai@2.15.0:
     resolution: {integrity: sha512-nbp/6jN2Ftxgw0VwoVnOg0m5qYM1rVcfvij+MZx99Z5IK13eGve9FJoCwGv+17JvVthTjhSmNtT5e1coJnr6aw==}
@@ -21062,7 +21062,7 @@ snapshots:
       '@simplewebauthn/server': 13.2.2
       better-call: 1.0.19
       defu: 6.1.4
-      jose: 6.1.0
+      jose: 6.1.3
       kysely: 0.28.8
       nanostores: 1.0.1
       zod: 4.1.12
@@ -23342,7 +23342,7 @@ snapshots:
 
   jose@5.2.3: {}
 
-  jose@6.1.0: {}
+  jose@6.1.3: {}
 
   jotai@2.15.0(@babel/core@7.28.4)(@babel/template@7.27.2)(@types/react@19.2.3)(react@19.2.3):
     optionalDependencies:
