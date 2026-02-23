@@ -220,6 +220,14 @@ export class IntegrationService {
           metadata: schema.Integration.metadata,
           authStatus: schema.Integration.authStatus,
           lastSuccessfulSync: schema.Integration.lastSuccessfulSync,
+          requiresReauth: schema.Integration.requiresReauth,
+          lastAuthError: schema.Integration.lastAuthError,
+          lastAuthErrorAt: schema.Integration.lastAuthErrorAt,
+          syncStatus: schema.Integration.syncStatus,
+          syncStage: schema.Integration.syncStage,
+          syncStageStartedAt: schema.Integration.syncStageStartedAt,
+          throttleFailureCount: schema.Integration.throttleFailureCount,
+          throttleRetryAfter: schema.Integration.throttleRetryAfter,
           chatWidget: schema.ChatWidget,
           inboxId: schema.InboxIntegration.inboxId,
         })
@@ -235,23 +243,6 @@ export class IntegrationService {
       const integrations = integrationsData
 
       const formattedIntegrations = integrations.map((int) => {
-        // Support both old (authError) and new (auth) metadata structures
-        const metadataAuth = (int.metadata as any)?.auth || (int.metadata as any)?.authError
-        const requiresReauth = metadataAuth?.requiresReauth || false
-        // Support both field names: lastError (new) and message (old)
-        const lastAuthError = metadataAuth?.lastError || metadataAuth?.message || null
-        const lastAuthErrorAt = metadataAuth?.lastErrorAt || metadataAuth?.occurredAt
-
-        logger.info(`[integration-service] Formatting integration data`, {
-          integrationId: int.id,
-          provider: int.provider,
-          metadata: JSON.stringify(int.metadata),
-          metadataAuth: JSON.stringify(metadataAuth),
-          requiresReauth,
-          lastAuthError,
-          enabled: int.enabled,
-        })
-
         return {
           id: int.id,
           provider: int.provider,
@@ -266,10 +257,17 @@ export class IntegrationService {
           authStatus: int.authStatus,
           lastSuccessfulSync: int.lastSuccessfulSync,
           metadata: int.metadata,
-          // Auth errors and settings now stored in metadata (support both old and new structures)
-          lastAuthError,
-          lastAuthErrorAt: lastAuthErrorAt ? new Date(lastAuthErrorAt) : null,
-          requiresReauth,
+          // Auth fields — direct columns
+          requiresReauth: int.requiresReauth,
+          lastAuthError: int.lastAuthError,
+          lastAuthErrorAt: int.lastAuthErrorAt,
+          // Sync state — direct columns
+          syncStatus: int.syncStatus,
+          syncStage: int.syncStage,
+          syncStageStartedAt: int.syncStageStartedAt,
+          // Throttling
+          throttleFailureCount: int.throttleFailureCount,
+          throttleRetryAfter: int.throttleRetryAfter,
           settings: ((int.metadata as any)?.settings as IntegrationSettings) || {},
         }
       })
