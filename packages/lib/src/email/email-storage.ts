@@ -21,6 +21,7 @@ import { SelectiveModeCache } from '../cache/selective-mode-cache'
 import { MessageReconcilerService } from '../messages/message-reconciler.service'
 import { ThreadManagerService } from '../messages/thread-manager.service'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
+import { SystemUserService } from '../users/system-user-service'
 
 const logger = createScopedLogger('message-storage')
 
@@ -125,6 +126,8 @@ export class MessageStorageService {
   private organizationId?: string
   /** Cached UnifiedCrudHandler instances per organization for batch performance */
   private crudHandlerCache = new Map<string, UnifiedCrudHandler>()
+  /** Cached system user IDs per organization */
+  private systemUserIdCache = new Map<string, string>()
 
   constructor(organizationId?: string) {
     this.selectiveCache = new SelectiveModeCache()
@@ -139,11 +142,22 @@ export class MessageStorageService {
     }
   }
 
+  /** Resolves the system user ID for an organization, with caching. */
+  private async resolveSystemUserId(organizationId: string): Promise<string> {
+    const cached = this.systemUserIdCache.get(organizationId)
+    if (cached) return cached
+
+    const systemUserId = await SystemUserService.getSystemUserForActions(organizationId)
+    this.systemUserIdCache.set(organizationId, systemUserId)
+    return systemUserId
+  }
+
   /** Returns a cached UnifiedCrudHandler for the given organization. */
-  private getCrudHandler(organizationId: string): UnifiedCrudHandler {
+  private async getCrudHandler(organizationId: string): Promise<UnifiedCrudHandler> {
     let handler = this.crudHandlerCache.get(organizationId)
     if (!handler) {
-      handler = new UnifiedCrudHandler(organizationId, 'system')
+      const systemUserId = await this.resolveSystemUserId(organizationId)
+      handler = new UnifiedCrudHandler(organizationId, systemUserId)
       this.crudHandlerCache.set(organizationId, handler)
     }
     return handler
@@ -569,7 +583,7 @@ export class MessageStorageService {
   ): Promise<string | null> {
     try {
       const mode = this.integrationSettings?.recordCreation?.mode || 'selective'
-      const handler = this.getCrudHandler(organizationId)
+      const handler = await this.getCrudHandler(organizationId)
 
       // Determine which system attribute to search by
       const systemAttr =

@@ -2,8 +2,7 @@
 name: SST Deploy
 
 on:
-  push:
-    branches: [main]
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
@@ -159,6 +158,8 @@ jobs:
       - name: Deploy dev
         env:
           SST_PRINT_LOGS: '1'
+          PULUMI_MAX_CONCURRENT_REQUESTS: '20'
+          SST_TELEMETRY_DISABLED: '1'
         run: pnpm sst:deploy
 
       - name: Run DB migrations (dev)

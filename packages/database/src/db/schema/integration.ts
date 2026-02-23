@@ -6,8 +6,11 @@ import {
   type AnyPgColumn,
   boolean,
   index,
+  integer,
   integrationAuthStatus,
   integrationProviderType,
+  integrationSyncStage,
+  integrationSyncStatus,
   jsonb,
   pgTable,
   text,
@@ -16,6 +19,7 @@ import {
 } from './_shared'
 
 import { Organization } from './organization'
+import { WorkflowCredentials } from './workflow-credentials'
 
 /** Drizzle table for integration */
 export const Integration = pgTable(
@@ -29,8 +33,10 @@ export const Integration = pgTable(
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
     name: text(),
-    refreshToken: text(),
-    accessToken: text(),
+    credentialId: text().references((): AnyPgColumn => WorkflowCredentials.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     expiresAt: timestamp({ precision: 3 }),
     provider: integrationProviderType().default('google').notNull(),
     enabled: boolean().default(true).notNull(),
@@ -39,6 +45,16 @@ export const Integration = pgTable(
     lastSuccessfulSync: timestamp({ precision: 3 }),
     lastHistoryId: text(),
     authStatus: integrationAuthStatus().default('AUTHENTICATED').notNull(),
+    requiresReauth: boolean().default(false).notNull(),
+    lastAuthError: text(),
+    lastAuthErrorAt: timestamp({ precision: 3 }),
+    // Sync state
+    syncStatus: integrationSyncStatus().default('NOT_SYNCED').notNull(),
+    syncStage: integrationSyncStage().default('IDLE').notNull(),
+    syncStageStartedAt: timestamp({ precision: 3 }),
+    // Throttling
+    throttleFailureCount: integer().default(0).notNull(),
+    throttleRetryAfter: timestamp({ precision: 3 }),
     metadata: jsonb(),
     updatedAt: timestamp({ precision: 3 }).notNull(),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
@@ -55,5 +71,7 @@ export const Integration = pgTable(
       table.provider.asc().nullsLast(),
       table.organizationId.asc().nullsLast()
     ),
+    index('Integration_credentialId_idx').using('btree', table.credentialId.asc().nullsLast()),
+    index('Integration_syncStatus_idx').using('btree', table.syncStatus.asc().nullsLast()),
   ]
 )

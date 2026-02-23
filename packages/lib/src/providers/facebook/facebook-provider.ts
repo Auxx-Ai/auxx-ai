@@ -15,6 +15,7 @@ import type {
   MessageStatus,
   SendMessageOptions,
 } from '../integration-provider.interface' // Adjust path based on final structure
+import { IntegrationTokenAccessor } from '../integration-token-accessor'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
 import { type FacebookIntegrationMetadata, FacebookOAuthService } from './facebook-oauth'
@@ -112,18 +113,19 @@ export class FacebookProvider
       !integration ||
       integration.provider !== 'facebook' ||
       !integration.enabled ||
-      !integration.metadata ||
-      !integration.accessToken
+      !integration.metadata
     ) {
-      this.resetState() // Clear any partial state
+      this.resetState()
       throw new Error(
-        `Active Facebook integration not found, not enabled, or missing metadata/token for ID: ${integrationId}`
+        `Active Facebook integration not found, not enabled, or missing metadata for ID: ${integrationId}`
       )
     }
+    // Get tokens from encrypted credentials
+    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
     // Safely cast and extract metadata
     try {
       this.metadata = integration.metadata as unknown as FacebookIntegrationMetadata
-      this.pageAccessToken = integration.accessToken // Stored LL Page Token
+      this.pageAccessToken = tokens.accessToken // Decrypted LL Page Token
       this.pageId = this.metadata.pageId
       if (!this.pageId || !this.pageAccessToken) {
         throw new Error('Page ID or Page Access Token missing in metadata.')

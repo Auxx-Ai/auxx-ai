@@ -7,6 +7,8 @@ export { InstagramOAuthService } from './instagram/instagram-oauth'
 // Integration cache - cached provider lookup for batch operations
 export { getOrgProviderMap, invalidateOrgProviderMap } from './integration-cache'
 export { IntegrationService } from './integration-service'
+export type { IntegrationTokens } from './integration-token-accessor'
+export { IntegrationTokenAccessor } from './integration-token-accessor'
 export { OutlookOAuthService } from './outlook/outlook-oauth'
 export { ProviderRegistryService } from './provider-registry-service'
 // Query helpers - replace removed integrationType/messageType columns

@@ -561,6 +561,20 @@
       "when": 1771641801985,
       "tag": "0079_add_kvp_system_unique_index",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1771816893322,
+      "tag": "0080_integration-credential-link",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1771819146512,
+      "tag": "0081_add_integration_sync_state",
+      "breakpoints": true
     }
   ]
 }

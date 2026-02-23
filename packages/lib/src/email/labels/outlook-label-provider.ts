@@ -3,7 +3,11 @@
 import { IntegrationModel } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
 import type { Client } from '@microsoft/microsoft-graph-client'
-import { OutlookOAuthService } from '../../providers/outlook/outlook-oauth'
+import { IntegrationTokenAccessor } from '../../providers/integration-token-accessor'
+import {
+  type OutlookIntegrationMetadata,
+  OutlookOAuthService,
+} from '../../providers/outlook/outlook-oauth'
 import { ReauthenticationRequiredError } from '../errors-handlers'
 import type { LabelProvider, ProviderLabel } from './label-provider.interface'
 
@@ -32,12 +36,24 @@ export class OutlookLabelProvider implements LabelProvider {
         throw new Error('Integration not found')
       }
 
+      // Get tokens from encrypted credentials
+      const tokens = await IntegrationTokenAccessor.getTokens(this.integrationId)
+      if (!tokens.refreshToken) {
+        throw new Error('Missing refresh token for Outlook integration')
+      }
+
+      const metadata = integration.metadata as unknown as Partial<OutlookIntegrationMetadata>
+      if (!metadata?.homeAccountId) {
+        throw new Error('Missing homeAccountId in Outlook integration metadata')
+      }
+
       this.client = this.oauthService.getAuthenticatedClient({
-        id: integration.id,
-        refreshToken: integration.refreshToken,
-        accessToken: integration.accessToken,
-        expiresAt: integration.expiresAt,
-        email: integration.email,
+        integrationId: integration.id,
+        refreshToken: tokens.refreshToken,
+        accessToken: tokens.accessToken,
+        expiresAt: tokens.expiresAt,
+        homeAccountId: metadata.homeAccountId,
+        email: metadata.email || '',
       })
     } catch (error) {
       logger.error('Error initializing Outlook label provider:', { error })

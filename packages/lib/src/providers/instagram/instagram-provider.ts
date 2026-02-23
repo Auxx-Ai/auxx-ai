@@ -16,6 +16,7 @@ import type {
   MessageStatus,
   SendMessageOptions,
 } from '../integration-provider.interface' // Adjust path based on final structure
+import { IntegrationTokenAccessor } from '../integration-token-accessor'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
 import { type InstagramIntegrationMetadata, InstagramOAuthService } from './instagram-oauth'
@@ -102,18 +103,19 @@ export class InstagramProvider
       !integration ||
       integration.provider !== 'instagram' ||
       !integration.enabled ||
-      !integration.metadata ||
-      !integration.accessToken
+      !integration.metadata
     ) {
       this.resetState()
       throw new Error(
-        `Active Instagram integration not found, not enabled, or missing metadata/token for ID: ${integrationId}`
+        `Active Instagram integration not found, not enabled, or missing metadata for ID: ${integrationId}`
       )
     }
+    // Get tokens from encrypted credentials
+    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
     // Safely extract and validate metadata and token
     try {
       this.metadata = integration.metadata as unknown as InstagramIntegrationMetadata
-      this.pageAccessToken = integration.accessToken // Stored LL Page Token
+      this.pageAccessToken = tokens.accessToken // Decrypted LL Page Token
       this.pageId = this.metadata.pageId
       this.instagramBusinessAccountId = this.metadata.instagramBusinessAccountId
       if (!this.pageId || !this.pageAccessToken || !this.instagramBusinessAccountId) {

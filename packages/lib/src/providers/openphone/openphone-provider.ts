@@ -14,6 +14,7 @@ import type {
   MessageStatus, // Note: Most statuses don't map directly to OpenPhone
   SendMessageOptions,
 } from '../integration-provider.interface' // Adjust path
+import { IntegrationTokenAccessor } from '../integration-token-accessor'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
 import type {
@@ -67,18 +68,20 @@ export class OpenPhoneProvider
       !integration ||
       integration.provider !== 'openphone' ||
       !integration.enabled ||
-      !integration.metadata ||
-      !integration.accessToken
+      !integration.metadata
     ) {
       this.resetState()
       throw new Error(
-        `Active OpenPhone integration not found, not enabled, or missing metadata/API key (stored in accessToken) for ID: ${integrationId}`
+        `Active OpenPhone integration not found, not enabled, or missing metadata for ID: ${integrationId}`
       )
     }
-    // **Security Note:** Storing API keys directly in the DB (even in accessToken)
-    // is generally discouraged. Consider encrypting it or using a secret manager.
-    // For this implementation, we assume the API key is stored in `integration.accessToken`.
-    this.apiKey = integration.accessToken
+    // Get API key from encrypted credentials
+    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+    if (!tokens.accessToken) {
+      this.resetState()
+      throw new Error(`Missing API key for OpenPhone integration ID: ${integrationId}`)
+    }
+    this.apiKey = tokens.accessToken
     try {
       this.metadata = integration.metadata as unknown as OpenPhoneIntegrationMetadata
       this.phoneNumberId = this.metadata.phoneNumberId

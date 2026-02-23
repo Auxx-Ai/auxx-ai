@@ -3,34 +3,30 @@
 import { WEBAPP_URL } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
-import type { MessageType } from '@auxx/database/enums'
 import type { IntegrationEntity } from '@auxx/database/models'
 import { InboxService } from '@auxx/lib/inboxes'
 import { createScopedLogger } from '@auxx/logger'
-import {
-  // AuthenticationResult,
-  type AccountInfo,
-  ConfidentialClientApplication,
-  LogLevel,
-} from '@azure/msal-node'
+import { type AccountInfo, ConfidentialClientApplication, LogLevel } from '@azure/msal-node'
 import { Client } from '@microsoft/microsoft-graph-client'
 import { eq } from 'drizzle-orm'
+import { IntegrationTokenAccessor } from '../integration-token-accessor'
 
 const logger = createScopedLogger('outlook-oauth')
-// Interface describing the data stored in Integration.metadata for Outlook
+
+/** Data stored in Integration.metadata for Outlook */
 export interface OutlookIntegrationMetadata {
-  email: string // Primary email address
-  homeAccountId: string // MSAL's unique ID for the account in this tenant
+  email: string
+  homeAccountId: string
 }
-// Interface describing the data needed internally for authentication methods
-export interface OutlookAuthContext {
-  id: string // Integration ID
+
+/** Context needed to create an authenticated Graph client */
+export interface OutlookClientContext {
+  integrationId: string
   refreshToken: string
   accessToken?: string | null
   expiresAt?: Date | null
-  metadata?: any | null
-  email?: string
-  homeAccountId?: string
+  homeAccountId: string
+  email: string
 }
 export class OutlookOAuthService {
   private static instance: OutlookOAuthService | null = null
@@ -253,16 +249,23 @@ export class OutlookOAuthService {
         logger.info('Processing re-authentication for existing Outlook integration', {
           integrationId,
         })
-        const [integration] = await db
-          .update(schema.Integration)
-          .set({
+
+        await IntegrationTokenAccessor.setTokens(
+          integrationId as string,
+          {
             refreshToken: refreshToken,
             accessToken: response.accessToken,
             expiresAt: expiresOn,
-            email: email, // Update email field directly
-            metadata: integrationMetadata as any, // Update metadata
+          },
+          { createdById: userId as string }
+        )
+
+        const [integration] = await db
+          .update(schema.Integration)
+          .set({
+            email: email,
+            metadata: integrationMetadata as any,
             enabled: true,
-            // Clear authentication error status
             authStatus: 'AUTHENTICATED',
             lastAuthError: null,
             lastAuthErrorAt: null,
@@ -270,80 +273,74 @@ export class OutlookOAuthService {
             lastSuccessfulSync: new Date(),
             updatedAt: new Date(),
           })
-          .where(eq(schema.Integration.id, integrationId))
+          .where(eq(schema.Integration.id, integrationId as string))
           .returning()
+
         logger.info('Re-authentication successful for Outlook integration', {
           integrationId,
           email,
         })
-        return {
-          success: true,
-          integration,
-          isReauth: true,
-        }
+        return { success: true, integration, isReauth: true }
       }
+
       // 5. Store or Update Integration in DB (initial authentication flow)
-      // Note: Drizzle doesn't support JSON path queries as elegantly as drizzle
-      // We'll need to fetch and check manually or use a different approach
       const existingIntegrations = await db
         .select()
         .from(schema.Integration)
-        .where(eq(schema.Integration.organizationId, orgId))
+        .where(eq(schema.Integration.organizationId, orgId as string))
       const existingIntegration = existingIntegrations.find(
-        (integration) =>
-          integration.provider === 'outlook' && (integration.metadata as any)?.email === email
+        (i) => i.provider === 'outlook' && (i.metadata as any)?.email === email
       )
-      const integrationData = {
-        refreshToken: refreshToken,
-        accessToken: response.accessToken,
-        expiresAt: expiresOn,
-        metadata: integrationMetadata as any,
-        enabled: true,
-        updatedAt: new Date(),
-      }
+
       let integration: IntegrationEntity
       if (existingIntegration) {
-        // Update existing integration
         const [updated] = await db
           .update(schema.Integration)
-          .set(integrationData)
+          .set({
+            metadata: integrationMetadata as any,
+            enabled: true,
+            updatedAt: new Date(),
+          })
           .where(eq(schema.Integration.id, existingIntegration.id))
           .returning()
         integration = updated
+
+        await IntegrationTokenAccessor.setTokens(
+          existingIntegration.id,
+          {
+            refreshToken: refreshToken,
+            accessToken: response.accessToken,
+            expiresAt: expiresOn,
+          },
+          { createdById: userId as string }
+        )
       } else {
-        // Create new integration
         const [created] = await db
           .insert(schema.Integration)
           .values({
-            ...integrationData,
-            organizationId: orgId,
+            organizationId: orgId as string,
             provider: 'outlook',
-            messageType: 'EMAIL' as MessageType,
-            settings: {
-              recordCreation: {
-                mode: 'selective', // Default to selective mode
-              },
-            },
+            metadata: integrationMetadata as any,
+            enabled: true,
+            updatedAt: new Date(),
           })
           .returning()
         integration = created
+
+        await IntegrationTokenAccessor.setTokens(
+          integration.id,
+          {
+            refreshToken: refreshToken,
+            accessToken: response.accessToken,
+            expiresAt: expiresOn,
+          },
+          { createdById: userId as string }
+        )
       }
-      const inboxService = new InboxService(db, orgId, userId)
+
+      const inboxService = new InboxService(db, orgId as string, userId as string)
       await inboxService.addIntegrationToDefaultInbox(integration.id)
-      // const inboxes = await inboxService.getInboxes()
-      // if(!inboxes || inboxes.length === 0) {
-      //   const defaultInbox = await inboxService.createInbox({
-      //     name: 'Shared Inbox',
-      //     description: 'Default shared inbox for all team members',
-      //     color: '#A7C1F2', // Light Blue
-      //     status: 'ACTIVE',
-      //     allowAllMembers: true, // All members have access by default
-      //     enableMemberAccess: false,
-      //     enableGroupAccess: false,
-      //   })
-      // }
-      // Create a default shared inbox
-      // InboxService.getInstance().updateIntegrationInboxes(integration.id, orgId, userId)
+
       logger.info('Outlook integration created/updated successfully', {
         integrationId: integration.id,
         email,
@@ -403,9 +400,15 @@ export class OutlookOAuthService {
         .from(schema.Integration)
         .where(eq(schema.Integration.id, integrationId))
         .limit(1)
-      if (!integration || !integration.refreshToken) {
-        throw new Error('Integration not found or missing refresh token')
+      if (!integration) {
+        throw new Error('Integration not found')
       }
+
+      const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+      if (!tokens.refreshToken) {
+        throw new Error('Integration missing refresh token')
+      }
+
       const metadata = integration.metadata as unknown as Partial<OutlookIntegrationMetadata>
       const homeAccountId = metadata?.homeAccountId
       const email = metadata?.email || ''
@@ -418,20 +421,21 @@ export class OutlookOAuthService {
           'Cannot refresh token: Account identifier missing. Re-authentication may be required.'
         )
       }
-      // CRITICAL: Load the refresh token into MSAL's cache before attempting to use it
-      this.loadRefreshTokenIntoCache(homeAccountId, integration.refreshToken, email)
-      // Create a minimal account object for the request
+
+      this.loadRefreshTokenIntoCache(homeAccountId, tokens.refreshToken, email)
+
       const account = {
         homeAccountId: homeAccountId,
         environment: 'login.microsoftonline.com',
         tenantId: 'common',
-        username: metadata.email || '',
+        username: email,
       } as AccountInfo
       const silentRequest = {
         account: account,
         scopes: OutlookOAuthService.scopes,
-        forceRefresh: true, // Force refresh to ensure we get a new token
+        forceRefresh: true,
       }
+
       logger.debug('Attempting silent token acquisition (refresh)', {
         integrationId,
         homeAccountId,
@@ -440,26 +444,29 @@ export class OutlookOAuthService {
       if (!response || !response.accessToken) {
         throw new Error('Silent token acquisition failed to return an access token')
       }
+
       logger.info('Outlook token refreshed successfully via silent acquisition', { integrationId })
       const expiresOn = response.expiresOn
         ? new Date(response.expiresOn)
         : new Date(Date.now() + (response.expiresIn || 3600) * 1000)
-      // Extract potential new refresh token (check if MSAL rotated it)
+
       const newRefreshToken = this.extractRefreshToken(homeAccountId)
-      // Update tokens in the database
+
+      const tokenUpdate: Parameters<typeof IntegrationTokenAccessor.setTokens>[1] = {
+        accessToken: response.accessToken,
+        expiresAt: expiresOn,
+      }
+      if (newRefreshToken && newRefreshToken !== tokens.refreshToken) {
+        tokenUpdate.refreshToken = newRefreshToken
+      }
+
+      await IntegrationTokenAccessor.setTokens(integrationId, tokenUpdate)
+
       const [updatedIntegration] = await db
-        .update(schema.Integration)
-        .set({
-          accessToken: response.accessToken,
-          expiresAt: expiresOn,
-          // Only update RT if a new one was extracted AND it's different
-          ...(newRefreshToken && newRefreshToken !== integration.refreshToken
-            ? { refreshToken: newRefreshToken }
-            : {}),
-          updatedAt: new Date(),
-        })
+        .select()
+        .from(schema.Integration)
         .where(eq(schema.Integration.id, integrationId))
-        .returning()
+        .limit(1)
       return updatedIntegration
     } catch (error: unknown) {
       const err = error as {
@@ -473,14 +480,20 @@ export class OutlookOAuthService {
         errorMessage: err.errorMessage,
         integrationId,
       })
-      // Handle specific errors like 'invalid_grant'
       if (err.errorCode === 'invalid_grant' || err.errorMessage?.includes('AADSTS70008')) {
         logger.warn('Outlook refresh token is invalid or revoked. Disabling integration.', {
           integrationId,
         })
         await db
           .update(schema.Integration)
-          .set({ enabled: false, accessToken: null, refreshToken: 'REVOKED', expiresAt: null })
+          .set({
+            enabled: false,
+            requiresReauth: true,
+            lastAuthError: 'Refresh token is invalid or revoked',
+            lastAuthErrorAt: new Date(),
+            authStatus: 'AUTH_ERROR',
+            updatedAt: new Date(),
+          })
           .where(eq(schema.Integration.id, integrationId))
           .catch((dbErr: unknown) =>
             logger.error('Failed to disable integration after invalid grant', { dbErr })
@@ -490,107 +503,88 @@ export class OutlookOAuthService {
       throw new Error(`Failed to refresh Outlook access token: ${err.message || err.errorCode}`)
     }
   }
-  /** Revokes access (clears local tokens and disables). */
+  /** Revokes access (clears encrypted tokens and disables). */
   public async revokeAccess(integrationId: string): Promise<boolean> {
     try {
-      const [integration] = await db
-        .select()
-        .from(schema.Integration)
-        .where(eq(schema.Integration.id, integrationId))
-        .limit(1)
-      if (!integration) {
-        throw new Error('Integration not found')
-      }
-      logger.warn('Attempting to revoke Outlook access (clearing local tokens & disabling)', {
+      logger.warn('Attempting to revoke Outlook access (clearing tokens & disabling)', {
         integrationId,
       })
-      // Update DB: Disable and Clear Tokens/Metadata
+
+      await IntegrationTokenAccessor.deleteTokens(integrationId)
+
       await db
         .update(schema.Integration)
         .set({
           enabled: false,
-          accessToken: null,
-          refreshToken: null, // Clear refresh token on explicit revoke
-          expiresAt: null,
-          metadata: null, // Clear metadata
+          metadata: null,
+          updatedAt: new Date(),
         })
         .where(eq(schema.Integration.id, integrationId))
+
       logger.info(
         `Cleared tokens/metadata and disabled Outlook integration ${integrationId} in DB.`
       )
       return true
     } catch (error: unknown) {
-      const err = error as {
-        message?: string
-      }
+      const err = error as { message?: string }
       logger.error('Error revoking Outlook access:', { error: err.message, integrationId })
       throw new Error(`Failed to revoke Outlook access: ${err.message}`)
     }
   }
-  public getAuthenticatedClient(integration: OutlookAuthContext): Client {
-    if (!integration.id || !integration.refreshToken || !integration.metadata) {
+  public getAuthenticatedClient(ctx: OutlookClientContext): Client {
+    if (!ctx.integrationId || !ctx.refreshToken || !ctx.homeAccountId) {
       throw new Error(
-        'Cannot create authenticated client: Integration context missing essential data (ID, refreshToken, metadata).'
+        'Cannot create authenticated client: Missing integrationId, refreshToken, or homeAccountId.'
       )
     }
-    const metadata = integration.metadata as unknown as Partial<OutlookIntegrationMetadata>
-    const homeAccountId = metadata?.homeAccountId
-    const email = metadata?.email || ''
-    if (!homeAccountId) {
-      logger.error(
-        'Home Account ID missing in integration metadata. Cannot perform silent token acquisition.',
-        { integrationId: integration.id }
-      )
-      throw new Error('Account identifier missing, cannot acquire token silently.')
-    }
-    // CRITICAL: Load BOTH the account and refresh token into MSAL's cache
-    this.loadRefreshTokenIntoCache(homeAccountId, integration.refreshToken, email)
-    // Create the Graph Client with an MSAL authProvider
+
+    const { integrationId, refreshToken, homeAccountId, email } = ctx
+
+    this.loadRefreshTokenIntoCache(homeAccountId, refreshToken, email)
+
     const client = Client.init({
       authProvider: async (done) => {
         try {
-          // Create minimal account object
           const account = {
             homeAccountId: homeAccountId,
             environment: 'login.microsoftonline.com',
             tenantId: 'common',
             username: email,
-            localAccountId: homeAccountId, // Add this as per GitHub issue
+            localAccountId: homeAccountId,
           } as AccountInfo
           const silentRequest = {
             account: account,
             scopes: OutlookOAuthService.scopes,
             forceRefresh: false,
           }
-          // First verify we have the account in cache
+
           const accounts = await this.msalClient.getTokenCache().getAllAccounts()
           const matchingAccount = accounts.find((a) => a.homeAccountId === homeAccountId)
           if (!matchingAccount) {
             logger.warn('Account not found in cache before silent acquisition, reloading...', {
               homeAccountId,
-              integrationId: integration.id,
+              integrationId,
               accountsInCache: accounts.length,
             })
-            // Reload the cache explicitly
-            this.loadRefreshTokenIntoCache(homeAccountId, integration.refreshToken, email)
+            this.loadRefreshTokenIntoCache(homeAccountId, refreshToken, email)
           }
-          // Acquire token silently (uses cache or refresh token)
+
           const response = await this.msalClient.acquireTokenSilent(silentRequest)
           if (!response || !response.accessToken) {
             throw new Error('acquireTokenSilent failed to return an access token.')
           }
-          // Optionally update DB if expiry changed significantly (though less critical now)
+
+          // Update encrypted tokens in background if expiry changed
           const newExpiresOn = response.expiresOn ? new Date(response.expiresOn) : null
-          if (newExpiresOn && newExpiresOn?.getTime() !== integration.expiresAt?.getTime()) {
-            // Perform non-critical DB update in background
-            db.update(schema.Integration)
-              .set({ accessToken: response.accessToken, expiresAt: newExpiresOn })
-              .where(eq(schema.Integration.id, integration.id))
-              .catch((err: unknown) =>
-                logger.error('Background DB update failed in authProvider', { err })
-              )
+          if (newExpiresOn && newExpiresOn?.getTime() !== ctx.expiresAt?.getTime()) {
+            IntegrationTokenAccessor.setTokens(integrationId, {
+              accessToken: response.accessToken,
+              expiresAt: newExpiresOn,
+            }).catch((err: unknown) =>
+              logger.error('Background token update failed in authProvider', { err })
+            )
           }
-          // Successfully acquired token
+
           done(null, response.accessToken)
         } catch (error) {
           const err = error as {
@@ -601,28 +595,28 @@ export class OutlookOAuthService {
           logger.error('Error acquiring token silently in Graph authProvider:', {
             error: err.message,
             errorCode: err.errorCode,
-            integrationId: integration.id,
+            integrationId,
           })
-          // Handle 'invalid_grant' specifically - indicates refresh token failed
+
           if (err.errorCode === 'invalid_grant' || err.errorMessage?.includes('AADSTS70008')) {
             logger.warn('Refresh token invalid during silent acquisition. Disabling integration.', {
-              integrationId: integration.id,
+              integrationId,
             })
-            // Disable integration in background
             db.update(schema.Integration)
               .set({
                 enabled: false,
-                accessToken: null,
-                refreshToken: 'REVOKED',
-                expiresAt: null,
+                requiresReauth: true,
+                lastAuthError: 'Refresh token invalid during silent acquisition',
+                lastAuthErrorAt: new Date(),
+                authStatus: 'AUTH_ERROR',
+                updatedAt: new Date(),
               })
-              .where(eq(schema.Integration.id, integration.id))
+              .where(eq(schema.Integration.id, integrationId))
               .catch((dbErr: unknown) =>
                 logger.error('Failed to disable integration after invalid grant', { dbErr })
               )
           }
-          // Other errors might be transient (network) or require interaction (consent needed)
-          // Pass the error back to the Graph client SDK
+
           done(error as Error, null)
         }
       },

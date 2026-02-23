@@ -82,6 +82,8 @@ export const startMessageSyncJob = async (job: Job<StartMessageSyncJobData>) => 
         id: schema.Integration.id,
         provider: schema.Integration.provider,
         metadata: schema.Integration.metadata,
+        syncStatus: schema.Integration.syncStatus,
+        throttleRetryAfter: schema.Integration.throttleRetryAfter,
       })
       .from(schema.Integration)
       .where(
@@ -98,7 +100,22 @@ export const startMessageSyncJob = async (job: Job<StartMessageSyncJobData>) => 
         )
       )
 
-    if (enabledIntegrations.length === 0) {
+    // Filter out throttled and currently-syncing integrations
+    const syncableIntegrations = enabledIntegrations.filter((i) => {
+      if (i.syncStatus === 'SYNCING') {
+        logger.info(`Skipping integration ${i.id} — already syncing`)
+        return false
+      }
+      if (i.throttleRetryAfter && i.throttleRetryAfter > new Date()) {
+        logger.info(
+          `Skipping integration ${i.id} — throttled until ${i.throttleRetryAfter.toISOString()}`
+        )
+        return false
+      }
+      return true
+    })
+
+    if (syncableIntegrations.length === 0) {
       logger.warn(
         `No enabled integrations found for organization ${organizationId}. Marking sync job ${syncJobId} as complete (no work to do).`,
         { jobId: job.id }
@@ -128,13 +145,13 @@ export const startMessageSyncJob = async (job: Job<StartMessageSyncJobData>) => 
     }
 
     logger.info(
-      `Found ${enabledIntegrations.length} enabled integrations. Enqueueing individual sync jobs.`,
+      `Found ${syncableIntegrations.length} syncable integrations (${enabledIntegrations.length} enabled total). Enqueueing individual sync jobs.`,
       { jobId: job.id, syncJobId, organizationId }
     )
 
-    // 3. Enqueue a single integration sync job for each enabled integration
+    // 3. Enqueue a single integration sync job for each syncable integration
     const integrationJobIds: string[] = []
-    const jobPromises = enabledIntegrations.map(async (integration) => {
+    const jobPromises = syncableIntegrations.map(async (integration) => {
       const jobData: SyncSingleIntegrationMessagesJobData = {
         syncJobId: syncJobId, // Pass the parent SyncJob ID
         organizationId,

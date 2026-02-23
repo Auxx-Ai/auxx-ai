@@ -126,7 +126,7 @@ const checkDatabaseEnvDrift = () => {
       const expectedDbName = new URL(expectedDatabaseUrl).pathname.replace(/^\//, '')
       if (composeDbName !== expectedDbName) {
         errors.push(
-          `docker-compose.yml: POSTGRES_DB (${composeDbName}) does not match canonical DATABASE_URL db (${expectedDbName})`,
+          `docker-compose.yml: POSTGRES_DB (${composeDbName}) does not match canonical DATABASE_URL db (${expectedDbName})`
         )
       }
     }

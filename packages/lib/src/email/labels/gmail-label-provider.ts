@@ -4,6 +4,7 @@ import { IntegrationModel } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
 import { google } from 'googleapis'
 import { GoogleOAuthService } from '../../providers/google/google-oauth'
+import { IntegrationTokenAccessor } from '../../providers/integration-token-accessor'
 import { ReauthenticationRequiredError } from '../errors-handlers'
 import type { LabelProvider, ProviderLabel } from './label-provider.interface'
 
@@ -33,14 +34,11 @@ export class GmailLabelProvider implements LabelProvider {
         throw new Error('Integration not found')
       }
 
+      // Get tokens from encrypted credentials
+      const tokens = await IntegrationTokenAccessor.getTokens(this.integrationId)
+
       // Get authenticated client from the OAuth service
-      this.client = this.oauthService.getAuthenticatedClient({
-        id: integration.id,
-        refreshToken: integration.refreshToken,
-        accessToken: integration.accessToken,
-        expiresAt: integration.expiresAt,
-        email: integration.email,
-      })
+      this.client = this.oauthService.getAuthenticatedClient(tokens)
 
       // Initialize Gmail API with the authenticated client
       this.gmail = google.gmail({ version: 'v1', auth: this.client })

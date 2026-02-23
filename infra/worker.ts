@@ -14,6 +14,12 @@ export const worker = $dev
   : new sst.aws.Service('AuxxAiWorker', {
       cluster,
       image: { context: '.', dockerfile: 'apps/worker/Dockerfile' },
+      transform: {
+        image: (args) => {
+          // Keep cache reads if available, but disable cache export to avoid CI EOF/provider crashes.
+          args.cacheTo = []
+        },
+      },
       cpu: '0.25 vCPU',
       memory: '0.5 GB',
       environment: getSelectedEnvVars('worker'),

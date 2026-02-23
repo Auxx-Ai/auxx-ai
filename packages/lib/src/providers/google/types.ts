@@ -9,8 +9,7 @@ export interface GoogleIntegration {
   id: string
   provider: 'google'
   enabled: boolean
-  refreshToken: string
-  accessToken: string | null
+  credentialId: string | null
   expiresAt: Date | null
   lastHistoryId: string | null
   lastSyncedAt: Date | null
