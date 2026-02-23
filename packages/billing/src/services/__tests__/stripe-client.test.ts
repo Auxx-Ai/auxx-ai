@@ -4,14 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // We need to test the actual StripeClientService class, so we unmock the module
 // and instead mock the Stripe constructor
-vi.mock('stripe', () => {
-  const MockStripe = vi.fn(() => ({
-    prices: {
+vi.mock('stripe', () => ({
+  default: class MockStripe {
+    prices = {
       list: vi.fn(),
-    },
-  }))
-  return { default: MockStripe }
-})
+    }
+  },
+}))
 
 // Unmock stripe-client so we test the real implementation
 vi.mock('@auxx/billing/services/stripe-client', async (importOriginal) => {

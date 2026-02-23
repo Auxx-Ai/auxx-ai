@@ -3,7 +3,7 @@
 
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { scryptAsync } from '@noble/hashes/scrypt'
-import { bytesToHex, hexToBytes } from '@noble/hashes/utils'
+import { bytesToHex, hexToBytes, utf8ToBytes } from '@noble/hashes/utils'
 
 /** SCRYPT_CONFIG matches the production Better Auth hashing parameters. */
 const SCRYPT_CONFIG = {
@@ -53,7 +53,11 @@ export async function hashPassword(
   existingSalt?: string
 ): Promise<HashedPassword> {
   const salt = existingSalt ?? randomSalt()
-  const key = await scryptAsync(password.normalize('NFKC'), salt, SCRYPT_CONFIG)
+  const key = await scryptAsync(
+    utf8ToBytes(password.normalize('NFKC')),
+    utf8ToBytes(salt),
+    SCRYPT_CONFIG
+  )
   const keyHex = bytesToHex(key)
   return {
     salt,

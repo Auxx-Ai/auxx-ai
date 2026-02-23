@@ -59,59 +59,55 @@ vi.mock('@auxx/logger', () => ({
 }))
 
 // Mock all provider modules — return real capabilities via the PROVIDER_CAPABILITIES map
+// Vitest 4 requires class syntax (or vi.fn with explicit constructor support) for mocks used with `new`.
 vi.mock('../google/google-provider', async () => {
   const { PROVIDER_CAPABILITIES } = await import('../provider-capabilities')
   const { IntegrationProviderType } = await import('@auxx/database/enums')
-  return {
-    GoogleProvider: vi.fn().mockImplementation(() => ({
-      initialize: vi.fn().mockResolvedValue(undefined),
-      getCapabilities: () => PROVIDER_CAPABILITIES[IntegrationProviderType.google],
-    })),
-  }
+  const GoogleProvider = vi.fn(function (this: any) {
+    this.initialize = vi.fn().mockResolvedValue(undefined)
+    this.getCapabilities = () => PROVIDER_CAPABILITIES[IntegrationProviderType.google]
+  })
+  return { GoogleProvider }
 })
 
 vi.mock('../facebook/facebook-provider', async () => {
   const { PROVIDER_CAPABILITIES } = await import('../provider-capabilities')
   const { IntegrationProviderType } = await import('@auxx/database/enums')
-  return {
-    FacebookProvider: vi.fn().mockImplementation(() => ({
-      initialize: vi.fn().mockResolvedValue(undefined),
-      getCapabilities: () => PROVIDER_CAPABILITIES[IntegrationProviderType.facebook],
-    })),
-  }
+  const FacebookProvider = vi.fn(function (this: any) {
+    this.initialize = vi.fn().mockResolvedValue(undefined)
+    this.getCapabilities = () => PROVIDER_CAPABILITIES[IntegrationProviderType.facebook]
+  })
+  return { FacebookProvider }
 })
 
 vi.mock('../instagram/instagram-provider', async () => {
   const { PROVIDER_CAPABILITIES } = await import('../provider-capabilities')
   const { IntegrationProviderType } = await import('@auxx/database/enums')
-  return {
-    InstagramProvider: vi.fn().mockImplementation(() => ({
-      initialize: vi.fn().mockResolvedValue(undefined),
-      getCapabilities: () => PROVIDER_CAPABILITIES[IntegrationProviderType.instagram],
-    })),
-  }
+  const InstagramProvider = vi.fn(function (this: any) {
+    this.initialize = vi.fn().mockResolvedValue(undefined)
+    this.getCapabilities = () => PROVIDER_CAPABILITIES[IntegrationProviderType.instagram]
+  })
+  return { InstagramProvider }
 })
 
 vi.mock('../outlook/outlook-provider', async () => {
   const { PROVIDER_CAPABILITIES } = await import('../provider-capabilities')
   const { IntegrationProviderType } = await import('@auxx/database/enums')
-  return {
-    OutlookProvider: vi.fn().mockImplementation(() => ({
-      initialize: vi.fn().mockResolvedValue(undefined),
-      getCapabilities: () => PROVIDER_CAPABILITIES[IntegrationProviderType.outlook],
-    })),
-  }
+  const OutlookProvider = vi.fn(function (this: any) {
+    this.initialize = vi.fn().mockResolvedValue(undefined)
+    this.getCapabilities = () => PROVIDER_CAPABILITIES[IntegrationProviderType.outlook]
+  })
+  return { OutlookProvider }
 })
 
 vi.mock('../openphone/openphone-provider', async () => {
   const { PROVIDER_CAPABILITIES } = await import('../provider-capabilities')
   const { IntegrationProviderType } = await import('@auxx/database/enums')
-  return {
-    OpenPhoneProvider: vi.fn().mockImplementation(() => ({
-      initialize: vi.fn().mockResolvedValue(undefined),
-      getCapabilities: () => PROVIDER_CAPABILITIES[IntegrationProviderType.openphone],
-    })),
-  }
+  const OpenPhoneProvider = vi.fn(function (this: any) {
+    this.initialize = vi.fn().mockResolvedValue(undefined)
+    this.getCapabilities = () => PROVIDER_CAPABILITIES[IntegrationProviderType.openphone]
+  })
+  return { OpenPhoneProvider }
 })
 
 describe('Provider Integration Tests', () => {

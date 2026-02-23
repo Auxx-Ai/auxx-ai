@@ -44,39 +44,43 @@ vi.mock('../../logger', () => ({
   }),
 }))
 
-vi.mock('../../files/adapters/s3-adapter', () => ({
-  S3Adapter: vi.fn().mockImplementation(() => ({
-    init: vi.fn(),
-    upload: vi.fn().mockResolvedValue({ key: 'test-key' }),
-    putObject: vi.fn().mockResolvedValue({ key: 'test-key', etag: 'test-etag' }),
-  })),
-}))
+vi.mock('../../files/adapters/s3-adapter', () => {
+  return {
+    S3Adapter: class {
+      init = vi.fn()
+      upload = vi.fn().mockResolvedValue({ key: 'test-key' })
+      putObject = vi.fn().mockResolvedValue({ key: 'test-key', etag: 'test-etag' })
+    },
+  }
+})
 
-vi.mock('../../files/upload/processors/entity-processors', () => ({
-  UserProfileProcessor: vi.fn().mockImplementation(() => ({
-    processConfig: vi.fn().mockResolvedValue({
-      config: {
-        storageKey: 'test-org/user-profile/test-user/123_avatar-test.jpg',
-        organizationId: 'test-org',
-        userId: 'test-user',
-        bucket: 'auxx-private-local',
-        visibility: 'PRIVATE',
-        ttlSec: 600,
-        policy: {
-          keyPrefix: 'test-org/',
-          contentLengthRange: [0, Number.MAX_SAFE_INTEGER],
-          maxTtl: 600,
-          allowedMimeTypes: ['image/jpeg'],
+vi.mock('../../files/upload/processors/entity-processors', () => {
+  return {
+    UserProfileProcessor: class {
+      processConfig = vi.fn().mockResolvedValue({
+        config: {
+          storageKey: 'test-org/user-profile/test-user/123_avatar-test.jpg',
+          organizationId: 'test-org',
+          userId: 'test-user',
+          bucket: 'auxx-private-local',
+          visibility: 'PRIVATE',
+          ttlSec: 600,
+          policy: {
+            keyPrefix: 'test-org/',
+            contentLengthRange: [0, Number.MAX_SAFE_INTEGER],
+            maxTtl: 600,
+            allowedMimeTypes: ['image/jpeg'],
+          },
+          uploadPlan: { strategy: 'single' },
         },
-        uploadPlan: { strategy: 'single' },
-      },
-    }),
-    process: vi.fn().mockResolvedValue({
-      assetId: 'test-asset-id',
-      storageLocationId: 'test-location-id',
-    }),
-  })),
-}))
+      })
+      process = vi.fn().mockResolvedValue({
+        assetId: 'test-asset-id',
+        storageLocationId: 'test-location-id',
+      })
+    },
+  }
+})
 
 vi.mock('../../files/upload/session-manager', () => ({
   SessionManager: {

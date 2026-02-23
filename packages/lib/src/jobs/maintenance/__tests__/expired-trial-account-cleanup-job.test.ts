@@ -87,9 +87,11 @@ vi.mock('@auxx/email', () => ({
 }))
 
 vi.mock('../../../organizations', () => ({
-  OrganizationService: vi.fn().mockImplementation(() => ({
-    deleteOrganization: (...args: unknown[]) => mockDeleteOrganization(...args),
-  })),
+  OrganizationService: class {
+    deleteOrganization(...args: unknown[]) {
+      return mockDeleteOrganization(...args)
+    }
+  },
 }))
 
 // ---- helpers ----
@@ -151,6 +153,8 @@ describe('expiredTrialAccountCleanupJob', () => {
       where: mockFreshCheckWhere,
     })
     mockSelect.mockReturnValue({ from: mockFrom })
+
+    mockDeleteOrganization.mockResolvedValue({ success: true, userDeleted: false })
 
     const mod = await import('../expired-trial-account-cleanup-job')
     expiredTrialAccountCleanupJob = mod.expiredTrialAccountCleanupJob
