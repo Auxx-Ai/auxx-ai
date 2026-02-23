@@ -1,26 +1,57 @@
 // apps/api/src/middleware/cors.ts
 
+import { getTrustedOrigins } from '@auxx/config/server'
+import { configService } from '@auxx/credentials'
+import { createScopedLogger } from '@auxx/logger'
 import { cors } from 'hono/cors'
-import { allowedOrigins } from '../config'
+
+const log = createScopedLogger('cors')
+
+const isDev = (process.env.NODE_ENV || 'development') === 'development'
+
+function buildAllowedOrigins(): Set<string> {
+  const origins = new Set(getTrustedOrigins())
+
+  const extra = configService.get<string>('EXTRA_ALLOWED_ORIGINS')
+  if (extra) {
+    for (const o of extra.split(',')) {
+      const trimmed = o.trim()
+      if (trimmed) origins.add(trimmed)
+    }
+  }
+
+  return origins
+}
+
+export const allowedOrigins = buildAllowedOrigins()
+
+if (!isDev) {
+  for (const origin of allowedOrigins) {
+    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      log.warn(
+        `CORS origin "${origin}" contains localhost in non-development environment. ` +
+          'Check that NEXT_PUBLIC_BASE_URL and NEXT_PUBLIC_DEV_PORTAL_URL are set.'
+      )
+    }
+  }
+}
 
 /**
- * CORS middleware configuration
- * Allows requests from specified origins with credentials
+ * CORS middleware configuration.
+ * Origins are derived from getTrustedOrigins() (WEBAPP_URL, DEV_PORTAL_URL, API_URL)
+ * plus any extras from EXTRA_ALLOWED_ORIGINS env var.
+ * Localhost is only allowed in development.
  */
 export const corsMiddleware = cors({
   origin: (origin: string) => {
-    // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return '*'
-
-    // Check if origin is in allowed list
-    if (allowedOrigins.includes(origin)) return origin
-
-    // Development: allow localhost on any port
-    if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+    if (allowedOrigins.has(origin)) return origin
+    if (
+      isDev &&
+      (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:'))
+    ) {
       return origin
     }
-
-    // Reject other origins
     return ''
   },
   allowHeaders: ['Content-Type', 'Authorization', 'X-Workflow-Passport'],

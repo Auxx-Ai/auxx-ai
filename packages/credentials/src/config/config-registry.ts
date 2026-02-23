@@ -70,12 +70,11 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     isSensitive: false,
     isEnvOnly: true,
   },
-  ALLOWED_ORIGINS: {
-    key: 'ALLOWED_ORIGINS',
-    description: 'Comma-separated allowed origins for CORS',
+  EXTRA_ALLOWED_ORIGINS: {
+    key: 'EXTRA_ALLOWED_ORIGINS',
+    description: 'Additional comma-separated origins for CORS (preview deploys, staging, etc.)',
     type: ConfigVariableType.STRING,
     group: ConfigVariableGroup.SERVER,
-    defaultValue: 'http://localhost:3000,http://localhost:3006',
     isSensitive: false,
     isEnvOnly: true,
   },
