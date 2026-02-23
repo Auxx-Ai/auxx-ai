@@ -124,8 +124,8 @@ catalogs:
       specifier: ^1.12.8
       version: 1.12.24
     lucide-react:
-      specifier: 0.544.0
-      version: 0.544.0
+      specifier: 0.575.0
+      version: 0.575.0
     next:
       specifier: 16.1.0
       version: 16.1.0
@@ -401,7 +401,7 @@ importers:
         version: 0.44.5(@opentelemetry/api@1.9.0)(@types/pg@8.15.5)(@upstash/redis@1.35.6)(kysely@0.28.8)(pg@8.16.3)(postgres@3.4.7)
       lucide-react:
         specifier: 'catalog:'
-        version: 0.544.0(react@19.2.3)
+        version: 0.575.0(react@19.2.3)
       next:
         specifier: 'catalog:'
         version: 16.1.0(@babel/core@7.28.4)(@opentelemetry/api@1.9.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -468,7 +468,7 @@ importers:
         version: 15.7.8(@types/react-dom@19.2.3(@types/react@19.2.3))(@types/react@19.2.3)(next@16.1.0(@opentelemetry/api@1.9.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tailwindcss@4.1.14)
       lucide-react:
         specifier: 'catalog:'
-        version: 0.544.0(react@19.2.3)
+        version: 0.575.0(react@19.2.3)
       next:
         specifier: 'catalog:'
         version: 16.1.0(@babel/core@7.28.4)(@opentelemetry/api@1.9.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -541,7 +541,7 @@ importers:
         version: 2.1.1
       lucide-react:
         specifier: 'catalog:'
-        version: 0.544.0(react@19.2.3)
+        version: 0.575.0(react@19.2.3)
       motion:
         specifier: ^12.23.16
         version: 12.23.24(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -913,7 +913,7 @@ importers:
         version: 1.12.24
       lucide-react:
         specifier: 'catalog:'
-        version: 0.544.0(react@19.2.3)
+        version: 0.575.0(react@19.2.3)
       motion:
         specifier: ^12.23.16
         version: 12.23.24(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -1589,7 +1589,7 @@ importers:
         version: 11.1.0
       lucide-react:
         specifier: 'catalog:'
-        version: 0.544.0(react@19.2.3)
+        version: 0.575.0(react@19.2.3)
       mailgun.js:
         specifier: ^12.0.1
         version: 12.1.1
@@ -2092,7 +2092,7 @@ importers:
         version: 1.12.24
       lucide-react:
         specifier: 'catalog:'
-        version: 0.544.0(react@19.2.3)
+        version: 0.575.0(react@19.2.3)
       motion:
         specifier: ^12.23.16
         version: 12.23.24(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -10289,8 +10289,8 @@ packages:
   lru-memoizer@2.3.0:
     resolution: {integrity: sha512-GXn7gyHAMhO13WSKrIiNfztwxodVsP8IoZ3XfrJV4yH2x0/OeTO/FIaAHTY5YekdGgW94njfuKmyyt1E0mR6Ug==}
 
-  lucide-react@0.544.0:
-    resolution: {integrity: sha512-t5tS44bqd825zAW45UQxpG2CvcC4urOwn2TrwSH8u+MjeE+1NnWl6QqeQ/6NdjMqdOygyiT9p3Ev0p1NJykxjw==}
+  lucide-react@0.575.0:
+    resolution: {integrity: sha512-VuXgKZrk0uiDlWjGGXmKV6MSk9Yy4l10qgVvzGn2AWBx1Ylt0iBexKOAoA6I7JO3m+M9oeovJd3yYENfkUbOeg==}
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
@@ -23051,7 +23051,7 @@ snapshots:
       lodash.clonedeep: 4.5.0
       lru-cache: 6.0.0
 
-  lucide-react@0.544.0(react@19.2.3):
+  lucide-react@0.575.0(react@19.2.3):
     dependencies:
       react: 19.2.3
 
