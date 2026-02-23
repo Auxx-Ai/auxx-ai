@@ -19,7 +19,7 @@ catalog:
   '@paralleldrive/cuid2': 2.0.1,
   '@shopify/admin-api-client': ^1.0.5
   '@shopify/shopify-api': ^11.8.1
-  '@stripe/react-stripe-js': ^5.0.0
+  '@stripe/react-stripe-js': ^5.6.0
   '@stripe/stripe-js': ^8.0.0
   '@t3-oss/env-nextjs': ^0.10.1
   '@tailwindcss/postcss': ^4.1.7
