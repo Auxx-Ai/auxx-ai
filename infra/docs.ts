@@ -7,7 +7,8 @@ import { getSecretsForLinking, getSelectedEnvVars } from './secrets'
 export const docs = new sst.aws.Nextjs('AuxxAiDocs', {
   vpc,
   path: 'apps/docs',
-  buildCommand: 'pnpm run build:opennext',
+  buildCommand:
+    'if [ "${SST_USE_PREBUILT_OPENNEXT:-0}" = "1" ] && [ -d ".open-next" ]; then echo "Using pre-built OpenNext artifacts"; else pnpm run build:opennext; fi',
   environment: getSelectedEnvVars('docs'),
   link: getSecretsForLinking('docs'),
   openNextVersion: '3.9.15',
