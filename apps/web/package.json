@@ -141,7 +141,7 @@
     "react-phone-input-2": "^2.15.1",
     "react-phone-number-input": "^3.4.14",
     "react-qr-code": "^2.0.15",
-    "react-resizable-panels": "^2.1.7",
+    "react-resizable-panels": "^4.6.5",
     "react-select": "^5.10.0",
     "recharts": "^2.15.4",
     "server-only": "catalog:",
