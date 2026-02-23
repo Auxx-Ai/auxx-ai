@@ -31,7 +31,6 @@ import { featurePermissionsRouter } from './routers/featurePermissions'
 import { fieldValueRouter } from './routers/fieldValue'
 import { fileRouter } from './routers/file'
 import { folderRouter } from './routers/folder'
-import { googleOAuthRouter } from './routers/googleOAuth'
 import { inboxRouter } from './routers/inbox'
 import { integrationRouter } from './routers/integration'
 import { integrationReauthRouter } from './routers/integration-reauth'
@@ -112,7 +111,6 @@ export const appRouter = createTRPCRouter({
   entityDefinition: entityDefinitionRouter,
   entityGroup: entityGroupRouter,
   featurePermission: featurePermissionsRouter,
-  googleOAuth: googleOAuthRouter,
   inbox: inboxRouter,
   integration: integrationRouter,
   integrationReauth: integrationReauthRouter,

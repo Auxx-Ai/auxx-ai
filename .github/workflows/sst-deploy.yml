@@ -116,11 +116,9 @@ jobs:
           # Public envs
           echo "NEXT_PUBLIC_BASE_URL=${{ vars.NEXT_PUBLIC_BASE_URL }}" >> $GITHUB_ENV
           echo "NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL }}" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_S3_REGION=${{ vars.NEXT_PUBLIC_S3_REGION }}" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_S3_BUCKET=${{ vars.NEXT_PUBLIC_S3_BUCKET }}" >> $GITHUB_ENV
           echo "POSTHOG_KEY=${{ vars.POSTHOG_KEY }}" >> $GITHUB_ENV
           echo "POSTHOG_HOST=${{ vars.POSTHOG_HOST }}" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}" >> $GITHUB_ENV
+          echo "STRIPE_PUBLISHABLE_KEY=${{ vars.STRIPE_PUBLISHABLE_KEY }}" >> $GITHUB_ENV
           # Storage & data
           echo "REDIS_HOST=${{ vars.REDIS_HOST }}" >> $GITHUB_ENV
           echo "REDIS_PORT=${{ vars.REDIS_PORT }}" >> $GITHUB_ENV
