@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.9](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.8...auxx-v0.1.9) (2026-02-23)
+
+
+### Features
+
+* **tests:** update variable validation and workflow graph tests for … ([#34](https://github.com/Auxx-Ai/auxx-ai/issues/34)) ([71b86f6](https://github.com/Auxx-Ai/auxx-ai/commit/71b86f69d5a7862fbf48f749fe1307dff5141f4a))
+
+
+### Bug Fixes
+
+* rename PORT to API_PORT for clarity and update related configura… ([#54](https://github.com/Auxx-Ai/auxx-ai/issues/54)) ([cc4e79a](https://github.com/Auxx-Ai/auxx-ai/commit/cc4e79aab46a00b0f3862962dcff688013a2d54b))
+* update CI permissions to include pull-requests read access ([#52](https://github.com/Auxx-Ai/auxx-ai/issues/52)) ([7f5231d](https://github.com/Auxx-Ai/auxx-ai/commit/7f5231da5adb6d0beb8166f814e2f4e3ca42b792))
+* update CORS configuration to support extra origins and improve m… ([#55](https://github.com/Auxx-Ai/auxx-ai/issues/55)) ([c442c95](https://github.com/Auxx-Ai/auxx-ai/commit/c442c959d0dd45304e8b1fd6c0168a63b9227297))
+* update dependencies and adjust import paths for noble hashes ([#53](https://github.com/Auxx-Ai/auxx-ai/issues/53)) ([fcff17b](https://github.com/Auxx-Ai/auxx-ai/commit/fcff17b869b552d035e3237bfc33256f5289f055))
+* update test suite for workflow engine and error handling ([#50](https://github.com/Auxx-Ai/auxx-ai/issues/50)) ([32b8f71](https://github.com/Auxx-Ai/auxx-ai/commit/32b8f71abfe4c07d37a95f1789f7b4a5a03ce097))
+
 ## [0.1.8](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.7...auxx-v0.1.8) (2026-02-23)
 
 
