@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.9...auxx-v0.1.10) (2026-02-23)
+
+
+### Bug Fixes
+
+* enhance SST deploy and unlock workflows with additional input pa… ([#66](https://github.com/Auxx-Ai/auxx-ai/issues/66)) ([b533cb6](https://github.com/Auxx-Ai/auxx-ai/commit/b533cb62ae9ce5bb0c74219e02c3689fdf709d8a))
+
 ## [0.1.9](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.8...auxx-v0.1.9) (2026-02-23)
 
 
