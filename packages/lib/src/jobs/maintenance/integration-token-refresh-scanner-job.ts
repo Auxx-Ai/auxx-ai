@@ -47,7 +47,7 @@ const OAUTH_PROVIDERS = ['google', 'outlook'] as const
 const UNRECOVERABLE_AUTH_STATUSES = ['INVALID_GRANT', 'REVOKED_ACCESS', 'INSUFFICIENT_SCOPE']
 
 /**
- * Integration Token Refresh Scanner Job
+ * Integration Token Refresh Scanner Job:
  *
  * Scans enabled email integrations and enqueues refresh jobs for:
  * 1. Access tokens nearing expiration
