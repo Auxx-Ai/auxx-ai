@@ -174,7 +174,7 @@
     "bullmq": "catalog:",
     "cheerio": "^1.1.2",
     "cohere-ai": "^7.18.1",
-    "commander": "^12.0.0",
+    "commander": "^14.0.3",
     "csv-parser": "^3.2.0",
     "date-fns": "catalog:",
     "date-fns-tz": "^3.2.0",

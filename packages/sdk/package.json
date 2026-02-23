@@ -89,7 +89,7 @@
     "chalk": "^5.4.1",
     "chokidar": "^3.6.0",
     "cli-table3": "^0.6.5",
-    "commander": "^13.0.0",
+    "commander": "^14.0.3",
     "date-fns": "^2.21.1",
     "dotenv": "^16.5.0",
     "esbuild": "^0.25.5",
