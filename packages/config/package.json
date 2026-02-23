@@ -19,7 +19,7 @@
     "clean": "rm -rf node_modules dist *.tsbuildinfo .turbo"
   },
   "dependencies": {
-    "sst": "^3.17.12"
+    "sst": "^3.19.3"
   },
   "devDependencies": {
     "@auxx/typescript-config": "workspace:*",

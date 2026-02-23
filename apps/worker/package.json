@@ -32,7 +32,7 @@
     "pg": "catalog:",
     "socket.io": "^4.8.1",
     "zod": "catalog:",
-    "sst": "^3.17.12"
+    "sst": "^3.19.3"
   },
   "devDependencies": {
     "@auxx/typescript-config": "workspace:*",
