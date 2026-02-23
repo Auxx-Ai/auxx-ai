@@ -19,7 +19,6 @@ import {
   ChevronRight,
   Download,
   FileText,
-  Loader2,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
@@ -148,6 +147,8 @@ export function InvoiceList() {
         <EmptyState
           icon={AlertCircle}
           title='No Subscriptions'
+          className='pt-4 pb-0'
+          iconClassName='size-8'
           description={<>You don't have any subscriptions yet</>}
           button={
             <Button size='sm' variant='outline' asChild>
@@ -165,6 +166,8 @@ export function InvoiceList() {
         <EmptyState
           icon={FileText}
           title='No invoices yet'
+          className='pt-4 pb-0'
+          iconClassName='size-8'
           description={<>Your billing history will appear here once you have been billed.</>}
         />
       ) : (
@@ -232,18 +235,11 @@ export function InvoiceList() {
                 size='sm'
                 onClick={() => fetchNextPage()}
                 disabled={isFetching}
-                className='gap-1'>
-                {isFetching ? (
-                  <>
-                    <Loader2 className='h-4 w-4 animate-spin' />
-                    Loading...
-                  </>
-                ) : (
-                  <>
-                    Load more
-                    <ChevronRight className='h-4 w-4' />
-                  </>
-                )}
+                className='gap-1'
+                loading={isFetching}
+                loadingText='Loading...'>
+                Load more
+                <ChevronRight />
               </Button>
             </div>
           )}

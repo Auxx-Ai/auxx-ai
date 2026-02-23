@@ -2,8 +2,8 @@
 // Helpers for generating and verifying scrypt-based password hashes used by auth seeding
 
 import { randomBytes, timingSafeEqual } from 'node:crypto'
-import { scryptAsync } from '@noble/hashes/scrypt'
-import { bytesToHex, hexToBytes, utf8ToBytes } from '@noble/hashes/utils'
+import { scryptAsync } from '@noble/hashes/scrypt.js'
+import { bytesToHex, hexToBytes, utf8ToBytes } from '@noble/hashes/utils.js'
 
 /** SCRYPT_CONFIG matches the production Better Auth hashing parameters. */
 const SCRYPT_CONFIG = {
