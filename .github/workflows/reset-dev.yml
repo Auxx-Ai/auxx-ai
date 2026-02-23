@@ -34,7 +34,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::716542960845:role/AuxxGithubDeployRole
           aws-region: us-west-1
