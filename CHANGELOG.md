@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.7](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.6...auxx-v0.1.7) (2026-02-23)
+
+
+### Features
+
+* **database:** implement environment variable management for DATABAS… ([#23](https://github.com/Auxx-Ai/auxx-ai/issues/23)) ([5f0c6a4](https://github.com/Auxx-Ai/auxx-ai/commit/5f0c6a4193a4dcbdbcf3e2cbdbbd9ab79e387ccd))
+
+
+### Bug Fixes
+
+* clean up CI workflows and Dockerfiles ([#28](https://github.com/Auxx-Ai/auxx-ai/issues/28)) ([a8cf34c](https://github.com/Auxx-Ai/auxx-ai/commit/a8cf34cf2a056d9cbcd7ff203a323db890c91fe7))
+* optimize CI workflow by adding disk space cleanup and refining c… ([#29](https://github.com/Auxx-Ai/auxx-ai/issues/29)) ([fa2ad96](https://github.com/Auxx-Ai/auxx-ai/commit/fa2ad962267a30f50589f526859dd506ffdbe7e4))
+* update Dockerfiles to refine build filters for SDK and web compo… ([#27](https://github.com/Auxx-Ai/auxx-ai/issues/27)) ([b17a862](https://github.com/Auxx-Ai/auxx-ai/commit/b17a862d7f21794ba4726b8c5b3870eeb82a949b))
+
 ## [0.1.6](https://github.com/auxxai/auxx-ai/compare/auxx-v0.1.5...auxx-v0.1.6) (2026-02-20)
 
 
