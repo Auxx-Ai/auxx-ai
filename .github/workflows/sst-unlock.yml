@@ -15,7 +15,7 @@ on:
         type: string
 
 concurrency:
-  group: sst-unlock-${{ github.event.inputs.stage }}
+  group: sst-state-${{ github.event.inputs.stage }}
   cancel-in-progress: false
 
 jobs:
