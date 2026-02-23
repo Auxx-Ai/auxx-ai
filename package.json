@@ -53,7 +53,7 @@
     "@aws-sdk/client-s3": "catalog:",
     "@aws-sdk/client-ssm": "3.799.0",
     "@aws-sdk/client-sts": "^3.893.0",
-    "@biomejs/biome": "^2.3.15",
+    "@biomejs/biome": "^2.4.4",
     "@commitlint/cli": "^20.4.1",
     "@commitlint/config-conventional": "^20.4.1",
     "@types/node": "catalog:",
