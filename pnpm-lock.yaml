@@ -1866,8 +1866,8 @@ importers:
         specifier: 19.1.0
         version: 19.1.0(@types/react@19.1.0)
       '@types/react-reconciler':
-        specifier: ^0.32.2
-        version: 0.32.2(@types/react@19.1.0)
+        specifier: ^0.33.0
+        version: 0.33.0(@types/react@19.1.0)
       '@typescript-eslint/eslint-plugin':
         specifier: ^8.44.1
         version: 8.46.1(@typescript-eslint/parser@8.44.1(eslint@9.37.0(jiti@2.6.1))(typescript@5.9.2))(eslint@9.37.0(jiti@2.6.1))(typescript@5.9.2)
@@ -7464,8 +7464,8 @@ packages:
     peerDependencies:
       '@types/react': ^19.2.0
 
-  '@types/react-reconciler@0.32.2':
-    resolution: {integrity: sha512-gjcm6O0aUknhYaogEl8t5pecPfiOTD8VQkbjOhgbZas/E6qGY+veW9iuJU/7p4Y1E0EuQ0mArga7VEOUWSlVRA==}
+  '@types/react-reconciler@0.33.0':
+    resolution: {integrity: sha512-HZOXsKT0tGI9LlUw2LuedXsVeB88wFa536vVL0M6vE8zN63nI+sSr1ByxmPToP5K5bukaVscyeCJcF9guVNJ1g==}
     peerDependencies:
       '@types/react': '*'
 
@@ -20422,7 +20422,7 @@ snapshots:
     dependencies:
       '@types/react': 19.2.3
 
-  '@types/react-reconciler@0.32.2(@types/react@19.1.0)':
+  '@types/react-reconciler@0.33.0(@types/react@19.1.0)':
     dependencies:
       '@types/react': 19.1.0
 
