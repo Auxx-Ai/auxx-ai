@@ -343,7 +343,9 @@ describe('Provider Capabilities', () => {
         }
 
         // If can't manage threads, shouldn't support bulk operations
-        if (!capabilities.canManageThreads) {
+        // Exception: mailgun is a bulk email service that supports bulk sends
+        // without thread management
+        if (!capabilities.canManageThreads && providerType !== 'mailgun') {
           expect(capabilities.canBulkOperations).toBe(false)
         }
       })

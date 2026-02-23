@@ -104,6 +104,7 @@ describe('Concurrent Uploads Integration', () => {
     Object.defineProperty(avatarInput, 'files', {
       value: [avatarFile],
       writable: false,
+      configurable: true,
     })
     await user.click(avatarInput)
     avatarInput.dispatchEvent(new Event('change', { bubbles: true }))
@@ -116,6 +117,7 @@ describe('Concurrent Uploads Integration', () => {
     Object.defineProperty(avatarInput, 'files', {
       value: [avatarFile2],
       writable: false,
+      configurable: true,
     })
     avatarInput.dispatchEvent(new Event('change', { bubbles: true }))
 
@@ -135,6 +137,7 @@ describe('Concurrent Uploads Integration', () => {
     Object.defineProperty(docInput, 'files', {
       value: docFiles,
       writable: false,
+      configurable: true,
     })
     await user.click(docInput)
     docInput.dispatchEvent(new Event('change', { bubbles: true }))
@@ -151,6 +154,7 @@ describe('Concurrent Uploads Integration', () => {
     Object.defineProperty(msgInput, 'files', {
       value: [smallFile, largeFile],
       writable: false,
+      configurable: true,
     })
     await user.click(msgInput)
     msgInput.dispatchEvent(new Event('change', { bubbles: true }))
@@ -189,6 +193,7 @@ describe('Concurrent Uploads Integration', () => {
     Object.defineProperty(input, 'files', {
       value: [pdfFile],
       writable: false,
+      configurable: true,
     })
     input.dispatchEvent(new Event('change', { bubbles: true }))
 
@@ -206,6 +211,7 @@ describe('Concurrent Uploads Integration', () => {
     Object.defineProperty(input, 'files', {
       value: validFiles,
       writable: false,
+      configurable: true,
     })
     input.dispatchEvent(new Event('change', { bubbles: true }))
 
@@ -218,6 +224,7 @@ describe('Concurrent Uploads Integration', () => {
     Object.defineProperty(input, 'files', {
       value: [extraFile],
       writable: false,
+      configurable: true,
     })
     input.dispatchEvent(new Event('change', { bubbles: true }))
 
@@ -259,6 +266,7 @@ describe('Concurrent Uploads Integration', () => {
     Object.defineProperty(permissiveInput, 'files', {
       value: [largePdf],
       writable: false,
+      configurable: true,
     })
     permissiveInput.dispatchEvent(new Event('change', { bubbles: true }))
 
@@ -273,6 +281,7 @@ describe('Concurrent Uploads Integration', () => {
     Object.defineProperty(strictInput, 'files', {
       value: [largePdf],
       writable: false,
+      configurable: true,
     })
     strictInput.dispatchEvent(new Event('change', { bubbles: true }))
 

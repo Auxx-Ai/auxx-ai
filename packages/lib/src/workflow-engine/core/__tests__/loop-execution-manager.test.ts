@@ -424,12 +424,15 @@ describe('LoopExecutionManager', () => {
         workflowWithBody
       )
 
-      // Verify executeNodeCallback was called for body node (end node has loop-back so stops before executing it)
+      // Verify executeNodeCallback was called for both body node and end node
+      // body-1 executes, resolveNextNodeForLoop finds end-1 (not loop-back)
+      // end-1 executes, resolveNextNodeForLoop finds loop-back edge to loop-1, returns null
       expect(executeNodeCallback).toHaveBeenCalledWith(bodyNode, contextManager, options)
-      expect(executeNodeCallback).toHaveBeenCalledTimes(1)
+      expect(executeNodeCallback).toHaveBeenCalledWith(endNode, contextManager, options)
+      expect(executeNodeCallback).toHaveBeenCalledTimes(2)
 
-      // Verify result contains the output from last executed node
-      expect(result).toEqual({ result: 'success', nodeId: 'body-1' })
+      // Verify result contains the output from last executed node (end-1)
+      expect(result).toEqual({ result: 'success', nodeId: 'end-1' })
     })
   })
 
@@ -526,12 +529,13 @@ describe('LoopExecutionManager', () => {
       )
 
       // Should execute both body nodes (body-1 and body-2)
-      // body-1 executes, then moves to body-2
-      // body-2 is checked for loop-back BEFORE execution, finds loop-back, stops
-      // So only body-1 executes
-      expect(callCount).toBe(1)
-      expect(executeNodeCallback).toHaveBeenCalledTimes(1)
+      // body-1 executes, resolveNextNodeForLoop finds body-2 (not loop-back)
+      // body-2 executes, resolveNextNodeForLoop finds loop-back edge to loop-1, returns null
+      // So both body-1 and body-2 execute
+      expect(callCount).toBe(2)
+      expect(executeNodeCallback).toHaveBeenCalledTimes(2)
       expect(executeNodeCallback).toHaveBeenCalledWith(bodyNode1, contextManager, options)
+      expect(executeNodeCallback).toHaveBeenCalledWith(bodyNode2, contextManager, options)
     })
 
     it('should detect cycles within loop body', async () => {

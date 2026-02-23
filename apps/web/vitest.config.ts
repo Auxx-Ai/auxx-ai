@@ -57,6 +57,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '~': path.resolve(__dirname, './src'),
+        '@auxx/database/enums': path.resolve(__dirname, '../../packages/database/src/enums.ts'),
         '@auxx/database': path.resolve(__dirname, '../../packages/database'),
         '@auxx/lib': path.resolve(__dirname, '../../packages/lib/src'),
         '@auxx/config': path.resolve(__dirname, '../../packages/config/src'),

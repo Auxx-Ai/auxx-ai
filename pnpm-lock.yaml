@@ -953,12 +953,18 @@ importers:
       radix-ui:
         specifier: ^1.4.2
         version: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.3))(@types/react@19.2.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
       react-avatar:
         specifier: ^5.0.3
         version: 5.0.4(@babel/runtime@7.28.4)(core-js-pure@3.46.0)(prop-types@15.8.1)(react@19.2.3)
       react-day-picker:
         specifier: ^9.8.1
         version: 9.11.1(react@19.2.3)
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
       react-dropzone:
         specifier: ^14.3.8
         version: 14.3.8(react@19.2.3)

@@ -1,7 +1,85 @@
 // packages/lib/src/providers/__tests__/provider-registry-service.test.ts
 
-import { IntegrationAuthStatus, IntegrationProviderType } from '@auxx/database/enums'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// vi.hoisted ensures these values are available when vi.mock factories run (hoisted above imports).
+// ALL variables referenced inside vi.mock factories MUST be declared here.
+const {
+  IntegrationAuthStatus,
+  IntegrationProviderType,
+  mockIntegrationSchema,
+  mockOrderBy,
+  mockLimit,
+  mockWhere,
+  mockFrom,
+  mockSelect,
+} = vi.hoisted(() => {
+  const IntegrationAuthStatus = {
+    AUTHENTICATED: 'AUTHENTICATED',
+    UNAUTHENTICATED: 'UNAUTHENTICATED',
+    ERROR: 'ERROR',
+    INVALID_GRANT: 'INVALID_GRANT',
+    EXPIRED_TOKEN: 'EXPIRED_TOKEN',
+    REVOKED_ACCESS: 'REVOKED_ACCESS',
+    INSUFFICIENT_SCOPE: 'INSUFFICIENT_SCOPE',
+    RATE_LIMITED: 'RATE_LIMITED',
+    PROVIDER_ERROR: 'PROVIDER_ERROR',
+    NETWORK_ERROR: 'NETWORK_ERROR',
+    UNKNOWN_ERROR: 'UNKNOWN_ERROR',
+  } as const
+
+  const IntegrationProviderType = {
+    google: 'google',
+    outlook: 'outlook',
+    facebook: 'facebook',
+    instagram: 'instagram',
+    openphone: 'openphone',
+    mailgun: 'mailgun',
+    sms: 'sms',
+    whatsapp: 'whatsapp',
+    chat: 'chat',
+    email: 'email',
+    shopify: 'shopify',
+  } as const
+
+  // Provide a minimal stand-in for schema.Integration column references.
+  const mockIntegrationSchema = {
+    id: 'Integration.id',
+    organizationId: 'Integration.organizationId',
+    enabled: 'Integration.enabled',
+    provider: 'Integration.provider',
+    updatedAt: 'Integration.updatedAt',
+    metadata: 'Integration.metadata',
+    authStatus: 'Integration.authStatus',
+  }
+
+  // Build a Drizzle select-builder mock chain.
+  const mockOrderBy = vi.fn()
+  const mockLimit = vi.fn()
+  const mockWhere = vi.fn()
+  const mockFrom = vi.fn()
+  const mockSelect = vi.fn()
+
+  return {
+    IntegrationAuthStatus,
+    IntegrationProviderType,
+    mockIntegrationSchema,
+    mockOrderBy,
+    mockLimit,
+    mockWhere,
+    mockFrom,
+    mockSelect,
+  }
+})
+
+// Mock @auxx/database/enums before any imports that use it
+vi.mock('@auxx/database/enums', () => ({
+  IntegrationAuthStatus,
+  IntegrationProviderType,
+  IntegrationProviderTypeValues: Object.values(IntegrationProviderType),
+  IntegrationAuthStatusValues: Object.values(IntegrationAuthStatus),
+}))
+
 import { ProviderRegistryService } from '../provider-registry-service'
 
 // ---------------------------------------------------------------------------
@@ -18,17 +96,6 @@ vi.mock('@auxx/logger', () => ({
   }),
 }))
 
-// Build a Drizzle select-builder mock chain.
-// The source calls:
-//   getAllIntegrations:  db.select().from(...).where(...).orderBy(...)
-//   getProvider:         db.select().from(...).where(...).limit(1)
-// Both terminal methods (.orderBy / .limit) resolve to an array of rows.
-const mockOrderBy = vi.fn()
-const mockLimit = vi.fn()
-const mockWhere = vi.fn()
-const mockFrom = vi.fn()
-const mockSelect = vi.fn()
-
 /**
  * Wire up the chain so each builder method returns the next.
  * `terminalValue` is what the final awaited value should be.
@@ -39,19 +106,6 @@ function setupSelectChain(terminalValue: unknown[]) {
   mockWhere.mockReturnValue({ orderBy: mockOrderBy, limit: mockLimit })
   mockFrom.mockReturnValue({ where: mockWhere })
   mockSelect.mockReturnValue({ from: mockFrom })
-}
-
-// Provide a minimal stand-in for schema.Integration column references.
-// drizzle-orm's eq/and just receive these — we don't need real column objects,
-// only referentially-stable identifiers so the source code doesn't throw.
-const mockIntegrationSchema = {
-  id: 'Integration.id',
-  organizationId: 'Integration.organizationId',
-  enabled: 'Integration.enabled',
-  provider: 'Integration.provider',
-  updatedAt: 'Integration.updatedAt',
-  metadata: 'Integration.metadata',
-  authStatus: 'Integration.authStatus',
 }
 
 vi.mock('@auxx/database', () => ({
@@ -67,32 +121,55 @@ vi.mock('drizzle-orm', () => ({
   desc: vi.fn((col: unknown) => col),
 }))
 
-// Shared mock provider instance returned by all provider constructors
-const mockProviderInstance = {
-  initialize: vi.fn().mockResolvedValue(undefined),
-  send: vi.fn(),
-  reply: vi.fn(),
-}
+vi.mock('../google/google-provider', () => {
+  return {
+    GoogleProvider: class {
+      initialize = vi.fn().mockResolvedValue(undefined)
+      send = vi.fn()
+      reply = vi.fn()
+    },
+  }
+})
 
-vi.mock('../google/google-provider', () => ({
-  GoogleProvider: vi.fn().mockImplementation(() => ({ ...mockProviderInstance })),
-}))
+vi.mock('../outlook/outlook-provider', () => {
+  return {
+    OutlookProvider: class {
+      initialize = vi.fn().mockResolvedValue(undefined)
+      send = vi.fn()
+      reply = vi.fn()
+    },
+  }
+})
 
-vi.mock('../outlook/outlook-provider', () => ({
-  OutlookProvider: vi.fn().mockImplementation(() => ({ ...mockProviderInstance })),
-}))
+vi.mock('../facebook/facebook-provider', () => {
+  return {
+    FacebookProvider: class {
+      initialize = vi.fn().mockResolvedValue(undefined)
+      send = vi.fn()
+      reply = vi.fn()
+    },
+  }
+})
 
-vi.mock('../facebook/facebook-provider', () => ({
-  FacebookProvider: vi.fn().mockImplementation(() => ({ ...mockProviderInstance })),
-}))
+vi.mock('../instagram/instagram-provider', () => {
+  return {
+    InstagramProvider: class {
+      initialize = vi.fn().mockResolvedValue(undefined)
+      send = vi.fn()
+      reply = vi.fn()
+    },
+  }
+})
 
-vi.mock('../instagram/instagram-provider', () => ({
-  InstagramProvider: vi.fn().mockImplementation(() => ({ ...mockProviderInstance })),
-}))
-
-vi.mock('../openphone/openphone-provider', () => ({
-  OpenPhoneProvider: vi.fn().mockImplementation(() => ({ ...mockProviderInstance })),
-}))
+vi.mock('../openphone/openphone-provider', () => {
+  return {
+    OpenPhoneProvider: class {
+      initialize = vi.fn().mockResolvedValue(undefined)
+      send = vi.fn()
+      reply = vi.fn()
+    },
+  }
+})
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -249,16 +326,24 @@ describe('ProviderRegistryService', () => {
       ]
       setupSelectChain(rows)
 
-      // Make GoogleProvider.initialize throw on the first call
-      const { GoogleProvider } = await import('../google/google-provider')
-      vi.mocked(GoogleProvider).mockImplementationOnce(
-        () =>
-          ({
-            initialize: vi.fn().mockRejectedValue(new Error('Google auth failed')),
-          }) as any
-      )
+      // Temporarily replace GoogleProvider to make initialize throw
+      const googleModule = await import('../google/google-provider')
+      const OriginalGoogleProvider = googleModule.GoogleProvider
+      const failingProvider = {
+        initialize: vi.fn().mockRejectedValue(new Error('Google auth failed')),
+        send: vi.fn(),
+        reply: vi.fn(),
+      }
+      ;(googleModule as any).GoogleProvider = class {
+        initialize = failingProvider.initialize
+        send = failingProvider.send
+        reply = failingProvider.reply
+      }
 
       await expect(service.initializeAll()).resolves.not.toThrow()
+
+      // Restore original mock
+      ;(googleModule as any).GoogleProvider = OriginalGoogleProvider
 
       // Only the outlook provider should be cached
       const instances = service.getAllProviderInstances()

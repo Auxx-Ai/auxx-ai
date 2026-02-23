@@ -113,7 +113,9 @@ describe('FileService list behaviour', () => {
     })
 
     expect(selectChains).toHaveLength(0)
-    expect(scopedSpy).toHaveBeenCalledTimes(3)
+    // list() calls buildScopedWhere once (reuses result for items + total queries),
+    // listInFolder count logic calls it a second time
+    expect(scopedSpy).toHaveBeenCalledTimes(2)
   })
 })
 

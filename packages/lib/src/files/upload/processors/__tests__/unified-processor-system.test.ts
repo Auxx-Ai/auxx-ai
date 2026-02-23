@@ -8,9 +8,27 @@ import { TicketProcessor, UserProfileProcessor, WorkflowRunProcessor } from '../
 import { FileProcessor } from '../file-processor'
 import { ProcessorRegistry } from '../processor-registry'
 
+// Hoist mock variables to be accessible inside vi.mock factories
+const { ticketSelectRowsRef, workflowRunSelectRowsRef, createSelectBuilder } = vi.hoisted(() => {
+  const ticketSelectRowsRef = { value: [{ id: 'ticket123' }] }
+  const workflowRunSelectRowsRef = { value: [{ id: 'workflow123' }] }
+
+  // Creates a lightweight Drizzle-style select builder chain
+  const createSelectBuilder = (rowsRef: { value: any[] }) => {
+    const builder: Record<string, any> = {}
+    builder.from = vi.fn().mockReturnValue(builder)
+    builder.where = vi.fn().mockReturnValue(builder)
+    builder.limit = vi.fn().mockImplementation(async () => rowsRef.value)
+    return builder
+  }
+
+  return { ticketSelectRowsRef, workflowRunSelectRowsRef, createSelectBuilder }
+})
+
 // Mock the database and services
 vi.mock('@auxx/database', () => ({
   database: {
+    select: vi.fn(() => createSelectBuilder(ticketSelectRowsRef)),
     query: {
       Ticket: {
         findFirst: vi.fn(),
@@ -37,6 +55,20 @@ vi.mock('@auxx/database', () => ({
     update: vi.fn(),
     delete: vi.fn(),
   },
+  schema: {
+    Ticket: { id: 'id', organizationId: 'organizationId' },
+    Article: { id: 'id', organizationId: 'organizationId' },
+    WorkflowRun: { id: 'id', organizationId: 'organizationId' },
+    User: { id: 'id' },
+    MediaAsset: { id: 'id' },
+    MediaAssetVersion: { id: 'id' },
+    StorageLocation: { id: 'id' },
+    Message: { id: 'id', organizationId: 'organizationId' },
+    Comment: { id: 'id', organizationId: 'organizationId' },
+    KnowledgeBase: { id: 'id', organizationId: 'organizationId' },
+    Attachment: { id: 'id' },
+    FolderFile: { id: 'id' },
+  },
 }))
 
 vi.mock('@auxx/lib/members', () => ({
@@ -52,6 +84,49 @@ vi.mock('@auxx/logger', () => ({
     error: vi.fn(),
     debug: vi.fn(),
   }),
+}))
+
+// Mock @auxx/database/models to avoid loading real database client
+vi.mock('@auxx/database/models', () => ({}))
+
+// Mock @auxx/database/types to avoid loading real database types
+vi.mock('@auxx/database/types', () => ({}))
+
+// Mock @auxx/credentials to avoid loading real credential service
+vi.mock('@auxx/credentials', () => ({
+  configService: { get: vi.fn() },
+  credentialManager: { getCredentials: vi.fn().mockResolvedValue({}) },
+}))
+
+// Mock @auxx/redis
+vi.mock('@auxx/redis', () => ({
+  getRedisClient: vi.fn().mockResolvedValue(null),
+}))
+
+// Mock thumbnail-related modules
+vi.mock('../../../files/core/thumbnail-batch', () => ({
+  ensureThumbnailPresets: vi.fn().mockResolvedValue([]),
+}))
+
+// Mock drizzle-orm operators used in entity processors
+vi.mock('drizzle-orm', () => ({
+  and: vi.fn((...args: any[]) => args),
+  eq: vi.fn((a: any, b: any) => [a, b]),
+  desc: vi.fn(),
+  isNull: vi.fn(),
+  sql: vi.fn(),
+}))
+
+// Mock storage manager
+vi.mock('../../../files/storage/storage-manager', () => ({
+  StorageManager: vi.fn().mockImplementation(() => ({})),
+  createStorageManager: vi.fn(() => ({})),
+}))
+
+// Mock bullmq and job queues
+vi.mock('../../../../jobs/queues', () => ({
+  getQueue: vi.fn(),
+  Queues: {},
 }))
 
 describe('Unified Processor System', () => {
@@ -171,14 +246,17 @@ describe('Unified Processor System', () => {
   describe('TicketProcessor processConfig', () => {
     let processor: TicketProcessor
 
-    beforeEach(() => {
+    beforeEach(async () => {
       processor = new TicketProcessor('org123')
 
-      // Mock database response
-      const { database } = require('@auxx/database')
-      ;(database.query.Ticket.findFirst as MockedFunction<any>).mockResolvedValue({
-        id: 'ticket123',
-      })
+      // Set up ticket rows for the select builder to return
+      ticketSelectRowsRef.value = [{ id: 'ticket123' }]
+
+      // Also reset the database.select mock to use ticket rows
+      const { database } = await import('@auxx/database')
+      vi.mocked(database.select).mockImplementation(
+        () => createSelectBuilder(ticketSelectRowsRef) as any
+      )
     })
 
     it('should process config with ticket-specific policies', async () => {
@@ -227,13 +305,13 @@ describe('Unified Processor System', () => {
       }
 
       await expect(processor.processConfig(config)).rejects.toThrow(
-        'File size exceeds maximum allowed for ticket attachments (25MB)'
+        'File exceeds allowed size of 25MB'
       )
     })
 
     it('should throw error when entity access fails', async () => {
-      const { database } = require('@auxx/database')
-      ;(database.query.Ticket.findFirst as MockedFunction<any>).mockResolvedValue(null)
+      // Return empty rows to simulate ticket not found
+      ticketSelectRowsRef.value = []
 
       const config: UploadInitConfig = {
         organizationId: 'org123',
@@ -320,14 +398,17 @@ describe('Unified Processor System', () => {
   describe('WorkflowRunProcessor processConfig', () => {
     let processor: WorkflowRunProcessor
 
-    beforeEach(() => {
+    beforeEach(async () => {
       processor = new WorkflowRunProcessor('org123')
 
-      // Mock database response
-      const { database } = require('@auxx/database')
-      ;(database.query.WorkflowRun.findFirst as MockedFunction<any>).mockResolvedValue({
-        id: 'workflow123',
-      })
+      // WorkflowRunProcessor.validateEntityAccess is currently a no-op (commented out code),
+      // but we still set up the select builder for consistency
+      workflowRunSelectRowsRef.value = [{ id: 'workflow123' }]
+
+      const { database } = await import('@auxx/database')
+      vi.mocked(database.select).mockImplementation(
+        () => createSelectBuilder(workflowRunSelectRowsRef) as any
+      )
     })
 
     it('should use multipart for files > 25MB', async () => {

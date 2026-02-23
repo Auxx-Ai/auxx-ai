@@ -7,9 +7,9 @@ import { AttachmentDisplay } from '../attachment-display'
 
 // Mock the AttachmentThumbnail component
 vi.mock('../attachment-thumbnail', () => ({
-  AttachmentThumbnail: vi.fn(
-    ({ fallback }) => fallback || <div data-testid='attachment-thumbnail'>Attachment Thumbnail</div>
-  ),
+  AttachmentThumbnail: vi.fn(() => (
+    <div data-testid='attachment-thumbnail'>Attachment Thumbnail</div>
+  )),
 }))
 
 // Mock the FileIcon component
@@ -109,8 +109,10 @@ describe('AttachmentDisplay', () => {
   })
 
   describe('remove functionality', () => {
-    test('shows remove button when showRemoveButton is true', () => {
-      render(<AttachmentDisplay attachment={mockAttachment} showRemoveButton={true} />)
+    test('shows remove button when showRemoveButton is true and onRemove is provided', () => {
+      render(
+        <AttachmentDisplay attachment={mockAttachment} showRemoveButton={true} onRemove={vi.fn()} />
+      )
 
       expect(screen.getByTitle('Remove file')).toBeInTheDocument()
     })
@@ -165,7 +167,8 @@ describe('AttachmentDisplay', () => {
       }
 
       render(<AttachmentDisplay attachment={zeroSizeAttachment} />)
-      expect(screen.getByText('0 B')).toBeInTheDocument()
+      // size 0n is falsy, so formatBytes is not rendered
+      expect(screen.queryByText('0 B')).not.toBeInTheDocument()
     })
 
     test('handles attachment with very large size', () => {

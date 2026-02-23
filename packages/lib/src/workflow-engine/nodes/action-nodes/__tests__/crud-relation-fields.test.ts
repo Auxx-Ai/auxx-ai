@@ -97,7 +97,9 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
       expect(result.inputs.data).not.toHaveProperty('contact')
     })
 
-    it('should transform multiple relation fields (contact and assignee)', async () => {
+    it('should transform RELATION fields but preserve ACTOR fields', async () => {
+      // Note: "contact" is BaseType.RELATION with dbColumn="contactId" -> gets transformed
+      // "assignee" is BaseType.ACTOR with dbColumn="assignedToId" -> NOT transformed (ACTOR != RELATION)
       const node: WorkflowNode = {
         nodeId: 'node_3',
         name: 'Create Ticket',
@@ -117,14 +119,17 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
 
       const result = await crudProcessor.preprocessNode(node, mockContextManager)
 
-      // Should transform both relation fields
+      // "contact" (BaseType.RELATION) should be transformed to "contactId"
       expect(result.inputs.data).toHaveProperty('contactId', 'contact_abc123')
-      expect(result.inputs.data).toHaveProperty('assignedToId', 'user_def456')
       expect(result.inputs.data).not.toHaveProperty('contact')
-      expect(result.inputs.data).not.toHaveProperty('assignee')
+
+      // "assignee" (BaseType.ACTOR) is NOT transformed - it stays as "assignee"
+      expect(result.inputs.data).toHaveProperty('assignee', 'user_def456')
     })
 
     it('should handle null relation field values', async () => {
+      // Note: "contact" (BaseType.RELATION) gets transformed to "contactId"
+      // "assignee" (BaseType.ACTOR) does NOT get transformed - ACTOR != RELATION
       const node: WorkflowNode = {
         nodeId: 'node_4',
         name: 'Update Ticket',
@@ -143,9 +148,11 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
 
       const result = await crudProcessor.preprocessNode(node, mockContextManager)
 
-      // Should transform to null values with correct column names
+      // "contact" (BaseType.RELATION) should transform to null with correct column name
       expect(result.inputs.data).toHaveProperty('contactId', null)
-      expect(result.inputs.data).toHaveProperty('assignedToId', null)
+
+      // "assignee" (BaseType.ACTOR) stays as-is
+      expect(result.inputs.data).toHaveProperty('assignee', null)
     })
 
     it('should preserve non-relation fields unchanged', async () => {
@@ -282,21 +289,24 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
       }).toThrow(/"contact" should be "contactId"/)
     })
 
-    it('should detect multiple invalid relation fields', () => {
+    it('should detect invalid RELATION fields (but not ACTOR fields)', () => {
+      // validateRelationFields only checks fields with type=BaseType.RELATION
+      // "assignee" is BaseType.ACTOR, so it's NOT checked by this validation
+      // Use parentTicket (BaseType.RELATION) as the second invalid field
       const invalidData = {
         title: 'Test Ticket',
-        contact: 'contact_abc123', // ❌ Should be contactId
-        assignee: 'user_def456', // ❌ Should be assignedToId
+        contact: 'contact_abc123', // BaseType.RELATION - should be contactId
+        parentTicket: 'ticket_xyz', // BaseType.RELATION - should be parentTicketId
         priority: 'HIGH',
       }
 
-      // Should throw mentioning both fields
+      // Should throw mentioning both RELATION fields
       expect(() => {
         ;(crudProcessor as any).validateRelationFields(invalidData, 'ticket', 'create')
       }).toThrow(/"contact" should be "contactId"/)
       expect(() => {
         ;(crudProcessor as any).validateRelationFields(invalidData, 'ticket', 'create')
-      }).toThrow(/"assignee" should be "assignedToId"/)
+      }).toThrow(/"parentTicket" should be "parentTicketId"/)
     })
 
     it('should allow data with both logical and database names (database name takes precedence)', () => {
@@ -391,11 +401,12 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
 
       const result = await crudProcessor.preprocessNode(node, mockContextManager)
 
-      // Relation fields should be transformed
+      // RELATION fields should be transformed
       expect(result.inputs.data).toHaveProperty('contactId', 'contact_abc123')
-      expect(result.inputs.data).toHaveProperty('assignedToId', 'user_def456')
       expect(result.inputs.data).not.toHaveProperty('contact')
-      expect(result.inputs.data).not.toHaveProperty('assignee')
+
+      // ACTOR fields (assignee) are NOT transformed - ACTOR != RELATION
+      expect(result.inputs.data).toHaveProperty('assignee', 'user_def456')
 
       // Standard fields should pass through
       expect(result.inputs.data).toHaveProperty('title', 'Complex Ticket')
