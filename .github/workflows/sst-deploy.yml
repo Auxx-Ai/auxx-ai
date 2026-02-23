@@ -3,10 +3,67 @@ name: SST Deploy
 
 on:
   workflow_call:
+    inputs:
+      stage:
+        description: SST stage to deploy
+        required: false
+        type: string
+        default: dev
+      lock_wait_seconds:
+        description: Seconds to wait before retrying after lock contention
+        required: false
+        type: number
+        default: 90
+      lock_max_attempts:
+        description: Number of deploy attempts when lock contention is detected
+        required: false
+        type: number
+        default: 3
+      auto_unlock_on_final_lock:
+        description: If true, run unlock and do one final deploy retry when lock retries are exhausted
+        required: false
+        type: boolean
+        default: true
+      post_unlock_wait_seconds:
+        description: Seconds to wait after unlock before the final deploy retry
+        required: false
+        type: number
+        default: 15
   workflow_dispatch:
+    inputs:
+      stage:
+        description: SST stage to deploy
+        required: true
+        default: dev
+        type: string
+      force_unlock_before_deploy:
+        description: Unlock stage before deploy (use only when no active deploy is running)
+        required: false
+        default: false
+        type: boolean
+      lock_wait_seconds:
+        description: Seconds to wait before retrying after lock contention
+        required: false
+        default: 90
+        type: number
+      lock_max_attempts:
+        description: Number of deploy attempts when lock contention is detected
+        required: false
+        default: 3
+        type: number
+      auto_unlock_on_final_lock:
+        description: If true, run unlock and do one final deploy retry when lock retries are exhausted
+        required: false
+        default: true
+        type: boolean
+      post_unlock_wait_seconds:
+        description: Seconds to wait after unlock before the final deploy retry
+        required: false
+        default: 15
+        type: number
 
 concurrency:
-  group: sst-deploy-dev
+  group: sst-state-${{ inputs.stage || 'dev' }}
   cancel-in-progress: false
 
 jobs:
@@ -15,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: dev
     env:
-      STAGE: dev
+      STAGE: ${{ inputs.stage || 'dev' }}
       AWS_REGION: us-west-1
       SST_APP_NAME: auxxai-app
       EXPECTED_AWS_ACCOUNT_ID: '716542960845'
@@ -107,8 +164,8 @@ jobs:
           echo "GIT_SHA=${{ github.sha }}" >> $GITHUB_ENV
           echo "BUILD_TIME=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
           echo "APP_VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
-          echo "STAGE=dev" >> $GITHUB_ENV
-          echo "AWS_REGION=us-west-1" >> $GITHUB_ENV
+          echo "STAGE=${STAGE}" >> $GITHUB_ENV
+          echo "AWS_REGION=${AWS_REGION}" >> $GITHUB_ENV
           echo "CLOUDFRONT_CERT_ARN=${{ vars.CLOUDFRONT_CERT_ARN }}" >> $GITHUB_ENV
           # Temporary DB URL for build-time env validation only; not used at runtime
           echo "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder" >> $GITHUB_ENV
@@ -155,20 +212,28 @@ jobs:
       - name: Remove system Pulumi (avoid version conflict with SST)
         run: rm -f /usr/local/bin/pulumi*
 
+      - name: Optional pre-deploy unlock (manual dispatch only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.force_unlock_before_deploy == true }}
+        run: pnpm exec sst unlock --stage="${STAGE}"
+
       - name: Deploy dev (lock-aware retry)
         env:
           SST_PRINT_LOGS: '1'
           PULUMI_MAX_CONCURRENT_REQUESTS: '20'
           SST_TELEMETRY_DISABLED: '1'
           SST_DEPLOY_CMD: 'pnpm sst:deploy'
-          SST_LOCK_WAIT_SECONDS: '90'
-          SST_LOCK_MAX_ATTEMPTS: '2'
+          SST_LOCK_WAIT_SECONDS: '${{ inputs.lock_wait_seconds || 90 }}'
+          SST_LOCK_MAX_ATTEMPTS: '${{ inputs.lock_max_attempts || 3 }}'
+          SST_LOCK_AUTO_UNLOCK_ON_FINAL_LOCK: '${{ inputs.auto_unlock_on_final_lock || true }}'
+          SST_LOCK_POST_UNLOCK_WAIT_SECONDS: '${{ inputs.post_unlock_wait_seconds || 15 }}'
+          SST_UNLOCK_CMD: 'pnpm exec sst unlock --stage=${STAGE}'
+          SST_ENABLE_SIGNAL_UNLOCK_TRAP: 'true'
         run: bash scripts/ci/sst-deploy-with-lock-retry.sh
 
       - name: Run DB migrations (dev)
         env:
           AWS_REGION: us-west-1
-          STAGE: dev
+          STAGE: ${{ inputs.stage || 'dev' }}
         run: |
           # Get the migration Lambda function name from SST outputs
           FUNC_NAME=$(aws cloudformation describe-stacks \

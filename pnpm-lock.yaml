@@ -255,8 +255,8 @@ importers:
         specifier: 'catalog:'
         version: 5.0.10
       sst:
-        specifier: 3.17.38
-        version: 3.17.38
+        specifier: 3.19.0
+        version: 3.19.0
       tsx:
         specifier: 'catalog:'
         version: 4.20.6
@@ -1210,8 +1210,8 @@ importers:
         specifier: ^4.8.1
         version: 4.8.1
       sst:
-        specifier: ^3.17.12
-        version: 3.17.19
+        specifier: ^3.19.0
+        version: 3.19.0
       zod:
         specifier: 'catalog:'
         version: 4.1.5
@@ -1278,8 +1278,8 @@ importers:
   packages/config:
     dependencies:
       sst:
-        specifier: ^3.17.12
-        version: 3.17.19
+        specifier: ^3.19.0
+        version: 3.19.0
     devDependencies:
       '@auxx/typescript-config':
         specifier: workspace:*
@@ -7943,7 +7943,6 @@ packages:
   aws-sdk@2.1692.0:
     resolution: {integrity: sha512-x511uiJ/57FIsbgUe5csJ13k3uzu25uWQE+XqfBis/sB0SFoiElJWXRkgEAUh0U6n40eT3ay5Ue4oPkRMu1LYw==}
     engines: {node: '>= 10.0.0'}
-    deprecated: The AWS SDK for JavaScript (v2) has reached end-of-support, and no longer receives updates. Please migrate your code to use AWS SDK for JavaScript (v3). More info https://a.co/cUPnyil
 
   aws4fetch@1.0.18:
     resolution: {integrity: sha512-3Cf+YaUl07p24MoQ46rFwulAmiyCwH2+1zw1ZyPAX5OtJ34Hh185DwB8y/qRLb6cYYYtSFJ9pthyLc0MD4e8sQ==}
@@ -12357,92 +12356,48 @@ packages:
     resolution: {integrity: sha512-+idbmIXoYET47hH+d7dfm2epdOMUDjqcB4648sTZ+t2JwoyBFL/insLfB/racrDmsKB3diwsDA696pZMieAC5g==}
     engines: {node: '>=0.8'}
 
-  sst-darwin-arm64@3.17.19:
-    resolution: {integrity: sha512-6FeEgPqXkRT3o5qV0xktJ1eUiscJiPLBcGaxOxIEClpkVggZM83hO7Nizx/cAaAMhr1XQhbOZcKYueDHPdUY+Q==}
+  sst-darwin-arm64@3.19.0:
+    resolution: {integrity: sha512-laGXUsxoUsK/6XZZs+zpVwSTktAfM4jmJ+SfE7a5uqu+K60XmOXCE7Zu0ulE6YQML99ptuOhaIh24sGrRNs7/g==}
     cpu: [arm64]
     os: [darwin]
 
-  sst-darwin-arm64@3.17.38:
-    resolution: {integrity: sha512-2qEu/jRRBGQbMzkJKy4cypX+LdjInKtn1VrPHeggHD0/DsXLUBVdj/WyYb9ZxbsZEUcA9xZDR2+FBZ7lQzaDcw==}
-    cpu: [arm64]
-    os: [darwin]
-
-  sst-darwin-x64@3.17.19:
-    resolution: {integrity: sha512-/z78dxfLHG8FtOhpjMnYSpKSdQjfdyKbq+cL3eud2+g2BQr7IyQ8BWNGimk2oadh38V3r6dO1/5aVJh3x3l1rg==}
+  sst-darwin-x64@3.19.0:
+    resolution: {integrity: sha512-xMDjXNfi7FCWrFM1nUl6pM70V0DtKT+J0mKLI9IIL1u1aTYOaFRXfNy2xEOCqT1ZeEWKg1pQQnlAMIKZdNXarQ==}
     cpu: [x64]
     os: [darwin]
 
-  sst-darwin-x64@3.17.38:
-    resolution: {integrity: sha512-um13cWbRK5rfsYuLxS97gaSkFVd6jCzI+k6wlpJaOcJ5IZiH5UdFIz+ZE/7iCfNTEiwDT+RMw2nGL9a+07Vtww==}
-    cpu: [x64]
-    os: [darwin]
-
-  sst-linux-arm64@3.17.19:
-    resolution: {integrity: sha512-vbcMjiuLVxZ7352ajGlMqsS4J5AkAYvjLmsEALySUBVQhJUO9U7pk2P+Orfn702ZcO+6+NkGG9AL/g3K9EM1Tg==}
+  sst-linux-arm64@3.19.0:
+    resolution: {integrity: sha512-ktx9+Nknm2PpCRcydOCf+qD5/C+4GHe9WQ3E/HPDk0cWHNiLgSveYmfAWSF1qHjlESex18BfqIut5GmsY3LtRw==}
     cpu: [arm64]
     os: [linux]
 
-  sst-linux-arm64@3.17.38:
-    resolution: {integrity: sha512-gMxYJmpytntqZOf9SZfMnj+v6E0vZ8dAT5XnaKQhETSwuN6WH/OWHgx4bnp7bMQfdvm1uYNB+p7GRopIRRPePQ==}
-    cpu: [arm64]
-    os: [linux]
-
-  sst-linux-x64@3.17.19:
-    resolution: {integrity: sha512-gkNNmuHyvKjcb7RwMyoUH4wtgd7/bH7vUlMbcVsDzwt38y7+iTxyPMbcihucw42wDQRaDJtkDneSqj08U+MTFQ==}
+  sst-linux-x64@3.19.0:
+    resolution: {integrity: sha512-CIrVGJ26iE2FpZ/tzoUIYD0riFAThICPdlvA8EPGdoBNddB+AZ/Q7cQ0AJtPFWBpyC84mWdGJwUw4jpFecD+hQ==}
     cpu: [x64]
     os: [linux]
 
-  sst-linux-x64@3.17.38:
-    resolution: {integrity: sha512-vwzfHhCugRTWevoA2qcl339yQhc8+vVdAqA11Qcats7LvaM6KxN9SqY00SfHPZxmm2odnefDg8z4b3Qvdo2NAw==}
-    cpu: [x64]
-    os: [linux]
-
-  sst-linux-x86@3.17.19:
-    resolution: {integrity: sha512-Bsvunkh4onZRVv4Rxq7bT/63qQOg2KJoQKhAQtFkJdbri/cOA2QWkzqH8+pC5Sv9rSvbcIJAEIhMXILC0pqCJw==}
+  sst-linux-x86@3.19.0:
+    resolution: {integrity: sha512-QnALQzzH9IHdxH/X9tHYe6AzxuNHyOEbz9K6Hym4eORCheBtr4BtDTxVxsms1OQI34S3hbzOPLh40EWqinv0Rw==}
     cpu: [x86]
     os: [linux]
 
-  sst-linux-x86@3.17.38:
-    resolution: {integrity: sha512-rxG2YsN2XnykCvJ1ZquZIXbEOWIdLdcJ1ir9hcqb31cLrH0z2EN5F/IsioH9mLRVJnbmY3JewNk+C9mMB2a8zA==}
-    cpu: [x86]
-    os: [linux]
-
-  sst-win32-arm64@3.17.19:
-    resolution: {integrity: sha512-dKxR4v24AODJLHiT9yNena0JUgyz3cHyCi6HZyxyG3dXyWncMe1ZXMXIgs1ZEUcU4XeYM2HVy+Nnz4KB1US1Kg==}
+  sst-win32-arm64@3.19.0:
+    resolution: {integrity: sha512-PgLF+YOV7ObU9pd0fTp1qHSVZ+adZudOrFp6mcSaoQDLfzobzpGUTtz1SCZjVl2yL1lf1VsiYa3HfrRgKzvUJg==}
     cpu: [arm64]
     os: [win32]
 
-  sst-win32-arm64@3.17.38:
-    resolution: {integrity: sha512-aPTaLqJ4bEEfQwaxnteFXHAePw4Po1Be0tsdTuNUPDhhyv1CV5xSl4nppb4q/Qn1dGxaU6L4zCzZkshWskGIOg==}
-    cpu: [arm64]
-    os: [win32]
-
-  sst-win32-x64@3.17.19:
-    resolution: {integrity: sha512-zgxSkGWZ1dewAr4R3slN/d3X9yumQDvAUOlJiX/6QE9Z67t/XNlow4+5i3L2oz4WHAFi59Un12YxbfM+RsBDmA==}
+  sst-win32-x64@3.19.0:
+    resolution: {integrity: sha512-tC8yyKXln/yt0mZIW+/clspviJ6U5I3EklolBD5V7YSfAAWxImD1p+xbGu/Q5AhterMIeoRwSXSTXDqphZxHBQ==}
     cpu: [x64]
     os: [win32]
 
-  sst-win32-x64@3.17.38:
-    resolution: {integrity: sha512-X2kx6MOK1tZ0JhMqDisB60fJCOSxot5q7NPFMna5hj7cgJaQfj0NAgQqGJkLEB8iVWyxi6e5o1oJLg+vH452HQ==}
-    cpu: [x64]
-    os: [win32]
-
-  sst-win32-x86@3.17.19:
-    resolution: {integrity: sha512-z8S0kyb0ibz9Q3cNYDpcKYX47jys7j/mdebC8HUhtED1qKEAfqQ1vsR+zvWyN64Z9Ijj7aPi1KwNV6Et3d7F8g==}
+  sst-win32-x86@3.19.0:
+    resolution: {integrity: sha512-rfgfIQwEY1PVGUtX3XoNMySxoRxEC0n2Op6YY/zj7PnC+dSem/4ghKvonJLNOe8S1g8kDRZvddQ97cu+UKWT6Q==}
     cpu: [x86]
     os: [win32]
 
-  sst-win32-x86@3.17.38:
-    resolution: {integrity: sha512-W5PxA4uhpXMzWNT0/sMrmU27fn1DCaReGwVwJGEZapu9GKTix41uaP+pyd9fwjiAHVILIdxqe7+BkZfH+mvzbg==}
-    cpu: [x86]
-    os: [win32]
-
-  sst@3.17.19:
-    resolution: {integrity: sha512-j0FlQhFZW+QWCczzqfPr6fZAF0Um7lP1tbGdd7zkbjFlxdk9BUBI4CYXUnopC6KaTMtjvpfg3XRF7v0bDc9g+A==}
-    hasBin: true
-
-  sst@3.17.38:
-    resolution: {integrity: sha512-AshCCzogYVVTgLV7SBQ2hkmctAI0QV4pJmHwsyrX1ruSCvH18ccGgX/kux6/AFfaKrT7GmuVuQ2Zsz25GPXEiA==}
+  sst@3.19.0:
+    resolution: {integrity: sha512-PX0fzzFby5vOCez+cievpGYwJvKS8ElAtOMVG1YWLJZxpdnVfCTEeIUytC4hVV6Wkf6ak+Rf36I6M2nCYbiBQQ==}
     hasBin: true
 
   stackback@0.0.2:
@@ -17031,7 +16986,7 @@ snapshots:
       pkce-challenge: 4.1.0
       raw-body: 3.0.2
       zod: 3.25.76
-      zod-to-json-schema: 3.25.0(zod@3.25.76)
+      zod-to-json-schema: 3.25.1(zod@3.25.76)
     transitivePeerDependencies:
       - supports-color
 
@@ -26186,55 +26141,31 @@ snapshots:
     dependencies:
       frac: 1.1.2
 
-  sst-darwin-arm64@3.17.19:
+  sst-darwin-arm64@3.19.0:
     optional: true
 
-  sst-darwin-arm64@3.17.38:
+  sst-darwin-x64@3.19.0:
     optional: true
 
-  sst-darwin-x64@3.17.19:
+  sst-linux-arm64@3.19.0:
     optional: true
 
-  sst-darwin-x64@3.17.38:
+  sst-linux-x64@3.19.0:
     optional: true
 
-  sst-linux-arm64@3.17.19:
+  sst-linux-x86@3.19.0:
     optional: true
 
-  sst-linux-arm64@3.17.38:
+  sst-win32-arm64@3.19.0:
     optional: true
 
-  sst-linux-x64@3.17.19:
+  sst-win32-x64@3.19.0:
     optional: true
 
-  sst-linux-x64@3.17.38:
+  sst-win32-x86@3.19.0:
     optional: true
 
-  sst-linux-x86@3.17.19:
-    optional: true
-
-  sst-linux-x86@3.17.38:
-    optional: true
-
-  sst-win32-arm64@3.17.19:
-    optional: true
-
-  sst-win32-arm64@3.17.38:
-    optional: true
-
-  sst-win32-x64@3.17.19:
-    optional: true
-
-  sst-win32-x64@3.17.38:
-    optional: true
-
-  sst-win32-x86@3.17.19:
-    optional: true
-
-  sst-win32-x86@3.17.38:
-    optional: true
-
-  sst@3.17.19:
+  sst@3.19.0:
     dependencies:
       aws-sdk: 2.1692.0
       aws4fetch: 1.0.18
@@ -26242,33 +26173,14 @@ snapshots:
       opencontrol: 0.0.6
       openid-client: 5.6.4
     optionalDependencies:
-      sst-darwin-arm64: 3.17.19
-      sst-darwin-x64: 3.17.19
-      sst-linux-arm64: 3.17.19
-      sst-linux-x64: 3.17.19
-      sst-linux-x86: 3.17.19
-      sst-win32-arm64: 3.17.19
-      sst-win32-x64: 3.17.19
-      sst-win32-x86: 3.17.19
-    transitivePeerDependencies:
-      - supports-color
-
-  sst@3.17.38:
-    dependencies:
-      aws-sdk: 2.1692.0
-      aws4fetch: 1.0.18
-      jose: 5.2.3
-      opencontrol: 0.0.6
-      openid-client: 5.6.4
-    optionalDependencies:
-      sst-darwin-arm64: 3.17.38
-      sst-darwin-x64: 3.17.38
-      sst-linux-arm64: 3.17.38
-      sst-linux-x64: 3.17.38
-      sst-linux-x86: 3.17.38
-      sst-win32-arm64: 3.17.38
-      sst-win32-x64: 3.17.38
-      sst-win32-x86: 3.17.38
+      sst-darwin-arm64: 3.19.0
+      sst-darwin-x64: 3.19.0
+      sst-linux-arm64: 3.19.0
+      sst-linux-x64: 3.19.0
+      sst-linux-x86: 3.19.0
+      sst-win32-arm64: 3.19.0
+      sst-win32-x64: 3.19.0
+      sst-win32-x86: 3.19.0
     transitivePeerDependencies:
       - supports-color
 
@@ -27378,10 +27290,6 @@ snapshots:
   zod-to-json-schema@3.24.3(zod@3.24.2):
     dependencies:
       zod: 3.24.2
-
-  zod-to-json-schema@3.25.0(zod@3.25.76):
-    dependencies:
-      zod: 3.25.76
 
   zod-to-json-schema@3.25.0(zod@4.1.5):
     dependencies:
