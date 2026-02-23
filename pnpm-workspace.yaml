@@ -45,7 +45,7 @@ catalog:
   handlebars: ^4.7.8
   ioredis: ^5.5.0
   isolated-vm: ^6.0.1
-  jsdom: ^26.0.0
+  jsdom: ^28.1.0
   libphonenumber-js: ^1.12.8
   lucide-react: 0.544.0
   next: 16.1.0
