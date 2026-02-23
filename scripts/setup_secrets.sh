@@ -40,7 +40,7 @@ APP_SECRET_KEYS=(
   "AUTH_GOOGLE_SECRET"
   "STRIPE_SECRET_KEY"
   "STRIPE_WEBHOOK_SECRET"
-  "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY" # Include even if public, if managed via SM
+  "STRIPE_PUBLISHABLE_KEY"
   "GOOGLE_CLIENT_ID"
   "GOOGLE_CLIENT_SECRET"
   "GOOGLE_PROJECT_ID" # Include if needed explicitly in secret string

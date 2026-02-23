@@ -1,3 +1,4 @@
+# .github/workflows/release-please.yml
 name: Release Please
 
 on:
@@ -7,12 +8,83 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  packages: write
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - id: release
+        uses: googleapis/release-please-action@v4
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  docker-publish:
+    name: Docker ${{ matrix.name }}
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: web
+            file: apps/web/Dockerfile
+            image: ghcr.io/auxx-ai/web
+          - name: api
+            file: apps/api/Dockerfile
+            image: ghcr.io/auxx-ai/api
+          - name: build
+            file: apps/build/Dockerfile
+            image: ghcr.io/auxx-ai/build
+          - name: worker
+            file: apps/worker/Dockerfile
+            image: ghcr.io/auxx-ai/worker
+          - name: lambda
+            file: apps/lambda/Dockerfile
+            image: ghcr.io/auxx-ai/lambda
+          - name: lambda-server
+            file: apps/lambda/Dockerfile.server
+            image: ghcr.io/auxx-ai/lambda-server
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          sudo apt-get clean
+          df -h /
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          platforms: linux/amd64,linux/arm64
+          pull: true
+          push: true
+          tags: |
+            ${{ matrix.image }}:latest
+            ${{ matrix.image }}:${{ needs.release-please.outputs.tag_name }}
+            ${{ matrix.image }}:${{ needs.release-please.outputs.version }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
