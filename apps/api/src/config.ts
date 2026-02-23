@@ -9,7 +9,7 @@ import { configService } from '@auxx/credentials'
  */
 
 /** Server port */
-export const PORT = configService.get<string>('PORT') || 3007
+export const PORT = configService.get<number>('API_PORT') ?? 3007
 
 /** Node environment */
 export const NODE_ENV = configService.get<string>('NODE_ENV') || 'development'
