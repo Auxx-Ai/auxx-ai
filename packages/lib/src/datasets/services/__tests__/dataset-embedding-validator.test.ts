@@ -8,8 +8,7 @@ describe('DatasetEmbeddingValidator', () => {
       const config = DatasetEmbeddingValidator.getDefaultEmbeddingConfig()
 
       expect(config).toEqual({
-        provider: 'openai',
-        model: 'text-embedding-3-small',
+        modelId: 'openai:text-embedding-3-small',
         dimensions: 1536,
       })
     })

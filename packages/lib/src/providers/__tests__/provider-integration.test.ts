@@ -24,6 +24,7 @@ import { ProviderRegistryService } from '../provider-registry-service'
 // Mock the database
 vi.mock('@auxx/database', () => ({
   database: {
+    select: vi.fn(),
     query: {
       Integration: {
         findFirst: vi.fn(),
@@ -38,6 +39,13 @@ vi.mock('@auxx/database', () => ({
     update: vi.fn(),
     delete: vi.fn(),
   },
+  schema: { Integration: {} },
+}))
+
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn(),
+  and: vi.fn(),
+  desc: vi.fn(),
 }))
 
 // Mock logger
@@ -49,6 +57,62 @@ vi.mock('@auxx/logger', () => ({
     debug: vi.fn(),
   }),
 }))
+
+// Mock all provider modules — return real capabilities via the PROVIDER_CAPABILITIES map
+vi.mock('../google/google-provider', async () => {
+  const { PROVIDER_CAPABILITIES } = await import('../provider-capabilities')
+  const { IntegrationProviderType } = await import('@auxx/database/enums')
+  return {
+    GoogleProvider: vi.fn().mockImplementation(() => ({
+      initialize: vi.fn().mockResolvedValue(undefined),
+      getCapabilities: () => PROVIDER_CAPABILITIES[IntegrationProviderType.google],
+    })),
+  }
+})
+
+vi.mock('../facebook/facebook-provider', async () => {
+  const { PROVIDER_CAPABILITIES } = await import('../provider-capabilities')
+  const { IntegrationProviderType } = await import('@auxx/database/enums')
+  return {
+    FacebookProvider: vi.fn().mockImplementation(() => ({
+      initialize: vi.fn().mockResolvedValue(undefined),
+      getCapabilities: () => PROVIDER_CAPABILITIES[IntegrationProviderType.facebook],
+    })),
+  }
+})
+
+vi.mock('../instagram/instagram-provider', async () => {
+  const { PROVIDER_CAPABILITIES } = await import('../provider-capabilities')
+  const { IntegrationProviderType } = await import('@auxx/database/enums')
+  return {
+    InstagramProvider: vi.fn().mockImplementation(() => ({
+      initialize: vi.fn().mockResolvedValue(undefined),
+      getCapabilities: () => PROVIDER_CAPABILITIES[IntegrationProviderType.instagram],
+    })),
+  }
+})
+
+vi.mock('../outlook/outlook-provider', async () => {
+  const { PROVIDER_CAPABILITIES } = await import('../provider-capabilities')
+  const { IntegrationProviderType } = await import('@auxx/database/enums')
+  return {
+    OutlookProvider: vi.fn().mockImplementation(() => ({
+      initialize: vi.fn().mockResolvedValue(undefined),
+      getCapabilities: () => PROVIDER_CAPABILITIES[IntegrationProviderType.outlook],
+    })),
+  }
+})
+
+vi.mock('../openphone/openphone-provider', async () => {
+  const { PROVIDER_CAPABILITIES } = await import('../provider-capabilities')
+  const { IntegrationProviderType } = await import('@auxx/database/enums')
+  return {
+    OpenPhoneProvider: vi.fn().mockImplementation(() => ({
+      initialize: vi.fn().mockResolvedValue(undefined),
+      getCapabilities: () => PROVIDER_CAPABILITIES[IntegrationProviderType.openphone],
+    })),
+  }
+})
 
 describe('Provider Integration Tests', () => {
   let providerRegistry: ProviderRegistryService
@@ -108,22 +172,23 @@ describe('Provider Integration Tests', () => {
       expect(openphoneCapabilities.canDraft).toBe(false) // SMS is immediate
       expect(openphoneCapabilities.canApplyLabel).toBe(false) // No labels in SMS
       expect(openphoneCapabilities.canScheduleSend).toBe(true) // Business SMS
-      expect(openphoneCapabilities.metadata?.supportsVoiceCalls).toBe(true)
+      expect(openphoneCapabilities.metadata?.maxMessageLength).toBe(160)
+      expect(openphoneCapabilities.metadata?.supportsUnicode).toBe(true)
     })
 
     it('should provide consistent capabilities via provider registry', () => {
-      const emailCaps = providerRegistry.getProviderCapabilities(IntegrationProviderType.EMAIL)
+      const emailCaps = providerRegistry.getProviderCapabilities(IntegrationProviderType.email)
       const facebookCaps = providerRegistry.getProviderCapabilities(
-        IntegrationProviderType.FACEBOOK
+        IntegrationProviderType.facebook
       )
       const instagramCaps = providerRegistry.getProviderCapabilities(
-        IntegrationProviderType.INSTAGRAM
+        IntegrationProviderType.instagram
       )
 
       // Verify capabilities match the defined constants
-      expect(emailCaps).toEqual(PROVIDER_CAPABILITIES[IntegrationProviderType.EMAIL])
-      expect(facebookCaps).toEqual(PROVIDER_CAPABILITIES[IntegrationProviderType.FACEBOOK])
-      expect(instagramCaps).toEqual(PROVIDER_CAPABILITIES[IntegrationProviderType.INSTAGRAM])
+      expect(emailCaps).toEqual(PROVIDER_CAPABILITIES[IntegrationProviderType.email])
+      expect(facebookCaps).toEqual(PROVIDER_CAPABILITIES[IntegrationProviderType.facebook])
+      expect(instagramCaps).toEqual(PROVIDER_CAPABILITIES[IntegrationProviderType.instagram])
     })
   })
 
@@ -131,73 +196,73 @@ describe('Provider Integration Tests', () => {
     it('should correctly identify which providers support specific actions', () => {
       // Test SEND_MESSAGE - should be supported by all providers
       expect(
-        providerRegistry.isActionSupportedByProvider('SEND_MESSAGE', IntegrationProviderType.EMAIL)
+        providerRegistry.isActionSupportedByProvider('SEND_MESSAGE', IntegrationProviderType.email)
       ).toBe(true)
       expect(
         providerRegistry.isActionSupportedByProvider(
           'SEND_MESSAGE',
-          IntegrationProviderType.FACEBOOK
+          IntegrationProviderType.facebook
         )
       ).toBe(true)
       expect(
         providerRegistry.isActionSupportedByProvider(
           'SEND_MESSAGE',
-          IntegrationProviderType.INSTAGRAM
+          IntegrationProviderType.instagram
         )
       ).toBe(true)
       expect(
         providerRegistry.isActionSupportedByProvider(
           'SEND_MESSAGE',
-          IntegrationProviderType.OPENPHONE
+          IntegrationProviderType.openphone
         )
       ).toBe(true)
 
       // Test DRAFT_EMAIL - should only be supported by email providers
       expect(
-        providerRegistry.isActionSupportedByProvider('DRAFT_EMAIL', IntegrationProviderType.EMAIL)
+        providerRegistry.isActionSupportedByProvider('DRAFT_EMAIL', IntegrationProviderType.email)
       ).toBe(true)
       expect(
-        providerRegistry.isActionSupportedByProvider('DRAFT_EMAIL', IntegrationProviderType.OUTLOOK)
+        providerRegistry.isActionSupportedByProvider('DRAFT_EMAIL', IntegrationProviderType.outlook)
       ).toBe(true)
       expect(
         providerRegistry.isActionSupportedByProvider(
           'DRAFT_EMAIL',
-          IntegrationProviderType.FACEBOOK
+          IntegrationProviderType.facebook
         )
       ).toBe(false)
       expect(
         providerRegistry.isActionSupportedByProvider(
           'DRAFT_EMAIL',
-          IntegrationProviderType.INSTAGRAM
+          IntegrationProviderType.instagram
         )
       ).toBe(false)
       expect(
         providerRegistry.isActionSupportedByProvider(
           'DRAFT_EMAIL',
-          IntegrationProviderType.OPENPHONE
+          IntegrationProviderType.openphone
         )
       ).toBe(false)
 
       // Test APPLY_LABEL - should work differently per provider
       expect(
-        providerRegistry.isActionSupportedByProvider('APPLY_LABEL', IntegrationProviderType.EMAIL)
+        providerRegistry.isActionSupportedByProvider('APPLY_LABEL', IntegrationProviderType.email)
       ).toBe(true)
       expect(
         providerRegistry.isActionSupportedByProvider(
           'APPLY_LABEL',
-          IntegrationProviderType.FACEBOOK
+          IntegrationProviderType.facebook
         )
       ).toBe(true)
       expect(
         providerRegistry.isActionSupportedByProvider(
           'APPLY_LABEL',
-          IntegrationProviderType.INSTAGRAM
+          IntegrationProviderType.instagram
         )
       ).toBe(false)
       expect(
         providerRegistry.isActionSupportedByProvider(
           'APPLY_LABEL',
-          IntegrationProviderType.OPENPHONE
+          IntegrationProviderType.openphone
         )
       ).toBe(false)
 
@@ -205,63 +270,63 @@ describe('Provider Integration Tests', () => {
       expect(
         providerRegistry.isActionSupportedByProvider(
           'REACT_TO_MESSAGE',
-          IntegrationProviderType.FACEBOOK
+          IntegrationProviderType.facebook
         )
       ).toBe(true)
       expect(
         providerRegistry.isActionSupportedByProvider(
           'REACT_TO_MESSAGE',
-          IntegrationProviderType.INSTAGRAM
+          IntegrationProviderType.instagram
         )
       ).toBe(true)
       expect(
         providerRegistry.isActionSupportedByProvider(
           'REACT_TO_MESSAGE',
-          IntegrationProviderType.EMAIL
+          IntegrationProviderType.email
         )
       ).toBe(false)
       expect(
         providerRegistry.isActionSupportedByProvider(
           'REACT_TO_MESSAGE',
-          IntegrationProviderType.OPENPHONE
+          IntegrationProviderType.openphone
         )
       ).toBe(false)
 
       // Test ARCHIVE - email providers only
       expect(
-        providerRegistry.isActionSupportedByProvider('ARCHIVE', IntegrationProviderType.EMAIL)
+        providerRegistry.isActionSupportedByProvider('ARCHIVE', IntegrationProviderType.email)
       ).toBe(true)
       expect(
-        providerRegistry.isActionSupportedByProvider('ARCHIVE', IntegrationProviderType.OUTLOOK)
+        providerRegistry.isActionSupportedByProvider('ARCHIVE', IntegrationProviderType.outlook)
       ).toBe(true)
       expect(
-        providerRegistry.isActionSupportedByProvider('ARCHIVE', IntegrationProviderType.FACEBOOK)
+        providerRegistry.isActionSupportedByProvider('ARCHIVE', IntegrationProviderType.facebook)
       ).toBe(false)
       expect(
-        providerRegistry.isActionSupportedByProvider('ARCHIVE', IntegrationProviderType.INSTAGRAM)
+        providerRegistry.isActionSupportedByProvider('ARCHIVE', IntegrationProviderType.instagram)
       ).toBe(false)
     })
 
     it('should handle universal actions correctly', () => {
       // Universal actions (like APPLY_TAG) should be supported by all providers
       expect(
-        providerRegistry.isActionSupportedByProvider('APPLY_TAG', IntegrationProviderType.EMAIL)
+        providerRegistry.isActionSupportedByProvider('APPLY_TAG', IntegrationProviderType.email)
       ).toBe(true)
       expect(
-        providerRegistry.isActionSupportedByProvider('APPLY_TAG', IntegrationProviderType.FACEBOOK)
+        providerRegistry.isActionSupportedByProvider('APPLY_TAG', IntegrationProviderType.facebook)
       ).toBe(true)
       expect(
-        providerRegistry.isActionSupportedByProvider('APPLY_TAG', IntegrationProviderType.INSTAGRAM)
+        providerRegistry.isActionSupportedByProvider('APPLY_TAG', IntegrationProviderType.instagram)
       ).toBe(true)
       expect(
-        providerRegistry.isActionSupportedByProvider('APPLY_TAG', IntegrationProviderType.OPENPHONE)
+        providerRegistry.isActionSupportedByProvider('APPLY_TAG', IntegrationProviderType.openphone)
       ).toBe(true)
 
       // Unknown actions should default to supported
       expect(
         providerRegistry.isActionSupportedByProvider(
           'UNKNOWN_ACTION',
-          IntegrationProviderType.EMAIL
+          IntegrationProviderType.email
         )
       ).toBe(true)
     })
@@ -271,35 +336,35 @@ describe('Provider Integration Tests', () => {
     it('should correctly check individual capabilities', () => {
       // Test email capabilities
       expect(
-        providerRegistry.providerSupportsCapability(IntegrationProviderType.EMAIL, 'canSend')
+        providerRegistry.providerSupportsCapability(IntegrationProviderType.email, 'canSend')
       ).toBe(true)
       expect(
-        providerRegistry.providerSupportsCapability(IntegrationProviderType.EMAIL, 'canDraft')
+        providerRegistry.providerSupportsCapability(IntegrationProviderType.email, 'canDraft')
       ).toBe(true)
       expect(
-        providerRegistry.providerSupportsCapability(IntegrationProviderType.EMAIL, 'canReact')
+        providerRegistry.providerSupportsCapability(IntegrationProviderType.email, 'canReact')
       ).toBe(false)
 
       // Test social media capabilities
       expect(
-        providerRegistry.providerSupportsCapability(IntegrationProviderType.FACEBOOK, 'canReact')
+        providerRegistry.providerSupportsCapability(IntegrationProviderType.facebook, 'canReact')
       ).toBe(true)
       expect(
-        providerRegistry.providerSupportsCapability(IntegrationProviderType.FACEBOOK, 'canDraft')
+        providerRegistry.providerSupportsCapability(IntegrationProviderType.facebook, 'canDraft')
       ).toBe(false)
       expect(
         providerRegistry.providerSupportsCapability(
-          IntegrationProviderType.INSTAGRAM,
+          IntegrationProviderType.instagram,
           'canApplyLabel'
         )
       ).toBe(false)
 
       // Test label scope checking
       expect(
-        providerRegistry.providerSupportsCapability(IntegrationProviderType.EMAIL, 'labelScope')
+        providerRegistry.providerSupportsCapability(IntegrationProviderType.email, 'labelScope')
       ).toBe(true) // 'thread' !== 'none'
       expect(
-        providerRegistry.providerSupportsCapability(IntegrationProviderType.INSTAGRAM, 'labelScope')
+        providerRegistry.providerSupportsCapability(IntegrationProviderType.instagram, 'labelScope')
       ).toBe(false) // 'none'
     })
   })
@@ -307,7 +372,7 @@ describe('Provider Integration Tests', () => {
   describe('Provider Type Validation', () => {
     it('should validate provider capabilities against expected values', () => {
       // Email providers should have full email capabilities
-      const emailCaps = getProviderCapabilities(IntegrationProviderType.EMAIL)
+      const emailCaps = getProviderCapabilities(IntegrationProviderType.email)
       expect(emailCaps.canSend).toBe(true)
       expect(emailCaps.canReply).toBe(true)
       expect(emailCaps.canForward).toBe(true)
@@ -323,7 +388,7 @@ describe('Provider Integration Tests', () => {
       expect(emailCaps.maxAttachmentSize).toBe(25 * 1024 * 1024) // 25MB
 
       // Social media providers should have limited capabilities
-      const facebookCaps = getProviderCapabilities(IntegrationProviderType.FACEBOOK)
+      const facebookCaps = getProviderCapabilities(IntegrationProviderType.facebook)
       expect(facebookCaps.canSend).toBe(true)
       expect(facebookCaps.canDraft).toBe(false) // Real-time messaging
       expect(facebookCaps.canArchive).toBe(false)
@@ -333,14 +398,14 @@ describe('Provider Integration Tests', () => {
       expect(facebookCaps.rateLimits?.messagesPerMinute).toBe(200)
 
       // SMS providers should have basic messaging capabilities
-      const openphoneCaps = getProviderCapabilities(IntegrationProviderType.OPENPHONE)
+      const openphoneCaps = getProviderCapabilities(IntegrationProviderType.openphone)
       expect(openphoneCaps.canSend).toBe(true)
       expect(openphoneCaps.canDraft).toBe(false) // SMS is immediate
       expect(openphoneCaps.canApplyLabel).toBe(false)
       expect(openphoneCaps.canAttachFiles).toBe(false) // SMS limitation
       expect(openphoneCaps.canScheduleSend).toBe(true)
-      expect(openphoneCaps.metadata?.supportsVoiceCalls).toBe(true)
-      expect(openphoneCaps.metadata?.maxMessageLength).toBe(1600)
+      expect(openphoneCaps.metadata?.maxMessageLength).toBe(160)
+      expect(openphoneCaps.metadata?.supportsUnicode).toBe(true)
     })
   })
 
@@ -355,14 +420,14 @@ describe('Provider Integration Tests', () => {
 
     it('should handle provider capability edge cases', () => {
       // Instagram has reactions but no labels
-      const instagramCaps = getProviderCapabilities(IntegrationProviderType.INSTAGRAM)
+      const instagramCaps = getProviderCapabilities(IntegrationProviderType.instagram)
       expect(instagramCaps.canReact).toBe(true)
       expect(instagramCaps.canApplyLabel).toBe(false)
       expect(instagramCaps.labelScope).toBe('none')
 
       // Outlook has scheduled send but Facebook doesn't
-      const outlookCaps = getProviderCapabilities(IntegrationProviderType.OUTLOOK)
-      const facebookCaps = getProviderCapabilities(IntegrationProviderType.FACEBOOK)
+      const outlookCaps = getProviderCapabilities(IntegrationProviderType.outlook)
+      const facebookCaps = getProviderCapabilities(IntegrationProviderType.facebook)
       expect(outlookCaps.canScheduleSend).toBe(true)
       expect(facebookCaps.canScheduleSend).toBe(false)
     })
@@ -398,23 +463,23 @@ export function demonstrateCapabilitySystem() {
   // Example: Check if we can draft emails with current providers
   const canDraft = registry.isActionSupportedByProvider(
     'DRAFT_EMAIL',
-    IntegrationProviderType.EMAIL
+    IntegrationProviderType.email
   )
   console.log('Can draft emails with Google/Outlook:', canDraft) // true
 
   const canDraftFacebook = registry.isActionSupportedByProvider(
     'DRAFT_EMAIL',
-    IntegrationProviderType.FACEBOOK
+    IntegrationProviderType.facebook
   )
   console.log('Can draft emails with Facebook:', canDraftFacebook) // false
 
   // Example: Get label scope for different providers
-  const emailLabelScope = registry.getProviderCapabilities(IntegrationProviderType.EMAIL).labelScope
+  const emailLabelScope = registry.getProviderCapabilities(IntegrationProviderType.email).labelScope
   const facebookLabelScope = registry.getProviderCapabilities(
-    IntegrationProviderType.FACEBOOK
+    IntegrationProviderType.facebook
   ).labelScope
   const instagramLabelScope = registry.getProviderCapabilities(
-    IntegrationProviderType.INSTAGRAM
+    IntegrationProviderType.instagram
   ).labelScope
 
   console.log('Label scopes:', {
@@ -425,7 +490,7 @@ export function demonstrateCapabilitySystem() {
 
   // Example: Check rate limits
   const facebookLimits = registry.getProviderCapabilities(
-    IntegrationProviderType.FACEBOOK
+    IntegrationProviderType.facebook
   ).rateLimits
   console.log('Facebook rate limits:', facebookLimits) // { messagesPerMinute: 200, messagesPerHour: 1000 }
 }

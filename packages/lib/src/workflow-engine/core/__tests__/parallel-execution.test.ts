@@ -2,14 +2,9 @@
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { ExecutionContextManager } from '../execution-context'
-import { NodeProcessorRegistry } from '../node-processor-registry'
-import type {
-  NodeExecutionResult,
-  Workflow,
-  WorkflowEdge,
-  WorkflowNode,
-  WorkflowNodeType,
-} from '../types'
+import type { NodeProcessorRegistry } from '../node-processor-registry'
+import type { NodeExecutionResult, Workflow, WorkflowEdge, WorkflowNode } from '../types'
+import { NodeRunningStatus, WorkflowNodeType } from '../types'
 import { WorkflowEngine } from '../workflow-engine'
 
 // Mock processor for testing
@@ -51,6 +46,10 @@ class MockProcessor {
     }
   }
 
+  async preprocessNode() {
+    return { inputs: {}, metadata: {} }
+  }
+
   async validate() {
     return { valid: true, errors: [], warnings: [] }
   }
@@ -61,8 +60,8 @@ describe('Parallel Execution with Convergence', () => {
   let registry: NodeProcessorRegistry
 
   beforeEach(() => {
-    registry = new NodeProcessorRegistry()
-    engine = new WorkflowEngine(registry)
+    engine = new WorkflowEngine()
+    registry = engine.getNodeRegistry()
   })
 
   describe('Basic Diamond Pattern', () => {
@@ -74,6 +73,8 @@ describe('Parallel Execution with Convergence', () => {
 
       const workflow: Workflow = {
         id: 'test-diamond',
+        workflowId: 'test-diamond',
+        workflowAppId: 'test-app',
         organizationId: 'org-1',
         name: 'Diamond Pattern Test',
         enabled: true,
@@ -194,6 +195,8 @@ describe('Parallel Execution with Convergence', () => {
 
       const workflow: Workflow = {
         id: 'test-nested-diamond',
+        workflowId: 'test-nested-diamond',
+        workflowAppId: 'test-app',
         organizationId: 'org-1',
         name: 'Nested Diamond Pattern Test',
         enabled: true,
@@ -390,6 +393,9 @@ describe('Parallel Execution with Convergence', () => {
       // Failing processor
       class FailingProcessor {
         readonly type = WorkflowNodeType.HTTP
+        async preprocessNode() {
+          return { inputs: {}, metadata: {} }
+        }
         async execute(node: WorkflowNode): Promise<NodeExecutionResult> {
           throw new Error('Network request failed')
         }
@@ -404,6 +410,8 @@ describe('Parallel Execution with Convergence', () => {
 
       const workflow: Workflow = {
         id: 'test-error-handling',
+        workflowId: 'test-error-handling',
+        workflowAppId: 'test-app',
         organizationId: 'org-1',
         name: 'Error Handling Test',
         enabled: true,
@@ -519,6 +527,9 @@ describe('Parallel Execution with Convergence', () => {
       // Mock slow and fast processors
       class SlowProcessor {
         readonly type = WorkflowNodeType.CODE
+        async preprocessNode() {
+          return { inputs: {}, metadata: {} }
+        }
         async execute(
           node: WorkflowNode,
           contextManager: ExecutionContextManager
@@ -544,6 +555,8 @@ describe('Parallel Execution with Convergence', () => {
 
       const workflow: Workflow = {
         id: 'test-timeout',
+        workflowId: 'test-timeout',
+        workflowAppId: 'test-app',
         organizationId: 'org-1',
         name: 'Timeout Join Test',
         enabled: true,
@@ -717,6 +730,8 @@ describe('Parallel Execution with Convergence', () => {
 
       const workflow: Workflow = {
         id: 'test-performance',
+        workflowId: 'test-performance',
+        workflowAppId: 'test-app',
         organizationId: 'org-1',
         name: 'Performance Test',
         enabled: true,

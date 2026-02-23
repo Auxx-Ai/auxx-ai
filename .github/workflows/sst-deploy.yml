@@ -155,12 +155,15 @@ jobs:
       - name: Remove system Pulumi (avoid version conflict with SST)
         run: rm -f /usr/local/bin/pulumi*
 
-      - name: Deploy dev
+      - name: Deploy dev (lock-aware retry)
         env:
           SST_PRINT_LOGS: '1'
           PULUMI_MAX_CONCURRENT_REQUESTS: '20'
           SST_TELEMETRY_DISABLED: '1'
-        run: pnpm sst:deploy
+          SST_DEPLOY_CMD: 'pnpm sst:deploy'
+          SST_LOCK_WAIT_SECONDS: '90'
+          SST_LOCK_MAX_ATTEMPTS: '2'
+        run: bash scripts/ci/sst-deploy-with-lock-retry.sh
 
       - name: Run DB migrations (dev)
         env:

@@ -124,7 +124,7 @@ describe('ThreadQueryService', () => {
       }
       const pagination = { limit: 50, cursor: null }
 
-      const result = await (service as any).getThreadIds(undefined, pagination, {
+      const result = await (service as any).getThreadIdsInternal(undefined, pagination, {
         orderBy: [],
         sort: { field: 'lastMessageAt', direction: 'desc' },
       })
@@ -162,7 +162,7 @@ describe('ThreadQueryService', () => {
       }
       const pagination = { limit: 2, cursor: null }
 
-      const result = await (service as any).getThreadIds(undefined, pagination, {
+      const result = await (service as any).getThreadIdsInternal(undefined, pagination, {
         orderBy: [],
         sort: { field: 'lastMessageAt', direction: 'desc' },
       })

@@ -1,11 +1,27 @@
 // packages/lib/src/utils/rate-limiter/__tests__/integration.test.ts
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ExponentialBackoff } from '../backoff-handler'
 import { CircuitBreaker } from '../circuit-breaker'
 import { createSimpleRateLimiter } from '../index'
 import { PriorityQueue } from '../priority-queue'
 import { TokenBucket } from '../token-bucket'
+
+// Mock logger
+vi.mock('@auxx/logger', () => ({
+  createScopedLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }),
+}))
+
+// Mock Redis to prevent real connections
+vi.mock('@auxx/redis', () => ({
+  getRedisClient: vi.fn().mockResolvedValue(null),
+  getRedisProvider: vi.fn().mockReturnValue('hosted'),
+}))
 
 describe('Rate Limiter Integration Tests', () => {
   describe('Real-world scenarios', () => {

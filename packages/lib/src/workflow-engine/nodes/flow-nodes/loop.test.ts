@@ -112,7 +112,8 @@ describe('LoopProcessor', () => {
         .fn()
         .mockResolvedValue({ processed: true })
 
-      const result = await loopProcessor.execute(mockNode, contextManager)
+      const preprocessed = await loopProcessor.preprocessNode(mockNode, contextManager)
+      const result = await loopProcessor.execute(mockNode, contextManager, preprocessed)
 
       expect(result.status).toBe(NodeRunningStatus.Succeeded)
       expect(result.output).toBeDefined()
@@ -122,18 +123,20 @@ describe('LoopProcessor', () => {
     })
 
     it('should respect maxIterations limit', async () => {
-      const nodeWithLimit = ({
+      const nodeWithLimit = {
         ...mockNode,
-        config: {
-          ...mockNode.config,
+        data: {
+          ...mockNode.data,
           itemsSource: '{{numbers}}',
           maxIterations: 3,
         },
-      }(loopProcessor as any).executeLoopBodyCallback = vi
+      }
+      ;(loopProcessor as any).executeLoopBodyCallback = vi
         .fn()
-        .mockResolvedValue({ processed: true }))
+        .mockResolvedValue({ processed: true })
 
-      const result = await loopProcessor.execute(nodeWithLimit, contextManager)
+      const preprocessed = await loopProcessor.preprocessNode(nodeWithLimit, contextManager)
+      const result = await loopProcessor.execute(nodeWithLimit, contextManager, preprocessed)
 
       expect(result.output.totalIterations).toBe(3) // Limited to 3 despite 5 items
       expect(result.output.completedIterations).toBe(3)
@@ -202,21 +205,20 @@ describe('LoopProcessor', () => {
 
   describe('Loop Variables', () => {
     it('should set loop variables correctly', async () => {
-      const capturedVariables: any[] = ([](loopProcessor as any).executeLoopBodyCallback = vi
-        .fn()
-        .mockImplementation(() => {
-          // Capture current loop variables
-          capturedVariables.push({
-            index: contextManager.getVariable('loop.index'),
-            count: contextManager.getVariable('loop.count'),
-            total: contextManager.getVariable('loop.total'),
-            isFirst: contextManager.getVariable('loop.isFirst'),
-            isLast: contextManager.getVariable('loop.isLast'),
-            item: contextManager.getVariable('loop.item'),
-            iterator: contextManager.getVariable('item'),
-          })
-          return { processed: true }
-        }))
+      const capturedVariables: any[] = []
+      ;(loopProcessor as any).executeLoopBodyCallback = vi.fn().mockImplementation(() => {
+        // Capture current loop variables
+        capturedVariables.push({
+          index: contextManager.getVariable('loop.index'),
+          count: contextManager.getVariable('loop.count'),
+          total: contextManager.getVariable('loop.total'),
+          isFirst: contextManager.getVariable('loop.isFirst'),
+          isLast: contextManager.getVariable('loop.isLast'),
+          item: contextManager.getVariable('loop.item'),
+          iterator: contextManager.getVariable('item'),
+        })
+        return { processed: true }
+      })
 
       await loopProcessor.execute(mockNode, contextManager)
 
@@ -257,15 +259,14 @@ describe('LoopProcessor', () => {
         },
       }
 
-      let callCount = (0(loopProcessor as any).executeLoopBodyCallback = vi
-        .fn()
-        .mockImplementation(() => {
-          callCount++
-          if (callCount === 2) {
-            throw new Error('Iteration 2 failed')
-          }
-          return { processed: true }
-        }))
+      let callCount = 0
+      ;(loopProcessor as any).executeLoopBodyCallback = vi.fn().mockImplementation(() => {
+        callCount++
+        if (callCount === 2) {
+          throw new Error('Iteration 2 failed')
+        }
+        return { processed: true }
+      })
 
       const result = await loopProcessor.execute(nodeWithErrorHandling, contextManager)
 
@@ -276,16 +277,17 @@ describe('LoopProcessor', () => {
     })
 
     it('should stop on error without continueOnError', async () => {
-      const nodeWithoutErrorHandling = ({
+      const nodeWithoutErrorHandling = {
         ...mockNode,
         config: {
           ...mockNode.config,
           continueOnError: false,
         },
-      }(loopProcessor as any).executeLoopBodyCallback = vi
+      }
+      ;(loopProcessor as any).executeLoopBodyCallback = vi
         .fn()
         .mockResolvedValueOnce({ processed: true })
-        .mockRejectedValueOnce(new Error('Iteration failed')))
+        .mockRejectedValueOnce(new Error('Iteration failed'))
 
       await expect(loopProcessor.execute(nodeWithoutErrorHandling, contextManager)).rejects.toThrow(
         'Iteration failed'
@@ -303,18 +305,17 @@ describe('LoopProcessor', () => {
         },
       }
 
-      let attemptCount = (0(loopProcessor as any).executeLoopBodyCallback = vi
-        .fn()
-        .mockImplementation(() => {
-          attemptCount++
+      let attemptCount = 0
+      ;(loopProcessor as any).executeLoopBodyCallback = vi.fn().mockImplementation(() => {
+        attemptCount++
+        if (attemptCount === 2) {
+          // Fail first time, succeed on retry
           if (attemptCount === 2) {
-            // Fail first time, succeed on retry
-            if (attemptCount === 2) {
-              throw new Error('Temporary failure')
-            }
+            throw new Error('Temporary failure')
           }
-          return { processed: true, attempt: attemptCount }
-        }))
+        }
+        return { processed: true, attempt: attemptCount }
+      })
 
       const result = await loopProcessor.execute(nodeWithRetry, contextManager)
 
@@ -325,12 +326,13 @@ describe('LoopProcessor', () => {
 
   describe('Progress Tracking', () => {
     it('should send progress updates when callback is provided', async () => {
-      const progressUpdates: any[] =
-        ([](loopProcessor as any).progressCallback =
-        vi.fn().mockImplementation((update) => {
-          progressUpdates.push(update)
-        })(loopProcessor as any).executeLoopBodyCallback =
-          vi.fn().mockResolvedValue({ processed: true }))
+      const progressUpdates: any[] = []
+      ;(loopProcessor as any).progressCallback = vi.fn().mockImplementation((update) => {
+        progressUpdates.push(update)
+      })
+      ;(loopProcessor as any).executeLoopBodyCallback = vi
+        .fn()
+        .mockResolvedValue({ processed: true })
 
       await loopProcessor.execute(mockNode, contextManager)
 
@@ -357,16 +359,17 @@ describe('LoopProcessor', () => {
       const largeArray = Array.from({ length: 100 }, (_, i) => i)
       contextManager.setVariable('largeArray', largeArray)
 
-      const nodeWithLargeArray = ({
+      const nodeWithLargeArray = {
         ...mockNode,
         config: {
           ...mockNode.config,
           itemsSource: '{{largeArray}}',
           maxIterations: 100,
         },
-      }(loopProcessor as any).executeLoopBodyCallback = vi
+      }
+      ;(loopProcessor as any).executeLoopBodyCallback = vi
         .fn()
-        .mockResolvedValue({ processed: true }))
+        .mockResolvedValue({ processed: true })
 
       const startTime = Date.now()
       const result = await loopProcessor.execute(nodeWithLargeArray, contextManager)
@@ -382,16 +385,15 @@ describe('LoopProcessor', () => {
 
   describe('Loop Break', () => {
     it('should break loop when requested', async () => {
-      let iterationCount = (0(loopProcessor as any).executeLoopBodyCallback = vi
-        .fn()
-        .mockImplementation(() => {
-          iterationCount++
-          if (iterationCount === 2) {
-            // Request break after second iteration
-            LoopContextManager.requestLoopBreak(contextManager, mockNode.nodeId)
-          }
-          return { processed: true }
-        }))
+      let iterationCount = 0
+      ;(loopProcessor as any).executeLoopBodyCallback = vi.fn().mockImplementation(() => {
+        iterationCount++
+        if (iterationCount === 2) {
+          // Request break after second iteration
+          LoopContextManager.requestLoopBreak(contextManager, mockNode.nodeId)
+        }
+        return { processed: true }
+      })
 
       const result = await loopProcessor.execute(mockNode, contextManager)
 

@@ -4,76 +4,55 @@ import type { Job } from 'bullmq'
 import { subDays } from 'date-fns'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Mock the job data
-const mockJobData = {
-  dryRun: true,
-  gracePeriodDays: 14,
-  batchSize: 10,
-  sendNotifications: false,
-}
+// ---- chainable mock for Drizzle query builder ----
+// The source uses two query shapes:
+//   Main query:  db.select().from().innerJoin().innerJoin().where()
+//   Fresh-check: db.select().from().where().limit()
+// We wire both paths through the same mock chain.
 
-// Mock job instance
-const mockJob = {
-  id: 'test-job-123',
-  data: mockJobData,
-  updateProgress: vi.fn(),
-} as unknown as Job
+const mockLimit = vi.fn()
+const mockFreshCheckWhere = vi.fn().mockReturnValue({ limit: mockLimit })
+const mockMainQueryWhere = vi.fn()
+const mockInnerJoin2 = vi.fn().mockReturnValue({ where: mockMainQueryWhere })
+const mockInnerJoin1 = vi.fn().mockReturnValue({ innerJoin: mockInnerJoin2 })
+const mockFrom = vi.fn().mockReturnValue({
+  innerJoin: mockInnerJoin1,
+  where: mockFreshCheckWhere,
+})
+const mockSelect = vi.fn().mockReturnValue({ from: mockFrom })
 
-// Mock database responses
-const mockExpiredTrials = [
-  {
-    organizationId: 'org-1',
-    trialEnd: subDays(new Date(), 15), // 15 days ago - ready for deletion
-    trialConversionStatus: 'EXPIRED_WITHOUT_CONVERSION',
-    hasTrialEnded: true,
-    lastNotificationSent: null,
-    organizationName: 'Test Org 1',
-    ownerEmail: 'owner1@test.com',
-  },
-  {
-    organizationId: 'org-2',
-    trialEnd: subDays(new Date(), 8), // 8 days ago - needs warning
-    trialConversionStatus: 'EXPIRED_WITHOUT_CONVERSION',
-    hasTrialEnded: true,
-    lastNotificationSent: null,
-    organizationName: 'Test Org 2',
-    ownerEmail: 'owner2@test.com',
-  },
-  {
-    organizationId: 'org-3',
-    trialEnd: subDays(new Date(), 14), // 14 days ago exactly - needs final notice
-    trialConversionStatus: 'CANCELED_DURING_TRIAL',
-    hasTrialEnded: true,
-    lastNotificationSent: 'WARNING',
-    organizationName: 'Test Org 3',
-    ownerEmail: 'owner3@test.com',
-  },
-]
+const mockUpdateSet = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) })
+const mockUpdate = vi.fn().mockReturnValue({ set: mockUpdateSet })
 
-// Mock modules
-vi.mock('../../db', () => ({
-  db: {
-    select: vi.fn().mockReturnThis(),
-    from: vi.fn().mockReturnThis(),
-    innerJoin: vi.fn().mockReturnThis(),
-    where: vi.fn().mockResolvedValue(mockExpiredTrials),
-  },
-}))
+const mockDeleteOrganization = vi.fn().mockResolvedValue({ success: true, userDeleted: false })
 
 vi.mock('@auxx/database', () => ({
-  PlanSubscription: {
-    organizationId: 'organizationId',
-    trialEnd: 'trialEnd',
-    trialConversionStatus: 'trialConversionStatus',
-    hasTrialEnded: 'hasTrialEnded',
-    lastDeletionNotificationSent: 'lastDeletionNotificationSent',
-    stripeSubscriptionId: 'stripeSubscriptionId',
+  database: {
+    select: (...args: unknown[]) => mockSelect(...args),
+    update: (...args: unknown[]) => mockUpdate(...args),
   },
-  Organization: {
-    id: 'id',
-    name: 'name',
-    ownerEmail: 'ownerEmail',
+  schema: {
+    PlanSubscription: {
+      organizationId: 'organizationId',
+      trialEnd: 'trialEnd',
+      trialConversionStatus: 'trialConversionStatus',
+      hasTrialEnded: 'hasTrialEnded',
+      lastDeletionNotificationSent: 'lastDeletionNotificationSent',
+      lastDeletionNotificationDate: 'lastDeletionNotificationDate',
+      stripeSubscriptionId: 'stripeSubscriptionId',
+    },
+    Organization: {
+      id: 'id',
+      name: 'name',
+      createdById: 'createdById',
+    },
+    User: {
+      id: 'id',
+      email: 'email',
+    },
   },
+  PlanSubscription: {},
+  Organization: {},
 }))
 
 vi.mock('drizzle-orm', () => ({
@@ -83,7 +62,11 @@ vi.mock('drizzle-orm', () => ({
   isNull: vi.fn(),
 }))
 
-vi.mock('../../logger', () => ({
+vi.mock('@auxx/config/server', () => ({
+  WEBAPP_URL: 'https://app.test.com',
+}))
+
+vi.mock('@auxx/logger', () => ({
   createScopedLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -92,206 +75,407 @@ vi.mock('../../logger', () => ({
   }),
 }))
 
+const mockSendTrialDeletionWarningEmail = vi.fn().mockResolvedValue(true)
+const mockSendTrialDeletionFinalEmail = vi.fn().mockResolvedValue(true)
+
+vi.mock('@auxx/email', () => ({
+  sendTrialDeletionWarningEmail: (...args: unknown[]) => mockSendTrialDeletionWarningEmail(...args),
+  sendTrialDeletionFinalEmail: (...args: unknown[]) => mockSendTrialDeletionFinalEmail(...args),
+}))
+
 vi.mock('../../organizations', () => ({
   OrganizationService: vi.fn().mockImplementation(() => ({
-    deleteOrganization: vi.fn().mockResolvedValue({ success: true, userDeleted: false }),
+    deleteOrganization: (...args: unknown[]) => mockDeleteOrganization(...args),
   })),
 }))
 
-vi.mock('../notifications/trial-expiry-notifications', () => ({
-  sendDeletionWarningEmail: vi.fn().mockResolvedValue(undefined),
-  sendFinalDeletionNotice: vi.fn().mockResolvedValue(undefined),
-}))
+// ---- helpers ----
 
-describe('ExpiredTrialAccountCleanupJob', () => {
-  let expiredTrialAccountCleanupJob: any
+function makeJob(overrides: Partial<Job['data']> = {}): Job {
+  return {
+    id: 'test-job-123',
+    data: {
+      dryRun: false,
+      gracePeriodDays: 14,
+      batchSize: 10,
+      sendNotifications: true,
+      ...overrides,
+    },
+    updateProgress: vi.fn(),
+  } as unknown as Job
+}
+
+function buildExpiredTrialRow(overrides: Record<string, unknown> = {}) {
+  return {
+    organizationId: 'org-1',
+    trialEnd: subDays(new Date(), 15),
+    trialConversionStatus: 'EXPIRED_WITHOUT_CONVERSION',
+    hasTrialEnded: true,
+    lastNotificationSent: null,
+    organizationName: 'Test Org 1',
+    ownerEmail: 'owner1@test.com',
+    ...overrides,
+  }
+}
+
+// ---- tests ----
+
+describe('expiredTrialAccountCleanupJob', () => {
+  let expiredTrialAccountCleanupJob: (job: Job) => Promise<{
+    scanned: number
+    deleted: number
+    skipped: number
+    errors: number
+    notificationsWarning: number
+    notificationsFinal: number
+  }>
 
   beforeEach(async () => {
     vi.clearAllMocks()
 
-    // Import the job handler
-    const module = await import('../expired-trial-account-cleanup-job')
-    expiredTrialAccountCleanupJob = module.expiredTrialAccountCleanupJob
+    // Default: empty result set for the main query
+    mockMainQueryWhere.mockResolvedValue([])
+
+    // Default: fresh-check returns no active subscription (allows deletion)
+    mockLimit.mockResolvedValue([{ stripeSubscriptionId: null }])
+
+    const mod = await import('../expired-trial-account-cleanup-job')
+    expiredTrialAccountCleanupJob = mod.expiredTrialAccountCleanupJob
   })
 
-  describe('Job Configuration Validation', () => {
-    it('should validate job payload schema', async () => {
-      const result = await expiredTrialAccountCleanupJob(mockJob)
+  // ---------- payload validation ----------
 
-      expect(result).toBeDefined()
-      expect(result.scanned).toBeGreaterThanOrEqual(0)
-      expect(result.deleted).toBeGreaterThanOrEqual(0)
-      expect(result.skipped).toBeGreaterThanOrEqual(0)
-      expect(result.errors).toBeGreaterThanOrEqual(0)
-    })
+  describe('payload validation', () => {
+    it('should apply default values when fields are omitted', async () => {
+      const job = { id: 'j1', data: {}, updateProgress: vi.fn() } as unknown as Job
 
-    it('should handle dry run mode correctly', async () => {
-      const dryRunJob = {
-        ...mockJob,
-        data: { ...mockJobData, dryRun: true },
-      } as Job
+      const stats = await expiredTrialAccountCleanupJob(job)
 
-      const result = await expiredTrialAccountCleanupJob(dryRunJob)
-
-      // In dry run mode, everything should be skipped
-      expect(result.skipped).toBeGreaterThan(0)
-      expect(result.deleted).toBe(0)
-    })
-
-    it('should handle empty data correctly', async () => {
-      // Mock empty database response
-      vi.mocked(require('../../db').db.where).mockResolvedValueOnce([])
-
-      const result = await expiredTrialAccountCleanupJob(mockJob)
-
-      expect(result.scanned).toBe(0)
-      expect(result.deleted).toBe(0)
-      expect(result.skipped).toBe(0)
-    })
-  })
-
-  describe('Organization Categorization', () => {
-    it('should correctly identify organizations ready for deletion', async () => {
-      const result = await expiredTrialAccountCleanupJob(mockJob)
-
-      // Should identify organizations past grace period
-      expect(result.scanned).toBeGreaterThan(0)
-    })
-
-    it('should respect grace period configuration', async () => {
-      const shortGracePeriodJob = {
-        ...mockJob,
-        data: { ...mockJobData, gracePeriodDays: 5 },
-      } as Job
-
-      const result = await expiredTrialAccountCleanupJob(shortGracePeriodJob)
-
-      // With shorter grace period, more orgs should be eligible
-      expect(result).toBeDefined()
-    })
-  })
-
-  describe('Notification Handling', () => {
-    it('should skip notifications in dry run mode', async () => {
-      const { sendDeletionWarningEmail, sendFinalDeletionNotice } = await import(
-        '../notifications/trial-expiry-notifications'
+      expect(stats).toEqual(
+        expect.objectContaining({
+          scanned: 0,
+          deleted: 0,
+          skipped: 0,
+          errors: 0,
+        })
       )
-
-      await expiredTrialAccountCleanupJob(mockJob)
-
-      // Should not send notifications in dry run
-      expect(sendDeletionWarningEmail).not.toHaveBeenCalled()
-      expect(sendFinalDeletionNotice).not.toHaveBeenCalled()
     })
 
-    it('should send notifications when enabled and not in dry run', async () => {
-      const notificationJob = {
-        ...mockJob,
-        data: { ...mockJobData, dryRun: false, sendNotifications: true },
-      } as Job
+    it('should reject invalid payload values', async () => {
+      const job = makeJob({ gracePeriodDays: -1 })
 
-      const { sendDeletionWarningEmail, sendFinalDeletionNotice } = await import(
-        '../notifications/trial-expiry-notifications'
-      )
-
-      await expiredTrialAccountCleanupJob(notificationJob)
-
-      // Should attempt to send notifications based on mock data
-      // Note: Actual calls depend on the organization categorization logic
-      expect(sendDeletionWarningEmail).toHaveBeenCalledTimes(expect.any(Number))
-      expect(sendFinalDeletionNotice).toHaveBeenCalledTimes(expect.any(Number))
+      await expect(expiredTrialAccountCleanupJob(job)).rejects.toThrow()
     })
   })
 
-  describe('Error Handling', () => {
-    it('should handle database errors gracefully', async () => {
-      // Mock database error
-      vi.mocked(require('../../db').db.where).mockRejectedValueOnce(
-        new Error('Database connection failed')
-      )
+  // ---------- organization categorization ----------
 
-      await expect(expiredTrialAccountCleanupJob(mockJob)).rejects.toThrow(
+  describe('organization categorization', () => {
+    it('should count organizations ready for deletion (>=14 days expired)', async () => {
+      mockMainQueryWhere.mockResolvedValue([
+        buildExpiredTrialRow({ organizationId: 'org-old', trialEnd: subDays(new Date(), 15) }),
+      ])
+
+      const stats = await expiredTrialAccountCleanupJob(makeJob())
+
+      // 1 deletion-ready org scanned
+      expect(stats.scanned).toBe(1)
+      expect(stats.deleted).toBe(1)
+    })
+
+    it('should categorize organizations needing a warning (7-12 days expired)', async () => {
+      mockMainQueryWhere.mockResolvedValue([
+        buildExpiredTrialRow({
+          organizationId: 'org-warn',
+          trialEnd: subDays(new Date(), 8),
+          lastNotificationSent: null,
+        }),
+      ])
+
+      const stats = await expiredTrialAccountCleanupJob(makeJob())
+
+      expect(stats.scanned).toBe(1)
+      expect(stats.notificationsWarning).toBe(1)
+      expect(stats.deleted).toBe(0)
+    })
+
+    it('should categorize organizations needing a final notice (13 days expired)', async () => {
+      mockMainQueryWhere.mockResolvedValue([
+        buildExpiredTrialRow({
+          organizationId: 'org-final',
+          trialEnd: subDays(new Date(), 13),
+          lastNotificationSent: 'WARNING',
+        }),
+      ])
+
+      const stats = await expiredTrialAccountCleanupJob(makeJob())
+
+      expect(stats.scanned).toBe(1)
+      expect(stats.notificationsFinal).toBe(1)
+      expect(stats.deleted).toBe(0)
+    })
+
+    it('should skip organizations with null trialEnd', async () => {
+      mockMainQueryWhere.mockResolvedValue([
+        buildExpiredTrialRow({ organizationId: 'org-null', trialEnd: null }),
+      ])
+
+      const stats = await expiredTrialAccountCleanupJob(makeJob())
+
+      // null trialEnd is skipped during categorization, so scanned = 0
+      expect(stats.scanned).toBe(0)
+      expect(stats.deleted).toBe(0)
+    })
+  })
+
+  // ---------- dry-run mode ----------
+
+  describe('dry-run mode', () => {
+    it('should not delete organizations in dry-run mode', async () => {
+      mockMainQueryWhere.mockResolvedValue([
+        buildExpiredTrialRow({ trialEnd: subDays(new Date(), 20) }),
+      ])
+
+      const stats = await expiredTrialAccountCleanupJob(makeJob({ dryRun: true }))
+
+      expect(stats.deleted).toBe(0)
+      expect(stats.skipped).toBe(1)
+      expect(mockDeleteOrganization).not.toHaveBeenCalled()
+    })
+
+    it('should not send notifications in dry-run mode', async () => {
+      mockMainQueryWhere.mockResolvedValue([
+        buildExpiredTrialRow({
+          organizationId: 'org-warn',
+          trialEnd: subDays(new Date(), 8),
+          lastNotificationSent: null,
+        }),
+      ])
+
+      await expiredTrialAccountCleanupJob(makeJob({ dryRun: true }))
+
+      expect(mockSendTrialDeletionWarningEmail).not.toHaveBeenCalled()
+      expect(mockSendTrialDeletionFinalEmail).not.toHaveBeenCalled()
+    })
+  })
+
+  // ---------- notification handling ----------
+
+  describe('notification handling', () => {
+    it('should send warning email with correct parameters', async () => {
+      mockMainQueryWhere.mockResolvedValue([
+        buildExpiredTrialRow({
+          organizationId: 'org-warn',
+          organizationName: 'Warn Org',
+          ownerEmail: 'warn@test.com',
+          trialEnd: subDays(new Date(), 8),
+          lastNotificationSent: null,
+        }),
+      ])
+
+      await expiredTrialAccountCleanupJob(makeJob())
+
+      expect(mockSendTrialDeletionWarningEmail).toHaveBeenCalledWith({
+        email: 'warn@test.com',
+        organizationName: 'Warn Org',
+        daysUntilDeletion: 7,
+        reactivationLink: 'https://app.test.com/subscription/reactivate/org-warn',
+      })
+    })
+
+    it('should send final notice email with correct parameters', async () => {
+      mockMainQueryWhere.mockResolvedValue([
+        buildExpiredTrialRow({
+          organizationId: 'org-final',
+          organizationName: 'Final Org',
+          ownerEmail: 'final@test.com',
+          trialEnd: subDays(new Date(), 13),
+          lastNotificationSent: 'WARNING',
+        }),
+      ])
+
+      await expiredTrialAccountCleanupJob(makeJob())
+
+      expect(mockSendTrialDeletionFinalEmail).toHaveBeenCalledWith({
+        email: 'final@test.com',
+        organizationName: 'Final Org',
+        hoursUntilDeletion: 24,
+        reactivationLink: 'https://app.test.com/subscription/reactivate/org-final',
+      })
+    })
+
+    it('should skip notification for organizations with null ownerEmail', async () => {
+      mockMainQueryWhere.mockResolvedValue([
+        buildExpiredTrialRow({
+          organizationId: 'org-noemail',
+          trialEnd: subDays(new Date(), 8),
+          ownerEmail: null,
+          lastNotificationSent: null,
+        }),
+      ])
+
+      const stats = await expiredTrialAccountCleanupJob(makeJob())
+
+      expect(mockSendTrialDeletionWarningEmail).not.toHaveBeenCalled()
+      expect(stats.skipped).toBe(1)
+    })
+
+    it('should not send notifications when sendNotifications is false', async () => {
+      mockMainQueryWhere.mockResolvedValue([
+        buildExpiredTrialRow({
+          organizationId: 'org-warn',
+          trialEnd: subDays(new Date(), 8),
+          lastNotificationSent: null,
+        }),
+      ])
+
+      const stats = await expiredTrialAccountCleanupJob(makeJob({ sendNotifications: false }))
+
+      expect(mockSendTrialDeletionWarningEmail).not.toHaveBeenCalled()
+      expect(mockSendTrialDeletionFinalEmail).not.toHaveBeenCalled()
+      // Notifications are suppressed but no notification stats incremented
+      expect(stats.notificationsWarning).toBe(0)
+      expect(stats.notificationsFinal).toBe(0)
+    })
+
+    it('should update notification status in database after sending warning', async () => {
+      mockMainQueryWhere.mockResolvedValue([
+        buildExpiredTrialRow({
+          organizationId: 'org-warn',
+          trialEnd: subDays(new Date(), 8),
+          lastNotificationSent: null,
+        }),
+      ])
+
+      await expiredTrialAccountCleanupJob(makeJob())
+
+      // db.update should have been called to set lastDeletionNotificationSent
+      expect(mockUpdate).toHaveBeenCalled()
+    })
+
+    it('should increment errors when email sending fails', async () => {
+      mockSendTrialDeletionWarningEmail.mockRejectedValueOnce(new Error('SMTP failure'))
+
+      mockMainQueryWhere.mockResolvedValue([
+        buildExpiredTrialRow({
+          organizationId: 'org-warn',
+          trialEnd: subDays(new Date(), 8),
+          lastNotificationSent: null,
+        }),
+      ])
+
+      const stats = await expiredTrialAccountCleanupJob(makeJob())
+
+      expect(stats.errors).toBe(1)
+      expect(stats.notificationsWarning).toBe(0)
+    })
+  })
+
+  // ---------- deletion processing ----------
+
+  describe('deletion processing', () => {
+    it('should delete organizations past the grace period', async () => {
+      mockMainQueryWhere.mockResolvedValue([buildExpiredTrialRow({ organizationId: 'org-delete' })])
+
+      const stats = await expiredTrialAccountCleanupJob(makeJob())
+
+      expect(mockDeleteOrganization).toHaveBeenCalledWith({
+        organizationId: 'org-delete',
+        skipEmailConfirmation: true,
+        isSystemDeletion: true,
+      })
+      expect(stats.deleted).toBe(1)
+    })
+
+    it('should skip deletion if organization was reactivated', async () => {
+      mockMainQueryWhere.mockResolvedValue([
+        buildExpiredTrialRow({ organizationId: 'org-reactivated' }),
+      ])
+
+      // Fresh-check returns an active subscription
+      mockLimit.mockResolvedValue([{ stripeSubscriptionId: 'sub_active' }])
+
+      const stats = await expiredTrialAccountCleanupJob(makeJob())
+
+      expect(mockDeleteOrganization).not.toHaveBeenCalled()
+      expect(stats.skipped).toBe(1)
+    })
+
+    it('should continue processing remaining orgs when one deletion fails', async () => {
+      mockMainQueryWhere.mockResolvedValue([
+        buildExpiredTrialRow({ organizationId: 'org-fail', trialEnd: subDays(new Date(), 15) }),
+        buildExpiredTrialRow({ organizationId: 'org-ok', trialEnd: subDays(new Date(), 16) }),
+      ])
+
+      mockDeleteOrganization
+        .mockRejectedValueOnce(new Error('Deletion failed'))
+        .mockResolvedValueOnce({ success: true, userDeleted: false })
+
+      const stats = await expiredTrialAccountCleanupJob(makeJob())
+
+      expect(stats.errors).toBe(1)
+      expect(stats.deleted).toBe(1)
+    })
+  })
+
+  // ---------- batching and progress ----------
+
+  describe('batching and progress', () => {
+    it('should process deletions in batches of configured size', async () => {
+      const orgs = Array.from({ length: 5 }, (_, i) =>
+        buildExpiredTrialRow({
+          organizationId: `org-${i}`,
+          trialEnd: subDays(new Date(), 15 + i),
+        })
+      )
+      mockMainQueryWhere.mockResolvedValue(orgs)
+
+      const job = makeJob({ batchSize: 2 })
+      const stats = await expiredTrialAccountCleanupJob(job)
+
+      expect(stats.deleted).toBe(5)
+      // updateProgress should be called for each batch (ceil(5/2) = 3 batches)
+      expect(job.updateProgress).toHaveBeenCalledTimes(3)
+    })
+
+    it('should report progress as a percentage', async () => {
+      mockMainQueryWhere.mockResolvedValue([
+        buildExpiredTrialRow({ organizationId: 'org-1', trialEnd: subDays(new Date(), 15) }),
+        buildExpiredTrialRow({ organizationId: 'org-2', trialEnd: subDays(new Date(), 16) }),
+      ])
+
+      const job = makeJob({ batchSize: 1 })
+      await expiredTrialAccountCleanupJob(job)
+
+      expect(job.updateProgress).toHaveBeenCalledWith(50)
+      expect(job.updateProgress).toHaveBeenCalledWith(100)
+    })
+  })
+
+  // ---------- error handling ----------
+
+  describe('error handling', () => {
+    it('should throw when the database query fails', async () => {
+      mockMainQueryWhere.mockRejectedValue(new Error('Database connection failed'))
+
+      await expect(expiredTrialAccountCleanupJob(makeJob())).rejects.toThrow(
         'Database connection failed'
       )
     })
 
-    it('should handle deletion errors without stopping the job', async () => {
-      // Mock organization service error
-      const { OrganizationService } = await import('../../organizations')
-      const mockOrgService = vi.mocked(OrganizationService).mock.instances[0] as any
-      mockOrgService.deleteOrganization = vi.fn().mockRejectedValue(new Error('Deletion failed'))
+    it('should return complete stats on success', async () => {
+      mockMainQueryWhere.mockResolvedValue([])
 
-      const deletionJob = {
-        ...mockJob,
-        data: { ...mockJobData, dryRun: false },
-      } as Job
+      const stats = await expiredTrialAccountCleanupJob(makeJob())
 
-      const result = await expiredTrialAccountCleanupJob(deletionJob)
-
-      // Job should complete even with deletion errors
-      expect(result).toBeDefined()
-      expect(result.errors).toBeGreaterThanOrEqual(0)
-    })
-  })
-
-  describe('Performance and Batching', () => {
-    it('should respect batch size configuration', async () => {
-      const batchJob = {
-        ...mockJob,
-        data: { ...mockJobData, batchSize: 2 },
-      } as Job
-
-      const result = await expiredTrialAccountCleanupJob(batchJob)
-
-      // Should complete regardless of batch size
-      expect(result).toBeDefined()
-    })
-
-    it('should update job progress during execution', async () => {
-      await expiredTrialAccountCleanupJob(mockJob)
-
-      // Should call updateProgress at least once during batch processing
-      expect(mockJob.updateProgress).toHaveBeenCalledWith(expect.any(Number))
-    })
-  })
-
-  describe('Data Validation', () => {
-    it('should handle organizations with null trial end dates', async () => {
-      const invalidData = [
-        {
-          ...mockExpiredTrials[0],
-          trialEnd: null,
-        },
-      ]
-
-      vi.mocked(require('../../db').db.where).mockResolvedValueOnce(invalidData)
-
-      const result = await expiredTrialAccountCleanupJob(mockJob)
-
-      // Should handle null dates gracefully
-      expect(result).toBeDefined()
-    })
-
-    it('should filter organizations correctly by trial status', async () => {
-      const mixedData = [
-        ...mockExpiredTrials,
-        {
-          organizationId: 'org-active',
-          trialEnd: subDays(new Date(), 15),
-          trialConversionStatus: 'CONVERTED_TO_PAID', // Should be excluded
-          hasTrialEnded: true,
-          lastNotificationSent: null,
-          organizationName: 'Active Org',
-          ownerEmail: 'active@test.com',
-        },
-      ]
-
-      vi.mocked(require('../../db').db.where).mockResolvedValueOnce(mixedData)
-
-      const result = await expiredTrialAccountCleanupJob(mockJob)
-
-      // Should only process eligible organizations
-      expect(result).toBeDefined()
+      expect(stats).toEqual({
+        scanned: 0,
+        deleted: 0,
+        skipped: 0,
+        errors: 0,
+        notificationsWarning: 0,
+        notificationsFinal: 0,
+      })
     })
   })
 })

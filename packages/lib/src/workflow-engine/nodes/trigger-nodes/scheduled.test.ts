@@ -370,7 +370,7 @@ describe('ScheduledTriggerProcessor', () => {
       expect(result.output.interval_description).toBe('Custom: 0 9 * * 1-5')
 
       // Check node-specific variables
-      expect(contextManager.getNodeVariable('test', 'cron_expression')).toBe('0 9 * * 1-5')
+      expect(await contextManager.getNodeVariable('test', 'cron_expression')).toBe('0 9 * * 1-5')
     })
 
     it('should throw error for invalid variable resolution', async () => {
@@ -421,9 +421,11 @@ describe('ScheduledTriggerProcessor', () => {
 
       await (processor as any).executeNode(node, contextManager)
 
-      expect(contextManager.getNodeVariable('test', 'triggered_at')).toBe('2023-01-01T10:00:00Z')
-      expect(contextManager.getNodeVariable('test', 'schedule_type')).toBe('days')
-      expect(contextManager.getNodeVariable('test', 'interval_config')).toEqual({
+      expect(await contextManager.getNodeVariable('test', 'triggered_at')).toBe(
+        '2023-01-01T10:00:00Z'
+      )
+      expect(await contextManager.getNodeVariable('test', 'schedule_type')).toBe('days')
+      expect(await contextManager.getNodeVariable('test', 'interval_config')).toEqual({
         unit: 'days',
         value: 7,
       })

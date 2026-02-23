@@ -16,6 +16,7 @@ describe('WorkflowGraphBuilder', () => {
       name: 'Manual Trigger',
       description: 'Test processor',
       version: '1.0.0',
+      preprocessNode: async () => ({ inputs: {}, metadata: {} }),
       execute: async () => ({ status: 'success', output: {} }),
       validate: async () => ({ valid: true, errors: [], warnings: [] }),
     })
@@ -24,6 +25,7 @@ describe('WorkflowGraphBuilder', () => {
       name: 'Variable Set',
       description: 'Test processor',
       version: '1.0.0',
+      preprocessNode: async () => ({ inputs: {}, metadata: {} }),
       execute: async () => ({ status: 'success', output: {} }),
       validate: async () => ({ valid: true, errors: [], warnings: [] }),
     })
@@ -32,6 +34,7 @@ describe('WorkflowGraphBuilder', () => {
       name: 'End',
       description: 'Test processor',
       version: '1.0.0',
+      preprocessNode: async () => ({ inputs: {}, metadata: {} }),
       execute: async () => ({ status: 'success', output: {} }),
       validate: async () => ({ valid: true, errors: [], warnings: [] }),
     })
@@ -40,6 +43,7 @@ describe('WorkflowGraphBuilder', () => {
       name: 'Loop',
       description: 'Test processor',
       version: '1.0.0',
+      preprocessNode: async () => ({ inputs: {}, metadata: {} }),
       execute: async () => ({ status: 'success', output: {} }),
       validate: async () => ({ valid: true, errors: [], warnings: [] }),
     })
@@ -395,12 +399,24 @@ describe('WorkflowGraphBuilder', () => {
         id: 'test-workflow',
         graph: {
           nodes: [
-            { id: 'node1', type: 'manual', data: { type: 'manual' } },
+            { id: 'node1', type: 'loop', data: { type: 'loop' } },
             { id: 'node2', type: 'variable-set', data: { type: 'variable-set' } },
           ],
           edges: [
-            { id: 'edge1', source: 'node1', target: 'node2' },
-            { id: 'edge2', source: 'node2', target: 'node1', targetHandle: 'loop-back' },
+            {
+              id: 'edge1',
+              source: 'node1',
+              target: 'node2',
+              sourceHandle: 'loop-start',
+              targetHandle: 'target',
+            },
+            {
+              id: 'edge2',
+              source: 'node2',
+              target: 'node1',
+              sourceHandle: 'source',
+              targetHandle: 'loop-back',
+            },
           ],
         },
       }
@@ -441,6 +457,7 @@ describe('WorkflowGraphBuilder', () => {
           nodes: [
             { id: 'trigger', type: 'manual', data: { type: 'manual' } },
             { id: 'loop-1', type: 'loop', data: { type: 'loop' } },
+            { id: 'body-1', type: 'variable-set', data: { type: 'variable-set' } },
             { id: 'end-1', type: 'end', data: { type: 'end' } },
           ],
           edges: [
@@ -449,6 +466,13 @@ describe('WorkflowGraphBuilder', () => {
               source: 'trigger',
               target: 'loop-1',
               sourceHandle: 'source',
+              targetHandle: 'target',
+            },
+            {
+              id: 'e-loop-start',
+              source: 'loop-1',
+              target: 'body-1',
+              sourceHandle: 'loop-start',
               targetHandle: 'target',
             },
             {
@@ -522,9 +546,17 @@ describe('WorkflowGraphBuilder', () => {
         graph: {
           nodes: [
             { id: 'loop-1', type: 'loop', data: { type: 'loop' } },
+            { id: 'body-1', type: 'variable-set', data: { type: 'variable-set' } },
             { id: 'end-1', type: 'end', data: { type: 'end' } },
           ],
           edges: [
+            {
+              id: 'e-loop-start',
+              source: 'loop-1',
+              target: 'body-1',
+              sourceHandle: 'loop-start',
+              targetHandle: 'target',
+            },
             {
               id: 'e1',
               source: 'loop-1',

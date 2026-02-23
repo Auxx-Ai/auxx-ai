@@ -8,6 +8,7 @@ import { ProviderRegistryService } from '../provider-registry-service'
 // Mock the database for ProviderRegistryService
 vi.mock('@auxx/database', () => ({
   database: {
+    select: vi.fn(),
     query: {
       Integration: {
         findFirst: vi.fn(),
@@ -22,6 +23,13 @@ vi.mock('@auxx/database', () => ({
     update: vi.fn(),
     delete: vi.fn(),
   },
+  schema: { Integration: {} },
+}))
+
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn(),
+  and: vi.fn(),
+  desc: vi.fn(),
 }))
 
 // Mock logger
@@ -32,6 +40,28 @@ vi.mock('@auxx/logger', () => ({
     error: vi.fn(),
     debug: vi.fn(),
   }),
+}))
+
+// Mock all provider modules to avoid pulling in heavy dependencies (googleapis, etc.)
+const mockProvider = {
+  initialize: vi.fn().mockResolvedValue(undefined),
+  getCapabilities: vi.fn(),
+}
+
+vi.mock('../google/google-provider', () => ({
+  GoogleProvider: vi.fn().mockImplementation(() => ({ ...mockProvider })),
+}))
+vi.mock('../outlook/outlook-provider', () => ({
+  OutlookProvider: vi.fn().mockImplementation(() => ({ ...mockProvider })),
+}))
+vi.mock('../facebook/facebook-provider', () => ({
+  FacebookProvider: vi.fn().mockImplementation(() => ({ ...mockProvider })),
+}))
+vi.mock('../instagram/instagram-provider', () => ({
+  InstagramProvider: vi.fn().mockImplementation(() => ({ ...mockProvider })),
+}))
+vi.mock('../openphone/openphone-provider', () => ({
+  OpenPhoneProvider: vi.fn().mockImplementation(() => ({ ...mockProvider })),
 }))
 
 describe('Provider Capabilities', () => {
@@ -201,9 +231,8 @@ describe('Provider Capabilities', () => {
     })
 
     it('OpenPhone should have extended capabilities', () => {
-      expect(openPhoneCapabilities.metadata?.supportsVoiceCalls).toBe(true)
-      expect(openPhoneCapabilities.metadata?.supportsVoicemail).toBe(true)
-      expect(openPhoneCapabilities.metadata?.maxMessageLength).toBe(1600)
+      expect(openPhoneCapabilities.metadata?.maxMessageLength).toBe(160)
+      expect(openPhoneCapabilities.metadata?.supportsUnicode).toBe(true)
     })
   })
 

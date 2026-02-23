@@ -36,7 +36,7 @@ describe('FindProcessor - Thread and Message Support', () => {
   })
 
   describe('Thread Resource', () => {
-    it('should validate thread as a supported resource type', () => {
+    it('should validate thread as a supported resource type', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_thread_1',
         name: 'Find Thread',
@@ -50,14 +50,14 @@ describe('FindProcessor - Thread and Message Support', () => {
         },
       }
 
-      const result = findProcessor.validateNode(node)
+      const result = await findProcessor.validate(node)
 
       // Should validate successfully
-      expect(result.isValid).toBe(true)
+      expect(result.valid).toBe(true)
       expect(result.errors).toHaveLength(0)
     })
 
-    it('should support thread status field in conditions', () => {
+    it('should support thread status field in conditions', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_thread_2',
         name: 'Find Open Threads',
@@ -78,14 +78,14 @@ describe('FindProcessor - Thread and Message Support', () => {
         },
       }
 
-      const result = findProcessor.validateNode(node)
+      const result = await findProcessor.validate(node)
 
       // Should validate successfully with ENUM field
-      expect(result.isValid).toBe(true)
+      expect(result.valid).toBe(true)
       expect(result.errors).toHaveLength(0)
     })
 
-    it('should support thread subject field filtering', () => {
+    it('should support thread subject field filtering', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_thread_3',
         name: 'Find Thread by Subject',
@@ -106,13 +106,13 @@ describe('FindProcessor - Thread and Message Support', () => {
         },
       }
 
-      const result = findProcessor.validateNode(node)
+      const result = await findProcessor.validate(node)
 
-      expect(result.isValid).toBe(true)
+      expect(result.valid).toBe(true)
       expect(result.errors).toHaveLength(0)
     })
 
-    it('should support thread messageCount field for sorting', () => {
+    it('should support thread messageCount field for sorting', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_thread_4',
         name: 'Find Threads by Message Count',
@@ -130,13 +130,13 @@ describe('FindProcessor - Thread and Message Support', () => {
         },
       }
 
-      const result = findProcessor.validateNode(node)
+      const result = await findProcessor.validate(node)
 
-      expect(result.isValid).toBe(true)
+      expect(result.valid).toBe(true)
       expect(result.errors).toHaveLength(0)
     })
 
-    it('should support thread date fields (firstMessageAt, lastMessageAt)', () => {
+    it('should support thread date fields (firstMessageAt, lastMessageAt)', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_thread_5',
         name: 'Find Recent Threads',
@@ -161,15 +161,15 @@ describe('FindProcessor - Thread and Message Support', () => {
         },
       }
 
-      const result = findProcessor.validateNode(node)
+      const result = await findProcessor.validate(node)
 
-      expect(result.isValid).toBe(true)
+      expect(result.valid).toBe(true)
       expect(result.errors).toHaveLength(0)
     })
   })
 
   describe('Message Resource', () => {
-    it('should validate message as a supported resource type', () => {
+    it('should validate message as a supported resource type', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_message_1',
         name: 'Find Message',
@@ -183,13 +183,13 @@ describe('FindProcessor - Thread and Message Support', () => {
         },
       }
 
-      const result = findProcessor.validateNode(node)
+      const result = await findProcessor.validate(node)
 
-      expect(result.isValid).toBe(true)
+      expect(result.valid).toBe(true)
       expect(result.errors).toHaveLength(0)
     })
 
-    it('should support message isInbound boolean field', () => {
+    it('should support message isInbound boolean field', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_message_2',
         name: 'Find Inbound Messages',
@@ -210,13 +210,13 @@ describe('FindProcessor - Thread and Message Support', () => {
         },
       }
 
-      const result = findProcessor.validateNode(node)
+      const result = await findProcessor.validate(node)
 
-      expect(result.isValid).toBe(true)
+      expect(result.valid).toBe(true)
       expect(result.errors).toHaveLength(0)
     })
 
-    it('should support message messageType enum field', () => {
+    it('should support message messageType enum field', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_message_3',
         name: 'Find Email Messages',
@@ -237,13 +237,13 @@ describe('FindProcessor - Thread and Message Support', () => {
         },
       }
 
-      const result = findProcessor.validateNode(node)
+      const result = await findProcessor.validate(node)
 
-      expect(result.isValid).toBe(true)
+      expect(result.valid).toBe(true)
       expect(result.errors).toHaveLength(0)
     })
 
-    it('should support message text content filtering', () => {
+    it('should support message text content filtering', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_message_4',
         name: 'Find Messages by Content',
@@ -264,13 +264,13 @@ describe('FindProcessor - Thread and Message Support', () => {
         },
       }
 
-      const result = findProcessor.validateNode(node)
+      const result = await findProcessor.validate(node)
 
-      expect(result.isValid).toBe(true)
+      expect(result.valid).toBe(true)
       expect(result.errors).toHaveLength(0)
     })
 
-    it('should support message date fields (sentAt, receivedAt)', () => {
+    it('should support message date fields (sentAt, receivedAt)', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_message_5',
         name: 'Find Recent Messages',
@@ -295,15 +295,15 @@ describe('FindProcessor - Thread and Message Support', () => {
         },
       }
 
-      const result = findProcessor.validateNode(node)
+      const result = await findProcessor.validate(node)
 
-      expect(result.isValid).toBe(true)
+      expect(result.valid).toBe(true)
       expect(result.errors).toHaveLength(0)
     })
   })
 
   describe('Relation Fields', () => {
-    it('should support thread assignee relation field', () => {
+    it('should support thread assignee relation field', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_thread_6',
         name: 'Find Threads by Assignee',
@@ -324,13 +324,13 @@ describe('FindProcessor - Thread and Message Support', () => {
         },
       }
 
-      const result = findProcessor.validateNode(node)
+      const result = await findProcessor.validate(node)
 
-      expect(result.isValid).toBe(true)
+      expect(result.valid).toBe(true)
       expect(result.errors).toHaveLength(0)
     })
 
-    it('should support message thread relation field', () => {
+    it('should support message thread relation field', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_message_6',
         name: 'Find Messages by Thread',
@@ -351,13 +351,13 @@ describe('FindProcessor - Thread and Message Support', () => {
         },
       }
 
-      const result = findProcessor.validateNode(node)
+      const result = await findProcessor.validate(node)
 
-      expect(result.isValid).toBe(true)
+      expect(result.valid).toBe(true)
       expect(result.errors).toHaveLength(0)
     })
 
-    it('should support message from participant relation field', () => {
+    it('should support message from participant relation field', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_message_7',
         name: 'Find Messages from Participant',
@@ -378,15 +378,15 @@ describe('FindProcessor - Thread and Message Support', () => {
         },
       }
 
-      const result = findProcessor.validateNode(node)
+      const result = await findProcessor.validate(node)
 
-      expect(result.isValid).toBe(true)
+      expect(result.valid).toBe(true)
       expect(result.errors).toHaveLength(0)
     })
   })
 
   describe('Error Handling', () => {
-    it('should reject invalid thread status enum value', () => {
+    it('should reject invalid thread status enum value', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_thread_7',
         name: 'Find Thread - Invalid Status',
@@ -407,14 +407,14 @@ describe('FindProcessor - Thread and Message Support', () => {
         },
       }
 
-      const result = findProcessor.validateNode(node)
+      const result = await findProcessor.validate(node)
 
-      expect(result.isValid).toBe(false)
+      expect(result.valid).toBe(false)
       expect(result.errors.length).toBeGreaterThan(0)
-      expect(result.errors[0]).toContain('Invalid enum value')
+      expect(result.errors[0]).toContain('Invalid value for')
     })
 
-    it('should reject invalid message type enum value', () => {
+    it('should reject invalid message type enum value', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_message_8',
         name: 'Find Message - Invalid Type',
@@ -435,14 +435,14 @@ describe('FindProcessor - Thread and Message Support', () => {
         },
       }
 
-      const result = findProcessor.validateNode(node)
+      const result = await findProcessor.validate(node)
 
-      expect(result.isValid).toBe(false)
+      expect(result.valid).toBe(false)
       expect(result.errors.length).toBeGreaterThan(0)
-      expect(result.errors[0]).toContain('Invalid enum value')
+      expect(result.errors[0]).toContain('Invalid value for')
     })
 
-    it('should reject unknown thread field', () => {
+    it('should reject unknown thread field', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_thread_8',
         name: 'Find Thread - Unknown Field',
@@ -463,11 +463,11 @@ describe('FindProcessor - Thread and Message Support', () => {
         },
       }
 
-      const result = findProcessor.validateNode(node)
+      const result = await findProcessor.validate(node)
 
-      expect(result.isValid).toBe(false)
+      expect(result.valid).toBe(false)
       expect(result.errors.length).toBeGreaterThan(0)
-      expect(result.errors[0]).toContain('Unknown field')
+      expect(result.errors[0]).toContain('Invalid field')
     })
   })
 })

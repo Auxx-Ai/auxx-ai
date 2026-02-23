@@ -61,8 +61,8 @@ describe('threadMatchesFilter', () => {
     status: 'OPEN',
     assigneeId: null,
     isUnread: true,
-    tags: [{ id: 'tag-1' }],
-    inboxId: 'inbox-1',
+    tagIds: ['tag-1'],
+    inboxId: 'inbox:inbox-1' as any,
   }
 
   describe('status filter', () => {
@@ -140,10 +140,10 @@ describe('threadMatchesFilter', () => {
     })
 
     it('handles threads with no tags', () => {
-      const noTags = { ...baseThread, tags: [] }
+      const noTags = { ...baseThread, tagIds: [] }
       expect(threadMatchesFilter(noTags, { tagIds: ['tag-1'] })).toBe(false)
 
-      const undefinedTags = { ...baseThread, tags: undefined }
+      const undefinedTags = { ...baseThread, tagIds: undefined }
       expect(threadMatchesFilter(undefinedTags, { tagIds: ['tag-1'] })).toBe(false)
     })
   })
@@ -179,7 +179,7 @@ describe('threadMatchesFilter', () => {
         ...baseThread,
         assigneeId: { type: 'user' as const, id: 'user-1' },
         isUnread: false,
-        tags: [{ id: 'priority' }, { id: 'bug' }],
+        tagIds: ['priority', 'bug'],
       }
 
       expect(
