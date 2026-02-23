@@ -28,12 +28,37 @@ vi.mock('ioredis', () => ({
 }))
 
 // Mock Drizzle database and enums used by providers
+// The chainable mock handles patterns like db.select().from().where().limit().prepare()
+const createChainableMock = () => {
+  const mock: any = vi.fn(() => mock)
+  mock.from = vi.fn(() => mock)
+  mock.where = vi.fn(() => mock)
+  mock.limit = vi.fn(() => mock)
+  mock.offset = vi.fn(() => mock)
+  mock.orderBy = vi.fn(() => mock)
+  mock.groupBy = vi.fn(() => mock)
+  mock.having = vi.fn(() => mock)
+  mock.leftJoin = vi.fn(() => mock)
+  mock.innerJoin = vi.fn(() => mock)
+  mock.rightJoin = vi.fn(() => mock)
+  mock.fullJoin = vi.fn(() => mock)
+  mock.prepare = vi.fn(() => mock)
+  mock.execute = vi.fn().mockResolvedValue([])
+  mock.set = vi.fn(() => mock)
+  mock.values = vi.fn(() => mock)
+  mock.returning = vi.fn(() => mock)
+  mock.onConflictDoNothing = vi.fn(() => mock)
+  mock.onConflictDoUpdate = vi.fn(() => mock)
+  mock.then = undefined // Prevent Promise-like behavior
+  return mock
+}
+
 vi.mock('@auxx/database', () => ({
   database: {
-    select: vi.fn(),
-    insert: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
+    select: vi.fn(() => createChainableMock()),
+    insert: vi.fn(() => createChainableMock()),
+    update: vi.fn(() => createChainableMock()),
+    delete: vi.fn(() => createChainableMock()),
     transaction: vi.fn(),
     query: {
       user: {
@@ -44,10 +69,9 @@ vi.mock('@auxx/database', () => ({
         findFirst: vi.fn(),
         findMany: vi.fn(),
       },
-      // Add other models as needed
     },
   },
-  // Minimal enum surface used in providers
+  schema: new Proxy({}, { get: () => ({}) }),
   IntegrationProviderTypeValues: ['google', 'outlook'],
 }))
 

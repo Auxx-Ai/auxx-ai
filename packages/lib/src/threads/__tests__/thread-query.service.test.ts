@@ -45,7 +45,72 @@ vi.mock('../../mail-views/mail-view-service', () => ({
   })),
 }))
 
-vi.mock('@auxx/database/enums', () => ({}))
+vi.mock('@auxx/database/enums', () => ({
+  ModelTypeValues: ['contact', 'ticket', 'thread', 'user', 'inbox', 'message'],
+  ModelTypeMeta: {},
+  FieldType: {},
+  ThreadStatus: { OPEN: 'OPEN', ARCHIVED: 'ARCHIVED', SPAM: 'SPAM', TRASH: 'TRASH' },
+}))
+
+vi.mock('@auxx/database/models', () => ({
+  Thread: {},
+}))
+
+vi.mock('../../field-values/relationship-queries', () => ({
+  batchGetThreadTagIds: vi.fn().mockResolvedValue(new Map()),
+}))
+
+vi.mock('../../mail-query/condition-query-builder', () => ({
+  buildConditionGroupsQuery: vi.fn(),
+}))
+
+vi.mock('../../mail-query/draft-condition-builder', () => ({
+  isDraftsContextQuery: vi.fn().mockReturnValue(false),
+  hasUnsupportedDraftConditions: vi.fn().mockReturnValue(true),
+  buildDraftConditions: vi.fn(),
+}))
+
+vi.mock('../../resources/registry/resource-registry-service', () => ({
+  ResourceRegistryService: vi.fn().mockImplementation(() => ({
+    resolveEntityDefId: vi.fn().mockResolvedValue('inbox'),
+  })),
+}))
+
+vi.mock('@auxx/types/actor', () => ({
+  toActorId: vi.fn((type: string, id: string) => `${type}:${id}`),
+}))
+
+vi.mock('@auxx/types/resource', () => ({
+  toRecordId: vi.fn((type: string, id: string) => `${type}:${id}`),
+}))
+
+vi.mock('@auxx/logger', () => ({
+  createScopedLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }),
+}))
+
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn((...args: unknown[]) => args),
+  and: vi.fn((...args: unknown[]) => args),
+  or: vi.fn((...args: unknown[]) => args),
+  desc: vi.fn((col: unknown) => col),
+  asc: vi.fn((col: unknown) => col),
+  count: vi.fn(() => 'count'),
+  gt: vi.fn((...args: unknown[]) => args),
+  lt: vi.fn((...args: unknown[]) => args),
+  inArray: vi.fn((...args: unknown[]) => args),
+  isNull: vi.fn((col: unknown) => col),
+  sql: Object.assign(
+    vi.fn((...args: unknown[]) => args),
+    {
+      raw: vi.fn((str: string) => str),
+    }
+  ),
+}))
 
 // Mock database instance
 const mockDb = {

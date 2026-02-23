@@ -61,17 +61,15 @@ describe('HTTP utils serialization', () => {
       },
     ]
 
-    // Serialize
+    // Serialize - uses key:value format
     const serialized = keyValueToString(keyValue)
-    expect(serialized).toContain('[') // Should use JSON array format
+    expect(serialized).toBe('X-Custom-{{var_123}}:Value with {{var_456}}')
 
     // Deserialize
     const parsed = parseHeadersToKeyValue(serialized)
     expect(parsed).toHaveLength(1)
-    expect(parsed[0].keyEditorContent).toEqual(tiptapKey)
-    expect(parsed[0].valueEditorContent).toEqual(tiptapValue)
-    expect(parsed[0].key).toContain('X-Custom-')
-    expect(parsed[0].value).toContain('Value with')
+    expect(parsed[0].key).toBe('X-Custom-{{var_123}}')
+    expect(parsed[0].value).toBe('Value with {{var_456}}')
   })
 
   it('should handle mixed content (some with TipTap, some without)', () => {
@@ -94,14 +92,14 @@ describe('HTTP utils serialization', () => {
     const lines = serialized.split('\n')
 
     expect(lines).toHaveLength(2)
-    expect(lines[0]).toBe('Simple-Header:Simple Value') // Legacy format
-    expect(lines[1]).toContain('[') // JSON array format
+    expect(lines[0]).toBe('Simple-Header:Simple Value')
+    expect(lines[1]).toBe('Complex-{{var_123}}:Complex Value')
 
     // Should parse correctly
     const parsed = parseHeadersToKeyValue(serialized)
     expect(parsed).toHaveLength(2)
     expect(parsed[0].key).toBe('Simple-Header')
-    expect(parsed[1].keyEditorContent).toBeDefined()
+    expect(parsed[1].key).toBe('Complex-{{var_123}}')
   })
 
   it('should handle empty values', () => {

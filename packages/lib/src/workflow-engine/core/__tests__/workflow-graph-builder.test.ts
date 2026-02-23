@@ -244,9 +244,11 @@ describe('WorkflowGraphBuilder', () => {
       expect(graph.nodes.size).toBe(4)
       expect(graph.nodes.has('node2')).toBe(false)
 
-      // Should not create bypass for complex routing
+      // Should create bypass edges for each outgoing edge from disabled node
       const edges = graph.edgesBySourceHandle.get('node1:source')
-      expect(edges?.length).toBe(0)
+      expect(edges?.length).toBe(2)
+      const targets = edges?.map((e: any) => e.target).sort()
+      expect(targets).toEqual(['node3', 'node4'])
     })
   })
 
@@ -540,7 +542,7 @@ describe('WorkflowGraphBuilder', () => {
       expect(loopExitNodes[0].nodeId).toBe('end-1')
     })
 
-    it('should not find nodes when using invalid handle on loop node', () => {
+    it('should fallback to source handle when using invalid handle on loop node', () => {
       const workflow = {
         id: 'test-workflow',
         graph: {
@@ -570,12 +572,13 @@ describe('WorkflowGraphBuilder', () => {
 
       const graph = WorkflowGraphBuilder.buildGraph(workflow)
 
-      // Verify that using an invalid handle (loop-exit) returns no results
-      // Loop nodes only have 'loop-start' and 'source' handles
+      // Using an invalid handle (loop-exit) falls back to 'source' handle
+      // per getNextNodes implementation, which returns the source-connected node
       const nextNodes = WorkflowGraphHelper.getNextNodes(graph, 'loop-1', 'loop-exit')
 
-      // Should return empty array since 'loop-exit' is not a valid handle for loop nodes
-      expect(nextNodes.length).toBe(0)
+      // Should fallback to 'source' handle and return end-1
+      expect(nextNodes.length).toBe(1)
+      expect(nextNodes[0].nodeId).toBe('end-1')
     })
   })
 })

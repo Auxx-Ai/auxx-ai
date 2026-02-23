@@ -96,8 +96,9 @@ export class LoopProcessor extends BaseNodeProcessor {
       throw new Error('Loop node requires an array to iterate over (itemsSource)')
     }
 
-    // Resolve array value
-    const arrayValue = await this.resolveVariablePath(config.itemsSource, contextManager)
+    // Strip {{ }} template syntax and resolve the variable path
+    const variablePath = config.itemsSource.replace(/^\{\{/, '').replace(/\}\}$/, '').trim()
+    const arrayValue = await this.resolveVariablePath(variablePath, contextManager)
 
     if (!Array.isArray(arrayValue)) {
       throw new Error(
@@ -199,7 +200,10 @@ export class LoopProcessor extends BaseNodeProcessor {
       status: NodeRunningStatus.Succeeded,
       output: {
         totalIterations: loopState.totalIterations,
-        completedIterations: loopState.currentIteration,
+        completedIterations:
+          loopState.totalIterations === 0
+            ? 0
+            : loopState.currentIteration + (loopState.breakRequested ? 0 : 1),
         ...(inputs.accumulateResults && { results }),
       },
       outputHandle: 'source',

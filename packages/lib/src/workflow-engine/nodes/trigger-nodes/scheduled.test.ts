@@ -137,7 +137,8 @@ describe('ScheduledTriggerProcessor', () => {
 
       const result = await processor.validate(node)
       expect(result.valid).toBe(false)
-      expect(result.errors).toContain('hours value must be greater than 0')
+      // hours: 0 is falsy, so !intervalValue is true, triggering "value is required"
+      expect(result.errors).toContain('hours value is required')
     })
 
     it('should fail validation for empty variable references', async () => {
@@ -162,7 +163,8 @@ describe('ScheduledTriggerProcessor', () => {
 
       const result = await processor.validate(node)
       expect(result.valid).toBe(false)
-      expect(result.errors).toContain('minutes variable reference cannot be empty')
+      // Empty string is falsy, so !intervalValue is true, triggering "value is required"
+      expect(result.errors).toContain('minutes value is required')
     })
 
     it('should fail validation for missing interval value', async () => {

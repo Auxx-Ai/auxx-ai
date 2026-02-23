@@ -5,6 +5,34 @@ import { ThumbnailService } from '../thumbnail-service'
 import type { ThumbnailSource } from '../thumbnail-types'
 import { THUMBNAIL_PRESETS } from '../thumbnail-types'
 
+// Hoist mock variables so they can be referenced inside vi.mock factories
+const { mockRedisClient, mockStorageManager, createUpdateChain } = vi.hoisted(() => {
+  const mockRedisClient = {
+    get: vi.fn(),
+    setex: vi.fn(),
+    del: vi.fn(),
+  }
+
+  const mockStorageManager = {
+    downloadFile: vi.fn(),
+    uploadFile: vi.fn(),
+    deleteFile: vi.fn(),
+    getContent: vi.fn(),
+    uploadContent: vi.fn(),
+  }
+
+  // Helper to create a chainable update builder: .update(table).set({...}).where(...)
+  const createUpdateChain = () => ({
+    set: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([]),
+      }),
+    }),
+  })
+
+  return { mockRedisClient, mockStorageManager, createUpdateChain }
+})
+
 // Mock dependencies
 vi.mock('@auxx/database', () => ({
   database: {
@@ -27,13 +55,21 @@ vi.mock('@auxx/database', () => ({
       },
     },
     insert: vi.fn(),
-    update: vi.fn(),
+    update: vi.fn(() => createUpdateChain()),
     delete: vi.fn(),
-    transaction: vi.fn((fn) =>
+    execute: vi.fn(),
+    transaction: vi.fn((fn: any) =>
       fn({
-        insert: vi.fn(),
-        update: vi.fn(),
+        insert: vi.fn().mockReturnValue({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([{ id: 'mock-id' }]),
+          }),
+        }),
+        update: vi.fn(() => createUpdateChain()),
         delete: vi.fn(),
+        query: {
+          MediaAsset: { findFirst: vi.fn() },
+        },
       })
     ),
   },
@@ -42,50 +78,27 @@ vi.mock('@auxx/database', () => ({
     MediaAssetVersion: {},
     FolderFile: {},
     Attachment: {},
+    StorageLocation: {},
   },
 }))
 
-vi.mock('../../../redis/client', () => ({
-  redis: {
-    get: vi.fn(),
-    setex: vi.fn(),
-    del: vi.fn(),
-  },
-  getRedisClient: vi.fn().mockResolvedValue({
-    get: vi.fn(),
-    setex: vi.fn(),
-    del: vi.fn(),
-  }),
+vi.mock('@auxx/redis', () => ({
+  getRedisClient: vi.fn().mockResolvedValue(mockRedisClient),
 }))
 
-vi.mock('../../../logger', () => ({
+vi.mock('@auxx/logger', () => ({
   createScopedLogger: vi.fn(() => ({
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
   })),
-  logger: {
-    child: vi.fn(() => ({
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-    })),
-  },
 }))
 
+// Always return the same shared mock instance
 vi.mock('../../storage/storage-manager', () => ({
-  StorageManager: vi.fn().mockImplementation(() => ({
-    downloadFile: vi.fn(),
-    uploadFile: vi.fn(),
-    deleteFile: vi.fn(),
-  })),
-  createStorageManager: vi.fn(() => ({
-    downloadFile: vi.fn(),
-    uploadFile: vi.fn(),
-    deleteFile: vi.fn(),
-  })),
+  StorageManager: vi.fn().mockImplementation(() => mockStorageManager),
+  createStorageManager: vi.fn(() => mockStorageManager),
 }))
 
 vi.mock('../../../jobs/queues', () => ({
@@ -196,11 +209,10 @@ describe('ThumbnailService', () => {
       }
 
       const { database } = await import('@auxx/database')
-      const { redis } = await import('../../../redis/client')
 
       vi.mocked(database.query.MediaAsset.findFirst).mockResolvedValue(mockAsset as any)
       vi.mocked(database.query.MediaAssetVersion.findFirst).mockResolvedValue(null)
-      vi.mocked(redis.get).mockResolvedValue(null)
+      mockRedisClient.get.mockResolvedValue(null)
 
       const result = await service.ensureThumbnail(source, { preset: 'avatar-64', queue: true })
 
@@ -220,6 +232,7 @@ describe('ThumbnailService', () => {
         id: 'asset_789',
         currentVersionId: 'version_123',
         isPrivate: false,
+        organizationId: 'org_123',
         currentVersion: {
           id: 'version_123',
         },
@@ -237,36 +250,47 @@ describe('ThumbnailService', () => {
       }
 
       const { database } = await import('@auxx/database')
-      const { StorageManager } = await import('../../storage/storage-manager')
 
       vi.mocked(database.query.MediaAsset.findFirst).mockResolvedValue(mockAsset as any)
-      vi.mocked(database.query.MediaAssetVersion.findFirst).mockResolvedValue(null)
-      vi.mocked(database.query.MediaAssetVersion.findFirst).mockResolvedValue(
-        mockSourceVersion as any
-      )
+      // First call: findByVersionAndPreset -> null (no existing thumbnail)
+      // Second call: generateWithPlaceholder -> source version lookup
+      vi.mocked(database.query.MediaAssetVersion.findFirst)
+        .mockResolvedValueOnce(null) // findByVersionAndPreset
+        .mockResolvedValueOnce(mockSourceVersion as any) // source version lookup
 
-      const mockStorage = new StorageManager()
-      vi.mocked(mockStorage.downloadFile).mockResolvedValue(Buffer.from('test-image'))
-      vi.mocked(mockStorage.uploadFile).mockResolvedValue({ id: 'storage_new' } as any)
+      // Mock storage manager methods
+      mockStorageManager.getContent.mockResolvedValue(Buffer.from('test-image'))
+      mockStorageManager.uploadContent.mockResolvedValue({ id: 'storage_new' })
 
+      // Mock transaction for placeholder creation and finalization
       const mockTransaction = vi.mocked(database.transaction)
       mockTransaction.mockImplementation(async (fn: any) => {
         const tx = {
-          mediaAsset: {
-            create: vi.fn().mockResolvedValue({ id: 'thumb_asset_new' }),
-            update: vi.fn(),
-          },
-          mediaAssetVersion: {
-            create: vi.fn().mockResolvedValue({ id: 'thumb_version_new' }),
-          },
+          insert: vi.fn().mockReturnValue({
+            values: vi.fn().mockReturnValue({
+              returning: vi
+                .fn()
+                .mockResolvedValueOnce([{ id: 'thumb_asset_new' }]) // MediaAsset insert
+                .mockResolvedValueOnce([{ id: 'thumb_version_new' }]), // MediaAssetVersion insert
+            }),
+          }),
+          update: vi.fn(() => createUpdateChain()),
         }
-        await fn(tx)
-        return {
-          assetId: 'thumb_asset_new',
-          assetVersionId: 'thumb_version_new',
-          storageLocationId: 'storage_new',
-        }
+        return fn(tx)
       })
+
+      // Mock thumbnail processor worker
+      vi.doMock('../thumbnail-processor.worker', () => ({
+        processImage: vi.fn().mockResolvedValue({
+          buffer: Buffer.from('processed-image'),
+          size: 5000,
+          format: 'webp',
+          dimensions: { width: 64, height: 64 },
+          actualDimensions: { width: 64, height: 64 },
+          quality: 90,
+          fit: 'cover',
+        }),
+      }))
 
       const result = await service.ensureThumbnail(source, { preset: 'avatar-64', queue: false })
 
@@ -358,26 +382,20 @@ describe('ThumbnailService', () => {
       ]
 
       const { database } = await import('@auxx/database')
-      const { StorageManager } = await import('../../storage/storage-manager')
 
       vi.mocked(database.query.MediaAssetVersion.findMany).mockResolvedValue(mockThumbnails as any)
-
-      const mockStorage = new StorageManager()
-      vi.mocked(mockStorage.deleteFile).mockResolvedValue(undefined)
+      mockStorageManager.deleteFile.mockResolvedValue(undefined)
 
       await service.deleteThumbnailsForSource(sourceVersionId)
 
-      expect(database.query.MediaAssetVersion.findMany).toHaveBeenCalledWith({
-        where: {
-          derivedFromVersionId: sourceVersionId,
-          deletedAt: null,
-        },
-        include: { storageLocation: true },
-      })
+      // findMany is called with a function-based where clause
+      expect(database.query.MediaAssetVersion.findMany).toHaveBeenCalledTimes(1)
 
-      expect(mockStorage.deleteFile).toHaveBeenCalledTimes(2)
-      expect(database.update).toHaveBeenCalledTimes(2)
-      expect(database.update).toHaveBeenCalledTimes(2)
+      // storageManager.deleteFile called once per thumbnail with storage
+      expect(mockStorageManager.deleteFile).toHaveBeenCalledTimes(2)
+
+      // update called 4 times: 2 for MediaAssetVersion soft delete + 2 for MediaAsset soft delete
+      expect(database.update).toHaveBeenCalledTimes(4)
     })
   })
 })

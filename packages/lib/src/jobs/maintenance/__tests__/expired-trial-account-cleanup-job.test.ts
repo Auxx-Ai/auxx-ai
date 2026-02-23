@@ -10,7 +10,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 //   Fresh-check: db.select().from().where().limit()
 // We wire both paths through the same mock chain.
 
-const mockLimit = vi.fn()
+const mockPrepare = vi.fn().mockReturnValue({ execute: vi.fn().mockResolvedValue([]) })
+const mockLimit = vi.fn().mockReturnValue({ prepare: mockPrepare, then: undefined })
 const mockFreshCheckWhere = vi.fn().mockReturnValue({ limit: mockLimit })
 const mockMainQueryWhere = vi.fn()
 const mockInnerJoin2 = vi.fn().mockReturnValue({ where: mockMainQueryWhere })
@@ -60,6 +61,8 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn(),
   inArray: vi.fn(),
   isNull: vi.fn(),
+  sql: vi.fn().mockImplementation((...args: unknown[]) => ({ sql: args })),
+  relations: vi.fn().mockReturnValue({}),
 }))
 
 vi.mock('@auxx/config/server', () => ({
@@ -83,7 +86,7 @@ vi.mock('@auxx/email', () => ({
   sendTrialDeletionFinalEmail: (...args: unknown[]) => mockSendTrialDeletionFinalEmail(...args),
 }))
 
-vi.mock('../../organizations', () => ({
+vi.mock('../../../organizations', () => ({
   OrganizationService: vi.fn().mockImplementation(() => ({
     deleteOrganization: (...args: unknown[]) => mockDeleteOrganization(...args),
   })),
@@ -133,11 +136,21 @@ describe('expiredTrialAccountCleanupJob', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
 
-    // Default: empty result set for the main query
-    mockMainQueryWhere.mockResolvedValue([])
+    // Restore the full chainable mock structure after clearAllMocks
+    // wipes all .mockReturnValue() / .mockResolvedValue() setups.
+    mockUpdateSet.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) })
+    mockUpdate.mockReturnValue({ set: mockUpdateSet })
 
-    // Default: fresh-check returns no active subscription (allows deletion)
     mockLimit.mockResolvedValue([{ stripeSubscriptionId: null }])
+    mockFreshCheckWhere.mockReturnValue({ limit: mockLimit })
+    mockMainQueryWhere.mockResolvedValue([])
+    mockInnerJoin2.mockReturnValue({ where: mockMainQueryWhere })
+    mockInnerJoin1.mockReturnValue({ innerJoin: mockInnerJoin2 })
+    mockFrom.mockReturnValue({
+      innerJoin: mockInnerJoin1,
+      where: mockFreshCheckWhere,
+    })
+    mockSelect.mockReturnValue({ from: mockFrom })
 
     const mod = await import('../expired-trial-account-cleanup-job')
     expiredTrialAccountCleanupJob = mod.expiredTrialAccountCleanupJob

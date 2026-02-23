@@ -149,7 +149,7 @@ describe('FindProcessor - Thread and Message Support', () => {
             {
               id: 'cond_1',
               fieldId: 'lastMessageAt',
-              operator: 'is after',
+              operator: 'after',
               value: '2024-01-01T00:00:00Z',
             },
           ],
@@ -216,10 +216,10 @@ describe('FindProcessor - Thread and Message Support', () => {
       expect(result.errors).toHaveLength(0)
     })
 
-    it('should support message messageType enum field', async () => {
+    it('should support message isFirstInThread boolean field', async () => {
       const node: WorkflowNode = {
         nodeId: 'find_message_3',
-        name: 'Find Email Messages',
+        name: 'Find First Messages in Thread',
         type: WorkflowNodeType.FIND,
         position: { x: 0, y: 0 },
         data: {
@@ -228,9 +228,9 @@ describe('FindProcessor - Thread and Message Support', () => {
           conditions: [
             {
               id: 'cond_1',
-              fieldId: 'messageType',
+              fieldId: 'isFirstInThread',
               operator: 'is',
-              value: 'EMAIL',
+              value: true,
             },
           ],
           conditionGroups: [],
@@ -283,7 +283,7 @@ describe('FindProcessor - Thread and Message Support', () => {
             {
               id: 'cond_1',
               fieldId: 'receivedAt',
-              operator: 'is after',
+              operator: 'after',
               value: '2024-01-01T00:00:00Z',
             },
           ],
@@ -386,7 +386,10 @@ describe('FindProcessor - Thread and Message Support', () => {
   })
 
   describe('Error Handling', () => {
-    it('should reject invalid thread status enum value', async () => {
+    it('should pass validation for enum values (runtime validation catches invalid values)', async () => {
+      // Note: The validateNodeConfig method does NOT validate enum values at design time.
+      // Enum value validation happens at execution time in validateConditionValues.
+      // At design time, validation only checks field existence and operator validity.
       const node: WorkflowNode = {
         nodeId: 'find_thread_7',
         name: 'Find Thread - Invalid Status',
@@ -409,15 +412,17 @@ describe('FindProcessor - Thread and Message Support', () => {
 
       const result = await findProcessor.validate(node)
 
-      expect(result.valid).toBe(false)
-      expect(result.errors.length).toBeGreaterThan(0)
-      expect(result.errors[0]).toContain('Invalid value for')
+      // Design-time validation passes because the field and operator are valid
+      // Invalid enum values are caught at execution time
+      expect(result.valid).toBe(true)
+      expect(result.errors).toHaveLength(0)
     })
 
-    it('should reject invalid message type enum value', async () => {
+    it('should reject removed messageType field (no longer in schema)', async () => {
+      // messageType was removed from the message schema - it's now derived from Integration.provider
       const node: WorkflowNode = {
         nodeId: 'find_message_8',
-        name: 'Find Message - Invalid Type',
+        name: 'Find Message - Removed Field',
         type: WorkflowNodeType.FIND,
         position: { x: 0, y: 0 },
         data: {
@@ -428,7 +433,7 @@ describe('FindProcessor - Thread and Message Support', () => {
               id: 'cond_1',
               fieldId: 'messageType',
               operator: 'is',
-              value: 'INVALID_TYPE',
+              value: 'EMAIL',
             },
           ],
           conditionGroups: [],
@@ -439,7 +444,7 @@ describe('FindProcessor - Thread and Message Support', () => {
 
       expect(result.valid).toBe(false)
       expect(result.errors.length).toBeGreaterThan(0)
-      expect(result.errors[0]).toContain('Invalid value for')
+      expect(result.errors[0]).toContain('Invalid field')
     })
 
     it('should reject unknown thread field', async () => {

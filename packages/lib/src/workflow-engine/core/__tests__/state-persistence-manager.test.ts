@@ -18,7 +18,8 @@ describe('StatePersistenceManager', () => {
       'user-001',
       'user@example.com',
       'John Doe',
-      'Acme Corp'
+      'Acme Corp',
+      'acme-corp'
     )
   })
 
@@ -485,17 +486,19 @@ describe('StatePersistenceManager', () => {
       // Restore context
       const restored = manager.restoreContext(state)
 
-      // Verify all data restored correctly
-      expect(await restored.getVariable('counter')).toBe(5)
-      expect(await restored.getVariable('items')).toEqual(['a', 'b', 'c'])
-      expect(await restored.getNodeVariable('loop-node', 'iteration')).toBe(2)
-      expect(await restored.getNodeVariable('if-node', 'condition')).toBe(true)
-
+      // Check logs BEFORE calling getVariable/getNodeVariable, since those
+      // async methods trigger analyzePath which adds DEBUG log entries
       const restoredContext = restored.getContext()
       expect(restoredContext.visitedNodes).toContain('start')
       expect(restoredContext.visitedNodes).toContain('loop-node')
       expect(restoredContext.visitedNodes).toContain('if-node')
       expect(restoredContext.logs).toHaveLength(3)
+
+      // Verify all data restored correctly
+      expect(await restored.getVariable('counter')).toBe(5)
+      expect(await restored.getVariable('items')).toEqual(['a', 'b', 'c'])
+      expect(await restored.getNodeVariable('loop-node', 'iteration')).toBe(2)
+      expect(await restored.getNodeVariable('if-node', 'condition')).toBe(true)
     })
   })
 })

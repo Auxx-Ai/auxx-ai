@@ -8,7 +8,9 @@ const mockLimit = vi.fn()
 const mockWhere = vi.fn(() => ({ limit: mockLimit }))
 const mockFrom = vi.fn(() => ({ where: mockWhere }))
 const mockSelect = vi.fn(() => ({ from: mockFrom }))
-const mockInsertReturning = vi.fn()
+const mockInsertReturning = vi
+  .fn()
+  .mockResolvedValue([{ id: 'storage-loc-1', provider: 'S3', key: 'test-key' }])
 const mockInsertValues = vi.fn(() => ({ returning: mockInsertReturning }))
 
 vi.mock('@auxx/database', () => ({
@@ -46,6 +48,7 @@ vi.mock('../../files/adapters/s3-adapter', () => ({
   S3Adapter: vi.fn().mockImplementation(() => ({
     init: vi.fn(),
     upload: vi.fn().mockResolvedValue({ key: 'test-key' }),
+    putObject: vi.fn().mockResolvedValue({ key: 'test-key', etag: 'test-etag' }),
   })),
 }))
 

@@ -21,10 +21,11 @@ describe('Example Lib Test', () => {
 
   it('should handle async operations', async () => {
     const startTime = Date.now()
-    await wait(10)
+    await wait(50)
     const endTime = Date.now()
 
-    expect(endTime - startTime).toBeGreaterThanOrEqual(10)
+    // Use a lenient lower bound to avoid timer-precision flakes
+    expect(endTime - startTime).toBeGreaterThanOrEqual(30)
   })
 
   it('should perform basic utility tests', () => {

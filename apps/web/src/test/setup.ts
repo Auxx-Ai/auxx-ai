@@ -122,6 +122,8 @@ Object.defineProperty(navigator, 'clipboard', {
     writeText: vi.fn().mockResolvedValue(undefined),
     readText: vi.fn().mockResolvedValue(''),
   },
+  writable: true,
+  configurable: true,
 })
 
 // Global test setup

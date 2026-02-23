@@ -69,32 +69,49 @@ vi.mock('@auxx/redis', () => ({
 }))
 
 // Mock database and services
-vi.mock('@auxx/database', async () => {
-  const schema = await import('@auxx/database/db/schema')
-
-  return {
-    schema,
-    database: {
-      select: selectMock,
-      insert: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-      transaction: vi.fn(async (callback) =>
-        callback({
-          select: selectMock,
-          insert: vi.fn(),
-          update: vi.fn(),
-          delete: vi.fn(),
-        })
-      ),
-      query: {
-        Ticket: {
-          findFirst: vi.fn(async () => ticketSelectRowsRef.value[0] ?? null),
-        },
+vi.mock('@auxx/database', () => ({
+  schema: {
+    Ticket: { id: 'id', organizationId: 'organizationId' },
+    Article: { id: 'id', organizationId: 'organizationId' },
+    WorkflowRun: { id: 'id', organizationId: 'organizationId' },
+    User: { id: 'id' },
+    MediaAsset: {
+      id: 'id',
+      kind: 'kind',
+      createdById: 'createdById',
+      organizationId: 'organizationId',
+      deletedAt: 'deletedAt',
+      createdAt: 'createdAt',
+      currentVersionId: 'currentVersionId',
+    },
+    MediaAssetVersion: { id: 'id', assetId: 'assetId', storageLocationId: 'storageLocationId' },
+    StorageLocation: { id: 'id', externalUrl: 'externalUrl' },
+    Message: { id: 'id', organizationId: 'organizationId' },
+    Comment: { id: 'id', organizationId: 'organizationId' },
+    KnowledgeBase: { id: 'id', organizationId: 'organizationId' },
+    Attachment: { id: 'id' },
+    FolderFile: { id: 'id' },
+  },
+  database: {
+    select: selectMock,
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    transaction: vi.fn(async (callback: any) =>
+      callback({
+        select: selectMock,
+        insert: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+      })
+    ),
+    query: {
+      Ticket: {
+        findFirst: vi.fn(async () => ticketSelectRowsRef.value[0] ?? null),
       },
     },
-  }
-})
+  },
+}))
 
 vi.mock('@auxx/logger', () => ({
   createScopedLogger: () => ({
@@ -105,7 +122,10 @@ vi.mock('@auxx/logger', () => ({
   }),
 }))
 
-vi.mock('@auxx/lib/credentials', () => ({
+vi.mock('@auxx/credentials', () => ({
+  configService: {
+    get: vi.fn().mockReturnValue(undefined),
+  },
   credentialManager: {
     getCredentials: vi.fn().mockResolvedValue({
       accessToken: 'mock-access-token',
@@ -114,6 +134,33 @@ vi.mock('@auxx/lib/credentials', () => ({
     }),
     testCredentials: vi.fn().mockResolvedValue({ success: true }),
   },
+}))
+
+// Mock @auxx/database/models to avoid loading real database client
+vi.mock('@auxx/database/models', () => ({}))
+
+// Mock @auxx/database/types to avoid loading real database types
+vi.mock('@auxx/database/types', () => ({}))
+
+// Mock @auxx/lib/members
+vi.mock('@auxx/lib/members', () => ({
+  MemberService: {
+    isMember: vi.fn().mockResolvedValue(true),
+  },
+}))
+
+// Mock drizzle-orm operators used in entity processors
+vi.mock('drizzle-orm', () => ({
+  and: vi.fn((...args: any[]) => args),
+  eq: vi.fn((a: any, b: any) => [a, b]),
+  desc: vi.fn(),
+  isNull: vi.fn(),
+  sql: vi.fn(),
+}))
+
+// Mock thumbnail-related modules
+vi.mock('../../core/thumbnail-batch', () => ({
+  ensureThumbnailPresets: vi.fn().mockResolvedValue([]),
 }))
 
 // Mock nanoid for predictable session IDs
