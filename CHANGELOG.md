@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.8](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.7...auxx-v0.1.8) (2026-02-23)
+
+
+### Features
+
+* add IntegrationTokenAccessor for managing encrypted integration… ([#31](https://github.com/Auxx-Ai/auxx-ai/issues/31)) ([da16326](https://github.com/Auxx-Ai/auxx-ai/commit/da16326b142412571ba027cdcefa97dc3335ca21))
+* enhance integration sync status handling and add related tests ([#32](https://github.com/Auxx-Ai/auxx-ai/issues/32)) ([54b2ece](https://github.com/Auxx-Ai/auxx-ai/commit/54b2ececa9c71f90df78ce5ee978da0bf15ed1ca))
+
 ## [0.1.7](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.6...auxx-v0.1.7) (2026-02-23)
 
 
