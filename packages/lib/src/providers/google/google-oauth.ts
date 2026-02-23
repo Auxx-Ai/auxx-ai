@@ -7,22 +7,11 @@ import { InboxService } from '@auxx/lib/inboxes'
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq } from 'drizzle-orm'
 import { type Common, google } from 'googleapis'
+import { IntegrationTokenAccessor, type IntegrationTokens } from '../integration-token-accessor'
 
 type GaxiosError = Common.GaxiosError
 
 const logger = createScopedLogger('google-oauth')
-
-// Interface describing the data needed to authenticate with Google
-export interface GoogleIntegration {
-  id: string
-  refreshToken: string
-  accessToken?: string | null
-  expiresAt?: Date | null
-  metadata?: unknown | null
-  lastHistoryId?: string | null
-  lastSyncedAt?: Date | null
-  // messageType removed - derived from Integration.provider
-}
 
 export class GoogleOAuthService {
   private static instance: GoogleOAuthService
@@ -62,15 +51,14 @@ export class GoogleOAuthService {
   }
 
   /**
-   * Creates an authenticated OAuth2 client using credentials from the provided integration.
+   * Creates an authenticated OAuth2 client using decrypted tokens.
    */
-  public getAuthenticatedClient(integration: GoogleIntegration): any {
-    // Type should be google.auth.OAuth2
+  public getAuthenticatedClient(tokens: IntegrationTokens): any {
     const oauth2Client = this.getOAuthClient()
     oauth2Client.setCredentials({
-      refresh_token: integration.refreshToken,
-      access_token: integration.accessToken || undefined,
-      expiry_date: integration.expiresAt ? integration.expiresAt.getTime() : undefined,
+      refresh_token: tokens.refreshToken || undefined,
+      access_token: tokens.accessToken || undefined,
+      expiry_date: tokens.expiresAt ? tokens.expiresAt.getTime() : undefined,
     })
     return oauth2Client
   }
@@ -79,27 +67,19 @@ export class GoogleOAuthService {
    * Finds an integration by ID and returns an authenticated OAuth client.
    */
   public async getClientFromIntegrationId(integrationId: string): Promise<any> {
-    // Type should be google.auth.OAuth2
-    const [integration] = await db
-      .select()
-      .from(schema.Integration)
-      .where(eq(schema.Integration.id, integrationId))
-      .limit(1)
-
-    if (!integration || !integration.refreshToken) {
+    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+    if (!tokens.refreshToken) {
       throw new Error('Integration not found or missing refresh token')
     }
-    // Cast to GoogleIntegration, assuming necessary fields exist
-    return this.getAuthenticatedClient(integration as GoogleIntegration)
+    return this.getAuthenticatedClient(tokens)
   }
 
   /**
    * Finds the active Google integration for an organization and returns an authenticated client.
    */
   public async getClientForOrganization(organizationId: string): Promise<any> {
-    // Type should be google.auth.OAuth2
     const [integration] = await db
-      .select()
+      .select({ id: schema.Integration.id })
       .from(schema.Integration)
       .where(
         and(
@@ -111,10 +91,15 @@ export class GoogleOAuthService {
       .orderBy(desc(schema.Integration.updatedAt))
       .limit(1)
 
-    if (!integration || !integration.refreshToken) {
+    if (!integration) {
       throw new Error('No active Google integration found for this organization')
     }
-    return this.getAuthenticatedClient(integration as GoogleIntegration)
+
+    const tokens = await IntegrationTokenAccessor.getTokens(integration.id)
+    if (!tokens.refreshToken) {
+      throw new Error('No active Google integration found for this organization')
+    }
+    return this.getAuthenticatedClient(tokens)
   }
 
   /**
@@ -220,16 +205,22 @@ export class GoogleOAuthService {
       if (isReauth && integrationId) {
         logger.info('Processing re-authentication for existing integration', { integrationId })
 
+        await IntegrationTokenAccessor.setTokens(
+          integrationId,
+          {
+            refreshToken: tokens.refresh_token!,
+            accessToken: tokens.access_token ?? null,
+            expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+          },
+          { createdById: userId }
+        )
+
         const [integration] = await db
           .update(schema.Integration)
           .set({
-            refreshToken: tokens.refresh_token,
-            accessToken: tokens.access_token,
-            expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
-            email: email, // Update email field directly
-            metadata: integrationMetadata, // Update metadata
+            email: email,
+            metadata: integrationMetadata,
             enabled: true,
-            // Clear authentication error status
             authStatus: 'AUTHENTICATED',
             lastAuthError: null,
             lastAuthErrorAt: null,
@@ -250,7 +241,6 @@ export class GoogleOAuthService {
             integrationId,
             error: (webhookError as Error).message,
           })
-          // Don't fail the re-auth for webhook issues
         }
 
         return {
@@ -260,8 +250,7 @@ export class GoogleOAuthService {
         }
       }
 
-      // Handle initial authentication flow (existing logic)
-      // Find existing integration by provider and email
+      // Handle initial authentication flow
       const [existingIntegration] = await db
         .select()
         .from(schema.Integration)
@@ -274,43 +263,49 @@ export class GoogleOAuthService {
         )
         .limit(1)
 
-      // Store or update integration in the database
       let integration
       if (existingIntegration) {
-        // Update existing integration
         ;[integration] = await db
           .update(schema.Integration)
           .set({
-            refreshToken: tokens.refresh_token,
-            accessToken: tokens.access_token,
-            expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
             enabled: true,
-            metadata: integrationMetadata, // Update metadata
+            metadata: integrationMetadata,
             updatedAt: new Date(),
           })
           .where(eq(schema.Integration.id, existingIntegration.id))
           .returning()
+
+        await IntegrationTokenAccessor.setTokens(
+          existingIntegration.id,
+          {
+            refreshToken: tokens.refresh_token!,
+            accessToken: tokens.access_token ?? null,
+            expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+          },
+          { createdById: userId }
+        )
       } else {
-        // Create new integration
         ;[integration] = await db
           .insert(schema.Integration)
           .values({
             organizationId: orgId,
-            provider: 'google', // Explicitly set provider - messageType derived from this
-            refreshToken: tokens.refresh_token,
-            accessToken: tokens.access_token,
-            expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+            provider: 'google',
             enabled: true,
-            metadata: integrationMetadata, // Set metadata
+            metadata: integrationMetadata,
             email: email,
-            settings: {
-              recordCreation: {
-                mode: 'selective', // Default to selective mode
-              },
-            },
             updatedAt: new Date(),
           })
           .returning()
+
+        await IntegrationTokenAccessor.setTokens(
+          integration!.id,
+          {
+            refreshToken: tokens.refresh_token!,
+            accessToken: tokens.access_token ?? null,
+            expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+          },
+          { createdById: userId }
+        )
       }
 
       const inboxService = new InboxService(db, orgId, userId)
@@ -335,37 +330,33 @@ export class GoogleOAuthService {
    */
   public async refreshTokens(integrationId: string): Promise<any> {
     try {
-      const [integration] = await db
-        .select()
-        .from(schema.Integration)
-        .where(eq(schema.Integration.id, integrationId))
-        .limit(1)
-
-      if (!integration || !integration.refreshToken) {
+      const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+      if (!tokens.refreshToken) {
         throw new Error('Integration not found or missing refresh token')
       }
 
       const oauth2Client = this.getOAuthClient()
-      oauth2Client.setCredentials({ refresh_token: integration.refreshToken })
+      oauth2Client.setCredentials({ refresh_token: tokens.refreshToken })
 
       const { credentials } = await oauth2Client.refreshAccessToken()
 
-      // Update tokens in database
-      const updateData: any = {
-        accessToken: credentials.access_token,
+      const tokenUpdate: Parameters<typeof IntegrationTokenAccessor.setTokens>[1] = {
+        accessToken: credentials.access_token ?? null,
         expiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : null,
       }
 
-      // Update refresh token ONLY if a new one is provided by Google
-      if (credentials.refresh_token && credentials.refresh_token !== integration.refreshToken) {
-        updateData.refreshToken = credentials.refresh_token
+      // Update refresh token only if Google provides a new one
+      if (credentials.refresh_token && credentials.refresh_token !== tokens.refreshToken) {
+        tokenUpdate.refreshToken = credentials.refresh_token
       }
 
+      await IntegrationTokenAccessor.setTokens(integrationId, tokenUpdate)
+
       const [updatedIntegration] = await db
-        .update(schema.Integration)
-        .set(updateData)
+        .select()
+        .from(schema.Integration)
         .where(eq(schema.Integration.id, integrationId))
-        .returning()
+        .limit(1)
 
       return updatedIntegration
     } catch (error: any) {
@@ -374,15 +365,20 @@ export class GoogleOAuthService {
         response: error.response?.data,
         integrationId,
       })
-      // Handle specific errors like 'invalid_grant' which might mean the token was revoked
       if (error.response?.data?.error === 'invalid_grant') {
         logger.warn('Refresh token is invalid or revoked. Disabling integration.', {
           integrationId,
         })
-        // Optionally disable the integration in the DB
         await db
           .update(schema.Integration)
-          .set({ enabled: false, accessToken: null, refreshToken: 'REVOKED' }) // Mark token as revoked
+          .set({
+            enabled: false,
+            requiresReauth: true,
+            lastAuthError: 'Refresh token is invalid or revoked',
+            lastAuthErrorAt: new Date(),
+            authStatus: 'AUTH_ERROR',
+            updatedAt: new Date(),
+          })
           .where(eq(schema.Integration.id, integrationId))
         throw new Error('Google refresh token is invalid or revoked.')
       }
@@ -395,60 +391,42 @@ export class GoogleOAuthService {
    */
   public async revokeAccess(integrationId: string): Promise<boolean> {
     try {
-      const [integration] = await db
-        .select()
-        .from(schema.Integration)
-        .where(eq(schema.Integration.id, integrationId))
-        .limit(1)
-
-      if (!integration) {
-        throw new Error('Integration not found')
-      }
+      const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
 
       // Disable inbox watching first
-      // Pass integration object to avoid extra DB lookup
-      await this.disablePushNotifications(integrationId, integration as GoogleIntegration)
+      if (tokens.refreshToken) {
+        await this.disablePushNotifications(integrationId, tokens)
+      }
 
-      // Revoke the token using Google's API
+      // Revoke tokens with Google's API
       const oauth2Client = this.getOAuthClient()
-      // Try revoking both access and refresh tokens if they exist
-      const tokensToRevoke = [integration.accessToken, integration.refreshToken].filter(Boolean)
+      const tokensToRevoke = [tokens.accessToken, tokens.refreshToken].filter(Boolean)
 
       for (const token of tokensToRevoke) {
         try {
           if (token) {
-            // Ensure token is not null/empty
             await oauth2Client.revokeToken(token)
-            logger.info(`Successfully revoked token type for integration ${integrationId}`)
+            logger.info('Successfully revoked token for integration', { integrationId })
           }
         } catch (error: any) {
-          // If token already expired or revoked, just log and continue
           if (error.response?.data?.error === 'invalid_token') {
-            logger.info(`Token already invalid/revoked during revocation attempt`, {
+            logger.info('Token already invalid/revoked during revocation attempt', {
               integrationId,
             })
           } else {
-            // Log other errors but continue with database update
-            logger.warn('Failed to revoke token with Google (continuing DB update)', {
+            logger.warn('Failed to revoke token with Google (continuing cleanup)', {
               error: error.message,
-              response: error.response?.data,
               integrationId,
             })
           }
         }
       }
 
-      // Update integration record: disable and clear tokens
+      // Delete encrypted credentials and disable integration
+      await IntegrationTokenAccessor.deleteTokens(integrationId)
       await db
         .update(schema.Integration)
-        .set({
-          enabled: false,
-          accessToken: null,
-          refreshToken: null, // Clear refresh token upon explicit revocation
-          expiresAt: null,
-          // Consider clearing metadata or specific fields within it if sensitive
-          // metadata: null // Or update specific keys to null
-        })
+        .set({ enabled: false, updatedAt: new Date() })
         .where(eq(schema.Integration.id, integrationId))
 
       return true
@@ -498,15 +476,13 @@ export class GoogleOAuthService {
    */
   private async disablePushNotifications(
     integrationId: string,
-    integration?: GoogleIntegration
+    tokens?: IntegrationTokens
   ): Promise<void> {
     try {
       let oauth2Client: any
-      if (integration) {
-        // Use provided integration data if available
-        oauth2Client = this.getAuthenticatedClient(integration)
+      if (tokens?.refreshToken) {
+        oauth2Client = this.getAuthenticatedClient(tokens)
       } else {
-        // Fetch integration if not provided
         oauth2Client = await this.getClientFromIntegrationId(integrationId)
       }
 

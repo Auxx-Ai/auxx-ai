@@ -16,13 +16,14 @@ import type {
   MessageStatus,
   SendMessageOptions,
 } from '../integration-provider.interface'
+import { IntegrationTokenAccessor } from '../integration-token-accessor'
 import {
   BaseMessageProvider,
   type MessageProvider,
   type ProviderLabel,
 } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
-import { type GoogleIntegration, GoogleOAuthService } from './google-oauth'
+import { GoogleOAuthService } from './google-oauth'
 
 type GaxiosError = Common.GaxiosError
 
@@ -47,7 +48,9 @@ export class GoogleProvider
   private client: any // Should be google.auth.OAuth2
   private gmail: GmailV1.Gmail | null = null
   private inboxId: string | undefined = undefined
-  private integration: GoogleIntegration | null = null
+  private integration:
+    | (typeof schema.Integration.$inferSelect & { inboxIntegration?: any })
+    | null = null
   private oauthService: GoogleOAuthService
   private storageService: MessageStorageService
   private userEmails: string[] = []
@@ -99,19 +102,18 @@ export class GoogleProvider
       logger.error(`No inbox integration found for Google integration ID: ${integrationId}`)
       throw new Error('Inbox integration not found.')
     }
-    if (
-      !integration ||
-      integration.provider !== 'google' ||
-      !integration.enabled ||
-      !integration.refreshToken
-    ) {
+    if (!integration || integration.provider !== 'google' || !integration.enabled) {
       this.resetState()
-      throw new Error(
-        `Active Google integration not found, not enabled, or missing refresh token for ID: ${integrationId}`
-      )
+      throw new Error(`Active Google integration not found or not enabled for ID: ${integrationId}`)
+    }
+    // Get tokens from encrypted credentials
+    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+    if (!tokens.refreshToken) {
+      this.resetState()
+      throw new Error(`Missing refresh token for Google integration ID: ${integrationId}`)
     }
     // Store integration details locally
-    this.integration = integration as GoogleIntegration // Cast assumes fields match
+    this.integration = integration
     // Pass integration settings to storage service (now in metadata)
     if (integration.metadata && typeof integration.metadata === 'object') {
       const metadata = integration.metadata as any
@@ -123,8 +125,8 @@ export class GoogleProvider
         })
       }
     }
-    // Get authenticated client from OAuth service
-    this.client = this.oauthService.getAuthenticatedClient(this.integration)
+    // Get authenticated client from OAuth service using decrypted tokens
+    this.client = this.oauthService.getAuthenticatedClient(tokens)
     this.setupTokenListener() // Set up listener for token updates
     // Initialize Gmail API client
     this.gmail = google.gmail({ version: 'v1', auth: this.client })
@@ -274,30 +276,28 @@ export class GoogleProvider
         logger.warn('Token update received but provider state is invalid.')
         return
       }
-      const integrationId = this.integrationId // Capture for async context
+      const integrationId = this.integrationId
       logger.info('Google OAuth tokens refreshed.', { integrationId })
-      const dataToUpdate: any = {
-        accessToken: tokens.access_token,
+
+      const tokenUpdate: Parameters<typeof IntegrationTokenAccessor.setTokens>[1] = {
+        accessToken: tokens.access_token ?? null,
         expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
       }
-      if (tokens.refresh_token && tokens.refresh_token !== this.integration?.refreshToken) {
+      if (tokens.refresh_token) {
         logger.info('Received new Google refresh token.', { integrationId })
-        dataToUpdate.refreshToken = tokens.refresh_token
+        tokenUpdate.refreshToken = tokens.refresh_token
       }
-      // Update local cache immediately
-      this.integration = {
-        ...this.integration,
-        accessToken: dataToUpdate.accessToken,
-        expiresAt: dataToUpdate.expiresAt,
-        ...(dataToUpdate.refreshToken && { refreshToken: dataToUpdate.refreshToken }),
+
+      // Update local cache
+      if (this.integration) {
+        this.integration.expiresAt = tokenUpdate.expiresAt ?? null
       }
-      // Persist the new tokens to the database asynchronously
-      db.update(schema.Integration)
-        .set(dataToUpdate)
-        .where(eq(schema.Integration.id, integrationId))
-        .then(() => logger.debug('Successfully updated Google tokens in DB.', { integrationId }))
+
+      // Persist encrypted tokens asynchronously
+      IntegrationTokenAccessor.setTokens(integrationId, tokenUpdate)
+        .then(() => logger.debug('Successfully updated Google tokens.', { integrationId }))
         .catch((err) =>
-          logger.error('Failed to update Google tokens in DB', { integrationId, error: err })
+          logger.error('Failed to update Google tokens', { integrationId, error: err })
         )
     })
   }

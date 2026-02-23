@@ -91,7 +91,7 @@ export const integrationTokenRefreshScannerJob = async (
         id: schema.Integration.id,
         organizationId: schema.Integration.organizationId,
         provider: schema.Integration.provider,
-        refreshToken: schema.Integration.refreshToken,
+        credentialId: schema.Integration.credentialId,
         expiresAt: schema.Integration.expiresAt,
         authStatus: schema.Integration.authStatus,
         metadata: schema.Integration.metadata,
@@ -101,7 +101,7 @@ export const integrationTokenRefreshScannerJob = async (
       .where(
         and(
           inArray(schema.Integration.provider, [...OAUTH_PROVIDERS]),
-          isNotNull(schema.Integration.refreshToken),
+          isNotNull(schema.Integration.credentialId),
           eq(schema.Integration.enabled, true),
           // Token expires within buffer period OR no expiration set (needs refresh)
           or(
@@ -124,7 +124,7 @@ export const integrationTokenRefreshScannerJob = async (
         id: schema.Integration.id,
         organizationId: schema.Integration.organizationId,
         provider: schema.Integration.provider,
-        refreshToken: schema.Integration.refreshToken,
+        credentialId: schema.Integration.credentialId,
         expiresAt: schema.Integration.expiresAt,
         authStatus: schema.Integration.authStatus,
         metadata: schema.Integration.metadata,
@@ -134,7 +134,7 @@ export const integrationTokenRefreshScannerJob = async (
       .where(
         and(
           inArray(schema.Integration.provider, [...OAUTH_PROVIDERS]),
-          isNotNull(schema.Integration.refreshToken),
+          isNotNull(schema.Integration.credentialId),
           eq(schema.Integration.enabled, true)
         )
       )
@@ -170,8 +170,8 @@ export const integrationTokenRefreshScannerJob = async (
       stats.integrationsScanned++
 
       try {
-        // Skip integrations without refresh token
-        if (!integration.refreshToken || integration.refreshToken === 'REVOKED') {
+        // Skip integrations without linked credentials
+        if (!integration.credentialId) {
           stats.skippedNoRefreshToken++
           continue
         }

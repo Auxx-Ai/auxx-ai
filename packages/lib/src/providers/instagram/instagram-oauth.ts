@@ -6,6 +6,7 @@ import { InboxService } from '@auxx/lib/inboxes'
 import { createScopedLogger } from '@auxx/logger'
 import crypto from 'crypto'
 import { and, eq } from 'drizzle-orm'
+import { IntegrationTokenAccessor } from '../integration-token-accessor'
 
 const logger = createScopedLogger('instagram-oauth')
 const API_VERSION = configService.get<string>('FACEBOOK_GRAPH_API_VERSION') || 'v19.0' // Use a recent, stable version
@@ -221,40 +222,48 @@ export class InstagramOAuthService {
 
       let integration
       if (existingIntegration) {
-        // Update existing integration
         const [updatedIntegration] = await db
           .update(schema.Integration)
           .set({
-            refreshToken: longLivedUserToken || 'N/A', // Store LL UAT here
-            accessToken: longLivedPageToken, // Store LL PAT here
             metadata: integrationMetadata as unknown as any,
             enabled: true,
             updatedAt: new Date(),
-            expiresAt: null, // LL PATs usually don't expire this way
+            expiresAt: null,
           })
           .where(eq(schema.Integration.id, existingIntegration.id))
           .returning()
         integration = updatedIntegration
+
+        await IntegrationTokenAccessor.setTokens(
+          existingIntegration.id,
+          {
+            refreshToken: longLivedUserToken || 'N/A',
+            accessToken: longLivedPageToken,
+          },
+          { createdById: userId }
+        )
       } else {
-        // Create new integration
         const [newIntegration] = await db
           .insert(schema.Integration)
           .values({
             organizationId: orgId,
             provider: 'instagram',
-            refreshToken: longLivedUserToken || 'N/A',
-            accessToken: longLivedPageToken,
             metadata: integrationMetadata as unknown as any,
             enabled: true,
             expiresAt: null,
-            settings: {
-              recordCreation: {
-                mode: 'selective', // Default to selective mode
-              },
-            },
+            updatedAt: new Date(),
           })
           .returning()
         integration = newIntegration
+
+        await IntegrationTokenAccessor.setTokens(
+          integration.id,
+          {
+            refreshToken: longLivedUserToken || 'N/A',
+            accessToken: longLivedPageToken,
+          },
+          { createdById: userId }
+        )
       }
 
       const inboxService = new InboxService(db, orgId, userId)
@@ -428,11 +437,6 @@ export class InstagramOAuthService {
 
   /** Revoke app permissions */
   public async revokeAccess(integrationId: string): Promise<boolean> {
-    // Implementation similar to FacebookOAuthService revokeAccess
-    // 1. Get metadata (pageId, userId, pageAccessToken, userAccessToken)
-    // 2. Call unsubscribePageFromApp(pageId, pageAccessToken)
-    // 3. Call DELETE /{user-id}/permissions?access_token={userAccessToken}
-    // 4. Update DB to disable, clear tokens and metadata
     try {
       const [integration] = await db
         .select()
@@ -444,8 +448,9 @@ export class InstagramOAuthService {
       }
 
       const metadata = integration.metadata as unknown as InstagramIntegrationMetadata
-      const userAccessToken = integration.refreshToken // LL UAT
-      const pageAccessToken = integration.accessToken // LL PAT
+      const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+      const pageAccessToken = tokens.accessToken
+      const userAccessToken = tokens.refreshToken
       const pageId = metadata.pageId
       const facebookUserId = metadata.userId
 
@@ -482,14 +487,13 @@ export class InstagramOAuthService {
         logger.warn('Missing FB User ID or UAT, cannot revoke app permissions.', { integrationId })
       }
 
+      await IntegrationTokenAccessor.deleteTokens(integrationId)
       await db
         .update(schema.Integration)
         .set({
           enabled: false,
-          accessToken: null,
-          refreshToken: null,
-          expiresAt: null,
           metadata: null,
+          updatedAt: new Date(),
         })
         .where(eq(schema.Integration.id, integrationId))
       logger.info(`Cleared tokens and disabled Instagram integration ${integrationId} in DB.`)
@@ -505,15 +509,12 @@ export class InstagramOAuthService {
     logger.info(
       `'refreshTokens' called for Instagram integration ${integrationId}. Checking token validity.`
     )
-    const [integration] = await db
-      .select()
-      .from(schema.Integration)
-      .where(eq(schema.Integration.id, integrationId))
-      .limit(1)
-    if (!integration?.accessToken || !integration.metadata) {
+
+    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+    if (!tokens.accessToken) {
       throw new Error('Integration or Page Access Token not found for validity check.')
     }
-    const pageAccessToken = integration.accessToken
+    const pageAccessToken = tokens.accessToken
 
     try {
       const debugUrl = `https://graph.facebook.com/${API_VERSION}/debug_token`
@@ -531,13 +532,25 @@ export class InstagramOAuthService {
         )
         await db
           .update(schema.Integration)
-          .set({ enabled: false, accessToken: null })
+          .set({
+            enabled: false,
+            requiresReauth: true,
+            lastAuthError: 'Page access token is invalid or expired',
+            lastAuthErrorAt: new Date(),
+            authStatus: 'AUTH_ERROR',
+            updatedAt: new Date(),
+          })
           .where(eq(schema.Integration.id, integrationId))
         throw new Error('Instagram token is invalid. Re-authentication required.')
       }
-      // LL PATs might not expire or have very long expiry (~60 days). Refresh isn't typical.
+
       logger.info(`Instagram token for ${integrationId} is valid.`)
-      return integration // Return current integration data
+      const [integration] = await db
+        .select()
+        .from(schema.Integration)
+        .where(eq(schema.Integration.id, integrationId))
+        .limit(1)
+      return integration
     } catch (error: any) {
       logger.error(`Error checking Instagram token validity for integration ${integrationId}`, {
         error: error.message,
@@ -549,19 +562,17 @@ export class InstagramOAuthService {
   /** Get the Page Access Token */
   public async getPageAccessToken(integrationId: string): Promise<string | null> {
     const [integration] = await db
-      .select({
-        accessToken: schema.Integration.accessToken,
-        enabled: schema.Integration.enabled,
-      })
+      .select({ enabled: schema.Integration.enabled })
       .from(schema.Integration)
       .where(eq(schema.Integration.id, integrationId))
       .limit(1)
-    if (integration?.enabled && integration.accessToken) {
-      // Optionally run validity check before returning
-      // await this.refreshTokens(integrationId).catch(() => { return null; }); // Ignore error here, just check
-      return integration.accessToken
+
+    if (!integration?.enabled) {
+      return null
     }
-    return null
+
+    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+    return tokens.accessToken
   }
 
   /** Get the Instagram Business Account ID */

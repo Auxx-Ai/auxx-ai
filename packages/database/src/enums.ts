@@ -314,6 +314,15 @@ export const IntegrationAuthStatusValues = [
   'UNKNOWN_ERROR',
 ] as const
 
+export const IntegrationSyncStageValues = [
+  'IDLE',
+  'MESSAGE_LIST_FETCH',
+  'MESSAGES_IMPORT',
+  'FAILED',
+] as const
+
+export const IntegrationSyncStatusValues = ['NOT_SYNCED', 'SYNCING', 'ACTIVE', 'FAILED'] as const
+
 export const IntegrationProviderTypeValues = [
   'google',
   'outlook',
@@ -926,6 +935,20 @@ export const IntegrationAuthStatus = {
   PROVIDER_ERROR: 'PROVIDER_ERROR',
   NETWORK_ERROR: 'NETWORK_ERROR',
   UNKNOWN_ERROR: 'UNKNOWN_ERROR',
+} as const
+
+export const IntegrationSyncStage = {
+  IDLE: 'IDLE',
+  MESSAGE_LIST_FETCH: 'MESSAGE_LIST_FETCH',
+  MESSAGES_IMPORT: 'MESSAGES_IMPORT',
+  FAILED: 'FAILED',
+} as const
+
+export const IntegrationSyncStatus = {
+  NOT_SYNCED: 'NOT_SYNCED',
+  SYNCING: 'SYNCING',
+  ACTIVE: 'ACTIVE',
+  FAILED: 'FAILED',
 } as const
 
 export const IntegrationProviderType = {

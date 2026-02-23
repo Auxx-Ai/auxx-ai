@@ -9,6 +9,11 @@ import { type IntegrationProviderType, MessageService } from '../../email/messag
 import { publisher } from '../../events/publisher'
 import type { MessageSyncProcessingEvent } from '../../events/types'
 
+/** Max backoff for sync throttle: 1 hour */
+const MAX_THROTTLE_BACKOFF_MS = 3_600_000
+/** Base backoff for sync throttle: 30 seconds */
+const BASE_THROTTLE_BACKOFF_MS = 30_000
+
 const logger = createScopedLogger('job:sync-single-integration-messages')
 
 /**
@@ -71,6 +76,17 @@ export const syncSingleIntegrationMessagesJob = async (
         and(eq(schema.SyncJob.id, syncJobId), eq(schema.SyncJob.organizationId, organizationId))
       )
 
+    // Set integration sync state to SYNCING
+    await db
+      .update(schema.Integration)
+      .set({
+        syncStatus: 'SYNCING',
+        syncStage: 'MESSAGE_LIST_FETCH',
+        syncStageStartedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.Integration.id, integrationId))
+
     // Publish processing event
     await publisher.publishLater({
       type: 'messages:sync:processing',
@@ -86,44 +102,111 @@ export const syncSingleIntegrationMessagesJob = async (
     const isCancelled = await checkIfCancelled(db, syncJobId, organizationId)
     if (isCancelled) {
       logger.info(`Job ${job.id} was cancelled, exiting gracefully`, { syncJobId })
-      return // Exit without throwing error
+      // Reset integration sync state on cancellation
+      await db
+        .update(schema.Integration)
+        .set({
+          syncStatus: 'FAILED',
+          syncStage: 'IDLE',
+          syncStageStartedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.Integration.id, integrationId))
+      return
     }
 
     const messageService = new MessageService(organizationId)
-
-    // Call the method in MessageService to sync this specific integration
-    // syncMessages method doesn't need the syncJobId, just integration details and since
     await messageService.syncMessages(integrationType, integrationId, since)
+
+    // On success: set integration to ACTIVE and reset throttle
+    await db
+      .update(schema.Integration)
+      .set({
+        syncStatus: 'ACTIVE',
+        syncStage: 'IDLE',
+        syncStageStartedAt: null,
+        throttleFailureCount: 0,
+        throttleRetryAfter: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.Integration.id, integrationId))
 
     logger.info(`Completed syncSingleIntegrationMessagesJob successfully`, {
       bullmqJobId: job.id,
       syncJobId,
       integrationId,
     })
-
-    // Note: Granular updates to completed/failed counts on the parent SyncJob are handled by the monitor job,
-    // or could be done here by emitting a new event (more complex).
-    // await db.syncJob.update({ ... }); // If you chose to update counts here
   } catch (error: any) {
     // Check if cancellation error
     if (error.message?.includes('Cancelled by user')) {
       logger.info(`Job ${job.id} cancelled during execution`, { syncJobId })
-      return // Don't mark as failed, already marked as cancelled
+      await db
+        .update(schema.Integration)
+        .set({
+          syncStatus: 'FAILED',
+          syncStage: 'IDLE',
+          syncStageStartedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.Integration.id, integrationId))
+      return
     }
 
     logger.error(`SyncSingleIntegrationMessagesJob failed for integration ${integrationId}`, {
       bullmqJobId: job.id,
-      syncJobId, // Log parent syncJobId
+      syncJobId,
       integrationId,
       integrationType,
       error: error,
     })
 
-    // Note: Updating failed counts on the parent SyncJob is handled by the monitor job,
-    // or could be done here by emitting a new event.
-    // await db.syncJob.update({ ... }); // If you chose to update counts here
+    // Only apply throttle on the final BullMQ attempt
+    const maxAttempts = job.opts.attempts ?? 1
+    const isFinalAttempt = job.attemptsMade + 1 >= maxAttempts
 
-    // Re-throw the error for BullMQ retry/failure handling for this specific integration job
+    if (!isFinalAttempt) {
+      // Keep integration marked as syncing while BullMQ retries
+      await db
+        .update(schema.Integration)
+        .set({
+          syncStatus: 'SYNCING',
+          syncStage: 'MESSAGE_LIST_FETCH',
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.Integration.id, integrationId))
+      throw error
+    }
+
+    // Final failure: apply backoff
+    const [integration] = await db
+      .select({ throttleFailureCount: schema.Integration.throttleFailureCount })
+      .from(schema.Integration)
+      .where(eq(schema.Integration.id, integrationId))
+      .limit(1)
+
+    const newCount = (integration?.throttleFailureCount ?? 0) + 1
+    const backoffMs = Math.min(
+      BASE_THROTTLE_BACKOFF_MS * 2 ** (newCount - 1),
+      MAX_THROTTLE_BACKOFF_MS
+    )
+
+    await db
+      .update(schema.Integration)
+      .set({
+        syncStatus: 'FAILED',
+        syncStage: 'FAILED',
+        syncStageStartedAt: null,
+        throttleFailureCount: newCount,
+        throttleRetryAfter: new Date(Date.now() + backoffMs),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.Integration.id, integrationId))
+
+    logger.info(`Applied sync throttle to integration ${integrationId}`, {
+      throttleFailureCount: newCount,
+      retryAfterMs: backoffMs,
+    })
+
     throw error
   }
 }

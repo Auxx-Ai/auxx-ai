@@ -2,7 +2,7 @@ import { type Database, schema } from '@auxx/database'
 import { SYNC_STATUS } from '@auxx/database/enums'
 import type { SYNC_STATUS as SyncStatus } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray, lt, or } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm'
 import type { IntegrationProviderType } from '../email/message-service'
 import { type MessageSyncFailedEvent, type MessageSyncPendingEvent, publisher } from '../events'
 import {
@@ -123,6 +123,8 @@ export class SyncMessages {
           id: schema.Integration.id,
           provider: schema.Integration.provider,
           metadata: schema.Integration.metadata,
+          syncStatus: schema.Integration.syncStatus,
+          throttleRetryAfter: schema.Integration.throttleRetryAfter,
         })
         .from(schema.Integration)
         .where(
@@ -165,6 +167,53 @@ export class SyncMessages {
         } as MessageSyncFailedEvent)
         throw new Error(`Integration ${integrationId} not found or enabled for this organization.`)
       }
+      // Hard reject if integration is currently syncing
+      if (integrationToSync.syncStatus === 'SYNCING') {
+        logger.warn(`Integration ${integrationId} is already syncing — rejecting sync request`, {
+          organizationId,
+        })
+        await this.db
+          .update(schema.SyncJob)
+          .set({
+            status: SYNC_STATUS.FAILED,
+            endTime: new Date(),
+            error: `Integration ${integrationId} is already syncing.`,
+            totalRecords: 0,
+            processedRecords: 0,
+            failedRecords: 0,
+            integrationSyncJobIds: [],
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.SyncJob.id, syncJobId))
+        throw new Error(`Integration ${integrationId} is already syncing.`)
+      }
+
+      // Hard reject if integration is throttled
+      if (
+        integrationToSync.throttleRetryAfter &&
+        integrationToSync.throttleRetryAfter > new Date()
+      ) {
+        const retryAfter = integrationToSync.throttleRetryAfter.toISOString()
+        logger.warn(
+          `Integration ${integrationId} is throttled until ${retryAfter} — rejecting sync request`,
+          { organizationId }
+        )
+        await this.db
+          .update(schema.SyncJob)
+          .set({
+            status: SYNC_STATUS.FAILED,
+            endTime: new Date(),
+            error: `Integration ${integrationId} is throttled. Retry after ${retryAfter}.`,
+            totalRecords: 0,
+            processedRecords: 0,
+            failedRecords: 0,
+            integrationSyncJobIds: [],
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.SyncJob.id, syncJobId))
+        throw new Error(`Integration ${integrationId} is throttled. Retry after ${retryAfter}.`)
+      }
+
       // Prepare job data for the single sync job
       const singleSyncJobData: SyncSingleIntegrationMessagesJobData = {
         syncJobId: syncJobId, // Pass the parent SyncJob ID
@@ -412,6 +461,34 @@ export class SyncMessages {
           )
         )
       )
+
+    // Also reset integrations stuck in SYNCING for too long
+    const staleIntegrationResult = await this.db
+      .update(schema.Integration)
+      .set({
+        syncStatus: 'FAILED',
+        syncStage: 'FAILED',
+        syncStageStartedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.Integration.organizationId, organizationId),
+          eq(schema.Integration.syncStatus, 'SYNCING'),
+          or(
+            isNull(schema.Integration.syncStageStartedAt),
+            lt(schema.Integration.syncStageStartedAt, staleThreshold)
+          )
+        )
+      )
+      .returning({ id: schema.Integration.id })
+
+    if (staleIntegrationResult.length > 0) {
+      logger.warn(`Reset ${staleIntegrationResult.length} stale SYNCING integration(s)`, {
+        organizationId,
+        integrationIds: staleIntegrationResult.map((r) => r.id),
+      })
+    }
 
     if (staleJobs.length === 0) {
       logger.debug('No stale sync jobs found', { organizationId })

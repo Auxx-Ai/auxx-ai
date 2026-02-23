@@ -5,7 +5,7 @@ import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import type { Common, gmail_v1 as GmailV1 } from 'googleapis'
-import type { GoogleIntegration } from '../google-oauth'
+import type { GoogleIntegration } from '../types'
 
 type GaxiosError = Common.GaxiosError
 

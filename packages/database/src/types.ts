@@ -61,6 +61,10 @@ export type IndexStatus = (typeof Enums.IndexStatusValues)[number]
 
 export type IntegrationAuthStatus = (typeof Enums.IntegrationAuthStatusValues)[number]
 
+export type IntegrationSyncStage = (typeof Enums.IntegrationSyncStageValues)[number]
+
+export type IntegrationSyncStatus = (typeof Enums.IntegrationSyncStatusValues)[number]
+
 export type IntegrationProviderType = (typeof Enums.IntegrationProviderTypeValues)[number]
 
 export type IntegrationType = (typeof Enums.IntegrationTypeValues)[number]

@@ -176,6 +176,18 @@ export const integrationAuthStatus = pgEnum('IntegrationAuthStatus', [
   'NETWORK_ERROR',
   'UNKNOWN_ERROR',
 ])
+export const integrationSyncStage = pgEnum('IntegrationSyncStage', [
+  'IDLE', // Not currently syncing
+  'MESSAGE_LIST_FETCH', // Fetching message IDs from provider
+  'MESSAGES_IMPORT', // Fetching full message content + saving
+  'FAILED', // Sync failed during execution
+])
+export const integrationSyncStatus = pgEnum('IntegrationSyncStatus', [
+  'NOT_SYNCED', // Never synced
+  'SYNCING', // Actively syncing right now
+  'ACTIVE', // Last sync succeeded, idle
+  'FAILED', // Last sync failed
+])
 export const integrationProviderType = pgEnum('IntegrationProviderType', [
   'google',
   'outlook',

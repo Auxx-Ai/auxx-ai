@@ -6,6 +6,7 @@ import { InboxService } from '@auxx/lib/inboxes'
 import { createScopedLogger } from '@auxx/logger'
 import crypto from 'crypto'
 import { and, eq } from 'drizzle-orm'
+import { IntegrationTokenAccessor } from '../integration-token-accessor'
 
 const logger = createScopedLogger('facebook-oauth')
 const API_VERSION = configService.get<string>('FACEBOOK_GRAPH_API_VERSION') || 'v19.0' // Use a recent, stable version
@@ -252,41 +253,48 @@ export class FacebookOAuthService {
 
       let integration
       if (existingIntegration) {
-        // Update existing integration
         const [updatedIntegration] = await db
           .update(schema.Integration)
           .set({
-            // Update tokens and metadata
-            refreshToken: longLivedUserToken || 'N/A', // Store L-L User Token here for potential revoke/refresh
-            accessToken: longLivedPageToken, // Store L-L Page Token as primary access token
             metadata: integrationMetadata as unknown as any,
             enabled: true,
             updatedAt: new Date(),
-            expiresAt: null, // Page tokens don't expire in the same way JWTs do
+            expiresAt: null,
           })
           .where(eq(schema.Integration.id, existingIntegration.id))
           .returning()
         integration = updatedIntegration
+
+        await IntegrationTokenAccessor.setTokens(
+          existingIntegration.id,
+          {
+            refreshToken: longLivedUserToken || 'N/A',
+            accessToken: longLivedPageToken,
+          },
+          { createdById: userId }
+        )
       } else {
-        // Create new integration
         const [newIntegration] = await db
           .insert(schema.Integration)
           .values({
             organizationId: orgId,
             provider: 'facebook',
-            refreshToken: longLivedUserToken || 'N/A',
-            accessToken: longLivedPageToken,
             metadata: integrationMetadata as unknown as any,
             enabled: true,
             expiresAt: null,
-            settings: {
-              recordCreation: {
-                mode: 'selective', // Default to selective mode
-              },
-            },
+            updatedAt: new Date(),
           })
           .returning()
         integration = newIntegration
+
+        await IntegrationTokenAccessor.setTokens(
+          integration.id,
+          {
+            refreshToken: longLivedUserToken || 'N/A',
+            accessToken: longLivedPageToken,
+          },
+          { createdById: userId }
+        )
       }
 
       const inboxService = new InboxService(db, orgId, userId)
@@ -374,24 +382,18 @@ export class FacebookOAuthService {
     logger.info(
       `'refreshTokens' called for Facebook integration ${integrationId}. Checking token validity.`
     )
-    const [integration] = await db
-      .select()
-      .from(schema.Integration)
-      .where(eq(schema.Integration.id, integrationId))
-      .limit(1)
 
-    if (!integration?.accessToken || !integration.metadata) {
+    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+    if (!tokens.accessToken) {
       throw new Error('Integration or access token not found for refresh check.')
     }
-    // const metadata = integration.metadata as unknown as FacebookIntegrationMetadata
-    const pageAccessToken = integration.accessToken // This should be the long-lived PAT
+    const pageAccessToken = tokens.accessToken
 
     try {
-      // Use the debug_token endpoint to check validity
       const debugUrl = `https://graph.facebook.com/${API_VERSION}/debug_token`
       const debugParams = new URLSearchParams({
         input_token: pageAccessToken,
-        access_token: `${this.clientId}|${this.clientSecret}`, // Use App Access Token
+        access_token: `${this.clientId}|${this.clientSecret}`,
       })
 
       const debugRes = await fetch(`${debugUrl}?${debugParams.toString()}`)
@@ -402,28 +404,31 @@ export class FacebookOAuthService {
           `Facebook Page Access Token for integration ${integrationId} is invalid or expired.`,
           { debugData }
         )
-        // Mark integration as disabled? Requires re-auth.
         await db
           .update(schema.Integration)
-          .set({ enabled: false, accessToken: null }) // Clear invalid token
+          .set({
+            enabled: false,
+            requiresReauth: true,
+            lastAuthError: 'Page access token is invalid or expired',
+            lastAuthErrorAt: new Date(),
+            authStatus: 'AUTH_ERROR',
+            updatedAt: new Date(),
+          })
           .where(eq(schema.Integration.id, integrationId))
         throw new Error('Facebook token is invalid. Re-authentication required.')
       }
 
-      // Token is valid, check expiry if available
       if (debugData.data.expires_at && debugData.data.expires_at !== 0) {
         const expiryDate = new Date(debugData.data.expires_at * 1000)
         logger.info(
           `Facebook token for ${integrationId} is valid. Expires: ${expiryDate.toISOString()}`
         )
-        // Optionally update expiresAt in DB if different (though FB PATs are usually long-lived ~60 days or never expire)
       } else {
         logger.info(
           `Facebook token for ${integrationId} is valid and does not expire (or expiry not provided).`
         )
       }
 
-      // Return the potentially updated integration data (even if only expiry changed)
       const [refreshedIntegration] = await db
         .select()
         .from(schema.Integration)
@@ -453,10 +458,11 @@ export class FacebookOAuthService {
       }
 
       const metadata = integration.metadata as unknown as FacebookIntegrationMetadata
-      const userAccessToken = integration.refreshToken // L-L User Token stored in refreshToken field
-      const pageAccessToken = integration.accessToken // L-L Page Token
+      const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+      const pageAccessToken = tokens.accessToken
+      const userAccessToken = tokens.refreshToken
       const pageId = metadata.pageId
-      const facebookUserId = metadata.userId // User's FB ID
+      const facebookUserId = metadata.userId
 
       // 1. Unsubscribe Page from App Webhooks
       if (pageId && pageAccessToken) {
@@ -481,7 +487,6 @@ export class FacebookOAuthService {
               status: revokeRes.status,
               data: revokeData,
             })
-            // Continue cleanup even if revocation fails
           } else {
             logger.info(`Successfully revoked Facebook app permissions for user ${facebookUserId}.`)
           }
@@ -497,15 +502,14 @@ export class FacebookOAuthService {
         )
       }
 
-      // 3. Update integration record in DB: disable and clear tokens/metadata
+      // 3. Delete encrypted credentials and disable integration
+      await IntegrationTokenAccessor.deleteTokens(integrationId)
       await db
         .update(schema.Integration)
         .set({
           enabled: false,
-          accessToken: null,
-          refreshToken: null,
-          expiresAt: null,
-          metadata: null, // Clear metadata
+          metadata: null,
+          updatedAt: new Date(),
         })
         .where(eq(schema.Integration.id, integrationId))
       logger.info(`Cleared tokens and disabled Facebook integration ${integrationId} in DB.`)
@@ -522,22 +526,21 @@ export class FacebookOAuthService {
    */
   public async getPageAccessToken(integrationId: string): Promise<string | null> {
     const [integration] = await db
-      .select({
-        accessToken: schema.Integration.accessToken,
-        enabled: schema.Integration.enabled,
-      })
+      .select({ enabled: schema.Integration.enabled })
       .from(schema.Integration)
       .where(eq(schema.Integration.id, integrationId))
       .limit(1)
-    // Optionally add validity check here using refreshTokens logic if needed
-    if (integration?.enabled && integration.accessToken) {
-      return integration.accessToken
+
+    if (!integration?.enabled) {
+      logger.warn('Could not retrieve valid Page Access Token.', {
+        integrationId,
+        enabled: integration?.enabled,
+      })
+      return null
     }
-    logger.warn('Could not retrieve valid Page Access Token.', {
-      integrationId,
-      enabled: integration?.enabled,
-    })
-    return null
+
+    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+    return tokens.accessToken
   }
 
   /**

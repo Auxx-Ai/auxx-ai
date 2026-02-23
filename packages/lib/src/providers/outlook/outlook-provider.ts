@@ -19,13 +19,18 @@ import {
   MessageStatus,
   type SendMessageOptions,
 } from '../integration-provider.interface' // Adjust path
+import { IntegrationTokenAccessor } from '../integration-token-accessor'
 import {
   type AttachmentFile,
   BaseMessageProvider,
   type MessageProvider,
 } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
-import { type OutlookAuthContext, OutlookOAuthService } from './outlook-oauth' // Adjust path
+import {
+  type OutlookClientContext,
+  type OutlookIntegrationMetadata,
+  OutlookOAuthService,
+} from './outlook-oauth'
 
 const logger = createScopedLogger('outlook-provider')
 // Interface for Graph API email address structure
@@ -134,37 +139,38 @@ export class OutlookProvider
         }
       : null
     // Validate integration data
-    if (
-      !dbIntegration ||
-      dbIntegration.provider !== 'outlook' ||
-      !dbIntegration.enabled ||
-      !dbIntegration.refreshToken
-    ) {
+    if (!dbIntegration || dbIntegration.provider !== 'outlook' || !dbIntegration.enabled) {
       this.resetState()
       throw new Error(
-        `Active Outlook integration not found, not enabled, or missing refresh token for ID: ${integrationId}`
+        `Active Outlook integration not found or not enabled for ID: ${integrationId}`
       )
     }
     this.inboxId = dbIntegration?.inboxIntegration?.inboxId
-    // Store the integration data locally, including metadata
+    // Store the integration data locally
     this.integration = dbIntegration
-    // Use the OAuth service to get a pre-configured client that handles token refresh
-    // Need to cast the dbIntegration to the structure expected by getAuthenticatedClient
-    const authClientInput: OutlookAuthContext = {
-      id: this.integration.id,
-      refreshToken: this.integration.refreshToken,
-      accessToken: this.integration.accessToken,
-      expiresAt: this.integration.expiresAt,
-      metadata: this.integration.metadata,
-      // Extract email from metadata if needed by auth client internally (should ideally not be needed)
-      email: (this.integration.metadata as any)?.email,
+
+    // Get tokens from encrypted credentials
+    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+    if (!tokens.refreshToken) {
+      this.resetState()
+      throw new Error(`Missing refresh token for Outlook integration ID: ${integrationId}`)
     }
-    this.client = this.oauthService.getAuthenticatedClient(authClientInput)
-    // Pass integration settings to storage service
-    if (dbIntegration.settings) {
-      this.storageService.setIntegrationSettings(dbIntegration.settings as any)
-      logger.info(`Integration settings loaded for selective mode: ${dbIntegration.settings}`)
+
+    const metadata = dbIntegration.metadata as unknown as Partial<OutlookIntegrationMetadata>
+    if (!metadata?.homeAccountId) {
+      this.resetState()
+      throw new Error(`Missing homeAccountId in Outlook integration metadata: ${integrationId}`)
     }
+
+    const clientCtx: OutlookClientContext = {
+      integrationId: dbIntegration.id,
+      refreshToken: tokens.refreshToken,
+      accessToken: tokens.accessToken,
+      expiresAt: tokens.expiresAt,
+      homeAccountId: metadata.homeAccountId,
+      email: metadata.email || '',
+    }
+    this.client = this.oauthService.getAuthenticatedClient(clientCtx)
     logger.info(`OutlookProvider initialized successfully for integration: ${integrationId}`)
   }
   /** Resets internal state */

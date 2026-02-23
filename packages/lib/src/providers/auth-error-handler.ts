@@ -198,9 +198,15 @@ export class AuthErrorHandler {
         httpStatus: originalError?.response?.status,
       }
 
+      // Auth-only updates — sync state (syncStatus, syncStage, throttleFailureCount,
+      // throttleRetryAfter) is managed by the sync job lifecycle, not here.
       const updates: any = {
         authStatus: this.mapErrorTypeToStatus(errorDetails.type),
-        // Store auth error details in metadata (columns were removed)
+        requiresReauth: errorDetails.requiresReauth,
+        lastAuthError: errorDetails.message,
+        lastAuthErrorAt: new Date(),
+        updatedAt: new Date(),
+        // Also store detailed auth data in metadata for debugging
         metadata: {
           ...currentMetadata,
           auth: newAuthData,
