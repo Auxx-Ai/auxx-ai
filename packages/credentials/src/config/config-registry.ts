@@ -15,12 +15,12 @@ import type { ConfigVariableDefinition } from './types'
  */
 export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
   // ── SERVER ──────────────────────────────────────────────
-  PORT: {
-    key: 'PORT',
-    description: 'The port the web server listens on',
+  API_PORT: {
+    key: 'API_PORT',
+    description: 'The port the API server (apps/api) listens on',
     type: ConfigVariableType.NUMBER,
     group: ConfigVariableGroup.SERVER,
-    defaultValue: 3000,
+    defaultValue: 3007,
     isSensitive: false,
     isEnvOnly: true,
     min: 1,

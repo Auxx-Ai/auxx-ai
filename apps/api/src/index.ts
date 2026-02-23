@@ -89,12 +89,27 @@ async function main() {
   log.info(`Environment: ${NODE_ENV}`)
   log.info(`Allowed origins: ${allowedOrigins.join(', ')}`)
 
-  serve({
-    fetch: app.fetch,
-    port: PORT,
-  })
+  const server = serve(
+    {
+      fetch: app.fetch,
+      port: PORT,
+    },
+    (info) => {
+      log.info(`✓ Auxx API server running at http://localhost:${info.port}`)
+    }
+  )
 
-  log.info(`✓ Auxx API server running at http://localhost:${PORT}`)
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      log.error(
+        `Port ${PORT} is already in use. Check if another service is running on this port. ` +
+          `Set API_PORT in your environment to use a different port.`
+      )
+    } else {
+      log.error('Server error:', err)
+    }
+    process.exit(1)
+  })
 }
 
 main().catch((error) => {

@@ -31,7 +31,7 @@ const CACHE_REFRESH_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
  * Usage:
  *   import { configService } from '@auxx/credentials'
  *   const apiKey = configService.get<string>('OPENAI_API_KEY')
- *   const port = configService.get<number>('PORT', 3000)
+ *   const port = configService.get<number>('API_PORT', 3007)
  */
 export class ConfigService {
   private cache = new ConfigCache()
