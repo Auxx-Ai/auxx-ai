@@ -89,6 +89,7 @@ export default function IntegrationTabs() {
     requiresReauth,
     lastAuthError: integration.lastAuthError,
     lastSyncedAt: integration.lastSyncedAt!,
+    syncStatus: integration.syncStatus,
   })
 
   return (
@@ -105,6 +106,7 @@ export default function IntegrationTabs() {
           <div className='flex items-center gap-3'>
             <IntegrationStatusIndicator
               status={integrationStatus}
+              syncStage={integration.syncStage}
               lastSyncAt={integration.lastSyncedAt}
               lastError={integration.lastAuthError}
               size='sm'

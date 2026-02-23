@@ -1,4 +1,5 @@
 'use client'
+import type { IntegrationSyncStatus } from '@auxx/database/types'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -20,7 +21,15 @@ import {
 } from '@auxx/ui/components/select'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { AlertCircle, AlertTriangle, CloudDownload, Edit, InboxIcon, MailPlus } from 'lucide-react'
+import {
+  AlertCircle,
+  AlertTriangle,
+  Clock,
+  CloudDownload,
+  Edit,
+  InboxIcon,
+  MailPlus,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 // ~/app/(protected)/app/settings/integrations/_components/integration-routing.tsx
 import { useMemo, useState } from 'react'
@@ -95,10 +104,13 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
       isDefault: true,
     })
   }
-  // Format last synced time
-  const lastSynced = integration.lastSyncedAt
-    ? new Date(integration.lastSyncedAt).toLocaleString()
-    : 'Never'
+  // Prefer lastSuccessfulSync over lastSyncedAt for display
+  const lastSyncDate = integration.lastSuccessfulSync || integration.lastSyncedAt
+  const lastSynced = lastSyncDate ? new Date(lastSyncDate).toLocaleString() : 'Never'
+
+  // Throttle state
+  const isThrottled =
+    integration.throttleRetryAfter && new Date(integration.throttleRetryAfter) > new Date()
 
   const removeIntegration = api.integration.disconnect.useMutation({
     onSuccess: () => {
@@ -155,6 +167,22 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
             {lastSynced}
           </Badge>
         </div>
+        {integration.syncStatus && (
+          <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-start'>
+            <div className='text-sm text-muted-foreground'>Sync status</div>
+            <SyncStatusBadge syncStatus={integration.syncStatus} />
+          </div>
+        )}
+        {isThrottled && (
+          <Alert>
+            <Clock className='h-4 w-4' />
+            <AlertTitle>Rate limited</AlertTitle>
+            <AlertDescription>
+              This integration is temporarily throttled. Sync will resume after{' '}
+              {new Date(integration.throttleRetryAfter).toLocaleString()}.
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
       <div className='space-y-4'>
         <div className='space-y-1'>
@@ -300,4 +328,34 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
       </div>
     </div>
   )
+}
+
+/** Badge showing the current sync status */
+function SyncStatusBadge({ syncStatus }: { syncStatus: IntegrationSyncStatus }) {
+  switch (syncStatus) {
+    case 'NOT_SYNCED':
+      return (
+        <Badge variant='secondary' size='sm'>
+          Not synced
+        </Badge>
+      )
+    case 'SYNCING':
+      return (
+        <Badge variant='blue' size='sm'>
+          Syncing
+        </Badge>
+      )
+    case 'ACTIVE':
+      return (
+        <Badge variant='green' size='sm'>
+          Active
+        </Badge>
+      )
+    case 'FAILED':
+      return (
+        <Badge variant='destructive' size='sm'>
+          Failed
+        </Badge>
+      )
+  }
 }

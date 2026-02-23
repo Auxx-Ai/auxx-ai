@@ -1,5 +1,5 @@
 'use client'
-import type { ChatWidget } from '@auxx/database/types'
+import type { ChatWidget, IntegrationSyncStage, IntegrationSyncStatus } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -55,6 +55,11 @@ interface DisplayIntegration {
   lastAuthErrorAt?: Date | null
   requiresReauth?: boolean
   lastSuccessfulSync?: Date | null
+  // Sync state fields from database
+  syncStatus?: IntegrationSyncStatus | null
+  syncStage?: IntegrationSyncStage | null
+  syncStageStartedAt?: Date | null
+  throttleRetryAfter?: Date | null
 }
 interface IntegrationTableProps {
   integrations: DisplayIntegration[]
@@ -246,7 +251,9 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
                         lastSyncedAt: integration.lastSyncedAt
                           ? new Date(integration.lastSyncedAt)
                           : undefined,
+                        syncStatus: integration.syncStatus,
                       })}
+                      syncStage={integration.syncStage}
                       lastSyncAt={
                         integration.lastSyncedAt ? new Date(integration.lastSyncedAt) : undefined
                       }

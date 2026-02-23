@@ -1,6 +1,7 @@
 // ~/components/global/integration-status-indicator.tsx
 'use client'
 
+import type { IntegrationSyncStage } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
 import {
   Tooltip,
@@ -12,11 +13,15 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Clock } from 'lucide-react'
 import { useIsSmallScreen } from '~/hooks/use-small-screen'
 import { integrationStatusConfig } from '../mail/mail-status-config'
+import { formatSyncStage, type IntegrationStatus } from './integration-status-utils'
 
-type IntegrationStatus = 'authenticated' | 'auth_error' | 'sync_error' | 'disabled' | 'syncing'
+export type { IntegrationStatus } from './integration-status-utils'
+// Re-export pure utilities so existing consumers keep working
+export { getIntegrationStatus } from './integration-status-utils'
 
 interface IntegrationStatusIndicatorProps {
   status: IntegrationStatus
+  syncStage?: IntegrationSyncStage | null
   lastSyncAt?: Date
   lastError?: string
   className?: string
@@ -30,6 +35,7 @@ interface IntegrationStatusIndicatorProps {
  */
 export function IntegrationStatusIndicator({
   status,
+  syncStage,
   lastSyncAt,
   lastError,
   className,
@@ -52,13 +58,15 @@ export function IntegrationStatusIndicator({
   const config = {
     ...baseConfig,
     description:
-      status === 'authenticated' && lastSyncAt
-        ? `Last synced ${formatRelativeTime(lastSyncAt)}`
-        : status === 'auth_error' && lastError
-          ? lastError
-          : status === 'sync_error' && lastError
+      status === 'syncing' && syncStage
+        ? `Syncing: ${formatSyncStage(syncStage)}`
+        : status === 'authenticated' && lastSyncAt
+          ? `Last synced ${formatRelativeTime(lastSyncAt)}`
+          : status === 'auth_error' && lastError
             ? lastError
-            : baseConfig.description,
+            : status === 'sync_error' && lastError
+              ? lastError
+              : baseConfig.description,
   }
   const Icon = config.icon
 
@@ -158,32 +166,4 @@ function formatRelativeTime(date: Date): string {
   } else {
     return 'just now'
   }
-}
-
-/**
- * Helper function to determine status from integration data
- */
-export function getIntegrationStatus(integration: {
-  enabled: boolean
-  requiresReauth?: boolean
-  lastAuthError?: string
-  lastSyncedAt?: Date
-  isSyncing?: boolean
-}): IntegrationStatus {
-  if (!integration.enabled) {
-    return 'disabled'
-  }
-
-  if (integration.isSyncing) {
-    return 'syncing'
-  }
-
-  if (integration.requiresReauth || integration.lastAuthError) {
-    return 'auth_error'
-  }
-
-  // Add sync error detection logic based on your sync status tracking
-  // This would require additional fields in the Integration model
-
-  return 'authenticated'
 }
