@@ -3,11 +3,11 @@
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { ApprovalStatus } from '@auxx/database/enums'
-import { sendApprovalReminderEmail } from '@auxx/email'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { eq, inArray } from 'drizzle-orm'
 import { NotificationService } from '../../notifications/notification-service'
+import { enqueueEmailJob } from '../email'
 
 const logger = createScopedLogger('approval-reminder-job')
 interface ApprovalReminderJobData {
@@ -171,15 +171,16 @@ async function sendEmailReminders(
   const approvalUrl = `${configService.get<string>('WEBAPP_URL')}/workflows/${approvalRequest.workflowId}/approval/${approvalRequest.id}`
   for (const user of users) {
     try {
-      await sendApprovalReminderEmail({
-        email: user.email,
-        toName: user.name || 'User',
+      await enqueueEmailJob('approval-reminder', {
+        recipient: { email: user.email, name: user.name || 'User' },
         workflowName: approvalRequest.workflow.name,
         message: approvalRequest.message,
         approvalUrl,
         reminderNumber,
         timeRemaining,
         expiresAt: approvalRequest.expiresAt,
+        source: 'approval-reminder-job',
+        organizationId: approvalRequest.organizationId,
       })
     } catch (error) {
       logger.warn('Failed to send email reminder', {

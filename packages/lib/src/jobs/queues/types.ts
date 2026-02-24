@@ -27,4 +27,6 @@ export enum Queues {
   dataImportQueue = 'data-import',
   // Polling sync queue
   pollingSyncQueue = 'polling-sync',
+  // Email delivery queue
+  emailQueue = 'email',
 }

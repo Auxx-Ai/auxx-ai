@@ -8,6 +8,9 @@ export * from '../events/handlers/trigger-resource-workflows'
 export * from '../events/handlers/update-webhook-last-triggered'
 export * from './billing'
 export * from './datasets'
+export { createEmailEnqueuer, enqueueEmailJob } from './email/enqueue-email-job'
+export { sendEmailJob } from './email/send-email-job'
+export type { EmailPayloadByType, EmailType, SendEmailJobData } from './email/types'
 // Export flow types and utilities
 export {
   createDocumentProcessingFlow,

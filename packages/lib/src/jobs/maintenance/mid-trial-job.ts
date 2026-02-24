@@ -2,12 +2,12 @@
 
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
-import { sendMidTrialEmail } from '@auxx/email'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { addDays } from 'date-fns'
 import { and, eq, gte, isNull, lte } from 'drizzle-orm'
 import { z } from 'zod'
+import { enqueueEmailJob } from '../email'
 
 const payloadSchema = z.object({
   dryRun: z.boolean().default(false),
@@ -114,15 +114,16 @@ export const sendMidTrialEmailsJob = async (job: Job) => {
             : 7
 
           // Send mid-trial email
-          await sendMidTrialEmail({
-            email: org.ownerEmail,
-            name: org.ownerName || 'there',
+          await enqueueEmailJob('mid-trial', {
+            recipient: { email: org.ownerEmail, name: org.ownerName || 'there' },
             organizationName: org.organizationName,
             daysRemaining,
             dashboardUrl: `${WEBAPP_URL}/dashboard`,
             integrationsUrl: `${WEBAPP_URL}/settings/integrations`,
             upgradeUrl: `${WEBAPP_URL}/settings/billing`,
             supportUrl: `${WEBAPP_URL}/support`,
+            source: 'mid-trial-job',
+            organizationId: org.organizationId,
           })
 
           logger.info('Sent mid-trial email', {

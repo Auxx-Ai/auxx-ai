@@ -9,10 +9,10 @@ import {
   WorkflowModel,
   WorkflowRunModel,
 } from '@auxx/database/models'
-import { sendApprovalRequestEmail } from '@auxx/email'
 import { eq, inArray } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { publisher } from '../../../events/publisher'
+import { enqueueEmailJob } from '../../../jobs/email'
 import { getQueue, Queues } from '../../../jobs/queues'
 import { NotificationService } from '../../../notifications/notification-service'
 import type { ExecutionContextManager } from '../../core/execution-context'
@@ -440,13 +440,14 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
     const approvalUrl = `${configService.get<string>('WEBAPP_URL')}/workflows/${approvalRequest.workflowId}/approval/${approvalRequest.id}`
     for (const user of users) {
       try {
-        await sendApprovalRequestEmail({
-          email: user.email!,
-          toName: user.name || 'User',
+        await enqueueEmailJob('approval-request', {
+          recipient: { email: user.email!, name: user.name || 'User' },
           workflowName: approvalRequest.workflowName,
           message: approvalRequest.message,
           approvalUrl,
           expiresAt: approvalRequest.expiresAt,
+          source: 'human-confirmation',
+          organizationId: approvalRequest.organizationId,
         })
       } catch (error) {
         contextManager.log(

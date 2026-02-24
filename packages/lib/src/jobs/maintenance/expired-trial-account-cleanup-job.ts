@@ -2,13 +2,13 @@
 
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
-import { sendTrialDeletionFinalEmail, sendTrialDeletionWarningEmail } from '@auxx/email'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { subDays } from 'date-fns'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { OrganizationService } from '../../organizations'
+import { enqueueEmailJob } from '../email'
 
 const payloadSchema = z.object({
   dryRun: z.boolean().default(false),
@@ -227,11 +227,13 @@ async function processNotifications(
         continue
       }
 
-      await sendTrialDeletionWarningEmail({
-        email: org.ownerEmail,
+      await enqueueEmailJob('trial-deletion-warning', {
+        recipient: { email: org.ownerEmail },
         organizationName: org.organizationName,
         daysUntilDeletion: 7,
         reactivationLink: `${WEBAPP_URL}/subscription/reactivate/${org.organizationId}`,
+        source: 'expired-trial-cleanup',
+        organizationId: org.organizationId,
       })
 
       // Update notification status in database
@@ -270,11 +272,13 @@ async function processNotifications(
         continue
       }
 
-      await sendTrialDeletionFinalEmail({
-        email: org.ownerEmail,
+      await enqueueEmailJob('trial-deletion-final', {
+        recipient: { email: org.ownerEmail },
         organizationName: org.organizationName,
         hoursUntilDeletion: 24,
         reactivationLink: `${WEBAPP_URL}/subscription/reactivate/${org.organizationId}`,
+        source: 'expired-trial-cleanup',
+        organizationId: org.organizationId,
       })
 
       // Update notification status in database

@@ -9,6 +9,7 @@ import { startDataImportWorker } from './worker-definitions/data-import-worker'
 import { startDatasetEmbeddingWorker } from './worker-definitions/dataset-embedding-worker'
 import { startDatasetMaintenanceWorker } from './worker-definitions/dataset-maintenance-worker'
 import { startDocumentProcessingWorker } from './worker-definitions/document-processing-worker'
+import { startEmailWorker } from './worker-definitions/email-worker'
 import { startEventHandlersWorker, startEventsWorker } from './worker-definitions/events-worker'
 import { startMaintenanceWorker } from './worker-definitions/maintenance-worker'
 import { startMessageSyncWorker } from './worker-definitions/message-sync-worker'
@@ -58,6 +59,9 @@ export async function startWorkers() {
   // Polling sync worker (two-phase email sync pipeline)
   const pollingSyncWorker = startPollingSyncWorker()
 
+  // Email delivery worker (transactional/system emails)
+  const emailWorker = startEmailWorker()
+
   const workers = [
     // defaultWorker,
     eventsWorker,
@@ -75,6 +79,7 @@ export async function startWorkers() {
     oauth2RefreshWorker,
     dataImportWorker,
     pollingSyncWorker,
+    emailWorker,
   ]
 
   return Promise.all(workers)

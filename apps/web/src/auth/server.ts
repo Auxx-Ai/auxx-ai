@@ -4,12 +4,7 @@ import { getAppHostname, getCookieDomain, getTrustedOrigins, WEBAPP_URL } from '
 import { configService } from '@auxx/credentials'
 import { database, schema } from '@auxx/database' // Drizzle database for services
 import { accountModel, UserModel } from '@auxx/database/models'
-import {
-  sendEmailChangeVerificationEmail,
-  sendPasswordResetNotifyEmail,
-  sendResetPasswordEmail,
-  sendVerificationEmail,
-} from '@auxx/email'
+import { enqueueEmailJob } from '@auxx/lib/jobs/email'
 import { seedNewUserDatabase } from '@auxx/lib/seed'
 import { createScopedLogger } from '@auxx/logger'
 import { betterAuth } from 'better-auth' // core lib
@@ -75,19 +70,19 @@ export const auth = betterAuth({
       if (process.env.NODE_ENV === 'development') {
         logger.debug('sendResetPassword', { user, url, token, request })
       }
-      await sendResetPasswordEmail({
-        email: user.email!,
-        name: user.name || 'User',
+      await enqueueEmailJob('reset-password', {
+        recipient: { email: user.email!, name: user.name || 'User' },
         resetLink: url,
+        source: 'auth.server',
       })
     },
     onPasswordReset: async ({ user }, request) => {
       if (process.env.NODE_ENV === 'development') {
         logger.debug('pass', { user, request })
       }
-      await sendPasswordResetNotifyEmail({
-        email: user.email!,
-        name: user.name!,
+      await enqueueEmailJob('password-reset-notify', {
+        recipient: { email: user.email!, name: user.name! },
+        source: 'auth.server',
       })
     },
   }, // enable email/password auth
@@ -117,10 +112,10 @@ export const auth = betterAuth({
         logger.info('sendVerificationEmail', { user, url, token, request })
       }
 
-      await sendVerificationEmail({
-        email: user.email!,
-        name: user.name || 'User',
+      await enqueueEmailJob('verification', {
+        recipient: { email: user.email!, name: user.name || 'User' },
         verificationLink: url,
+        source: 'auth.server',
       })
     },
     onEmailVerification: async (user, request) => {},
@@ -149,11 +144,11 @@ export const auth = betterAuth({
           logger.debug('sendChangeEmailVerification', { user, newEmail, token, url, request })
         }
 
-        await sendEmailChangeVerificationEmail({
-          email: user.email!,
-          name: user.name || 'User',
-          newEmail: newEmail,
+        await enqueueEmailJob('email-change-verification', {
+          recipient: { email: user.email!, name: user.name || 'User' },
+          newEmail,
           verificationLink: url,
+          source: 'auth.server',
         })
       },
     },

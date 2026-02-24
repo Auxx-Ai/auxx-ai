@@ -2,12 +2,12 @@
 
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
-import { sendTrialConversionEmail } from '@auxx/email'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { addDays, format } from 'date-fns'
 import { and, eq, gte, isNull, lte } from 'drizzle-orm'
 import { z } from 'zod'
+import { enqueueEmailJob } from '../email'
 
 const payloadSchema = z.object({
   dryRun: z.boolean().default(false),
@@ -118,9 +118,8 @@ export const sendTrialConversionEmailsJob = async (job: Job) => {
           const totalTimeSaved = 0
 
           // Send trial conversion email
-          await sendTrialConversionEmail({
-            email: org.ownerEmail,
-            name: org.ownerName || 'there',
+          await enqueueEmailJob('trial-conversion', {
+            recipient: { email: org.ownerEmail, name: org.ownerName || 'there' },
             trialEndDate,
             totalTicketsResolved,
             totalTimeSaved,
@@ -128,6 +127,8 @@ export const sendTrialConversionEmailsJob = async (job: Job) => {
             monthlyPrice: 99,
             billingUrl: `${WEBAPP_URL}/settings/billing`,
             daysBeforeEnd: input.daysBeforeEnd,
+            source: 'trial-conversion-job',
+            organizationId: org.organizationId,
           })
 
           logger.info('Sent trial conversion email', {
