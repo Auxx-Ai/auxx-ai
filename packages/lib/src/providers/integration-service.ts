@@ -1,6 +1,6 @@
 // packages/lib/src/providers/integration-service.ts
 import { type Database, schema } from '@auxx/database'
-import { and, count, desc, eq, inArray } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, isNotNull } from 'drizzle-orm'
 import { withAuthErrorHandling } from '../email/errors-handlers'
 import { type IntegrationProviderType, MessageService } from '../email/message-service'
 import { createScopedLogger } from '../logger'
@@ -370,6 +370,15 @@ export class IntegrationService {
         }
       }
 
+      // Collect affected inbox IDs before deleting data (for count cleanup)
+      const affectedInboxRows = await this.db
+        .selectDistinct({ inboxId: schema.Thread.inboxId })
+        .from(schema.Thread)
+        .where(
+          and(eq(schema.Thread.integrationId, integrationId), isNotNull(schema.Thread.inboxId))
+        )
+      const affectedInboxIds = affectedInboxRows.map((r) => r.inboxId).filter(Boolean) as string[]
+
       // Perform database cleanup within a transaction
       await this.db.transaction(async (tx) => {
         await this.deleteIntegrationData(tx, integrationId, integration.provider)
@@ -378,6 +387,16 @@ export class IntegrationService {
           `Successfully deleted integration record ${integrationId} (${integration.provider}) from database.`
         )
       })
+
+      // Delete stale cached inbox counts for affected inboxes
+      if (affectedInboxIds.length > 0) {
+        await this.db
+          .delete(schema.UserInboxUnreadCount)
+          .where(inArray(schema.UserInboxUnreadCount.inboxId, affectedInboxIds))
+        logger.info(
+          `Deleted stale UserInboxUnreadCount rows for inboxes: ${affectedInboxIds.join(', ')}`
+        )
+      }
 
       return {
         success: true,

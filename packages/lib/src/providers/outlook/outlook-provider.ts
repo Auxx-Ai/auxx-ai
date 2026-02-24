@@ -6,7 +6,12 @@ import { IntegrationProviderType } from '@auxx/database/enums'
 import type { IntegrationEntity } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
 import { getAttachmentByteSize, sanitizeFilename, toGraphRecipients } from '@auxx/utils'
-import type { Client } from '@microsoft/microsoft-graph-client'
+import {
+  type Client,
+  type PageCollection,
+  PageIterator,
+  type PageIteratorCallback,
+} from '@microsoft/microsoft-graph-client'
 import { and, eq } from 'drizzle-orm'
 import {
   EmailLabel, // Still needed for MessageData structure
@@ -27,6 +32,7 @@ import {
   type MessageProvider,
 } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
+import { parseGraphApiError } from './outlook-errors'
 import {
   type OutlookClientContext,
   type OutlookIntegrationMetadata,
@@ -34,6 +40,11 @@ import {
 } from './outlook-oauth'
 
 const logger = createScopedLogger('outlook-provider')
+
+/** Microsoft Graph /$batch endpoint limit. */
+const GRAPH_BATCH_LIMIT = 20
+const OUTLOOK_MAX_PAGE_SIZE = 999
+const IMMUTABLE_ID_PREFER = `odata.maxpagesize=${OUTLOOK_MAX_PAGE_SIZE}, IdType="ImmutableId"`
 // Interface for Graph API email address structure
 interface GraphEmailAddress {
   name?: string
@@ -158,18 +169,14 @@ export class OutlookProvider
     }
 
     const metadata = dbIntegration.metadata as unknown as Partial<OutlookIntegrationMetadata>
-    if (!metadata?.homeAccountId) {
-      this.resetState()
-      throw new Error(`Missing homeAccountId in Outlook integration metadata: ${integrationId}`)
-    }
 
     const clientCtx: OutlookClientContext = {
       integrationId: dbIntegration.id,
       refreshToken: tokens.refreshToken,
       accessToken: tokens.accessToken,
       expiresAt: tokens.expiresAt,
-      homeAccountId: metadata.homeAccountId,
-      email: metadata.email || '',
+      homeAccountId: metadata?.homeAccountId,
+      email: metadata?.email || '',
     }
     this.client = this.oauthService.getAuthenticatedClient(clientCtx)
     logger.info(`OutlookProvider initialized successfully for integration: ${integrationId}`)
@@ -564,6 +571,7 @@ export class OutlookProvider
   }
   /**
    * Synchronizes messages from Outlook using Microsoft Graph delta queries.
+   * Uses PageIterator for pagination, ImmutableId for stable IDs, and handles 410 (expired delta link).
    */
   async syncMessages(since?: Date): Promise<void> {
     await this.ensureInitialized()
@@ -572,85 +580,92 @@ export class OutlookProvider
       since: since?.toISOString(),
     })
     try {
-      let nextLink: string | undefined
-      let deltaLink = (this.integration?.metadata as any)?.graphDeltaLink // Get stored delta link
+      const storedDeltaLink = (this.integration?.metadata as any)?.graphDeltaLink
       const selectFields =
         'id,conversationId,subject,from,toRecipients,ccRecipients,bccRecipients,replyTo,receivedDateTime,sentDateTime,body,internetMessageId,parentFolderId,isRead,hasAttachments,categories,internetMessageHeaders,inferenceClassification'
-      // Determine the starting point for the sync only if we dont have sync
-      if (deltaLink && !since) {
+
+      let url: string
+      if (storedDeltaLink && !since) {
         logger.info('Resuming sync using stored deltaLink.', { integrationId: this.integrationId })
-        nextLink = deltaLink
+        url = storedDeltaLink
       } else {
-        // Initial sync: Use delta API without a previous link.
-        // Filter by date if 'since' is provided. Delta API supports receivedDateTime filter.
-        const dateFilter = since ? `$filter=receivedDateTime ge ${since.toISOString()}` : ''
-        nextLink = `/me/mailFolders/inbox/messages/delta?${dateFilter}&$select=${selectFields}` // Start delta for inbox, apply optional filter
+        const dateFilter = since ? `&$filter=receivedDateTime ge ${since.toISOString()}` : ''
+        url = `/me/mailFolders/inbox/messages/delta?$select=${selectFields}${dateFilter}`
         logger.info(
-          `No deltaLink found, starting initial delta sync.${since ? ' Filtering since ' + since.toISOString() : ''}`,
+          `Starting initial delta sync.${since ? ' Filtering since ' + since.toISOString() : ''}`,
           { integrationId: this.integrationId }
         )
       }
+
+      let response: PageCollection
+      try {
+        response = await this.client!.api(url)
+          .version('beta')
+          .headers({ Prefer: IMMUTABLE_ID_PREFER })
+          .get()
+      } catch (error) {
+        const parsed = parseGraphApiError(error)
+        if (parsed.code === 'SYNC_CURSOR_ERROR') {
+          logger.warn('Delta link expired for syncMessages, resetting cursor', {
+            integrationId: this.integrationId,
+          })
+          const dateFilter = since ? `&$filter=receivedDateTime ge ${since.toISOString()}` : ''
+          url = `/me/mailFolders/inbox/messages/delta?$select=${selectFields}${dateFilter}`
+          response = await this.client!.api(url)
+            .version('beta')
+            .headers({ Prefer: IMMUTABLE_ID_PREFER })
+            .get()
+        } else {
+          throw error
+        }
+      }
+
+      const allMessages: GraphMessage[] = []
+      const callback: PageIteratorCallback = (data) => {
+        if (!data['@removed'] && data.id) {
+          allMessages.push(data)
+        }
+        return true
+      }
+
+      const pageIterator = new PageIterator(this.client!, response, callback, {
+        headers: { Prefer: IMMUTABLE_ID_PREFER },
+      })
+
+      await pageIterator.iterate()
+
       let totalMessagesProcessed = 0
-      // --- Paginate through Delta Changes ---
-      while (nextLink) {
-        logger.debug(`Fetching delta page: ${nextLink.split('?')[0]}...`, {
+      if (allMessages.length > 0) {
+        const messageDataArray = this.convertMessagesToMessageData(allMessages)
+        const storedCount = await this.storageService.batchStoreMessages(messageDataArray)
+        totalMessagesProcessed = storedCount
+        logger.info(`Processed ${messageDataArray.length} messages, stored ${storedCount}.`, {
           integrationId: this.integrationId,
         })
-        const response: any = await this.client!.api(nextLink).get() // No need for .select() when using full nextLink
-        const messages: GraphMessage[] = response.value || []
-        logger.info(`Delta page returned ${messages.length} messages/changes.`, {
-          integrationId: this.integrationId,
-        })
-        if (messages.length > 0) {
-          // TODO: Handle deleted messages indicated by @removed property if present in response
-          const messageDataArray = this.convertMessagesToMessageData(messages)
-          const storedCount = await this.storageService.batchStoreMessages(messageDataArray)
-          totalMessagesProcessed += storedCount
-          logger.info(
-            `Processed batch of ${messageDataArray.length} messages, stored ${storedCount}.`,
-            { integrationId: this.integrationId }
-          )
+      }
+
+      const newDeltaLink = pageIterator.getDeltaLink()
+      if (newDeltaLink && this.integrationId) {
+        const updatedMetadata = {
+          ...(this.integration?.metadata || {}),
+          graphDeltaLink: newDeltaLink,
         }
-        // Get the link for the next page or the final delta link
-        nextLink = response['@odata.nextLink']
-        deltaLink = response['@odata.deltaLink'] // This is the link for the *next* sync
-        if (deltaLink && !nextLink) {
-          logger.info('Delta sync cycle complete. Storing new deltaLink.', {
-            integrationId: this.integrationId,
-          })
-          // Store the new deltaLink for the next sync cycle
-          if (this.integrationId) {
-            const updatedMetadata = {
-              ...(this.integration?.metadata || {}),
-              graphDeltaLink: deltaLink,
-            }
-            await db
-              .update(schema.Integration)
-              .set({ metadata: updatedMetadata as any, lastSyncedAt: new Date() })
-              .where(eq(schema.Integration.id, this.integrationId))
-            if (this.integration) {
-              this.integration.metadata = updatedMetadata as any
-              this.integration.lastSyncedAt = new Date()
-            }
-          }
-          // Exit the loop after processing the last page and storing deltaLink
-          break
-        } else if (!nextLink && !deltaLink) {
-          // Should not happen with delta unless it's an empty result set on initial call
-          logger.warn('Delta sync finished without a nextLink or deltaLink.', {
-            integrationId: this.integrationId,
-          })
-          // Update sync time anyway
-          if (this.integrationId) {
-            await db
-              .update(schema.Integration)
-              .set({ lastSyncedAt: new Date() })
-              .where(eq(schema.Integration.id, this.integrationId))
-            if (this.integration) this.integration.lastSyncedAt = new Date()
-          }
-          break // Exit loop
+        await db
+          .update(schema.Integration)
+          .set({ metadata: updatedMetadata as any, lastSyncedAt: new Date() })
+          .where(eq(schema.Integration.id, this.integrationId))
+        if (this.integration) {
+          this.integration.metadata = updatedMetadata as any
+          this.integration.lastSyncedAt = new Date()
         }
-      } // End pagination loop
+      } else if (this.integrationId) {
+        await db
+          .update(schema.Integration)
+          .set({ lastSyncedAt: new Date() })
+          .where(eq(schema.Integration.id, this.integrationId))
+        if (this.integration) this.integration.lastSyncedAt = new Date()
+      }
+
       logger.info(`Outlook sync completed. Processed ${totalMessagesProcessed} messages/changes.`, {
         integrationId: this.integrationId,
       })
@@ -661,7 +676,6 @@ export class OutlookProvider
         body: error.body,
         integrationId: this.integrationId,
       })
-      // Update sync time on failure?
       if (this.integrationId) {
         await db
           .update(schema.Integration)
@@ -708,10 +722,15 @@ export class OutlookProvider
           const sentAt = message.sentDateTime ? new Date(message.sentDateTime) : new Date() // Fallback needed
           const receivedAt = message.receivedDateTime ? new Date(message.receivedDateTime) : sentAt // Fallback to sentAt
           const createdTime = receivedAt // Use received time as creation time
-          // Determine directionality (simplified)
-          const integrationEmail = (this.integration.metadata as any)?.email?.toLowerCase()
+          // Determine directionality — check primary email and aliases
+          const metadata = this.integration.metadata as any
+          const allAddresses = new Set<string>()
+          if (metadata?.email) allAddresses.add(metadata.email.toLowerCase())
+          for (const alias of metadata?.emailAliases ?? []) {
+            allAddresses.add(alias.toLowerCase())
+          }
           const senderEmail = fromInput.identifier?.toLowerCase()
-          const isInbound = integrationEmail ? senderEmail !== integrationEmail : true // Default to inbound if integration email unknown
+          const isInbound = allAddresses.size > 0 ? !allAddresses.has(senderEmail || '') : true
           // Determine EmailLabel based on standard folder names (case-insensitive check might be needed)
           let _emailLabel = EmailLabel.inbox // Default
           const folderIdLower = message.parentFolderId?.toLowerCase()
@@ -1152,20 +1171,23 @@ export class OutlookProvider
       if (!actionTaken) return true // No change needed
       // Batch update messages
       const batchPayload = {
-        requests: threadInfo.messages.map((msg: any, index: number) => ({
-          id: `${index + 1}`, // Batch request ID
-          method: 'PATCH',
-          url: `/me/messages/${msg.id}`,
-          headers: { 'Content-Type': 'application/json' },
-          body: updatePayload,
-        })),
+        requests: threadInfo.messages
+          .slice(0, GRAPH_BATCH_LIMIT)
+          .map((msg: any, index: number) => ({
+            id: `${index + 1}`,
+            method: 'PATCH',
+            url: `/me/messages/${msg.id}`,
+            headers: {
+              'Content-Type': 'application/json',
+              Prefer: 'IdType="ImmutableId"',
+            },
+            body: updatePayload,
+          })),
       }
-      // Limit batch size
-      if (batchPayload.requests.length > 20) {
+      if (threadInfo.messages.length > GRAPH_BATCH_LIMIT) {
         logger.warn(
-          `Batch size limit exceeded for thread status update (${batchPayload.requests.length}), limiting to 20.`
+          `Batch size limit exceeded for thread status update (${threadInfo.messages.length}), limiting to ${GRAPH_BATCH_LIMIT}.`
         )
-        batchPayload.requests = batchPayload.requests.slice(0, 20)
       }
       const batchResponse = await this.client!.api('/$batch').post(batchPayload)
       // Check batch response for errors
@@ -1200,20 +1222,23 @@ export class OutlookProvider
         return false
       }
       const batchPayload = {
-        requests: threadInfo.messages.map((msg: any, index: number) => ({
-          id: `${index + 1}`,
-          method: 'POST',
-          url: `/me/messages/${msg.id}/move`,
-          headers: { 'Content-Type': 'application/json' },
-          body: { destinationId: destinationLabelId },
-        })),
+        requests: threadInfo.messages
+          .slice(0, GRAPH_BATCH_LIMIT)
+          .map((msg: any, index: number) => ({
+            id: `${index + 1}`,
+            method: 'POST',
+            url: `/me/messages/${msg.id}/move`,
+            headers: {
+              'Content-Type': 'application/json',
+              Prefer: 'IdType="ImmutableId"',
+            },
+            body: { destinationId: destinationLabelId },
+          })),
       }
-      // Limit batch size
-      if (batchPayload.requests.length > 20) {
+      if (threadInfo.messages.length > GRAPH_BATCH_LIMIT) {
         logger.warn(
-          `Batch size limit exceeded for thread move (${batchPayload.requests.length}), limiting to 20.`
+          `Batch size limit exceeded for thread move (${threadInfo.messages.length}), limiting to ${GRAPH_BATCH_LIMIT}.`
         )
-        batchPayload.requests = batchPayload.requests.slice(0, 20)
       }
       const batchResponse = await this.client!.api('/$batch').post(batchPayload)
       let allSucceeded = true
@@ -1252,7 +1277,7 @@ export class OutlookProvider
     try {
       const response = await this.client!.api('/me/mailFolders')
         .select('id,displayName,parentFolderId,childFolderCount,isHidden')
-        .top(100)
+        .top(OUTLOOK_MAX_PAGE_SIZE)
         .get()
 
       const folders = response.value || []
@@ -1269,6 +1294,28 @@ export class OutlookProvider
       logger.error('Failed to discover Outlook folders', {
         error: error.message,
         integrationId: this.integrationId,
+      })
+      return []
+    }
+  }
+
+  /** Discovers email aliases (proxyAddresses) for the authenticated user */
+  async discoverEmailAliases(): Promise<string[]> {
+    await this.ensureInitialized()
+
+    try {
+      const response = await this.client!.api('/me?$select=proxyAddresses').get()
+      const proxyAddresses: string[] = response.proxyAddresses ?? []
+
+      // Filter to secondary aliases (lowercase smtp:), skip primary (uppercase SMTP:)
+      return proxyAddresses
+        .filter((addr: string) => addr.startsWith('smtp:'))
+        .map((addr: string) => addr.replace('smtp:', '').toLowerCase())
+        .filter(Boolean)
+    } catch (error: any) {
+      logger.warn('Failed to discover email aliases', {
+        integrationId: this.integrationId,
+        error: error.message,
       })
       return []
     }
@@ -1304,34 +1351,56 @@ export class OutlookProvider
           try {
             const messageIds: string[] = []
             const deletedMessageIds: string[] = []
-            let nextLink: string | undefined
-            let deltaLink: string | undefined
 
+            let url: string
             if (label.providerCursor && !since) {
-              // Incremental: use stored delta link
-              nextLink = label.providerCursor
+              url = label.providerCursor
             } else {
-              // Initial: start fresh delta query
               const dateFilter = since ? `&$filter=receivedDateTime ge ${since.toISOString()}` : ''
-              nextLink = `/me/mailFolders/${label.labelId}/messages/delta?$select=${selectFields}${dateFilter}`
+              url = `/me/mailFolders/${label.labelId}/messages/delta?$select=${selectFields}${dateFilter}`
             }
 
-            while (nextLink) {
-              const response: any = await this.client!.api(nextLink).get()
-              const messages = response.value || []
-
-              for (const msg of messages) {
-                if (msg['@removed']) {
-                  if (msg.id) deletedMessageIds.push(msg.id)
-                } else if (msg.id) {
-                  messageIds.push(msg.id)
-                }
+            let response: PageCollection
+            try {
+              response = await this.client!.api(url)
+                .version('beta')
+                .headers({ Prefer: IMMUTABLE_ID_PREFER })
+                .get()
+            } catch (error) {
+              const parsed = parseGraphApiError(error)
+              if (parsed.code === 'SYNC_CURSOR_ERROR') {
+                logger.warn(`Delta link expired for label ${label.name}, resetting cursor`, {
+                  labelId: label.id,
+                  integrationId: this.integrationId,
+                })
+                const dateFilter = since
+                  ? `&$filter=receivedDateTime ge ${since.toISOString()}`
+                  : ''
+                url = `/me/mailFolders/${label.labelId}/messages/delta?$select=${selectFields}${dateFilter}`
+                response = await this.client!.api(url)
+                  .version('beta')
+                  .headers({ Prefer: IMMUTABLE_ID_PREFER })
+                  .get()
+              } else {
+                throw error
               }
-
-              nextLink = response['@odata.nextLink']
-              deltaLink = response['@odata.deltaLink']
-              if (deltaLink && !nextLink) break
             }
+
+            const callback: PageIteratorCallback = (data) => {
+              if (data['@removed']) {
+                if (data.id) deletedMessageIds.push(data.id)
+              } else if (data.id) {
+                messageIds.push(data.id)
+              }
+              return true
+            }
+
+            const pageIterator = new PageIterator(this.client!, response, callback, {
+              headers: { Prefer: IMMUTABLE_ID_PREFER },
+            })
+
+            await pageIterator.iterate()
+            const deltaLink = pageIterator.getDeltaLink()
 
             if (messageIds.length > 0 || deletedMessageIds.length > 0 || deltaLink) {
               results.push({
@@ -1377,48 +1446,73 @@ export class OutlookProvider
   async importMessages(externalIds: string[]): Promise<{ imported: number; failed: number }> {
     await this.ensureInitialized()
 
-    const messages: GraphMessage[] = []
+    const allMessages: GraphMessage[] = []
     let failedCount = 0
-    const selectFields =
+    const messageSelectFields =
       'id,conversationId,subject,from,toRecipients,ccRecipients,bccRecipients,replyTo,receivedDateTime,sentDateTime,body,internetMessageId,parentFolderId,isRead,hasAttachments,categories,internetMessageHeaders,inferenceClassification'
 
-    // Fetch messages individually (Graph API doesn't have a batch-get for messages by ID)
-    for (const externalId of externalIds) {
-      try {
-        const message = await this.client!.api(`/me/messages/${externalId}`)
-          .select(selectFields)
-          .get()
-        messages.push(message)
-      } catch (error: any) {
-        failedCount++
-        if (error.statusCode !== 404) {
-          logger.error('Failed to fetch Outlook message', {
-            externalId,
-            error: error.message,
-            statusCode: error.statusCode,
+    // Fetch messages in batches using Graph /$batch endpoint
+    for (let i = 0; i < externalIds.length; i += GRAPH_BATCH_LIMIT) {
+      const batchIds = externalIds.slice(i, i + GRAPH_BATCH_LIMIT)
+
+      const batchRequests = batchIds.map((messageId, index) => ({
+        id: (index + 1).toString(),
+        method: 'GET',
+        url: `/me/messages/${messageId}?$select=${messageSelectFields}`,
+        headers: {
+          'Content-Type': 'application/json',
+          Prefer: 'IdType="ImmutableId"',
+        },
+      }))
+
+      const batchResponse = await this.client!.api('/$batch').post({ requests: batchRequests })
+
+      for (const response of batchResponse.responses ?? []) {
+        if (response.status === 200) {
+          allMessages.push(response.body)
+        } else {
+          const parsed = parseGraphApiError({
+            statusCode: response.status,
+            message: response.body?.error?.message,
+            code: response.body?.error?.code,
           })
+
+          if (parsed.code === 'NOT_FOUND') {
+            failedCount++
+            continue
+          }
+
+          if (parsed.retryable) {
+            throw parsed // Let the job retry
+          }
+
+          logger.error('Batch item failed during importMessages', {
+            status: response.status,
+            error: parsed.message,
+          })
+          failedCount++
         }
       }
     }
 
-    if (messages.length === 0) {
+    if (allMessages.length === 0) {
       return { imported: 0, failed: failedCount }
     }
 
-    const messageDataArray = this.convertMessagesToMessageData(messages)
+    const messageDataArray = this.convertMessagesToMessageData(allMessages)
     const storedCount = await this.storageService.batchStoreMessages(messageDataArray)
 
     logger.info('importMessages completed for Outlook', {
       integrationId: this.integrationId,
       requested: externalIds.length,
-      fetched: messages.length,
+      fetched: allMessages.length,
       stored: storedCount,
       failed: failedCount,
     })
 
     return {
       imported: storedCount,
-      failed: failedCount + (messages.length - storedCount),
+      failed: failedCount + (allMessages.length - storedCount),
     }
   }
 

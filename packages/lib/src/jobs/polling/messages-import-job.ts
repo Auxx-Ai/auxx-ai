@@ -5,6 +5,10 @@ import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { getImportCacheSize, popFromImportCache } from '../../email/polling-import-cache'
+import {
+  DEFAULT_IMPORT_BATCH_SIZE,
+  PROVIDER_IMPORT_BATCH_SIZE,
+} from '../../providers/integration-provider.interface'
 import { ProviderRegistryService } from '../../providers/provider-registry-service'
 
 const logger = createScopedLogger('job:messages-import')
@@ -13,8 +17,6 @@ const logger = createScopedLogger('job:messages-import')
 const MAX_THROTTLE_BACKOFF_MS = 3_600_000
 /** Base backoff for sync throttle: 30 seconds */
 const BASE_THROTTLE_BACKOFF_MS = 30_000
-
-const DEFAULT_BATCH_SIZE = 50
 
 export interface MessagesImportJobData {
   integrationId: string
@@ -28,7 +30,9 @@ export interface MessagesImportJobData {
  * Pops a batch, imports via provider, and transitions stage.
  */
 export const messagesImportJob = async (job: Job<MessagesImportJobData>) => {
-  const { integrationId, organizationId, provider, batchSize = DEFAULT_BATCH_SIZE } = job.data
+  const { integrationId, organizationId, provider } = job.data
+  const batchSize =
+    job.data.batchSize ?? PROVIDER_IMPORT_BATCH_SIZE[provider] ?? DEFAULT_IMPORT_BATCH_SIZE
   const now = new Date()
 
   logger.info('Starting messages import', { integrationId, organizationId, batchSize })

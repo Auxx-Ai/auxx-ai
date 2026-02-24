@@ -121,6 +121,7 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
       })
       // Invalidate the integrations query to refresh the list
       utils.integration.getIntegrations.invalidate()
+      utils.thread.getCounts.invalidate()
     },
     onError: (error) => {
       setIsRemoving(false)

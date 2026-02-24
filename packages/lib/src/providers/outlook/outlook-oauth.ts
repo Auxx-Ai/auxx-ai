@@ -6,10 +6,11 @@ import { database as db, schema } from '@auxx/database'
 import type { IntegrationEntity } from '@auxx/database/models'
 import { InboxService } from '@auxx/lib/inboxes'
 import { createScopedLogger } from '@auxx/logger'
-import { type AccountInfo, ConfidentialClientApplication, LogLevel } from '@azure/msal-node'
+import { ConfidentialClientApplication, LogLevel } from '@azure/msal-node'
 import { Client } from '@microsoft/microsoft-graph-client'
 import { eq } from 'drizzle-orm'
 import { IntegrationTokenAccessor } from '../integration-token-accessor'
+import { parseMsalError } from './outlook-errors'
 
 const logger = createScopedLogger('outlook-oauth')
 
@@ -17,6 +18,7 @@ const logger = createScopedLogger('outlook-oauth')
 export interface OutlookIntegrationMetadata {
   email: string
   homeAccountId: string
+  emailAliases?: string[]
 }
 
 /** Context needed to create an authenticated Graph client */
@@ -25,8 +27,8 @@ export interface OutlookClientContext {
   refreshToken: string
   accessToken?: string | null
   expiresAt?: Date | null
-  homeAccountId: string
-  email: string
+  homeAccountId?: string
+  email?: string
 }
 export class OutlookOAuthService {
   private static instance: OutlookOAuthService | null = null
@@ -82,70 +84,6 @@ export class OutlookOAuthService {
       OutlookOAuthService.instance = new OutlookOAuthService()
     }
     return OutlookOAuthService.instance
-  }
-  /**
-   * Loads a refresh token into the MSAL cache to ensure it's available for token operations
-   */
-  // private loadRefreshTokenIntoCache(homeAccountId: string, refreshToken: string): void {
-  //   try {
-  //     // Create the minimal cache structure that MSAL needs
-  //     const tokenCacheItem = {
-  //       RefreshToken: {
-  //         [`${homeAccountId}-login.microsoftonline.com-refreshtoken-${this.clientId}--`]: {
-  //           homeAccountId: homeAccountId,
-  //           environment: 'login.microsoftonline.com',
-  //           credentialType: 'RefreshToken',
-  //           clientId: this.clientId,
-  //           secret: refreshToken,
-  //         },
-  //       },
-  //     }
-  //     // Deserialize into MSAL cache
-  //     this.msalClient.getTokenCache().deserialize(JSON.stringify(tokenCacheItem))
-  //     logger.info('Successfully loaded refresh token into MSAL cache', { homeAccountId })
-  //   } catch (error) {
-  //     logger.error('Failed to load refresh token into MSAL cache', { error, homeAccountId })
-  //   }
-  // }
-  private loadRefreshTokenIntoCache(
-    homeAccountId: string,
-    refreshToken: string,
-    email: string
-  ): void {
-    try {
-      // Create a more complete cache structure that includes BOTH token AND account data
-      const cacheJson = {
-        Account: {
-          [`${homeAccountId}-login.microsoftonline.com-`]: {
-            home_account_id: homeAccountId,
-            environment: 'login.microsoftonline.com',
-            realm: '',
-            local_account_id: homeAccountId,
-            username: email,
-            authority_type: 'MSSTS',
-            name: email,
-          },
-        },
-        RefreshToken: {
-          [`${homeAccountId}-login.microsoftonline.com-refreshtoken-${this.clientId}--`]: {
-            home_account_id: homeAccountId,
-            environment: 'login.microsoftonline.com',
-            credential_type: 'RefreshToken',
-            client_id: this.clientId,
-            secret: refreshToken,
-            realm: '',
-            target: OutlookOAuthService.scopes.join(' '),
-          },
-        },
-      }
-      // Deserialize into MSAL cache
-      this.msalClient.getTokenCache().deserialize(JSON.stringify(cacheJson))
-      logger.info('Successfully loaded account and refresh token into MSAL cache', {
-        homeAccountId,
-      })
-    } catch (error) {
-      logger.error('Failed to load refresh token into MSAL cache', { error, homeAccountId })
-    }
   }
   /**
    * Generates the OAuth authorization URL
@@ -236,14 +174,32 @@ export class OutlookOAuthService {
         throw new Error('Could not retrieve email address from Microsoft Graph.')
       }
       logger.info('Successfully retrieved user email', { email })
+      // 3b. Discover email aliases
+      let emailAliases: string[] = []
+      try {
+        const aliasResponse = await graphClient.api('/me?$select=proxyAddresses').get()
+        const proxyAddresses: string[] = aliasResponse.proxyAddresses ?? []
+        emailAliases = proxyAddresses
+          .filter((addr: string) => addr.startsWith('smtp:'))
+          .map((addr: string) => addr.replace('smtp:', '').toLowerCase())
+          .filter(Boolean)
+        if (emailAliases.length > 0) {
+          logger.info('Discovered email aliases', { email, aliasCount: emailAliases.length })
+        }
+      } catch (aliasError: any) {
+        logger.warn('Failed to discover email aliases during callback', {
+          error: aliasError.message,
+        })
+      }
       // 4. Prepare Metadata
       const integrationMetadata: OutlookIntegrationMetadata = {
         email: email,
         homeAccountId: response.account.homeAccountId,
+        emailAliases,
       }
       const expiresOn = response.expiresOn
         ? new Date(response.expiresOn)
-        : new Date(Date.now() + (response.expiresIn || 3600) * 1000)
+        : new Date(Date.now() + 3600 * 1000)
       // Handle re-authentication flow
       if (isReauth && integrationId) {
         logger.info('Processing re-authentication for existing Outlook integration', {
@@ -401,14 +357,12 @@ export class OutlookOAuthService {
       throw new Error(`Outlook OAuth callback failed: ${err.message || err.errorCode}`)
     }
   }
-  /** Helper to extract refresh token from cache */
+  /** Extract refresh token from cache by homeAccountId (used during OAuth callback) */
   private extractRefreshToken(homeAccountId: string): string | undefined {
     try {
       const tokenCache = this.msalClient.getTokenCache().serialize()
       const parsedCache = JSON.parse(tokenCache)
-      // Look for the refresh token in the cache
       if (parsedCache.RefreshToken) {
-        // Find a key that contains the homeAccountId
         const keys = Object.keys(parsedCache.RefreshToken)
         for (const key of keys) {
           if (key.includes(homeAccountId) && parsedCache.RefreshToken[key].secret) {
@@ -423,6 +377,19 @@ export class OutlookOAuthService {
       return undefined
     }
   }
+  /** Extract the most recent refresh token from the MSAL cache (used after acquireTokenByRefreshToken) */
+  private extractRefreshTokenFromCache(): string | undefined {
+    try {
+      const tokenCache = JSON.parse(this.msalClient.getTokenCache().serialize())
+      const refreshTokens = tokenCache.RefreshToken
+      if (!refreshTokens) return undefined
+      const firstKey = Object.keys(refreshTokens)[0]
+      return firstKey ? refreshTokens[firstKey].secret : undefined
+    } catch (e) {
+      logger.error('Failed to extract refresh token from MSAL cache', { error: e })
+      return undefined
+    }
+  }
   /** Helper to create a temporary Graph client with a specific token */
   private createTemporaryGraphClient(accessToken: string): Client {
     return Client.init({
@@ -431,7 +398,7 @@ export class OutlookOAuthService {
       },
     })
   }
-  /** Refreshes the access token using the stored refresh token via MSAL silent flow */
+  /** Refreshes the access token using acquireTokenByRefreshToken (no cache injection needed) */
   public async refreshTokens(integrationId: string): Promise<IntegrationEntity> {
     try {
       const [integration] = await db
@@ -448,48 +415,24 @@ export class OutlookOAuthService {
         throw new Error('Integration missing refresh token')
       }
 
-      const metadata = integration.metadata as unknown as Partial<OutlookIntegrationMetadata>
-      const homeAccountId = metadata?.homeAccountId
-      const email = metadata?.email || ''
-      if (!homeAccountId) {
-        logger.error(
-          'Home Account ID missing in metadata, cannot perform silent token acquisition.',
-          { integrationId }
-        )
-        throw new Error(
-          'Cannot refresh token: Account identifier missing. Re-authentication may be required.'
-        )
-      }
+      logger.debug('Attempting token refresh via acquireTokenByRefreshToken', { integrationId })
 
-      this.loadRefreshTokenIntoCache(homeAccountId, tokens.refreshToken, email)
-
-      const account = {
-        homeAccountId: homeAccountId,
-        environment: 'login.microsoftonline.com',
-        tenantId: 'common',
-        username: email,
-      } as AccountInfo
-      const silentRequest = {
-        account: account,
+      const response = await this.msalClient.acquireTokenByRefreshToken({
+        refreshToken: tokens.refreshToken,
         scopes: OutlookOAuthService.scopes,
-        forceRefresh: true,
-      }
-
-      logger.debug('Attempting silent token acquisition (refresh)', {
-        integrationId,
-        homeAccountId,
+        forceCache: true,
       })
-      const response = await this.msalClient.acquireTokenSilent(silentRequest)
+
       if (!response || !response.accessToken) {
-        throw new Error('Silent token acquisition failed to return an access token')
+        throw new Error('Token refresh failed to return an access token')
       }
 
-      logger.info('Outlook token refreshed successfully via silent acquisition', { integrationId })
+      logger.info('Outlook token refreshed successfully', { integrationId })
       const expiresOn = response.expiresOn
         ? new Date(response.expiresOn)
-        : new Date(Date.now() + (response.expiresIn || 3600) * 1000)
+        : new Date(Date.now() + 3600 * 1000)
 
-      const newRefreshToken = this.extractRefreshToken(homeAccountId)
+      const newRefreshToken = this.extractRefreshTokenFromCache()
 
       const tokenUpdate: Parameters<typeof IntegrationTokenAccessor.setTokens>[1] = {
         accessToken: response.accessToken,
@@ -507,19 +450,16 @@ export class OutlookOAuthService {
         .where(eq(schema.Integration.id, integrationId))
         .limit(1)
       return updatedIntegration
-    } catch (error: unknown) {
-      const err = error as {
-        message?: string
-        errorCode?: string
-        errorMessage?: string
-      }
+    } catch (error) {
+      const parsed = parseMsalError(error)
+
       logger.error('Error refreshing Outlook access token:', {
-        error: err.message,
-        errorCode: err.errorCode,
-        errorMessage: err.errorMessage,
+        error: parsed.message,
+        code: parsed.code,
         integrationId,
       })
-      if (err.errorCode === 'invalid_grant' || err.errorMessage?.includes('AADSTS70008')) {
+
+      if (parsed.code === 'INVALID_REFRESH_TOKEN') {
         logger.warn('Outlook refresh token is invalid or revoked. Disabling integration.', {
           integrationId,
         })
@@ -528,7 +468,7 @@ export class OutlookOAuthService {
           .set({
             enabled: false,
             requiresReauth: true,
-            lastAuthError: 'Refresh token is invalid or revoked',
+            lastAuthError: parsed.message,
             lastAuthErrorAt: new Date(),
             authStatus: 'INVALID_GRANT',
             updatedAt: new Date(),
@@ -537,9 +477,9 @@ export class OutlookOAuthService {
           .catch((dbErr: unknown) =>
             logger.error('Failed to disable integration after invalid grant', { dbErr })
           )
-        throw new Error('Outlook refresh token is invalid or revoked. Re-authentication required.')
       }
-      throw new Error(`Failed to refresh Outlook access token: ${err.message || err.errorCode}`)
+
+      throw parsed
     }
   }
   /** Revokes access (clears encrypted tokens and disables). */
@@ -571,81 +511,71 @@ export class OutlookOAuthService {
     }
   }
   public getAuthenticatedClient(ctx: OutlookClientContext): Client {
-    if (!ctx.integrationId || !ctx.refreshToken || !ctx.homeAccountId) {
-      throw new Error(
-        'Cannot create authenticated client: Missing integrationId, refreshToken, or homeAccountId.'
-      )
+    if (!ctx.integrationId || !ctx.refreshToken) {
+      throw new Error('Cannot create authenticated client: Missing integrationId or refreshToken.')
     }
 
-    const { integrationId, refreshToken, homeAccountId, email } = ctx
-
-    this.loadRefreshTokenIntoCache(homeAccountId, refreshToken, email)
+    const { integrationId, refreshToken } = ctx
+    let currentAccessToken = ctx.accessToken || ''
+    let currentExpiresAt = ctx.expiresAt
 
     const client = Client.init({
       authProvider: async (done) => {
         try {
-          const account = {
-            homeAccountId: homeAccountId,
-            environment: 'login.microsoftonline.com',
-            tenantId: 'common',
-            username: email,
-            localAccountId: homeAccountId,
-          } as AccountInfo
-          const silentRequest = {
-            account: account,
+          // If token is still valid (>10 min remaining), reuse it
+          const isExpiringSoon =
+            !currentExpiresAt || currentExpiresAt.getTime() - Date.now() < 10 * 60 * 1000
+
+          if (currentAccessToken && !isExpiringSoon) {
+            done(null, currentAccessToken)
+            return
+          }
+
+          // Refresh via acquireTokenByRefreshToken
+          const response = await this.msalClient.acquireTokenByRefreshToken({
+            refreshToken,
             scopes: OutlookOAuthService.scopes,
-            forceRefresh: false,
-          }
+            forceCache: true,
+          })
 
-          const accounts = await this.msalClient.getTokenCache().getAllAccounts()
-          const matchingAccount = accounts.find((a) => a.homeAccountId === homeAccountId)
-          if (!matchingAccount) {
-            logger.warn('Account not found in cache before silent acquisition, reloading...', {
-              homeAccountId,
-              integrationId,
-              accountsInCache: accounts.length,
-            })
-            this.loadRefreshTokenIntoCache(homeAccountId, refreshToken, email)
-          }
-
-          const response = await this.msalClient.acquireTokenSilent(silentRequest)
           if (!response || !response.accessToken) {
-            throw new Error('acquireTokenSilent failed to return an access token.')
+            throw new Error('Token refresh failed to return an access token.')
           }
 
-          // Update encrypted tokens in background if expiry changed
-          const newExpiresOn = response.expiresOn ? new Date(response.expiresOn) : null
-          if (newExpiresOn && newExpiresOn?.getTime() !== ctx.expiresAt?.getTime()) {
-            IntegrationTokenAccessor.setTokens(integrationId, {
-              accessToken: response.accessToken,
-              expiresAt: newExpiresOn,
-            }).catch((err: unknown) =>
-              logger.error('Background token update failed in authProvider', { err })
-            )
+          currentAccessToken = response.accessToken
+          currentExpiresAt = response.expiresOn
+            ? new Date(response.expiresOn)
+            : new Date(Date.now() + 3600 * 1000)
+
+          // Update encrypted tokens in background
+          const newRefreshToken = this.extractRefreshTokenFromCache()
+          const tokenUpdate: Parameters<typeof IntegrationTokenAccessor.setTokens>[1] = {
+            accessToken: response.accessToken,
+            expiresAt: currentExpiresAt,
           }
+          if (newRefreshToken && newRefreshToken !== refreshToken) {
+            tokenUpdate.refreshToken = newRefreshToken
+          }
+          IntegrationTokenAccessor.setTokens(integrationId, tokenUpdate).catch((err: unknown) =>
+            logger.error('Background token update failed in authProvider', { err })
+          )
 
           done(null, response.accessToken)
         } catch (error) {
-          const err = error as {
-            message?: string
-            errorCode?: string
-            errorMessage?: string
-          }
-          logger.error('Error acquiring token silently in Graph authProvider:', {
-            error: err.message,
-            errorCode: err.errorCode,
+          const parsed = parseMsalError(error)
+          logger.error('Error refreshing token in Graph authProvider:', {
+            error: parsed.message,
+            code: parsed.code,
             integrationId,
           })
 
-          if (err.errorCode === 'invalid_grant' || err.errorMessage?.includes('AADSTS70008')) {
-            logger.warn('Refresh token invalid during silent acquisition. Disabling integration.', {
-              integrationId,
-            })
+          if (parsed.code === 'INVALID_REFRESH_TOKEN') {
+            logger.warn('Refresh token invalid. Disabling integration.', { integrationId })
             db.update(schema.Integration)
               .set({
                 enabled: false,
                 requiresReauth: true,
-                lastAuthError: 'Refresh token invalid during silent acquisition',
+                lastAuthError: parsed.message,
                 lastAuthErrorAt: new Date(),
                 authStatus: 'INVALID_GRANT',
                 updatedAt: new Date(),
@@ -656,7 +586,7 @@ export class OutlookOAuthService {
               )
           }
 
-          done(error as Error, null)
+          done(parsed, null)
         }
       },
     })
