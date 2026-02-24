@@ -13,6 +13,7 @@ import {
 } from '../../utils/rate-limiter'
 import type {
   IntegrationProvider,
+  MessageListResult,
   MessageStatus,
   SendMessageOptions,
 } from '../integration-provider.interface'
@@ -28,10 +29,13 @@ import { GoogleOAuthService } from './google-oauth'
 type GaxiosError = Common.GaxiosError
 
 import { IntegrationProviderType } from '@auxx/database/enums'
+import { getGmailQuotaCost } from '../../utils/rate-limiter'
 import { createGmailDraft, sendGmailDraft, updateGmailDraft } from './drafts'
 import { addLabel, createLabel, deleteLabel, getLabels, removeLabel, updateLabel } from './labels'
 // Import modular functions
+import { getMessagesBatch } from './messages/batch-fetch'
 import { createEmailMessage } from './messages/create-message'
+import { convertMessagesToMessageData } from './messages/parse-message'
 import { sendGmailMessage } from './messages/send-message'
 import { syncGmailMessages } from './messages/sync-messages'
 import { archive, markAsSpam, restore, trash } from './operations'
@@ -408,7 +412,7 @@ export class GoogleProvider
     await setupWebhook({
       gmail: this.gmail!,
       integrationId: this.integrationId!,
-      integration: this.integration!,
+      integration: this.integration! as any,
     })
   }
 
@@ -567,7 +571,7 @@ export class GoogleProvider
       throttler: this.throttler!,
     })
 
-    return { id: result.draftId, success: true }
+    return { id: result.id, success: true }
   }
 
   async updateDraft(draftId: string, options: Partial<SendMessageOptions>): Promise<boolean> {
@@ -602,7 +606,7 @@ export class GoogleProvider
       throttler: this.throttler!,
     })
 
-    return { id: result.messageId, success: true }
+    return { id: result.id, success: true }
   }
   // --- Labels ---
   async getLabels(): Promise<ProviderLabel[]> {
@@ -706,7 +710,7 @@ export class GoogleProvider
     await this.ensureInitialized()
     return getThread({
       gmail: this.gmail!,
-      threadId: externalThreadId,
+      externalThreadId,
       integrationId: this.integrationId!,
       throttler: this.throttler!,
     })
@@ -716,7 +720,7 @@ export class GoogleProvider
     await this.ensureInitialized()
     return updateThreadStatus({
       gmail: this.gmail!,
-      threadId: externalThreadId,
+      externalThreadId,
       status,
       integrationId: this.integrationId!,
       throttler: this.throttler!,
@@ -727,12 +731,243 @@ export class GoogleProvider
     await this.ensureInitialized()
     return moveThread({
       gmail: this.gmail!,
-      threadId: externalThreadId,
+      externalThreadId,
       destinationLabelId,
       integrationId: this.integrationId!,
       throttler: this.throttler!,
     })
   }
+  // --- Two-Phase Polling Sync ---
+
+  supportsTwoPhaseSync(): boolean {
+    return true
+  }
+
+  async discoverLabels(): Promise<
+    { externalId: string; name: string; isSentBox: boolean; parentExternalId: string | null }[]
+  > {
+    await this.ensureInitialized()
+
+    const labels = await getLabels({
+      gmail: this.gmail!,
+      integrationId: this.integrationId!,
+      throttler: this.throttler!,
+    })
+
+    // Filter out system category labels (e.g. CATEGORY_PROMOTIONS)
+    return labels
+      .filter((label) => label.id && label.name && !label.id.startsWith('CATEGORY_'))
+      .map((label) => ({
+        externalId: label.id!,
+        name: label.name!,
+        isSentBox: label.id === 'SENT',
+        parentExternalId: null, // Gmail labels are flat
+      }))
+  }
+
+  async fetchMessageIds(since?: Date): Promise<MessageListResult[]> {
+    await this.ensureInitialized()
+
+    const lastHistoryId = this.integration!.lastHistoryId
+    const addedMessageIds: string[] = []
+    const deletedMessageIds: string[] = []
+    let newHistoryId = lastHistoryId || '0'
+
+    if (lastHistoryId && !since) {
+      // Incremental sync via History API
+      let nextPageToken: string | undefined | null
+      let highestHistoryId = BigInt(lastHistoryId)
+
+      do {
+        const historyResponse = await executeWithThrottle(
+          'gmail.history.list',
+          async () =>
+            this.gmail!.users.history.list({
+              userId: 'me',
+              startHistoryId: highestHistoryId.toString(),
+              pageToken: nextPageToken ?? undefined,
+              historyTypes: ['messageAdded', 'messageDeleted', 'labelRemoved'],
+            }),
+          {
+            userId: this.integrationId!,
+            throttler: this.throttler!,
+            cost: getGmailQuotaCost('history.list'),
+            queue: true,
+            priority: 5,
+          }
+        )
+
+        const historyRecords = historyResponse.data.history || []
+
+        for (const record of historyRecords) {
+          if (record.messagesAdded) {
+            for (const msgAdded of record.messagesAdded) {
+              if (msgAdded.message?.id) {
+                addedMessageIds.push(msgAdded.message.id)
+              }
+            }
+          }
+          if (record.messagesDeleted) {
+            for (const msgDeleted of record.messagesDeleted) {
+              if (msgDeleted.message?.id) {
+                deletedMessageIds.push(msgDeleted.message.id)
+              }
+            }
+          }
+          // Treat INBOX label removal as deletion (archived messages)
+          if (record.labelsRemoved) {
+            for (const labelChange of record.labelsRemoved) {
+              if (labelChange.labelIds?.includes('INBOX') && labelChange.message?.id) {
+                deletedMessageIds.push(labelChange.message.id)
+              }
+            }
+          }
+          const recordHistoryId = BigInt(record.id ?? '0')
+          if (recordHistoryId > highestHistoryId) {
+            highestHistoryId = recordHistoryId
+          }
+        }
+
+        if (historyRecords.length === 0 && historyResponse.data.historyId) {
+          const currentHistoryId = BigInt(historyResponse.data.historyId)
+          if (currentHistoryId > highestHistoryId) {
+            highestHistoryId = currentHistoryId
+          }
+        }
+
+        nextPageToken = historyResponse.data.nextPageToken
+      } while (nextPageToken)
+
+      newHistoryId = highestHistoryId.toString()
+    } else {
+      // Full sync via Message List API
+      const query = since ? `after:${Math.floor(since.getTime() / 1000)}` : 'in:inbox'
+      let nextPageToken: string | undefined | null
+      let highestHistoryId = BigInt(0)
+
+      do {
+        const listResponse = await executeWithThrottle(
+          'gmail.messages.list',
+          async () =>
+            this.gmail!.users.messages.list({
+              userId: 'me',
+              q: query,
+              pageToken: nextPageToken ?? undefined,
+              includeSpamTrash: false,
+              maxResults: 100,
+            }),
+          {
+            userId: this.integrationId!,
+            throttler: this.throttler!,
+            cost: getGmailQuotaCost('messages.list'),
+            queue: true,
+            priority: 5,
+          }
+        )
+
+        const messages = listResponse.data.messages || []
+        if (messages.length === 0) break
+
+        for (const msg of messages) {
+          if (msg.id) messageIds.push(msg.id)
+        }
+
+        // We need to get historyId from the first batch of actual messages
+        const firstMsg = messages[0]
+        if (highestHistoryId === BigInt(0) && firstMsg?.id) {
+          // Fetch one message to get its historyId for cursor tracking
+          const firstMsgId = firstMsg.id
+          const sampleMsg = await executeWithThrottle(
+            'gmail.messages.get',
+            async () =>
+              this.gmail!.users.messages.get({
+                userId: 'me',
+                id: firstMsgId,
+                format: 'minimal',
+              }),
+            {
+              userId: this.integrationId!,
+              throttler: this.throttler!,
+              cost: getGmailQuotaCost('messages.get'),
+              queue: true,
+              priority: 5,
+            }
+          )
+          if (sampleMsg.data.historyId) {
+            highestHistoryId = BigInt(sampleMsg.data.historyId)
+          }
+        }
+
+        nextPageToken = listResponse.data.nextPageToken
+      } while (nextPageToken)
+
+      newHistoryId = highestHistoryId.toString()
+    }
+
+    // Deduplicate: messages in both added and deleted → net result is deleted
+    const deletedSet = new Set(deletedMessageIds)
+    const uniqueAddedIds = [...new Set(addedMessageIds)].filter((id) => !deletedSet.has(id))
+    const uniqueDeletedIds = [...deletedSet]
+
+    logger.info('fetchMessageIds completed', {
+      integrationId: this.integrationId,
+      addedCount: uniqueAddedIds.length,
+      deletedCount: uniqueDeletedIds.length,
+      newHistoryId,
+    })
+
+    return [
+      {
+        messageIds: uniqueAddedIds,
+        deletedMessageIds: uniqueDeletedIds,
+        previousCursor: lastHistoryId || null,
+        nextCursor: newHistoryId,
+        labelId: undefined, // Gmail uses integration-level cursor
+      },
+    ]
+  }
+
+  async importMessages(externalIds: string[]): Promise<{ imported: number; failed: number }> {
+    await this.ensureInitialized()
+
+    const accessToken = await this.getAccessToken()
+
+    const messages = await getMessagesBatch({
+      messageIds: externalIds,
+      integrationId: this.integrationId!,
+      throttler: this.throttler!,
+      accessToken,
+    })
+
+    if (messages.length === 0) {
+      return { imported: 0, failed: externalIds.length }
+    }
+
+    const messageDataArray = convertMessagesToMessageData(
+      messages,
+      this.integrationId!,
+      this.inboxId!,
+      this.organizationId,
+      this.userEmails
+    )
+
+    const storedCount = await this.storageService.batchStoreMessages(messageDataArray)
+
+    logger.info('importMessages completed', {
+      integrationId: this.integrationId,
+      requested: externalIds.length,
+      fetched: messages.length,
+      stored: storedCount,
+    })
+
+    return {
+      imported: storedCount,
+      failed: externalIds.length - storedCount,
+    }
+  }
+
+  // --- Simulation ---
+
   async simulateOperation(operation: string, targetId: string, params?: any): Promise<any> {
     logger.warn('simulateOperation is not implemented for GoogleProvider')
     return Promise.resolve({ success: false, message: 'Not implemented' })

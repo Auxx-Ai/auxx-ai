@@ -7,7 +7,7 @@ import type { IntegrationEntity } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
 import { getAttachmentByteSize, sanitizeFilename, toGraphRecipients } from '@auxx/utils'
 import type { Client } from '@microsoft/microsoft-graph-client'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import {
   EmailLabel, // Still needed for MessageData structure
   type MessageData, // Use this structure for storing
@@ -16,6 +16,7 @@ import {
 } from '../../email/email-storage' // Adjust path
 import {
   type IntegrationProvider,
+  type MessageListResult,
   MessageStatus,
   type SendMessageOptions,
 } from '../integration-provider.interface' // Adjust path
@@ -283,7 +284,7 @@ export class OutlookProvider
         await this.storageService.ensureContactsForRecipients(
           recipients,
           this.organizationId,
-          IntegrationType.OUTLOOK
+          IntegrationProviderType.outlook
         )
       }
       // Format recipients for Graph API
@@ -332,7 +333,7 @@ export class OutlookProvider
       // This is a known Outlook limitation - headers alone don't guarantee threading
       // Handle attachments with size-aware logic
       if (options.attachments && options.attachments.length > 0) {
-        const MAX_INLINE_SIZE = 3 * 1024 * 1024 // 3MB for inline attachments
+        const _MAX_INLINE_SIZE = 3 * 1024 * 1024 // 3MB for inline attachments
         const MAX_TOTAL_SIZE = 10 * 1024 * 1024 // 10MB total for standard send
         const MAX_SINGLE_INLINE = 3 * 1024 * 1024 // 3MB per inline attachment
         // Calculate sizes
@@ -712,13 +713,13 @@ export class OutlookProvider
           const senderEmail = fromInput.identifier?.toLowerCase()
           const isInbound = integrationEmail ? senderEmail !== integrationEmail : true // Default to inbound if integration email unknown
           // Determine EmailLabel based on standard folder names (case-insensitive check might be needed)
-          let emailLabel = EmailLabel.inbox // Default
+          let _emailLabel = EmailLabel.inbox // Default
           const folderIdLower = message.parentFolderId?.toLowerCase()
           if (folderIdLower === 'sentitems' || folderIdLower?.includes('sent')) {
             // Simple checks
-            emailLabel = EmailLabel.sent
+            _emailLabel = EmailLabel.sent
           } else if (folderIdLower === 'drafts') {
-            emailLabel = EmailLabel.draft
+            _emailLabel = EmailLabel.draft
           } else if (
             folderIdLower === 'junkemail' ||
             folderIdLower?.includes('junk') ||
@@ -1237,7 +1238,192 @@ export class OutlookProvider
       return false
     }
   }
-  // Simulation not applicable
+  // --- Two-Phase Polling Sync ---
+
+  supportsTwoPhaseSync(): boolean {
+    return true
+  }
+
+  async discoverLabels(): Promise<
+    { externalId: string; name: string; isSentBox: boolean; parentExternalId: string | null }[]
+  > {
+    await this.ensureInitialized()
+
+    try {
+      const response = await this.client!.api('/me/mailFolders')
+        .select('id,displayName,parentFolderId,childFolderCount,isHidden')
+        .top(100)
+        .get()
+
+      const folders = response.value || []
+
+      return folders
+        .filter((folder: any) => !folder.isHidden)
+        .map((folder: any) => ({
+          externalId: folder.id,
+          name: folder.displayName,
+          isSentBox: folder.displayName === 'Sent Items',
+          parentExternalId: folder.parentFolderId || null,
+        }))
+    } catch (error: any) {
+      logger.error('Failed to discover Outlook folders', {
+        error: error.message,
+        integrationId: this.integrationId,
+      })
+      return []
+    }
+  }
+
+  async fetchMessageIds(since?: Date): Promise<MessageListResult[]> {
+    await this.ensureInitialized()
+
+    // Query synced labels from DB to get per-folder cursors
+    const labels = await db
+      .select()
+      .from(schema.Label)
+      .where(
+        and(eq(schema.Label.integrationId, this.integrationId!), eq(schema.Label.enabled, true))
+      )
+
+    if (labels.length === 0) {
+      logger.info('No labels found for Outlook integration, skipping fetchMessageIds', {
+        integrationId: this.integrationId,
+      })
+      return []
+    }
+
+    const results: MessageListResult[] = []
+    const selectFields = 'id'
+
+    // Process folders with concurrency limit
+    const CONCURRENCY = 4
+    for (let i = 0; i < labels.length; i += CONCURRENCY) {
+      const batch = labels.slice(i, i + CONCURRENCY)
+      const batchResults = await Promise.allSettled(
+        batch.map(async (label) => {
+          try {
+            const messageIds: string[] = []
+            const deletedMessageIds: string[] = []
+            let nextLink: string | undefined
+            let deltaLink: string | undefined
+
+            if (label.providerCursor && !since) {
+              // Incremental: use stored delta link
+              nextLink = label.providerCursor
+            } else {
+              // Initial: start fresh delta query
+              const dateFilter = since ? `&$filter=receivedDateTime ge ${since.toISOString()}` : ''
+              nextLink = `/me/mailFolders/${label.labelId}/messages/delta?$select=${selectFields}${dateFilter}`
+            }
+
+            while (nextLink) {
+              const response: any = await this.client!.api(nextLink).get()
+              const messages = response.value || []
+
+              for (const msg of messages) {
+                if (msg['@removed']) {
+                  if (msg.id) deletedMessageIds.push(msg.id)
+                } else if (msg.id) {
+                  messageIds.push(msg.id)
+                }
+              }
+
+              nextLink = response['@odata.nextLink']
+              deltaLink = response['@odata.deltaLink']
+              if (deltaLink && !nextLink) break
+            }
+
+            if (messageIds.length > 0 || deletedMessageIds.length > 0 || deltaLink) {
+              results.push({
+                messageIds,
+                deletedMessageIds,
+                previousCursor: label.providerCursor,
+                nextCursor: deltaLink || label.providerCursor || '',
+                labelId: label.id,
+              })
+            }
+          } catch (error: any) {
+            logger.error('Failed to fetch message IDs for Outlook folder', {
+              labelId: label.id,
+              labelName: label.name,
+              integrationId: this.integrationId,
+              error: error.message,
+            })
+          }
+        })
+      )
+
+      // Log any rejected promises
+      for (const result of batchResults) {
+        if (result.status === 'rejected') {
+          logger.error('Folder delta fetch rejected', { reason: result.reason })
+        }
+      }
+    }
+
+    const totalIds = results.reduce((sum, r) => sum + r.messageIds.length, 0)
+    const totalDeleted = results.reduce((sum, r) => sum + r.deletedMessageIds.length, 0)
+
+    logger.info('fetchMessageIds completed for Outlook', {
+      integrationId: this.integrationId,
+      foldersProcessed: results.length,
+      totalMessageIds: totalIds,
+      totalDeletedIds: totalDeleted,
+    })
+
+    return results
+  }
+
+  async importMessages(externalIds: string[]): Promise<{ imported: number; failed: number }> {
+    await this.ensureInitialized()
+
+    const messages: GraphMessage[] = []
+    let failedCount = 0
+    const selectFields =
+      'id,conversationId,subject,from,toRecipients,ccRecipients,bccRecipients,replyTo,receivedDateTime,sentDateTime,body,internetMessageId,parentFolderId,isRead,hasAttachments,categories,internetMessageHeaders,inferenceClassification'
+
+    // Fetch messages individually (Graph API doesn't have a batch-get for messages by ID)
+    for (const externalId of externalIds) {
+      try {
+        const message = await this.client!.api(`/me/messages/${externalId}`)
+          .select(selectFields)
+          .get()
+        messages.push(message)
+      } catch (error: any) {
+        failedCount++
+        if (error.statusCode !== 404) {
+          logger.error('Failed to fetch Outlook message', {
+            externalId,
+            error: error.message,
+            statusCode: error.statusCode,
+          })
+        }
+      }
+    }
+
+    if (messages.length === 0) {
+      return { imported: 0, failed: failedCount }
+    }
+
+    const messageDataArray = this.convertMessagesToMessageData(messages)
+    const storedCount = await this.storageService.batchStoreMessages(messageDataArray)
+
+    logger.info('importMessages completed for Outlook', {
+      integrationId: this.integrationId,
+      requested: externalIds.length,
+      fetched: messages.length,
+      stored: storedCount,
+      failed: failedCount,
+    })
+
+    return {
+      imported: storedCount,
+      failed: failedCount + (messages.length - storedCount),
+    }
+  }
+
+  // --- Simulation ---
+
   async simulateOperation(operation: string, targetId: string, params?: any): Promise<any> {
     logger.warn('simulateOperation is not implemented for OutlookProvider')
     return Promise.resolve({ success: false, message: 'Not implemented' })

@@ -1430,6 +1430,64 @@ export class MessageStorageService {
   // based on how participant filtering/display is required.
 
   /**
+   * Deletes messages by their provider external IDs, scoped to an integration.
+   * Cascading FKs handle MessageParticipant and EmailAttachment cleanup.
+   * Updates thread metadata for affected threads and removes empty threads.
+   * @param integrationId - The integration the messages belong to
+   * @param externalIds - Provider-side message IDs to delete
+   * @returns Number of messages deleted
+   */
+  async deleteMessagesByExternalIds(integrationId: string, externalIds: string[]): Promise<number> {
+    if (externalIds.length === 0) return 0
+
+    // Find messages and their threads before deleting
+    const messages = await db
+      .select({ id: schema.Message.id, threadId: schema.Message.threadId })
+      .from(schema.Message)
+      .where(
+        and(
+          eq(schema.Message.integrationId, integrationId),
+          inArray(schema.Message.externalId, externalIds)
+        )
+      )
+
+    if (messages.length === 0) return 0
+
+    const messageIds = messages.map((m) => m.id)
+    const affectedThreadIds = [...new Set(messages.map((m) => m.threadId).filter(Boolean))]
+
+    // Delete messages (cascades to MessageParticipant, EmailAttachment)
+    await db.delete(schema.Message).where(inArray(schema.Message.id, messageIds))
+
+    logger.info('Deleted messages by external IDs', {
+      integrationId,
+      deletedCount: messageIds.length,
+      affectedThreads: affectedThreadIds.length,
+    })
+
+    // Update or remove affected threads
+    for (const threadId of affectedThreadIds) {
+      if (!threadId) continue
+
+      const [remaining] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.Message)
+        .where(eq(schema.Message.threadId, threadId))
+
+      if (remaining.count === 0) {
+        // Thread is empty — delete it
+        await db.delete(schema.Thread).where(eq(schema.Thread.id, threadId))
+        logger.debug('Deleted empty thread after message removal', { threadId })
+      } else {
+        // Thread still has messages — update metadata
+        await this.updateThreadMetadataEfficient(threadId)
+      }
+    }
+
+    return messageIds.length
+  }
+
+  /**
    * Creates a contact for a participant after sending them a message.
    * Used when we send a message to someone who previously only sent us messages.
    * @param participantId The ID of the participant

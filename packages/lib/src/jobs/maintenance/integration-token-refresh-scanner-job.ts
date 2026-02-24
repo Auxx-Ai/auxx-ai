@@ -4,6 +4,7 @@ import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { and, eq, inArray, isNotNull, lt, or, sql } from 'drizzle-orm'
+import { resolveEffectiveSyncMode } from '../../providers/sync-mode-resolver'
 import { getQueue, Queues } from '../queues'
 
 const logger = createScopedLogger('integration-token-refresh-scanner')
@@ -91,6 +92,7 @@ export const integrationTokenRefreshScannerJob = async (
         id: schema.Integration.id,
         organizationId: schema.Integration.organizationId,
         provider: schema.Integration.provider,
+        syncMode: schema.Integration.syncMode,
         credentialId: schema.Integration.credentialId,
         expiresAt: schema.Integration.expiresAt,
         authStatus: schema.Integration.authStatus,
@@ -124,6 +126,7 @@ export const integrationTokenRefreshScannerJob = async (
         id: schema.Integration.id,
         organizationId: schema.Integration.organizationId,
         provider: schema.Integration.provider,
+        syncMode: schema.Integration.syncMode,
         credentialId: schema.Integration.credentialId,
         expiresAt: schema.Integration.expiresAt,
         authStatus: schema.Integration.authStatus,
@@ -198,12 +201,14 @@ export const integrationTokenRefreshScannerJob = async (
           shouldRefreshToken = true
         }
 
-        // Check if webhook renewal is needed
-        const shouldRenewWebhook = checkWebhookRenewalNeeded(
-          integration.provider as 'google' | 'outlook',
-          metadata,
-          now
-        )
+        // Check if webhook renewal is needed (skip for polling-mode integrations)
+        const effectiveMode = resolveEffectiveSyncMode({
+          syncMode: integration.syncMode,
+          provider: integration.provider,
+        })
+        const shouldRenewWebhook =
+          effectiveMode === 'webhook' &&
+          checkWebhookRenewalNeeded(integration.provider as 'google' | 'outlook', metadata, now)
 
         if (!shouldRefreshToken && !shouldRenewWebhook) {
           continue

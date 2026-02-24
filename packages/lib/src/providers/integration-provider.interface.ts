@@ -1,5 +1,15 @@
 import type { AttachmentFile } from './message-provider-interface'
 
+/** Result from discovering message IDs in a single label/folder */
+export interface MessageListResult {
+  messageIds: string[]
+  deletedMessageIds: string[]
+  previousCursor: string | null
+  nextCursor: string
+  /** undefined = integration-level cursor (Gmail), set = per-label cursor (Outlook/IMAP) */
+  labelId: string | undefined
+}
+
 export interface SendMessageOptions {
   // Required fields
   from: string
@@ -213,6 +223,42 @@ export interface IntegrationProvider {
    * @param destinationLabelId The provider's ID for the destination label/folder.
    */
   moveThread(externalThreadId: string, destinationLabelId: string): Promise<boolean>
+
+  // === Two-Phase Polling Sync (optional) ===
+
+  /**
+   * Discover message IDs that need to be imported (list-fetch phase).
+   * Returns an array of results — one per label/folder for Outlook/IMAP,
+   * or a single result with labelId=undefined for Gmail (integration-level cursor).
+   * Optional — providers that don't implement this use syncMessages() directly.
+   */
+  fetchMessageIds?(since?: Date): Promise<MessageListResult[]>
+
+  /**
+   * Fetch and store full message content by external IDs (import phase).
+   * Optional — providers that don't implement this use syncMessages() directly.
+   */
+  importMessages?(externalIds: string[]): Promise<{ imported: number; failed: number }>
+
+  /**
+   * Discover labels/folders from the provider for sync.
+   * Returns discovered labels to be upserted against the Label table.
+   * Optional — providers that don't implement this skip label sync.
+   */
+  discoverLabels?(): Promise<
+    {
+      externalId: string
+      name: string
+      isSentBox: boolean
+      parentExternalId: string | null
+    }[]
+  >
+
+  /**
+   * Whether this provider supports two-phase sync (fetchMessageIds + importMessages).
+   * If false, polling falls back to calling syncMessages() in a single phase.
+   */
+  supportsTwoPhaseSync?(): boolean
 
   // === Test/Simulation methods ===
 

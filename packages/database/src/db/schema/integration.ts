@@ -55,6 +55,8 @@ export const Integration = pgTable(
     // Throttling
     throttleFailureCount: integer().default(0).notNull(),
     throttleRetryAfter: timestamp({ precision: 3 }),
+    syncMode: text().default('auto').notNull(), // 'webhook' | 'polling' | 'auto'
+    pollingIntervalMs: integer().default(300000), // 5 min default, per-integration configurable
     metadata: jsonb(),
     updatedAt: timestamp({ precision: 3 }).notNull(),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),

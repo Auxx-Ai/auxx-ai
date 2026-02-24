@@ -5,6 +5,7 @@ import { createId } from '@paralleldrive/cuid2'
 import {
   type AnyPgColumn,
   boolean,
+  index,
   labelType,
   pgTable,
   text,
@@ -37,6 +38,14 @@ export const Label = pgTable(
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
+    /** Provider-specific sync cursor (e.g. Outlook deltaLink, IMAP UID+modSeq JSON). Null for Gmail (uses channel-level historyId). */
+    providerCursor: text(),
+    /** Pending lifecycle action — used to defer folder deletion until messages are cleaned up first. */
+    pendingAction: text(), // null | 'PENDING_REMOVAL'
+    /** Whether this is the sent/outbound folder for direction detection. */
+    isSentBox: boolean().default(false).notNull(),
+    /** Self-referencing parent for folder hierarchy (IMAP nested folders). */
+    parentLabelId: text().references((): AnyPgColumn => Label.id, { onDelete: 'set null' }),
   },
   (table) => [
     uniqueIndex('Label_labelId_organizationId_integrationId_key').using(
@@ -51,5 +60,6 @@ export const Label = pgTable(
       table.organizationId.asc().nullsLast(),
       table.integrationId.asc().nullsLast()
     ),
+    index('Label_integrationId_idx').using('btree', table.integrationId.asc().nullsLast()),
   ]
 )

@@ -247,6 +247,30 @@ export function createUpstashClient(): RedisClient {
       }
     },
 
+    spop: async (key: string, count?: number) => {
+      try {
+        if (count !== undefined) {
+          return await upstashClient.spop<string>(key, count)
+        }
+        return await upstashClient.spop<string>(key)
+      } catch (error) {
+        logger.error('Error popping from set in Upstash', { key, error: (error as Error).message })
+        throw error
+      }
+    },
+
+    scard: async (key: string) => {
+      try {
+        return await upstashClient.scard(key)
+      } catch (error) {
+        logger.error('Error getting set cardinality in Upstash', {
+          key,
+          error: (error as Error).message,
+        })
+        throw error
+      }
+    },
+
     // Sorted set operations
     zadd: async (key: string, ...args: any[]) => {
       try {
