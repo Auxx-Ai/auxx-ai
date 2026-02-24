@@ -1,6 +1,7 @@
 // apps/worker/src/server.ts
 
 import { stripeClient } from '@auxx/billing'
+import { getDevPort } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { closeAllQueues, closeFlowProducer } from '@auxx/lib/queues'
 import { serve } from '@hono/node-server'
@@ -45,8 +46,8 @@ async function initializeApp() {
   // Enable CORS for all routes
   app.use('*', cors())
 
-  const port = process.env.WORKERS_PORT ? parseInt(process.env.WORKERS_PORT, 10) : 3005
-  const host = process.env.WORKERS_HOST || '0.0.0.0'
+  const port = getDevPort('worker')
+  const host = '0.0.0.0'
 
   app.get('/health', (c) => {
     // You might want to add more checks here, e.g., worker health

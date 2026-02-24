@@ -54,7 +54,7 @@ import '~/lib/stripe' // Ensure Stripe is initialized
 
 const subscriptionService = new SubscriptionService(
   ctx.db,
-  process.env.NEXT_PUBLIC_BASE_URL!
+  process.env.APP_URL!
 )
 
 // Create checkout session
@@ -123,7 +123,7 @@ Process Stripe webhooks:
 ```bash
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
-NEXT_PUBLIC_BASE_URL=https://your-domain.com
+APP_URL=https://app.your-domain.com
 ```
 
 ## Database Schema

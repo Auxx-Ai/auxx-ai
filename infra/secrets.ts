@@ -236,6 +236,10 @@ export function getSelectedEnvVars(
     NODE_ENV: 'production',
     NODE_NO_DEPRECATION: '1',
     NODE_NO_WARNINGS: '1',
+    // Build metadata for UI/version diagnostics
+    GIT_SHA: process.env.GIT_SHA || '',
+    APP_VERSION: process.env.APP_VERSION || '',
+    BUILD_TIME: process.env.BUILD_TIME || '',
     // Canonical URL env vars
     DOMAIN: domain,
     APP_URL: `https://${getAppDomain()}`,

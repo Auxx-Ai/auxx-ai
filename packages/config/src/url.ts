@@ -93,7 +93,7 @@ function buildUrl(base: string, path: string): string {
 // ─── Core resolution ─────────────────────────────────────
 
 /** Get the effective dev port for an app (supports override via env var). */
-function getDevPort(app: AppName): number {
+export function getDevPort(app: AppName): number {
   const entry = APP_REGISTRY[app]
   const override = process.env[entry.portEnv]
   return override ? Number.parseInt(override, 10) : entry.defaultPort

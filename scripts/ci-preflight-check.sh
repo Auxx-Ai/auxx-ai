@@ -28,7 +28,7 @@ env_val() {
 }
 
 # Vars that SST computes from infrastructure — setup script will skip these
-SST_MANAGED=(NEXT_PUBLIC_BASE_URL NEXT_PUBLIC_APP_URL REDIS_HOST REDIS_PORT)
+SST_MANAGED=(DOMAIN REDIS_HOST REDIS_PORT)
 
 is_sst_managed() {
   for v in "${SST_MANAGED[@]}"; do

@@ -56,7 +56,6 @@ async function verifyGoogleWebhook(req: NextRequest): Promise<boolean> {
         // 'https://auxx.ai',
         AUDIENCE,
         configService.get<string>('GOOGLE_PUBSUB_SERVICE_ACCOUNT_EMAIL'),
-        // env.NEXT_PUBLIC_APP_URL,
       ].filter(Boolean), // Allow multiple valid audiences
       issuer: ['https://accounts.google.com', 'googleidtoken.googleapis.com'], // Valid issuers
     }) as jwt.JwtPayload // Type assertion

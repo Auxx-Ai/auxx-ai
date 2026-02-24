@@ -24,18 +24,11 @@ RUN turbo prune @auxx/build --docker
 # BUILDER stage
 FROM base AS builder
 
-# Build-time placeholders for NEXT_PUBLIC_* runtime env replacement (self-hosted)
-# Group A: URL vars — replaced at container start by docker-entrypoint.sh
-ARG NEXT_PUBLIC_BASE_URL=https://__RUNTIME_NEXT_PUBLIC_BASE_URL__
-ARG NEXT_PUBLIC_APP_URL=https://__RUNTIME_NEXT_PUBLIC_APP_URL__
-ARG NEXT_PUBLIC_API_URL=https://__RUNTIME_NEXT_PUBLIC_API_URL__
-ARG NEXT_PUBLIC_DEV_PORTAL_URL=https://__RUNTIME_NEXT_PUBLIC_DEV_PORTAL_URL__
-ARG NEXT_PUBLIC_HOMEPAGE_URL=https://__RUNTIME_NEXT_PUBLIC_HOMEPAGE_URL__
-ARG NEXT_PUBLIC_DOCS_URL=https://__RUNTIME_NEXT_PUBLIC_DOCS_URL__
+ARG DOMAIN=__RUNTIME_DOMAIN__
 
 # Build-time mocks for modules that read env at import time
 ENV DATABASE_URL="postgresql://postgres:password@localhost:5432/mock_db"
-ENV BETTER_AUTH_SECRET="mock-better-auth-secret-for-build"
+ENV DOMAIN=$DOMAIN
 ENV REDIS_HOST="localhost"
 ENV REDIS_PORT="6379"
 ENV NEXT_TELEMETRY_DISABLED="1"
@@ -71,11 +64,13 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 FROM slim AS runner
 
 ARG PROJECT_PATH
+ARG DOMAIN=dev.auxx.ai
 
 ENV HOSTNAME=0.0.0.0
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 ENV PORT=3006
+ENV DOMAIN=$DOMAIN
 
 WORKDIR /app
 
