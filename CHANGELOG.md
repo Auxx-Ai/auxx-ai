@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.15](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.14...auxx-v0.1.15) (2026-02-24)
+
+
+### Features
+
+* streamline database migration process and remove obsolete scripts ([#79](https://github.com/Auxx-Ai/auxx-ai/issues/79)) ([fb58833](https://github.com/Auxx-Ai/auxx-ai/commit/fb588333bac9dc9217059b0af28c4e17c1297fc6))
+
 ## [0.1.14](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.13...auxx-v0.1.14) (2026-02-24)
 
 
