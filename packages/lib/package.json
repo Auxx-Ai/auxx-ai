@@ -65,6 +65,7 @@
     "./jobs/queues": "./src/jobs/queues/index.ts",
     "./jobs/queues/types": "./src/jobs/queues/types.ts",
     "./jobs/definitions": "./src/jobs/index.ts",
+    "./jobs/email": "./src/jobs/email/index.ts",
     "./jobs/flows": "./src/jobs/flows/index.ts",
     "./kb": "./src/kb/index.ts",
     "./logger": "./src/logger/index.ts",

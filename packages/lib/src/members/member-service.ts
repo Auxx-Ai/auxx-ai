@@ -11,12 +11,12 @@ import {
   OrganizationMemberModel,
 } from '@auxx/database/models'
 import type { OrganizationRole } from '@auxx/database/types'
-import { sendInviteEmail, sendJoinOrganizationEmail } from '@auxx/email'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import crypto from 'crypto'
 import { and, asc, eq, gt, ilike, sql } from 'drizzle-orm'
 import { publisher } from '../events'
+import { enqueueEmailJob } from '../jobs/email'
 import { FeaturePermissionService } from '../permissions/feature-permission-service'
 import { FeatureKey } from '../permissions/types'
 
@@ -273,13 +273,15 @@ export class MemberService {
         })
 
         // Send email tailored for existing users
-        await sendJoinOrganizationEmail({
-          email,
+        await enqueueEmailJob('join-organization', {
+          recipient: { email, name: existingUser.name! },
           inviterName: senderName,
           organizationName: orgName,
           role: role.toString(),
           acceptLink,
-          invitedUserName: existingUser.name!, // Pass user's name if available
+          invitedUserName: existingUser.name!,
+          source: 'member-service',
+          organizationId,
         })
         logger.info('Organization join invitation email sent (existing user)', {
           email,
@@ -305,12 +307,14 @@ export class MemberService {
           },
         })
 
-        await sendInviteEmail({
-          email,
+        await enqueueEmailJob('invite', {
+          recipient: { email },
           inviterName: senderName,
           organizationName: orgName,
           role: role.toString(),
           acceptLink: signupLink,
+          source: 'member-service',
+          organizationId,
         })
         logger.info('Organization invitation email sent (new user)', { email, organizationId })
         return { success: true, message: 'Invitation sent to new user.', existingUser: false }
@@ -536,25 +540,29 @@ export class MemberService {
       })
 
       if (existingUser) {
-        await sendJoinOrganizationEmail({
-          email: invitation.email,
+        await enqueueEmailJob('join-organization', {
+          recipient: { email: invitation.email, name: existingUser.name! },
           inviterName,
           organizationName: orgName,
           role: invitation.role.toString(),
           acceptLink: newAcceptLink,
           invitedUserName: existingUser.name!,
+          source: 'member-service',
+          organizationId: invitation.organizationId,
         })
         logger.info('Resent organization join invitation email (existing user)', {
           invitationId,
           email: invitation.email,
         })
       } else {
-        await sendInviteEmail({
-          email: invitation.email,
+        await enqueueEmailJob('invite', {
+          recipient: { email: invitation.email },
           inviterName,
           organizationName: orgName,
           role: invitation.role.toString(),
           acceptLink: newAcceptLink,
+          source: 'member-service',
+          organizationId: invitation.organizationId,
         })
         logger.info('Resent organization invitation email (new user)', {
           invitationId,

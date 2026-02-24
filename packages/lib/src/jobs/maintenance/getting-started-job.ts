@@ -2,12 +2,12 @@
 
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
-import { sendGettingStartedEmail } from '@auxx/email'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { addHours } from 'date-fns'
 import { and, eq, gte, lte } from 'drizzle-orm'
 import { z } from 'zod'
+import { enqueueEmailJob } from '../email'
 
 const payloadSchema = z.object({
   dryRun: z.boolean().default(false),
@@ -103,14 +103,15 @@ export const sendGettingStartedEmailsJob = async (job: Job) => {
           stats.skipped++
         } else {
           // Send getting started email
-          await sendGettingStartedEmail({
-            email: org.ownerEmail,
-            name: org.ownerName || 'there',
+          await enqueueEmailJob('getting-started', {
+            recipient: { email: org.ownerEmail, name: org.ownerName || 'there' },
             organizationName: org.organizationName!,
             dashboardUrl: `${WEBAPP_URL}/dashboard`,
             integrationsUrl: `${WEBAPP_URL}/settings/integrations`,
             knowledgeBaseUrl: `${WEBAPP_URL}/knowledge`,
             shopifyUrl: `${WEBAPP_URL}/settings/integrations/shopify`,
+            source: 'getting-started-job',
+            organizationId: org.organizationId,
           })
 
           logger.info('Sent getting started email', {
