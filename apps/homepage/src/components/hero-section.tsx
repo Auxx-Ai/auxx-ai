@@ -127,11 +127,11 @@ export default function HeroSection() {
             <div className='mx-auto mt-8 max-w-5xl px-6 text-center md:mt-16'>
               <p className='text-muted-foreground text-sm'>Trusted by teams at</p>
               <div className='**:fill-foreground mx-auto mt-6 flex w-full max-w-lg flex-wrap items-center justify-center gap-8 *:w-fit lg:justify-between'>
-                <Hulu height={20} width='auto' />
+                <Hulu height={20} />
 
-                <Spotify height={26} width='auto' />
-                <Supabase height={24} width='auto' />
-                <Beacon height={20} width='auto' />
+                <Spotify height={26} />
+                <Supabase height={24} />
+                <Beacon height={20} />
               </div>
             </div>
           </div>
