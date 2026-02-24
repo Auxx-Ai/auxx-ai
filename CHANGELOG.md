@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.11...auxx-v0.1.12) (2026-02-24)
+
+
+### Features
+
+* implement two-phase polling sync for Google and Outlook integra… ([#71](https://github.com/Auxx-Ai/auxx-ai/issues/71)) ([dd1ef42](https://github.com/Auxx-Ai/auxx-ai/commit/dd1ef4213c4d63231ada0dd2bfbe42ed622ec6c1))
+
 ## [0.1.11](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.10...auxx-v0.1.11) (2026-02-23)
 
 
