@@ -36,16 +36,8 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     isEnvOnly: true,
     options: ['development', 'production', 'test'],
   },
-  NEXT_PUBLIC_BASE_URL: {
-    key: 'NEXT_PUBLIC_BASE_URL',
-    description: 'Public base URL of the application (used in next.config and middleware)',
-    type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.SERVER,
-    isSensitive: false,
-    isEnvOnly: true,
-  },
-  NEXT_PUBLIC_APP_URL: {
-    key: 'NEXT_PUBLIC_APP_URL',
+  APP_URL: {
+    key: 'APP_URL',
     description: 'Main application URL (used for OAuth callbacks, webhooks, etc.)',
     type: ConfigVariableType.STRING,
     group: ConfigVariableGroup.SERVER,
@@ -932,36 +924,60 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     isSensitive: false,
     isEnvOnly: true,
   },
-  // ── FRONTEND (Group A — URL vars, deploy-time constants) ──
-  NEXT_PUBLIC_API_URL: {
-    key: 'NEXT_PUBLIC_API_URL',
-    description: 'API service URL (used by client for API calls)',
+  // ── URL vars (deploy-time constants, resolved by @auxx/config) ──
+  API_URL: {
+    key: 'API_URL',
+    description: 'API service URL',
     type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.FRONTEND,
+    group: ConfigVariableGroup.SERVER,
     isSensitive: false,
     isEnvOnly: true,
   },
-  NEXT_PUBLIC_HOMEPAGE_URL: {
-    key: 'NEXT_PUBLIC_HOMEPAGE_URL',
+  HOMEPAGE_URL: {
+    key: 'HOMEPAGE_URL',
     description: 'Homepage/marketing site URL',
     type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.FRONTEND,
+    group: ConfigVariableGroup.SERVER,
     isSensitive: false,
     isEnvOnly: true,
   },
-  NEXT_PUBLIC_DEV_PORTAL_URL: {
-    key: 'NEXT_PUBLIC_DEV_PORTAL_URL',
+  DEV_PORTAL_URL: {
+    key: 'DEV_PORTAL_URL',
     description: 'Developer portal URL',
     type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.FRONTEND,
+    group: ConfigVariableGroup.SERVER,
     isSensitive: false,
     isEnvOnly: true,
   },
-  NEXT_PUBLIC_DOCS_URL: {
-    key: 'NEXT_PUBLIC_DOCS_URL',
+  DOCS_URL: {
+    key: 'DOCS_URL',
     description: 'Documentation site URL',
     type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.FRONTEND,
+    group: ConfigVariableGroup.SERVER,
+    isSensitive: false,
+    isEnvOnly: true,
+  },
+  KB_URL: {
+    key: 'KB_URL',
+    description: 'Knowledge base URL',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.SERVER,
+    isSensitive: false,
+    isEnvOnly: true,
+  },
+  LAMBDA_EXECUTOR_URL: {
+    key: 'LAMBDA_EXECUTOR_URL',
+    description: 'Lambda executor URL',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.SERVER,
+    isSensitive: false,
+    isEnvOnly: true,
+  },
+  LAMBDA_API_URL: {
+    key: 'LAMBDA_API_URL',
+    description: 'API URL used by Lambda for callbacks (Docker internal networking)',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.SERVER,
     isSensitive: false,
     isEnvOnly: true,
   },

@@ -1,6 +1,6 @@
 // apps/web/src/app/api/integrations/chat/[integrationId]/route.ts
 
-import { configService } from '@auxx/credentials'
+import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
@@ -101,7 +101,7 @@ export async function GET(request: NextRequest, { params }: { params: { integrat
       // Add other settings if needed by the client script
     }
 
-    const appBaseUrl = configService.get<string>('NEXT_PUBLIC_APP_URL') || 'http://localhost:3000'
+    const appBaseUrl = WEBAPP_URL
     // Define the endpoint for chat initialization (adjust path if using a new chatRouter)
     const initializeChatEndpoint = `${appBaseUrl}/api/trpc/chat.initialize` // Example TRPC endpoint
     // Define the path for the actual widget UI bundle (if separate)

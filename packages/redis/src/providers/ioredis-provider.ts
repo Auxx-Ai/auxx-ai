@@ -37,11 +37,17 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
     const host = configService.get<string>('REDIS_HOST')
     const port = configService.get<number>('REDIS_PORT', 6379)
     const password = configService.get<string>('REDIS_PASSWORD')
+    const hasExplicitPassword = !!process.env.REDIS_PASSWORD?.trim()
 
     if (!host) {
       throw new Error('REDIS_HOST environment variable is required for hosted Redis')
     }
     logger.info('Creating hosted Redis client with enhanced support')
+    if (!hasExplicitPassword) {
+      logger.warn(
+        'REDIS_PASSWORD is not set for hosted Redis. If your Redis requires auth, connection will fail with NOAUTH.'
+      )
+    }
     const tls = configService.get<string>('ELASTICACHE_TLS') === 'true'
 
     client = new Redis({

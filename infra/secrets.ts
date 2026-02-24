@@ -2,7 +2,7 @@
 /// <reference path="../.sst/platform/config.d.ts" />
 
 import { DATABASE_URL, REDIS_HOST, REDIS_PASSWORD, REDIS_PORT, REDIS_URL } from './db'
-import { getAppDomain } from './dns'
+import { domain, getAppDomain } from './dns'
 import { type AppType, getAppUrl } from './env-config'
 
 /**
@@ -227,25 +227,31 @@ export function getSecretsForLinking(app: AppType = 'web') {
  * configService resolves most config at runtime via SST Resource or DB.
  * Static sites only need URLs; full apps add boot-critical vars.
  */
-export function getSelectedEnvVars(app: AppType = 'web'): Record<string, string> {
+export function getSelectedEnvVars(
+  app: AppType = 'web',
+  opts: { lambdaExecutorUrl?: string } = {}
+): Record<string, string> {
   const base: Record<string, string> = {
     SST: '1',
     NODE_ENV: 'production',
     NODE_NO_DEPRECATION: '1',
     NODE_NO_WARNINGS: '1',
-    // URLs (computed from domain)
-    NEXT_PUBLIC_BASE_URL: `https://${getAppDomain()}`,
-    NEXT_PUBLIC_APP_URL: getAppUrl('web'),
-    NEXT_PUBLIC_HOMEPAGE_URL: getAppUrl('homepage'),
-    NEXT_PUBLIC_DOCS_URL: getAppUrl('docs'),
+    // Canonical URL env vars
+    DOMAIN: domain,
+    APP_URL: `https://${getAppDomain()}`,
+    HOMEPAGE_URL: getAppUrl('homepage'),
+    DOCS_URL: getAppUrl('docs'),
+    API_URL: getAppUrl('api'),
+    DEV_PORTAL_URL: getAppUrl('build'),
   }
 
   // Static sites only need URLs
   if (app === 'homepage' || app === 'docs') return base
 
   // Full apps: add boot-critical vars (needed before configService.init())
-  return {
+  const vars: Record<string, string> = {
     ...base,
+    LAMBDA_API_URL: getAppUrl('api'),
     BETTER_AUTH_SECRET: getSecretValue('BETTER_AUTH_SECRET'),
     DATABASE_URL,
     REDIS_URL,
@@ -255,6 +261,13 @@ export function getSelectedEnvVars(app: AppType = 'web'): Record<string, string>
     ELASTICACHE_TLS: process.env.ELASTICACHE_TLS || 'true',
     SUPER_ADMIN_EMAIL: getSecretValue('SUPER_ADMIN_EMAIL'),
   }
+
+  // Lambda function URL is an AWS-generated URL only available at deploy time
+  if (opts.lambdaExecutorUrl) {
+    vars.LAMBDA_EXECUTOR_URL = opts.lambdaExecutorUrl
+  }
+
+  return vars
 }
 
 /**

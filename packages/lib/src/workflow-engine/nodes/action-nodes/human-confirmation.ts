@@ -1,6 +1,6 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/human-confirmation.ts
 
-import { configService } from '@auxx/credentials'
+import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { ApprovalStatus } from '@auxx/database/enums'
 import {
@@ -437,7 +437,7 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
       .from(schema.User)
       .where(inArray(schema.User.id, userIds))
     // Generate approval URL
-    const approvalUrl = `${configService.get<string>('WEBAPP_URL')}/workflows/${approvalRequest.workflowId}/approval/${approvalRequest.id}`
+    const approvalUrl = `${WEBAPP_URL}/workflows/${approvalRequest.workflowId}/approval/${approvalRequest.id}`
     for (const user of users) {
       try {
         await enqueueEmailJob('approval-request', {

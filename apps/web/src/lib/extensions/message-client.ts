@@ -171,7 +171,7 @@ export class MessageClient {
     })
 
     // Get API origin from environment
-    const apiOrigin = context.apiUrl || process.env.NEXT_PUBLIC_API_URL || ''
+    const apiOrigin = context.apiUrl || ''
 
     // Cross-origin iframe URL (API domain)
     // In production, this would be https://api.auxx.ai/app-runtime/index.html

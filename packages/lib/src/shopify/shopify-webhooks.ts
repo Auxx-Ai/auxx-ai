@@ -1,4 +1,4 @@
-import { configService } from '@auxx/credentials'
+import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import type { ShopifyIntegrationEntity } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
@@ -122,7 +122,7 @@ export const setupShopifyWebhooks = async (integrationId: string) => {
   const results = topics.map(async (topic) => {
     return await createWebhook({
       topic,
-      callbackUrl: `${configService.get<string>('NEXT_PUBLIC_APP_URL')}/api/shopify/webhook?integrationId=${integrationId}`,
+      callbackUrl: `${WEBAPP_URL}/api/shopify/webhook?integrationId=${integrationId}`,
       integrationId,
       organizationId: integration.organizationId,
       client,

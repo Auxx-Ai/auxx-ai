@@ -1,6 +1,6 @@
 // apps/api/src/routes/webhooks.ts
 
-import { LAMBDA_API_URL } from '@auxx/config/urls'
+import { LAMBDA_API_URL, SERVER_FUNCTION_EXECUTOR_URL } from '@auxx/config/urls'
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getWebhookHandler } from '@auxx/services/app-webhook-handlers'
@@ -78,7 +78,7 @@ async function handleWebhookRequest(c: any) {
     }
 
     // 4. Get Lambda executor URL from environment
-    const executorUrl = process.env.SERVER_FUNCTION_EXECUTOR_URL || 'http://localhost:3008'
+    const executorUrl = SERVER_FUNCTION_EXECUTOR_URL
     // const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
     log.info('Invoking Lambda for webhook execution', { executorUrl, handlerId })

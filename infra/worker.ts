@@ -1,6 +1,7 @@
 // infra/worker.ts
 
 import { rds, redis } from './db'
+import { serverFunctionExecutorUrl } from './lambda'
 import { cluster } from './router-vpc'
 import { getSecretsForLinking, getSelectedEnvVars } from './secrets'
 import { privateBucket, publicBucket } from './storage'
@@ -22,6 +23,8 @@ export const worker = $dev
       },
       cpu: '0.25 vCPU',
       memory: '0.5 GB',
-      environment: getSelectedEnvVars('worker'),
+      environment: getSelectedEnvVars('worker', {
+        lambdaExecutorUrl: serverFunctionExecutorUrl,
+      }),
       link: [...getSecretsForLinking('worker'), rds, redis, publicBucket, privateBucket],
     })

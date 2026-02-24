@@ -1,6 +1,12 @@
 // src/server/auth/config.ts
 
-import { getAppHostname, getCookieDomain, getTrustedOrigins, WEBAPP_URL } from '@auxx/config/server'
+import {
+  DEV_PORTAL_URL,
+  getCookieDomain,
+  getPasskeyRpId,
+  getTrustedOrigins,
+  WEBAPP_URL,
+} from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { database, schema } from '@auxx/database' // Drizzle database for services
 import { accountModel, UserModel } from '@auxx/database/models'
@@ -15,6 +21,7 @@ import { passkey } from 'better-auth/plugins/passkey'
 import { isValidPhoneNumber } from 'libphonenumber-js'
 
 const logger = createScopedLogger('auth')
+const isDev = configService.get<string>('NODE_ENV') === 'development'
 
 // async function sendViaOpenPhone(to: string, text: string) {
 //   const res = await fetch('https://api.openphone.com/v1/messages', {
@@ -67,7 +74,7 @@ export const auth = betterAuth({
     // disableSignUp: false,
     minPasswordLength: 8,
     sendResetPassword: async ({ user, url, token }, request) => {
-      if (process.env.NODE_ENV === 'development') {
+      if (isDev) {
         logger.debug('sendResetPassword', { user, url, token, request })
       }
       await enqueueEmailJob('reset-password', {
@@ -77,7 +84,7 @@ export const auth = betterAuth({
       })
     },
     onPasswordReset: async ({ user }, request) => {
-      if (process.env.NODE_ENV === 'development') {
+      if (isDev) {
         logger.debug('pass', { user, request })
       }
       await enqueueEmailJob('password-reset-notify', {
@@ -108,7 +115,7 @@ export const auth = betterAuth({
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url, token }, request) => {
       console.log('sendVerificationEmail', user)
-      if (process.env.NODE_ENV === 'development') {
+      if (isDev) {
         logger.info('sendVerificationEmail', { user, url, token, request })
       }
 
@@ -132,7 +139,7 @@ export const auth = betterAuth({
       },
     },
     // In dev this is off by default—flip it on to test:
-    enabled: process.env.NODE_ENV === 'production',
+    enabled: !isDev,
   },
 
   user: {
@@ -140,7 +147,7 @@ export const auth = betterAuth({
     changeEmail: {
       enabled: true,
       sendChangeEmailVerification: async ({ user, newEmail, url, token }, request) => {
-        if (process.env.NODE_ENV === 'development') {
+        if (isDev) {
           logger.debug('sendChangeEmailVerification', { user, newEmail, token, url, request })
         }
 
@@ -168,9 +175,9 @@ export const auth = betterAuth({
     cookieCache: { enabled: true, maxAge: 5 * 60 },
     cookieOptions: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: !isDev,
       sameSite: 'lax',
-      domain: process.env.NODE_ENV === 'production' ? getCookieDomain() : undefined,
+      domain: getCookieDomain(),
     },
   },
   plugins: [
@@ -197,7 +204,7 @@ export const auth = betterAuth({
           modelName: 'Passkey',
         },
       },
-      rpID: configService.get<string>('NODE_ENV') === 'production' ? getAppHostname() : 'localhost',
+      rpID: getPasskeyRpId(),
       rpName: 'Auxx.Ai',
       origin: WEBAPP_URL!,
 
@@ -373,10 +380,8 @@ export const auth = betterAuth({
           name: 'Test App Connection',
           type: 'web', // Web application - uses client_id + client_secret
           redirectURLs: [
-            // OAuth callback for app connections testing
-            // Note: Better-auth doesn't support wildcards, so add specific app IDs here
-            'http://localhost:3000/api/apps/test-app/oauth2/callback',
-            'http://localhost:3006/api/apps/test-app/oauth2/callback', // Dev portal
+            `${WEBAPP_URL}/api/apps/test-app/oauth2/callback`,
+            `${DEV_PORTAL_URL}/api/apps/test-app/oauth2/callback`,
           ],
           disabled: false,
           skipConsent: false, // Show consent screen for testing

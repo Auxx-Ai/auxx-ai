@@ -33,7 +33,6 @@
     "@auxx/deployment": "workspace:*",
     "@auxx/credentials": "workspace:*",
     "@auxx/database": "workspace:*",
-    "@auxx/email": "workspace:*",
     "@auxx/lib": "workspace:*",
     "@auxx/logger": "workspace:*",
     "@auxx/redis": "workspace:*",

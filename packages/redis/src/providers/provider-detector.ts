@@ -3,26 +3,31 @@ import { configService } from '@auxx/credentials'
 import { logger, type RedisProvider, type RedisProviderCapabilities } from '../types'
 
 /**
+ * Read a raw environment variable without config defaults.
+ */
+function getExplicitEnv(key: string): string | undefined {
+  const value = process.env[key]
+  return value && value.trim() !== '' ? value : undefined
+}
+
+/**
  * Automatic provider detection based on environment variables
  */
 export function detectRedisProvider(): RedisProvider {
   // Check for Upstash configuration
-  if (
-    configService.get<string>('KV_REST_API_URL') &&
-    configService.get<string>('KV_REST_API_TOKEN')
-  ) {
+  if (getExplicitEnv('KV_REST_API_URL') && getExplicitEnv('KV_REST_API_TOKEN')) {
     logger.info('Detected Upstash Redis provider via KV_REST_API_URL and KV_REST_API_TOKEN')
     return 'upstash'
   }
 
   // Check for AWS ElastiCache configuration
-  if (configService.get<string>('ELASTICACHE_URL')) {
+  if (getExplicitEnv('ELASTICACHE_URL')) {
     logger.info('Detected AWS ElastiCache Redis provider via ELASTICACHE_URL')
     return 'aws'
   }
 
   // Check for hosted Redis configuration
-  if (configService.get<string>('REDIS_HOST')) {
+  if (getExplicitEnv('REDIS_HOST')) {
     logger.info('Detected hosted Redis provider via REDIS_HOST')
     return 'hosted'
   }
@@ -193,16 +198,13 @@ export function getProviderCapabilities(provider: RedisProvider): RedisProviderC
 export function validateProviderConfiguration(provider: RedisProvider): boolean {
   switch (provider) {
     case 'upstash':
-      return !!(
-        configService.get<string>('KV_REST_API_URL') &&
-        configService.get<string>('KV_REST_API_TOKEN')
-      )
+      return !!(getExplicitEnv('KV_REST_API_URL') && getExplicitEnv('KV_REST_API_TOKEN'))
 
     case 'aws':
-      return !!configService.get<string>('ELASTICACHE_URL')
+      return !!getExplicitEnv('ELASTICACHE_URL')
 
     case 'hosted':
-      return !!configService.get<string>('REDIS_HOST')
+      return !!getExplicitEnv('REDIS_HOST')
 
     default:
       return false

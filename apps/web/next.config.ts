@@ -31,7 +31,6 @@ const nextConfig = {
     '@auxx/database',
     '@auxx/services',
     '@auxx/workflow-nodes',
-    '@auxx/email',
     '@auxx/ui',
   ],
   experimental: {

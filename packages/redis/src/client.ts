@@ -35,18 +35,23 @@ let publishingClient: RedisClient | null = null
 let subscriptionClient: RedisClient | null = null
 
 /**
+ * Read a raw environment variable without config defaults.
+ */
+function getExplicitEnv(key: string): string | undefined {
+  const value = process.env[key]
+  return value && value.trim() !== '' ? value : undefined
+}
+
+/**
  * Detect which Redis provider to use based on environment variables
  */
 export function detectRedisProvider(): 'upstash' | 'aws' | 'hosted' {
   // Only access environment variables when function is called
-  if (
-    configService.get<string>('KV_REST_API_URL') &&
-    configService.get<string>('KV_REST_API_TOKEN')
-  ) {
+  if (getExplicitEnv('KV_REST_API_URL') && getExplicitEnv('KV_REST_API_TOKEN')) {
     return 'upstash'
-  } else if (configService.get<string>('ELASTICACHE_URL')) {
+  } else if (getExplicitEnv('ELASTICACHE_URL')) {
     return 'aws'
-  } else if (configService.get<string>('REDIS_HOST')) {
+  } else if (getExplicitEnv('REDIS_HOST')) {
     return 'hosted'
   }
 

@@ -18,7 +18,7 @@ const ROOT_ENV_PATH = path.join(WORKSPACE_ROOT, '.env')
 /** Docker Compose file used to verify local database name alignment. */
 const DOCKER_COMPOSE_PATH = path.join(WORKSPACE_ROOT, 'docker-compose.yml')
 
-/** App env paths that should mirror the canonical root DATABASE_URL. */
+/** App env paths that should mirror canonical root DB/Redis values. */
 const TARGET_ENV_PATHS = [
   path.join(WORKSPACE_ROOT, 'apps/api/.env'),
   path.join(WORKSPACE_ROOT, 'apps/build/.env'),
@@ -41,6 +41,15 @@ const DEFAULT_DATABASE_PORT = '5432'
 
 /** Default local database name that matches docker-compose.yml. */
 const DEFAULT_DATABASE_NAME = 'auxx-ai'
+
+/** Default local Redis host for non-self-hosted local development. */
+const DEFAULT_REDIS_HOST = 'localhost'
+
+/** Default local Redis host for self-hosted compose mode. */
+const SELF_HOSTED_REDIS_HOST = 'redis'
+
+/** Default local Redis port when REDIS_PORT is not defined. */
+const DEFAULT_REDIS_PORT = '6379'
 
 /** CLI flag that forces this check to fail when root .env is missing. */
 const REQUIRE_ROOT_ENV_FLAG = '--require-root-env'
@@ -90,6 +99,26 @@ const buildDatabaseUrl = (rootEnv) => {
   return `postgresql://${databaseUser}:${encodedPassword}@${databaseHost}:${databasePort}/${databaseName}`
 }
 
+/** Resolves the local Redis host with self-hosted and explicit env support. */
+const resolveRedisHost = (rootEnv) => {
+  if (rootEnv.REDIS_HOST) return rootEnv.REDIS_HOST
+  if (rootEnv.DEPLOYMENT_MODE === 'self-hosted') return SELF_HOSTED_REDIS_HOST
+  return DEFAULT_REDIS_HOST
+}
+
+/** Builds canonical Redis connection primitives from root env. */
+const buildRedisConfig = (rootEnv) => {
+  const redisHost = resolveRedisHost(rootEnv)
+  const redisPort = rootEnv.REDIS_PORT || DEFAULT_REDIS_PORT
+  const redisPassword = rootEnv.REDIS_PASSWORD || ''
+
+  return {
+    redisHost,
+    redisPort,
+    redisPassword,
+  }
+}
+
 /** Parses POSTGRES_DB from docker-compose.yml for local db-name drift detection. */
 const parseComposeDatabaseName = (composeContent) => {
   const match = composeContent.match(/POSTGRES_DB:\s*([^\n#]+)/)
@@ -97,7 +126,7 @@ const parseComposeDatabaseName = (composeContent) => {
   return match[1].trim().replace(/^['"]|['"]$/g, '')
 }
 
-/** Compares configured env files to canonical DATABASE_URL and reports drift. */
+/** Compares configured env files to canonical DB/Redis values and reports drift. */
 const checkDatabaseEnvDrift = () => {
   /** Indicates whether strict mode requires local root env availability. */
   const requireRootEnv = process.argv.includes(REQUIRE_ROOT_ENV_FLAG)
@@ -113,6 +142,7 @@ const checkDatabaseEnvDrift = () => {
 
   const rootEnv = parseEnv(readFile(ROOT_ENV_PATH))
   const expectedDatabaseUrl = buildDatabaseUrl(rootEnv)
+  const { redisHost, redisPort, redisPassword } = buildRedisConfig(rootEnv)
   /** Collected validation errors printed at the end of the run. */
   const errors = []
 
@@ -142,6 +172,18 @@ const checkDatabaseEnvDrift = () => {
     const appDatabaseUrl = env.DATABASE_URL || ''
     if (appDatabaseUrl !== expectedDatabaseUrl) {
       errors.push(`${path.relative(WORKSPACE_ROOT, envPath)}: DATABASE_URL is out of sync`)
+    }
+    const appRedisHost = env.REDIS_HOST || ''
+    if (appRedisHost !== redisHost) {
+      errors.push(`${path.relative(WORKSPACE_ROOT, envPath)}: REDIS_HOST is out of sync`)
+    }
+    const appRedisPort = env.REDIS_PORT || ''
+    if (appRedisPort !== redisPort) {
+      errors.push(`${path.relative(WORKSPACE_ROOT, envPath)}: REDIS_PORT is out of sync`)
+    }
+    const appRedisPassword = env.REDIS_PASSWORD || ''
+    if (appRedisPassword !== redisPassword) {
+      errors.push(`${path.relative(WORKSPACE_ROOT, envPath)}: REDIS_PASSWORD is out of sync`)
     }
   }
 
