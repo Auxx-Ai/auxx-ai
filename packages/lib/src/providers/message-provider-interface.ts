@@ -9,7 +9,7 @@ import type { ProviderCapabilities } from './provider-capabilities'
 export interface MessageProvider {
   // Provider identification
   type: IntegrationProviderType
-  integrationId: string
+  integrationId: string | null
   organizationId: string
 
   // Capability declaration
@@ -21,14 +21,19 @@ export interface MessageProvider {
   forwardMessage?(params: ForwardMessageParams): Promise<SendMessageResult>
 
   // Draft operations
-  createDraft?(params: CreateDraftParams): Promise<DraftResult>
-  updateDraft?(draftId: string, params: UpdateDraftParams): Promise<DraftResult>
-  sendDraft?(draftId: string): Promise<SendMessageResult>
+  createDraft?(
+    params: CreateDraftParams | Record<string, any>
+  ): Promise<DraftResult | { id: string; success: boolean }>
+  updateDraft?(
+    draftId: string,
+    params: UpdateDraftParams | Record<string, any>
+  ): Promise<DraftResult | boolean>
+  sendDraft?(draftId: string): Promise<SendMessageResult | { id: string; success: boolean }>
 
   // Message management
   deleteMessage?(messageId: string): Promise<void>
   archiveMessage?(messageId: string): Promise<void>
-  markAsSpam?(messageId: string): Promise<void>
+  markAsSpam?(messageId: string, type?: 'message' | 'thread'): Promise<boolean | void>
   markAsTrash?(messageId: string): Promise<void>
 
   // Thread operations
@@ -42,13 +47,16 @@ export interface MessageProvider {
     labelId: string,
     targetId: string,
     targetType: 'message' | 'thread' | 'conversation'
-  ): Promise<void>
+  ): Promise<boolean | void>
   removeLabel?(
     labelId: string,
     targetId: string,
     targetType: 'message' | 'thread' | 'conversation'
-  ): Promise<void>
-  createLabel?(name: string, color?: string): Promise<{ id: string; name: string }>
+  ): Promise<boolean | void>
+  createLabel?(
+    name: string | { name: string; color?: string; visible?: boolean },
+    color?: string
+  ): Promise<any>
   getLabels?(): Promise<ProviderLabel[]>
 
   // Search operations

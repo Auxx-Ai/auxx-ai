@@ -341,6 +341,45 @@ export class OutlookOAuthService {
       const inboxService = new InboxService(db, orgId as string, userId as string)
       await inboxService.addIntegrationToDefaultInbox(integration.id)
 
+      // Kick off polling pipeline if effective mode is polling
+      try {
+        const { resolveEffectiveSyncMode } = await import('../sync-mode-resolver')
+        const effectiveMode = resolveEffectiveSyncMode({
+          syncMode: integration.syncMode ?? 'auto',
+          provider: 'outlook',
+        })
+
+        if (effectiveMode === 'polling') {
+          const { getQueue } = await import('@auxx/lib/queues')
+          const { Queues } = await import('@auxx/lib/jobs/queues/types')
+
+          await db
+            .update(schema.Integration)
+            .set({ syncStage: 'MESSAGE_LIST_FETCH_PENDING', updatedAt: new Date() })
+            .where(eq(schema.Integration.id, integration.id))
+
+          const pollingSyncQueue = getQueue(Queues.pollingSyncQueue)
+          await pollingSyncQueue.add(
+            'messageListFetchJob',
+            {
+              integrationId: integration.id,
+              organizationId: orgId as string,
+              provider: 'outlook',
+            },
+            { jobId: `poll-list-fetch-${integration.id}` }
+          )
+
+          logger.info('Kicked off polling pipeline for new Outlook integration', {
+            integrationId: integration.id,
+          })
+        }
+      } catch (pollingError) {
+        logger.warn('Failed to kick off polling pipeline', {
+          integrationId: integration.id,
+          error: (pollingError as Error).message,
+        })
+      }
+
       logger.info('Outlook integration created/updated successfully', {
         integrationId: integration.id,
         email,
@@ -491,7 +530,7 @@ export class OutlookOAuthService {
             requiresReauth: true,
             lastAuthError: 'Refresh token is invalid or revoked',
             lastAuthErrorAt: new Date(),
-            authStatus: 'AUTH_ERROR',
+            authStatus: 'INVALID_GRANT',
             updatedAt: new Date(),
           })
           .where(eq(schema.Integration.id, integrationId))
@@ -608,7 +647,7 @@ export class OutlookOAuthService {
                 requiresReauth: true,
                 lastAuthError: 'Refresh token invalid during silent acquisition',
                 lastAuthErrorAt: new Date(),
-                authStatus: 'AUTH_ERROR',
+                authStatus: 'INVALID_GRANT',
                 updatedAt: new Date(),
               })
               .where(eq(schema.Integration.id, integrationId))

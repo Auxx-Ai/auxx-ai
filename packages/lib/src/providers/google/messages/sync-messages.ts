@@ -35,6 +35,7 @@ export interface SyncGmailMessagesInput {
  */
 export interface SyncGmailMessagesOutput {
   messagesProcessed: number
+  messagesDeleted: number
   newHistoryId: string
 }
 
@@ -67,6 +68,7 @@ export async function syncGmailMessages(
 
   try {
     let totalProcessed = 0
+    let totalDeleted = 0
     let highestHistoryId = lastHistoryId ? BigInt(lastHistoryId) : BigInt(0)
 
     if (lastHistoryId && !since) {
@@ -83,6 +85,7 @@ export async function syncGmailMessages(
         accessToken
       )
       totalProcessed = result.messagesProcessed
+      totalDeleted = result.messagesDeleted
       highestHistoryId = BigInt(result.newHistoryId)
     } else {
       // Use Message List API
@@ -130,11 +133,13 @@ export async function syncGmailMessages(
     logger.info('Gmail sync completed', {
       integrationId,
       messagesProcessed: totalProcessed,
+      messagesDeleted: totalDeleted,
       newHistoryId: highestHistoryId.toString(),
     })
 
     return {
       messagesProcessed: totalProcessed,
+      messagesDeleted: totalDeleted,
       newHistoryId: highestHistoryId.toString(),
     }
   } catch (error) {
@@ -174,10 +179,11 @@ async function syncViaHistory(
   storageService: MessageStorageService,
   userEmails: string[],
   accessToken: string
-): Promise<{ messagesProcessed: number; newHistoryId: string }> {
+): Promise<{ messagesProcessed: number; messagesDeleted: number; newHistoryId: string }> {
   let nextPageToken: string | undefined | null
   let highestHistoryId = BigInt(startHistoryId)
   let totalProcessed = 0
+  let totalDeleted = 0
 
   logger.info('Starting history-based sync', {
     integrationId,
@@ -198,7 +204,7 @@ async function syncViaHistory(
           userId: 'me',
           startHistoryId: highestHistoryId.toString(),
           pageToken: nextPageToken ?? undefined,
-          historyTypes: ['messageAdded'],
+          historyTypes: ['messageAdded', 'messageDeleted', 'labelRemoved'],
         }),
       {
         userId: integrationId,
@@ -210,14 +216,29 @@ async function syncViaHistory(
     )
 
     const historyRecords = historyResponse.data.history || []
-    const messageIds = new Set<string>()
+    const addedIds = new Set<string>()
+    const deletedIds = new Set<string>()
 
-    // Extract message IDs from history records
     for (const record of historyRecords) {
       if (record.messagesAdded) {
         for (const msgAdded of record.messagesAdded) {
           if (msgAdded.message?.id) {
-            messageIds.add(msgAdded.message.id)
+            addedIds.add(msgAdded.message.id)
+          }
+        }
+      }
+      if (record.messagesDeleted) {
+        for (const msgDeleted of record.messagesDeleted) {
+          if (msgDeleted.message?.id) {
+            deletedIds.add(msgDeleted.message.id)
+          }
+        }
+      }
+      // Treat INBOX label removal as deletion (archived messages)
+      if (record.labelsRemoved) {
+        for (const labelChange of record.labelsRemoved) {
+          if (labelChange.labelIds?.includes('INBOX') && labelChange.message?.id) {
+            deletedIds.add(labelChange.message.id)
           }
         }
       }
@@ -237,14 +258,31 @@ async function syncViaHistory(
       }
     }
 
-    // Fetch and store messages
-    if (messageIds.size > 0) {
-      logger.info(`Found ${messageIds.size} new message IDs via history. Fetching details.`, {
+    // Deduplicate: messages in both added and deleted → net result is deleted
+    const finalAddedIds = [...addedIds].filter((id) => !deletedIds.has(id))
+
+    // Process deletions
+    if (deletedIds.size > 0) {
+      const deleted = await storageService.deleteMessagesByExternalIds(integrationId, [
+        ...deletedIds,
+      ])
+      totalDeleted += deleted
+
+      logger.info('Processed message deletions from history', {
+        integrationId,
+        deletedCount: deleted,
+        rawDeletedIds: deletedIds.size,
+      })
+    }
+
+    // Fetch and store added messages
+    if (finalAddedIds.length > 0) {
+      logger.info(`Found ${finalAddedIds.length} new message IDs via history. Fetching details.`, {
         integrationId,
       })
 
       const messages = await getMessagesBatch({
-        messageIds: Array.from(messageIds),
+        messageIds: finalAddedIds,
         integrationId,
         throttler,
         accessToken,
@@ -277,10 +315,12 @@ async function syncViaHistory(
     integrationId,
     highestHistoryId: highestHistoryId.toString(),
     messagesProcessed: totalProcessed,
+    messagesDeleted: totalDeleted,
   })
 
   return {
     messagesProcessed: totalProcessed,
+    messagesDeleted: totalDeleted,
     newHistoryId: highestHistoryId.toString(),
   }
 }

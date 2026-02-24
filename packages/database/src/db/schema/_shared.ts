@@ -178,8 +178,10 @@ export const integrationAuthStatus = pgEnum('IntegrationAuthStatus', [
 ])
 export const integrationSyncStage = pgEnum('IntegrationSyncStage', [
   'IDLE', // Not currently syncing
-  'MESSAGE_LIST_FETCH', // Fetching message IDs from provider
-  'MESSAGES_IMPORT', // Fetching full message content + saving
+  'MESSAGE_LIST_FETCH_PENDING', // Waiting for scanner to enqueue list-fetch job
+  'MESSAGE_LIST_FETCH', // List-fetch job running, discovering message IDs
+  'MESSAGES_IMPORT_PENDING', // IDs cached in Redis, waiting for import
+  'MESSAGES_IMPORT', // Import job running, fetching content
   'FAILED', // Sync failed during execution
 ])
 export const integrationSyncStatus = pgEnum('IntegrationSyncStatus', [

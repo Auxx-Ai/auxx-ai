@@ -575,6 +575,13 @@
       "when": 1771819146512,
       "tag": "0081_add_integration_sync_state",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1771896155987,
+      "tag": "0082_polling-sync-pipeline",
+      "breakpoints": true
     }
   ]
 }

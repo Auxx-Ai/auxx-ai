@@ -47,6 +47,8 @@ export interface RedisClient {
   sadd(key: string, ...members: string[]): Promise<number>
   srem(key: string, ...members: string[]): Promise<number>
   smembers(key: string): Promise<string[]>
+  spop(key: string, count?: number): Promise<string | string[] | null>
+  scard(key: string): Promise<number>
 
   // Sorted set operations (Redis 2.0+)
   zadd(key: string, score: number, member: string): Promise<number>

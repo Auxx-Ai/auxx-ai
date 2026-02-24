@@ -311,8 +311,40 @@ export class GoogleOAuthService {
       const inboxService = new InboxService(db, orgId, userId)
       await inboxService.addIntegrationToDefaultInbox(integration!.id)
 
-      // Set up Gmail webhooks (push notifications)
-      await this.setupPushNotifications(integration!.id)
+      // Set up Gmail webhooks (push notifications) or kick off polling
+      const { resolveEffectiveSyncMode } = await import('../sync-mode-resolver')
+      const effectiveMode = resolveEffectiveSyncMode({
+        syncMode: integration!.syncMode ?? 'auto',
+        provider: 'google',
+      })
+
+      if (effectiveMode === 'webhook') {
+        await this.setupPushNotifications(integration!.id)
+      } else {
+        // Kick off polling pipeline immediately for new integrations
+        const { getQueue } = await import('@auxx/lib/queues')
+        const { Queues } = await import('@auxx/lib/jobs/queues/types')
+
+        await db
+          .update(schema.Integration)
+          .set({ syncStage: 'MESSAGE_LIST_FETCH_PENDING', updatedAt: new Date() })
+          .where(eq(schema.Integration.id, integration!.id))
+
+        const pollingSyncQueue = getQueue(Queues.pollingSyncQueue)
+        await pollingSyncQueue.add(
+          'messageListFetchJob',
+          {
+            integrationId: integration!.id,
+            organizationId: orgId,
+            provider: 'google',
+          },
+          { jobId: `poll-list-fetch-${integration!.id}` }
+        )
+
+        logger.info('Kicked off polling pipeline for new Google integration', {
+          integrationId: integration!.id,
+        })
+      }
 
       return { success: true, integration }
     } catch (error: any) {
@@ -376,7 +408,7 @@ export class GoogleOAuthService {
             requiresReauth: true,
             lastAuthError: 'Refresh token is invalid or revoked',
             lastAuthErrorAt: new Date(),
-            authStatus: 'AUTH_ERROR',
+            authStatus: 'INVALID_GRANT',
             updatedAt: new Date(),
           })
           .where(eq(schema.Integration.id, integrationId))

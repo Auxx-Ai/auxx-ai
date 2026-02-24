@@ -130,6 +130,13 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
     srem: async (key: string, ...members: string[]) =>
       (await client.srem(key, ...members)) as number,
     smembers: async (key: string) => await client.smembers(key),
+    spop: async (key: string, count?: number) => {
+      if (count !== undefined) {
+        return await client.spop(key, count)
+      }
+      return await client.spop(key)
+    },
+    scard: async (key: string) => (await client.scard(key)) as number,
 
     // Sorted set operations (fully supported by IORedis)
     zadd: async (key: string, ...args: any[]) => {

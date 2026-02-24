@@ -6,6 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import type { IntegrationProviderType } from '../email/message-service'
 import type { ProviderRegistryService } from './provider-registry-service'
+import { resolveEffectiveSyncMode } from './sync-mode-resolver'
 
 const logger = createScopedLogger('webhook-manager-service')
 
@@ -195,6 +196,27 @@ export class WebhookManagerService {
     callbackUrl: string
   ): Promise<void> {
     try {
+      // Skip webhook setup for polling-mode integrations
+      const [integration] = await db
+        .select({ syncMode: schema.Integration.syncMode, provider: schema.Integration.provider })
+        .from(schema.Integration)
+        .where(eq(schema.Integration.id, integrationId))
+        .limit(1)
+
+      if (integration) {
+        const effectiveMode = resolveEffectiveSyncMode({
+          syncMode: integration.syncMode,
+          provider: integration.provider,
+        })
+        if (effectiveMode === 'polling') {
+          logger.info('Skipping webhook setup — integration uses polling mode', {
+            integrationId,
+            provider: type,
+          })
+          return
+        }
+      }
+
       const provider = await this.providerRegistry.getProvider(integrationId)
 
       logger.info('Setting up webhook for provider:', {

@@ -1,6 +1,7 @@
 // import { maintenanceQueue } from '@auxx/lib/queues'
 // import { startMaintenanceWorker } from './worker-definitions/maintenanceWorker'
 
+import { constants } from '@auxx/config'
 import { isSelfHosted } from '@auxx/deployment'
 import { Queues } from '@auxx/lib/jobs/queues/types'
 import { getQueue } from '@auxx/lib/queues'
@@ -12,6 +13,7 @@ import { startEventHandlersWorker, startEventsWorker } from './worker-definition
 import { startMaintenanceWorker } from './worker-definitions/maintenance-worker'
 import { startMessageSyncWorker } from './worker-definitions/message-sync-worker'
 import { startOAuth2RefreshWorker } from './worker-definitions/oauth2-refresh-worker'
+import { startPollingSyncWorker } from './worker-definitions/polling-sync-worker'
 import { startScheduledTriggerWorker } from './worker-definitions/scheduled-trigger-worker'
 import { startShopifyWorker } from './worker-definitions/shopify-worker'
 import { startThumbnailWorker } from './worker-definitions/thumbnail-worker'
@@ -53,6 +55,9 @@ export async function startWorkers() {
   // Data import worker (plan generation and execution)
   const dataImportWorker = startDataImportWorker()
 
+  // Polling sync worker (two-phase email sync pipeline)
+  const pollingSyncWorker = startPollingSyncWorker()
+
   const workers = [
     // defaultWorker,
     eventsWorker,
@@ -69,6 +74,7 @@ export async function startWorkers() {
     thumbnailWorker,
     oauth2RefreshWorker,
     dataImportWorker,
+    pollingSyncWorker,
   ]
 
   return Promise.all(workers)
@@ -366,6 +372,87 @@ export async function setupSchedules() {
         priority: 10, // Low priority, non-urgent
         removeOnComplete: { count: 30 }, // Keep last 30 days of logs
         removeOnFail: { count: 60 }, // Keep failed jobs for 60 days
+      },
+    }
+  )
+
+  // ── Polling Sync Schedules ──
+
+  const pollingSyncQueue = getQueue(Queues.pollingSyncQueue)
+
+  const messageListFetchIntervalMs = Number.parseInt(
+    process.env.SYNC_MESSAGE_LIST_FETCH_INTERVAL_MS ??
+      String(constants.timing.pollingSync.messageListFetchIntervalMs),
+    10
+  )
+  const messagesImportIntervalMs = Number.parseInt(
+    process.env.SYNC_MESSAGES_IMPORT_INTERVAL_MS ??
+      String(constants.timing.pollingSync.messagesImportIntervalMs),
+    10
+  )
+  const staleCheckIntervalMs = constants.timing.pollingSync.staleCheckIntervalMs
+  const relaunchFailedIntervalMs = constants.timing.pollingSync.relaunchFailedIntervalMs
+
+  // Scan for integrations needing sync (default: every 5 min)
+  await pollingSyncQueue.upsertJobScheduler(
+    'pollingSyncScannerJob',
+    { every: messageListFetchIntervalMs },
+    {
+      data: { dryRun: false },
+      opts: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 5,
+        removeOnComplete: { count: 20 },
+        removeOnFail: { count: 50 },
+      },
+    }
+  )
+
+  // Run import phase scanner (default: every 1 min)
+  // Re-uses pollingSyncScannerJob handler which covers both list-fetch and import stages
+  await pollingSyncQueue.upsertJobScheduler(
+    'messagesImportScannerJob',
+    { every: messagesImportIntervalMs },
+    {
+      name: 'pollingSyncScannerJob',
+      data: {},
+      opts: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 30000 },
+        priority: 5,
+        removeOnComplete: { count: 20 },
+        removeOnFail: { count: 50 },
+      },
+    }
+  )
+
+  // Check for stuck jobs (default: every 15 min)
+  await pollingSyncQueue.upsertJobScheduler(
+    'pollingStaleCheckJob',
+    { every: staleCheckIntervalMs },
+    {
+      data: { staleThresholdMs: 900000 },
+      opts: {
+        attempts: 1,
+        priority: 10,
+        removeOnComplete: { count: 20 },
+        removeOnFail: { count: 50 },
+      },
+    }
+  )
+
+  // Relaunch failed polling integrations (default: every 30 min)
+  await pollingSyncQueue.upsertJobScheduler(
+    'pollingRelaunchFailedJob',
+    { every: relaunchFailedIntervalMs },
+    {
+      data: {},
+      opts: {
+        attempts: 1,
+        priority: 10,
+        removeOnComplete: { count: 20 },
+        removeOnFail: { count: 50 },
       },
     }
   )

@@ -36,9 +36,16 @@ export {
   syncSingleIntegrationMessagesJob,
 } from './messages/sync-single-integration-messages-job'
 export { oauth2TokenRefreshJob } from './oauth2-refresh'
+export {
+  messageListFetchJob,
+  messagesImportJob,
+  pollingRelaunchFailedJob,
+  pollingStaleCheckJob,
+  pollingSyncScannerJob,
+} from './polling'
 export * from './shopify'
 // Export job context types
-export type { JobContext, JobHandler, LegacyJobHandler } from './types'
+
 export * from './webhooks'
 export { approvalReminderJob } from './workflow/approval-reminder-job'
 export { approvalTimeoutJob } from './workflow/approval-timeout-job'

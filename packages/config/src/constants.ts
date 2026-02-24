@@ -14,6 +14,12 @@ export const constants = {
   timing: {
     sessionTimeout: 30 * 60 * 1000, // 30 minutes
     refreshTokenExpiry: 7 * 24 * 60 * 60, // 7 days
+    pollingSync: {
+      messageListFetchIntervalMs: 5 * 60 * 1000, // 5 min default
+      messagesImportIntervalMs: 60 * 1000, // 1 min default
+      staleCheckIntervalMs: 15 * 60 * 1000, // 15 min default
+      relaunchFailedIntervalMs: 30 * 60 * 1000, // 30 min default
+    },
   },
 
   /** App categories for marketplace */
