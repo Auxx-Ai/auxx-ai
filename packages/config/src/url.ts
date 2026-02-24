@@ -187,10 +187,39 @@ export function getTrustedHostnames(): string[] {
 /**
  * Checks if a hostname is trusted by matching against trusted hostnames.
  * Supports exact match and subdomain match.
+ *
+ * NOTE: Uses process.env (dynamic access) — only works server-side.
+ * For client-side code, use {@link isTrustedHostnameFromUrls} with env from useEnv().
  */
 export function isTrustedHostname(hostname: string): boolean {
   const trusted = getTrustedHostnames()
   return trusted.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))
+}
+
+/**
+ * Client-safe version of isTrustedHostname.
+ * Accepts the DehydratedEnvironment object (from useEnv()) to derive trusted hostnames.
+ */
+export function isTrustedHostnameFromUrls(
+  hostname: string,
+  env: {
+    domain: string
+    appUrl: string
+    apiUrl: string
+    homepageUrl: string
+    docsUrl: string
+    devPortalUrl: string
+  }
+): boolean {
+  const trusted = new Set<string>(['localhost'])
+  if (env.domain) trusted.add(env.domain)
+  for (const url of [env.appUrl, env.apiUrl, env.homepageUrl, env.docsUrl, env.devPortalUrl]) {
+    if (!url) continue
+    try {
+      trusted.add(new URL(url).hostname)
+    } catch {}
+  }
+  return [...trusted].some((d) => hostname === d || hostname.endsWith(`.${d}`))
 }
 
 // ─── Stable exports (zero consumer changes) ─────────────

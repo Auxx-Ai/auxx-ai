@@ -11,7 +11,7 @@ export async function proxy(request: NextRequest) {
   const sessionCookie = request.cookies.get('better-auth.session_token')
 
   // Public paths that don't require authentication
-  const publicPaths = ['/api/auth']
+  const publicPaths = ['/api/auth', '/health']
   const isPublicPath = publicPaths.some((path) => request.nextUrl.pathname.startsWith(path))
 
   if (isPublicPath) {

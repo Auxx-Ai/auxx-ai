@@ -1,7 +1,7 @@
 // src/app/(auth)/login/_components/login-form.tsx
 'use client'
 // import { getCsrfToken } from 'next-auth/react' // Needed if CSRF protection is strict
-import { isTrustedHostname } from '@auxx/config/client'
+import { isTrustedHostnameFromUrls } from '@auxx/config/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -45,7 +45,8 @@ export default function LoginForm({
 }) {
   const router = useRouter()
   const posthog = useAnalytics()
-  const { homepageUrl } = useEnv()
+  const env = useEnv()
+  const { homepageUrl } = env
   const variants = {
     enter: { opacity: 0, x: 50 },
     center: { opacity: 1, x: 0 },
@@ -86,7 +87,7 @@ export default function LoginForm({
         } else if (processedUrl.startsWith('http://') || processedUrl.startsWith('https://')) {
           try {
             const url = new URL(processedUrl)
-            if (isTrustedHostname(url.hostname)) {
+            if (isTrustedHostnameFromUrls(url.hostname, env)) {
               redirectTo = processedUrl
               isExternal = true
             }
@@ -251,7 +252,7 @@ export default function LoginForm({
       // Allow redirects to trusted domains only
       try {
         const url = new URL(initialCallbackUrl)
-        if (isTrustedHostname(url.hostname)) {
+        if (isTrustedHostnameFromUrls(url.hostname, env)) {
           redirectToPath = initialCallbackUrl
           isExternalCallback = true
         } else {

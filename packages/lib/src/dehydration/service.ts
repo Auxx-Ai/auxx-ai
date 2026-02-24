@@ -43,6 +43,7 @@ function getLocalGitInfo(): { sha: string; branch: string } {
 export function buildEnvironment(): DehydratedEnvironment {
   return {
     deploymentMode: getDeploymentMode(),
+    domain: configService.get<string>('DOMAIN') || '',
     appUrl: WEBAPP_URL || '',
     apiUrl: `${API_URL}/api/v1` || '',
     homepageUrl: HOMEPAGE_URL || '',

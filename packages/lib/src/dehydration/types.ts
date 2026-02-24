@@ -28,6 +28,7 @@ export interface DehydratedEnvironment {
   /** Deployment mode: 'cloud' (SaaS) or 'self-hosted' */
   deploymentMode: import('@auxx/deployment/client').DeploymentMode
   // Public URLs
+  domain: string
   appUrl: string
   apiUrl: string
   homepageUrl: string

@@ -30,13 +30,24 @@ export const databaseDeployFunction = new sst.aws.Function('DatabaseDeployFuncti
 
 // Run Drizzle migrations automatically after deploy (skipped in sst dev).
 if (!$dev) {
-  new aws.lambda.Invocation('DatabaseMigration', {
+  const migration = new aws.lambda.Invocation('DatabaseMigration', {
     functionName: databaseDeployFunction.name,
     input: JSON.stringify({ action: 'migrate' }),
     triggers: {
       // Force re-invocation on every deploy so new migrations are always applied.
       deployTime: new Date().toISOString(),
     },
+  })
+
+  // Log the migration result in the deploy output.
+  migration.result.apply((result) => {
+    try {
+      const parsed = JSON.parse(result)
+      const body = typeof parsed.body === 'string' ? JSON.parse(parsed.body) : parsed.body
+      console.log(`[migrate] ${body?.message || result}`)
+    } catch {
+      console.log(`[migrate] ${result}`)
+    }
   })
 }
 
