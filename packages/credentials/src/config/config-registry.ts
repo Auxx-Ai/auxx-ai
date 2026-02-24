@@ -904,8 +904,8 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
   },
 
   // ── WORKER ───────────────────────────────────────────────
-  WORKERS_PORT: {
-    key: 'WORKERS_PORT',
+  WORKER_PORT: {
+    key: 'WORKER_PORT',
     description: 'Port for the worker admin UI',
     type: ConfigVariableType.NUMBER,
     group: ConfigVariableGroup.WORKER,
@@ -914,15 +914,6 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     isEnvOnly: true,
     min: 1,
     max: 65535,
-  },
-  WORKERS_HOST: {
-    key: 'WORKERS_HOST',
-    description: 'Host for the worker admin UI',
-    type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.WORKER,
-    defaultValue: '0.0.0.0',
-    isSensitive: false,
-    isEnvOnly: true,
   },
   // ── URL vars (deploy-time constants, resolved by @auxx/config) ──
   API_URL: {

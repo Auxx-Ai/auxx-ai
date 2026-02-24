@@ -51,7 +51,7 @@
 
 6. Add authorized redirect URIs:
 
-- `http://localhost:3000/api/google/oauth/callback` (for development), where `http://localhost:3000` should be the `NEXT_PUBLIC_BASE_URL` env variable.
+- `http://localhost:3000/api/google/oauth/callback` (for development), where `http://localhost:3000` should match your app base URL.
 - `https://<production_domain>/api/google/oauth/callback` (for production)
 
 7. Click "Create"

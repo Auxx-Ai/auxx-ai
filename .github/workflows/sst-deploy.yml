@@ -110,16 +110,27 @@ jobs:
 
       - name: Export environment variables (dev)
         run: |
+          # Keep stage/domain mapping aligned with infra/dns.ts
+          if [ "${STAGE}" = "production" ]; then
+            DOMAIN="auxx.ai"
+          elif [ "${STAGE}" = "dev" ]; then
+            DOMAIN="dev.auxx.ai"
+          else
+            DOMAIN="${STAGE}.dev.auxx.ai"
+          fi
+
+          APP_VERSION_FROM_ROOT=$(node -p "require('./package.json').version")
+
           echo "GIT_SHA=${{ github.sha }}" >> $GITHUB_ENV
           echo "BUILD_TIME=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
-          echo "APP_VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
+          echo "APP_VERSION=${APP_VERSION_FROM_ROOT}" >> $GITHUB_ENV
           echo "STAGE=${STAGE}" >> $GITHUB_ENV
+          echo "DOMAIN=${DOMAIN}" >> $GITHUB_ENV
           echo "AWS_REGION=${AWS_REGION}" >> $GITHUB_ENV
           echo "CLOUDFRONT_CERT_ARN=${{ vars.CLOUDFRONT_CERT_ARN }}" >> $GITHUB_ENV
           # Temporary DB URL for build-time env validation only; not used at runtime
           echo "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder" >> $GITHUB_ENV
-          # URL env vars (canonical names)
-          echo "APP_URL=${{ vars.APP_URL }}" >> $GITHUB_ENV
+          # Keep URL inputs minimal; @auxx/config derives canonical URLs from DOMAIN
           echo "POSTHOG_KEY=${{ vars.POSTHOG_KEY }}" >> $GITHUB_ENV
           echo "POSTHOG_HOST=${{ vars.POSTHOG_HOST }}" >> $GITHUB_ENV
           echo "STRIPE_PUBLISHABLE_KEY=${{ vars.STRIPE_PUBLISHABLE_KEY }}" >> $GITHUB_ENV
@@ -155,7 +166,7 @@ jobs:
           echo "AUTH_GOOGLE_ID=${{ vars.AUTH_GOOGLE_ID }}" >> $GITHUB_ENV
           echo "AUTH_GOOGLE_SECRET=${{ secrets.AUTH_GOOGLE_SECRET }}" >> $GITHUB_ENV
           # Auth URL
-          echo "AUTH_URL=${{ vars.APP_URL }}" >> $GITHUB_ENV
+          echo "AUTH_URL=https://app.${DOMAIN}" >> $GITHUB_ENV
 
       - name: Pre-build OpenNext (web)
         env:

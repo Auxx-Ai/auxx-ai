@@ -6,9 +6,9 @@ set -a
 source .env
 
 
-ngrok http --url=$NGROK_URL 3000 #$NEXT_PUBLIC_BASE_URL
+ngrok http --url=$NGROK_URL 3000
 
-# ngrok http $NEXT_PUBLIC_BASE_URL
+# ngrok http $NGROK_URL
 
 
 

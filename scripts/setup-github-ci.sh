@@ -4,7 +4,7 @@
 # Reads values from your local .env file.
 #
 # - Strips surrounding quotes from values
-# - Skips vars that SST handles at deploy/runtime (NEXT_PUBLIC_BASE_URL, REDIS_HOST, etc.)
+# - Skips vars that SST handles at deploy/runtime (DOMAIN, REDIS_HOST, etc.)
 #
 # Usage:
 #   gh auth login          # if not already authenticated
@@ -33,11 +33,9 @@ env_val() {
 }
 
 # Vars that SST computes from infrastructure — don't push from .env
-# SST sets NEXT_PUBLIC_BASE_URL from getAppDomain()
 # SST sets REDIS_HOST/PORT/PASSWORD and DATABASE_URL from infra outputs
 SST_MANAGED=(
-  NEXT_PUBLIC_BASE_URL
-  NEXT_PUBLIC_APP_URL
+  DOMAIN
   REDIS_HOST
   REDIS_PORT
 )
@@ -93,8 +91,7 @@ echo "=== Step 3: Set Repository Variables ==="
 # Vars managed by SST are skipped (they compute the real values at deploy time)
 
 VARIABLES=(
-  NEXT_PUBLIC_BASE_URL
-  NEXT_PUBLIC_APP_URL
+  DOMAIN
   NEXT_PUBLIC_S3_REGION
   NEXT_PUBLIC_S3_BUCKET
   POSTHOG_KEY

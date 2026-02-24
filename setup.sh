@@ -162,11 +162,9 @@ if [ "$FILL_MODE" = true ]; then
 fi
 
 # ─── Fresh setup: copy template and fill everything ────────
+cp .env.example .env
 if [ "$SELF_HOSTED" = true ]; then
-  cp .env.self-hosted.example .env
-  echo -e "${GREEN}Using self-hosted template${NC}"
-else
-  cp .env.example .env
+  echo -e "${GREEN}Using self-hosted mode with .env.example${NC}"
 fi
 
 # Platform-compatible sed (macOS vs Linux)
@@ -177,6 +175,12 @@ do_sed() {
     sed -i "$@"
   fi
 }
+
+if [ "$SELF_HOSTED" = true ]; then
+  do_sed "s|^DEPLOYMENT_MODE=.*|DEPLOYMENT_MODE=self-hosted|" .env
+else
+  do_sed "s|^DEPLOYMENT_MODE=.*|DEPLOYMENT_MODE=cloud|" .env
+fi
 
 # ─── Replace secret placeholders ──────────────────────────
 do_sed "s|^DATABASE_PASSWORD=.*|DATABASE_PASSWORD=${DATABASE_PASSWORD}|" .env
@@ -191,8 +195,7 @@ do_sed "s|^PUBLIC_WORKFLOW_JWT_SECRET=.*|PUBLIC_WORKFLOW_JWT_SECRET=${PUBLIC_WOR
 do_sed "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:${DATABASE_PASSWORD}@${DB_HOST}:5432/${DB_NAME}|" .env
 
 # ─── Set sensible defaults ────────────────────────────────
-do_sed "s|^NEXT_PUBLIC_BASE_URL=.*|NEXT_PUBLIC_BASE_URL=http://localhost:3000|" .env
-do_sed "s|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=http://localhost:3000|" .env
+# do_sed "s|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=http://localhost:3000|" .env
 
 # ─── Setup apps/lambda/.env ───────────────────────────────
 if [ -f apps/lambda/.env.example ]; then

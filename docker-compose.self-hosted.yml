@@ -149,7 +149,7 @@ services:
         required: false
     environment:
       <<: [*common-env, *db-env, *redis-env, *url-env]
-      SERVER_FUNCTION_EXECUTOR_URL: http://lambda:3008
+      LAMBDA_EXECUTOR_URL: http://lambda:3008
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -179,8 +179,7 @@ services:
         required: false
     environment:
       <<: [*common-env, *db-env, *redis-env, *url-env]
-      WORKERS_PORT: "3005"
-      WORKERS_HOST: "0.0.0.0"
+      WORKER_PORT: "3005"
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
