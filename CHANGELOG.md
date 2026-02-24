@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.15...auxx-v0.1.16) (2026-02-24)
+
+
+### Bug Fixes
+
+* update ownership in Dockerfiles and enhance URL trust validation ([#81](https://github.com/Auxx-Ai/auxx-ai/issues/81)) ([78cc8a1](https://github.com/Auxx-Ai/auxx-ai/commit/78cc8a1bc5f7282c2417d71aa385f49d0bb1afd7))
+
 ## [0.1.15](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.14...auxx-v0.1.15) (2026-02-24)
 
 
