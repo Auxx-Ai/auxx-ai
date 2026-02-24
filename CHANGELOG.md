@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.13](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.12...auxx-v0.1.13) (2026-02-24)
+
+
+### Features
+
+* enhance application URL management and Redis config ([#76](https://github.com/Auxx-Ai/auxx-ai/issues/76)) ([ef51730](https://github.com/Auxx-Ai/auxx-ai/commit/ef51730cd427c7c0d27dc715c98a34b86cdadea5))
+* enhance Outlook integration with error handling ([#73](https://github.com/Auxx-Ai/auxx-ai/issues/73)) ([9f13d84](https://github.com/Auxx-Ai/auxx-ai/commit/9f13d84d376d113d25446cd6562b8841db171a57))
+* implement email job processing and worker for transactional emails ([#75](https://github.com/Auxx-Ai/auxx-ai/issues/75)) ([c848a0a](https://github.com/Auxx-Ai/auxx-ai/commit/c848a0a58b806ba21832c4996fea6f31b8e2a1ef))
+
 ## [0.1.12](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.11...auxx-v0.1.12) (2026-02-24)
 
 
