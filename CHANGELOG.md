@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.14](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.13...auxx-v0.1.14) (2026-02-24)
+
+
+### Features
+
+* unify application URL management and env variable config ([#77](https://github.com/Auxx-Ai/auxx-ai/issues/77)) ([39660ef](https://github.com/Auxx-Ai/auxx-ai/commit/39660ef2b922054272beab21211356f2886148a2))
+
 ## [0.1.13](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.12...auxx-v0.1.13) (2026-02-24)
 
 
