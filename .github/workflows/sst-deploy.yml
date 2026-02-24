@@ -227,40 +227,8 @@ jobs:
           SST_ENABLE_SIGNAL_UNLOCK_TRAP: 'false'
         run: bash scripts/ci/sst-deploy-with-lock-retry.sh
 
-      - name: Run DB migrations (dev)
-        env:
-          AWS_REGION: us-west-1
-          STAGE: ${{ inputs.stage || 'dev' }}
-        run: |
-          # Get the migration Lambda function name from SST outputs
-          FUNC_NAME=$(aws cloudformation describe-stacks \
-            --stack-name "auxxai-app-${STAGE}" \
-            --query 'Stacks[0].Outputs[?contains(OutputKey, `databaseDeployFunctionName`)].OutputValue' \
-            --output text 2>/dev/null || true)
-
-          if [ -z "$FUNC_NAME" ] || [ "$FUNC_NAME" = "None" ]; then
-            echo "WARNING: Could not find migration function in stack outputs. Skipping."
-            exit 0
-          fi
-
-          echo "Invoking migration Lambda: $FUNC_NAME"
-          INVOKE_OUTPUT=$(aws lambda invoke \
-            --function-name "$FUNC_NAME" \
-            --payload '{"action":"migrate"}' \
-            --cli-binary-format raw-in-base64-out \
-            /tmp/migrate-response.json)
-
-          echo "Invoke metadata: $INVOKE_OUTPUT"
-          echo "Lambda response:"
-          cat /tmp/migrate-response.json
-
-          # Check for Lambda-level errors (FunctionError appears in invoke metadata)
-          if echo "$INVOKE_OUTPUT" | grep -q "FunctionError"; then
-            echo "Migration failed!"
-            exit 1
-          fi
-
-          echo "Migrations completed successfully."
+      # DB migrations run automatically inside sst deploy via aws.lambda.Invocation
+      # in infra/migrate.ts. No separate CI step needed.
 
       - name: Post-deploy unlock cleanup
         if: ${{ cancelled() || failure() }}

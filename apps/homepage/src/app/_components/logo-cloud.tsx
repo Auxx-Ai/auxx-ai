@@ -22,33 +22,30 @@ import { Polars } from '~/components/logos/polars'
 import { Stripe } from '~/components/logos/stripe'
 
 const aiLogos: React.ReactNode[] = [
-  <OpenAIFull height={24} width='auto' />,
-  <AnthropicFull height={22} width='auto' />,
-  <GeminiFull height={32} width='auto' />,
-  <DeepseekFull height={26} width='auto' />,
-  <GroqFull height={26} width='auto' />,
+  <OpenAIFull height={24} />,
+  <AnthropicFull height={22} />,
+  <GeminiFull height={32} />,
+  <DeepseekFull height={26} />,
+  <GroqFull height={26} />,
 ]
 
 const messagesLogos: React.ReactNode[] = [
-  <Gmail height={24} width='auto' />,
-  <OutlookFull height={24} width='auto' />,
-  <InstagramFull height={20} width='auto' />,
-  <FacebookFull height={20} width='auto' />,
-  <QuoFull height={20} width='auto' />,
+  <Gmail height={24} />,
+  <OutlookFull height={24} />,
+  <InstagramFull height={20} />,
+  <FacebookFull height={20} />,
+  <QuoFull height={20} />,
 ]
 
 const paymentsLogos: React.ReactNode[] = [
-  <Stripe height={24} width='auto' />,
-  <PayPal height={24} width='auto' />,
-  <LeapWallet height={24} width='auto' />,
-  <Beacon height={20} width='auto' />,
-  <Polars height={24} width='auto' />,
+  <Stripe height={24} />,
+  <PayPal height={24} />,
+  <LeapWallet height={24} />,
+  <Beacon height={20} />,
+  <Polars height={24} />,
 ]
 
-const streamingLogos: React.ReactNode[] = [
-  <Cisco height={32} width='auto' />,
-  <Beacon height={20} width='auto' />,
-]
+const streamingLogos: React.ReactNode[] = [<Cisco height={32} />, <Beacon height={20} />]
 
 const logos: Record<'ai' | 'messages' | 'streaming' | 'payments', React.ReactNode[]> = {
   ai: aiLogos,
