@@ -23,6 +23,31 @@ export class RedisClientFactory {
   private static instances = new Map<string, RedisClient>()
 
   /**
+   * Returns true when REDIS_PASSWORD is not set as a non-empty environment variable.
+   */
+  private static isHostedRedisPasswordMissing(): boolean {
+    return !(process.env.REDIS_PASSWORD && process.env.REDIS_PASSWORD.trim() !== '')
+  }
+
+  /**
+   * Normalizes hosted NOAUTH errors into an actionable configuration message.
+   */
+  private static toConnectionError(provider: RedisProvider, error: unknown): Error {
+    const errorMessage = (error as Error).message
+    if (
+      provider === 'hosted' &&
+      errorMessage.includes('NOAUTH Authentication required') &&
+      RedisClientFactory.isHostedRedisPasswordMissing()
+    ) {
+      return new Error(
+        'Redis connection failed for hosted: NOAUTH Authentication required. REDIS_PASSWORD is missing or empty.'
+      )
+    }
+
+    return new Error(`Redis connection failed for ${provider}: ${errorMessage}`)
+  }
+
+  /**
    * Create a Redis client instance
    * @param provider - Optional provider override
    * @param instanceId - Optional instance identifier for multiple clients
@@ -83,9 +108,7 @@ export class RedisClientFactory {
       logger.error(`Redis client ${cacheKey} connection failed`, {
         error: (error as Error).message,
       })
-      throw new Error(
-        `Redis connection failed for ${detectedProvider}: ${(error as Error).message}`
-      )
+      throw RedisClientFactory.toConnectionError(detectedProvider, error)
     }
 
     // Cache the instance
@@ -129,9 +152,7 @@ export class RedisClientFactory {
       logger.info(`Dedicated Redis client connection successful`)
     } catch (error) {
       logger.error(`Dedicated Redis client connection failed`, { error: (error as Error).message })
-      throw new Error(
-        `Redis connection failed for ${detectedProvider}: ${(error as Error).message}`
-      )
+      throw RedisClientFactory.toConnectionError(detectedProvider, error)
     }
 
     return client

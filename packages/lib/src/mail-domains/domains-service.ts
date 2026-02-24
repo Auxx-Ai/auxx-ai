@@ -1,5 +1,6 @@
 // packages/lib/src/mail-domains/domains-service.ts
 
+import { WEBAPP_URL } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -11,7 +12,7 @@ const logger = createScopedLogger('domain-service')
 
 /** Base domain for provider-supplied domains */
 const MAILGUN_DOMAIN = configService.get<string>('MAILGUN_DOMAIN') || ''
-const APP_URL = configService.get<string>('NEXT_PUBLIC_APP_URL')
+const APP_URL = WEBAPP_URL
 
 /**
  * Service for managing email domains.

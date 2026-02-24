@@ -25,11 +25,11 @@ x-redis-env: &redis-env
 
 x-url-env: &url-env
   DOMAIN: ${DOMAIN}
-  NEXT_PUBLIC_BASE_URL: https://app.${DOMAIN}
-  NEXT_PUBLIC_APP_URL: https://app.${DOMAIN}
-  NEXT_PUBLIC_HOMEPAGE_URL: https://app.${DOMAIN}
-  NEXT_PUBLIC_API_URL: https://api.${DOMAIN}
-  NEXT_PUBLIC_DOCS_URL: https://docs.${DOMAIN}
+  APP_URL: https://app.${DOMAIN}
+  HOMEPAGE_URL: https://${DOMAIN}
+  API_URL: https://api.${DOMAIN}
+  DOCS_URL: https://docs.${DOMAIN}
+  DEV_PORTAL_URL: https://build.${DOMAIN}
 
 services:
   # ---- Infrastructure ----

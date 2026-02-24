@@ -1,6 +1,6 @@
 // packages/services/src/app-events/index.ts
 
-import { LAMBDA_API_URL } from '@auxx/config/urls'
+import { LAMBDA_API_URL, SERVER_FUNCTION_EXECUTOR_URL } from '@auxx/config/urls'
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
@@ -228,7 +228,7 @@ export async function triggerAppEvent(params: {
   }
 
   // Get Lambda executor URL and API URL from environment
-  const executorUrl = process.env.SERVER_FUNCTION_EXECUTOR_URL || 'http://localhost:3008'
+  const executorUrl = SERVER_FUNCTION_EXECUTOR_URL
 
   // Invoke Lambda via HTTP (works in dev AND production)
   try {

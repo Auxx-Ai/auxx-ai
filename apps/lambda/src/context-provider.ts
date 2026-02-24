@@ -42,7 +42,11 @@ export function createRuntimeContext(execContext: ExecutionContext): RuntimeCont
     // Environment
     env: Deno.env.get('NODE_ENV') || 'production',
     // Platform API URL: Use value from caller (preferred), fallback to env var for standalone testing
-    apiUrl: execContext.apiUrl || Deno.env.get('API_URL') || 'http://localhost:3007',
+    apiUrl:
+      execContext.apiUrl ||
+      Deno.env.get('LAMBDA_API_URL') ||
+      Deno.env.get('API_URL') ||
+      'http://localhost:3007',
 
     // Connection data
     userConnection: execContext.userConnection,

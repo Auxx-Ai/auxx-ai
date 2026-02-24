@@ -2,6 +2,7 @@
 
 import { rds, redis } from './db'
 import { getAppDomain } from './dns'
+import { serverFunctionExecutorUrl } from './lambda'
 import { router, vpc } from './router-vpc'
 import { getSecretsForLinking, getSelectedEnvVars } from './secrets'
 import { privateBucket, publicBucket } from './storage'
@@ -12,7 +13,9 @@ export const web = new sst.aws.Nextjs('AuxxAiWeb', {
   buildCommand:
     'if [ "${SST_USE_PREBUILT_OPENNEXT:-0}" = "1" ] && [ -d ".open-next" ]; then echo "Using pre-built OpenNext artifacts"; else pnpm run build:opennext; fi',
   // Minimal env; secrets come via Resource links
-  environment: getSelectedEnvVars('web'),
+  environment: getSelectedEnvVars('web', {
+    lambdaExecutorUrl: serverFunctionExecutorUrl,
+  }),
   // Link secrets and database resources for Resource access
   link: [...getSecretsForLinking('web'), rds, redis, publicBucket, privateBucket],
   openNextVersion: '3.9.15',

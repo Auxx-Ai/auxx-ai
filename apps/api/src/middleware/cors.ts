@@ -30,7 +30,7 @@ if (!isDev) {
     if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
       log.warn(
         `CORS origin "${origin}" contains localhost in non-development environment. ` +
-          'Check that NEXT_PUBLIC_BASE_URL and NEXT_PUBLIC_DEV_PORTAL_URL are set.'
+          'Check that APP_URL and DOMAIN env vars are set.'
       )
     }
   }
