@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.11](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.10...auxx-v0.1.11) (2026-02-23)
+
+
+### Features
+
+* check sst deploy ([#69](https://github.com/Auxx-Ai/auxx-ai/issues/69)) ([42058b9](https://github.com/Auxx-Ai/auxx-ai/commit/42058b9210c11b016603197e4a71d4b7a71337f4))
+
 ## [0.1.10](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.9...auxx-v0.1.10) (2026-02-23)
 
 
