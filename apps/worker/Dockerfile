@@ -61,7 +61,8 @@ ENV PNPM_NETWORK_CONCURRENCY=4 \
 # Use pnpm deploy to create a standalone worker package with all dependencies
 # Drizzle doesn't require runtime client generation
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm --filter @auxx/worker --prod deploy --legacy /deployed && \
+    pnpm --filter @auxx/worker --prod deploy --legacy /deployed 2>&1 \
+    | grep -v 'WARN  Skip adding .* to the default catalog' && \
     rm -rf /deployed/node_modules/.cache /deployed/node_modules/.package-lock.json
 
 # Runner stage - minimal production image

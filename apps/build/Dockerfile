@@ -87,8 +87,8 @@ RUN chown nextjs:nodejs apps/build/.next
 RUN chown nextjs:nodejs apps/build/.next/cache
 
 # Copy the standalone server and static assets
-COPY --from=builder --chown=nodejs:nextjs /app/apps/build/.next/standalone ./
-COPY --from=builder --chown=nodejs:nextjs /app/apps/build/.next/static ./apps/build/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/build/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/apps/build/.next/static ./apps/build/.next/static
 
 # Copy the docker entrypoint for runtime env replacement
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh

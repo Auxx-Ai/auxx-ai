@@ -119,12 +119,12 @@ RUN chown nextjs:nodejs apps/web/.next
 RUN chown nextjs:nodejs apps/web/.next/cache
 
 # Copy the standalone server and static assets
-COPY --from=builder --chown=nodejs:nextjs /app/apps/web/.next/standalone ./
-COPY --from=builder --chown=nodejs:nextjs /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 
 # Copy packages/database for drizzle-kit migrations (used by migrate service)
 # The database package includes its own node_modules — no need for the full monorepo node_modules (~1.4GB)
-COPY --from=builder --chown=nodejs:nextjs /app/packages/database ./packages/database
+COPY --from=builder --chown=nextjs:nodejs /app/packages/database ./packages/database
 
 # Copy the docker entrypoint for runtime env replacement
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
