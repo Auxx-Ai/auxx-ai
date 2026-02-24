@@ -8,7 +8,7 @@ import { api } from '~/trpc/react'
  * Provides methods to fetch, create, update, and delete integrations
  */
 export const useIntegration = () => {
-  // const [isLoading, setIsLoading] = useState(false)
+  const utils = api.useUtils()
 
   // Get all integrations for the organization
   const {
@@ -31,6 +31,7 @@ export const useIntegration = () => {
   const disconnectIntegration = api.integration.disconnect.useMutation({
     onSuccess: () => {
       refetchIntegrations()
+      utils.thread.getCounts.invalidate()
       toastSuccess({
         title: 'Integration disconnected',
         description: 'The integration was disconnected successfully',

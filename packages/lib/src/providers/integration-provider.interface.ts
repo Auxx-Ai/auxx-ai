@@ -1,5 +1,17 @@
 import type { AttachmentFile } from './message-provider-interface'
 
+/**
+ * Maximum message IDs to pop from the import cache per job execution.
+ * Keyed by provider name. Each value reflects the provider's API batch limit.
+ */
+export const PROVIDER_IMPORT_BATCH_SIZE: Record<string, number> = {
+  google: 50, // Gmail batch API limit
+  outlook: 20, // Microsoft Graph /$batch limit
+  imap: 50, // No batch API, but 50 is a reasonable chunk
+}
+
+export const DEFAULT_IMPORT_BATCH_SIZE = 50
+
 /** Result from discovering message IDs in a single label/folder */
 export interface MessageListResult {
   messageIds: string[]
