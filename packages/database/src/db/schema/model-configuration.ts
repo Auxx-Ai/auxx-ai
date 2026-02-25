@@ -55,3 +55,5 @@ export const ModelConfiguration = pgTable(
     ),
   ]
 )
+
+export type ModelConfigurationEntity = typeof ModelConfiguration.$inferSelect

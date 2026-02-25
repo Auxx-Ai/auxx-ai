@@ -30,3 +30,5 @@ export const Webhook = pgTable(
     index('Webhook_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
   ]
 )
+
+export type WebhookEntity = typeof Webhook.$inferSelect

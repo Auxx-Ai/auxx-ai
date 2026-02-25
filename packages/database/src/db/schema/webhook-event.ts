@@ -44,3 +44,7 @@ export const WebhookEvent = pgTable(
     index('WebhookEvent_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
   ]
 )
+
+export type WebhookEventEntity = typeof WebhookEvent.$inferSelect
+export type CreateWebhookEventInput = typeof WebhookEvent.$inferInsert
+export type UpdateWebhookEventInput = Partial<CreateWebhookEventInput>

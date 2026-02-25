@@ -1,5 +1,5 @@
 import { type Database, database, schema } from '@auxx/database'
-import type { WebhookEntity as Webhook } from '@auxx/database/models'
+import type { WebhookEntity as Webhook } from '@auxx/database/types'
 import { createHmac, randomBytes } from 'crypto'
 import { and, eq } from 'drizzle-orm'
 import { NotFoundError, UnprocessableEntityError } from '../errors'

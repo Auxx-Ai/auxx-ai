@@ -1,7 +1,6 @@
 // apps/web/src/components/datasets/settings/sections/chunking-settings-section.tsx
 'use client'
-import type { DatasetEntity as Dataset } from '@auxx/database/models'
-import type { ChunkSettings } from '@auxx/database/types'
+import type { ChunkSettings, DatasetEntity as Dataset } from '@auxx/database/types'
 import { BaseType } from '@auxx/lib/workflow-engine/types'
 import { Button } from '@auxx/ui/components/button'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@auxx/ui/components/form'

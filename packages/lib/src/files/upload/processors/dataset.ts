@@ -1,9 +1,9 @@
 // packages/lib/src/files/upload/processors/dataset.ts
 
-import { database as db } from '@auxx/database'
-import type { DocumentEntity } from '@auxx/database/models'
-import { DatasetModel } from '@auxx/database/models'
+import { database as db, schema } from '@auxx/database'
+import type { DocumentEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
+import { and, eq } from 'drizzle-orm'
 import { DocumentService } from '../../../datasets/services/document-service'
 import { DocumentProcessingQueue } from '../../../datasets/workers/document-processing-queue'
 import type { ProcessorConfigResult, UploadInitConfig } from '../init-types'
@@ -235,9 +235,13 @@ export class DatasetAssetProcessor extends BaseAssetProcessor {
    */
   protected async validateEntityAccess(entityId: string, organizationId: string): Promise<void> {
     // Check if dataset exists and user has access
-    const datasetModel = new DatasetModel(organizationId)
-    const res = await datasetModel.findById(entityId)
-    const dataset = res.ok ? res.value : null
+    const [dataset] = await db
+      .select({ id: schema.Dataset.id })
+      .from(schema.Dataset)
+      .where(
+        and(eq(schema.Dataset.id, entityId), eq(schema.Dataset.organizationId, organizationId))
+      )
+      .limit(1)
 
     if (!dataset) {
       throw new Error('Dataset not found or access denied')

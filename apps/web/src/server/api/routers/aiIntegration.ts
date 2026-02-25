@@ -1,7 +1,6 @@
 // apps/web/src/server/api/routers/aiIntegration.ts
 
 import { schema } from '@auxx/database'
-import { ModelConfigurationModel } from '@auxx/database/models'
 import {
   ProviderConfigurationService,
   ProviderManager,
@@ -17,7 +16,7 @@ import {
   ProviderType,
 } from '@auxx/lib/ai/providers/types'
 import { TRPCError } from '@trpc/server'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
@@ -341,9 +340,18 @@ export const aiIntegrationRouter = createTRPCRouter({
 
       // For create mode, check if model ID is already taken
       if (mode === 'create') {
-        const mcModel = new ModelConfigurationModel(organizationId)
-        const existingRes = await mcModel.findByComposite({ provider, model: modelId, modelType })
-        const existingModel = existingRes.ok ? existingRes.value : null
+        const [existingModel] = await ctx.db
+          .select({ id: schema.ModelConfiguration.id })
+          .from(schema.ModelConfiguration)
+          .where(
+            and(
+              eq(schema.ModelConfiguration.organizationId, organizationId),
+              eq(schema.ModelConfiguration.provider, provider),
+              eq(schema.ModelConfiguration.model, modelId),
+              eq(schema.ModelConfiguration.modelType, modelType as any)
+            )
+          )
+          .limit(1)
 
         if (existingModel) {
           throw new TRPCError({

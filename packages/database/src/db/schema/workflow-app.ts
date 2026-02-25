@@ -135,3 +135,7 @@ export const WorkflowApp = pgTable(
     index('WorkflowApp_apiEnabled_idx').using('btree', table.apiEnabled.asc().nullsLast()),
   ]
 )
+
+export type WorkflowAppEntity = typeof WorkflowApp.$inferSelect
+export type CreateWorkflowAppInput = typeof WorkflowApp.$inferInsert
+export type UpdateWorkflowAppInput = Partial<CreateWorkflowAppInput>

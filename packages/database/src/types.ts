@@ -179,34 +179,64 @@ export type EntityType = (typeof Enums.EntityTypeValues)[number] | null
 
 export type StandardType = (typeof Enums.StandardTypeValues)[number] | null
 
-// Entity types (inferred from schema — client-safe, no runtime imports)
+export type { ApprovalRequestEntity } from './db/schema/approval-request'
 export type { AttachmentEntity } from './db/schema/attachment'
 export type { CommentEntity } from './db/schema/comment'
 export type { CommentReactionEntity } from './db/schema/comment-reaction'
 export type { CustomFieldEntity } from './db/schema/custom-field'
+// Entity types (inferred from schema — client-safe, no runtime imports)
+export type { DatasetEntity } from './db/schema/dataset'
 export type { DatasetSearchQueryEntity } from './db/schema/dataset-search-query'
 export type { DatasetSearchResultEntity } from './db/schema/dataset-search-result'
+export type { DocumentEntity } from './db/schema/document'
+export type { DocumentSegmentEntity } from './db/schema/document-segment'
+export type { EntityDefinitionEntity } from './db/schema/entity-definition'
+export type { EntityInstanceEntity } from './db/schema/entity-instance'
+export type { EventEntity } from './db/schema/event'
 export type { ExternalKnowledgeSourceEntity } from './db/schema/external-knowledge-source'
 export type { FileVersionEntity } from './db/schema/file-version'
 export type { FolderEntity } from './db/schema/folder'
 export type { FolderFileEntity } from './db/schema/folder-file'
+export type { IntegrationEntity } from './db/schema/integration'
 export type { InventoryEntity } from './db/schema/inventory'
 export type { LoadBalancingConfigEntity } from './db/schema/load-balancing-config'
+export type {
+  CreateMailViewInput,
+  MailViewEntity,
+  UpdateMailViewInput,
+} from './db/schema/mail-view'
 export type { MediaAssetEntity } from './db/schema/media-asset'
 export type { MediaAssetVersionEntity } from './db/schema/media-asset-version'
+export type { MessageEntity } from './db/schema/message'
 export type { MessageParticipantEntity } from './db/schema/message-participant'
+export type { ModelConfigurationEntity } from './db/schema/model-configuration'
 export type { OrganizationEntity } from './db/schema/organization'
 export type { OrganizationInvitationEntity } from './db/schema/organization-invitation'
+export type {
+  OrganizationMemberEntity,
+  OrganizationMemberInfo,
+} from './db/schema/organization-member'
 export type { PartEntity } from './db/schema/part'
+export type { ParticipantEntity } from './db/schema/participant'
+export type { ProviderConfigurationEntity } from './db/schema/provider-configuration'
 export type { ProviderPreferenceEntity } from './db/schema/provider-preference'
+export type { ShopifyIntegrationEntity } from './db/schema/shopify-integration'
 export type {
   CreateStorageLocationInput,
   StorageLocationEntity,
 } from './db/schema/storage-location'
 export type { SubpartEntity } from './db/schema/subpart'
 export type { TableViewEntity } from './db/schema/table-view'
+export type { ThreadEntity } from './db/schema/thread'
 export type { TimelineEventEntity } from './db/schema/timeline-event'
+export type { UserEntity } from './db/schema/user'
+export type { VendorPartEntity } from './db/schema/vendor-part'
+export type { WebhookEntity } from './db/schema/webhook'
+export type { WebhookEventEntity } from './db/schema/webhook-event'
+export type { WorkflowEntity } from './db/schema/workflow'
+export type { WorkflowAppEntity } from './db/schema/workflow-app'
 export type { WorkflowNodeExecutionEntity } from './db/schema/workflow-node-execution'
+export type { WorkflowRunEntity } from './db/schema/workflow-run'
 // ChunkSettings types
 export type {
   ChunkPreprocessingOptions,

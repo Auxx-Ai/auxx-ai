@@ -1,6 +1,6 @@
 // apps/web/src/components/datasets/documents/document-detail-drawer.tsx
 'use client'
-import type { DocumentEntity as Document } from '@auxx/database/models'
+import type { DocumentEntity as Document } from '@auxx/database/types'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'

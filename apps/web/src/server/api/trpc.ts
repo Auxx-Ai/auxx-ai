@@ -8,7 +8,7 @@
  */
 
 import { database as db } from '@auxx/database'
-import { OrganizationMemberModel } from '@auxx/database/models'
+import { isAdminOrOwner } from '@auxx/lib/members'
 import { initTRPC, TRPCError } from '@trpc/server'
 import superjson from 'superjson'
 import { ZodError } from 'zod'
@@ -218,9 +218,8 @@ export const adminProcedure = t.procedure.use(timingMiddleware).use(async ({ ctx
   if (!organizationId || !userId) {
     throw new TRPCError({ code: 'UNAUTHORIZED', message: 'User not found' })
   }
-  const om = new OrganizationMemberModel(organizationId)
-  const allowed = await om.isAdminOrOwner(userId)
-  if (!allowed.ok || !allowed.value) {
+  const allowed = await isAdminOrOwner(organizationId, userId)
+  if (!allowed) {
     throw new TRPCError({
       code: 'FORBIDDEN',
       message: 'You must be an admin or owner to perform this action',

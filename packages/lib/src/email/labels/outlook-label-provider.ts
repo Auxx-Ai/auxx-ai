@@ -1,8 +1,9 @@
 // lib/email/providers/outlook-label-provider.ts
 
-import { IntegrationModel } from '@auxx/database/models'
+import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Client } from '@microsoft/microsoft-graph-client'
+import { eq } from 'drizzle-orm'
 import { IntegrationTokenAccessor } from '../../providers/integration-token-accessor'
 import {
   type OutlookIntegrationMetadata,
@@ -28,9 +29,11 @@ export class OutlookLabelProvider implements LabelProvider {
   async initialize(): Promise<void> {
     try {
       // Get the integration for this organization
-      const intModel = new IntegrationModel()
-      const intRes = await intModel.findByIdGlobal(this.integrationId)
-      const integration = intRes.ok ? intRes.value : null
+      const [integration] = await database
+        .select()
+        .from(schema.Integration)
+        .where(eq(schema.Integration.id, this.integrationId))
+        .limit(1)
 
       if (!integration) {
         throw new Error('Integration not found')

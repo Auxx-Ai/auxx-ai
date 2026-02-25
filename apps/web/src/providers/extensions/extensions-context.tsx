@@ -8,7 +8,6 @@ import type { RouterOutputs } from '~/trpc/react'
 export type AppInstallation = Expand<
   NonNullable<RouterOutputs['apps']['listInstalled']['installations']>[number]
 >
-// import { type AppInstallationEntity as AppInstallation } from '@auxx/database/models'
 /**
  * Represents an installed extension in the current organization.
  * Based on the actual API response from packages/services/src/app-installations/get-installed-apps.ts

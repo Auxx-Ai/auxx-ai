@@ -27,3 +27,7 @@ export const Event = pgTable(
     index('Event_type_idx').using('btree', table.type.asc().nullsLast()),
   ]
 )
+
+export type EventEntity = typeof Event.$inferSelect
+export type CreateEventInput = typeof Event.$inferInsert
+export type UpdateEventInput = Partial<CreateEventInput>

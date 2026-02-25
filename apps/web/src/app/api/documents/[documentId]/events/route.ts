@@ -1,9 +1,10 @@
 // apps/web/src/app/api/documents/[documentId]/events/route.ts
 
-import { DocumentModel } from '@auxx/database/models'
+import { database as db, schema } from '@auxx/database'
 import { type DocumentEvent, DocumentEventType } from '@auxx/lib/datasets'
 import { createScopedLogger } from '@auxx/logger'
 import { RedisEventRouter } from '@auxx/redis'
+import { and, eq } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import type { NextRequest } from 'next/server'
 import { auth } from '~/auth/server'
@@ -32,14 +33,17 @@ export async function GET(
   const organizationId = (session.user as any).defaultOrganizationId
 
   // Verify document exists and belongs to user's organization
-  const docModel = new DocumentModel(organizationId)
-  const docResult = await docModel.findById(documentId)
+  const [document] = await db
+    .select()
+    .from(schema.Document)
+    .where(
+      and(eq(schema.Document.id, documentId), eq(schema.Document.organizationId, organizationId))
+    )
+    .limit(1)
 
-  if (!docResult.ok || !docResult.value) {
+  if (!document) {
     return new Response('Document not found', { status: 404 })
   }
-
-  const document = docResult.value
 
   logger.info('Starting document SSE connection', {
     documentId,

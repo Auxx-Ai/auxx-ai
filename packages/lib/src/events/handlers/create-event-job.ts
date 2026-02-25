@@ -1,4 +1,6 @@
-import { EventModel } from '@auxx/database/models'
+// packages/lib/src/events/handlers/create-event-job.ts
+
+import { database, schema } from '@auxx/database'
 import type { Job } from 'bullmq'
 import type { AuxxEvent } from '../types'
 
@@ -9,9 +11,15 @@ export const createEventJob = async (job: Job<AuxxEvent>) => {
 
 async function createEvent(event: AuxxEvent) {
   const organizationId = event.data.organizationId
-  const model = new EventModel(organizationId)
-  const res = await model.create({ type: event.type as any, data: event.data as any } as any)
-  const result = res.ok ? res.value : null
+  const [result] = await database
+    .insert(schema.Event)
+    .values({
+      organizationId,
+      type: event.type,
+      data: event.data,
+      updatedAt: new Date(),
+    })
+    .returning()
 
   if (!result) {
     throw new Error('Failed to create event')

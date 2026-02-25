@@ -1,4 +1,7 @@
-import { WebhookModel } from '@auxx/database/models'
+// packages/lib/src/events/handlers/update-webhook-last-triggered.ts
+
+import { database, schema } from '@auxx/database'
+import { eq } from 'drizzle-orm'
 import type { WebhookDeliveryCreatedEvent } from '../types'
 
 export async function updateWebhookLastTriggeredAt({
@@ -7,7 +10,9 @@ export async function updateWebhookLastTriggeredAt({
   data: WebhookDeliveryCreatedEvent
 }) {
   if (data.data.status === 'success') {
-    const webhookModel = new WebhookModel()
-    await webhookModel.updateByIdGlobal(data.data.webhookId, { lastTriggeredAt: new Date() as any })
+    await database
+      .update(schema.Webhook)
+      .set({ lastTriggeredAt: new Date(), updatedAt: new Date() })
+      .where(eq(schema.Webhook.id, data.data.webhookId))
   }
 }

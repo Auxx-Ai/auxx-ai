@@ -59,3 +59,7 @@ export const Participant = pgTable(
     index('Participant_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
   ]
 )
+
+export type ParticipantEntity = typeof Participant.$inferSelect
+export type CreateParticipantInput = typeof Participant.$inferInsert
+export type UpdateParticipantInput = Partial<CreateParticipantInput>

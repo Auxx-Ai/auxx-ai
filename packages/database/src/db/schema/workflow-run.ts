@@ -77,3 +77,7 @@ export const WorkflowRun = pgTable(
     index('WorkflowRun_workflowId_idx').using('btree', table.workflowId.asc().nullsLast()),
   ]
 )
+
+export type WorkflowRunEntity = typeof WorkflowRun.$inferSelect
+export type CreateWorkflowRunInput = typeof WorkflowRun.$inferInsert
+export type UpdateWorkflowRunInput = Partial<CreateWorkflowRunInput>

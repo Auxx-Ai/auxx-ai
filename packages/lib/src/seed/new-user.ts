@@ -7,7 +7,7 @@ import {
   OrganizationRole as OrganizationRoleEnum,
   OrganizationType,
 } from '@auxx/database/enums'
-import type { UserEntity } from '@auxx/database/models'
+import type { UserEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, gt, ne } from 'drizzle-orm'
 import { MemberService } from '../members/member-service'

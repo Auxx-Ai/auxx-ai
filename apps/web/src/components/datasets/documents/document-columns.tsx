@@ -1,8 +1,10 @@
 // apps/web/src/components/datasets/documents/document-columns.tsx
 'use client'
 
-import type { DocumentEntity as Document } from '@auxx/database/models'
-import type { DocumentStatus as DocumentStatusType } from '@auxx/database/types'
+import type {
+  DocumentEntity as Document,
+  DocumentStatus as DocumentStatusType,
+} from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
 import { Calendar, FileText, FileType, HardDrive, Hash, ToggleLeft } from 'lucide-react'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'

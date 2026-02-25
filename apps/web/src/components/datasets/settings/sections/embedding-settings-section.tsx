@@ -1,7 +1,7 @@
 // apps/web/src/components/datasets/settings/sections/embedding-settings-section.tsx
 'use client'
 
-import type { DatasetEntity as Dataset } from '@auxx/database/models'
+import type { DatasetEntity as Dataset } from '@auxx/database/types'
 import { ModelType } from '@auxx/lib/ai/providers/types'
 import { EMBEDDING_DIMENSIONS, type EmbeddingDimension } from '@auxx/lib/datasets/types'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'

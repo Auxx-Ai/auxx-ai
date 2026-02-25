@@ -1,7 +1,7 @@
 // packages/services/src/workflows/get-workflow-run.ts
 
 import { database } from '@auxx/database'
-import type { WorkflowEntity, WorkflowRunEntity } from '@auxx/database/models'
+import type { WorkflowEntity, WorkflowRunEntity } from '@auxx/database/types'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 

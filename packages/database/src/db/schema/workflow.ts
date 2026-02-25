@@ -60,3 +60,7 @@ export const Workflow = pgTable(
     ),
   ]
 )
+
+export type WorkflowEntity = typeof Workflow.$inferSelect
+export type CreateWorkflowInput = typeof Workflow.$inferInsert
+export type UpdateWorkflowInput = Partial<CreateWorkflowInput>

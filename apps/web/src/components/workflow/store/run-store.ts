@@ -2,8 +2,10 @@
 // Import immer config before creating the store to ensure Map/Set support is enabled
 import '~/lib/immer-config'
 import { WorkflowRunStatus } from '@auxx/database/enums'
-import type { WorkflowRunEntity as WorkflowRun } from '@auxx/database/models'
-import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/types'
+import type {
+  WorkflowNodeExecutionEntity as WorkflowNodeExecution,
+  WorkflowRunEntity as WorkflowRun,
+} from '@auxx/database/types'
 import type { WorkflowEventType } from '@auxx/lib/workflow-engine/types'
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'

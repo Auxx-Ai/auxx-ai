@@ -1,6 +1,6 @@
 // apps/web/src/app/(protected)/app/settings/webhooks/_components/webhook-list.tsx
 'use client'
-import type { WebhookEntity as Webhook } from '@auxx/database/models'
+import type { WebhookEntity as Webhook } from '@auxx/database/types'
 import {
   AlertDialog,
   AlertDialogAction,

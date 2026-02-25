@@ -1,8 +1,7 @@
 // packages/lib/src/participants/participant-service.ts
 
 import { type Database, database, schema } from '@auxx/database'
-import type { ParticipantEntity } from '@auxx/database/models'
-import type { IdentifierType } from '@auxx/database/types'
+import type { IdentifierType, ParticipantEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { ParticipantIdentifierType, ParticipantMeta } from './client'

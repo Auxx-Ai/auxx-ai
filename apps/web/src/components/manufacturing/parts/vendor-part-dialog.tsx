@@ -1,7 +1,7 @@
 // apps/web/src/components/manufacturing/parts/vendor-part-dialog.tsx
 'use client'
 
-import type { VendorPartEntity as VendorPart } from '@auxx/database/models'
+import type { VendorPartEntity as VendorPart } from '@auxx/database/types'
 import { getInstanceId, type RecordId, toRecordId } from '@auxx/lib/field-values/client'
 import { Button } from '@auxx/ui/components/button'
 import {

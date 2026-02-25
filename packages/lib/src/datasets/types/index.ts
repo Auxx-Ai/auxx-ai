@@ -1,14 +1,12 @@
 import type {
-  DatasetEntity as Dataset,
-  DocumentEntity as Document,
-  DocumentSegmentEntity as DocumentSegment,
-} from '@auxx/database/models'
-import type {
   ChunkingStrategy,
   ChunkSettings,
+  DatasetEntity as Dataset,
   DatasetSearchQueryEntity as DatasetSearchQuery,
   DatasetSearchResultEntity as DatasetSearchResult,
   DatasetStatus,
+  DocumentEntity as Document,
+  DocumentSegmentEntity as DocumentSegment,
   DocumentStatus,
   DocumentType,
   ExternalKnowledgeSourceEntity as ExternalKnowledgeSource,

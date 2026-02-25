@@ -2,7 +2,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { ApprovalStatus } from '@auxx/database/enums'
-import type { ApprovalRequestEntity as ApprovalRequest } from '@auxx/database/models'
+import type { ApprovalRequestEntity as ApprovalRequest } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { eq } from 'drizzle-orm'

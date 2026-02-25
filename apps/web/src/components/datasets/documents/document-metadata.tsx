@@ -1,6 +1,6 @@
 // apps/web/src/components/datasets/documents/document-metadata.tsx
 'use client'
-import type { DocumentEntity as Document } from '@auxx/database/models'
+import type { DocumentEntity as Document } from '@auxx/database/types'
 import { Separator } from '@auxx/ui/components/separator'
 import { format } from 'date-fns'
 import { DocumentStatus } from './document-utils'

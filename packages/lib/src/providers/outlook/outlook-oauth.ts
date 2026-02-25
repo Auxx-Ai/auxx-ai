@@ -3,7 +3,7 @@
 import { WEBAPP_URL } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
-import type { IntegrationEntity } from '@auxx/database/models'
+import type { IntegrationEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { ConfidentialClientApplication, LogLevel } from '@azure/msal-node'
 import { Client } from '@microsoft/microsoft-graph-client'

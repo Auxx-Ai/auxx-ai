@@ -8,11 +8,6 @@
       "import": "./dist/index.js",
       "default": "./src/index.ts"
     },
-    "./models": {
-      "types": "./src/models.ts",
-      "import": "./dist/models.js",
-      "default": "./src/models.ts"
-    },
     "./enums": {
       "types": "./src/enums.ts",
       "import": "./dist/enums.js",

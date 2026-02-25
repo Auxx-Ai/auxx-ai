@@ -48,3 +48,11 @@ export const OrganizationMember = pgTable(
     ),
   ]
 )
+
+export type OrganizationMemberEntity = typeof OrganizationMember.$inferSelect
+
+/** Minimal membership info used in auth checks */
+export type OrganizationMemberInfo = Pick<
+  OrganizationMemberEntity,
+  'id' | 'userId' | 'organizationId' | 'role' | 'status'
+>

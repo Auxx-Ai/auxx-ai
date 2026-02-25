@@ -2,12 +2,10 @@
 
 import type {
   MessageEntity as Message,
-  ParticipantEntity as Participant,
-  ThreadEntity as Thread,
-} from '@auxx/database/models'
-import type {
   MessageParticipantEntity as MessageParticipant,
   OrganizationEntity as Organization,
+  ParticipantEntity as Participant,
+  ThreadEntity as Thread,
 } from '@auxx/database/types'
 
 /**

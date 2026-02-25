@@ -11,10 +11,8 @@ import type {
   UserEntity as User,
   WorkflowEntity as Workflow,
   WorkflowAppEntity as WorkflowApp,
-  WorkflowRunEntity as WorkflowRun,
-} from '@auxx/database/models'
-import type {
   WorkflowNodeExecutionEntity as WorkflowNodeExecution,
+  WorkflowRunEntity as WorkflowRun,
   WorkflowRunStatus,
   WorkflowTriggerSource,
 } from '@auxx/database/types'

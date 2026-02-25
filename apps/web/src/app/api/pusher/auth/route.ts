@@ -1,8 +1,10 @@
 // ~/app/api/pusher/auth/route.ts
 
-import { ChatSessionModel, OrganizationMemberModel } from '@auxx/database/models'
+import { database, schema } from '@auxx/database'
+import { findMemberByUser } from '@auxx/lib/members'
 import { RealTimeService } from '@auxx/lib/realtime'
 import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
 import { auth } from '~/auth/server'
@@ -54,9 +56,12 @@ export async function POST(req: NextRequest) {
     if (!skipVerification) {
       try {
         // Check if the session exists
-        const chatModel = new ChatSessionModel()
-        const sessionRes = await chatModel.findByIdGlobal(sessionId)
-        const session = sessionRes.ok ? sessionRes.value : null
+        const [chatSession] = await database
+          .select()
+          .from(schema.ChatSession)
+          .where(eq(schema.ChatSession.id, sessionId))
+          .limit(1)
+        const session = chatSession ?? null
 
         if (!session) {
           logger.warn('Chat session not found', { sessionId, channel_name })
@@ -101,9 +106,7 @@ export async function POST(req: NextRequest) {
     const orgId = channel_name.replace('presence-org-', '')
 
     try {
-      const memberModel = new OrganizationMemberModel(orgId)
-      const memberRes = await memberModel.findMemberByUser(session.user.id)
-      const membership = memberRes.ok ? memberRes.value : null
+      const membership = await findMemberByUser(orgId, session.user.id)
 
       if (!membership && process.env.NODE_ENV !== 'development') {
         logger.warn('User not part of organization', { userId: session.user.id, orgId })

@@ -1,9 +1,6 @@
+// apps/web/src/app/api/shopify/webhook/route.ts
 import { configService } from '@auxx/credentials'
-import {
-  ShopifyIntegrationModel,
-  SubscriptionModel,
-  WebhookEventModel,
-} from '@auxx/database/models'
+import { database as db, schema } from '@auxx/database'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import {
   deleteWebhook,
@@ -13,6 +10,7 @@ import {
 } from '@auxx/lib/shopify'
 import { createScopedLogger } from '@auxx/logger'
 import { createHmac } from 'crypto'
+import { and, eq } from 'drizzle-orm'
 import type { NextRequest } from 'next/server'
 
 const logger = createScopedLogger('shopify/webhook')
@@ -41,9 +39,12 @@ export const POST = async (req: NextRequest) => {
     headers[key] = value
   }
 
-  const sim = new ShopifyIntegrationModel()
-  const intRes = await sim.findByIdGlobal(integrationId)
-  const integration = intRes.ok && intRes.value?.enabled ? intRes.value : null
+  const [integrationRow] = await db
+    .select()
+    .from(schema.ShopifyIntegration)
+    .where(eq(schema.ShopifyIntegration.id, integrationId))
+    .limit(1)
+  const integration = integrationRow?.enabled ? integrationRow : null
 
   // const user = await db.user.findFirst({
   //   where: { id: userId },
@@ -58,13 +59,25 @@ export const POST = async (req: NextRequest) => {
 
   // const body = await getRequestBody(req)
   const body = await req.text()
-  const subModel = new SubscriptionModel()
-  const subRes = await subModel.findByProviderIntegrationTopicGlobal({
-    provider: 'shopify',
-    integrationId,
-    topic: dbTopic,
-  })
-  const subscription = subRes.ok ? (subRes.value as any) : null
+  const [subscription] = await db
+    .select({
+      id: schema.Subscription.id,
+      provider: schema.Subscription.provider,
+      topic: schema.Subscription.topic,
+      active: schema.Subscription.active,
+      integrationId: schema.Subscription.integrationId,
+      createdAt: schema.Subscription.createdAt,
+      organizationId: schema.Subscription.organizationId,
+    })
+    .from(schema.Subscription)
+    .where(
+      and(
+        eq(schema.Subscription.provider, 'shopify'),
+        eq(schema.Subscription.integrationId, integrationId),
+        eq(schema.Subscription.topic, dbTopic)
+      )
+    )
+    .limit(1)
 
   if (!subscription) {
     logger.info('subscription not found', { provider: 'shopify', integrationId, dbTopic, topic })
@@ -73,16 +86,20 @@ export const POST = async (req: NextRequest) => {
     logger.info(`Subscription found: ${subscription.id}`)
   }
 
-  const weModel = new WebhookEventModel(subscription.organizationId)
-  const createRes = await weModel.create({
-    payload: body as any,
-    headers: JSON.stringify(headers) as any,
-    eventId: eventId as any,
-    topic: dbTopic as any,
-    subscriptionId: subscription.id as any,
-    integrationId: integrationId as any,
-  } as any)
-  const event = createRes.ok ? ({ id: createRes.value.id } as any) : null
+  const [webhookEventRecord] = await db
+    .insert(schema.WebhookEvent)
+    .values({
+      payload: body,
+      headers: JSON.stringify(headers),
+      eventId,
+      topic: dbTopic,
+      subscriptionId: subscription.id,
+      integrationId,
+      organizationId: subscription.organizationId,
+      updatedAt: new Date(),
+    })
+    .returning()
+  const event = webhookEventRecord ? { id: webhookEventRecord.id } : null
   if (event) {
     logger.info('subscription event created:', { eventId: event.id })
   } else {

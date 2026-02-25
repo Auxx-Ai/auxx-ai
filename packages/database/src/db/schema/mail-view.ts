@@ -53,3 +53,7 @@ export const MailView = pgTable(
     index('MailView_userId_idx').using('btree', table.userId.asc().nullsLast()),
   ]
 )
+
+export type MailViewEntity = typeof MailView.$inferSelect
+export type CreateMailViewInput = typeof MailView.$inferInsert
+export type UpdateMailViewInput = Partial<CreateMailViewInput>

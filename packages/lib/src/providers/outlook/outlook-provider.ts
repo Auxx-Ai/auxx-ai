@@ -3,7 +3,7 @@
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { IntegrationProviderType } from '@auxx/database/enums'
-import type { IntegrationEntity } from '@auxx/database/models'
+import type { IntegrationEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { getAttachmentByteSize, sanitizeFilename, toGraphRecipients } from '@auxx/utils'
 import {

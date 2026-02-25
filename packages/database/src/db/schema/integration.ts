@@ -77,3 +77,5 @@ export const Integration = pgTable(
     index('Integration_syncStatus_idx').using('btree', table.syncStatus.asc().nullsLast()),
   ]
 )
+
+export type IntegrationEntity = typeof Integration.$inferSelect
