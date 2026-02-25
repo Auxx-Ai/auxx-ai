@@ -1,0 +1,19 @@
+{
+  "name": "@auxx/e2e",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "playwright install chromium && cp -n .env.example .env || true",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "@auxx/typescript-config": "workspace:*",
+    "dotenv": "catalog:",
+    "typescript": "catalog:"
+  }
+}

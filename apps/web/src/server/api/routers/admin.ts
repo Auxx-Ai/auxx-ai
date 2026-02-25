@@ -3,7 +3,6 @@
 import { AdminBillingService, PlanAdminService, PlanService } from '@auxx/billing'
 import { WEBAPP_URL } from '@auxx/config/server'
 import { AdminService } from '@auxx/lib/admin'
-import { OrganizationSeeder } from '@auxx/seed'
 import { z } from 'zod'
 import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
 import { adminAppsRouter } from './admin-apps'
@@ -197,7 +196,8 @@ export const adminRouter = createTRPCRouter({
         mode: z.enum(['reset', 'additive']),
       })
     )
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ input }) => {
+      const { OrganizationSeeder } = await import('@auxx/seed')
       await OrganizationSeeder.seedOrganization(input.organizationId, input.mode)
 
       return {

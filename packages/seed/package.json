@@ -2,15 +2,27 @@
   "name": "@auxx/seed",
   "version": "1.0.0",
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json --noCheck && tsc-esm-fix --target=dist",
     "seed": "tsx scripts/seed.ts",
     "seed:dev": "tsx scripts/seed.ts --scenario=development",
     "seed:test": "tsx scripts/seed.ts --scenario=testing --reset",
     "seed:screenshot": "tsx scripts/seed.ts --scenario=screenshot --reset",
     "seed:performance": "tsx scripts/seed.ts --scenario=performance",
-    "clean": "rm -rf node_modules"
+    "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo"
   },
   "dependencies": {
     "@auxx/config": "workspace:*",
@@ -31,7 +43,9 @@
     "tsx": "catalog:"
   },
   "devDependencies": {
+    "@auxx/typescript-config": "workspace:*",
     "@types/node": "catalog:",
+    "tsc-esm-fix": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
