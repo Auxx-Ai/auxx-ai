@@ -28,49 +28,49 @@ Auxx.ai is an open-source AI-powered email support ticket answer service for Sho
 
 ### Apps
 
-| App | Port | Purpose |
-|-----|------|---------|
-| `apps/web` | 3000 | Main Next.js application |
-| `apps/api` | 3007 | Express REST API |
-| `apps/worker` | 3005 | Job/queue worker (BullMQ) |
-| `apps/lambda` | 3008 | AWS Lambda handlers |
-| `apps/build` | 3006 | Build-time utilities |
-| `apps/homepage` | 3001 | Marketing site |
-| `apps/kb` | 3002 | Knowledge base |
-| `apps/docs` | 3004 | Documentation |
+| App             | Port | Purpose                   |
+| --------------- | ---- | ------------------------- |
+| `apps/web`      | 3000 | Main Next.js application  |
+| `apps/api`      | 3007 | Express REST API          |
+| `apps/worker`   | 3005 | Job/queue worker (BullMQ) |
+| `apps/lambda`   | 3008 | AWS Lambda handlers       |
+| `apps/build`    | 3006 | Build-time utilities      |
+| `apps/homepage` | 3001 | Marketing site            |
+| `apps/kb`       | 3002 | Knowledge base            |
+| `apps/docs`     | 3004 | Documentation             |
 
 ### Key Packages
 
-| Package | Purpose |
-|---------|---------|
-| `@auxx/database` | Drizzle schema, models, migrations |
-| `@auxx/lib` | Shared business logic (~70 feature modules) |
-| `@auxx/ui` | Shadcn component library |
-| `@auxx/types` | Shared TypeScript types |
-| `@auxx/services` | Business service layer |
-| `@auxx/config` | Configuration management |
-| `@auxx/credentials` | Credential/secret management |
-| `@auxx/redis` | Redis client wrapper |
-| `@auxx/email` | Email service (Mailgun, SES, SMTP) |
-| `@auxx/billing` | Stripe integration |
-| `@auxx/sdk` | Public SDK |
+| Package             | Purpose                                     |
+| ------------------- | ------------------------------------------- |
+| `@auxx/database`    | Drizzle schema, models, migrations          |
+| `@auxx/lib`         | Shared business logic (~70 feature modules) |
+| `@auxx/ui`          | Shadcn component library                    |
+| `@auxx/types`       | Shared TypeScript types                     |
+| `@auxx/services`    | Business service layer                      |
+| `@auxx/config`      | Configuration management                    |
+| `@auxx/credentials` | Credential/secret management                |
+| `@auxx/redis`       | Redis client wrapper                        |
+| `@auxx/email`       | Email service (Mailgun, SES, SMTP)          |
+| `@auxx/billing`     | Stripe integration                          |
+| `@auxx/sdk`         | Public SDK                                  |
 
 ### Key Paths
 
-| What | Where |
-|------|-------|
-| Next.js app routes | `apps/web/src/app/` |
-| tRPC routers | `apps/web/src/server/api/routers/` |
-| tRPC root router | `apps/web/src/server/api/root.ts` |
-| tRPC setup & middleware | `apps/web/src/server/api/trpc.ts` |
-| Auth config | `apps/web/src/auth/server.ts` |
-| DB schema files | `packages/database/src/db/schema/` |
-| DB models | `packages/database/src/db/models/` |
-| Shared lib modules | `packages/lib/src/` |
-| UI components | `packages/ui/src/components/` |
-| Infrastructure (SST) | `infra/` |
-| CI/CD workflows | `.github/workflows/` |
-| Environment template | `.env.example` |
+| What                    | Where                              |
+| ----------------------- | ---------------------------------- |
+| Next.js app routes      | `apps/web/src/app/`                |
+| tRPC routers            | `apps/web/src/server/api/routers/` |
+| tRPC root router        | `apps/web/src/server/api/root.ts`  |
+| tRPC setup & middleware | `apps/web/src/server/api/trpc.ts`  |
+| Auth config             | `apps/web/src/auth/server.ts`      |
+| DB schema files         | `packages/database/src/db/schema/` |
+| DB models               | `packages/database/src/db/models/` |
+| Shared lib modules      | `packages/lib/src/`                |
+| UI components           | `packages/ui/src/components/`      |
+| Infrastructure (SST)    | `infra/`                           |
+| CI/CD workflows         | `.github/workflows/`               |
+| Environment template    | `.env.example`                     |
 
 ---
 
@@ -109,12 +109,12 @@ If a constant/type doesn't exist in the `/client` export yet, add it there first
 
 ### tRPC Procedure Types
 
-| Procedure | Use for |
-|-----------|---------|
-| `publicProcedure` | Unauthenticated routes |
-| `protectedProcedure` | Authenticated routes (verifies session + organization) |
-| `adminProcedure` | Admin/owner only (checks via `OrganizationMemberModel.isAdminOrOwner()`) |
-| `superAdminProcedure` | Super admin only (checks `isSuperAdmin` flag) |
+| Procedure             | Use for                                                                  |
+| --------------------- | ------------------------------------------------------------------------ |
+| `publicProcedure`     | Unauthenticated routes                                                   |
+| `protectedProcedure`  | Authenticated routes (verifies session + organization)                   |
+| `adminProcedure`      | Admin/owner only (checks via `OrganizationMemberModel.isAdminOrOwner()`) |
+| `superAdminProcedure` | Super admin only (checks `isSuperAdmin` flag)                            |
 
 ### tRPC Context
 
@@ -142,15 +142,15 @@ ctx.headers   // Request headers
 
 Use the appropriate error class. All extend `AuxxError`:
 
-| Class | Status | Use for |
-|-------|--------|---------|
-| `BadRequestError` | 400 | Invalid input |
-| `UnauthorizedError` | 401 | Not authenticated |
-| `ForbiddenError` | 403 | Not authorized |
-| `NotFoundError` | 404 | Resource not found |
-| `ConflictError` | 409 | Duplicate/conflict |
-| `UnprocessableEntityError` | 422 | Validation failure |
-| `RateLimitError` | 429 | Too many requests |
+| Class                      | Status | Use for            |
+| -------------------------- | ------ | ------------------ |
+| `BadRequestError`          | 400    | Invalid input      |
+| `UnauthorizedError`        | 401    | Not authenticated  |
+| `ForbiddenError`           | 403    | Not authorized     |
+| `NotFoundError`            | 404    | Resource not found |
+| `ConflictError`            | 409    | Duplicate/conflict |
+| `UnprocessableEntityError` | 422    | Validation failure |
+| `RateLimitError`           | 429    | Too many requests  |
 
 ### Result Pattern (`@auxx/lib/result`)
 
@@ -296,3 +296,33 @@ pnpm db:migrate
 - **Do NOT run `tsc` type checking.** Too many errors — it will run out of memory.
 - **Do NOT build the program to check for errors.**
 - **Do NOT stop the dev server.**
+
+---
+
+# AWS Debugging (dev)
+
+**Region:** `us-west-1` | **Profile:** `auxxai-dev`
+
+```bash
+# Login (if SSO session expired)
+aws sso login --profile auxxai-dev
+
+# Tail logs (add --follow for live streaming)
+# Worker (BullMQ jobs):
+aws logs tail "/sst/cluster/auxxai-app-dev-AuxxAiClusterCluster-vawwaodt/auxxai-app-dev-AuxxAiWorker-wmahrwnv/AuxxAiWorker" --profile auxxai-dev --region us-west-1 --since 1h
+# Web server (Next.js SSR):
+aws logs tail "/aws/lambda/auxxai-app-dev-AuxxAiWebServerUswest1Function-takkzbrr" --profile auxxai-dev --region us-west-1 --since 1h
+# Server function executor (Deno Lambda):
+aws logs tail "/aws/lambda/auxxai-app-dev-ServerFunctionExecutorFunction-tcsxknuw" --profile auxxai-dev --region us-west-1 --since 1h
+# DB migrations:
+aws logs tail "/aws/lambda/auxxai-app-dev-DatabaseDeployFunctionFunction-znndmuhe" --profile auxxai-dev --region us-west-1 --since 1h
+
+# Search logs for errors
+aws logs filter-log-events --log-group-name "<log-group>" --filter-pattern "ERROR" --start-time $(date -v-1H +%s000) --profile auxxai-dev --region us-west-1
+
+# ECS worker status
+aws ecs describe-services --cluster auxxai-app-dev-AuxxAiClusterCluster-vawwaodt --services AuxxAiWorker --profile auxxai-dev --region us-west-1
+
+# RDS status
+aws rds describe-db-instances --profile auxxai-dev --region us-west-1 --query 'DBInstances[0].{Status:DBInstanceStatus,Endpoint:Endpoint.Address}'
+```
