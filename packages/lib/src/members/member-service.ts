@@ -6,7 +6,6 @@
 import { SubscriptionService } from '@auxx/billing'
 import { WEBAPP_URL } from '@auxx/config/server'
 import { type Database, database, schema } from '@auxx/database'
-import { OrganizationMemberModel } from '@auxx/database/models'
 import type {
   OrganizationInvitationEntity as OrganizationInvitation,
   OrganizationRole,
@@ -14,11 +13,12 @@ import type {
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import crypto from 'crypto'
-import { and, asc, eq, gt, ilike, sql } from 'drizzle-orm'
+import { and, asc, count, eq, gt, ilike, sql } from 'drizzle-orm'
 import { publisher } from '../events'
 import { enqueueEmailJob } from '../jobs/email'
 import { FeaturePermissionService } from '../permissions/feature-permission-service'
 import { FeatureKey } from '../permissions/types'
+import { findMemberByUser } from './member-queries'
 
 const logger = createScopedLogger('member-service')
 
@@ -53,17 +53,8 @@ export class MemberService {
   // --- Permission Checks ---
 
   private async checkAdminOrOwnerPermission(userId: string, organizationId: string): Promise<void> {
-    const memberModel = new OrganizationMemberModel(organizationId, this.db)
-    const membershipResult = await memberModel.findMemberByUser(userId)
+    const membership = await findMemberByUser(organizationId, userId, this.db)
 
-    if (!membershipResult.ok) {
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'Failed to check member permissions.',
-      })
-    }
-
-    const membership = membershipResult.value
     if (!membership || (membership.role !== 'OWNER' && membership.role !== 'ADMIN')) {
       throw new TRPCError({
         code: 'FORBIDDEN',
@@ -73,17 +64,8 @@ export class MemberService {
   }
 
   private async checkOwnerPermission(userId: string, organizationId: string): Promise<void> {
-    const memberModel = new OrganizationMemberModel(organizationId, this.db)
-    const membershipResult = await memberModel.findMemberByUser(userId)
+    const membership = await findMemberByUser(organizationId, userId, this.db)
 
-    if (!membershipResult.ok) {
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'Failed to check member permissions.',
-      })
-    }
-
-    const membership = membershipResult.value
     if (!membership || membership.role !== 'OWNER') {
       throw new TRPCError({
         code: 'FORBIDDEN',
@@ -171,10 +153,9 @@ export class MemberService {
 
     // 3. Check if user is ALREADY a member of THIS organization
     if (existingUser) {
-      const memberModel = new OrganizationMemberModel(organizationId, this.db)
-      const membershipResult = await memberModel.findMemberByUser(existingUser.id)
+      const existingMember = await findMemberByUser(organizationId, existingUser.id, this.db)
 
-      if (membershipResult.ok && membershipResult.value) {
+      if (existingMember) {
         logger.warn('User is already a member', { userId: existingUser.id, organizationId })
         throw new TRPCError({
           code: 'BAD_REQUEST',
@@ -610,19 +591,17 @@ export class MemberService {
 
     if (typeof memberLimit === 'number' && memberLimit >= 0) {
       // Check numeric limits (including 0)
-      const memberModel = new OrganizationMemberModel(organizationId, this.db)
-      const countResult = await memberModel.count({
-        where: eq(schema.OrganizationMember.status, 'ACTIVE'),
-      })
+      const [countRow] = await this.db
+        .select({ value: count() })
+        .from(schema.OrganizationMember)
+        .where(
+          and(
+            eq(schema.OrganizationMember.organizationId, organizationId),
+            eq(schema.OrganizationMember.status, 'ACTIVE')
+          )
+        )
 
-      if (!countResult.ok) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to check member count.',
-        })
-      }
-
-      activeMemberCount = countResult.value ?? 0
+      activeMemberCount = countRow?.value ?? 0
 
       if (activeMemberCount >= memberLimit) {
         logger.warn('Invitation acceptance blocked by helper: Member limit reached.', {
@@ -858,10 +837,11 @@ export class MemberService {
     }
 
     // 2. Check if already member (Token flow: okay if already member, just mark invite accepted)
-    const memberModel = new OrganizationMemberModel(invitation.organizationId, this.db)
-    const membershipResult = await memberModel.findMemberByUser(acceptingUserId)
-
-    const existingMembership = membershipResult.ok ? membershipResult.value : null
+    const existingMembership = await findMemberByUser(
+      invitation.organizationId,
+      acceptingUserId,
+      this.db
+    )
     if (existingMembership) {
       logger.warn('User (via token) is already a member', {
         userId: acceptingUserId,
@@ -938,10 +918,11 @@ export class MemberService {
     }
 
     // 2. Check if already member (ID flow: user shouldn't be accepting if already member - Error out)
-    const memberModel2 = new OrganizationMemberModel(invitation.organizationId, this.db)
-    const membershipResult2 = await memberModel2.findMemberByUser(acceptingUserId)
-
-    const existingMembership = membershipResult2.ok ? membershipResult2.value : null
+    const existingMembership = await findMemberByUser(
+      invitation.organizationId,
+      acceptingUserId,
+      this.db
+    )
     if (existingMembership) {
       logger.warn('User (via ID) is already a member, but trying to accept again.', {
         userId: acceptingUserId,
@@ -984,10 +965,7 @@ export class MemberService {
     logger.info('Attempting to remove member', { organizationId, memberToRemoveId, removerUserId })
 
     // 1. Check permissions of the user performing the action
-    const removerModel = new OrganizationMemberModel(organizationId, this.db)
-    const removerResult = await removerModel.findMemberByUser(removerUserId)
-
-    const removerMembership = removerResult.ok ? removerResult.value : null
+    const removerMembership = await findMemberByUser(organizationId, removerUserId, this.db)
     if (!removerMembership) {
       throw new TRPCError({
         code: 'FORBIDDEN',
@@ -996,9 +974,7 @@ export class MemberService {
     }
 
     // 2. Get the membership of the user to be removed
-    const targetResult = await removerModel.findMemberByUser(memberToRemoveId)
-
-    const targetMembership = targetResult.ok ? targetResult.value : null
+    const targetMembership = await findMemberByUser(organizationId, memberToRemoveId, this.db)
     if (!targetMembership) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Member not found in this organization.' })
     }
@@ -1079,10 +1055,7 @@ export class MemberService {
     })
 
     // 1. Check permissions of the user performing the action
-    const updaterModel = new OrganizationMemberModel(organizationId, this.db)
-    const updaterResult = await updaterModel.findMemberByUser(updaterUserId)
-
-    const updaterMembership = updaterResult.ok ? updaterResult.value : null
+    const updaterMembership = await findMemberByUser(organizationId, updaterUserId, this.db)
     if (!updaterMembership) {
       throw new TRPCError({
         code: 'FORBIDDEN',
@@ -1091,9 +1064,7 @@ export class MemberService {
     }
 
     // 2. Get the membership of the user being updated
-    const targetResult = await updaterModel.findMemberByUser(memberToUpdateId)
-
-    const targetMembership = targetResult.ok ? targetResult.value : null
+    const targetMembership = await findMemberByUser(organizationId, memberToUpdateId, this.db)
     if (!targetMembership) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Member not found.' })
     }

@@ -1,7 +1,6 @@
 // packages/lib/src/datasets/services/dataset-embedding-validator.ts
 
 import { database as db, schema } from '@auxx/database'
-import { ModelConfigurationModel, ProviderConfigurationModel } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq } from 'drizzle-orm'
 import { SystemModelService } from '../../ai/providers/system-model-service'
@@ -83,15 +82,16 @@ export class DatasetEmbeddingValidator {
       }
 
       // Check if organization has this provider configured
-      const providerConfigModel = new ProviderConfigurationModel(organizationId)
-      const providerConfigResult = await providerConfigModel.findFirst({
-        where: eq(schema.ProviderConfiguration.provider, provider),
-      })
-
-      if (!providerConfigResult.ok) {
-        throw providerConfigResult.error
-      }
-      const providerConfig = providerConfigResult.value
+      const [providerConfig] = await db
+        .select()
+        .from(schema.ProviderConfiguration)
+        .where(
+          and(
+            eq(schema.ProviderConfiguration.organizationId, organizationId),
+            eq(schema.ProviderConfiguration.provider, provider)
+          )
+        )
+        .limit(1)
 
       if (!providerConfig) {
         errors.push(`Provider '${provider}' is not configured for this organization`)
@@ -100,33 +100,32 @@ export class DatasetEmbeddingValidator {
       }
 
       // Check if the specific model is configured for text embedding
-      const modelConfigModel = new ModelConfigurationModel(organizationId)
-      const modelConfigResult = await modelConfigModel.findFirst({
-        where: and(
-          eq(schema.ModelConfiguration.model, model),
-          eq(schema.ModelConfiguration.modelType, 'text-embedding'),
-          eq(schema.ModelConfiguration.enabled, true)
-        ),
-      })
-
-      if (!modelConfigResult.ok) {
-        throw modelConfigResult.error
-      }
-      const modelConfig = modelConfigResult.value
+      const [modelConfig] = await db
+        .select()
+        .from(schema.ModelConfiguration)
+        .where(
+          and(
+            eq(schema.ModelConfiguration.organizationId, organizationId),
+            eq(schema.ModelConfiguration.model, model),
+            eq(schema.ModelConfiguration.modelType, 'text-embedding'),
+            eq(schema.ModelConfiguration.enabled, true)
+          )
+        )
+        .limit(1)
 
       if (!modelConfig) {
         // Check if we have any embedding models for this organization
-        const anyEmbeddingModelResult = await modelConfigModel.findFirst({
-          where: and(
-            eq(schema.ModelConfiguration.modelType, 'text-embedding'),
-            eq(schema.ModelConfiguration.enabled, true)
-          ),
-        })
-
-        if (!anyEmbeddingModelResult.ok) {
-          throw anyEmbeddingModelResult.error
-        }
-        const anyEmbeddingModel = anyEmbeddingModelResult.value
+        const [anyEmbeddingModel] = await db
+          .select()
+          .from(schema.ModelConfiguration)
+          .where(
+            and(
+              eq(schema.ModelConfiguration.organizationId, organizationId),
+              eq(schema.ModelConfiguration.modelType, 'text-embedding'),
+              eq(schema.ModelConfiguration.enabled, true)
+            )
+          )
+          .limit(1)
 
         if (anyEmbeddingModel) {
           warnings.push(

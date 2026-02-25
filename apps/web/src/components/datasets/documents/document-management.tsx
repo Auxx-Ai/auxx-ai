@@ -1,6 +1,6 @@
 // apps/web/src/components/datasets/documents/document-management.tsx
 'use client'
-import type { DocumentEntity as Document } from '@auxx/database/models'
+import type { DocumentEntity as Document } from '@auxx/database/types'
 import { Button } from '@auxx/ui/components/button'
 import { toastError, toastInfo, toastSuccess } from '@auxx/ui/components/toast'
 import { CircleDot, CircleSlash, FileText, Plus, Trash2 } from 'lucide-react'

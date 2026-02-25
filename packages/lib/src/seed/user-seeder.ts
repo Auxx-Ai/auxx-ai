@@ -1,6 +1,6 @@
 // packages/lib/src/seed/user-seeder.ts
 import { type Database, database as defaultDb, schema } from '@auxx/database'
-import type { UserEntity as User } from '@auxx/database/models'
+import type { UserEntity as User } from '@auxx/database/types'
 import { and, eq, inArray } from 'drizzle-orm'
 import { createScopedLogger } from '../logger'
 import { UserAvatarService } from '../users/user-avatar-service'

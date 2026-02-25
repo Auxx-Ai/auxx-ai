@@ -53,3 +53,5 @@ export const User = pgTable(
     uniqueIndex('User_email_key').using('btree', table.email.asc().nullsLast()),
   ]
 )
+
+export type UserEntity = typeof User.$inferSelect

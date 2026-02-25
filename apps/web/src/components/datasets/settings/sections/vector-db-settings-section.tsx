@@ -1,7 +1,6 @@
 // apps/web/src/components/datasets/settings/sections/vector-db-settings-section.tsx
 'use client'
-import type { DatasetEntity as Dataset } from '@auxx/database/models'
-import type { VectorDbType } from '@auxx/database/types'
+import type { DatasetEntity as Dataset, VectorDbType } from '@auxx/database/types'
 import { Button } from '@auxx/ui/components/button'
 import {
   Form,

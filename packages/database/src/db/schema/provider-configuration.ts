@@ -53,3 +53,5 @@ export const ProviderConfiguration = pgTable(
     ),
   ]
 )
+
+export type ProviderConfigurationEntity = typeof ProviderConfiguration.$inferSelect

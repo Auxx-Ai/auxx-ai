@@ -9,11 +9,12 @@ import {
   ThreadStatus,
 } from '@auxx/database/enums'
 import type {
+  IdentifierType,
   MessageEntity as Message,
   ParticipantEntity as Participant,
+  ParticipantRole,
   ThreadEntity as Thread,
-} from '@auxx/database/models'
-import type { IdentifierType, ParticipantRole } from '@auxx/database/types'
+} from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'

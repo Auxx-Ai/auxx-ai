@@ -114,3 +114,7 @@ export const DocumentSegment = pgTable(
       .where(sql`((enabled = true) AND ("indexStatus" = 'INDEXED'::"IndexStatus"))`),
   ]
 )
+
+export type DocumentSegmentEntity = typeof DocumentSegment.$inferSelect
+export type CreateDocumentSegmentInput = typeof DocumentSegment.$inferInsert
+export type UpdateDocumentSegmentInput = Partial<CreateDocumentSegmentInput>

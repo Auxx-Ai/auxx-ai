@@ -1,7 +1,8 @@
 // apps/web/src/server/api/routers/ticketAgent.ts
 
-import { OrganizationMemberModel, UserModel } from '@auxx/database/models'
+import { listMembersWithUser } from '@auxx/lib/members'
 import { UnifiedCrudHandler } from '@auxx/lib/resources'
+import { getUserById } from '@auxx/lib/users'
 import { toRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
@@ -13,10 +14,8 @@ export const ticketAgentRouter = createTRPCRouter({
    */
   getAvailableAgents: protectedProcedure.query(async ({ ctx }) => {
     const { organizationId } = ctx.session
-    const om = new OrganizationMemberModel(organizationId)
-    const res = await om.listWithUser({})
-    const agents = res.ok ? res.value : []
-    return agents?.map((agent: any) => ({ ...agent.user, role: agent.role }))
+    const agents = await listMembersWithUser(organizationId)
+    return agents.map((agent: any) => ({ ...agent.user, role: agent.role }))
   }),
 
   /**
@@ -31,9 +30,7 @@ export const ticketAgentRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
 
       // Check if the agent exists
-      const uModel = new UserModel()
-      const uRes = await uModel.findById(agentId)
-      const agent = uRes.ok ? uRes.value : null
+      const agent = await getUserById(agentId)
       if (!agent) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
       }

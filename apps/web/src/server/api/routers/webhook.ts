@@ -1,6 +1,7 @@
-import { SubscriptionModel } from '@auxx/database/models'
+import { schema } from '@auxx/database'
 import { WebhookService } from '@auxx/lib/webhooks'
 import { WEBHOOK_EVENT_TYPES } from '@auxx/lib/webhooks/types'
+import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
@@ -123,11 +124,25 @@ export const webhookRouters = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
-      // Use Drizzle model with scoped, safe selection
-      const model = new SubscriptionModel(organizationId)
-      const result = await model.listByProvider({ provider: input.provider, topic: input.topic })
-      if (!result.ok) throw result.error
+      const conditions = [
+        eq(schema.Subscription.organizationId, organizationId),
+        eq(schema.Subscription.provider, input.provider),
+      ]
+      if (input.topic) conditions.push(eq(schema.Subscription.topic, input.topic))
 
-      return { subscriptions: result.value }
+      const rows = await ctx.db
+        .select({
+          id: schema.Subscription.id,
+          provider: schema.Subscription.provider,
+          topic: schema.Subscription.topic,
+          active: schema.Subscription.active,
+          integrationId: schema.Subscription.integrationId,
+          createdAt: schema.Subscription.createdAt,
+        })
+        .from(schema.Subscription)
+        .where(and(...conditions))
+        .orderBy(desc(schema.Subscription.createdAt))
+
+      return { subscriptions: rows }
     }),
 })

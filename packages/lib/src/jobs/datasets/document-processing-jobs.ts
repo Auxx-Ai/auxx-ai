@@ -24,11 +24,11 @@
  *   - generateEmbeddingsFlowJob (flow job: DocumentFlowJobs.GENERATE_EMBEDDINGS)
  */
 
-import { database as db } from '@auxx/database'
+import { database as db, schema } from '@auxx/database'
 import { DocumentStatus } from '@auxx/database/enums'
-import { DocumentModel, DocumentSegmentModel } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
+import { and, eq, inArray } from 'drizzle-orm'
 import { RedisDocumentExecutionReporter } from '../../datasets/events/document-execution-reporter'
 import { DocumentEventType } from '../../datasets/events/types'
 import { DocumentService } from '../../datasets/services/document-service'
@@ -110,8 +110,12 @@ export const processDocumentJob = async (
     })
 
     // Update document status to failed
-    const docModel = new DocumentModel(organizationId)
-    await docModel.update(documentId, { status: 'FAILED' as any })
+    await db
+      .update(schema.Document)
+      .set({ status: 'FAILED' as any, updatedAt: new Date() })
+      .where(
+        and(eq(schema.Document.id, documentId), eq(schema.Document.organizationId, organizationId))
+      )
 
     throw error
   }
@@ -495,17 +499,25 @@ export const batchOperationJob = async (
     switch (operation) {
       case 'delete':
         if (targetType === 'documents') {
-          {
-            const docModel = new DocumentModel(organizationId)
-            await docModel.deleteMany(targetIds)
-            result = { success: true }
-          }
+          await db
+            .delete(schema.Document)
+            .where(
+              and(
+                inArray(schema.Document.id, targetIds),
+                eq(schema.Document.organizationId, organizationId)
+              )
+            )
+          result = { success: true }
         } else if (targetType === 'segments') {
-          {
-            const segModel = new DocumentSegmentModel(organizationId)
-            await segModel.deleteMany(targetIds)
-            result = { success: true }
-          }
+          await db
+            .delete(schema.DocumentSegment)
+            .where(
+              and(
+                inArray(schema.DocumentSegment.id, targetIds),
+                eq(schema.DocumentSegment.organizationId, organizationId)
+              )
+            )
+          result = { success: true }
         }
         break
 

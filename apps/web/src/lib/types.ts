@@ -1,4 +1,4 @@
-import type { UserEntity as User } from '@auxx/database/models'
+import type { UserEntity as User } from '@auxx/database/types'
 import type { gmail_v1 } from 'googleapis'
 import { z } from 'zod'
 

@@ -7,7 +7,7 @@ import type {
   ResourceGranteeType,
   ResourcePermission,
 } from '@auxx/database/enums'
-import type { EntityInstanceEntity } from '@auxx/database/models'
+import type { EntityInstanceEntity } from '@auxx/database/types'
 
 // ============================================================================
 // Context & Input Types

@@ -1,7 +1,7 @@
 // apps/web/src/components/datasets/documents/document-name-cell.tsx
 'use client'
 
-import type { DocumentEntity as Document } from '@auxx/database/models'
+import type { DocumentEntity as Document } from '@auxx/database/types'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { Archive, ArchiveRestore, Download, Eye, Trash2 } from 'lucide-react'
 import { PrimaryCell } from '~/components/dynamic-table'

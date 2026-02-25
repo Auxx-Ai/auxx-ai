@@ -2,7 +2,6 @@
 
 import { schema } from '@auxx/database'
 import { WorkflowRunStatus } from '@auxx/database/enums'
-import { WorkflowAppModel } from '@auxx/database/models'
 import {
   triggerManualResourceWorkflow,
   triggerManualResourceWorkflowBulk,
@@ -460,12 +459,20 @@ export const workflowRouter = createTRPCRouter({
       const versionService = new WorkflowVersionService(ctx.db)
       try {
         // Get the workflow app with draft workflow for validation
-        const appModel = new WorkflowAppModel(ctx.session.organizationId)
-        const appRes = await appModel.findWithDraftById(input.workflowId)
-        const workflowApp =
-          appRes.ok && appRes.value!.app
-            ? { ...appRes.value!.app, draftWorkflow: appRes.value!.draftWorkflow }
-            : null
+        const [appResult] = await ctx.db
+          .select({ app: schema.WorkflowApp, draft: schema.Workflow })
+          .from(schema.WorkflowApp)
+          .leftJoin(schema.Workflow, eq(schema.Workflow.id, schema.WorkflowApp.draftWorkflowId))
+          .where(
+            and(
+              eq(schema.WorkflowApp.id, input.workflowId),
+              eq(schema.WorkflowApp.organizationId, ctx.session.organizationId)
+            )
+          )
+          .limit(1)
+        const workflowApp = appResult?.app
+          ? { ...appResult.app, draftWorkflow: appResult.draft ?? null }
+          : null
         if (!workflowApp) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' })
         }

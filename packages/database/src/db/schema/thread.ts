@@ -101,3 +101,7 @@ export const Thread = pgTable(
     index('Thread_inboxId_idx').using('btree', table.inboxId.asc().nullsLast()),
   ]
 )
+
+export type ThreadEntity = typeof Thread.$inferSelect
+export type CreateThreadInput = typeof Thread.$inferInsert
+export type UpdateThreadInput = Partial<CreateThreadInput>

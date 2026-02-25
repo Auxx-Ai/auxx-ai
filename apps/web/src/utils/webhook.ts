@@ -1,5 +1,7 @@
-import { UserModel } from '@auxx/database/models'
+// apps/web/src/utils/webhook.ts
+
 import type { ExecutedRule } from '@auxx/database/types'
+import { getUserByEmail } from '@auxx/lib/users'
 import { createScopedLogger } from '@auxx/logger'
 import { sleep } from './sleep'
 
@@ -18,9 +20,7 @@ type WebhookPayload = {
 }
 export const callWebhook = async (userEmail: string, url: string, payload: WebhookPayload) => {
   if (!url) throw new Error('Webhook URL is required')
-  const userModel = new UserModel()
-  const userRes = await userModel.findByEmail(userEmail)
-  const user = userRes.ok ? userRes.value : null
+  const user = await getUserByEmail(userEmail)
   if (!user) throw new Error('User not found')
   try {
     await Promise.race([

@@ -1,7 +1,8 @@
 import { generateSecureToken, hashApiKey } from '@auxx/credentials/api-key'
-import { ApiKeyModel, WorkflowAppModel } from '@auxx/database/models'
+import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
@@ -19,19 +20,32 @@ export const apiKeyRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      const model = new ApiKeyModel(ctx.session.organizationId)
+      const orgId = ctx.session.organizationId
 
       if (input.workflowAppId) {
-        // Get workflow-scoped keys for specific workflow
-        const res = await model.listActiveByWorkflow(input.workflowAppId)
-        if (!res.ok) throw res.error
-        return res.value
+        return ctx.db
+          .select()
+          .from(schema.ApiKey)
+          .where(
+            and(
+              eq(schema.ApiKey.organizationId, orgId),
+              eq(schema.ApiKey.type, 'workflow'),
+              eq(schema.ApiKey.referenceId, input.workflowAppId),
+              eq(schema.ApiKey.isActive, true)
+            )
+          )
       }
 
-      // Default: get user's org-level keys (existing behavior)
-      const res = await model.listActiveByUser(ctx.session.user.id)
-      if (!res.ok) throw res.error
-      return res.value
+      return ctx.db
+        .select()
+        .from(schema.ApiKey)
+        .where(
+          and(
+            eq(schema.ApiKey.organizationId, orgId),
+            eq(schema.ApiKey.userId, ctx.session.user.id),
+            eq(schema.ApiKey.isActive, true)
+          )
+        )
     }),
 
   /**
@@ -48,6 +62,7 @@ export const apiKeyRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id
+      const orgId = ctx.session.organizationId
 
       // Validate workflow ownership if creating workflow key
       if (input.type === 'workflow') {
@@ -58,10 +73,16 @@ export const apiKeyRouter = createTRPCRouter({
           })
         }
 
-        // Verify user's org owns the workflow
-        const workflowModel = new WorkflowAppModel(ctx.session.organizationId)
-        const workflowRes = await workflowModel.findById(input.workflowAppId)
-        if (!workflowRes.ok || !workflowRes.value) {
+        const [workflowApp] = await ctx.db
+          .select()
+          .from(schema.WorkflowApp)
+          .where(
+            and(
+              eq(schema.WorkflowApp.id, input.workflowAppId),
+              eq(schema.WorkflowApp.organizationId, orgId)
+            )
+          )
+        if (!workflowApp) {
           throw new TRPCError({
             code: 'NOT_FOUND',
             message: 'Workflow not found',
@@ -69,16 +90,25 @@ export const apiKeyRouter = createTRPCRouter({
         }
       }
 
-      const model = new ApiKeyModel(ctx.session.organizationId)
-
-      // Check for duplicate name (only for same type/reference)
-      const existsRes = await model.findByNameForUser(userId, input.name)
-      const exists = existsRes.ok ? existsRes.value : null
-      if (exists) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'API key with this name already exists',
-        })
+      // Check for duplicate name
+      if (input.name) {
+        const [existing] = await ctx.db
+          .select()
+          .from(schema.ApiKey)
+          .where(
+            and(
+              eq(schema.ApiKey.organizationId, orgId),
+              eq(schema.ApiKey.userId, userId),
+              eq(schema.ApiKey.name, input.name)
+            )
+          )
+          .limit(1)
+        if (existing) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'API key with this name already exists',
+          })
+        }
       }
 
       logger.info('Creating API key', { userId, type: input.type })
@@ -86,30 +116,34 @@ export const apiKeyRouter = createTRPCRouter({
       const secretKey = generateSecureToken()
       const hashedKey = hashApiKey(secretKey)
 
-      // Extract last 5 characters from the key for identification
       const keySuffix = secretKey.slice(-5).toUpperCase()
       const defaultName =
         input.type === 'workflow' ? `Workflow Key ...${keySuffix}` : `Secret key ...${keySuffix}`
 
-      await model.create({
+      await ctx.db.insert(schema.ApiKey).values({
         userId,
-        name: (input.name || defaultName) as any,
+        organizationId: orgId,
+        name: input.name || defaultName,
         hashedKey,
         isActive: true,
         type: input.type,
         referenceId: input.type === 'workflow' ? input.workflowAppId : null,
-      } as any)
+        updatedAt: new Date(),
+      })
 
       return { secretKey }
     }),
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const userId = ctx.session.user.id
-      const model = new ApiKeyModel(ctx.session.organizationId)
-      await model.update(input.id, { isActive: false } as any)
-
-      // const account = new GoogleAccount(acc)
-      // return await account.deleteWebhook(input.webhookId)
+      await ctx.db
+        .update(schema.ApiKey)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.ApiKey.id, input.id),
+            eq(schema.ApiKey.organizationId, ctx.session.organizationId)
+          )
+        )
     }),
 })

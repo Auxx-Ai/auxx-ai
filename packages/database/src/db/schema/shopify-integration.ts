@@ -41,3 +41,5 @@ export const ShopifyIntegration = pgTable(
     index('ShopifyIntegration_shopDomain_idx').using('btree', table.shopDomain.asc().nullsLast()),
   ]
 )
+
+export type ShopifyIntegrationEntity = typeof ShopifyIntegration.$inferSelect

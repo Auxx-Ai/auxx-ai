@@ -1,12 +1,11 @@
 // packages/lib/src/resources/resource-fetcher.ts
 
-import { type Database, schema } from '@auxx/database'
-import { DatasetModel, MessageModel, ThreadModel, UserModel } from '@auxx/database/models'
+import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getEntityInstance } from '@auxx/services/entity-instances'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
-import { eq, type SQL, sql } from 'drizzle-orm'
+import { and, eq, type SQL, sql } from 'drizzle-orm'
 import {
   RESOURCE_FIELD_REGISTRY,
   RESOURCE_TABLE_MAP,
@@ -77,48 +76,69 @@ export async function executeResourceQuery(
       // These entity types now use EntityInstance queries via custom entity path.
 
       case 'thread': {
-        const model = new ThreadModel(organizationId)
+        const baseQuery = database.select().from(schema.Thread).$dynamic()
+        const whereClause = organizationId
+          ? and(eq(schema.Thread.organizationId, organizationId), whereSql)
+          : whereSql
         if (mode === 'findOne') {
-          const result = await model.findFirst({ where: whereSql, orderBy: orderSql, limit })
-          return result.ok ? result.value : null
-        } else {
-          const result = await model.findMany({ where: whereSql, orderBy: orderSql, limit })
-          return result.ok ? result.value : []
+          const [row] = await baseQuery
+            .where(whereClause)
+            .orderBy(...(orderSql ?? []))
+            .limit(1)
+          return row ?? null
         }
+        let q = baseQuery.where(whereClause).orderBy(...(orderSql ?? []))
+        if (limit) q = q.limit(limit)
+        return await q
       }
 
       case 'message': {
-        const model = new MessageModel(organizationId)
+        const baseQuery = database.select().from(schema.Message).$dynamic()
+        const whereClause = organizationId
+          ? and(eq(schema.Message.organizationId, organizationId), whereSql)
+          : whereSql
         if (mode === 'findOne') {
-          const result = await model.findFirst({ where: whereSql, orderBy: orderSql, limit })
-          return result.ok ? result.value : null
-        } else {
-          const result = await model.findMany({ where: whereSql, orderBy: orderSql, limit })
-          return result.ok ? result.value : []
+          const [row] = await baseQuery
+            .where(whereClause)
+            .orderBy(...(orderSql ?? []))
+            .limit(1)
+          return row ?? null
         }
+        let q = baseQuery.where(whereClause).orderBy(...(orderSql ?? []))
+        if (limit) q = q.limit(limit)
+        return await q
       }
 
       case 'user': {
-        // UserModel is global (no organizationId scope)
-        const model = new UserModel()
+        // User is global (no organizationId scope)
+        const baseQuery = database.select().from(schema.User).$dynamic()
         if (mode === 'findOne') {
-          const result = await model.findFirst({ where: whereSql, orderBy: orderSql, limit })
-          return result.ok ? result.value : null
-        } else {
-          const result = await model.findMany({ where: whereSql, orderBy: orderSql, limit })
-          return result.ok ? result.value : []
+          const [row] = await baseQuery
+            .where(whereSql)
+            .orderBy(...(orderSql ?? []))
+            .limit(1)
+          return row ?? null
         }
+        let q = baseQuery.where(whereSql).orderBy(...(orderSql ?? []))
+        if (limit) q = q.limit(limit)
+        return await q
       }
 
       case 'dataset': {
-        const model = new DatasetModel(organizationId)
+        const baseQuery = database.select().from(schema.Dataset).$dynamic()
+        const whereClause = organizationId
+          ? and(eq(schema.Dataset.organizationId, organizationId), whereSql)
+          : whereSql
         if (mode === 'findOne') {
-          const result = await model.findFirst({ where: whereSql, orderBy: orderSql, limit })
-          return result.ok ? result.value : null
-        } else {
-          const result = await model.findMany({ where: whereSql, orderBy: orderSql, limit })
-          return result.ok ? result.value : []
+          const [row] = await baseQuery
+            .where(whereClause)
+            .orderBy(...(orderSql ?? []))
+            .limit(1)
+          return row ?? null
         }
+        let q = baseQuery.where(whereClause).orderBy(...(orderSql ?? []))
+        if (limit) q = q.limit(limit)
+        return await q
       }
 
       default:

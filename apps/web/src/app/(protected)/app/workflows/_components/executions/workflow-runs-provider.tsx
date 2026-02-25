@@ -1,6 +1,6 @@
 // apps/web/src/app/(protected)/app/workflows/_components/executions/workflow-runs-provider.tsx
 'use client'
-import type { WorkflowRunEntity as WorkflowRun } from '@auxx/database/models'
+import type { WorkflowRunEntity as WorkflowRun } from '@auxx/database/types'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { addDays, endOfDay, startOfDay } from 'date-fns'
 import { useRouter } from 'next/navigation'

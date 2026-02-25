@@ -1,6 +1,6 @@
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
-import type { ShopifyIntegrationEntity } from '@auxx/database/models'
+import type { ShopifyIntegrationEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { createAdminApiClient } from '@shopify/admin-api-client'
 import { and, eq } from 'drizzle-orm'

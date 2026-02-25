@@ -66,3 +66,7 @@ export const ApprovalRequest = pgTable(
     ),
   ]
 )
+
+export type ApprovalRequestEntity = typeof ApprovalRequest.$inferSelect
+export type CreateApprovalRequestInput = typeof ApprovalRequest.$inferInsert
+export type UpdateApprovalRequestInput = Partial<CreateApprovalRequestInput>

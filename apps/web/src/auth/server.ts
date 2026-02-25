@@ -9,15 +9,16 @@ import {
 } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { database, schema } from '@auxx/database' // Drizzle database for services
-import { accountModel, UserModel } from '@auxx/database/models'
 import { enqueueEmailJob } from '@auxx/lib/jobs'
 import { seedNewUserDatabase } from '@auxx/lib/seed'
+import { getUserById } from '@auxx/lib/users'
 import { createScopedLogger } from '@auxx/logger'
 import { betterAuth } from 'better-auth' // core lib
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { nextCookies } from 'better-auth/next-js'
 import { bearer, customSession, oidcProvider, phoneNumber, twoFactor } from 'better-auth/plugins'
 import { passkey } from 'better-auth/plugins/passkey'
+import { eq } from 'drizzle-orm'
 import { isValidPhoneNumber } from 'libphonenumber-js'
 
 const logger = createScopedLogger('auth')
@@ -225,9 +226,8 @@ export const auth = betterAuth({
       }
 
       if (extendedUser && !extendedUser.defaultOrganizationId) {
-        const userModel = new UserModel()
-        const ures = await userModel.findById(extendedUser.id)
-        Object.assign(extendedUser, ures.ok && ures.value ? ures.value : {})
+        const freshUser = await getUserById(extendedUser.id)
+        Object.assign(extendedUser, freshUser ?? {})
 
         // console.log('new user with org id', extendedUser)
       }
@@ -272,11 +272,10 @@ export const auth = betterAuth({
       // }
 
       // Get user's authentication providers
-      const accModel = new accountModel()
-      const ares = await accModel.findMany()
-      const accounts = (ares.ok ? ares.value || [] : [])
-        .filter((a: any) => a.userId === extendedUser.id)
-        .map((a: any) => ({ providerId: a.providerId }))
+      const accounts = await database
+        .select({ providerId: schema.account.providerId })
+        .from(schema.account)
+        .where(eq(schema.account.userId, extendedUser.id))
 
       const providers = accounts.map((account) => account.providerId)
       const hasPassword = providers.includes('credential')

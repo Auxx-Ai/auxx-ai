@@ -114,3 +114,7 @@ export const Message = pgTable(
     ),
   ]
 )
+
+export type MessageEntity = typeof Message.$inferSelect
+export type CreateMessageInput = typeof Message.$inferInsert
+export type UpdateMessageInput = Partial<CreateMessageInput>

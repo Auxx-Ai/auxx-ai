@@ -1,10 +1,19 @@
-import { ShopifyIntegrationModel } from '@auxx/database/models'
+// packages/lib/src/shopify/utils.ts
+import { database as db, schema } from '@auxx/database'
+import { and, eq } from 'drizzle-orm'
 
 export async function isShopifyConnected(organizationId: string) {
-  const model = new ShopifyIntegrationModel(organizationId)
-  const res = await model.findEnabled()
-  if (!res.ok) return false
-  return !!res.value
+  const [integration] = await db
+    .select({ id: schema.ShopifyIntegration.id })
+    .from(schema.ShopifyIntegration)
+    .where(
+      and(
+        eq(schema.ShopifyIntegration.organizationId, organizationId),
+        eq(schema.ShopifyIntegration.enabled, true)
+      )
+    )
+    .limit(1)
+  return !!integration
 }
 
 export const extractShopifyId = (gid: string | null | number): number | null => {

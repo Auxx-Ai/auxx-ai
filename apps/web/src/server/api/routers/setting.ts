@@ -1,5 +1,5 @@
-import { OrganizationMemberModel } from '@auxx/database/models'
 import { DehydrationService } from '@auxx/lib/dehydration'
+import { findMemberByUser, isAdminOrOwner } from '@auxx/lib/members'
 import { SETTINGS_CATALOG, SettingsService } from '@auxx/lib/settings'
 import { createScopedLogger } from '@auxx/logger'
 import { z } from 'zod'
@@ -77,10 +77,8 @@ export const settingsRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const { key, value, allowUserOverride } = input
-      // Check permission via model: only owners and admins can update org settings
-      const memberModel = new OrganizationMemberModel(organizationId)
-      const allowedRes = await memberModel.isAdminOrOwner(userId)
-      if (!allowedRes.ok || !allowedRes.value) {
+      // Check permission: only owners and admins can update org settings
+      if (!(await isAdminOrOwner(organizationId, userId))) {
         throw new Error('You do not have permission to update organization settings')
       }
 
@@ -106,9 +104,8 @@ export const settingsRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
       const { key, value } = input
       // First check if user is a member of the organization
-      const memberModel = new OrganizationMemberModel(organizationId)
-      const memberRes = await memberModel.findMemberByUser(userId)
-      if (!memberRes.ok || !memberRes.value) {
+      const member = await findMemberByUser(organizationId, userId)
+      if (!member) {
         throw new Error('You are not a member of this organization')
       }
       logger.info('Updating user setting', { userId, organizationId, key, value })
@@ -145,9 +142,8 @@ export const settingsRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
       const { scope } = input
       // First check if user has permission to view org settings
-      const memberModel = new OrganizationMemberModel(organizationId)
-      const memberRes = await memberModel.findMemberByUser(userId)
-      if (!memberRes.ok || !memberRes.value) {
+      const member = await findMemberByUser(organizationId, userId)
+      if (!member) {
         throw new Error('You are not a member of this organization')
       }
 
@@ -161,10 +157,8 @@ export const settingsRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const { settings } = input
-      // Check permission via model: only owners and admins can update org settings
-      const memberModel = new OrganizationMemberModel(organizationId)
-      const allowedRes = await memberModel.isAdminOrOwner(userId)
-      if (!allowedRes.ok || !allowedRes.value) {
+      // Check permission: only owners and admins can update org settings
+      if (!(await isAdminOrOwner(organizationId, userId))) {
         throw new Error('You do not have permission to update organization settings')
       }
 

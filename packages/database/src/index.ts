@@ -3,10 +3,6 @@
 
 export type { Database, Transaction } from './db/client'
 export { database } from './db/client'
-// Re-export select models used by apps (keep minimal, add as needed)
-export { type SubscriptionListItem, SubscriptionModel } from './db/models/subscription'
-export { type SyncJobListItem, SyncJobModel } from './db/models/sync-job'
-export type { UserEntity } from './db/models/user'
 export * as schema from './db/schema'
 // Also export tables directly for named imports (preferable to schema namespace)
 export * from './db/schema'

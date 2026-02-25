@@ -1,7 +1,7 @@
 // apps/web/src/components/drawers/tabs/contact-parts-tab.tsx
 'use client'
 
-import type { VendorPartEntity as VendorPart } from '@auxx/database/models'
+import type { VendorPartEntity as VendorPart } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {

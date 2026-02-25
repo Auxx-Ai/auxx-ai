@@ -1,8 +1,8 @@
 // app/api/preview/kb/[knowledgeBaseId]/route.ts
 
-import { database as db } from '@auxx/database'
-import { KnowledgeBaseModel } from '@auxx/database/models'
+import { database as db, schema } from '@auxx/database'
 import { KBService } from '@auxx/lib/kb'
+import { eq } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
 
 export async function GET(
@@ -16,10 +16,11 @@ export async function GET(
 
   try {
     // Get the knowledge base (for all orgs, this is a preview endpoint)
-    const kbModel = new KnowledgeBaseModel()
-    const kbRes = await kbModel.findByIdGlobal(params.knowledgeBaseId)
-    if (!kbRes.ok) throw kbRes.error
-    const knowledgeBase = kbRes.value
+    const [knowledgeBase] = await db
+      .select()
+      .from(schema.KnowledgeBase)
+      .where(eq(schema.KnowledgeBase.id, params.knowledgeBaseId))
+      .limit(1)
 
     if (!knowledgeBase) {
       return NextResponse.json({ error: 'Knowledge base not found' }, { status: 404 })

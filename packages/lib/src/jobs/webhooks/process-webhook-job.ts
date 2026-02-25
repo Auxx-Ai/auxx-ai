@@ -1,7 +1,8 @@
-// import { webhooks } from '../../../schema/models/webhooks'
+// packages/lib/src/jobs/webhooks/process-webhook-job.ts
 
-import { WebhookModel } from '@auxx/database/models'
+import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { and, eq } from 'drizzle-orm'
 import type { AuxxEvent, Events } from '../../events'
 import { getQueue } from '../queues'
 import { Queues } from '../queues/types'
@@ -51,15 +52,19 @@ export async function processWebhookJob({ data: event }: { data: AuxxEvent }) {
     logger.debug(`Skipping webhook event: ${event.type}. Not in the list of supported events.`)
     return // Skip silently as this is an expected condition
   }
-  // // Get all active webhooks for the org
 
-  const model = new WebhookModel(event.data.organizationId)
-  const res = await model.listActive()
-  if (!res.ok) return
-  const activeWebhooks = res.value
+  const activeWebhooks = await database
+    .select()
+    .from(schema.Webhook)
+    .where(
+      and(
+        eq(schema.Webhook.organizationId, event.data.organizationId),
+        eq(schema.Webhook.isActive, true)
+      )
+    )
 
   const webhooksQueue = getQueue(Queues.webhooksQueue)
-  // // Enqueue a job for each webhook
+  // Enqueue a job for each webhook
   await Promise.all(
     activeWebhooks.map((webhook) => {
       webhooksQueue.add('processSingleWebhookJob', { event, webhookId: webhook.id })

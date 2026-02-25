@@ -1,14 +1,11 @@
+import { schema } from '@auxx/database'
 import { ParticipantRole } from '@auxx/database/enums'
-import {
-  accountModel,
-  OrganizationMemberModel,
-  ParticipantModel,
-  SearchHistoryModel,
-} from '@auxx/database/models'
 import { InboxService } from '@auxx/lib/inboxes'
 import { IsOperatorValue, SearchOperator } from '@auxx/lib/mail-query'
+import { listMembersWithUser } from '@auxx/lib/members'
 import { listAll } from '@auxx/lib/resources'
 import { createScopedLogger } from '@auxx/logger'
+import { and, asc, count as drizzleCount, eq, ilike, inArray, or } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
@@ -75,19 +72,44 @@ const saveSearchQuery = async (ctx: any, query: string) => {
   const organizationId = ctx.session.organizationId
   try {
     // First, clean up old entries if we're at the limit
-    const model = new SearchHistoryModel(organizationId)
-    const existingCountRes = await model.countByUser(userId)
-    const existingCount = existingCountRes.ok ? existingCountRes.value : 0
+    const [countRow] = await ctx.db
+      .select({ value: drizzleCount() })
+      .from(schema.SearchHistory)
+      .where(
+        and(
+          eq(schema.SearchHistory.organizationId, organizationId),
+          eq(schema.SearchHistory.userId, userId)
+        )
+      )
+    const existingCount = countRow?.value ?? 0
     if (existingCount >= 20) {
       // Delete oldest entries
-      const oldestRes = await model.findOldestByUser(userId, existingCount - 19)
-      const oldestEntries = oldestRes.ok ? oldestRes.value : []
+      const oldestEntries = await ctx.db
+        .select({ id: schema.SearchHistory.id })
+        .from(schema.SearchHistory)
+        .where(
+          and(
+            eq(schema.SearchHistory.organizationId, organizationId),
+            eq(schema.SearchHistory.userId, userId)
+          )
+        )
+        .orderBy(asc(schema.SearchHistory.searchedAt))
+        .limit(existingCount - 19)
       if (oldestEntries.length) {
-        await model.deleteMany(oldestEntries.map((e: any) => e.id))
+        await ctx.db.delete(schema.SearchHistory).where(
+          inArray(
+            schema.SearchHistory.id,
+            oldestEntries.map((e: any) => e.id)
+          )
+        )
       }
     }
     // Save new search
-    await model.createForUser(userId, query)
+    await ctx.db.insert(schema.SearchHistory).values({
+      userId,
+      organizationId,
+      query,
+    })
   } catch (error) {
     logger.error('Failed to save search history', { error, query })
     // Don't throw - search history is non-critical
@@ -98,13 +120,12 @@ export const searchRouter = createTRPCRouter({
   search: protectedProcedure
     .input(z.object({ accountId: z.string(), query: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      const accModel = new accountModel()
-      const accRes = await accModel.findById(input.accountId)
-      const account =
-        accRes.ok && accRes.value && (accRes.value as any).userId === ctx.session.userId
-          ? accRes.value
-          : null
-      if (!account) throw new Error('Invalid token')
+      const [acc] = await ctx.db
+        .select()
+        .from(schema.account)
+        .where(eq(schema.account.id, input.accountId))
+        .limit(1)
+      if (!acc || acc.userId !== ctx.session.userId) throw new Error('Invalid token')
       // Save search query
       await saveSearchQuery(ctx, input.query)
       return { hits: [] }
@@ -133,9 +154,11 @@ export const searchRouter = createTRPCRouter({
         // Add operator suggestions if query matches
         if (!query || query.length === 0) {
           // Show recent searches when focused without input
-          const model = new SearchHistoryModel(organizationId)
-          const recentRes = await model.findMany({ orderBy: undefined as any, limit: 20 })
-          const recents = recentRes.ok ? recentRes.value : []
+          const recents = await ctx.db
+            .select()
+            .from(schema.SearchHistory)
+            .where(eq(schema.SearchHistory.organizationId, organizationId))
+            .limit(20)
           const seen = new Set<string>()
           const recentDistinct = [] as any[]
           for (const r of recents) {
@@ -173,10 +196,11 @@ export const searchRouter = createTRPCRouter({
       // Operator-specific suggestions
       switch (operator.toLowerCase()) {
         case SearchOperator.ASSIGNEE: {
-          // Get team members via model
-          const om = new OrganizationMemberModel(organizationId)
-          const mres = await om.listWithUser({ nameOrEmailContains: query, limit: 20 })
-          const members = mres.ok ? mres.value : []
+          // Get team members
+          const members = await listMembersWithUser(organizationId, {
+            nameOrEmailContains: query,
+            limit: 20,
+          })
           suggestions.push(
             ...members.map((m: any) => ({
               type: 'user',
@@ -194,9 +218,22 @@ export const searchRouter = createTRPCRouter({
         case SearchOperator.RECIPIENT:
         case SearchOperator.WITH:
         case 'participants': {
-          const pModel = new ParticipantModel(organizationId)
-          const pres = await pModel.listSuggestions(query, 10)
-          const participants = pres.ok ? pres.value : []
+          const participants = await ctx.db
+            .select()
+            .from(schema.Participant)
+            .where(
+              and(
+                eq(schema.Participant.organizationId, organizationId),
+                query
+                  ? or(
+                      ilike(schema.Participant.identifier, `%${query}%`),
+                      ilike(schema.Participant.name, `%${query}%`),
+                      ilike(schema.Participant.displayName, `%${query}%`)
+                    )
+                  : undefined
+              )
+            )
+            .limit(10)
           suggestions.push(
             ...participants.map((p: any) => ({
               type: 'participant',
@@ -304,10 +341,22 @@ export const searchRouter = createTRPCRouter({
         }
         roleFilter = { role: roleMap[type] }
       }
-      // Use ParticipantModel for complex search since it handles the organization scoping
-      const pModel = new ParticipantModel(organizationId)
-      const searchRes = await pModel.listSuggestions(query, 20)
-      const participants = searchRes.ok ? searchRes.value : []
+      const participants = await ctx.db
+        .select()
+        .from(schema.Participant)
+        .where(
+          and(
+            eq(schema.Participant.organizationId, organizationId),
+            query
+              ? or(
+                  ilike(schema.Participant.identifier, `%${query}%`),
+                  ilike(schema.Participant.name, `%${query}%`),
+                  ilike(schema.Participant.displayName, `%${query}%`)
+                )
+              : undefined
+          )
+        )
+        .limit(20)
       return participants.map((p: any) => ({
         id: p.id,
         identifier: p.identifier,
@@ -339,9 +388,11 @@ export const searchRouter = createTRPCRouter({
     const organizationId = ctx.session.organizationId
 
     try {
-      const model = new SearchHistoryModel(organizationId)
-      const recentRes = await model.findMany({ orderBy: undefined as any, limit: 20 })
-      const recents = recentRes.ok ? recentRes.value : []
+      const recents = await ctx.db
+        .select()
+        .from(schema.SearchHistory)
+        .where(eq(schema.SearchHistory.organizationId, organizationId))
+        .limit(20)
 
       // Parse and deduplicate
       const seen = new Set<string>()
@@ -404,26 +455,49 @@ export const searchRouter = createTRPCRouter({
       const organizationId = ctx.session.organizationId
 
       try {
-        const model = new SearchHistoryModel(organizationId)
-
         // Clean up old entries if at limit
-        const existingCountRes = await model.countByUser(userId)
-        const existingCount = existingCountRes.ok ? existingCountRes.value : 0
+        const [countRow] = await ctx.db
+          .select({ value: drizzleCount() })
+          .from(schema.SearchHistory)
+          .where(
+            and(
+              eq(schema.SearchHistory.organizationId, organizationId),
+              eq(schema.SearchHistory.userId, userId)
+            )
+          )
+        const existingCount = countRow?.value ?? 0
         if (existingCount >= 20) {
-          const oldestRes = await model.findOldestByUser(userId, existingCount - 19)
-          const oldestEntries = oldestRes.ok ? oldestRes.value : []
+          const oldestEntries = await ctx.db
+            .select({ id: schema.SearchHistory.id })
+            .from(schema.SearchHistory)
+            .where(
+              and(
+                eq(schema.SearchHistory.organizationId, organizationId),
+                eq(schema.SearchHistory.userId, userId)
+              )
+            )
+            .orderBy(asc(schema.SearchHistory.searchedAt))
+            .limit(existingCount - 19)
           if (oldestEntries.length) {
-            await model.deleteMany(oldestEntries.map((e: any) => e.id))
+            await ctx.db.delete(schema.SearchHistory).where(
+              inArray(
+                schema.SearchHistory.id,
+                oldestEntries.map((e: any) => e.id)
+              )
+            )
           }
         }
 
         // Store as JSON string with special prefix to identify condition-based searches
-        // Format: __CONDITIONS__:{displayText}:{conditionsJSON}
         const searchData = JSON.stringify({
           displayText: input.displayText,
           conditions: input.conditions,
         })
-        await model.createForUser(userId, `__CONDITIONS__${searchData}`)
+        await ctx.db.insert(schema.SearchHistory).values({
+          userId,
+          organizationId,
+          query: `__CONDITIONS__${searchData}`,
+        })
         return { success: true }
       } catch (error) {
         logger.error('Failed to save search', { error })

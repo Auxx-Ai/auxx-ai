@@ -1,7 +1,7 @@
 // @auxx/lib/chat/chat-service.ts
 import { type Database, schema } from '@auxx/database'
 import { IntegrationType, MessageType, ThreadStatus } from '@auxx/database/enums'
-import type { UserEntity as User } from '@auxx/database/models'
+import type { UserEntity as User } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import {
   deleteRedisData,

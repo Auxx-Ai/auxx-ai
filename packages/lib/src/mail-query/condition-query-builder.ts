@@ -1,7 +1,9 @@
 // packages/lib/src/mail-query/condition-query-builder.ts
 
 import { database as db, schema } from '@auxx/database'
-import { Thread } from '@auxx/database/models'
+
+const { Thread } = schema
+
 import {
   and,
   eq,

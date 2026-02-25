@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { DocumentEntity as Document } from '@auxx/database/models'
+import type { DocumentEntity as Document } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
 import {
   MainPage,

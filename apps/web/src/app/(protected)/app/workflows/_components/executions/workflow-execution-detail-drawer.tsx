@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { WorkflowRunEntity } from '@auxx/database/models'
+import type { WorkflowRunEntity } from '@auxx/database/types'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { EntityIcon } from '@auxx/ui/components/icons'

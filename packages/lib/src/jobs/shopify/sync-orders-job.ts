@@ -1,6 +1,7 @@
-import { database as db } from '@auxx/database'
-import { ShopifyIntegrationModel } from '@auxx/database/models'
+// packages/lib/src/jobs/shopify/sync-orders-job.ts
+import { database as db, schema } from '@auxx/database'
 import type { Job } from 'bullmq'
+import { eq } from 'drizzle-orm'
 import { createShopifyAdminClient } from '../../shopify/shopify-webhooks'
 import { OrderSync } from '../../shopify/sync-orders'
 import { SyncManager } from '../../sync-manager'
@@ -11,9 +12,11 @@ export const syncOrdersJob = async (job: Job<SyncOrdersJobProps>) => {
   const { syncId, organizationId, integrationId } = job.data
   const syncJob = await SyncManager.start(syncId)
 
-  const intModel = new ShopifyIntegrationModel()
-  const intRes = await intModel.findByIdGlobal(integrationId)
-  const integration = intRes.ok ? intRes.value : null
+  const [integration = null] = await db
+    .select()
+    .from(schema.ShopifyIntegration)
+    .where(eq(schema.ShopifyIntegration.id, integrationId))
+    .limit(1)
   if (integration && integration.organizationId !== organizationId) {
     throw new Error('Integration does not belong to organization')
   }

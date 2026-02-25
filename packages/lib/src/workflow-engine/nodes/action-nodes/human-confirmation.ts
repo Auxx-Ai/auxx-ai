@@ -1,20 +1,17 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/human-confirmation.ts
 
+// packages/lib/src/workflow-engine/nodes/action-nodes/human-confirmation.ts
+
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { ApprovalStatus } from '@auxx/database/enums'
-import {
-  ApprovalRequestModel,
-  UserModel,
-  WorkflowModel,
-  WorkflowRunModel,
-} from '@auxx/database/models'
-import { eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { publisher } from '../../../events/publisher'
 import { enqueueEmailJob } from '../../../jobs/email'
 import { getQueue, Queues } from '../../../jobs/queues'
 import { NotificationService } from '../../../notifications/notification-service'
+import { getUserById } from '../../../users'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -136,44 +133,60 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
         throw new Error('No valid assignees found for manual confirmation')
       }
       // Get workflow info for context
-      const wrModel = new WorkflowRunModel(organizationId)
-      const wrRes = await wrModel.findById(workflowRunId)
-      const workflowRun = wrRes.ok ? (wrRes.value as any) : null
+      const [workflowRun] = await db
+        .select()
+        .from(schema.WorkflowRun)
+        .where(
+          and(
+            eq(schema.WorkflowRun.id, workflowRunId),
+            eq(schema.WorkflowRun.organizationId, organizationId)
+          )
+        )
+        .limit(1)
       if (!workflowRun) {
         throw new Error('Workflow run not found')
       }
       // Create approval request in database
       // Fetch additional data for names
-      const wfModel = new WorkflowModel(organizationId)
-      const wfRes = await wfModel.findById(workflowRun.workflowId)
-      const wf = wfRes.ok ? (wfRes.value as any) : null
-      const userModel = new UserModel()
-      const ures = await userModel.findById(workflowRun.createdBy)
-      const createdById = (ures.ok && ures.value ? (ures.value as any).id : 'system') as string
-      const arModel = new ApprovalRequestModel(organizationId)
-      const arRes = await arModel.create({
-        id: uuidv4(),
-        workflowId: workflowRun.workflowId as any,
-        workflowRunId: workflowRunId as any,
-        nodeId: node.nodeId as any,
-        nodeName: node.name as any,
-        status: ApprovalStatus.pending,
-        message: message as any,
-        assigneeUsers: assignees.userIds as any,
-        assigneeGroups: assignees.groups as any,
-        workflowName: (wf?.name ?? 'Workflow') as any,
-        createdById: createdById as any,
-        expiresAt: expiresAt as any,
-        metadata: {
-          ...(config.include_workflow_context ? (contextManager.getAllVariables() as any) : {}),
-          ...(isTestMode && {
-            isTestMode: true,
-            testBehavior: 'live',
-            testModeNote: 'Running in live test mode - behaves like production but marked as test',
-          }),
-        } as any,
-      } as any)
-      const approvalRequest = arRes.ok ? (arRes.value as any) : null
+      const [wf] = await db
+        .select()
+        .from(schema.Workflow)
+        .where(
+          and(
+            eq(schema.Workflow.id, workflowRun.workflowId),
+            eq(schema.Workflow.organizationId, organizationId)
+          )
+        )
+        .limit(1)
+      const createdByUser = await getUserById(workflowRun.createdBy)
+      const createdById = (createdByUser?.id ?? 'system') as string
+      const [approvalRequest] = await db
+        .insert(schema.ApprovalRequest)
+        .values({
+          id: uuidv4(),
+          organizationId,
+          workflowId: workflowRun.workflowId,
+          workflowRunId,
+          nodeId: node.nodeId,
+          nodeName: node.name,
+          status: ApprovalStatus.pending,
+          message,
+          assigneeUsers: assignees.userIds,
+          assigneeGroups: assignees.groups,
+          workflowName: wf?.name ?? 'Workflow',
+          createdById,
+          expiresAt,
+          metadata: {
+            ...(config.include_workflow_context ? (contextManager.getAllVariables() as any) : {}),
+            ...(isTestMode && {
+              isTestMode: true,
+              testBehavior: 'live',
+              testModeNote:
+                'Running in live test mode - behaves like production but marked as test',
+            }),
+          },
+        })
+        .returning()
       contextManager.log(
         'INFO',
         node.nodeId,

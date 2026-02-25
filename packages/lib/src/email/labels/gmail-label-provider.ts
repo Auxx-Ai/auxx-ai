@@ -1,7 +1,8 @@
 // lib/email/providers/gmail-label-provider.ts
 
-import { IntegrationModel } from '@auxx/database/models'
+import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
 import { google } from 'googleapis'
 import { GoogleOAuthService } from '../../providers/google/google-oauth'
 import { IntegrationTokenAccessor } from '../../providers/integration-token-accessor'
@@ -26,9 +27,11 @@ export class GmailLabelProvider implements LabelProvider {
   async initialize(): Promise<void> {
     try {
       // Get the integration for this organization
-      const intModel = new IntegrationModel()
-      const intRes = await intModel.findByIdGlobal(this.integrationId)
-      const integration = intRes.ok ? intRes.value : null
+      const [integration] = await database
+        .select()
+        .from(schema.Integration)
+        .where(eq(schema.Integration.id, this.integrationId))
+        .limit(1)
 
       if (!integration) {
         throw new Error('Integration not found')

@@ -79,3 +79,5 @@ export const Dataset = pgTable(
     index('idx_dataset_org_status').using('btree', table.organizationId.asc(), table.status.asc()),
   ]
 )
+
+export type DatasetEntity = typeof Dataset.$inferSelect

@@ -1,7 +1,10 @@
 // apps/web/src/app/(protected)/app/datasets/[datasetId]/_components/dataset-detail-provider.tsx
 'use client'
-import type { DatasetEntity as Dataset, DocumentEntity as Document } from '@auxx/database/models'
-import type { DocumentStatus } from '@auxx/database/types'
+import type {
+  DatasetEntity as Dataset,
+  DocumentEntity as Document,
+  DocumentStatus,
+} from '@auxx/database/types'
 import { keepPreviousData } from '@tanstack/react-query'
 import { useQueryState } from 'nuqs'
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'

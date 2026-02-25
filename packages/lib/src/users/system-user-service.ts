@@ -1,7 +1,6 @@
 // packages/lib/src/users/system-user-service.ts
 import { database as db, schema } from '@auxx/database'
-import type { UserEntity } from '@auxx/database/models'
-import type { UserType } from '@auxx/database/types'
+import type { UserEntity, UserType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient, type RedisClient } from '@auxx/redis'
 import { eq } from 'drizzle-orm'

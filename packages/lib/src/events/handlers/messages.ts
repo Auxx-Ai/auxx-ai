@@ -1,9 +1,10 @@
 // File: packages/lib/src/events/handlers/messages.ts
 
+import { database, schema } from '@auxx/database'
 import { SYNC_STATUS } from '@auxx/database/enums'
-import { SyncJobModel } from '@auxx/database/models'
 import type { SYNC_STATUS as SyncStatus } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
+import { and, eq } from 'drizzle-orm'
 import type {
   EventHandler,
   MessageSyncCompleteEvent,
@@ -26,18 +27,24 @@ const updateSyncJobStatus = async (
 ) => {
   logger.info(`Attempting to update SyncJob ${syncJobId} status to ${status}`, { organizationId })
   try {
-    const model = new SyncJobModel(organizationId)
-    const updated = await model.update(syncJobId, {
-      status: status as any,
-      endTime:
-        status === SYNC_STATUS.COMPLETED || status === SYNC_STATUS.FAILED
-          ? (new Date() as any)
-          : (updates.endTime as any),
-      error: (updates.error as any) ?? null,
-    })
-    if (!updated.ok) throw updated.error
+    const [updated] = await database
+      .update(schema.SyncJob)
+      .set({
+        status,
+        endTime:
+          status === SYNC_STATUS.COMPLETED || status === SYNC_STATUS.FAILED
+            ? new Date()
+            : updates.endTime,
+        error: updates.error ?? null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(eq(schema.SyncJob.id, syncJobId), eq(schema.SyncJob.organizationId, organizationId))
+      )
+      .returning()
+    if (!updated) throw new Error(`SyncJob ${syncJobId} not found`)
     logger.info(`Successfully updated SyncJob ${syncJobId} status to ${status}.`, {
-      currentStatus: updated.value.status,
+      currentStatus: updated.status,
     })
   } catch (error) {
     logger.error(`Failed to update SyncJob ${syncJobId} to status ${status}`, {

@@ -1,9 +1,10 @@
 // apps/web/src/server/api/routers/document.ts
 
+import { schema } from '@auxx/database'
 import { ChunkingStrategyValues, DocumentStatus } from '@auxx/database/enums'
-import { DocumentModel } from '@auxx/database/models'
 import { DocumentService } from '@auxx/lib/datasets'
 import { createScopedLogger } from '@auxx/logger'
+import { and, asc, count, desc, eq, ilike, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
@@ -41,22 +42,56 @@ export const documentRouter = createTRPCRouter({
     if (!organizationId) {
       return { documents: [], totalCount: 0, hasMore: false }
     }
-    const model = new DocumentModel(organizationId)
-    const listRes = await model.list({
-      datasetId: input.datasetId,
-      status: input.status as any,
-      search: input.search,
-      page: input.page,
-      limit: input.limit,
-      sortBy: input.sortBy as any,
-      sortOrder: input.sortOrder,
-    })
-    if (!listRes.ok) throw listRes.error
-    const { documents, totalCount } = listRes.value
+
+    const page = input.page
+    const limit = input.limit
+    const offset = (page - 1) * limit
+
+    const whereParts: SQL<unknown>[] = [
+      eq(schema.Document.organizationId, organizationId),
+      eq(schema.Document.datasetId, input.datasetId),
+    ]
+    if (input.status) {
+      whereParts.push(eq(schema.Document.status, input.status as any))
+    }
+    if (input.search) {
+      whereParts.push(ilike(schema.Document.title, `%${input.search}%`))
+    }
+
+    const whereClause = and(...whereParts)
+
+    // Determine sort column and direction
+    let orderByClause: SQL<unknown> | undefined
+    if (input.sortBy) {
+      const col = (schema.Document as any)[input.sortBy]
+      if (col) {
+        orderByClause = input.sortOrder === 'asc' ? (asc(col) as any) : (desc(col) as any)
+      }
+    }
+    if (!orderByClause) {
+      orderByClause = desc(schema.Document.createdAt) as any
+    }
+
+    // Query page of documents
+    const documents = await ctx.db
+      .select()
+      .from(schema.Document)
+      .where(whereClause)
+      .orderBy(orderByClause as any)
+      .limit(limit)
+      .offset(offset)
+
+    // Count total
+    const [countRow] = await ctx.db
+      .select({ value: count() })
+      .from(schema.Document)
+      .where(whereClause)
+    const totalCount = countRow?.value ?? 0
+
     return {
       documents,
       totalCount,
-      hasMore: totalCount > input.page * input.limit,
+      hasMore: totalCount > page * limit,
     }
   }),
 

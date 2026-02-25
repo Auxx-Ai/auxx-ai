@@ -1,4 +1,5 @@
-import { SyncJobModel } from '@auxx/database/models'
+import { schema } from '@auxx/database'
+import { desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
@@ -13,11 +14,23 @@ export const syncHistoryRouter = createTRPCRouter({
     .query(async ({ ctx }) => {
       const { organizationId } = ctx.session
 
-      // Use Drizzle model for scoped listing
-      const model = new SyncJobModel(organizationId)
-      const result = await model.listRecent()
-      if (!result.ok) throw result.error
+      const rows = await ctx.db
+        .select({
+          id: schema.SyncJob.id,
+          type: schema.SyncJob.type,
+          status: schema.SyncJob.status,
+          startTime: schema.SyncJob.startTime,
+          endTime: schema.SyncJob.endTime,
+          processedRecords: schema.SyncJob.processedRecords,
+          failedRecords: schema.SyncJob.failedRecords,
+          integrationCategory: schema.SyncJob.integrationCategory,
+          integrationId: schema.SyncJob.integrationId,
+        })
+        .from(schema.SyncJob)
+        .where(eq(schema.SyncJob.organizationId, organizationId))
+        .orderBy(desc(schema.SyncJob.startTime))
+        .limit(50)
 
-      return { data: result.value }
+      return { data: rows }
     }),
 })

@@ -1,6 +1,6 @@
 // apps/web/src/components/datasets/settings/sections/general-settings-section.tsx
 'use client'
-import type { DatasetEntity as Dataset } from '@auxx/database/models'
+import type { DatasetEntity as Dataset } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {

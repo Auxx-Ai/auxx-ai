@@ -1,6 +1,6 @@
 // apps/web/src/app/(protected)/app/workflows/_components/executions/workflow-executions.tsx
 'use client'
-import type { WorkflowRunEntity as WorkflowRun } from '@auxx/database/models'
+import type { WorkflowRunEntity as WorkflowRun } from '@auxx/database/types'
 import { Play, StopCircle, Trash2 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { DynamicTable } from '~/components/dynamic-table'

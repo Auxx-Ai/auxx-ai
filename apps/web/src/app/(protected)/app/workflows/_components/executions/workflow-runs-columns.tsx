@@ -1,7 +1,7 @@
 // apps/web/src/app/(protected)/app/workflows/_components/executions/workflow-runs-columns.tsx
 
 import type { WorkflowTriggerSourceValues } from '@auxx/database/enums'
-import type { WorkflowRunEntity as WorkflowRun } from '@auxx/database/models'
+import type { WorkflowRunEntity as WorkflowRun } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import {

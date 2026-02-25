@@ -1,11 +1,7 @@
 // packages/lib/src/mail-views/mail-view-service.ts
+// packages/lib/src/mail-views/mail-view-service.ts
 import { type Database, database as db, schema } from '@auxx/database'
-import {
-  type CreateMailViewInput,
-  type MailViewEntity,
-  MailViewModel,
-  type UpdateMailViewInput,
-} from '@auxx/database/models'
+import type { CreateMailViewInput, MailViewEntity, UpdateMailViewInput } from '@auxx/database/types'
 import { getRedisClient } from '@auxx/redis'
 import { and, asc, count, desc, eq, inArray } from 'drizzle-orm'
 import type { ConditionGroup } from '../conditions/types'
@@ -120,7 +116,6 @@ type UpdateMailViewServiceInput = Partial<{
 
 export class MailViewService {
   private db: Database
-  private mailViewModel: MailViewModel
   private organizationId: string
   private enableCache: boolean
   private cacheTtl: number // in seconds
@@ -137,7 +132,6 @@ export class MailViewService {
     options: { enableCache?: boolean; cacheTtl?: number } = {}
   ) {
     this.db = database
-    this.mailViewModel = new MailViewModel(organizationId, database)
     this.organizationId = organizationId
     this.enableCache = options.enableCache ?? true // Enable by default
     this.cacheTtl = options.cacheTtl ?? 300 // 5 minutes default TTL
@@ -349,12 +343,10 @@ export class MailViewService {
         updatedAt: new Date(),
       }
 
-      const result = await this.mailViewModel.create(createData)
-      if (!result.ok) {
-        throw result.error
+      const [mailView] = await this.db.insert(schema.MailView).values(createData).returning()
+      if (!mailView) {
+        throw new Error('Failed to create mail view')
       }
-
-      const mailView = result.value
 
       // Invalidate caches after successful creation
       await this.invalidateUserMailViewCache(userId)
@@ -398,20 +390,20 @@ export class MailViewService {
         organizationId: this.organizationId,
       })
 
-      const result = await this.mailViewModel.findMany({
-        where: eq(schema.MailView.userId, userId),
-        orderBy: [
+      const mailViews = await this.db
+        .select()
+        .from(schema.MailView)
+        .where(
+          and(
+            eq(schema.MailView.organizationId, this.organizationId),
+            eq(schema.MailView.userId, userId)
+          )
+        )
+        .orderBy(
           desc(schema.MailView.isPinned),
           desc(schema.MailView.isDefault),
-          desc(schema.MailView.updatedAt),
-        ],
-      })
-
-      if (!result.ok) {
-        throw result.error
-      }
-
-      const mailViews = result.value
+          desc(schema.MailView.updatedAt)
+        )
 
       // Store in cache for future requests
       await this.setInCache(cacheKey, mailViews)
@@ -446,16 +438,16 @@ export class MailViewService {
         organizationId: this.organizationId,
       })
 
-      const result = await this.mailViewModel.findMany({
-        where: eq(schema.MailView.isShared, true),
-        orderBy: [desc(schema.MailView.isPinned), desc(schema.MailView.updatedAt)],
-      })
-
-      if (!result.ok) {
-        throw result.error
-      }
-
-      const mailViews = result.value
+      const mailViews = await this.db
+        .select()
+        .from(schema.MailView)
+        .where(
+          and(
+            eq(schema.MailView.organizationId, this.organizationId),
+            eq(schema.MailView.isShared, true)
+          )
+        )
+        .orderBy(desc(schema.MailView.isPinned), desc(schema.MailView.updatedAt))
 
       // Store in cache for future requests
       await this.setInCache(cacheKey, mailViews)
@@ -527,19 +519,23 @@ export class MailViewService {
         organizationId: this.organizationId,
       })
 
-      const result = await this.mailViewModel.findById(mailViewId)
-      if (!result.ok) {
-        throw result.error
-      }
-
-      const mailView = result.value
+      const [mailView] = await this.db
+        .select()
+        .from(schema.MailView)
+        .where(
+          and(
+            eq(schema.MailView.id, mailViewId),
+            eq(schema.MailView.organizationId, this.organizationId)
+          )
+        )
+        .limit(1)
 
       // Only cache if mail view exists
       if (mailView) {
         await this.setInCache(cacheKey, mailView)
       }
 
-      return mailView
+      return mailView ?? null
     } catch (error) {
       logger.error('Error fetching mail view', {
         error,
@@ -561,11 +557,16 @@ export class MailViewService {
       logger.info('Updating mail view', { mailViewId, organizationId: this.organizationId, data })
 
       // Get the current mail view
-      const currentResult = await this.mailViewModel.findById(mailViewId)
-      if (!currentResult.ok) {
-        throw currentResult.error
-      }
-      const currentView = currentResult.value
+      const [currentView] = await this.db
+        .select()
+        .from(schema.MailView)
+        .where(
+          and(
+            eq(schema.MailView.id, mailViewId),
+            eq(schema.MailView.organizationId, this.organizationId)
+          )
+        )
+        .limit(1)
       if (!currentView) {
         throw new Error(`Mail view ${mailViewId} not found`)
       }
@@ -598,12 +599,16 @@ export class MailViewService {
       if (data.sortField !== undefined) updateData.sortField = data.sortField
       if (data.sortDirection !== undefined) updateData.sortDirection = data.sortDirection
 
-      const result = await this.mailViewModel.update(mailViewId, updateData)
-      if (!result.ok) {
-        throw result.error
-      }
-
-      const updatedView = result.value
+      const [updatedView] = await this.db
+        .update(schema.MailView)
+        .set({ ...updateData, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.MailView.id, mailViewId),
+            eq(schema.MailView.organizationId, this.organizationId)
+          )
+        )
+        .returning()
 
       // Invalidate relevant caches
       await this.invalidateMailViewCaches(currentView, data)
@@ -671,21 +676,30 @@ export class MailViewService {
       logger.info('Deleting mail view', { mailViewId, organizationId: this.organizationId })
 
       // Get the current view for cache invalidation
-      const currentResult = await this.mailViewModel.findById(mailViewId)
-      if (!currentResult.ok) {
-        throw currentResult.error
-      }
-      const currentView = currentResult.value
+      const [currentView] = await this.db
+        .select()
+        .from(schema.MailView)
+        .where(
+          and(
+            eq(schema.MailView.id, mailViewId),
+            eq(schema.MailView.organizationId, this.organizationId)
+          )
+        )
+        .limit(1)
 
       if (!currentView) {
         throw new Error(`Mail view ${mailViewId} not found`)
       }
 
       // Delete the mail view
-      const deleteResult = await this.mailViewModel.delete(mailViewId)
-      if (!deleteResult.ok) {
-        throw deleteResult.error
-      }
+      await this.db
+        .delete(schema.MailView)
+        .where(
+          and(
+            eq(schema.MailView.id, mailViewId),
+            eq(schema.MailView.organizationId, this.organizationId)
+          )
+        )
 
       // Invalidate caches
       const redis = await getRedisClient(false)
@@ -736,11 +750,16 @@ export class MailViewService {
       }
 
       // Get the mail view definition with filters
-      const mailViewResult = await this.mailViewModel.findById(mailViewId)
-      if (!mailViewResult.ok) {
-        throw mailViewResult.error
-      }
-      const mailView = mailViewResult.value
+      const [mailView] = await this.db
+        .select()
+        .from(schema.MailView)
+        .where(
+          and(
+            eq(schema.MailView.id, mailViewId),
+            eq(schema.MailView.organizationId, this.organizationId)
+          )
+        )
+        .limit(1)
 
       if (!mailView) {
         throw new Error('Mail view not found')
@@ -1002,24 +1021,32 @@ export class MailViewService {
   async toggleMailViewPinned(mailViewId: string) {
     try {
       // Get current view
-      const currentResult = await this.mailViewModel.findById(mailViewId)
-      if (!currentResult.ok) {
-        throw currentResult.error
-      }
-      const currentView = currentResult.value
+      const [currentView] = await this.db
+        .select()
+        .from(schema.MailView)
+        .where(
+          and(
+            eq(schema.MailView.id, mailViewId),
+            eq(schema.MailView.organizationId, this.organizationId)
+          )
+        )
+        .limit(1)
 
       if (!currentView) {
         throw new Error(`Mail view ${mailViewId} not found`)
       }
 
       // Toggle pinned status
-      const updateResult = await this.mailViewModel.update(mailViewId, {
-        isPinned: !currentView.isPinned,
-      })
-      if (!updateResult.ok) {
-        throw updateResult.error
-      }
-      const updatedView = updateResult.value
+      const [updatedView] = await this.db
+        .update(schema.MailView)
+        .set({ isPinned: !currentView.isPinned, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.MailView.id, mailViewId),
+            eq(schema.MailView.organizationId, this.organizationId)
+          )
+        )
+        .returning()
 
       // Invalidate caches
       const redis = await getRedisClient(false)

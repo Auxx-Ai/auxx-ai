@@ -52,3 +52,5 @@ export const VendorPart = pgTable(
     ),
   ]
 )
+
+export type VendorPartEntity = typeof VendorPart.$inferSelect

@@ -1,25 +1,22 @@
 // src/server/api/routers/ticketSequence.ts
 
-import { TicketSequenceModel } from '@auxx/database/models'
+import { schema } from '@auxx/database'
 import { ticketNumbering } from '@auxx/lib/tickets'
-// import { TRPCError } from '@trpc/server'
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 export const ticketSequenceRouter = createTRPCRouter({
   // Get the ticket sequence settings for an organization
-  get: protectedProcedure
-    // .input(z.object({ organizationId: z.string() }))
-    .query(async ({ ctx }) => {
-      // const { organizationId } = input
-      const { organizationId } = ctx.session
-      // Get the ticket sequence for the organization
-      const model = new TicketSequenceModel(organizationId)
-      const res = await model.findFirst()
-      const ticketSequence = res.ok ? res.value : null
-
-      return ticketSequence
-    }),
+  get: protectedProcedure.query(async ({ ctx }) => {
+    const { organizationId } = ctx.session
+    const [ticketSequence] = await ctx.db
+      .select()
+      .from(schema.TicketSequence)
+      .where(eq(schema.TicketSequence.organizationId, organizationId))
+      .limit(1)
+    return ticketSequence ?? null
+  }),
 
   // Update ticket sequence settings
   update: protectedProcedure
@@ -38,48 +35,40 @@ export const ticketSequenceRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
-      const {
-        prefix,
-        paddingLength,
-        usePrefix,
-        useDateInPrefix,
-        dateFormat,
-        separator,
-        suffix,
-        useSuffix,
-      } = input
+      const setData: Record<string, unknown> = { updatedAt: new Date() }
+      if (input.prefix !== undefined) setData.prefix = input.prefix
+      if (input.paddingLength !== undefined) setData.paddingLength = input.paddingLength
+      if (input.usePrefix !== undefined) setData.usePrefix = input.usePrefix
+      if (input.useDateInPrefix !== undefined) setData.useDateInPrefix = input.useDateInPrefix
+      if (input.dateFormat !== undefined) setData.dateFormat = input.dateFormat
+      if (input.separator !== undefined) setData.separator = input.separator
+      if (input.suffix !== undefined) setData.suffix = input.suffix
+      if (input.useSuffix !== undefined) setData.useSuffix = input.useSuffix
 
-      // Update the ticket sequence settings
-      const model = new TicketSequenceModel(organizationId)
-      const existing = await model.findFirst()
-      if (existing.ok && existing.value) {
-        const updated = await model.update(existing.value.id, {
-          ...(prefix !== undefined && ({ prefix } as any)),
-          ...(paddingLength !== undefined && ({ paddingLength } as any)),
-          ...(usePrefix !== undefined && ({ usePrefix } as any)),
-          ...(useDateInPrefix !== undefined && ({ useDateInPrefix } as any)),
-          ...(dateFormat !== undefined && ({ dateFormat } as any)),
-          ...(separator !== undefined && ({ separator } as any)),
-          ...(suffix !== undefined && ({ suffix } as any)),
-          ...(useSuffix !== undefined && ({ useSuffix } as any)),
-        })
-        if (!updated.ok) throw updated.error
-        return updated.value
-      } else {
-        const created = await model.create({
-          currentNumber: 0,
-          ...(prefix !== undefined && ({ prefix } as any)),
-          ...(paddingLength !== undefined && ({ paddingLength } as any)),
-          ...(usePrefix !== undefined && ({ usePrefix } as any)),
-          ...(useDateInPrefix !== undefined && ({ useDateInPrefix } as any)),
-          ...(dateFormat !== undefined && ({ dateFormat } as any)),
-          ...(separator !== undefined && ({ separator } as any)),
-          ...(suffix !== undefined && ({ suffix } as any)),
-          ...(useSuffix !== undefined && ({ useSuffix } as any)),
-        } as any)
-        if (!created.ok) throw created.error
-        return created.value
+      const [existing] = await ctx.db
+        .select()
+        .from(schema.TicketSequence)
+        .where(eq(schema.TicketSequence.organizationId, organizationId))
+        .limit(1)
+
+      if (existing) {
+        const [updated] = await ctx.db
+          .update(schema.TicketSequence)
+          .set(setData)
+          .where(eq(schema.TicketSequence.id, existing.id))
+          .returning()
+        return updated
       }
+
+      const [created] = await ctx.db
+        .insert(schema.TicketSequence)
+        .values({
+          organizationId,
+          currentNumber: 0,
+          ...setData,
+        })
+        .returning()
+      return created
     }),
 
   // Reset the ticket counter
@@ -88,26 +77,36 @@ export const ticketSequenceRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { resetTo } = input
       const { organizationId } = ctx.session
-      // Reset the counter
-      const model = new TicketSequenceModel(organizationId)
-      const existing = await model.findFirst()
-      if (existing.ok && existing.value) {
-        const updated = await model.update(existing.value.id, { currentNumber: resetTo as any })
-        if (!updated.ok) throw updated.error
-        return updated.value
-      } else {
-        const created = await model.create({ currentNumber: resetTo } as any)
-        if (!created.ok) throw created.error
-        return created.value
+
+      const [existing] = await ctx.db
+        .select()
+        .from(schema.TicketSequence)
+        .where(eq(schema.TicketSequence.organizationId, organizationId))
+        .limit(1)
+
+      if (existing) {
+        const [updated] = await ctx.db
+          .update(schema.TicketSequence)
+          .set({ currentNumber: resetTo, updatedAt: new Date() })
+          .where(eq(schema.TicketSequence.id, existing.id))
+          .returning()
+        return updated
       }
+
+      const [created] = await ctx.db
+        .insert(schema.TicketSequence)
+        .values({
+          organizationId,
+          currentNumber: resetTo,
+          updatedAt: new Date(),
+        })
+        .returning()
+      return created
     }),
 
   // Generate a new ticket number
-  generateTicketNumber: protectedProcedure
-    // .input(z.object({ organizationId: z.string() }))
-    .mutation(async ({ ctx }) => {
-      const { organizationId } = ctx.session
-      // Generate next number via model
-      return await ticketNumbering.create(organizationId)
-    }),
+  generateTicketNumber: protectedProcedure.mutation(async ({ ctx }) => {
+    const { organizationId } = ctx.session
+    return await ticketNumbering.create(organizationId)
+  }),
 })

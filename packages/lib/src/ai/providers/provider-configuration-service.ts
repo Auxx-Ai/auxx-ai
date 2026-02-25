@@ -1,11 +1,9 @@
 // packages/lib/src/ai/providers/provider-configuration-service.ts
 import { type Database, schema } from '@auxx/database'
 import type {
+  LoadBalancingConfigEntity as LoadBalancingConfigModel,
   ModelConfigurationEntity as ModelConfigurationModel,
   ProviderConfigurationEntity as ProviderConfigurationModel,
-} from '@auxx/database/models'
-import type {
-  LoadBalancingConfigEntity as LoadBalancingConfigModel,
   ProviderPreferenceEntity as ProviderPreferenceModel,
 } from '@auxx/database/types'
 import { and, eq } from 'drizzle-orm'

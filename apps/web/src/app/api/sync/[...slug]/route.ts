@@ -1,8 +1,9 @@
 // apps/web/src/app/api/sync/[...slug]/route.ts
 
-import { ShopifyIntegrationModel } from '@auxx/database/models'
+import { database as db, schema } from '@auxx/database'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { SyncManager } from '@auxx/lib/shopify'
+import { eq } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import type { NextRequest } from 'next/server'
 import { auth } from '~/auth/server'
@@ -32,10 +33,11 @@ export const GET = async (req: NextRequest, { params }: { params: Promise<{ slug
     return Response.json({ error: 'INVALID_REQUEST' }, { status: 400 })
   }
 
-  const integrationModel = new ShopifyIntegrationModel(organizationId)
-  const integrationRes = await integrationModel.findFirst()
-  if (!integrationRes.ok) return Response.json({ error: 'DB_ERROR' }, { status: 500 })
-  const integration = integrationRes.value
+  const [integration] = await db
+    .select()
+    .from(schema.ShopifyIntegration)
+    .where(eq(schema.ShopifyIntegration.organizationId, organizationId))
+    .limit(1)
 
   const integrationId = integration?.id
 

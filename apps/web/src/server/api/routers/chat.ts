@@ -1,8 +1,8 @@
 // src/server/api/routers/chat.ts
 
 import { database as db } from '@auxx/database'
-import { OrganizationMemberModel } from '@auxx/database/models'
 import { createChatService } from '@auxx/lib/chat'
+import { findMemberByUser } from '@auxx/lib/members'
 import { RealTimeService } from '@auxx/lib/realtime'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
@@ -300,9 +300,7 @@ export const chatRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       try {
         // Check if user has access to the organization
-        const om = new OrganizationMemberModel(input.organizationId)
-        const mres = await om.findMemberByUser(ctx.session.user.id)
-        const membership = mres.ok ? mres.value : null
+        const membership = await findMemberByUser(input.organizationId, ctx.session.user.id)
 
         if (!membership) {
           throw new TRPCError({
@@ -489,9 +487,7 @@ export const chatRouter = createTRPCRouter({
         }
 
         // Check if user has access to the organization
-        const om = new OrganizationMemberModel(session.organizationId)
-        const mres = await om.findMemberByUser(ctx.session.user.id)
-        const membership = mres.ok ? mres.value : null
+        const membership = await findMemberByUser(session.organizationId, ctx.session.user.id)
 
         if (!membership) {
           throw new TRPCError({
@@ -547,9 +543,7 @@ export const chatRouter = createTRPCRouter({
         }
 
         // Check if user has access to the organization
-        const om = new OrganizationMemberModel(session.organizationId)
-        const mres = await om.findMemberByUser(ctx.session.user.id)
-        const membership = mres.ok ? mres.value : null
+        const membership = await findMemberByUser(session.organizationId, ctx.session.user.id)
 
         if (!membership) {
           throw new TRPCError({

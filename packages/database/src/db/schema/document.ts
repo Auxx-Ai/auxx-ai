@@ -84,3 +84,5 @@ export const Document = pgTable(
       .where(sql`enabled = true`),
   ]
 )
+
+export type DocumentEntity = typeof Document.$inferSelect
