@@ -4,11 +4,11 @@ import { WEBAPP_URL } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import type { IntegrationEntity } from '@auxx/database/models'
-import { InboxService } from '@auxx/lib/inboxes'
 import { createScopedLogger } from '@auxx/logger'
 import { ConfidentialClientApplication, LogLevel } from '@azure/msal-node'
 import { Client } from '@microsoft/microsoft-graph-client'
 import { eq } from 'drizzle-orm'
+import { InboxService } from '../../inboxes/inbox-service'
 import { IntegrationTokenAccessor } from '../integration-token-accessor'
 import { parseMsalError } from './outlook-errors'
 
@@ -306,8 +306,7 @@ export class OutlookOAuthService {
         })
 
         if (effectiveMode === 'polling') {
-          const { getQueue } = await import('@auxx/lib/queues')
-          const { Queues } = await import('@auxx/lib/jobs/queues/types')
+          const { getQueue, Queues } = await import('../../jobs/queues')
 
           await db
             .update(schema.Integration)

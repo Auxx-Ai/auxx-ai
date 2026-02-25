@@ -1,8 +1,10 @@
 import { database as db } from '@auxx/database'
 import { ShopifyIntegrationModel } from '@auxx/database/models'
-import { CustomerSync, createShopifyAdminClient, SyncManager } from '@auxx/lib/shopify'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
+import { createShopifyAdminClient } from '../../shopify/shopify-webhooks'
+import { CustomerSync } from '../../shopify/sync-customers'
+import { SyncManager } from '../../sync-manager'
 
 const logger = createScopedLogger('sync-customers')
 

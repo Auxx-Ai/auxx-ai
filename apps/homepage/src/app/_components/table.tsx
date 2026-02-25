@@ -73,9 +73,9 @@ export const Table = ({ className }: { className?: string }) => {
                 <span
                   className={cn(
                     'rounded-full px-2 py-1 text-xs',
-                    customer.statusVariant == 'success' && 'bg-lime-500/15 text-lime-800',
-                    customer.statusVariant == 'danger' && 'bg-red-500/15 text-red-800',
-                    customer.statusVariant == 'warning' && 'bg-yellow-500/15 text-yellow-800'
+                    customer.statusVariant === 'success' && 'bg-lime-500/15 text-lime-800',
+                    customer.statusVariant === 'danger' && 'bg-red-500/15 text-red-800',
+                    customer.statusVariant === 'warning' && 'bg-yellow-500/15 text-yellow-800'
                   )}>
                   {customer.status}
                 </span>

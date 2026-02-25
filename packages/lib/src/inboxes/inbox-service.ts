@@ -2,15 +2,15 @@
 
 import { type Database, database as defaultDb, schema } from '@auxx/database'
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
-import {
-  checkAccess,
-  getUserAccessibleInstances,
-  type ResourceAccessContext,
-  setInstanceAccess,
-} from '@auxx/lib/resource-access'
 import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
+import {
+  checkAccess,
+  getUserAccessibleInstances,
+  setInstanceAccess,
+} from '../resource-access/resource-access-service'
+import type { ResourceAccessContext } from '../resource-access/types'
 import { UnifiedCrudHandler } from '../resources/crud'
 import type {
   CreateInboxInput,

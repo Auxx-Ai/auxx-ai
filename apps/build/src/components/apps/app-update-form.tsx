@@ -139,7 +139,7 @@ export function AppUpdateForm({ appSlug }: AppUpdateFormProps) {
   const app = apps.find((a) => a.slug === appSlug)
 
   // Fetch full app details if needed (includes fields not in dehydrated state)
-  const { data: fullApp, isLoading } = api.apps.get.useQuery(
+  const { data: fullApp } = api.apps.get.useQuery(
     { slug: appSlug },
     {
       enabled: !!app, // Only fetch if app exists in dehydrated state
@@ -207,7 +207,7 @@ export function AppUpdateForm({ appSlug }: AppUpdateFormProps) {
     if (!fullApp) return
 
     try {
-      const result = await updateApp.mutateAsync({
+      await updateApp.mutateAsync({
         id: fullApp.id,
         ...data,
       })

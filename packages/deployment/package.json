@@ -4,13 +4,25 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./client": "./src/client.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./src/index.ts"
+    },
+    "./client": {
+      "types": "./src/client.ts",
+      "import": "./dist/client.js",
+      "default": "./src/client.ts"
+    }
   },
-  "scripts": {},
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json --noCheck && tsc-esm-fix --target=dist",
+    "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo"
+  },
   "dependencies": {},
   "devDependencies": {
     "@auxx/typescript-config": "workspace:*",
+    "tsc-esm-fix": "catalog:",
     "typescript": "catalog:"
   }
 }

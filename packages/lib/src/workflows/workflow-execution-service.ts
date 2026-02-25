@@ -1,29 +1,28 @@
 // packages/lib/src/workflows/workflow-execution-service.ts
 
 import { type Database, database, schema } from '@auxx/database'
-import { SystemUserService } from '@auxx/lib/users'
-import {
-  calculateTotalTokens,
-  type ExecutionState,
-  executeSingleNode,
-  JoinState, // V5: Added for join state deserialization
-  NodeRunningStatus,
-  RedisWorkflowExecutionReporter,
-  WorkflowEngine,
-  WorkflowEventType,
-  WorkflowGraphBuilder,
-  WorkflowPausedException,
-} from '@auxx/lib/workflow-engine'
-
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq, gt, gte, lt, lte, or } from 'drizzle-orm'
 import { getQueue, Queues } from '../jobs/queues'
+import { SystemUserService } from '../users/system-user-service'
+import { calculateTotalTokens } from '../workflow-engine/core/execution-utils'
+import { executeSingleNode } from '../workflow-engine/core/single-node-executor'
 import type {
   NodeExecutionResult,
   PauseReason,
   StoredExecutionContext,
 } from '../workflow-engine/core/types'
+import {
+  type ExecutionState,
+  JoinState, // V5: Added for join state deserialization
+  NodeRunningStatus,
+  WorkflowPausedException,
+} from '../workflow-engine/core/types'
+import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
+import { WorkflowGraphBuilder } from '../workflow-engine/core/workflow-graph-builder'
+import { RedisWorkflowExecutionReporter } from '../workflow-engine/execution-reporter'
 import { ApprovalQueryService } from '../workflow-engine/services/approval-query-service'
+import { WorkflowEventType } from '../workflow-engine/shared/types'
 import {
   type ErrorHandler,
   type ListRunOptions,

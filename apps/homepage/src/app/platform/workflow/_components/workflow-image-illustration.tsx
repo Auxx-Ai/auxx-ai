@@ -15,10 +15,10 @@ export const ImageIllustration = () => {
   const parallaxFactor = 0.12
   const y = useTransform(scrollY, [0, 500], [0, 500 * parallaxFactor], { clamp: false })
   const maxScale = 1.2
-  const maxSize = 200
+  // const maxSize = 200
   const scale = useTransform(scrollY, [0, 500], [1, maxScale], { clamp: true })
   const rotateX = useTransform(scrollY, [0, 500], [12, 4], { clamp: true })
-  const size = useTransform(scrollY, [0, 300], [1, maxSize], { clamp: true })
+  // const size = useTransform(scrollY, [0, 300], [1, maxSize], { clamp: true })
 
   return (
     <motion.div style={{ y, scale, rotateX }} className='relative mx-auto aspect-video max-w-sm'>

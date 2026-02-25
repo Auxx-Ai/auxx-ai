@@ -84,7 +84,7 @@ async function runPostInstallMigrations() {
       //     PRISMA_TELEMETRY_DISABLED: '1'
       //   }
       // })
-    } catch (dbPackageError) {
+    } catch (_dbPackageError) {
       console.log('⚠️ DB package approach failed, trying direct Prisma call...')
 
       // Fallback: Run Prisma directly from web app using the db package's config

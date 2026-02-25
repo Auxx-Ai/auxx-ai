@@ -82,15 +82,12 @@ function getLogTypeBadge(logType: 'log' | 'warn' | 'error') {
       return { variant: 'red' as const, label: 'Error' }
     case 'warn':
       return { variant: 'amber' as const, label: 'Warning' }
-    case 'log':
     default:
       return { variant: 'green' as const, label: 'Info' }
   }
 }
 
-type Props = {}
-
-function LogsPage({}: Props) {
+function LogsPage() {
   // Get app context from URL params
   const params = useParams<{ slug: string; app_slug: string }>()
   const slug = params.slug

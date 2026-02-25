@@ -20,7 +20,7 @@ Auxx.ai is an open-source AI-powered email support ticket answer service for Sho
 - **Forms**: react-hook-form v7.54
 - **State**: Zustand
 - **Caching**: Redis
-- **Linting**: Biome (2-space indent, 100-char line width, single quotes)
+- **Linting**: Biome (2-space indent, 100-char line width, single quotes). Prefer `pnpm lint:fix` to auto-fix lint issues after making changes.
 - **Build**: Turborepo, pnpm
 - **Infra**: AWS (SST), Docker
 
@@ -269,6 +269,14 @@ Pattern: Feature modules use a Manager class that lazily loads and caches provid
 
 ---
 
+# Development Workflow
+
+## Context7
+
+IMPORTANT: Use Context7 for code generation, setup or configuration steps, or library/API documentation. Automatically use the Context7 MCP tools to resolve library IDs and get library docs without waiting for explicit requests.
+
+---
+
 # Development Commands
 
 ```bash
@@ -278,11 +286,17 @@ pnpm install
 # Run tests
 pnpm test
 
-# Lint (Biome) — errors only
+# Lint (Biome) — full repo, errors only (CI uses this on pushes to main)
 pnpm lint
 
-# Lint + fix all (including import sorting and warnings)
-pnpm biome check --write .
+# Lint changed files only vs main branch — errors only (CI uses this on PRs)
+pnpm lint:changed
+
+# Lint + auto-fix (writes changes, includes import sorting)
+pnpm lint:fix
+
+# Format only (writes changes)
+pnpm format
 
 # Generate DB migration (after schema changes)
 pnpm db:generate --name <descriptive_name>

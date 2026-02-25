@@ -5,6 +5,7 @@ export {
   expiredTrialAccountCleanupJob,
   type OrganizationToDelete,
 } from './expired-trial-account-cleanup-job'
+export { generateThumbnailJob } from './generate-thumbnail-job'
 export { type GettingStartedStats, sendGettingStartedEmailsJob } from './getting-started-job'
 export {
   type IntegrationTokenRefreshJobData,

@@ -3,7 +3,7 @@
 import { stripeClient } from '@auxx/billing'
 import { getDevPort } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
-import { closeAllQueues, closeFlowProducer } from '@auxx/lib/queues'
+import { closeAllQueues, closeFlowProducer } from '@auxx/lib/jobs/queues'
 import { serve } from '@hono/node-server'
 import type { Worker } from 'bullmq'
 import { Hono } from 'hono'

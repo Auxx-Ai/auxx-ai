@@ -1,14 +1,18 @@
-import * as jobs from '@auxx/lib/jobs/definitions'
-import { Queues } from '@auxx/lib/queues/types'
+import {
+  monitorMessageSyncJob,
+  startMessageSyncJob,
+  syncSingleIntegrationMessagesJob,
+} from '@auxx/lib/jobs'
+import { Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
 import { createWorker } from '../utils/createWorker'
 
 const logger = createScopedLogger('worker:message-sync')
 
 const messageSyncJobMappings = {
-  startMessageSyncJob: jobs.startMessageSyncJob,
-  syncSingleIntegrationMessagesJob: jobs.syncSingleIntegrationMessagesJob,
-  monitorMessageSyncJob: jobs.monitorMessageSyncJob,
+  startMessageSyncJob,
+  syncSingleIntegrationMessagesJob,
+  monitorMessageSyncJob,
 }
 
 /**

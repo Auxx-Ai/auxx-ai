@@ -35,7 +35,7 @@ const resolveRedirectTarget = (value: string | string[] | undefined): string => 
       if (isTrustedHostname(url.hostname)) {
         return candidate
       }
-    } catch (e) {
+    } catch (_e) {
       // Invalid URL, fall through to warning
     }
   }

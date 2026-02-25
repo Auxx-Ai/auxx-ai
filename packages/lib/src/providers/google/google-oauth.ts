@@ -3,10 +3,10 @@
 import { WEBAPP_URL } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
-import { InboxService } from '@auxx/lib/inboxes'
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq } from 'drizzle-orm'
 import { type Common, google } from 'googleapis'
+import { InboxService } from '../../inboxes/inbox-service'
 import { IntegrationTokenAccessor, type IntegrationTokens } from '../integration-token-accessor'
 
 type GaxiosError = Common.GaxiosError
@@ -322,8 +322,7 @@ export class GoogleOAuthService {
         await this.setupPushNotifications(integration!.id)
       } else {
         // Kick off polling pipeline immediately for new integrations
-        const { getQueue } = await import('@auxx/lib/queues')
-        const { Queues } = await import('@auxx/lib/jobs/queues/types')
+        const { getQueue, Queues } = await import('../../jobs/queues')
 
         await db
           .update(schema.Integration)

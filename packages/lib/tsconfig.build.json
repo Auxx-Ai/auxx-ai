@@ -2,12 +2,16 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
+    "rootDir": "src",
     "declaration": true,
-    "emitDeclarationOnly": false, // also emit JS
-    "module": "nodenext",
+    "declarationMap": true,
+    "emitDeclarationOnly": false,
+    "noEmit": false,
+    "module": "esnext",
     "target": "ES2022",
-    "moduleResolution": "nodenext",
-    "composite": true
+    "moduleResolution": "bundler",
+    "composite": false
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["src/test/**", "**/*.test.ts", "**/*.spec.ts"]
 }

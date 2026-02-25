@@ -9,7 +9,7 @@ async function main() {
   // Delete existing data to avoid conflicts
   await cleanDatabase()
   // Create sample users with both email/password and OAuth accounts
-  const users = await createUsers()
+  await createUsers()
   // console.log(`✅ Created ${users.length} users`)
   // Create organizations for each user
   // const organizations = await createOrganizations(users)

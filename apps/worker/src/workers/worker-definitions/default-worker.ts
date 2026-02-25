@@ -1,5 +1,4 @@
-import { Queues } from '@auxx/lib/queues/types'
-// import * as jobs from '@auxx/lib/jobs/definitions'
+import { Queues } from '@auxx/lib/jobs/queues'
 import { createWorker } from '../utils/createWorker'
 
 const jobMappings = {

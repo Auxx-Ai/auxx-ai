@@ -1,20 +1,28 @@
-import * as jobs from '@auxx/lib/jobs/definitions'
-import { Queues } from '@auxx/lib/queues/types'
+import {
+  createEventJob,
+  createTimelineEvent,
+  publishEventJob,
+  publishToAnalyticsJob,
+  sendInvitationUserJob,
+  triggerResourceWorkflows,
+  updateWebhookLastTriggeredAt,
+} from '@auxx/lib/events/handlers'
+import { Queues } from '@auxx/lib/jobs/queues'
 import { createWorker } from '../utils/createWorker'
 
 // Events Queue job mappings
 const eventsJobMappings = {
-  publishEventJob: jobs.publishEventJob,
-  createEventJob: jobs.createEventJob,
-  publishToAnalyticsJob: jobs.publishToAnalyticsJob,
+  publishEventJob,
+  createEventJob,
+  publishToAnalyticsJob,
 }
 
 // Event Handlers Queue job mappings
 const eventHandlersJobMappings = {
-  sendInvitationUserJob: jobs.sendInvitationUserJob,
-  updateWebhookLastTriggeredAt: jobs.updateWebhookLastTriggeredAt,
-  createTimelineEvent: jobs.createTimelineEvent,
-  triggerResourceWorkflows: jobs.triggerResourceWorkflows,
+  sendInvitationUserJob,
+  updateWebhookLastTriggeredAt,
+  createTimelineEvent,
+  triggerResourceWorkflows,
 }
 
 export function startEventsWorker() {

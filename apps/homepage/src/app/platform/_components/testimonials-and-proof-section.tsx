@@ -34,7 +34,7 @@ const testimonials = [
 ]
 
 // Lists security certifications showcased as logos in the proof section.
-const certificationLogos = ['SOC 2', 'ISO 27001', 'GDPR', 'PCI DSS', 'HIPAA Ready']
+// const certificationLogos = ['SOC 2', 'ISO 27001', 'GDPR', 'PCI DSS', 'HIPAA Ready']
 
 // Renders the testimonials carousel and supporting trust badges.
 export function TestimonialsAndProofSection() {

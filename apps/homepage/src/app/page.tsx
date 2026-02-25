@@ -18,9 +18,7 @@ export const metadata: Metadata = {
   description: `Scale delightful support with ${config.shortName}'s AI-powered inbox, instant Shopify insights, and automated workflows that convert every customer interaction into revenue.`,
 }
 
-type Props = {}
-
-export default function MainPage({}: Props) {
+export default function MainPage() {
   return (
     <div id='root' className='relative overflow-y-auto h-screen'>
       <Header />

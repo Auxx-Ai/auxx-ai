@@ -4,29 +4,115 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./arrays": "./src/arrays.ts",
-    "./comments": "./src/comments.ts",
-    "./contact": "./src/contact.ts",
-    "./currency": "./src/currency.ts",
-    "./date": "./src/date.ts",
-    "./email": "./src/email.ts",
-    "./file": "./src/file.ts",
-    "./fractional-indexing": "./src/fractional-indexing.ts",
-    "./functions": "./src/functions.ts",
-    "./generateId": "./src/generateId.ts",
-    "./headers": "./src/headers.ts",
-    "./mime": "./src/mime.ts",
-    "./objects": "./src/objects.ts",
-    "./parse": "./src/parse.ts",
-    "./retry": "./src/retry.ts",
-    "./strings": "./src/strings.ts",
-    "./timezone": "./src/timezone.ts",
-    "./task-date": "./src/task-date.ts",
-    "./calc-expression": "./src/calc-expression.ts",
-    "./relationships": "./src/relationships.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./src/index.ts"
+    },
+    "./arrays": {
+      "types": "./src/arrays.ts",
+      "import": "./dist/arrays.js",
+      "default": "./src/arrays.ts"
+    },
+    "./comments": {
+      "types": "./src/comments.ts",
+      "import": "./dist/comments.js",
+      "default": "./src/comments.ts"
+    },
+    "./contact": {
+      "types": "./src/contact.ts",
+      "import": "./dist/contact.js",
+      "default": "./src/contact.ts"
+    },
+    "./currency": {
+      "types": "./src/currency.ts",
+      "import": "./dist/currency.js",
+      "default": "./src/currency.ts"
+    },
+    "./date": {
+      "types": "./src/date.ts",
+      "import": "./dist/date.js",
+      "default": "./src/date.ts"
+    },
+    "./email": {
+      "types": "./src/email.ts",
+      "import": "./dist/email.js",
+      "default": "./src/email.ts"
+    },
+    "./file": {
+      "types": "./src/file.ts",
+      "import": "./dist/file.js",
+      "default": "./src/file.ts"
+    },
+    "./fractional-indexing": {
+      "types": "./src/fractional-indexing.ts",
+      "import": "./dist/fractional-indexing.js",
+      "default": "./src/fractional-indexing.ts"
+    },
+    "./functions": {
+      "types": "./src/functions.ts",
+      "import": "./dist/functions.js",
+      "default": "./src/functions.ts"
+    },
+    "./generateId": {
+      "types": "./src/generateId.ts",
+      "import": "./dist/generateId.js",
+      "default": "./src/generateId.ts"
+    },
+    "./headers": {
+      "types": "./src/headers.ts",
+      "import": "./dist/headers.js",
+      "default": "./src/headers.ts"
+    },
+    "./mime": {
+      "types": "./src/mime.ts",
+      "import": "./dist/mime.js",
+      "default": "./src/mime.ts"
+    },
+    "./objects": {
+      "types": "./src/objects.ts",
+      "import": "./dist/objects.js",
+      "default": "./src/objects.ts"
+    },
+    "./parse": {
+      "types": "./src/parse.ts",
+      "import": "./dist/parse.js",
+      "default": "./src/parse.ts"
+    },
+    "./retry": {
+      "types": "./src/retry.ts",
+      "import": "./dist/retry.js",
+      "default": "./src/retry.ts"
+    },
+    "./strings": {
+      "types": "./src/strings.ts",
+      "import": "./dist/strings.js",
+      "default": "./src/strings.ts"
+    },
+    "./timezone": {
+      "types": "./src/timezone.ts",
+      "import": "./dist/timezone.js",
+      "default": "./src/timezone.ts"
+    },
+    "./task-date": {
+      "types": "./src/task-date.ts",
+      "import": "./dist/task-date.js",
+      "default": "./src/task-date.ts"
+    },
+    "./calc-expression": {
+      "types": "./src/calc-expression.ts",
+      "import": "./dist/calc-expression.js",
+      "default": "./src/calc-expression.ts"
+    },
+    "./relationships": {
+      "types": "./src/relationships.ts",
+      "import": "./dist/relationships.js",
+      "default": "./src/relationships.ts"
+    }
   },
   "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json --noCheck && tsc-esm-fix --target=dist",
+    "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
@@ -39,6 +125,7 @@
   "devDependencies": {
     "@auxx/typescript-config": "workspace:*",
     "@types/node": "catalog:",
+    "tsc-esm-fix": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

@@ -9,7 +9,7 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { SidebarInset, SidebarProvider } from '@auxx/ui/components/sidebar'
-import { redirect, useParams, usePathname } from 'next/navigation'
+import { redirect, useParams } from 'next/navigation'
 import { BuildAppSidebar } from '~/components/build-app-sidebar'
 import {
   useAuthenticatedUser,
@@ -23,7 +23,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Get params from URL using useParams hook
   const params = useParams<{ slug: string }>()
   const slug = params.slug
-  const pathname = usePathname()
 
   // Access server-fetched dehydrated state
   const user = useAuthenticatedUser()

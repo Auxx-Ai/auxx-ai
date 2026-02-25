@@ -27,21 +27,19 @@
 import { database as db } from '@auxx/database'
 import { DocumentStatus } from '@auxx/database/enums'
 import { DocumentModel, DocumentSegmentModel } from '@auxx/database/models'
-import {
-  DocumentEventType,
-  DocumentProcessingQueue,
-  DocumentProcessor,
-  DocumentService,
-  EmbeddingProcessor,
-  RedisDocumentExecutionReporter,
-} from '@auxx/lib/datasets'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
+import { RedisDocumentExecutionReporter } from '../../datasets/events/document-execution-reporter'
+import { DocumentEventType } from '../../datasets/events/types'
+import { DocumentService } from '../../datasets/services/document-service'
 import type {
   BatchOperationJobData,
   DocumentProcessingJobData,
   EmbeddingGenerationJobData,
 } from '../../datasets/types'
+import { DocumentProcessingQueue } from '../../datasets/workers/document-processing-queue'
+import { DocumentProcessor } from '../../datasets/workers/document-processor'
+import { EmbeddingProcessor } from '../../datasets/workers/embedding-processor'
 import type { FinalizeDocumentJobData, FlowEmbeddingGenerationJobData } from '../flows'
 import { getQueue, Queues } from '../queues'
 import type { JobContext } from '../types'

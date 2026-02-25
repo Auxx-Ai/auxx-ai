@@ -20,13 +20,13 @@ import { type ValidatedLambdaEvent, validateLambdaEvent } from './validator.ts'
 /**
  * Execution result type returned by all executors
  */
-interface ExecutionResult {
-  result: any
-  metadata?: {
-    settingsSchema?: any
-    consoleLogs?: any[]
-  }
-}
+// interface ExecutionResult {
+//   result: any
+//   metadata?: {
+//     settingsSchema?: any
+//     consoleLogs?: any[]
+//   }
+// }
 
 /**
  * Execute app-related events (function, event, webhook, workflow-block)

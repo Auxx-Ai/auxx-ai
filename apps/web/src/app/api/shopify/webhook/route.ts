@@ -4,8 +4,7 @@ import {
   SubscriptionModel,
   WebhookEventModel,
 } from '@auxx/database/models'
-import { getQueue } from '@auxx/lib/jobs/queues'
-import { Queues } from '@auxx/lib/jobs/queues/types'
+import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import {
   deleteWebhook,
   SHOPIFY_WEBHOOK_EVENTS,

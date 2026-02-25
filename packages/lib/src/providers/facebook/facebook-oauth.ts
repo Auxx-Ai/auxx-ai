@@ -2,10 +2,10 @@
 import { WEBAPP_URL } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
-import { InboxService } from '@auxx/lib/inboxes'
 import { createScopedLogger } from '@auxx/logger'
 import crypto from 'crypto'
 import { and, eq } from 'drizzle-orm'
+import { InboxService } from '../../inboxes/inbox-service'
 import { IntegrationTokenAccessor } from '../integration-token-accessor'
 
 const logger = createScopedLogger('facebook-oauth')

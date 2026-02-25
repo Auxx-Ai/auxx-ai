@@ -87,7 +87,7 @@ export const authMiddleware = createMiddleware<AppContext>(async (c, next) => {
     }
   }
 
-  const { userId, email, scopes } = validation.data
+  const { userId, scopes } = validation.data
 
   // Load user from database
   const users = await database.select().from(schema.User).where(eq(schema.User.id, userId)).limit(1)

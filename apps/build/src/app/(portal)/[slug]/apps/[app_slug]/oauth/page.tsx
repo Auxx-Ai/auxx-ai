@@ -545,7 +545,7 @@ export default function OAuthPage() {
       await navigator.clipboard.writeText(text)
       setCopiedField(fieldName)
       setTimeout(() => setCopiedField(null), 2000)
-    } catch (error) {
+    } catch (_error) {
       toastError({
         title: 'Failed to copy',
         description: `Could not copy to clipboard`,

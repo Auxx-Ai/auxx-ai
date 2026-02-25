@@ -14,9 +14,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 
-type Props = {}
-
-function ScopesPage({}: Props) {
+function ScopesPage() {
   return (
     <div className='flex flex-col items-center justify-start gap-1 py-10 px-4 overflow-y-auto'>
       <div className=' max-w-3xl w-full mx-auto'>

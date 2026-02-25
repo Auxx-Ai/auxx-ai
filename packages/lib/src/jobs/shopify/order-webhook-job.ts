@@ -1,8 +1,8 @@
 import { database as db } from '@auxx/database'
 import { SYNC_STATUS } from '@auxx/database/enums'
 import { WebhookEventModel } from '@auxx/database/models'
-import { fetchOrder, upsertOrder } from '@auxx/lib/shopify'
 import type { Job } from 'bullmq'
+import { fetchOrder, upsertOrder } from '../../shopify/sync-orders'
 import {
   getWebhookDataAndStart,
   shopifyWebhookLogger as logger,

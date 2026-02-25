@@ -14,7 +14,7 @@ export enum CircuitState {
   HALF_OPEN = 'half_open',
 }
 
-interface CircuitMetrics {
+export interface CircuitMetrics {
   failures: number
   successes: number
   requests: number

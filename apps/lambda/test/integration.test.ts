@@ -253,7 +253,7 @@ Deno.test('Cleanup is called even when execution fails', async () => {
       timeout: 5000,
       memoryLimit: 512,
     })
-  } catch (error: any) {
+  } catch (_error: any) {
     // Expected error
   }
 

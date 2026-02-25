@@ -60,7 +60,7 @@ export function DatasetActions() {
         title: 'Export started',
         description: 'Your dataset export is being prepared.',
       })
-    } catch (error) {
+    } catch (_error) {
       toastError({ title: 'Export failed', description: 'Failed to start dataset export.' })
     }
   }

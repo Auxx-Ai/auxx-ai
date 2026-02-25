@@ -2,44 +2,38 @@
   "name": "@auxx/database",
   "version": "0.0.0",
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
   "exports": {
     ".": {
       "types": "./src/index.ts",
-      "import": "./src/index.ts",
+      "import": "./dist/index.js",
       "default": "./src/index.ts"
     },
     "./models": {
       "types": "./src/models.ts",
-      "import": "./src/models.ts",
+      "import": "./dist/models.js",
       "default": "./src/models.ts"
     },
     "./enums": {
       "types": "./src/enums.ts",
-      "import": "./src/enums.ts",
+      "import": "./dist/enums.js",
       "default": "./src/enums.ts"
     },
     "./types": {
       "types": "./src/types.ts",
-      "import": "./src/types.ts",
+      "import": "./dist/types.js",
       "default": "./src/types.ts"
-    },
-    "./*": {
-      "types": "./src/*.ts",
-      "import": "./src/*.ts",
-      "default": "./src/*.ts"
     }
   },
   "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json --noCheck && tsc-esm-fix --target=dist",
+    "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo",
     "db:generate": "npx drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:studio": "npx drizzle-kit studio",
     "db:pull": "npx drizzle-kit pull",
     "typecheck": "npx tsc --noEmit",
     "test": "vitest",
-    "test:run": "vitest run",
-    "clean": "rm -rf node_modules"
+    "test:run": "vitest run"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",
@@ -53,6 +47,7 @@
     "@auxx/typescript-config": "workspace:*",
     "@types/pg": "catalog:",
     "drizzle-kit": "catalog:",
+    "tsc-esm-fix": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:"
   }

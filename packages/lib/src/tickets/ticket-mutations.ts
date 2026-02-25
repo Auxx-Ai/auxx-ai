@@ -2,8 +2,8 @@
 
 import type { Database } from '@auxx/database'
 import type { TicketPriority, TicketStatus } from '@auxx/database/types'
-import { publisher } from '@auxx/lib/events'
 import { TRPCError } from '@trpc/server'
+import { publisher } from '../events/publisher'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { type RecordId, toRecordId } from '../resources/resource-id'
 

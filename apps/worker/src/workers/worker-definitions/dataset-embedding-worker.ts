@@ -1,15 +1,19 @@
 // apps/worker/src/workers/worker-definitions/dataset-embedding-worker.ts
 
-import * as jobs from '@auxx/lib/jobs/definitions'
-import { DocumentFlowJobs } from '@auxx/lib/jobs/flows'
-import { Queues } from '@auxx/lib/jobs/queues/types'
+import {
+  batchOperationJob,
+  DocumentFlowJobs,
+  generateEmbeddingJob,
+  generateEmbeddingsFlowJob,
+} from '@auxx/lib/jobs'
+import { Queues } from '@auxx/lib/jobs/queues'
 import { createWorker } from '../utils/createWorker'
 
 const jobMappings = {
-  'generate-batch-embeddings': jobs.generateEmbeddingJob,
-  'batch-operation': jobs.batchOperationJob,
+  'generate-batch-embeddings': generateEmbeddingJob,
+  'batch-operation': batchOperationJob,
   // Flow jobs
-  [DocumentFlowJobs.GENERATE_EMBEDDINGS]: jobs.generateEmbeddingsFlowJob,
+  [DocumentFlowJobs.GENERATE_EMBEDDINGS]: generateEmbeddingsFlowJob,
 }
 
 /**

@@ -1,6 +1,5 @@
 // apps/web/src/components/workflow/ui/input-editor/types.ts
 
-import type { TableId } from '@auxx/lib/workflow-engine/client.js'
 import type { BaseType, VarMode } from '~/components/workflow/types'
 import type { FieldOptions } from './get-input-component'
 
@@ -110,7 +109,7 @@ export interface VarEditorProps {
 
   // Type filtering
   /** Allowed types for variable selection (can include BaseType or TableId for relationships) */
-  allowedTypes?: (BaseType | TableId)[]
+  allowedTypes?: BaseType[]
 
   // Editor mode
   /** Editor mode - 'rich' for tiptap editor, 'picker' for single variable selection */

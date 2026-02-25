@@ -1,5 +1,3 @@
-// ~/hooks/use-pusher.ts (or @auxx/lib/pusher/context.tsx)
-
 import { useQueryClient } from '@tanstack/react-query'
 import Pusher, { type Channel } from 'pusher-js'
 import React, {

@@ -1,11 +1,8 @@
 {
   "extends": "@auxx/typescript-config/base.json",
   "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "dist",
-    "module": "ESNext", // <-- add/force this
-    "moduleResolution": "bundler"
+    "noEmit": true
   },
   "include": ["src"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "dist"]
 }

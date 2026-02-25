@@ -1,6 +1,6 @@
 // packages/lib/src/resources/picker/record-picker-cache.ts
 
-import { BaseCacheService } from '@auxx/lib/cache'
+import { BaseCacheService } from '../../cache/base-cache-service'
 import type { PaginatedResourcesResult, RecordPickerItem } from './types'
 
 /**

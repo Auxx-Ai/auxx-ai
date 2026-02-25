@@ -1,10 +1,10 @@
 // packages/lib/src/jobs/datasets/maintenance-jobs.ts
 
 import { database as db, schema } from '@auxx/database'
-import { DocumentProcessingQueue } from '@auxx/lib/datasets'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { and, count, eq, inArray, isNull, or } from 'drizzle-orm'
+import { DocumentProcessingQueue } from '../../datasets/workers/document-processing-queue'
 
 const logger = createScopedLogger('dataset-maintenance-jobs')
 

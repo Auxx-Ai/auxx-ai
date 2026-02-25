@@ -1,8 +1,8 @@
 // packages/lib/src/files/upload/processors/entity-processors.ts
 import { database as db, schema } from '@auxx/database'
 import type { MediaAsset } from '@auxx/database/types'
-import { MemberService } from '@auxx/lib/members'
 import { and, desc, eq } from 'drizzle-orm'
+import { MemberService } from '../../../members/member-service'
 import { ensureThumbnailPresets } from '../../core/thumbnail-batch'
 import type { ThumbnailSource } from '../../core/thumbnail-types'
 import type { AssetKind } from '../../core/types'

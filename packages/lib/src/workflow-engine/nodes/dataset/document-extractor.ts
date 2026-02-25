@@ -1,9 +1,9 @@
 // packages/lib/src/workflow-engine/nodes/dataset/document-extractor.ts
 
-import { ExtractorFactory } from '@auxx/lib/datasets'
-import { createFileService } from '@auxx/lib/files'
 import { createScopedLogger } from '@auxx/logger'
 import { z } from 'zod'
+import { ExtractorFactory } from '../../../datasets/extractors/extractor-factory'
+import { createFileService } from '../../../files/core/file-service'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,

@@ -97,23 +97,23 @@ function isSchemaContext(contextId: string): boolean {
  * - $('env').var('apiKey') → looks up "env.apiKey"
  * - $('nodeId').var('result') → looks up "nodeId.result"
  */
-function createDollarFunction(variables: Record<string, any>) {
-  return function $(contextId: string) {
-    return {
-      var: (varPath: string) => {
-        if (contextId === 'sys' || contextId === 'env' || isSchemaContext(contextId)) {
-          // Handle system, environment, and schema variables
-          const fullPath = contextId + '.' + varPath
-          return resolveVariablePath(fullPath, variables)
-        } else {
-          // Handle node variables
-          const fullPath = contextId + '.' + varPath
-          return resolveVariablePath(fullPath, variables)
-        }
-      },
-    }
-  }
-}
+// function createDollarFunction(variables: Record<string, any>) {
+//   return function $(contextId: string) {
+//     return {
+//       var: (varPath: string) => {
+//         if (contextId === 'sys' || contextId === 'env' || isSchemaContext(contextId)) {
+//           // Handle system, environment, and schema variables
+//           const fullPath = contextId + '.' + varPath
+//           return resolveVariablePath(fullPath, variables)
+//         } else {
+//           // Handle node variables
+//           const fullPath = contextId + '.' + varPath
+//           return resolveVariablePath(fullPath, variables)
+//         }
+//       },
+//     }
+//   }
+// }
 
 /**
  * Generate the wrapped code that includes $ function and main() execution

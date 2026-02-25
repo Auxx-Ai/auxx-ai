@@ -1,10 +1,6 @@
-// import { maintenanceQueue } from '@auxx/lib/queues'
-// import { startMaintenanceWorker } from './worker-definitions/maintenanceWorker'
-
 import { constants } from '@auxx/config'
 import { isSelfHosted } from '@auxx/deployment'
-import { Queues } from '@auxx/lib/jobs/queues/types'
-import { getQueue } from '@auxx/lib/queues'
+import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { startDataImportWorker } from './worker-definitions/data-import-worker'
 import { startDatasetEmbeddingWorker } from './worker-definitions/dataset-embedding-worker'
 import { startDatasetMaintenanceWorker } from './worker-definitions/dataset-maintenance-worker'

@@ -1,14 +1,21 @@
-import * as jobs from '@auxx/lib/jobs/definitions'
-import { Queues } from '@auxx/lib/queues/types'
+import {
+  customerWebhookJob,
+  orderWebhookJob,
+  productWebhookJob,
+  syncCustomersJob,
+  syncOrdersJob,
+  syncProductsJob,
+} from '@auxx/lib/jobs'
+import { Queues } from '@auxx/lib/jobs/queues'
 import { createWorker } from '../utils/createWorker'
 
 const jobMappings = {
-  syncCustomersJob: jobs.syncCustomersJob,
-  syncOrdersJob: jobs.syncOrdersJob,
-  syncProductsJob: jobs.syncProductsJob,
-  productWebhookJob: jobs.productWebhookJob,
-  customerWebhookJob: jobs.customerWebhookJob,
-  orderWebhookJob: jobs.orderWebhookJob,
+  syncCustomersJob,
+  syncOrdersJob,
+  syncProductsJob,
+  productWebhookJob,
+  customerWebhookJob,
+  orderWebhookJob,
 }
 
 export function startShopifyWorker() {
