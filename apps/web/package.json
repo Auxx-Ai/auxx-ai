@@ -63,7 +63,6 @@
     "@shopify/shopify-api": "catalog:",
     "@stripe/react-stripe-js": "catalog:",
     "@stripe/stripe-js": "catalog:",
-    "@t3-oss/env-nextjs": "catalog:",
     "@tailwindcss/typography": "^0.5.16",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-table": "^8.21.2",
