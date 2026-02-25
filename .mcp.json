@@ -1,10 +1,24 @@
 {
   "mcpServers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "pnpm",
+      "args": ["dlx", "@playwright/mcp@latest", "--no-sandbox", "--headless"],
+      "env": {}
+    },
     "context7": {
       "type": "stdio",
       "command": "pnpm",
       "args": ["dlx", "@upstash/context7-mcp"],
       "env": {}
+    },
+    "postgres": {
+      "type": "stdio",
+      "command": "sh",
+      "args": [
+        "-c",
+        "export $(grep ^DATABASE_URL .env | xargs) && pnpm dlx @modelcontextprotocol/server-postgres $DATABASE_URL"
+      ]
     }
   }
 }

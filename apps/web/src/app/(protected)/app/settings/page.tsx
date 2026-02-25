@@ -1,10 +1,6 @@
 import { redirect } from 'next/navigation'
 
-type Props = {
-  // children
-}
-
-const SettingsPage = (props: Props) => {
+const SettingsPage = () => {
   redirect('/app/settings/general')
 }
 export default SettingsPage

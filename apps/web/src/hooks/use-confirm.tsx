@@ -61,17 +61,26 @@ export function useConfirm() {
     <Dialog open={open} onOpenChange={(open) => !open && handleCancel()}>
       <DialogContent size='sm' position='tc'>
         <DialogHeader>
-          <DialogTitle>{options.title}</DialogTitle>
-          {options.description && <DialogDescription>{options.description}</DialogDescription>}
+          <DialogTitle data-testid='confirmation-modal-title'>{options.title}</DialogTitle>
+          {options.description && (
+            <DialogDescription data-testid='confirmation-modal-description'>
+              {options.description}
+            </DialogDescription>
+          )}
         </DialogHeader>
         <DialogFooter className='gap-2 sm:gap-0 pt-2 sm:pt-0'>
-          <Button size='sm' variant='ghost' onClick={handleCancel}>
+          <Button
+            size='sm'
+            variant='ghost'
+            onClick={handleCancel}
+            data-testid='confirmation-modal-cancel-button'>
             {options.cancelText}
           </Button>
           <Button
             size='sm'
             variant={options.destructive ? 'destructive' : 'default'}
-            onClick={handleConfirm}>
+            onClick={handleConfirm}
+            data-testid='confirmation-modal-confirm-button'>
             {options.confirmText}
           </Button>
         </DialogFooter>
