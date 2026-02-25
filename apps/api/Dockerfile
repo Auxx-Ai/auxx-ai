@@ -26,7 +26,7 @@ RUN pnpm add -g turbo@2.5.2
 FROM base AS builder
 
 WORKDIR /app
-ENV NODE_OPTIONS=--max-old-space-size=1536
+ENV NODE_OPTIONS=--max-old-space-size=4096
 
 # Copy entire monorepo
 COPY . .
@@ -60,7 +60,7 @@ ENV PNPM_NETWORK_CONCURRENCY=4 \
 # Use pnpm deploy to create a standalone api package with all dependencies
 # --ignore-scripts prevents @postman/node-keytar arm64 prebuild failure
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm --filter @auxx/api --prod deploy --legacy --ignore-scripts /deployed && \
+    pnpm --filter @auxx/api --prod deploy --ignore-scripts /deployed && \
     rm -rf /deployed/node_modules/.cache /deployed/node_modules/.package-lock.json
 
 # Runner stage - minimal production image
