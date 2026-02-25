@@ -33,3 +33,6 @@ export const Part = pgTable(
   },
   (table) => [uniqueIndex('Part_sku_key').using('btree', table.sku.asc().nullsLast())]
 )
+
+/** Selected Part entity type */
+export type PartEntity = typeof Part.$inferSelect

@@ -96,3 +96,6 @@ export const CustomField = pgTable(
     ),
   ]
 )
+
+/** Selected CustomField entity type */
+export type CustomFieldEntity = typeof CustomField.$inferSelect

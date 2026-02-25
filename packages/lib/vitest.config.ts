@@ -57,6 +57,7 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@auxx/database': path.resolve(__dirname, '../database/src'),
         '@auxx/lib': path.resolve(__dirname, './src'),
+        '@auxx/logger': path.resolve(__dirname, '../logger/src'),
         '@auxx/config': path.resolve(__dirname, '../config/src'),
         '@auxx/workflow-nodes': path.resolve(__dirname, '../workflow-nodes/src'),
         '~/': path.resolve(__dirname, './src/'),

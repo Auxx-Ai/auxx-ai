@@ -1,7 +1,9 @@
 // apps/web/src/components/workflow/panels/run/components/loop-execution-card.tsx
 
-import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/models'
-import type { WorkflowRunStatus } from '@auxx/database/types'
+import type {
+  WorkflowNodeExecutionEntity as WorkflowNodeExecution,
+  WorkflowRunStatus,
+} from '@auxx/database/types'
 import type { LoopIterationData } from '../../../store/run-store'
 import { LoopIterationCard } from './loop-iteration-card'
 import { NodeExecutionCard } from './node-execution-card'

@@ -1,7 +1,7 @@
 // packages/services/src/custom-fields/get-fields.ts
 
 import { database, schema } from '@auxx/database'
-import type { CustomFieldEntity } from '@auxx/database/models'
+import type { CustomFieldEntity } from '@auxx/database/types'
 import { and, asc, eq } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'

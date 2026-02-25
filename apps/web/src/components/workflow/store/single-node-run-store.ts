@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/store/single-node-run-store.ts
 
-import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/models'
+import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/types'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { NodeRunningStatus } from '../types'

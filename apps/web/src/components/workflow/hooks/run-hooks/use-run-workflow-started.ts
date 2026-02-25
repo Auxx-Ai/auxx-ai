@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/hooks/run-hooks/use-run-workflow-started.ts
 
-import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/models'
+import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/types'
 import { useStoreApi } from '@xyflow/react'
 import { produce } from 'immer'
 import { useCallback } from 'react'

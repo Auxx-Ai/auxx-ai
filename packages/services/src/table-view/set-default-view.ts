@@ -1,7 +1,7 @@
 // packages/services/src/table-view/set-default-view.ts
 
 import { database, schema } from '@auxx/database'
-import type { TableViewEntity } from '@auxx/database/models'
+import type { TableViewEntity } from '@auxx/database/types'
 import { and, eq, ne } from 'drizzle-orm'
 import { fromDatabase } from '../shared/utils'
 

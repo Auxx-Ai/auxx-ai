@@ -1,7 +1,7 @@
 // packages/services/src/table-view/update-view.ts
 
 import { database, schema } from '@auxx/database'
-import type { TableViewEntity } from '@auxx/database/models'
+import type { TableViewEntity } from '@auxx/database/types'
 import { eq } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'

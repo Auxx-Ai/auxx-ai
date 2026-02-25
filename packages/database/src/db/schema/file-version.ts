@@ -53,3 +53,6 @@ export const FileVersion = pgTable(
     ),
   ]
 )
+
+/** Selected FileVersion entity type */
+export type FileVersionEntity = typeof FileVersion.$inferSelect

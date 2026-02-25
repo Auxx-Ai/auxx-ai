@@ -84,3 +84,6 @@ export const MediaAsset = pgTable(
       .where(sql`((kind = 'THUMBNAIL'::text) AND ("deletedAt" IS NULL))`),
   ]
 )
+
+/** Selected MediaAsset entity type */
+export type MediaAssetEntity = typeof MediaAsset.$inferSelect

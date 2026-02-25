@@ -52,3 +52,6 @@ export const Organization = pgTable(
     ),
   ]
 )
+
+/** Selected Organization entity type */
+export type OrganizationEntity = typeof Organization.$inferSelect

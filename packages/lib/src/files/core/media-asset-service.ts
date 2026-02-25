@@ -4,7 +4,7 @@ import { type Database, database as db, schema } from '@auxx/database'
 import type {
   MediaAssetEntity as MediaAsset,
   MediaAssetVersionEntity as MediaAssetVersion,
-} from '@auxx/database/models'
+} from '@auxx/database/types'
 import {
   and,
   asc,

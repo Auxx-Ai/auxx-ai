@@ -38,3 +38,6 @@ export const CommentReaction = pgTable(
     index('CommentReaction_userId_idx').using('btree', table.userId.asc().nullsLast()),
   ]
 )
+
+/** Selected CommentReaction entity type */
+export type CommentReactionEntity = typeof CommentReaction.$inferSelect

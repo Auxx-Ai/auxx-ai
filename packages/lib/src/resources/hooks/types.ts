@@ -1,10 +1,7 @@
 // packages/lib/src/resources/hooks/types.ts
 
-import type {
-  CustomFieldEntity,
-  EntityDefinitionEntity,
-  EntityInstanceEntity,
-} from '@auxx/database/models'
+import type { EntityDefinitionEntity, EntityInstanceEntity } from '@auxx/database/models'
+import type { CustomFieldEntity } from '@auxx/database/types'
 
 /**
  * Context provided to system hooks during entity operations

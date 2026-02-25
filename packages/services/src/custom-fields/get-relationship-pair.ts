@@ -1,7 +1,7 @@
 // packages/services/src/custom-fields/get-relationship-pair.ts
 
 import { database, schema } from '@auxx/database'
-import type { CustomFieldEntity } from '@auxx/database/models'
+import type { CustomFieldEntity } from '@auxx/database/types'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'

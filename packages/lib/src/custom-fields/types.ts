@@ -1,6 +1,5 @@
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
-import type { CustomFieldEntity as CustomField } from '@auxx/database/models'
-import type { FieldType } from '@auxx/database/types'
+import type { CustomFieldEntity as CustomField, FieldType } from '@auxx/database/types'
 import {
   currencyOptionsSchema,
   fileOptionsSchema,

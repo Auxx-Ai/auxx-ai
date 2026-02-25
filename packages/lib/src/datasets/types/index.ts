@@ -1,17 +1,17 @@
 import type {
   DatasetEntity as Dataset,
-  DatasetSearchQueryEntity as DatasetSearchQuery,
-  DatasetSearchResultEntity as DatasetSearchResult,
   DocumentEntity as Document,
   DocumentSegmentEntity as DocumentSegment,
-  ExternalKnowledgeSourceEntity as ExternalKnowledgeSource,
 } from '@auxx/database/models'
 import type {
   ChunkingStrategy,
   ChunkSettings,
+  DatasetSearchQueryEntity as DatasetSearchQuery,
+  DatasetSearchResultEntity as DatasetSearchResult,
   DatasetStatus,
   DocumentStatus,
   DocumentType,
+  ExternalKnowledgeSourceEntity as ExternalKnowledgeSource,
   VectorDbType,
 } from '@auxx/database/types'
 // packages/lib/src/datasets/types/index.ts

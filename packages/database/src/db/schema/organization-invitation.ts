@@ -52,3 +52,6 @@ export const OrganizationInvitation = pgTable(
     uniqueIndex('OrganizationInvitation_token_key').using('btree', table.token.asc().nullsLast()),
   ]
 )
+
+/** Selected OrganizationInvitation entity type */
+export type OrganizationInvitationEntity = typeof OrganizationInvitation.$inferSelect

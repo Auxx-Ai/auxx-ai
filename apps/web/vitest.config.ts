@@ -59,6 +59,7 @@ export default defineConfig(({ mode }) => {
         '~': path.resolve(__dirname, './src'),
         '@auxx/database/enums': path.resolve(__dirname, '../../packages/database/src/enums.ts'),
         '@auxx/database': path.resolve(__dirname, '../../packages/database'),
+        '@auxx/logger': path.resolve(__dirname, '../../packages/logger/src'),
         '@auxx/lib': path.resolve(__dirname, '../../packages/lib/src'),
         '@auxx/config': path.resolve(__dirname, '../../packages/config/src'),
         '@auxx/workflow-nodes': path.resolve(__dirname, '../../packages/workflow-nodes/src'),

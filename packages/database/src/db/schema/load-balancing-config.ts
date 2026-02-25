@@ -54,3 +54,6 @@ export const LoadBalancingConfig = pgTable(
     ),
   ]
 )
+
+/** Selected LoadBalancingConfig entity type */
+export type LoadBalancingConfigEntity = typeof LoadBalancingConfig.$inferSelect

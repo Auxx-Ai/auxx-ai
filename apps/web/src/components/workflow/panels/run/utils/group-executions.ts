@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/panels/run/utils/group-executions.ts
 
-import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/models'
+import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/types'
 import type { FlowNode } from '~/components/workflow/types'
 import { NodeRunningStatus } from '~/components/workflow/types'
 

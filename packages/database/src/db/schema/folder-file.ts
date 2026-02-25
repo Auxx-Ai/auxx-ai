@@ -109,3 +109,6 @@ export const FolderFile = pgTable(
     ),
   ]
 )
+
+/** Selected FolderFile entity type */
+export type FolderFileEntity = typeof FolderFile.$inferSelect

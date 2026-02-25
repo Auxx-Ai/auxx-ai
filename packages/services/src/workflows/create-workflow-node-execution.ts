@@ -1,7 +1,7 @@
 // packages/services/src/workflows/create-workflow-node-execution.ts
 
 import { database, schema } from '@auxx/database'
-import type { WorkflowNodeExecutionEntity } from '@auxx/database/models'
+import type { WorkflowNodeExecutionEntity } from '@auxx/database/types'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 

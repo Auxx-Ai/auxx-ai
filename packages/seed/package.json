@@ -15,7 +15,7 @@
     "dist"
   ],
   "scripts": {
-    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "dev": "tsc -p tsconfig.build.json --noCheck --watch --preserveWatchOutput",
     "build": "rm -rf dist && tsc -p tsconfig.build.json --noCheck && tsc-esm-fix --target=dist",
     "seed": "tsx scripts/seed.ts",
     "seed:dev": "tsx scripts/seed.ts --scenario=development",

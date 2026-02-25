@@ -1,5 +1,5 @@
 'use client'
-import type { PartEntity as Part, SubpartEntity as Subpart } from '@auxx/database/models'
+import type { PartEntity as Part, SubpartEntity as Subpart } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'

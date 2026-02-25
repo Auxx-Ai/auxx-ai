@@ -30,3 +30,6 @@ export const Inventory = pgTable(
   },
   (table) => [uniqueIndex('Inventory_partId_key').using('btree', table.partId.asc().nullsLast())]
 )
+
+/** Selected Inventory entity type */
+export type InventoryEntity = typeof Inventory.$inferSelect

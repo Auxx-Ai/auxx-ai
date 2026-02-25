@@ -53,3 +53,6 @@ export const DatasetSearchQuery = pgTable(
     index('DatasetSearchQuery_userId_idx').using('btree', table.userId.asc().nullsLast()),
   ]
 )
+
+/** Selected DatasetSearchQuery entity type */
+export type DatasetSearchQueryEntity = typeof DatasetSearchQuery.$inferSelect

@@ -1,7 +1,7 @@
 // packages/lib/src/files/storage/storage-manager.ts
 
 import { configService, credentialManager } from '@auxx/credentials'
-import type { StorageLocationEntity as StorageLocation } from '@auxx/database/models'
+import type { StorageLocationEntity as StorageLocation } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import type {
   DownloadRef,

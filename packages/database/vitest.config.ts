@@ -1,4 +1,5 @@
 // packages/database/vitest.config.ts
+import path from 'path'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
@@ -11,6 +12,11 @@ export default defineConfig({
       threads: {
         singleThread: true,
       },
+    },
+  },
+  resolve: {
+    alias: {
+      '@auxx/logger': path.resolve(__dirname, '../logger/src'),
     },
   },
 })
