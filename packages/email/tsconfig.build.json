@@ -10,7 +10,8 @@
     "module": "esnext",
     "target": "ES2022",
     "moduleResolution": "bundler",
-    "composite": false
+    "composite": false,
+    "jsx": "react-jsx"
   },
   "include": ["src/**/*"],
   "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts"]

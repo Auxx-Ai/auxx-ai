@@ -1,0 +1,4 @@
+# Override .gitignore so dist/ is included in pnpm deploy
+*.test.ts
+*.spec.ts
+*.tsbuildinfo
