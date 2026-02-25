@@ -38,7 +38,7 @@ export async function executeServerFunction(
     functionArgs,
     context,
     timeout, // Default provided by Zod schema
-    memoryLimit, // Default provided by Zod schema
+    // memoryLimit, // Default provided by Zod schema
   } = options
 
   console.log('[Executor] Starting execution:', { functionIdentifier })

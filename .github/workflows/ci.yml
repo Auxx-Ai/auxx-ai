@@ -4,6 +4,8 @@ name: CI
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -38,7 +40,7 @@ jobs:
   lint:
     name: Lint
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name == 'push' || needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -54,7 +56,18 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: pnpm lint
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            pnpm lint:changed
+          else
+            pnpm lint
+          fi
+
+      - name: Check @auxx/lib exports are up to date
+        run: pnpm -F @auxx/lib check:exports
+
+      - name: Verify package exports resolve
+        run: node scripts/ci/check-package-exports.js
 
   test:
     name: Test

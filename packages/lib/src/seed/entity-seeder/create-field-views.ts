@@ -1,9 +1,12 @@
 // packages/lib/src/seed/entity-seeder/create-field-views.ts
 
 import { type Database, schema } from '@auxx/database'
-import { createDefaultFieldViewConfig, type ViewContextType } from '@auxx/lib/conditions'
 import { createScopedLogger } from '@auxx/logger'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
+import {
+  createDefaultFieldViewConfig,
+  type ViewContextType,
+} from '../../conditions/field-view-config'
 import type { EntityDefMap, FieldMap } from './types'
 
 const logger = createScopedLogger('entity-seeder:create-field-views')

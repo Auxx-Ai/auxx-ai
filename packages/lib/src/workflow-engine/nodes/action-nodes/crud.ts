@@ -1,7 +1,6 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/crud.ts
 
 import { type Database, database, type ModelType, ModelTypes } from '@auxx/database'
-import { type ModelType as FieldModelType, FieldValueService } from '@auxx/lib/field-values'
 import {
   getRelatedEntityDefinitionId,
   RELATION_UPDATE_MODES,
@@ -17,6 +16,8 @@ import {
   type CreateContactInput,
   type UpdateContactInput,
 } from '../../../contacts/contact-service'
+import { FieldValueService } from '../../../field-values/field-value-service'
+import type { ModelType as FieldModelType } from '../../../field-values/types'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { CRUD_RESOURCE_CONFIGS, getCrudField } from '../../../resources/crud-definitions'
 import {

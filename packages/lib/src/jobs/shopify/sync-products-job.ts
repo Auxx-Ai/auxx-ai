@@ -1,7 +1,9 @@
 import { database as db } from '@auxx/database'
 import { ShopifyIntegrationModel } from '@auxx/database/models'
-import { createShopifyAdminClient, ProductSync, SyncManager } from '@auxx/lib/shopify'
 import type { Job } from 'bullmq'
+import { createShopifyAdminClient } from '../../shopify/shopify-webhooks'
+import { ProductSync } from '../../shopify/sync-products'
+import { SyncManager } from '../../sync-manager'
 
 export type SyncProductsJobProps = { syncId: string; organizationId: string; integrationId: string }
 

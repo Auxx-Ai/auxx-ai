@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "context7": {
+      "type": "stdio",
+      "command": "pnpm",
+      "args": ["dlx", "@upstash/context7-mcp"],
+      "env": {}
+    }
+  }
+}

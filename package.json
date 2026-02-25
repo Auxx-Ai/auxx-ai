@@ -17,6 +17,7 @@
     "sso": "aws sso login --sso-session=auxxai",
     "clean": "turbo run clean && rm -rf node_modules .turbo out pnpm-lock.yaml",
     "lint": "biome check --diagnostic-level=error .",
+    "lint:changed": "biome check --changed --since=main --diagnostic-level=error --no-errors-on-unmatched .",
     "lint:fix": "biome check --write .",
     "typecheck:dirs": "node scripts/typecheck-dirs.mjs",
     "format": "biome format --write .",

@@ -1,10 +1,11 @@
 // packages/lib/src/workflow-engine/nodes/dataset/chunker.ts
 
-import type { DocumentChunk } from '@auxx/lib/datasets'
-import { DocumentProcessor, TextChunker } from '@auxx/lib/datasets'
 import { createScopedLogger } from '@auxx/logger'
 import { interpretEscapeSequences } from '@auxx/utils'
 import { z } from 'zod'
+import { TextChunker } from '../../../datasets/processors/text-chunker'
+import type { DocumentChunk } from '../../../datasets/types'
+import { DocumentProcessor } from '../../../datasets/workers/document-processor'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,

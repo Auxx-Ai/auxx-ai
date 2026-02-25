@@ -31,39 +31,39 @@ const metrics = [
   },
 ]
 
-const caseStudyStats = [
-  { label: 'Before Auxx.ai', metric: 'Tickets per agent/day', value: '25', color: 'text-red-500' },
-  {
-    label: 'After Auxx.ai',
-    metric: 'Tickets per agent/day',
-    value: '40',
-    color: 'text-green-500',
-  },
-  {
-    label: 'Before Auxx.ai',
-    metric: 'First contact resolution',
-    value: '65%',
-    color: 'text-red-500',
-  },
-  {
-    label: 'After Auxx.ai',
-    metric: 'First contact resolution',
-    value: '85%',
-    color: 'text-green-500',
-  },
-  {
-    label: 'Before Auxx.ai',
-    metric: 'Agent onboarding time',
-    value: '6 weeks',
-    color: 'text-red-500',
-  },
-  {
-    label: 'After Auxx.ai',
-    metric: 'Agent onboarding time',
-    value: '2 weeks',
-    color: 'text-green-500',
-  },
-]
+// const caseStudyStats = [
+//   { label: 'Before Auxx.ai', metric: 'Tickets per agent/day', value: '25', color: 'text-red-500' },
+//   {
+//     label: 'After Auxx.ai',
+//     metric: 'Tickets per agent/day',
+//     value: '40',
+//     color: 'text-green-500',
+//   },
+//   {
+//     label: 'Before Auxx.ai',
+//     metric: 'First contact resolution',
+//     value: '65%',
+//     color: 'text-red-500',
+//   },
+//   {
+//     label: 'After Auxx.ai',
+//     metric: 'First contact resolution',
+//     value: '85%',
+//     color: 'text-green-500',
+//   },
+//   {
+//     label: 'Before Auxx.ai',
+//     metric: 'Agent onboarding time',
+//     value: '6 weeks',
+//     color: 'text-red-500',
+//   },
+//   {
+//     label: 'After Auxx.ai',
+//     metric: 'Agent onboarding time',
+//     value: '2 weeks',
+//     color: 'text-green-500',
+//   },
+// ]
 
 const Stripes = () => (
   <div

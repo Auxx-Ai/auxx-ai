@@ -29,8 +29,6 @@ import { toastError } from '~/components/global/toast'
 import { useApp } from '~/components/providers/dehydrated-state-provider'
 import { api, type RouterOutputs } from '~/trpc/react'
 
-type Props = {}
-
 /**
  * Command to create a new version
  */
@@ -40,14 +38,13 @@ type Version = RouterOutputs['versions']['list'][number]
 /**
  * Versions page component
  */
-function VersionsPage({}: Props) {
+function VersionsPage() {
   // Get app context from URL params
   const params = useParams<{ slug: string; app_slug: string }>()
   const app = useApp(params.slug, params.app_slug)
   const router = useRouter()
 
   const [confirm, ConfirmDialog] = useConfirm()
-  const utils = api.useUtils()
 
   // Fetch versions
   const {

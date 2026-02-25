@@ -1,6 +1,6 @@
 // packages/lib/src/seed/default-view-configs.ts
 
-import type { ViewConfig } from '@auxx/lib/conditions'
+import type { ViewConfig } from '../conditions/view-config'
 
 /**
  * Default view configurations for system entities

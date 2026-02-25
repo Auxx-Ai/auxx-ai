@@ -22,7 +22,7 @@ health.get('/', async (c) => {
         database: 'connected',
       })
     )
-  } catch (error) {
+  } catch (_error) {
     return c.json(
       errorResponse('UNHEALTHY', 'Service unhealthy', {
         database: 'disconnected',

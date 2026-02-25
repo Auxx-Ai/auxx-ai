@@ -1,7 +1,6 @@
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
-import { getQueue } from '@auxx/lib/jobs/queues'
-import { Queues } from '@auxx/lib/jobs/queues/types'
+import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { disableWebhooks, isShopifyConnected, SyncManager } from '@auxx/lib/shopify'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'

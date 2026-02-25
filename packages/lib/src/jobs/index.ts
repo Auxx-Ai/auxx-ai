@@ -1,11 +1,3 @@
-export * from '../events/handlers/create-event-job'
-export * from '../events/handlers/create-timeline-event'
-export * from '../events/handlers/publish-event-job'
-export * from '../events/handlers/publish-to-analytics-job'
-export * from '../events/handlers/send-invitation-user-job'
-export * from '../events/handlers/trigger-resource-workflows'
-
-export * from '../events/handlers/update-webhook-last-triggered'
 export * from './billing'
 export * from './datasets'
 export { createEmailEnqueuer, enqueueEmailJob } from './email/enqueue-email-job'
@@ -48,6 +40,7 @@ export {
 } from './polling'
 export * from './shopify'
 // Export job context types
+export type { JobContext, JobHandler, LegacyJobHandler } from './types'
 
 export * from './webhooks'
 export { approvalReminderJob } from './workflow/approval-reminder-job'

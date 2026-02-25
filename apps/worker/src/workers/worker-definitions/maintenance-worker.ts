@@ -1,18 +1,16 @@
-// import * as jobs from '@auxx/lib/jobs/definitions'
-
 import { isSelfHosted } from '@auxx/deployment'
 import {
   deletedFileCleanupJob,
   orphanedFileCleanupJob,
   storageQuotaCheckJob,
 } from '@auxx/lib/files'
-import type { JobHandler } from '@auxx/lib/jobs'
 import {
   applyScheduledSubscriptionChangesJob,
   cleanupExpiredMediaAssetsJob,
   expiredTrialAccountCleanupJob,
   integrationTokenRefreshJob,
   integrationTokenRefreshScannerJob,
+  type JobHandler,
   oauth2TokenRefreshScannerJob,
   quotaResetJob,
   sendGettingStartedEmailsJob,
@@ -21,7 +19,7 @@ import {
   stripeSubscriptionSyncJob,
   thumbnailCleanupJob,
 } from '@auxx/lib/jobs'
-import { Queues } from '@auxx/lib/queues/types'
+import { Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
 import { createWorker } from '../utils/createWorker'
 

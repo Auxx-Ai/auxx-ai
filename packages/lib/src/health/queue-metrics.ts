@@ -1,6 +1,7 @@
 // packages/lib/src/health/queue-metrics.ts
 
-import { getQueue, type Queues } from '@auxx/lib/jobs/queues'
+import { getQueue } from '../jobs/queues'
+import type { Queues } from '../jobs/queues/types'
 import type { QueueMetricsResponse, QueueMetricsTimeRange } from './types'
 
 /** Number of minutes of data to fetch per time range */

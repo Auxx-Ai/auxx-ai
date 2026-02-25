@@ -1,14 +1,9 @@
 // apps/build/src/components/layouts/simple-layout.tsx
 'use client'
 
-// import { useEnvironment, useDehydratedOrganizations } from '~/providers/dehydrated-state-provider'
-// import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
-// import type { DehydratedOrganization } from '@auxx/lib/dehydration'
 import { WEBAPP_URL } from '@auxx/config/client'
 import { Button } from '@auxx/ui/components/button'
-// import { client } from '~/auth/auth-client'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { Logo } from '~/components/logo'
 import { ColorfulBg } from './colorful-bg'
@@ -19,34 +14,12 @@ interface SimpleLayoutProps {
   showBackToDashboard?: boolean
 }
 
-/** Helper function to check if current org subscription is active */
-// function hasActiveSubscription(subscription: DehydratedOrganization['subscription']): boolean {
-//   if (!subscription) return false
-//   const activeStatuses = ['active', 'trialing']
-//   return activeStatuses.includes(subscription.status.toLowerCase()) && !subscription.hasTrialEnded
-// }
-
 /**
  * Simple layout for subscription and organization management.
  * Lightweight header with logo and basic navigation.
  */
 export function SimpleLayout({ children, title, showBackToDashboard = true }: SimpleLayoutProps) {
-  const router = useRouter()
-  // const env = useEnvironment()
-  // const organizations = useDehydratedOrganizations()
-  // const { organizationId: currentOrgId } = useOrganizationIdContext()
-
-  // const currentOrg = organizations.find((org) => org.id === currentOrgId)
-  // const canAccessDashboard = hasActiveSubscription(currentOrg?.subscription ?? null)
-
-  const handleLogout = async () => {
-    try {
-      // await client.signOut()
-      // router.push('/login')
-    } catch (error) {
-      console.error('Error during logout:', error)
-    }
-  }
+  const handleLogout = async () => {}
 
   return (
     <ColorfulBg>

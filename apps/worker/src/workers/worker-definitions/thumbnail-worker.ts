@@ -1,7 +1,7 @@
 // apps/worker/src/workers/worker-definitions/thumbnail-worker.ts
 
 import { generateThumbnailJob } from '@auxx/lib/jobs'
-import { Queues } from '@auxx/lib/jobs/queues/types'
+import { Queues } from '@auxx/lib/jobs/queues'
 import { createWorker } from '../utils/createWorker'
 
 const jobMappings = {

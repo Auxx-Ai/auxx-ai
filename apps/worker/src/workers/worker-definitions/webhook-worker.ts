@@ -1,10 +1,10 @@
-import * as jobs from '@auxx/lib/jobs/definitions'
-import { Queues } from '@auxx/lib/queues/types'
+import { processSingleWebhookJob, processWebhookJob } from '@auxx/lib/jobs'
+import { Queues } from '@auxx/lib/jobs/queues'
 import { createWorker } from '../utils/createWorker'
 
 const jobMappings = {
-  processWebhookJob: jobs.processWebhookJob,
-  processSingleWebhookJob: jobs.processSingleWebhookJob,
+  processWebhookJob,
+  processSingleWebhookJob,
 }
 
 export function startWebhooksWorker() {

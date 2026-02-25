@@ -20,7 +20,7 @@ const logger = createScopedLogger('base-condition-builder')
 
 /**
  * Backward-compat alias for Condition
- * @deprecated Use Condition from @auxx/lib/conditions instead
+ * @deprecated Use Condition
  */
 export type GenericCondition = Condition
 
@@ -31,7 +31,7 @@ export type { BaseConditionGroup as ConditionGroup }
 
 /**
  * Backward-compat alias for ConditionValidationResult
- * @deprecated Use ConditionValidationResult from @auxx/lib/conditions instead
+ * @deprecated Use ConditionValidationResult
  */
 export type ValidationResult = ConditionValidationResult
 

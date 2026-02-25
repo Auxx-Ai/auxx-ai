@@ -2,13 +2,13 @@
 
 import { schema } from '@auxx/database'
 import { IdentifierType } from '@auxx/database/enums'
-import { MessageSenderService } from '@auxx/lib/messages'
-import { ProviderRegistryService } from '@auxx/lib/providers'
 import { eq } from 'drizzle-orm'
+import { MessageSenderService } from '../../../messages/message-sender.service'
 import type {
   ParticipantInput,
   SendMessageInput,
 } from '../../../messages/types/message-sending.types'
+import { ProviderRegistryService } from '../../../providers/provider-registry-service'
 import { executeResourceQuery } from '../../../resources/resource-fetcher'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'

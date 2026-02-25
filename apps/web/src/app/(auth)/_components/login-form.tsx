@@ -22,7 +22,7 @@ import Link from 'next/link' // For Sign Up link
 import { useRouter, useSearchParams } from 'next/navigation'
 import type React from 'react'
 import { useEffect, useState } from 'react'
-import { z } from 'zod'
+// import { z } from 'zod'
 import { client } from '~/auth/auth-client' // Use the cached auth
 import { PasswordInput } from '~/components/credentials/password-fields'
 import { GithubIcon, GoogleIcon } from '~/constants/icons'
@@ -30,11 +30,11 @@ import { useAnalytics } from '~/hooks/use-analytics'
 import { useEnv } from '~/providers/dehydrated-state-provider'
 import { GeneralSubmitButton } from './submit-button'
 
-const loginSchema = z.object({
-  email: z.string().min(1, 'Email is required'),
-  password: z.string().min(8, 'Password must be at least 8 characters long'),
-})
-type LoginFormValues = z.infer<typeof loginSchema>
+// const loginSchema = z.object({
+//   email: z.string().min(1, 'Email is required'),
+//   password: z.string().min(8, 'Password must be at least 8 characters long'),
+// })
+// type LoginFormValues = z.infer<typeof loginSchema>
 
 export default function LoginForm({
   callbackUrl,
@@ -91,7 +91,7 @@ export default function LoginForm({
               redirectTo = processedUrl
               isExternal = true
             }
-          } catch (e) {
+          } catch (_e) {
             // Use default
           }
         }

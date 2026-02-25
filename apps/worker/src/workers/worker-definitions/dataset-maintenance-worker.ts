@@ -1,13 +1,13 @@
 // apps/worker/src/workers/worker-definitions/dataset-maintenance-worker.ts
 
-import * as jobs from '@auxx/lib/jobs/definitions'
-import { Queues } from '@auxx/lib/jobs/queues/types'
+import { cleanupDatasetJob, cleanupOrphanedDataJob, reindexDatasetJob } from '@auxx/lib/jobs'
+import { Queues } from '@auxx/lib/jobs/queues'
 import { createWorker } from '../utils/createWorker'
 
 const jobMappings = {
-  'cleanup-dataset': jobs.cleanupDatasetJob,
-  'reindex-dataset': jobs.reindexDatasetJob,
-  'cleanup-orphaned-data': jobs.cleanupOrphanedDataJob,
+  'cleanup-dataset': cleanupDatasetJob,
+  'reindex-dataset': reindexDatasetJob,
+  'cleanup-orphaned-data': cleanupOrphanedDataJob,
 }
 
 export function startDatasetMaintenanceWorker() {

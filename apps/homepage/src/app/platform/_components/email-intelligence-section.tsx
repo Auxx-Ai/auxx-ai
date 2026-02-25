@@ -1,6 +1,6 @@
 // apps/web/src/app/(website)/features/_components/sections/email-intelligence-section.tsx
 
-import { ArrowUpRight, Bot, MailCheck, SlidersHorizontal, Target } from 'lucide-react'
+import { ArrowUpRight } from 'lucide-react'
 import { Badge } from '~/components/ui/badge'
 import { Card } from '~/components/ui/card'
 
@@ -28,32 +28,32 @@ const emailManagementCapabilities = [
 ]
 
 // Describes the AI intelligence differentiators for alternating content blocks.
-const aiIntelligenceHighlights = [
-  {
-    icon: Bot,
-    eyebrow: 'Intent layers',
-    title: 'Understands nuance beyond keywords',
-    body: 'Hybrid semantic retrieval and policy graphs interpret complicated customer requests with empathy and precision.',
-    statLabel: 'Escalations prevented',
-    statValue: '63%',
-  },
-  {
-    icon: Target,
-    eyebrow: 'Guided actions',
-    title: 'Acts on your workflows automatically',
-    body: 'Execute refunds, replacements, loyalty perks, and shipping updates directly from Auxx.ai with auditable guardrails.',
-    statLabel: 'Manual tasks automated',
-    statValue: '4.7 hours saved / agent',
-  },
-  {
-    icon: SlidersHorizontal,
-    eyebrow: 'Dynamic policies',
-    title: 'Adapts tone and policy in real time',
-    body: 'Conditional rules adjust voice, empathy level, and compliance requirements based on ticket type and customer value.',
-    statLabel: 'Brand alignment score',
-    statValue: '98/100',
-  },
-]
+// const aiIntelligenceHighlights = [
+//   {
+//     icon: Bot,
+//     eyebrow: 'Intent layers',
+//     title: 'Understands nuance beyond keywords',
+//     body: 'Hybrid semantic retrieval and policy graphs interpret complicated customer requests with empathy and precision.',
+//     statLabel: 'Escalations prevented',
+//     statValue: '63%',
+//   },
+//   {
+//     icon: Target,
+//     eyebrow: 'Guided actions',
+//     title: 'Acts on your workflows automatically',
+//     body: 'Execute refunds, replacements, loyalty perks, and shipping updates directly from Auxx.ai with auditable guardrails.',
+//     statLabel: 'Manual tasks automated',
+//     statValue: '4.7 hours saved / agent',
+//   },
+//   {
+//     icon: SlidersHorizontal,
+//     eyebrow: 'Dynamic policies',
+//     title: 'Adapts tone and policy in real time',
+//     body: 'Conditional rules adjust voice, empathy level, and compliance requirements based on ticket type and customer value.',
+//     statLabel: 'Brand alignment score',
+//     statValue: '98/100',
+//   },
+// ]
 
 // Renders the email management grid and the AI intelligence alternating layout.
 export function EmailIntelligenceSection() {

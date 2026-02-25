@@ -10,7 +10,7 @@ import {
 import { configService } from '@auxx/credentials'
 import { database, schema } from '@auxx/database' // Drizzle database for services
 import { accountModel, UserModel } from '@auxx/database/models'
-import { enqueueEmailJob } from '@auxx/lib/jobs/email'
+import { enqueueEmailJob } from '@auxx/lib/jobs'
 import { seedNewUserDatabase } from '@auxx/lib/seed'
 import { createScopedLogger } from '@auxx/logger'
 import { betterAuth } from 'better-auth' // core lib

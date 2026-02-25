@@ -4,16 +4,33 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./credentials": "./src/credentials/index.ts",
-    "./types": "./src/types/index.ts",
-    "./server": "./src/server/index.ts",
-    "./nodes": "./src/nodes/index.ts"
+    "./credentials": {
+      "types": "./src/credentials/index.ts",
+      "import": "./dist/credentials/index.js",
+      "default": "./src/credentials/index.ts"
+    },
+    "./types": {
+      "types": "./src/types/index.ts",
+      "import": "./dist/types/index.js",
+      "default": "./src/types/index.ts"
+    },
+    "./server": {
+      "types": "./src/server/index.ts",
+      "import": "./dist/server/index.js",
+      "default": "./src/server/index.ts"
+    },
+    "./nodes": {
+      "types": "./src/nodes/index.ts",
+      "import": "./dist/nodes/index.js",
+      "default": "./src/nodes/index.ts"
+    }
   },
   "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json --noCheck && tsc-esm-fix --target=dist",
+    "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo",
     "generate": "tsx scripts/generate-frontend.ts",
     "generate:watch": "tsx scripts/generate-frontend.ts --watch",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf node_modules .turbo dist",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
@@ -31,6 +48,7 @@
     "@vitejs/plugin-react": "catalog:",
     "fs-extra": "^11.2.0",
     "glob": "^10.3.10",
+    "tsc-esm-fix": "catalog:",
     "tsup": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",

@@ -31,19 +31,19 @@ const metrics = [
   },
 ]
 
-const caseStudyStats = [
-  { label: 'Before Auxx.ai', metric: 'Response time', value: '4.2 hours', color: 'text-red-500' },
-  {
-    label: 'After Auxx.ai',
-    metric: 'Response time',
-    value: '< 30 seconds',
-    color: 'text-green-500',
-  },
-  { label: 'Before Auxx.ai', metric: 'Resolution rate', value: '45%', color: 'text-red-500' },
-  { label: 'After Auxx.ai', metric: 'Resolution rate', value: '73%', color: 'text-green-500' },
-  { label: 'Before Auxx.ai', metric: 'Support cost', value: '$12.50', color: 'text-red-500' },
-  { label: 'After Auxx.ai', metric: 'Support cost', value: '$3.75', color: 'text-green-500' },
-]
+// const caseStudyStats = [
+//   { label: 'Before Auxx.ai', metric: 'Response time', value: '4.2 hours', color: 'text-red-500' },
+//   {
+//     label: 'After Auxx.ai',
+//     metric: 'Response time',
+//     value: '< 30 seconds',
+//     color: 'text-green-500',
+//   },
+//   { label: 'Before Auxx.ai', metric: 'Resolution rate', value: '45%', color: 'text-red-500' },
+//   { label: 'After Auxx.ai', metric: 'Resolution rate', value: '73%', color: 'text-green-500' },
+//   { label: 'Before Auxx.ai', metric: 'Support cost', value: '$12.50', color: 'text-red-500' },
+//   { label: 'After Auxx.ai', metric: 'Support cost', value: '$3.75', color: 'text-green-500' },
+// ]
 
 const Stripes = () => (
   <div

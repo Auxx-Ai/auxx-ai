@@ -1,7 +1,7 @@
 // apps/worker/src/workers/worker-definitions/data-import-worker.ts
 
 import { executePlanJob, generatePlanJob, resolveValuesJob } from '@auxx/lib/jobs'
-import { Queues } from '@auxx/lib/queues/types'
+import { Queues } from '@auxx/lib/jobs/queues'
 import { createWorker } from '../utils/createWorker'
 
 /** Job mappings for data import worker */

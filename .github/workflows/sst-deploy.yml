@@ -105,8 +105,8 @@ jobs:
       - name: Check next.config safety
         run: pnpm run check:next-config-safety
 
-      - name: Build workspace packages
-        run: pnpm --filter @auxx/services build
+      - name: Build workspace dependencies
+        run: pnpm turbo build --filter="./packages/*"
 
       - name: Export environment variables (dev)
         run: |

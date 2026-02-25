@@ -1,8 +1,7 @@
 // apps/web/src/app/api/sync/[...slug]/route.ts
 
 import { ShopifyIntegrationModel } from '@auxx/database/models'
-import { getQueue } from '@auxx/lib/jobs/queues'
-import { Queues } from '@auxx/lib/jobs/queues/types'
+import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { SyncManager } from '@auxx/lib/shopify'
 import { headers } from 'next/headers'
 import type { NextRequest } from 'next/server'

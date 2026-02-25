@@ -170,7 +170,6 @@ export default function ConnectionsPage() {
     handleSubmit,
     formState: { errors, isDirty },
     reset,
-    setValue,
     control,
     watch,
   } = form

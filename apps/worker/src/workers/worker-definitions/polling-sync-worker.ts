@@ -7,7 +7,7 @@ import {
   pollingStaleCheckJob,
   pollingSyncScannerJob,
 } from '@auxx/lib/jobs'
-import { Queues } from '@auxx/lib/jobs/queues/types'
+import { Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
 import { createWorker } from '../utils/createWorker'
 

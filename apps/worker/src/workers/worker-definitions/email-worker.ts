@@ -1,7 +1,7 @@
 // apps/worker/src/workers/worker-definitions/email-worker.ts
 
-import { sendEmailJob } from '@auxx/lib/jobs/definitions'
-import { Queues } from '@auxx/lib/queues/types'
+import { sendEmailJob } from '@auxx/lib/jobs'
+import { Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
 import { createWorker } from '../utils/createWorker'
 

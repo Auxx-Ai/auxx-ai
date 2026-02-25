@@ -1,14 +1,9 @@
 'use client'
 import { FieldGroup, FieldSet } from '@auxx/ui/components/field'
 import { Users } from 'lucide-react'
-import { useCopyClipboard } from '@/hooks/use-copy-clipboard'
 import SettingsHeader from '../_components/settings-header'
 
-type Props = {}
-
-function GeneralMembersSettings({}: Props) {
-  const { copy, copied } = useCopyClipboard()
-
+function GeneralMembersSettings() {
   return (
     <>
       <SettingsHeader title='Members' icon={<Users className='size-4' />} />

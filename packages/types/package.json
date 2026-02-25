@@ -4,18 +4,70 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./index.ts",
-    "./actor": "./actor/index.ts",
-    "./custom-field": "./custom-field/index.ts",
-    "./field": "./field/index.ts",
-    "./field-value": "./field-value/index.ts",
-    "./groups": "./groups/index.ts",
-    "./pagination": "./pagination/index.ts",
-    "./resource": "./resource/index.ts",
-    "./task": "./task/index.ts",
-    "./draft": "./draft/index.ts",
-    "./signature": "./signature/index.ts",
-    "./config": "./config/index.ts"
+    ".": {
+      "types": "./index.ts",
+      "import": "./dist/index.js",
+      "default": "./index.ts"
+    },
+    "./actor": {
+      "types": "./actor/index.ts",
+      "import": "./dist/actor/index.js",
+      "default": "./actor/index.ts"
+    },
+    "./custom-field": {
+      "types": "./custom-field/index.ts",
+      "import": "./dist/custom-field/index.js",
+      "default": "./custom-field/index.ts"
+    },
+    "./field": {
+      "types": "./field/index.ts",
+      "import": "./dist/field/index.js",
+      "default": "./field/index.ts"
+    },
+    "./field-value": {
+      "types": "./field-value/index.ts",
+      "import": "./dist/field-value/index.js",
+      "default": "./field-value/index.ts"
+    },
+    "./groups": {
+      "types": "./groups/index.ts",
+      "import": "./dist/groups/index.js",
+      "default": "./groups/index.ts"
+    },
+    "./pagination": {
+      "types": "./pagination/index.ts",
+      "import": "./dist/pagination/index.js",
+      "default": "./pagination/index.ts"
+    },
+    "./resource": {
+      "types": "./resource/index.ts",
+      "import": "./dist/resource/index.js",
+      "default": "./resource/index.ts"
+    },
+    "./task": {
+      "types": "./task/index.ts",
+      "import": "./dist/task/index.js",
+      "default": "./task/index.ts"
+    },
+    "./draft": {
+      "types": "./draft/index.ts",
+      "import": "./dist/draft/index.js",
+      "default": "./draft/index.ts"
+    },
+    "./signature": {
+      "types": "./signature/index.ts",
+      "import": "./dist/signature/index.js",
+      "default": "./signature/index.ts"
+    },
+    "./config": {
+      "types": "./config/index.ts",
+      "import": "./dist/config/index.js",
+      "default": "./config/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json --noCheck && tsc-esm-fix --target=dist",
+    "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo"
   },
   "dependencies": {
     "@auxx/database": "workspace:*",
@@ -23,6 +75,7 @@
   },
   "devDependencies": {
     "@auxx/typescript-config": "workspace:*",
+    "tsc-esm-fix": "catalog:",
     "typescript": "catalog:"
   }
 }

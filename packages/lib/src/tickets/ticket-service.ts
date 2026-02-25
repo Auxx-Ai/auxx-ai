@@ -6,8 +6,8 @@ import {
   TicketStatus as TicketStatusEnum,
 } from '@auxx/database/enums'
 import type { TicketPriority, TicketStatus, TicketType } from '@auxx/database/types'
-import { publisher } from '@auxx/lib/events'
 import { TRPCError } from '@trpc/server'
+import { publisher } from '../events/publisher'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { toRecordId } from '../resources/resource-id'
 import { ticketNumbering } from './ticket-numbering'

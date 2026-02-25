@@ -6,14 +6,16 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
+      "import": "./dist/index.js",
       "default": "./src/index.ts"
     }
   },
   "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json --noCheck && tsc-esm-fix --target=dist",
+    "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo",
     "dev": "pnpm exec dotenv -e ../../.env -e .env -- bash -lc 'echo \"NGROK_URL=$NGROK_URL\" && ngrok http --url=$NGROK_URL 3000'",
     "test": "vitest",
-    "test:run": "vitest run",
-    "clean": "rm -rf node_modules"
+    "test:run": "vitest run"
   },
   "dependencies": {
     "stripe": "catalog:",
@@ -26,6 +28,7 @@
     "dotenv": "catalog:",
     "@auxx/typescript-config": "workspace:*",
     "concurrently": "^9.1.2",
+    "tsc-esm-fix": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:",
     "vite-tsconfig-paths": "catalog:"

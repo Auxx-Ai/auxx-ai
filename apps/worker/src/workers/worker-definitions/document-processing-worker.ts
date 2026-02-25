@@ -1,15 +1,19 @@
 // apps/worker/src/workers/worker-definitions/document-processing-worker.ts
 
-import * as jobs from '@auxx/lib/jobs/definitions'
-import { DocumentFlowJobs } from '@auxx/lib/jobs/flows'
-import { Queues } from '@auxx/lib/jobs/queues/types'
+import {
+  batchOperationJob,
+  DocumentFlowJobs,
+  finalizeDocumentJob,
+  processDocumentJob,
+} from '@auxx/lib/jobs'
+import { Queues } from '@auxx/lib/jobs/queues'
 import { createWorker } from '../utils/createWorker'
 
 const jobMappings = {
-  'process-document': jobs.processDocumentJob,
-  'batch-operation': jobs.batchOperationJob,
+  'process-document': processDocumentJob,
+  'batch-operation': batchOperationJob,
   // Flow jobs
-  [DocumentFlowJobs.FINALIZE_DOCUMENT]: jobs.finalizeDocumentJob,
+  [DocumentFlowJobs.FINALIZE_DOCUMENT]: finalizeDocumentJob,
 }
 
 /**

@@ -1,10 +1,10 @@
 // packages/lib/src/workflows/workflow-service.ts
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { WorkflowEngine } from '@auxx/lib/workflow-engine'
 import { createScopedLogger } from '@auxx/logger'
 import { and, count, desc, eq, ilike, inArray, or, type SQL } from 'drizzle-orm'
 import { getQueue, Queues } from '../jobs/queues'
+import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
 import { ScheduledTriggerService } from './scheduled-trigger-service'
 import {
   type TestResult,

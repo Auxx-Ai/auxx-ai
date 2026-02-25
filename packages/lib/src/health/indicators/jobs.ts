@@ -1,6 +1,7 @@
 // packages/lib/src/health/indicators/jobs.ts
 
-import { getQueue, Queues } from '@auxx/lib/jobs/queues'
+import { getQueue } from '../../jobs/queues'
+import { Queues } from '../../jobs/queues/types'
 import { HealthStateManager } from '../state-manager'
 import { FAILURE_RATE_THRESHOLD, HEALTH_ERROR_MESSAGES, HealthStatus } from '../types'
 

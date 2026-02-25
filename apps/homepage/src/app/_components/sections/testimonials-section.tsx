@@ -3,8 +3,6 @@
 import Image from 'next/image'
 import { avatars } from '~/app/_components/avatars'
 
-const ADAM_AVATAR = 'https://avatars.githubusercontent.com/u/4323180?v=4'
-
 // TESTIMONIALS groups the quotes rendered in the grid.
 const TESTIMONIALS = [
   {

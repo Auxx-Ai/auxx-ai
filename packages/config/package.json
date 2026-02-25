@@ -3,20 +3,37 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "source": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./client": "./src/client.ts",
-    "./server": "./src/server.ts",
-    "./build": "./src/build.ts",
-    "./urls": "./src/url.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./src/index.ts"
+    },
+    "./client": {
+      "types": "./src/client.ts",
+      "import": "./dist/client.js",
+      "default": "./src/client.ts"
+    },
+    "./server": {
+      "types": "./src/server.ts",
+      "import": "./dist/server.js",
+      "default": "./src/server.ts"
+    },
+    "./build": {
+      "types": "./src/build.ts",
+      "import": "./dist/build.js",
+      "default": "./src/build.ts"
+    },
+    "./urls": {
+      "types": "./src/url.ts",
+      "import": "./dist/url.js",
+      "default": "./src/url.ts"
+    }
   },
   "scripts": {
-    "dev": "tsc --watch",
-    "build": "tsc",
-    "clean": "rm -rf node_modules dist *.tsbuildinfo .turbo"
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json --noCheck && tsc-esm-fix --target=dist",
+    "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo"
   },
   "dependencies": {
     "sst": "^3.19.0"
@@ -24,7 +41,7 @@
   "devDependencies": {
     "@auxx/typescript-config": "workspace:*",
     "@types/node": "catalog:",
-    "tsup": "catalog:",
+    "tsc-esm-fix": "catalog:",
     "typescript": "catalog:"
   }
 }

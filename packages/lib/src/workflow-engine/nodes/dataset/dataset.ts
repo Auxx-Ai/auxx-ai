@@ -2,11 +2,11 @@
 
 import { database as db, schema } from '@auxx/database'
 import { DocumentTypeValues, IndexStatus } from '@auxx/database/enums'
-import type { DocumentChunk } from '@auxx/lib/datasets'
-import { createDocumentProcessingFlow } from '@auxx/lib/jobs/flows'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
+import type { DocumentChunk } from '../../../datasets/types'
+import { createDocumentProcessingFlow } from '../../../jobs/flows/document-processing-flow'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,

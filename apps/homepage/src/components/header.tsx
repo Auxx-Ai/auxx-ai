@@ -185,7 +185,7 @@ export default function Header() {
 
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                aria-label={isMobileMenuOpen == true ? 'Close Menu' : 'Open Menu'}
+                aria-label={isMobileMenuOpen === true ? 'Close Menu' : 'Open Menu'}
                 className='relative z-20 -m-2.5 -mr-3 block cursor-pointer p-2.5 lg:hidden'>
                 <Menu className='in-data-[state=active]:rotate-180 in-data-[state=active]:scale-0 in-data-[state=active]:opacity-0 m-auto size-5 duration-200' />
                 <X className='in-data-[state=active]:rotate-0 in-data-[state=active]:scale-100 in-data-[state=active]:opacity-100 absolute inset-0 m-auto size-5 -rotate-180 scale-0 opacity-0 duration-200' />
