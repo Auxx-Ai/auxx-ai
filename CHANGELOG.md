@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.17](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.16...auxx-v0.1.17) (2026-02-25)
+
+
+### Features
+
+* implement playwright testing ([#87](https://github.com/Auxx-Ai/auxx-ai/issues/87)) ([d38f5d3](https://github.com/Auxx-Ai/auxx-ai/commit/d38f5d3b30a20ab745ab5e2fc481a99e72cce90c))
+* update imports and exports across packages for consistency ([#85](https://github.com/Auxx-Ai/auxx-ai/issues/85)) ([41d4058](https://github.com/Auxx-Ai/auxx-ai/commit/41d40583c7e3b2d2742cd12297235fe631988439))
+
+
+### Bug Fixes
+
+* remove deprecated @t3-oss/env-nextjs package references and clea… ([#83](https://github.com/Auxx-Ai/auxx-ai/issues/83)) ([7452829](https://github.com/Auxx-Ai/auxx-ai/commit/7452829610ecb19ffe8ea8f8ab574f4ab97bdeb6))
+* update Dockerfiles to increase memory limit and improve pnpm dep… ([#86](https://github.com/Auxx-Ai/auxx-ai/issues/86)) ([d07af68](https://github.com/Auxx-Ai/auxx-ai/commit/d07af68a1ee488f435bbb3c39a76244da29c565a))
+
 ## [0.1.16](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.15...auxx-v0.1.16) (2026-02-24)
 
 
