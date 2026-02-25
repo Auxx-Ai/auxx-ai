@@ -96,3 +96,6 @@ export const TimelineEvent = pgTable(
     ),
   ]
 )
+
+/** Selected TimelineEvent entity type */
+export type TimelineEventEntity = typeof TimelineEvent.$inferSelect

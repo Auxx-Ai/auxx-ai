@@ -179,6 +179,34 @@ export type EntityType = (typeof Enums.EntityTypeValues)[number] | null
 
 export type StandardType = (typeof Enums.StandardTypeValues)[number] | null
 
+// Entity types (inferred from schema — client-safe, no runtime imports)
+export type { AttachmentEntity } from './db/schema/attachment'
+export type { CommentEntity } from './db/schema/comment'
+export type { CommentReactionEntity } from './db/schema/comment-reaction'
+export type { CustomFieldEntity } from './db/schema/custom-field'
+export type { DatasetSearchQueryEntity } from './db/schema/dataset-search-query'
+export type { DatasetSearchResultEntity } from './db/schema/dataset-search-result'
+export type { ExternalKnowledgeSourceEntity } from './db/schema/external-knowledge-source'
+export type { FileVersionEntity } from './db/schema/file-version'
+export type { FolderEntity } from './db/schema/folder'
+export type { FolderFileEntity } from './db/schema/folder-file'
+export type { InventoryEntity } from './db/schema/inventory'
+export type { LoadBalancingConfigEntity } from './db/schema/load-balancing-config'
+export type { MediaAssetEntity } from './db/schema/media-asset'
+export type { MediaAssetVersionEntity } from './db/schema/media-asset-version'
+export type { MessageParticipantEntity } from './db/schema/message-participant'
+export type { OrganizationEntity } from './db/schema/organization'
+export type { OrganizationInvitationEntity } from './db/schema/organization-invitation'
+export type { PartEntity } from './db/schema/part'
+export type { ProviderPreferenceEntity } from './db/schema/provider-preference'
+export type {
+  CreateStorageLocationInput,
+  StorageLocationEntity,
+} from './db/schema/storage-location'
+export type { SubpartEntity } from './db/schema/subpart'
+export type { TableViewEntity } from './db/schema/table-view'
+export type { TimelineEventEntity } from './db/schema/timeline-event'
+export type { WorkflowNodeExecutionEntity } from './db/schema/workflow-node-execution'
 // ChunkSettings types
 export type {
   ChunkPreprocessingOptions,

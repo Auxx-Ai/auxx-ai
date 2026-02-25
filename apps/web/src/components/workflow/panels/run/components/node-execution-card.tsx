@@ -1,8 +1,10 @@
 // apps/web/src/components/workflow/panels/run/components/node-execution-card.tsx
 
 import { WorkflowRunStatus as WorkflowRunStatusEnum } from '@auxx/database/enums'
-import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/models'
-import type { WorkflowRunStatus } from '@auxx/database/types'
+import type {
+  WorkflowNodeExecutionEntity as WorkflowNodeExecution,
+  WorkflowRunStatus,
+} from '@auxx/database/types'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'

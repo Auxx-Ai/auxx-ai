@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/utils/execution-tree-builder.ts
 
-import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/models'
+import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/types'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
 import type { FlowEdge, FlowNode } from '../types'
 import { NodeRunningStatus } from '../types'

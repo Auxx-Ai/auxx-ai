@@ -47,3 +47,6 @@ export const Comment = pgTable(
     index('Comment_parentId_idx').using('btree', table.parentId.asc().nullsLast()),
   ]
 )
+
+/** Selected Comment entity type */
+export type CommentEntity = typeof Comment.$inferSelect

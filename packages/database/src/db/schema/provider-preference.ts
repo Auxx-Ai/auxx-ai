@@ -35,3 +35,6 @@ export const ProviderPreference = pgTable(
     ),
   ]
 )
+
+/** Selected ProviderPreference entity type */
+export type ProviderPreferenceEntity = typeof ProviderPreference.$inferSelect

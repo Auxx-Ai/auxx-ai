@@ -68,7 +68,7 @@ async function createUsers() {
         completedOnboarding: false,
       },
     })
-  } catch (error) {
+  } catch (_error) {
     // console.error('Error creating user:', error)
   }
   const [mainUser] = await db

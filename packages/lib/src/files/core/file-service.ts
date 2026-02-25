@@ -4,7 +4,7 @@ import { database as db, schema } from '@auxx/database'
 import type {
   FileVersionEntity as FileVersion,
   FolderFileEntity as FolderFile,
-} from '@auxx/database/models'
+} from '@auxx/database/types'
 import {
   and,
   asc,

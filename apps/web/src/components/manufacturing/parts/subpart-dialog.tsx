@@ -1,7 +1,7 @@
 // apps/web/src/components/manufacturing/parts/subpart-dialog.tsx
 'use client'
 
-import type { SubpartEntity as Subpart } from '@auxx/database/models'
+import type { SubpartEntity as Subpart } from '@auxx/database/types'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import {

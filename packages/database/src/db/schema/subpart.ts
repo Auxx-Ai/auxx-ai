@@ -36,3 +36,6 @@ export const Subpart = pgTable(
     ),
   ]
 )
+
+/** Selected Subpart entity type */
+export type SubpartEntity = typeof Subpart.$inferSelect

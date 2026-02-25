@@ -6,7 +6,7 @@ import type {
   MediaAssetEntity as MediaAsset,
   MediaAssetVersionEntity as MediaAssetVersion,
   StorageLocationEntity as StorageLocation,
-} from '@auxx/database/models'
+} from '@auxx/database/types'
 // packages/lib/src/files/core/types.ts
 // ============= Entity Types =============
 export type Nullish<T> = T | null | undefined

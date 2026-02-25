@@ -69,3 +69,6 @@ export const ExternalKnowledgeSource = pgTable(
     index('ExternalKnowledgeSource_status_idx').using('btree', table.status.asc().nullsLast()),
   ]
 )
+
+/** Selected ExternalKnowledgeSource entity type */
+export type ExternalKnowledgeSourceEntity = typeof ExternalKnowledgeSource.$inferSelect

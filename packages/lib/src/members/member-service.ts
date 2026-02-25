@@ -6,11 +6,11 @@
 import { SubscriptionService } from '@auxx/billing'
 import { WEBAPP_URL } from '@auxx/config/server'
 import { type Database, database, schema } from '@auxx/database'
-import {
-  type OrganizationInvitationEntity as OrganizationInvitation,
-  OrganizationMemberModel,
-} from '@auxx/database/models'
-import type { OrganizationRole } from '@auxx/database/types'
+import { OrganizationMemberModel } from '@auxx/database/models'
+import type {
+  OrganizationInvitationEntity as OrganizationInvitation,
+  OrganizationRole,
+} from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import crypto from 'crypto'

@@ -86,3 +86,6 @@ export const MediaAssetVersion = pgTable(
       .where(sql`(("derivedFromVersionId" IS NOT NULL) AND ("deletedAt" IS NULL))`),
   ]
 )
+
+/** Selected MediaAssetVersion entity type */
+export type MediaAssetVersionEntity = typeof MediaAssetVersion.$inferSelect

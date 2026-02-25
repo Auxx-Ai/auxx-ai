@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/hooks/use-run-node.ts
 
-import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/models'
+import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/types'
 import { toastError } from '@auxx/ui/components/toast'
 import { useStoreApi } from '@xyflow/react'
 import { useCallback } from 'react'

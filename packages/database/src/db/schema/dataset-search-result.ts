@@ -52,3 +52,6 @@ export const DatasetSearchResult = pgTable(
     index('DatasetSearchResult_segmentId_idx').using('btree', table.segmentId.asc().nullsLast()),
   ]
 )
+
+/** Selected DatasetSearchResult entity type */
+export type DatasetSearchResultEntity = typeof DatasetSearchResult.$inferSelect

@@ -58,3 +58,6 @@ export const MessageParticipant = pgTable(
     ),
   ]
 )
+
+/** Selected MessageParticipant entity type */
+export type MessageParticipantEntity = typeof MessageParticipant.$inferSelect

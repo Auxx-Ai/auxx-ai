@@ -1,7 +1,10 @@
 // packages/lib/src/files/storage/location-service.ts
 import { type Database, database as db, schema } from '@auxx/database'
-import type { CreateStorageLocationInput, StorageLocationEntity } from '@auxx/database/models'
-import type { StorageProvider } from '@auxx/database/types'
+import type {
+  CreateStorageLocationInput,
+  StorageLocationEntity,
+  StorageProvider,
+} from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, count, desc, eq, inArray, isNotNull, lt, sql, sum } from 'drizzle-orm'
 

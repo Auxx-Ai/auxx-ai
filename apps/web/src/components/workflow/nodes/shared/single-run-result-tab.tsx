@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/shared/single-run-result-tab.tsx
 
-import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/models'
+import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/types'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

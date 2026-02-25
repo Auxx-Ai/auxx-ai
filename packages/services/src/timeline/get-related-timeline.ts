@@ -1,7 +1,7 @@
 // packages/services/src/timeline/get-related-timeline.ts
 
 import { database, schema } from '@auxx/database'
-import type { TimelineEventEntity } from '@auxx/database/models'
+import type { TimelineEventEntity } from '@auxx/database/types'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, desc, eq } from 'drizzle-orm'
 import { ok } from 'neverthrow'

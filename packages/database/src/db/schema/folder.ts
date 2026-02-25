@@ -70,3 +70,6 @@ export const Folder = pgTable(
     ),
   ]
 )
+
+/** Selected Folder entity type */
+export type FolderEntity = typeof Folder.$inferSelect

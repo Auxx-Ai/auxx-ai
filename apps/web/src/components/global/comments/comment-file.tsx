@@ -1,6 +1,6 @@
 // apps/web/src/components/global/comments/comment-file.tsx
 'use client'
-import type { MediaAssetEntity as MediaAsset } from '@auxx/database/models'
+import type { MediaAssetEntity as MediaAsset } from '@auxx/database/types'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatBytes } from '@auxx/utils/file'

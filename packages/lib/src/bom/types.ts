@@ -1,4 +1,4 @@
-import type { PartEntity as Part } from '@auxx/database/models'
+import type { PartEntity as Part } from '@auxx/database/types'
 
 export type Subpart = {
   id: string

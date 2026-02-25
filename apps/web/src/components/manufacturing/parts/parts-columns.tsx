@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { InventoryEntity as Inventory } from '@auxx/database/models'
+import type { InventoryEntity as Inventory } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import {

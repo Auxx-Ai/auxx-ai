@@ -67,3 +67,6 @@ export const Attachment = pgTable(
     ),
   ]
 )
+
+/** Selected Attachment entity type */
+export type AttachmentEntity = typeof Attachment.$inferSelect

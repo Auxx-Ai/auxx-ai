@@ -1,7 +1,7 @@
 // apps/web/src/components/drawers/tabs/part-subparts-tab.tsx
 'use client'
 
-import type { SubpartEntity as Subpart } from '@auxx/database/models'
+import type { SubpartEntity as Subpart } from '@auxx/database/types'
 import { parseRecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {

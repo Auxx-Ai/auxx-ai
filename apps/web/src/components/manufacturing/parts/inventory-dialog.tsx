@@ -1,7 +1,7 @@
 // apps/web/src/components/manufacturing/parts/inventory-dialog.tsx
 'use client'
 
-import type { InventoryEntity as Inventory } from '@auxx/database/models'
+import type { InventoryEntity as Inventory } from '@auxx/database/types'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import {

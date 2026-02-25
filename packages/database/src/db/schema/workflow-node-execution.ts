@@ -70,3 +70,6 @@ export const WorkflowNodeExecution = pgTable(
     ),
   ]
 )
+
+/** Selected WorkflowNodeExecution entity type */
+export type WorkflowNodeExecutionEntity = typeof WorkflowNodeExecution.$inferSelect

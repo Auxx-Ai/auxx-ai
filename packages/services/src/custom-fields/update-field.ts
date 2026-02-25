@@ -2,8 +2,7 @@
 
 import { database, schema } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
-import type { CustomFieldEntity } from '@auxx/database/models'
-import type { FieldType } from '@auxx/database/types'
+import type { CustomFieldEntity, FieldType } from '@auxx/database/types'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'

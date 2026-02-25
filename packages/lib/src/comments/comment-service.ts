@@ -3,7 +3,7 @@ import { type Database, database, schema, type Transaction } from '@auxx/databas
 import type {
   CommentEntity as Comment,
   CommentReactionEntity as CommentReaction,
-} from '@auxx/database/models'
+} from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { publisher } from '../events'

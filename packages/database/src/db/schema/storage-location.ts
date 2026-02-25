@@ -45,3 +45,8 @@ export const StorageLocation = pgTable(
     ),
   ]
 )
+
+/** Selected StorageLocation entity type */
+export type StorageLocationEntity = typeof StorageLocation.$inferSelect
+/** Insertable StorageLocation input type */
+export type CreateStorageLocationInput = typeof StorageLocation.$inferInsert

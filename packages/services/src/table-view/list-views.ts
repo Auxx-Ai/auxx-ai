@@ -1,7 +1,7 @@
 // packages/services/src/table-view/list-views.ts
 
 import { database, schema } from '@auxx/database'
-import type { TableViewEntity } from '@auxx/database/models'
+import type { TableViewEntity } from '@auxx/database/types'
 import { and, asc, desc, eq, inArray, or } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'

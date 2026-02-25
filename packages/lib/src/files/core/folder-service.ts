@@ -1,7 +1,7 @@
 // packages/lib/src/files/core/folder-service.ts
 
 import { type Database, database, schema } from '@auxx/database'
-import type { FolderEntity as Folder } from '@auxx/database/models'
+import type { FolderEntity as Folder } from '@auxx/database/types'
 import {
   and,
   asc,

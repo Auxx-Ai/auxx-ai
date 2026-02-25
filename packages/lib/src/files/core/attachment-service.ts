@@ -1,6 +1,6 @@
 // packages/lib/src/files/core/attachment-service.ts
 import { type Database, database as db, schema, type Transaction } from '@auxx/database'
-import type { AttachmentEntity as Attachment } from '@auxx/database/models'
+import type { AttachmentEntity as Attachment } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import {
   and,

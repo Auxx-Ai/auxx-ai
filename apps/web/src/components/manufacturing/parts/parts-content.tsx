@@ -1,7 +1,7 @@
 // apps/web/src/components/manufacturing/parts/parts-content.tsx
 'use client'
 
-import type { PartEntity as Part } from '@auxx/database/models'
+import type { PartEntity as Part } from '@auxx/database/types'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,

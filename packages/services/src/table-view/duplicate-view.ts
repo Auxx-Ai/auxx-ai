@@ -1,7 +1,7 @@
 // packages/services/src/table-view/duplicate-view.ts
 
 import { database, schema } from '@auxx/database'
-import type { TableViewEntity } from '@auxx/database/models'
+import type { TableViewEntity } from '@auxx/database/types'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import { getView } from './get-view'

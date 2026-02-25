@@ -66,3 +66,6 @@ export const TableView = pgTable(
     ),
   ]
 )
+
+/** Selected TableView entity type */
+export type TableViewEntity = typeof TableView.$inferSelect

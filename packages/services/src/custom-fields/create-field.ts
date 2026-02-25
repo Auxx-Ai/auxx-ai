@@ -2,8 +2,7 @@
 
 import { type Database, database, schema, type Transaction } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
-import type { CustomFieldEntity } from '@auxx/database/models'
-import type { FieldType } from '@auxx/database/types'
+import type { CustomFieldEntity, FieldType } from '@auxx/database/types'
 import type { ActorOptions, CalcOptions } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
 import { getModelType } from '@auxx/types/resource'
