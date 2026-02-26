@@ -2,16 +2,13 @@
 
 import { SignJWT } from 'jose'
 import { err, ok, type Result } from 'neverthrow'
+import { configService } from '../config'
 import type {
   IssueWorkflowPassportOptions,
   PassportError,
   WorkflowPassportPayload,
   WorkflowPassportResult,
 } from './types'
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.PUBLIC_WORKFLOW_JWT_SECRET || 'public-workflow-secret-change-me'
-)
 
 const DEFAULT_EXPIRY = '7d'
 
@@ -36,6 +33,10 @@ export async function issueWorkflowPassport(
   } = options
 
   try {
+    const jwtSecret = new TextEncoder().encode(
+      configService.get<string>('PUBLIC_WORKFLOW_JWT_SECRET') || 'public-workflow-secret-change-me'
+    )
+
     const payload: Omit<WorkflowPassportPayload, 'iat' | 'exp'> = {
       sub: endUserId,
       iss: 'auxx',
@@ -52,7 +53,7 @@ export async function issueWorkflowPassport(
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
       .setExpirationTime(expiresIn)
-      .sign(JWT_SECRET)
+      .sign(jwtSecret)
 
     return ok({
       token,

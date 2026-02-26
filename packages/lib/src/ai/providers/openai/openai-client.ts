@@ -1,5 +1,6 @@
 // packages/lib/src/ai/providers/openai/openai-client.ts
 
+import { configService } from '@auxx/credentials'
 import OpenAI from 'openai'
 import { type BaseSpecializedClient, DEFAULT_CLIENT_CONFIG } from '../../clients/base/types'
 import { ProviderClient } from '../base/provider-client'
@@ -243,8 +244,8 @@ export class OpenAIClient extends ProviderClient {
     // This is a placeholder - in practice, credentials would be retrieved from
     // the provider manager or stored securely
     return {
-      openai_api_key: process.env.OPENAI_API_KEY || '',
-      openai_organization: process.env.OPENAI_ORGANIZATION,
+      openai_api_key: configService.get<string>('OPENAI_API_KEY') || '',
+      openai_organization: configService.get<string>('OPENAI_ORGANIZATION'),
       openai_api_base: 'https://api.openai.com/v1',
     }
   }

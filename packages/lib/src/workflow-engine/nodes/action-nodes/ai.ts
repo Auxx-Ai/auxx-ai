@@ -1,5 +1,6 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/ai.ts
 
+import { configService } from '@auxx/credentials'
 import OpenAI from 'openai'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
@@ -21,7 +22,7 @@ export class AIProcessor extends BaseNodeProcessor {
   constructor() {
     super()
     // Initialize OpenAI client - in production this should use the organization's API key
-    this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || '' })
+    this.openai = new OpenAI({ apiKey: configService.get<string>('OPENAI_API_KEY') || '' })
   }
 
   /**

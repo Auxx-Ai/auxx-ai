@@ -399,12 +399,12 @@ export class S3Adapter extends BaseStorageAdapter {
       }
 
       if (!bucket) {
-        bucket = (params.auth as any)?.bucket || process.env.S3_BUCKET
+        bucket = (params.auth as any)?.bucket || configService.get<string>('S3_PRIVATE_BUCKET')
       }
 
       if (!bucket) {
         throw new StorageAdapterError(
-          'S3 bucket name is required for direct upload. Please provide a bucket via params, credentials, or set S3_BUCKET environment variable.',
+          'S3 bucket name is required for direct upload. Please provide a bucket via params, credentials, or configure S3_PRIVATE_BUCKET.',
           this.id,
           'putObject'
         )
@@ -458,12 +458,12 @@ export class S3Adapter extends BaseStorageAdapter {
       }
 
       if (!bucket) {
-        bucket = (params.auth as any)?.bucket || process.env.S3_BUCKET
+        bucket = (params.auth as any)?.bucket || configService.get<string>('S3_PRIVATE_BUCKET')
       }
 
       if (!bucket) {
         throw new StorageAdapterError(
-          'S3 bucket name is required for multipart upload. Please provide a bucket via params, credentials, or set S3_BUCKET environment variable.',
+          'S3 bucket name is required for multipart upload. Please provide a bucket via params, credentials, or configure S3_PRIVATE_BUCKET.',
           this.id,
           'startMultipart'
         )
@@ -512,10 +512,13 @@ export class S3Adapter extends BaseStorageAdapter {
     this.requireCapability('presignUpload')
 
     try {
-      const bucket = params.bucket || (params.auth as any)?.bucket || process.env.S3_BUCKET
+      const bucket =
+        params.bucket ||
+        (params.auth as any)?.bucket ||
+        configService.get<string>('S3_PRIVATE_BUCKET')
       if (!bucket) {
         throw new StorageAdapterError(
-          'S3 bucket name is required for part upload. Please provide a bucket via params, credentials, or set S3_BUCKET environment variable.',
+          'S3 bucket name is required for part upload. Please provide a bucket via params, credentials, or configure S3_PRIVATE_BUCKET.',
           this.id,
           'presignPart'
         )
@@ -557,10 +560,13 @@ export class S3Adapter extends BaseStorageAdapter {
     this.requireCapability('presignUpload')
 
     try {
-      const bucket = params.bucket || (params.auth as any)?.bucket || process.env.S3_BUCKET
+      const bucket =
+        params.bucket ||
+        (params.auth as any)?.bucket ||
+        configService.get<string>('S3_PRIVATE_BUCKET')
       if (!bucket) {
         throw new StorageAdapterError(
-          'S3 bucket name is required to complete multipart upload. Please provide a bucket via params, credentials, or set S3_BUCKET environment variable.',
+          'S3 bucket name is required to complete multipart upload. Please provide a bucket via params, credentials, or configure S3_PRIVATE_BUCKET.',
           this.id,
           'completeMultipart'
         )
@@ -601,10 +607,13 @@ export class S3Adapter extends BaseStorageAdapter {
     auth?: ProviderAuth
   }): Promise<void> {
     try {
-      const bucket = params.bucket || (params.auth as any)?.bucket || process.env.S3_BUCKET
+      const bucket =
+        params.bucket ||
+        (params.auth as any)?.bucket ||
+        configService.get<string>('S3_PRIVATE_BUCKET')
       if (!bucket) {
         throw new StorageAdapterError(
-          'S3 bucket name is required to abort multipart upload. Please provide a bucket via params, credentials, or set S3_BUCKET environment variable.',
+          'S3 bucket name is required to abort multipart upload. Please provide a bucket via params, credentials, or configure S3_PRIVATE_BUCKET.',
           this.id,
           'abortMultipart'
         )
@@ -832,8 +841,8 @@ export class S3Adapter extends BaseStorageAdapter {
 
     // ✅ ALWAYS use configured bucket - don't try to parse bucket from key
     // The externalId is the storage key, not bucket/key format
-    // Priority: auth.bucket > env.S3_BUCKET
-    const bucket = (auth as any)?.bucket || process.env.S3_BUCKET
+    // Priority: auth.bucket > S3_PRIVATE_BUCKET config
+    const bucket = (auth as any)?.bucket || configService.get<string>('S3_PRIVATE_BUCKET')
 
     if (bucket) {
       return {
@@ -844,7 +853,7 @@ export class S3Adapter extends BaseStorageAdapter {
     }
 
     throw new StorageAdapterError(
-      `Invalid S3 location format: ${externalId}. Either provide s3://bucket/key format, bucket/key format, or set S3_BUCKET environment variable.`,
+      `Invalid S3 location format: ${externalId}. Either provide s3://bucket/key format, bucket/key format, or configure S3_PRIVATE_BUCKET.`,
       this.id,
       'parseLocation'
     )
@@ -855,7 +864,7 @@ export class S3Adapter extends BaseStorageAdapter {
    */
   private createS3Client(auth?: ProviderAuth, config?: Partial<S3Config>): S3Client {
     // Create secure cache key without secret leakage
-    const region = config?.region || (auth as any)?.region || process.env.S3_REGION
+    const region = config?.region || (auth as any)?.region || configService.get<string>('S3_REGION')
     const endpoint = config?.endpoint || (auth as any)?.endpoint || ''
     const accessKeyIdPrefix = (auth as any)?.accessKeyId?.substring(0, 8) || ''
 

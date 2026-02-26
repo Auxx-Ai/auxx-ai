@@ -35,13 +35,21 @@ const CACHE_REFRESH_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
  */
 export class ConfigService {
   private cache = new ConfigCache()
-  private storage = new ConfigStorage()
+  private _storage: ConfigStorage | null = null
   private refreshTimer: ReturnType<typeof setInterval> | null = null
   private initPromise: Promise<void> | null = null
   private initialized = false
 
   /** Cached SST Resource object. null = unchecked, false = unavailable. */
   private sstResource: Record<string, any> | null | false = null
+
+  /** Lazy-init to break circular dependency: config → config-storage → credential-service → config */
+  private get storage(): ConfigStorage {
+    if (!this._storage) {
+      this._storage = new ConfigStorage()
+    }
+    return this._storage
+  }
 
   /**
    * Whether DB overrides are enabled.
@@ -65,6 +73,21 @@ export class ConfigService {
     if (this.initPromise) return this.initPromise
 
     this.initPromise = (async () => {
+      // Load SST Resource proxy (ESM-only, must use dynamic import)
+      if (this.isSstRuntime && this.sstResource === null) {
+        try {
+          const sst = await import('sst')
+          this.sstResource = sst.Resource
+          console.log('[ConfigService] SST Resource proxy loaded successfully')
+        } catch (error) {
+          this.sstResource = false
+          console.warn(
+            '[ConfigService] Failed to load SST Resource proxy:',
+            error instanceof Error ? error.message : error
+          )
+        }
+      }
+
       if (this.isDbEnabled) {
         await this.refreshCache()
         this.startAutoRefresh()
@@ -283,17 +306,7 @@ export class ConfigService {
 
   /** Only sst.Secret resources have .value — buckets have .name, RDS has .host etc. */
   private getSstResourceValue(key: string): string | undefined {
-    if (this.sstResource === false) return undefined
-
-    if (this.sstResource === null) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        this.sstResource = require('sst').Resource
-      } catch {
-        this.sstResource = false
-        return undefined
-      }
-    }
+    if (this.sstResource === null || this.sstResource === false) return undefined
 
     try {
       const res = this.sstResource[key]

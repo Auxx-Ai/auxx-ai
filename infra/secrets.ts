@@ -19,6 +19,22 @@ export const secretsConfig = {
     secret: new sst.Secret('API_KEY_SALT'),
     description: 'Salt for API key generation',
   },
+  LAMBDA_INVOKE_SECRET: {
+    secret: new sst.Secret('LAMBDA_INVOKE_SECRET'),
+    description: 'Shared secret for authenticating lambda invocations',
+  },
+  WORKFLOW_CREDENTIAL_ENCRYPTION_KEY: {
+    secret: new sst.Secret('WORKFLOW_CREDENTIAL_ENCRYPTION_KEY'),
+    description: 'Encryption key for workflow credential storage',
+  },
+  PUBLIC_WORKFLOW_JWT_SECRET: {
+    secret: new sst.Secret('PUBLIC_WORKFLOW_JWT_SECRET'),
+    description: 'JWT secret for public workflow passports',
+  },
+  SDK_CLIENT_SECRET: {
+    secret: new sst.Secret('SDK_CLIENT_SECRET'),
+    description: 'SDK client secret for OIDC/JWT signing',
+  },
 
   // OAuth - GitHub
   AUTH_GITHUB_ID: {
@@ -281,6 +297,7 @@ export function getSelectedEnvVars(
   // Full apps: add boot-critical vars (needed before configService.init())
   const vars: Record<string, string> = {
     ...base,
+    IS_CONFIG_VARIABLES_IN_DB_ENABLED: 'true',
     LAMBDA_API_URL: getAppUrl('api'),
     BETTER_AUTH_SECRET: getSecretValue('BETTER_AUTH_SECRET'),
     DATABASE_URL,

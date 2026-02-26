@@ -2,11 +2,8 @@
 
 import { jwtVerify } from 'jose'
 import { err, ok, type Result } from 'neverthrow'
+import { configService } from '../config'
 import type { PassportError, VerifiedPassport, WorkflowPassportPayload } from './types'
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.PUBLIC_WORKFLOW_JWT_SECRET || 'public-workflow-secret-change-me'
-)
 
 /**
  * Verify JWT passport token
@@ -18,7 +15,11 @@ export async function verifyWorkflowPassport(
   token: string
 ): Promise<Result<VerifiedPassport, PassportError>> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET)
+    const jwtSecret = new TextEncoder().encode(
+      configService.get<string>('PUBLIC_WORKFLOW_JWT_SECRET') || 'public-workflow-secret-change-me'
+    )
+
+    const { payload } = await jwtVerify(token, jwtSecret)
 
     if (payload.type !== 'workflow_passport') {
       return err({

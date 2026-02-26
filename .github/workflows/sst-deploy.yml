@@ -121,52 +121,18 @@ jobs:
 
           APP_VERSION_FROM_ROOT=$(node -p "require('./package.json').version")
 
+          # Build metadata — read by infra/secrets.ts getSelectedEnvVars()
           echo "GIT_SHA=${{ github.sha }}" >> $GITHUB_ENV
           echo "BUILD_TIME=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
           echo "APP_VERSION=${APP_VERSION_FROM_ROOT}" >> $GITHUB_ENV
+
+          # Infra inputs
           echo "STAGE=${STAGE}" >> $GITHUB_ENV
           echo "DOMAIN=${DOMAIN}" >> $GITHUB_ENV
           echo "AWS_REGION=${AWS_REGION}" >> $GITHUB_ENV
-          echo "CLOUDFRONT_CERT_ARN=${{ vars.CLOUDFRONT_CERT_ARN }}" >> $GITHUB_ENV
-          # Temporary DB URL for build-time env validation only; not used at runtime
+
+          # Build-time placeholder (prevents import-time crashes)
           echo "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder" >> $GITHUB_ENV
-          # Keep URL inputs minimal; @auxx/config derives canonical URLs from DOMAIN
-          echo "POSTHOG_KEY=${{ vars.POSTHOG_KEY }}" >> $GITHUB_ENV
-          echo "POSTHOG_HOST=${{ vars.POSTHOG_HOST }}" >> $GITHUB_ENV
-          echo "STRIPE_PUBLISHABLE_KEY=${{ vars.STRIPE_PUBLISHABLE_KEY }}" >> $GITHUB_ENV
-          # Storage & data
-          echo "REDIS_HOST=${{ vars.REDIS_HOST }}" >> $GITHUB_ENV
-          echo "REDIS_PORT=${{ vars.REDIS_PORT }}" >> $GITHUB_ENV
-          echo "REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}" >> $GITHUB_ENV
-          # Providers / secrets
-          echo "STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}" >> $GITHUB_ENV
-          echo "STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}" >> $GITHUB_ENV
-          echo "MAILGUN_API_KEY=${{ secrets.MAILGUN_API_KEY }}" >> $GITHUB_ENV
-          echo "MAILGUN_DOMAIN=${{ vars.MAILGUN_DOMAIN }}" >> $GITHUB_ENV
-          echo "MAILGUN_REGION=${{ vars.MAILGUN_REGION }}" >> $GITHUB_ENV
-          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> $GITHUB_ENV
-          echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> $GITHUB_ENV
-          echo "GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}" >> $GITHUB_ENV
-          echo "PUSHER_APP_ID=${{ vars.PUSHER_APP_ID }}" >> $GITHUB_ENV
-          echo "PUSHER_KEY=${{ vars.PUSHER_KEY }}" >> $GITHUB_ENV
-          echo "PUSHER_SECRET=${{ secrets.PUSHER_SECRET }}" >> $GITHUB_ENV
-          echo "PUSHER_CLUSTER=${{ vars.PUSHER_CLUSTER }}" >> $GITHUB_ENV
-          echo "SYSTEM_FROM_EMAIL=${{ vars.SYSTEM_FROM_EMAIL }}" >> $GITHUB_ENV
-          echo "SUPPORT_EMAIL=${{ vars.SUPPORT_EMAIL }}" >> $GITHUB_ENV
-          echo "SUPPORT_NAME=${{ vars.SUPPORT_NAME }}" >> $GITHUB_ENV
-          # BetterAuth
-          echo "BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}" >> $GITHUB_ENV
-          # Google Service Account (multiline key support)
-          echo "GOOGLE_CLIENT_EMAIL=${{ secrets.GOOGLE_CLIENT_EMAIL }}" >> $GITHUB_ENV
-          echo "GOOGLE_PROJECT_ID=${{ secrets.GOOGLE_PROJECT_ID }}" >> $GITHUB_ENV
-          echo "GOOGLE_PRIVATE_KEY<<EOF" >> $GITHUB_ENV
-          echo "${{ secrets.GOOGLE_PRIVATE_KEY }}" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-          # OAuth (add others as needed)
-          echo "AUTH_GOOGLE_ID=${{ vars.AUTH_GOOGLE_ID }}" >> $GITHUB_ENV
-          echo "AUTH_GOOGLE_SECRET=${{ secrets.AUTH_GOOGLE_SECRET }}" >> $GITHUB_ENV
-          # Auth URL
-          echo "AUTH_URL=https://app.${DOMAIN}" >> $GITHUB_ENV
 
       - name: Pre-build OpenNext (web)
         env:

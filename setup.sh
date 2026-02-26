@@ -67,6 +67,7 @@ API_KEY_SALT=$(generate_secret 16)
 LAMBDA_INVOKE_SECRET=$(generate_secret 32)
 WORKFLOW_CREDENTIAL_ENCRYPTION_KEY=$(generate_secret 16)
 PUBLIC_WORKFLOW_JWT_SECRET=$(generate_secret 32)
+SDK_CLIENT_SECRET=$(generate_secret 32)
 
 # ─── Fill mode: only set vars that are empty/missing ───────
 if [ "$FILL_MODE" = true ]; then
@@ -99,6 +100,7 @@ if [ "$FILL_MODE" = true ]; then
   fill_if_empty "LAMBDA_INVOKE_SECRET" "$LAMBDA_INVOKE_SECRET"
   fill_if_empty "WORKFLOW_CREDENTIAL_ENCRYPTION_KEY" "$WORKFLOW_CREDENTIAL_ENCRYPTION_KEY"
   fill_if_empty "PUBLIC_WORKFLOW_JWT_SECRET" "$PUBLIC_WORKFLOW_JWT_SECRET"
+  fill_if_empty "SDK_CLIENT_SECRET" "$SDK_CLIENT_SECRET"
 
   # Rebuild DATABASE_URL if it contains a stale password
   DB_PASS=$(grep "^DATABASE_PASSWORD=" .env | cut -d'=' -f2- | tr -d '"')
@@ -190,6 +192,7 @@ do_sed "s|^API_KEY_SALT=.*|API_KEY_SALT=${API_KEY_SALT}|" .env
 do_sed "s|^LAMBDA_INVOKE_SECRET=.*|LAMBDA_INVOKE_SECRET=${LAMBDA_INVOKE_SECRET}|" .env
 do_sed "s|^WORKFLOW_CREDENTIAL_ENCRYPTION_KEY=.*|WORKFLOW_CREDENTIAL_ENCRYPTION_KEY=${WORKFLOW_CREDENTIAL_ENCRYPTION_KEY}|" .env
 do_sed "s|^PUBLIC_WORKFLOW_JWT_SECRET=.*|PUBLIC_WORKFLOW_JWT_SECRET=${PUBLIC_WORKFLOW_JWT_SECRET}|" .env
+do_sed "s|^SDK_CLIENT_SECRET=.*|SDK_CLIENT_SECRET=${SDK_CLIENT_SECRET}|" .env
 
 # ─── Build DATABASE_URL from generated password ───────────
 do_sed "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:${DATABASE_PASSWORD}@${DB_HOST}:5432/${DB_NAME}|" .env
@@ -219,6 +222,7 @@ echo "    API_KEY_SALT        (used for API key generation)"
 echo "    LAMBDA_INVOKE_SECRET (used for Lambda executor auth)"
 echo "    WORKFLOW_CREDENTIAL_ENCRYPTION_KEY (used for credential encryption)"
 echo "    PUBLIC_WORKFLOW_JWT_SECRET (used for workflow passport signing)"
+echo "    SDK_CLIENT_SECRET       (used for SDK OIDC/JWT signing)"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
 if [ "$SELF_HOSTED" = true ]; then
@@ -227,8 +231,9 @@ if [ "$SELF_HOSTED" = true ]; then
   echo "     - ACME_EMAIL           (for Let's Encrypt SSL)"
   echo "     - S3 credentials       (S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, etc.)"
   echo "     - ANTHROPIC_API_KEY    (or OPENAI_API_KEY)"
+  echo "     - SUPER_ADMIN_EMAIL    (optional, bootstraps super admin on first signup)"
   echo "  2. Create S3 buckets (see docs for setup guide)"
-  echo "  3. Point DNS: app.DOMAIN, api.DOMAIN, build.DOMAIN → server IP"
+  echo "  3. Point DNS: app.DOMAIN, api.DOMAIN → server IP"
   echo "  4. Launch:"
   echo "     docker compose -f docker-compose.self-hosted.yml up -d"
 else

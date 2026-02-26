@@ -1,5 +1,6 @@
 // apps/web/src/app/api/workflows/shared/[shareToken]/files/sessions/route.ts
 
+import { configService } from '@auxx/credentials'
 import { createStorageManager } from '@auxx/lib/files/server'
 import { createScopedLogger } from '@auxx/logger'
 import { setRedisData } from '@auxx/redis'
@@ -21,15 +22,10 @@ const DEFAULT_UPLOAD_POLICY = {
 }
 
 /**
- * Get bucket name for private files from environment
+ * Get private bucket name from configuration.
  */
 function getPrivateBucket(): string {
-  return (
-    process.env.S3_PRIVATE_BUCKET ||
-    process.env.NEXT_PUBLIC_S3_PRIVATE_BUCKET ||
-    process.env.S3_BUCKET ||
-    ''
-  )
+  return configService.get<string>('S3_PRIVATE_BUCKET') || ''
 }
 
 /**

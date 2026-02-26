@@ -1,26 +1,17 @@
 // apps/web/src/lib/stripe.ts
 /**
  * Stripe client initialization for server-side usage.
+ * Lazy-initializes the singleton on first call to getStripe().
  */
 
 import { stripeClient } from '@auxx/billing'
+import { configService } from '@auxx/credentials'
 
-/** Initialize Stripe client with secret key */
-export function initializeStripe() {
-  const secretKey = process.env.STRIPE_SECRET_KEY
+/** Get Stripe client, lazy-initializing on first call */
+export function getStripe() {
+  const secretKey = configService.get<string>('STRIPE_SECRET_KEY')
   if (!secretKey) {
-    console.warn('[stripe] STRIPE_SECRET_KEY not set — Stripe client not initialized')
-    return
+    throw new Error('STRIPE_SECRET_KEY not set')
   }
   return stripeClient.initialize(secretKey)
-}
-
-/** Get initialized Stripe client */
-export function getStripe() {
-  return stripeClient.getClient()
-}
-
-// Initialize on module load (server-side only)
-if (typeof window === 'undefined') {
-  initializeStripe()
 }
