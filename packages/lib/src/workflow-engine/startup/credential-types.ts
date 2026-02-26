@@ -1,8 +1,8 @@
 // packages/lib/src/workflow-engine/startup/credential-types.ts
 
+import { CredentialTestingService } from '@auxx/credentials'
 import { createScopedLogger } from '@auxx/logger'
 import { PostgresWithTesting, SmtpCredentials } from '@auxx/workflow-nodes/credentials'
-import { CredentialTestingService } from '../services/credential-testing-service'
 
 const logger = createScopedLogger('credential-types-startup')
 

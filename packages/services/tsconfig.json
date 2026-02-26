@@ -27,18 +27,3 @@
     "vite.config.*"
   ]
 }
-// {
-//   "extends": "@auxx/typescript-config/base.json",
-//   "compilerOptions": {
-//     "rootDir": "src",
-//     "outDir": "dist",
-//     "declaration": true,
-//     "declarationMap": false,
-//     "emitDeclarationOnly": false,
-//     "noEmit": false,
-//     "module": "esnext",
-//     "moduleResolution": "bundler"
-//   },
-//   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
-//   "exclude": ["dist", "node_modules"]
-// }

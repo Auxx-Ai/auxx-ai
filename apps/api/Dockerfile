@@ -1,55 +1,68 @@
 # apps/api/Dockerfile
-ARG PROJECT="api"
+ARG NODE_VERSION=22.22
 
-# Base stage with pnpm
-FROM node:22.22-bookworm-slim AS base
+# ──────────────────────────────────────────────
+# Stage 1: PRUNER — extract only api-relevant packages
+# ──────────────────────────────────────────────
+FROM node:${NODE_VERSION}-bookworm-slim AS pruner
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    make \
-    g++ \
-    gcc \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# Enable corepack for pnpm
 RUN corepack enable && corepack prepare pnpm@10.17.0 --activate
-
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-
-# Install turbo
 RUN pnpm add -g turbo@2.5.2
 
-# Build stage
-FROM base AS builder
-
 WORKDIR /app
-ENV NODE_OPTIONS=--max-old-space-size=4096
-
-# Copy entire monorepo
 COPY . .
+RUN turbo prune @auxx/api --docker
 
-# Install ALL dependencies (dev + prod)
-# --ignore-scripts prevents @postman/node-keytar arm64 prebuild failure
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --no-frozen-lockfile --ignore-scripts --filter @auxx/api...
+# ──────────────────────────────────────────────
+# Stage 2: INSTALLER — install dependencies (cached layer)
+# ──────────────────────────────────────────────
+FROM node:${NODE_VERSION}-bookworm-slim AS installer
 
-# Build api and its workspace dependencies
-RUN pnpm --filter @auxx/api... --workspace-concurrency=1 build
-
-# Deploy stage - create standalone package (clean base without build tools)
-FROM node:22.22-bookworm-slim AS deploy
+# Build tools for native addons (pg, etc.)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ gcc ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable && corepack prepare pnpm@10.17.0 --activate
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
+RUN pnpm add -g turbo@2.5.2
 
 WORKDIR /app
+
+# Copy lockfile, workspace config, and package.json files (from turbo prune --docker output).
+# This layer is cached as long as no dependency versions change.
+COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=pruner /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=pruner /app/out/json/ .
+
+# --ignore-scripts prevents @postman/node-keytar arm64 prebuild failure
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts
+
+# ──────────────────────────────────────────────
+# Stage 3: BUILDER — compile TypeScript (invalidated on source changes)
+# ──────────────────────────────────────────────
+FROM installer AS builder
+
+ENV NODE_OPTIONS=--max-old-space-size=4096
+
+# Copy full source of relevant packages
+COPY --from=pruner /app/out/full/ .
+
+# Build api and all workspace deps
+RUN pnpm --filter @auxx/api... --workspace-concurrency=1 build
+
+# ──────────────────────────────────────────────
+# Stage 4: DEPLOY — extract production-only dependencies
+# ──────────────────────────────────────────────
+FROM installer AS deploy
 
 COPY --from=builder /app .
 
+# Tune pnpm for reliability
 ENV PNPM_NETWORK_CONCURRENCY=4 \
     PNPM_FETCH_RETRIES=5 \
     PNPM_FETCH_RETRY_FACTOR=2 \
@@ -57,35 +70,35 @@ ENV PNPM_NETWORK_CONCURRENCY=4 \
     PNPM_FETCH_RETRY_MAXTIMEOUT=120000 \
     PNPM_PREFER_OFFLINE=true
 
-# Use pnpm deploy to create a standalone api package with all dependencies
+# --legacy required because inject-workspace-packages=false in .npmrc
 # --ignore-scripts prevents @postman/node-keytar arm64 prebuild failure
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm --filter @auxx/api --prod deploy --ignore-scripts /deployed && \
+    pnpm --filter @auxx/api --prod deploy --legacy --ignore-scripts /deployed 2>&1 \
+    | grep -v 'WARN  Skip adding .* to the default catalog' && \
     rm -rf /deployed/node_modules/.cache /deployed/node_modules/.package-lock.json
 
-# Runner stage - minimal production image
-FROM node:22.22-bookworm-slim AS runner
+# ──────────────────────────────────────────────
+# Stage 5: RUNNER — minimal production image
+# ──────────────────────────────────────────────
+FROM node:${NODE_VERSION}-bookworm-slim AS runner
 
 ENV NODE_ENV=production
-ENV PORT=3007
 
-# Install curl for docker-compose healthchecks
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
 RUN groupadd --system --gid 1001 nodejs && \
     useradd --system --uid 1001 --gid nodejs api
 
-# Copy the deployed package
 COPY --from=deploy --chown=api:nodejs /deployed /app
 
 USER api
-
 WORKDIR /app
 
+ENV API_PORT=3007
+
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:3007/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+    CMD curl -f http://localhost:${API_PORT}/health || exit 1
 
 EXPOSE 3007
-
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/index.mjs"]

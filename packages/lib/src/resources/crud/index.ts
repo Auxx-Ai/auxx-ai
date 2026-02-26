@@ -36,10 +36,6 @@ export {
   resolveEntityId,
 } from './unified-handler-queries'
 
-// Handlers
-// export { getHandler, contactHandler, ticketHandler, entityHandler } from './handlers'
-// export type { ResourceHandler } from './handlers'
-
 // Utilities
 export {
   type FieldChange,

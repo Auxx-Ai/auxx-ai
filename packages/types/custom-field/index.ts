@@ -5,8 +5,8 @@ import {
   FieldType as FieldTypeEnum,
   OrganizationRoleValues,
 } from '@auxx/database/enums'
-import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { z } from 'zod'
+import { parseResourceFieldId, type ResourceFieldId } from '../field'
 
 // =============================================================================
 // RE-EXPORT MODEL TYPES FROM DATABASE

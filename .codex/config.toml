@@ -1,0 +1,11 @@
+[mcp_servers.playwright]
+command = "pnpm"
+args = ["dlx", "@playwright/mcp@latest", "--no-sandbox", "--headless"]
+
+[mcp_servers.context7]
+command = "pnpm"
+args = ["dlx", "@upstash/context7-mcp"]
+
+[mcp_servers.postgres]
+command = "sh"
+args = ["-c", "export $(grep ^DATABASE_URL .env | xargs) && pnpm dlx @modelcontextprotocol/server-postgres $DATABASE_URL"]
