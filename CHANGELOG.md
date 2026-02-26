@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.22](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.21...auxx-v0.1.22) (2026-02-26)
+
+
+### Features
+
+* enhance error handling in ConfigService and add TLS support in … ([#98](https://github.com/Auxx-Ai/auxx-ai/issues/98)) ([fba1f52](https://github.com/Auxx-Ai/auxx-ai/commit/fba1f521a84a9e2829c631df32466e448cddfb9a))
+
 ## [0.1.21](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.20...auxx-v0.1.21) (2026-02-26)
 
 
