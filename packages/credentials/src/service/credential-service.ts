@@ -4,7 +4,6 @@ import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import crypto from 'crypto'
 import { and, desc, eq } from 'drizzle-orm'
-import { configService } from '../config'
 import { CredentialValidator } from './credential-validator'
 // Define NodeData type locally for now
 export type NodeData = {
@@ -25,10 +24,7 @@ interface CredentialListItem {
 
 export class CredentialService {
   private static getEncryptionKey(): string {
-    return (
-      configService.get<string>('WORKFLOW_CREDENTIAL_ENCRYPTION_KEY') ||
-      'fallback-dev-key-32-chars-long!!'
-    )
+    return process.env.WORKFLOW_CREDENTIAL_ENCRYPTION_KEY || 'fallback-dev-key-32-chars-long!!'
   }
 
   /**

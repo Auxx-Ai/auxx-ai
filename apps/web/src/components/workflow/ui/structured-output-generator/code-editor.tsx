@@ -1,12 +1,22 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/code-editor.tsx
 
+import { Spinner } from '@auxx/ui/components/spinner'
 import { cn } from '@auxx/ui/lib/utils'
-import { Editor } from '@monaco-editor/react'
 import { Clipboard, IndentIncrease } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import { useTheme } from 'next-themes'
 import React, { type FC, useCallback, useEffect, useRef } from 'react'
 // import copy from 'copy-to-clipboard'
 import { Tooltip } from '~/components/global/tooltip'
+
+const Editor = dynamic(() => import('@monaco-editor/react').then((m) => m.Editor), {
+  ssr: false,
+  loading: () => (
+    <div className='flex h-full items-center justify-center'>
+      <Spinner className='size-5 text-muted-foreground' />
+    </div>
+  ),
+})
 
 type CodeEditorProps = {
   value: string
