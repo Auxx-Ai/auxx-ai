@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.24](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.23...auxx-v0.1.24) (2026-02-26)
+
+
+### Bug Fixes
+
+* resolve circular dependency in ConfigService ([#102](https://github.com/Auxx-Ai/auxx-ai/issues/102)) ([5082432](https://github.com/Auxx-Ai/auxx-ai/commit/50824325f26e273da9911c28c64a2e739072f66e))
+
 ## [0.1.23](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.22...auxx-v0.1.23) (2026-02-26)
 
 
