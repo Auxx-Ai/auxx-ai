@@ -3,8 +3,9 @@
 
 'use client'
 
+import { DEV_PORTAL_URL } from '@auxx/config/urls'
 import { type QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { loggerLink, unstable_httpBatchStreamLink } from '@trpc/client'
+import { httpBatchStreamLink, loggerLink } from '@trpc/client'
 import { createTRPCReact } from '@trpc/react-query'
 import type { inferRouterOutputs } from '@trpc/server'
 
@@ -30,8 +31,7 @@ const getQueryClient = () => {
 /** Get base URL for tRPC */
 function getBaseUrl() {
   if (typeof window !== 'undefined') return window.location.origin
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
-  return `http://localhost:${process.env.PORT ?? 3006}`
+  return DEV_PORTAL_URL
 }
 
 /** tRPC React provider component */
@@ -46,7 +46,7 @@ export function TRPCReactProvider({ children }: { children: React.ReactNode }) {
             process.env.NODE_ENV === 'development' ||
             (op.direction === 'down' && op.result instanceof Error),
         }),
-        unstable_httpBatchStreamLink({
+        httpBatchStreamLink({
           transformer: SuperJSON,
           url: getBaseUrl() + '/api/trpc',
           headers: () => {

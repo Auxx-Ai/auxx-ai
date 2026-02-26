@@ -4,6 +4,7 @@ import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import crypto from 'crypto'
 import { and, desc, eq } from 'drizzle-orm'
+import { configService } from '../config'
 import { CredentialValidator } from './credential-validator'
 // Define NodeData type locally for now
 export type NodeData = {
@@ -12,9 +13,6 @@ export type NodeData = {
 
 const logger = createScopedLogger('workflow-credential-service')
 
-// Get encryption key from environment (in production, this should be a proper secret)
-const ENCRYPTION_KEY =
-  process.env.WORKFLOW_CREDENTIAL_ENCRYPTION_KEY || 'fallback-dev-key-32-chars-long!!'
 const ALGORITHM = 'aes-256-gcm'
 
 interface CredentialListItem {
@@ -26,13 +24,24 @@ interface CredentialListItem {
 }
 
 export class CredentialService {
+  private static getEncryptionKey(): string {
+    return (
+      configService.get<string>('WORKFLOW_CREDENTIAL_ENCRYPTION_KEY') ||
+      'fallback-dev-key-32-chars-long!!'
+    )
+  }
+
   /**
    * Encrypt credential data
    */
   public static encrypt(data: NodeData): string {
     try {
       const iv = crypto.randomBytes(16)
-      const cipher = crypto.createCipheriv(ALGORITHM, ENCRYPTION_KEY.substring(0, 32), iv)
+      const cipher = crypto.createCipheriv(
+        ALGORITHM,
+        CredentialService.getEncryptionKey().substring(0, 32),
+        iv
+      )
       cipher.setAutoPadding(true)
 
       let encrypted = cipher.update(JSON.stringify(data), 'utf8', 'hex')
@@ -63,7 +72,11 @@ export class CredentialService {
       const authTag = combined.subarray(16, 32)
       const encrypted = combined.subarray(32)
 
-      const decipher = crypto.createDecipheriv(ALGORITHM, ENCRYPTION_KEY.substring(0, 32), iv)
+      const decipher = crypto.createDecipheriv(
+        ALGORITHM,
+        CredentialService.getEncryptionKey().substring(0, 32),
+        iv
+      )
 
       if (authTag.length > 0) {
         ;(decipher as any).setAuthTag?.(authTag)

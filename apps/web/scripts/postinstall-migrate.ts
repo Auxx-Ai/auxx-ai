@@ -74,16 +74,6 @@ async function runPostInstallMigrations() {
 
     try {
       console.log('🎯 Attempting to run migrations from db package:', dbPath)
-      // execSync('pnpm run db:migrate:deploy', {
-      //   cwd: dbPath,
-      //   stdio: 'inherit',
-      //   env: {
-      //     ...process.env,
-      //     DATABASE_URL: databaseUrl,
-      //     PRISMA_DISABLE_WARNINGS: '1',
-      //     PRISMA_TELEMETRY_DISABLED: '1'
-      //   }
-      // })
     } catch (_dbPackageError) {
       console.log('⚠️ DB package approach failed, trying direct Prisma call...')
 
@@ -93,17 +83,6 @@ async function runPostInstallMigrations() {
 
       console.log('🔄 Running Prisma directly from web app root:', webAppRoot)
       console.log('📋 Using config:', dbConfigPath)
-
-      // execSync(`npx prisma migrate deploy --config ${dbConfigPath}`, {
-      //   cwd: webAppRoot,
-      //   stdio: 'inherit',
-      //   env: {
-      //     ...process.env,
-      //     DATABASE_URL: databaseUrl,
-      //     PRISMA_DISABLE_WARNINGS: '1',
-      //     PRISMA_TELEMETRY_DISABLED: '1'
-      //   }
-      // })
     }
 
     console.log('✅ Database migrations completed successfully!')
