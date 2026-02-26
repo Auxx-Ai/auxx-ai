@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.20](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.19...auxx-v0.1.20) (2026-02-26)
+
+
+### Features
+
+* enhance Redis and Facebook/Instagram OAuth services ([#94](https://github.com/Auxx-Ai/auxx-ai/issues/94)) ([b494352](https://github.com/Auxx-Ai/auxx-ai/commit/b494352d32aa3d921ac599e8044ee622836c70b1))
+
 ## [0.1.19](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.18...auxx-v0.1.19) (2026-02-26)
 
 
