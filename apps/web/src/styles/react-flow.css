@@ -1,7 +1,3 @@
-@layer base {
-  @import "@xyflow/react/dist/style.css";
-}
-
 /* Monaco Editor Overrides */
 .monaco-editor {
   outline: none !important;

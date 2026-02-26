@@ -2,6 +2,7 @@
 
 'use client'
 
+import '@xyflow/react/dist/style.css'
 import { cn } from '@auxx/ui/lib/utils'
 import { ReactFlowProvider, type Viewport } from '@xyflow/react'
 import { Loader2 } from 'lucide-react'

@@ -1,7 +1,6 @@
 // apps/web/src/app/(public)/workflows/layout-client.tsx
 'use client'
 
-import '@xyflow/react/dist/style.css'
 import { Toaster } from '@auxx/ui/components/sonner'
 import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import type { ReactNode } from 'react'

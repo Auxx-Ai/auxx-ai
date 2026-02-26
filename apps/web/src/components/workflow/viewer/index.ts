@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/viewer/index.ts
 
+export { DynamicWorkflowViewer } from './dynamic-workflow-viewer'
 export {
   type SanitizedEnvVar,
   useWorkflowViewer,

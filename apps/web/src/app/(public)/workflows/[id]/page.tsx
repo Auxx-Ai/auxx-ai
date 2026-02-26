@@ -1,7 +1,7 @@
 // apps/web/src/app/(public)/workflows/[id]/page.tsx
 
 import type { Metadata } from 'next'
-import { ViewerThemeSync, WorkflowViewer } from '~/components/workflow/viewer'
+import { DynamicWorkflowViewer, ViewerThemeSync } from '~/components/workflow/viewer'
 
 /**
  * Page props for the public workflow viewer
@@ -38,7 +38,7 @@ export default async function PublicWorkflowPage({ params, searchParams }: Workf
   return (
     <div className='h-screen w-screen overflow-hidden'>
       <ViewerThemeSync theme={theme} />
-      <WorkflowViewer
+      <DynamicWorkflowViewer
         workflowId={id}
         theme={theme}
         options={{

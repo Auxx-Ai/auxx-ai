@@ -14,12 +14,12 @@ import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChartColumn, History, MousePointerClick, Settings, Workflow } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import { useQueryState } from 'nuqs'
 import { use, useState } from 'react'
 import { DockedPanelTarget, DockPortalProvider } from '~/components/global/dock-portal-provider'
 import { DockedPanelsContainer } from '~/components/global/docked-panels-container'
 import { Tooltip } from '~/components/global/tooltip'
-import { WorkflowEditor } from '~/components/workflow'
 import { CredentialsProvider } from '~/components/workflow/credentials/credentials-provider'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
@@ -29,6 +29,11 @@ import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { WorkflowAnalytics } from '../_components/analytics/workflow-analytics'
 import { WorkflowExecutions } from '../_components/executions/workflow-executions'
+
+const WorkflowEditor = dynamic(
+  () => import('~/components/workflow').then((m) => m.WorkflowEditor),
+  { ssr: false }
+)
 
 interface EditWorkflowPageProps {
   params: Promise<{ workflowId: string }>

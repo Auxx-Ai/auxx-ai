@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/editor/workflow-editor.tsx
 
+import '@xyflow/react/dist/style.css'
 import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
