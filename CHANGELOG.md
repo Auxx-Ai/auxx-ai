@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.18](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.17...auxx-v0.1.18) (2026-02-26)
+
+
+### Features
+
+* add tsdown dependency to pnpm workspace ([#91](https://github.com/Auxx-Ai/auxx-ai/issues/91)) ([41b4b5d](https://github.com/Auxx-Ai/auxx-ai/commit/41b4b5dc9f7df9b7de59e2c8e8887f7dc5b12e09))
+* remove unused db models ([#88](https://github.com/Auxx-Ai/auxx-ai/issues/88)) ([7a6bc8e](https://github.com/Auxx-Ai/auxx-ai/commit/7a6bc8eee72dcd76b839eb265d069e4992c40af1))
+* removed db models ([#90](https://github.com/Auxx-Ai/auxx-ai/issues/90)) ([cb5399b](https://github.com/Auxx-Ai/auxx-ai/commit/cb5399b2225eace27c758ee5ba4f6a4c54e45cf3))
+
 ## [0.1.17](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.16...auxx-v0.1.17) (2026-02-25)
 
 
