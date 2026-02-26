@@ -18,7 +18,7 @@ export const rds = new sst.aws.Postgres('AuxxAiRdsV2', {
   username: 'postgres',
 })
 
-export const redis = new sst.aws.Redis('AuxxAiRedisV2', {
+export const redis = new sst.aws.Redis('AuxxAiRedisV3', {
   vpc,
   cluster: false,
   dev: {
