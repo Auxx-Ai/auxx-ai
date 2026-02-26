@@ -1,7 +1,6 @@
 // packages/lib/src/workflow-engine/utils/index.ts
 
 export { getDefaultValueForType } from './default-values'
-// export { WorkflowBuilder } from './workflow-builder'
 export {
   bigIntReplacer,
   prepareForSerialization,

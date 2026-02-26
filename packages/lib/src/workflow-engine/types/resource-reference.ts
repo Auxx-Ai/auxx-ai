@@ -2,8 +2,6 @@
 
 import type { TableId } from '../client'
 
-// import type { TableId } from '../../resources/field-registry'
-
 /**
  * Lightweight resource reference marker
  * Stored instead of full resource objects to reduce memory

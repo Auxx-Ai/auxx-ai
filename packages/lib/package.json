@@ -6,473 +6,473 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
-      "import": "./dist/index.js",
+      "import": "./dist/index.mjs",
       "default": "./src/index.ts"
     },
     "./actors": {
       "types": "./src/actors/index.ts",
-      "import": "./dist/actors/index.js",
+      "import": "./dist/actors/index.mjs",
       "default": "./src/actors/index.ts"
     },
     "./admin": {
       "types": "./src/admin/index.ts",
-      "import": "./dist/admin/index.js",
+      "import": "./dist/admin/index.mjs",
       "default": "./src/admin/index.ts"
     },
     "./ai": {
       "types": "./src/ai/index.ts",
-      "import": "./dist/ai/index.js",
+      "import": "./dist/ai/index.mjs",
       "default": "./src/ai/index.ts"
     },
     "./ai-features/compose": {
       "types": "./src/ai-features/compose/index.ts",
-      "import": "./dist/ai-features/compose/index.js",
+      "import": "./dist/ai-features/compose/index.mjs",
       "default": "./src/ai-features/compose/index.ts"
     },
     "./ai-features/compose/types": {
       "types": "./src/ai-features/compose/types.ts",
-      "import": "./dist/ai-features/compose/types.js",
+      "import": "./dist/ai-features/compose/types.mjs",
       "default": "./src/ai-features/compose/types.ts"
     },
     "./ai-features/generator": {
       "types": "./src/ai-features/generator/index.ts",
-      "import": "./dist/ai-features/generator/index.js",
+      "import": "./dist/ai-features/generator/index.mjs",
       "default": "./src/ai-features/generator/index.ts"
     },
     "./ai/providers/types": {
       "types": "./src/ai/providers/types.ts",
-      "import": "./dist/ai/providers/types.js",
+      "import": "./dist/ai/providers/types.mjs",
       "default": "./src/ai/providers/types.ts"
     },
     "./bom": {
       "types": "./src/bom/index.ts",
-      "import": "./dist/bom/index.js",
+      "import": "./dist/bom/index.mjs",
       "default": "./src/bom/index.ts"
     },
     "./chat": {
       "types": "./src/chat/index.ts",
-      "import": "./dist/chat/index.js",
+      "import": "./dist/chat/index.mjs",
       "default": "./src/chat/index.ts"
     },
     "./comments": {
       "types": "./src/comments/index.ts",
-      "import": "./dist/comments/index.js",
+      "import": "./dist/comments/index.mjs",
       "default": "./src/comments/index.ts"
     },
     "./conditions": {
       "types": "./src/conditions/index.ts",
-      "import": "./dist/conditions/index.js",
+      "import": "./dist/conditions/index.mjs",
       "default": "./src/conditions/index.ts"
     },
     "./conditions/client": {
       "types": "./src/conditions/client.ts",
-      "import": "./dist/conditions/client.js",
+      "import": "./dist/conditions/client.mjs",
       "default": "./src/conditions/client.ts"
     },
     "./constants/provider-icons": {
       "types": "./src/constants/provider-icons.ts",
-      "import": "./dist/constants/provider-icons.js",
+      "import": "./dist/constants/provider-icons.mjs",
       "default": "./src/constants/provider-icons.ts"
     },
     "./contacts": {
       "types": "./src/contacts/index.ts",
-      "import": "./dist/contacts/index.js",
+      "import": "./dist/contacts/index.mjs",
       "default": "./src/contacts/index.ts"
     },
     "./custom-fields": {
       "types": "./src/custom-fields/index.ts",
-      "import": "./dist/custom-fields/index.js",
+      "import": "./dist/custom-fields/index.mjs",
       "default": "./src/custom-fields/index.ts"
     },
     "./custom-fields/client": {
       "types": "./src/custom-fields/client.ts",
-      "import": "./dist/custom-fields/client.js",
+      "import": "./dist/custom-fields/client.mjs",
       "default": "./src/custom-fields/client.ts"
     },
     "./custom-fields/types": {
       "types": "./src/custom-fields/types.ts",
-      "import": "./dist/custom-fields/types.js",
+      "import": "./dist/custom-fields/types.mjs",
       "default": "./src/custom-fields/types.ts"
     },
     "./datasets": {
       "types": "./src/datasets/index.ts",
-      "import": "./dist/datasets/index.js",
+      "import": "./dist/datasets/index.mjs",
       "default": "./src/datasets/index.ts"
     },
     "./datasets/types": {
       "types": "./src/datasets/types/index.ts",
-      "import": "./dist/datasets/types/index.js",
+      "import": "./dist/datasets/types/index.mjs",
       "default": "./src/datasets/types/index.ts"
     },
     "./dehydration": {
       "types": "./src/dehydration/index.ts",
-      "import": "./dist/dehydration/index.js",
+      "import": "./dist/dehydration/index.mjs",
       "default": "./src/dehydration/index.ts"
     },
     "./drafts": {
       "types": "./src/drafts/index.ts",
-      "import": "./dist/drafts/index.js",
+      "import": "./dist/drafts/index.mjs",
       "default": "./src/drafts/index.ts"
     },
     "./email": {
       "types": "./src/email/index.ts",
-      "import": "./dist/email/index.js",
+      "import": "./dist/email/index.mjs",
       "default": "./src/email/index.ts"
     },
     "./embeddings": {
       "types": "./src/embeddings/index.ts",
-      "import": "./dist/embeddings/index.js",
+      "import": "./dist/embeddings/index.mjs",
       "default": "./src/embeddings/index.ts"
     },
     "./entity-definitions": {
       "types": "./src/entity-definitions/index.ts",
-      "import": "./dist/entity-definitions/index.js",
+      "import": "./dist/entity-definitions/index.mjs",
       "default": "./src/entity-definitions/index.ts"
     },
     "./entity-definitions/types": {
       "types": "./src/entity-definitions/types.ts",
-      "import": "./dist/entity-definitions/types.js",
+      "import": "./dist/entity-definitions/types.mjs",
       "default": "./src/entity-definitions/types.ts"
     },
     "./events": {
       "types": "./src/events/index.ts",
-      "import": "./dist/events/index.js",
+      "import": "./dist/events/index.mjs",
       "default": "./src/events/index.ts"
     },
     "./events/handlers": {
       "types": "./src/events/handlers/index.ts",
-      "import": "./dist/events/handlers/index.js",
+      "import": "./dist/events/handlers/index.mjs",
       "default": "./src/events/handlers/index.ts"
     },
     "./field-values": {
       "types": "./src/field-values/index.ts",
-      "import": "./dist/field-values/index.js",
+      "import": "./dist/field-values/index.mjs",
       "default": "./src/field-values/index.ts"
     },
     "./field-values/client": {
       "types": "./src/field-values/client.ts",
-      "import": "./dist/field-values/client.js",
+      "import": "./dist/field-values/client.mjs",
       "default": "./src/field-values/client.ts"
     },
     "./field-values/converters": {
       "types": "./src/field-values/converters/index.ts",
-      "import": "./dist/field-values/converters/index.js",
+      "import": "./dist/field-values/converters/index.mjs",
       "default": "./src/field-values/converters/index.ts"
     },
     "./files": {
       "types": "./src/files/index.ts",
-      "import": "./dist/files/index.js",
+      "import": "./dist/files/index.mjs",
       "default": "./src/files/index.ts"
     },
     "./files/client": {
       "types": "./src/files/client.ts",
-      "import": "./dist/files/client.js",
+      "import": "./dist/files/client.mjs",
       "default": "./src/files/client.ts"
     },
     "./files/server": {
       "types": "./src/files/server.ts",
-      "import": "./dist/files/server.js",
+      "import": "./dist/files/server.mjs",
       "default": "./src/files/server.ts"
     },
     "./files/types": {
       "types": "./src/files/types/index.ts",
-      "import": "./dist/files/types/index.js",
+      "import": "./dist/files/types/index.mjs",
       "default": "./src/files/types/index.ts"
     },
     "./groups": {
       "types": "./src/groups/index.ts",
-      "import": "./dist/groups/index.js",
+      "import": "./dist/groups/index.mjs",
       "default": "./src/groups/index.ts"
     },
     "./groups/client": {
       "types": "./src/groups/client.ts",
-      "import": "./dist/groups/client.js",
+      "import": "./dist/groups/client.mjs",
       "default": "./src/groups/client.ts"
     },
     "./health/client": {
       "types": "./src/health/client.ts",
-      "import": "./dist/health/client.js",
+      "import": "./dist/health/client.mjs",
       "default": "./src/health/client.ts"
     },
     "./health/health-service": {
       "types": "./src/health/health-service.ts",
-      "import": "./dist/health/health-service.js",
+      "import": "./dist/health/health-service.mjs",
       "default": "./src/health/health-service.ts"
     },
     "./health/queue-metrics": {
       "types": "./src/health/queue-metrics.ts",
-      "import": "./dist/health/queue-metrics.js",
+      "import": "./dist/health/queue-metrics.mjs",
       "default": "./src/health/queue-metrics.ts"
     },
     "./import": {
       "types": "./src/import/index.ts",
-      "import": "./dist/import/index.js",
+      "import": "./dist/import/index.mjs",
       "default": "./src/import/index.ts"
     },
     "./import/client": {
       "types": "./src/import/client.ts",
-      "import": "./dist/import/client.js",
+      "import": "./dist/import/client.mjs",
       "default": "./src/import/client.ts"
     },
     "./inboxes": {
       "types": "./src/inboxes/index.ts",
-      "import": "./dist/inboxes/index.js",
+      "import": "./dist/inboxes/index.mjs",
       "default": "./src/inboxes/index.ts"
     },
     "./jobs": {
       "types": "./src/jobs/index.ts",
-      "import": "./dist/jobs/index.js",
+      "import": "./dist/jobs/index.mjs",
       "default": "./src/jobs/index.ts"
     },
     "./jobs/queues": {
       "types": "./src/jobs/queues/index.ts",
-      "import": "./dist/jobs/queues/index.js",
+      "import": "./dist/jobs/queues/index.mjs",
       "default": "./src/jobs/queues/index.ts"
     },
     "./kb": {
       "types": "./src/kb/index.ts",
-      "import": "./dist/kb/index.js",
+      "import": "./dist/kb/index.mjs",
       "default": "./src/kb/index.ts"
     },
     "./mail-domains": {
       "types": "./src/mail-domains/index.ts",
-      "import": "./dist/mail-domains/index.js",
+      "import": "./dist/mail-domains/index.mjs",
       "default": "./src/mail-domains/index.ts"
     },
     "./mail-query": {
       "types": "./src/mail-query/index.ts",
-      "import": "./dist/mail-query/index.js",
+      "import": "./dist/mail-query/index.mjs",
       "default": "./src/mail-query/index.ts"
     },
     "./mail-query/client": {
       "types": "./src/mail-query/client.ts",
-      "import": "./dist/mail-query/client.js",
+      "import": "./dist/mail-query/client.mjs",
       "default": "./src/mail-query/client.ts"
     },
     "./mail-views": {
       "types": "./src/mail-views/index.ts",
-      "import": "./dist/mail-views/index.js",
+      "import": "./dist/mail-views/index.mjs",
       "default": "./src/mail-views/index.ts"
     },
     "./mail-views/client": {
       "types": "./src/mail-views/client.ts",
-      "import": "./dist/mail-views/client.js",
+      "import": "./dist/mail-views/client.mjs",
       "default": "./src/mail-views/client.ts"
     },
     "./members": {
       "types": "./src/members/index.ts",
-      "import": "./dist/members/index.js",
+      "import": "./dist/members/index.mjs",
       "default": "./src/members/index.ts"
     },
     "./messages": {
       "types": "./src/messages/index.ts",
-      "import": "./dist/messages/index.js",
+      "import": "./dist/messages/index.mjs",
       "default": "./src/messages/index.ts"
     },
     "./notifications": {
       "types": "./src/notifications/index.ts",
-      "import": "./dist/notifications/index.js",
+      "import": "./dist/notifications/index.mjs",
       "default": "./src/notifications/index.ts"
     },
     "./organizations": {
       "types": "./src/organizations/index.ts",
-      "import": "./dist/organizations/index.js",
+      "import": "./dist/organizations/index.mjs",
       "default": "./src/organizations/index.ts"
     },
     "./participants": {
       "types": "./src/participants/index.ts",
-      "import": "./dist/participants/index.js",
+      "import": "./dist/participants/index.mjs",
       "default": "./src/participants/index.ts"
     },
     "./parts": {
       "types": "./src/parts/index.ts",
-      "import": "./dist/parts/index.js",
+      "import": "./dist/parts/index.mjs",
       "default": "./src/parts/index.ts"
     },
     "./permissions": {
       "types": "./src/permissions/index.ts",
-      "import": "./dist/permissions/index.js",
+      "import": "./dist/permissions/index.mjs",
       "default": "./src/permissions/index.ts"
     },
     "./providers": {
       "types": "./src/providers/index.ts",
-      "import": "./dist/providers/index.js",
+      "import": "./dist/providers/index.mjs",
       "default": "./src/providers/index.ts"
     },
     "./providers/openphone/types": {
       "types": "./src/providers/openphone/types.ts",
-      "import": "./dist/providers/openphone/types.js",
+      "import": "./dist/providers/openphone/types.mjs",
       "default": "./src/providers/openphone/types.ts"
     },
     "./realtime": {
       "types": "./src/realtime/index.ts",
-      "import": "./dist/realtime/index.js",
+      "import": "./dist/realtime/index.mjs",
       "default": "./src/realtime/index.ts"
     },
     "./realtime/client": {
       "types": "./src/realtime/client/index.ts",
-      "import": "./dist/realtime/client/index.js",
+      "import": "./dist/realtime/client/index.mjs",
       "default": "./src/realtime/client/index.ts"
     },
     "./resource-access": {
       "types": "./src/resource-access/index.ts",
-      "import": "./dist/resource-access/index.js",
+      "import": "./dist/resource-access/index.mjs",
       "default": "./src/resource-access/index.ts"
     },
     "./resources": {
       "types": "./src/resources/index.ts",
-      "import": "./dist/resources/index.js",
+      "import": "./dist/resources/index.mjs",
       "default": "./src/resources/index.ts"
     },
     "./resources/client": {
       "types": "./src/resources/client.ts",
-      "import": "./dist/resources/client.js",
+      "import": "./dist/resources/client.mjs",
       "default": "./src/resources/client.ts"
     },
     "./resources/merge/client": {
       "types": "./src/resources/merge/client.ts",
-      "import": "./dist/resources/merge/client.js",
+      "import": "./dist/resources/merge/client.mjs",
       "default": "./src/resources/merge/client.ts"
     },
     "./seed": {
       "types": "./src/seed/index.ts",
-      "import": "./dist/seed/index.js",
+      "import": "./dist/seed/index.mjs",
       "default": "./src/seed/index.ts"
     },
     "./settings": {
       "types": "./src/settings/index.ts",
-      "import": "./dist/settings/index.js",
+      "import": "./dist/settings/index.mjs",
       "default": "./src/settings/index.ts"
     },
     "./settings/types": {
       "types": "./src/settings/types.ts",
-      "import": "./dist/settings/types.js",
+      "import": "./dist/settings/types.mjs",
       "default": "./src/settings/types.ts"
     },
     "./shopify": {
       "types": "./src/shopify/index.ts",
-      "import": "./dist/shopify/index.js",
+      "import": "./dist/shopify/index.mjs",
       "default": "./src/shopify/index.ts"
     },
     "./signatures": {
       "types": "./src/signatures/index.ts",
-      "import": "./dist/signatures/index.js",
+      "import": "./dist/signatures/index.mjs",
       "default": "./src/signatures/index.ts"
     },
     "./tags": {
       "types": "./src/tags/index.ts",
-      "import": "./dist/tags/index.js",
+      "import": "./dist/tags/index.mjs",
       "default": "./src/tags/index.ts"
     },
     "./tasks": {
       "types": "./src/tasks/index.ts",
-      "import": "./dist/tasks/index.js",
+      "import": "./dist/tasks/index.mjs",
       "default": "./src/tasks/index.ts"
     },
     "./tasks/client": {
       "types": "./src/tasks/client.ts",
-      "import": "./dist/tasks/client.js",
+      "import": "./dist/tasks/client.mjs",
       "default": "./src/tasks/client.ts"
     },
     "./threads": {
       "types": "./src/threads/index.ts",
-      "import": "./dist/threads/index.js",
+      "import": "./dist/threads/index.mjs",
       "default": "./src/threads/index.ts"
     },
     "./threads/types": {
       "types": "./src/threads/types.ts",
-      "import": "./dist/threads/types.js",
+      "import": "./dist/threads/types.mjs",
       "default": "./src/threads/types.ts"
     },
     "./tickets": {
       "types": "./src/tickets/index.ts",
-      "import": "./dist/tickets/index.js",
+      "import": "./dist/tickets/index.mjs",
       "default": "./src/tickets/index.ts"
     },
     "./timeline": {
       "types": "./src/timeline/index.ts",
-      "import": "./dist/timeline/index.js",
+      "import": "./dist/timeline/index.mjs",
       "default": "./src/timeline/index.ts"
     },
     "./timeline/client": {
       "types": "./src/timeline/client.ts",
-      "import": "./dist/timeline/client.js",
+      "import": "./dist/timeline/client.mjs",
       "default": "./src/timeline/client.ts"
     },
     "./types": {
       "types": "./src/types.ts",
-      "import": "./dist/types.js",
+      "import": "./dist/types.mjs",
       "default": "./src/types.ts"
     },
     "./users": {
       "types": "./src/users/index.ts",
-      "import": "./dist/users/index.js",
+      "import": "./dist/users/index.mjs",
       "default": "./src/users/index.ts"
     },
     "./webhooks": {
       "types": "./src/webhooks/index.ts",
-      "import": "./dist/webhooks/index.js",
+      "import": "./dist/webhooks/index.mjs",
       "default": "./src/webhooks/index.ts"
     },
     "./webhooks/types": {
       "types": "./src/webhooks/types.ts",
-      "import": "./dist/webhooks/types.js",
+      "import": "./dist/webhooks/types.mjs",
       "default": "./src/webhooks/types.ts"
     },
     "./widgets/types": {
       "types": "./src/widgets/types.ts",
-      "import": "./dist/widgets/types.js",
+      "import": "./dist/widgets/types.mjs",
       "default": "./src/widgets/types.ts"
     },
     "./workflow-engine": {
       "types": "./src/workflow-engine/index.ts",
-      "import": "./dist/workflow-engine/index.js",
+      "import": "./dist/workflow-engine/index.mjs",
       "default": "./src/workflow-engine/index.ts"
     },
     "./workflow-engine/client": {
       "types": "./src/workflow-engine/client.ts",
-      "import": "./dist/workflow-engine/client.js",
+      "import": "./dist/workflow-engine/client.mjs",
       "default": "./src/workflow-engine/client.ts"
     },
     "./workflow-engine/constants": {
       "types": "./src/workflow-engine/constants/index.ts",
-      "import": "./dist/workflow-engine/constants/index.js",
+      "import": "./dist/workflow-engine/constants/index.mjs",
       "default": "./src/workflow-engine/constants/index.ts"
     },
     "./workflow-engine/startup/credential-types": {
       "types": "./src/workflow-engine/startup/credential-types.ts",
-      "import": "./dist/workflow-engine/startup/credential-types.js",
+      "import": "./dist/workflow-engine/startup/credential-types.mjs",
       "default": "./src/workflow-engine/startup/credential-types.ts"
     },
     "./workflow-engine/types": {
       "types": "./src/workflow-engine/types.ts",
-      "import": "./dist/workflow-engine/types.js",
+      "import": "./dist/workflow-engine/types.mjs",
       "default": "./src/workflow-engine/types.ts"
     },
     "./workflow-engine/types/content-segment": {
       "types": "./src/workflow-engine/types/content-segment.ts",
-      "import": "./dist/workflow-engine/types/content-segment.js",
+      "import": "./dist/workflow-engine/types/content-segment.mjs",
       "default": "./src/workflow-engine/types/content-segment.ts"
     },
     "./workflow-engine/types/file-variable": {
       "types": "./src/workflow-engine/types/file-variable.ts",
-      "import": "./dist/workflow-engine/types/file-variable.js",
+      "import": "./dist/workflow-engine/types/file-variable.mjs",
       "default": "./src/workflow-engine/types/file-variable.ts"
     },
     "./workflow-engine/utils/serialization": {
       "types": "./src/workflow-engine/utils/serialization.ts",
-      "import": "./dist/workflow-engine/utils/serialization.js",
+      "import": "./dist/workflow-engine/utils/serialization.mjs",
       "default": "./src/workflow-engine/utils/serialization.ts"
     },
     "./workflows": {
       "types": "./src/workflows/index.ts",
-      "import": "./dist/workflows/index.js",
+      "import": "./dist/workflows/index.mjs",
       "default": "./src/workflows/index.ts"
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json --noCheck && tsc-esm-fix --target=dist && tsx scripts/generate-exports.ts",
-    "build:watch": "concurrently -k -n TSC,FIX -c blue,green \"tsc -p tsconfig.build.json --noCheck -w --preserveWatchOutput\" \"chokidar \\\"dist/**/*.js\\\" \\\"dist/**/*.d.ts\\\" -c \\\"tsc-esm-fix --target=dist && tsx scripts/generate-exports.ts\\\"\"",
+    "build": "tsx scripts/generate-exports.ts && tsdown",
+    "dev": "tsx scripts/generate-exports.ts && tsdown --watch",
     "generate:exports": "tsx scripts/generate-exports.ts",
     "check:exports": "tsx scripts/generate-exports.ts --check",
     "typecheck": "tsc --noEmit",
@@ -569,10 +569,7 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "dotenv": "catalog:",
-    "chokidar-cli": "^3.0.0",
-    "concurrently": "^9.2.1",
-    "tsc-esm-fix": "catalog:",
-    "tsup": "catalog:",
+    "tsdown": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

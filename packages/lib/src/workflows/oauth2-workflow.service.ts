@@ -1,7 +1,6 @@
 // packages/lib/src/workflows/oauth2-workflow.service.ts
 
 import { WEBAPP_URL } from '@auxx/config/server'
-// import { CredentialService } from '../workflow-engine/services/credential-service'
 import { CredentialService, CredentialTypeRegistry, configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'

@@ -2,7 +2,6 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger, type Logger } from '@auxx/logger'
-// import { createScopedLogger, Logger } from '../../../logger'
 import type { LLMClient } from '../clients/base/llm-client'
 import type {
   LLMInvokeParams,
@@ -582,7 +581,7 @@ export class LLMOrchestrator {
 
   private async triggerNewChunkCallback(
     callbacks?: AICallbacks,
-    chunk: LLMStreamChunk
+    chunk?: LLMStreamChunk
   ): Promise<void> {
     if (callbacks?.onChunk) {
       try {
@@ -595,7 +594,7 @@ export class LLMOrchestrator {
 
   private async triggerAfterInvokeCallback(
     callbacks?: AICallbacks,
-    response: LLMInvocationResponse
+    response?: LLMInvocationResponse
   ): Promise<void> {
     if (callbacks?.afterInvoke) {
       try {
@@ -606,7 +605,7 @@ export class LLMOrchestrator {
     }
   }
 
-  private async triggerInvokeErrorCallback(callbacks?: AICallbacks, error: Error): Promise<void> {
+  private async triggerInvokeErrorCallback(callbacks?: AICallbacks, error?: Error): Promise<void> {
     if (callbacks?.onError) {
       try {
         await callbacks.onError(error)
@@ -618,7 +617,7 @@ export class LLMOrchestrator {
 
   private async triggerToolCallCallback(
     callbacks?: AICallbacks,
-    toolCall: ToolCall
+    toolCall?: ToolCall
   ): Promise<void> {
     if (callbacks?.onToolCall) {
       try {
@@ -631,7 +630,7 @@ export class LLMOrchestrator {
 
   private async triggerToolResultCallback(
     callbacks?: AICallbacks,
-    result: ToolExecutionResult
+    result?: ToolExecutionResult
   ): Promise<void> {
     if (callbacks?.onToolResult) {
       try {

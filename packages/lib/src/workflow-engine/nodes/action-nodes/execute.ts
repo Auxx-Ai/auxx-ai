@@ -4,7 +4,6 @@ import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
-// import type { ActionDefinition, ActionType } from '../../../actions/core/action-types'
 
 /**
  * Action node that executes actions using the existing action system

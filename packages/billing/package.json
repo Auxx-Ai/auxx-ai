@@ -6,31 +6,30 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
-      "import": "./dist/index.js",
+      "import": "./dist/index.mjs",
       "default": "./src/index.ts"
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json --noCheck && tsc-esm-fix --target=dist",
+    "build": "tsdown",
     "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo",
     "dev": "pnpm exec dotenv -e ../../.env -e .env -- bash -lc 'echo \"NGROK_URL=$NGROK_URL\" && ngrok http --url=$NGROK_URL 3000'",
     "test": "vitest",
     "test:run": "vitest run"
   },
   "dependencies": {
-    "stripe": "catalog:",
     "@auxx/database": "workspace:*",
     "@auxx/deployment": "workspace:*",
     "@auxx/logger": "workspace:*",
-    "drizzle-orm": "catalog:"
+    "drizzle-orm": "catalog:",
+    "stripe": "catalog:"
   },
   "devDependencies": {
-    "dotenv": "catalog:",
     "@auxx/typescript-config": "workspace:*",
-    "concurrently": "^9.1.2",
-    "tsc-esm-fix": "catalog:",
+    "dotenv": "catalog:",
+    "tsdown": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:",
-    "vite-tsconfig-paths": "catalog:"
+    "vite-tsconfig-paths": "catalog:",
+    "vitest": "catalog:"
   }
 }

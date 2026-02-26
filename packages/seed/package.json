@@ -2,21 +2,21 @@
   "name": "@auxx/seed",
   "version": "1.0.0",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs",
+      "default": "./dist/index.mjs"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "dev": "tsc -p tsconfig.build.json --noCheck --watch --preserveWatchOutput",
-    "build": "rm -rf dist && tsc -p tsconfig.build.json --noCheck && tsc-esm-fix --target=dist",
+    "dev": "tsdown --watch",
+    "build": "tsdown",
     "seed": "tsx scripts/seed.ts",
     "seed:dev": "tsx scripts/seed.ts --scenario=development",
     "seed:test": "tsx scripts/seed.ts --scenario=testing --reset",
@@ -45,7 +45,7 @@
   "devDependencies": {
     "@auxx/typescript-config": "workspace:*",
     "@types/node": "catalog:",
-    "tsc-esm-fix": "catalog:",
+    "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

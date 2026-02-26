@@ -2,8 +2,6 @@ import { database as db, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { DEFAULT_USER_SETTINGS, type UserSettings, type UserSettingsPath } from './types'
 
-// import { UserSettings, DEFAULT_USER_SETTINGS } from './settings.types'
-
 export * from './settings-initializer'
 export * from './settings-service'
 export * from './types'

@@ -1,39 +1,53 @@
-ARG PROJECT="web"
-ARG PROJECT_PATH="apps/web"
+# apps/web/Dockerfile
+ARG NODE_VERSION=22.22
 
-FROM node:22.22-bookworm-slim AS slim
+# ──────────────────────────────────────────────
+# Stage 1: PRUNER — extract only web-relevant packages
+# ──────────────────────────────────────────────
+FROM node:${NODE_VERSION}-bookworm-slim AS pruner
 
-FROM slim AS base
-
-# Will be used to cache pnpm store
-RUN npm install -g corepack@0.31.0 && corepack enable
-
-# Install pnpm
+RUN corepack enable && corepack prepare pnpm@10.17.0 --activate
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
+RUN pnpm add -g turbo@2.5.2
 
-# Install turbo with npm instead of pnpm to avoid key verification issues
-RUN pnpm install -g turbo
+WORKDIR /app
+COPY . .
+RUN turbo prune @auxx/web --docker
 
-FROM base AS pruner
+# ──────────────────────────────────────────────
+# Stage 2: INSTALLER — install dependencies (cached layer)
+# ──────────────────────────────────────────────
+FROM node:${NODE_VERSION}-bookworm-slim AS installer
 
-ARG PROJECT
+# Build tools for native addons (pg, sharp, etc.)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ gcc ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable && corepack prepare pnpm@10.17.0 --activate
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN pnpm add -g turbo@2.5.2
 
 WORKDIR /app
 
-COPY . .
+# Copy lockfile, workspace config, and package.json files (from turbo prune --docker output).
+# This layer is cached as long as no dependency versions change.
+COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=pruner /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=pruner /app/out/json/ .
 
-# will generate in the ./out folder: 
-# - A folder named json with the pruned workspace's package.json files.
-# - A folder named full with the pruned workspace's package.json files.
-# - A pnpm-lock.yaml file with the pruned workspace's lockfile.
-RUN turbo prune @auxx/web --docker
+# --ignore-scripts: source files aren't available yet (only json/ is copied),
+# so lifecycle scripts like postinstall would fail.
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts
 
-# BUILDER stage
-# ------------------------------------------------------
-FROM base AS builder
+# ──────────────────────────────────────────────
+# Stage 3: BUILDER — build packages + Next.js app
+# ──────────────────────────────────────────────
+FROM installer AS builder
 
-ARG PROJECT
 ARG TURBO_TEAM
 ARG TURBO_TOKEN
 ARG GIT_SHA
@@ -47,50 +61,34 @@ ENV GIT_SHA=$GIT_SHA
 ENV APP_VERSION=$APP_VERSION
 ENV BUILD_TIME=$BUILD_TIME
 ENV DOMAIN=$DOMAIN
+ENV NODE_OPTIONS="--max-old-space-size=8192"
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV TURBO_TELEMETRY_DISABLED=1
 # Build-time mocks for modules that read env at import time
 ENV DATABASE_URL="postgresql://postgres:password@localhost:5432/mock_db"
 ENV REDIS_HOST="localhost"
 ENV REDIS_PORT="6379"
-ENV NEXT_TELEMETRY_DISABLED="1"
 
-WORKDIR /app
-
-COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
-COPY --from=pruner /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
-COPY --from=pruner /app/out/json/ .
+# Copy full source of relevant packages
 COPY --from=pruner /app/out/full/ .
-
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-  BUILDING_CONTAINER=true \
-  pnpm install \
-  --no-frozen-lockfile \
-  --filter "${PROJECT}..."
-
-# Increase Node memory limit and disable telemetry
-ENV NODE_OPTIONS="--max-old-space-size=8192"
-ENV TURBO_TELEMETRY_DISABLED=1
-
 
 # Generate workflow nodes frontend files
 RUN BUILDING_CONTAINER=true pnpm --filter="@auxx/workflow-nodes" run generate
 
-# Build dependencies first 
+# Build all upstream dependencies (tsdown packages produce dist/*.mjs)
 RUN BUILDING_CONTAINER=true pnpm turbo build --filter="@auxx/web^..."
 
-# Build the web app (uses Turbopack, Next.js 16.1 default)
+# Build the web app (Next.js standalone output)
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
   BUILDING_CONTAINER=true \
-  NEXT_TELEMETRY_DISABLED=1 \
   SKIP_ENV_VALIDATION=1 \
-  NODE_OPTIONS="--max-old-space-size=8192" \
   pnpm --filter=web run build:prod
 
-# PRODUCTION
-# Standalone output bundles its own node_modules — no need to prune.
-# Keeping devDeps ensures drizzle-kit stays available for the migrate service.
-FROM slim AS runner
+# ──────────────────────────────────────────────
+# Stage 4: RUNNER — minimal production image
+# ──────────────────────────────────────────────
+FROM node:${NODE_VERSION}-bookworm-slim AS runner
 
-ARG PROJECT_PATH
 ARG DOMAIN=dev.auxx.ai
 
 ENV HOSTNAME=0.0.0.0
@@ -102,28 +100,22 @@ ENV DOMAIN=$DOMAIN
 
 WORKDIR /app
 
-
-# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system --gid 1001 nodejs && \
     useradd --system --uid 1001 --gid nodejs nextjs
 
-# COPY --from=builder /app/packages/core/src/assets /app/packages/core/src/assets
 COPY --from=builder /app/apps/web/public ./apps/web/public
 
 # Set the correct permission for prerender cache
-RUN mkdir -p apps/web/.next
-RUN mkdir -p apps/web/.next/cache
-RUN chown nextjs:nodejs apps/web/.next
-RUN chown nextjs:nodejs apps/web/.next/cache
+RUN mkdir -p apps/web/.next apps/web/.next/cache && \
+    chown nextjs:nodejs apps/web/.next apps/web/.next/cache
 
 # Copy the standalone server and static assets
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 
 # Copy packages/database for drizzle-kit migrations (used by migrate service)
-# The database package includes its own node_modules — no need for the full monorepo node_modules (~1.4GB)
 COPY --from=builder --chown=nextjs:nodejs /app/packages/database ./packages/database
 
 # Copy the docker entrypoint for runtime env replacement
@@ -131,14 +123,12 @@ COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
 
 # Set permissions for local storage
-# User ID and Group ID 1001 is used to match the user 'nextjs' and group 'nodejs' in the runner image.
 RUN set -e; \
   mkdir -p /app/storage/files; \
   mkdir -p /app/apps/web/public/files; \
   chown -R 1001:1001 /app/storage/files /app/apps/web/public/files
 
 USER nextjs
-
 WORKDIR /app/apps/web
 
 EXPOSE 3000

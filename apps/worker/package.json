@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsup",
-    "start": "cd dist && node server.js",
+    "build": "tsdown",
+    "start": "cd dist && node server.mjs",
     "dev": "node --env-file .env --import tsx/esm --watch src/server.ts",
     "tc": "tsc --noEmit",
     "clean": "rm -rf node_modules dist .turbo"
@@ -37,8 +37,7 @@
     "@auxx/typescript-config": "workspace:*",
     "@types/node": "catalog:",
     "rimraf": "catalog:",
-    "tsconfig-paths": "^4.2.0",
-    "tsup": "catalog:",
+    "tsdown": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:"
   }

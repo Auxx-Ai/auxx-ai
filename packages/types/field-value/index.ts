@@ -1,9 +1,9 @@
 // packages/types/field-value/index.ts
 
 import { FieldType } from '@auxx/database/enums'
-import type { ActorId } from '@auxx/types/actor'
-import { isRecordId, type RecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { z } from 'zod'
+import type { ActorId } from '../actor'
+import { isRecordId, type RecordId, recordIdSchema, toRecordId } from '../resource'
 
 // =============================================================================
 // VALUE TYPE CONSTANTS

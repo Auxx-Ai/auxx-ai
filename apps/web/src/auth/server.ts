@@ -13,11 +13,11 @@ import { enqueueEmailJob } from '@auxx/lib/jobs'
 import { seedNewUserDatabase } from '@auxx/lib/seed'
 import { getUserById } from '@auxx/lib/users'
 import { createScopedLogger } from '@auxx/logger'
+import { passkey } from '@better-auth/passkey'
 import { betterAuth } from 'better-auth' // core lib
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { nextCookies } from 'better-auth/next-js'
 import { bearer, customSession, oidcProvider, phoneNumber, twoFactor } from 'better-auth/plugins'
-import { passkey } from 'better-auth/plugins/passkey'
 import { eq } from 'drizzle-orm'
 import { isValidPhoneNumber } from 'libphonenumber-js'
 

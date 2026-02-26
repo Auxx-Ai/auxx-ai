@@ -102,7 +102,7 @@ function resolveSubpath(subpath: string): string | null {
 }
 
 function toDistPath(srcPath: string): string {
-  return srcPath.replace(/^\.\/src\//, './dist/').replace(/\.tsx?$/, '.js')
+  return srcPath.replace(/^\.\/src\//, './dist/').replace(/\.tsx?$/, '.mjs')
 }
 
 function main() {
@@ -111,7 +111,7 @@ function main() {
   const exportsObj: Record<string, unknown> = {
     '.': {
       types: './src/index.ts',
-      import: './dist/index.js',
+      import: './dist/index.mjs',
       default: './src/index.ts',
     },
   }
