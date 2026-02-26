@@ -2,9 +2,10 @@
 
 'use client'
 
-import Editor from '@monaco-editor/react'
+import { Spinner } from '@auxx/ui/components/spinner'
 import { useReactFlow } from '@xyflow/react'
 import type { IDisposable } from 'monaco-editor'
+import dynamic from 'next/dynamic'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useVarStore } from '~/components/workflow/store/use-var-store'
 import EditorHeightResizeWrap from '../editor-height-resize-wrap'
@@ -16,6 +17,15 @@ import {
   releaseOverflowWidgetContainer,
 } from './overflow-widget-manager'
 import { CodeLanguage, languageMap } from './types'
+
+const Editor = dynamic(() => import('@monaco-editor/react').then((m) => m.default), {
+  ssr: false,
+  loading: () => (
+    <div className='flex h-full items-center justify-center'>
+      <Spinner className='size-5 text-muted-foreground' />
+    </div>
+  ),
+})
 
 /**
  * CodeEditor Content Component

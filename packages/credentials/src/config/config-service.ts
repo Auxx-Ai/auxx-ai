@@ -35,21 +35,13 @@ const CACHE_REFRESH_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
  */
 export class ConfigService {
   private cache = new ConfigCache()
-  private _storage: ConfigStorage | null = null
+  private storage = new ConfigStorage()
   private refreshTimer: ReturnType<typeof setInterval> | null = null
   private initPromise: Promise<void> | null = null
   private initialized = false
 
   /** Cached SST Resource object. null = unchecked, false = unavailable. */
   private sstResource: Record<string, any> | null | false = null
-
-  /** Lazy-init to break circular dependency: config → config-storage → credential-service → config */
-  private get storage(): ConfigStorage {
-    if (!this._storage) {
-      this._storage = new ConfigStorage()
-    }
-    return this._storage
-  }
 
   /**
    * Whether DB overrides are enabled.
