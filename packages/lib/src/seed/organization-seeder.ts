@@ -180,14 +180,22 @@ export class OrganizationSeeder {
   private async seedTags(organizationId: string) {
     const handler = new UnifiedCrudHandler(organizationId, this.userId, this.db)
 
+    // Skip snapshot invalidation and events during seeding — no active users to notify,
+    // and each invalidation attempt costs 5s on Lambda when Redis is slow/unavailable
+    const seedOpts = { skipSnapshotInvalidation: true, skipEvents: true }
+
     // Create parent tag first - Topic Categorization
     // UnifiedCrudHandler.create() throws on error, so if we get a result, it succeeded
-    const topicResult = await handler.create('tag', {
-      title: 'Topic Categorization',
-      tag_description: 'Top-level categorization for support tickets',
-      tag_emoji: '🏷️',
-      tag_color: 'blue',
-    })
+    const topicResult = await handler.create(
+      'tag',
+      {
+        title: 'Topic Categorization',
+        tag_description: 'Top-level categorization for support tickets',
+        tag_emoji: '🏷️',
+        tag_color: 'blue',
+      },
+      seedOpts
+    )
 
     // Create child tags under Topic Categorization using parent relationship
     // Must be sequential to avoid inverse relationship sync conflicts (sortKey collisions)
@@ -203,10 +211,14 @@ export class OrganizationSeeder {
     ]
 
     for (const tag of topicSubTags) {
-      await handler.create('tag', {
-        ...tag,
-        tag_parent: topicResult.recordId, // Link to parent via RecordId
-      })
+      await handler.create(
+        'tag',
+        {
+          ...tag,
+          tag_parent: topicResult.recordId, // Link to parent via RecordId
+        },
+        seedOpts
+      )
     }
 
     // Create independent tags (no parent) - can be parallel since no inverse sync needed
@@ -217,7 +229,7 @@ export class OrganizationSeeder {
       { title: 'VIP', tag_emoji: '⭐', tag_color: 'orange' },
     ]
 
-    await Promise.all(independentTags.map((tag) => handler.create('tag', tag)))
+    await Promise.all(independentTags.map((tag) => handler.create('tag', tag, seedOpts)))
   }
   // Create ticket sequence for the organization
   /**

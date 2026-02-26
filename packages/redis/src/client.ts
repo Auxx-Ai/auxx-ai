@@ -34,6 +34,11 @@ let publishingClient: RedisClient | null = null
 // Subscription Redis client singleton (separate from publishing client)
 let subscriptionClient: RedisClient | null = null
 
+// Connection failure cooldown — prevents retrying a 5s timeout on every call
+// during the same Lambda invocation when Redis is unreachable
+let lastConnectionFailureAt = 0
+const CONNECTION_FAILURE_COOLDOWN_MS = 30_000
+
 /**
  * Read a raw environment variable without config defaults.
  */
@@ -98,14 +103,30 @@ export function getConnectionOptions() {
  * @returns {Promise<RedisClient|null>} - Redis client or null if not required and connection fails
  */
 export async function getRedisClient(required = true): Promise<RedisClient | undefined> {
+  // Fast-fail during cooldown period after a connection failure.
+  // Prevents burning 5s per call when Redis is unreachable (e.g., Lambda cold start).
+  if (!redisClient && lastConnectionFailureAt > 0) {
+    const elapsed = Date.now() - lastConnectionFailureAt
+    if (elapsed < CONNECTION_FAILURE_COOLDOWN_MS) {
+      if (required) {
+        throw new Error(
+          `Redis connection recently failed (${Math.round(elapsed / 1000)}s ago), in ${Math.round((CONNECTION_FAILURE_COOLDOWN_MS - elapsed) / 1000)}s cooldown`
+        )
+      }
+      return undefined
+    }
+  }
+
   try {
     if (!redisClient) {
       // Use the new factory to create the client
       redisClient = await RedisClientFactory.createClient(undefined, 'main')
+      lastConnectionFailureAt = 0 // Reset on successful connection
     }
 
     return redisClient
   } catch (error) {
+    lastConnectionFailureAt = Date.now()
     logger.error('Failed to initialize Redis client', { error: (error as Error).message })
 
     if (required) {
