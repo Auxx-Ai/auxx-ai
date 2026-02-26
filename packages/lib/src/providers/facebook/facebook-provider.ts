@@ -21,7 +21,8 @@ import { getProviderCapabilities, type ProviderCapabilities } from '../provider-
 import { type FacebookIntegrationMetadata, FacebookOAuthService } from './facebook-oauth'
 
 const logger = createScopedLogger('facebook-provider')
-const API_VERSION = configService.get<string>('FACEBOOK_GRAPH_API_VERSION') || 'v19.0'
+const DEFAULT_API_VERSION = 'v19.0'
+
 // --- Interface Definitions (for clarity, align with Graph API responses) ---
 interface FacebookSendMessagePayload {
   recipient: {
@@ -65,10 +66,17 @@ export class FacebookProvider
   private metadata: FacebookIntegrationMetadata | null = null
   private pageAccessToken: string | null = null
   private pageId: string | null = null
+  private apiVersion: string
   private oauthService: FacebookOAuthService
   private storageService: MessageStorageService
   constructor(organizationId: string) {
     super(IntegrationProviderType.facebook, '', organizationId)
+    try {
+      this.apiVersion =
+        configService.get<string>('FACEBOOK_GRAPH_API_VERSION') || DEFAULT_API_VERSION
+    } catch {
+      this.apiVersion = DEFAULT_API_VERSION
+    }
     this.oauthService = FacebookOAuthService.getInstance()
     this.storageService = new MessageStorageService(organizationId)
   }
@@ -200,7 +208,7 @@ export class FacebookProvider
       },
       // TODO: Handle messaging_type variations (e.g., MESSAGE_TAG) via options.metadata
     }
-    const apiUrl = `https://graph.facebook.com/${API_VERSION}/me/messages?access_token=${this.pageAccessToken}`
+    const apiUrl = `https://graph.facebook.com/${this.apiVersion}/me/messages?access_token=${this.pageAccessToken}`
     try {
       logger.debug(`Sending Facebook message from Page ${this.pageId} to PSID ${recipientPsid}`)
       const response = await fetch(apiUrl, {
@@ -271,7 +279,7 @@ export class FacebookProvider
     try {
       // Initial URL for conversations endpoint
       let conversationsLink: string | null =
-        `https://graph.facebook.com/${API_VERSION}/${this.pageId}/conversations?platform=messenger&fields=id,participants{id,name},updated_time,snippet&access_token=${this.pageAccessToken}`
+        `https://graph.facebook.com/${this.apiVersion}/${this.pageId}/conversations?platform=messenger&fields=id,participants{id,name},updated_time,snippet&access_token=${this.pageAccessToken}`
       let totalMessagesProcessed = 0
       const processedConversationIds = new Set<string>() // Track processed convos to avoid duplicate message fetching if API behaves unexpectedly
       // --- Paginate through Conversations ---
@@ -333,7 +341,7 @@ export class FacebookProvider
           }
           // --- Paginate through Messages for this Conversation ---
           let messagesLink: string | null =
-            `https://graph.facebook.com/${API_VERSION}/${conversationId}/messages?access_token=${this.pageAccessToken}&fields=id,created_time,from{id,name},to{id,name},message{text,attachments,mid}` // Added mid
+            `https://graph.facebook.com/${this.apiVersion}/${conversationId}/messages?access_token=${this.pageAccessToken}&fields=id,created_time,from{id,name},to{id,name},message{text,attachments,mid}` // Added mid
           const messagesToStore: MessageData[] = []
           // Apply 'since' filter to message fetching as well (more granular)
           if (since) {
@@ -577,7 +585,7 @@ export class FacebookProvider
     logger.info("'getLabels' - Fetching Facebook Page Conversation Labels.")
     await this.ensureInitialized()
     // API: GET /me/custom_labels?fields=name,id,color (using Page Token)
-    const apiUrl = `https://graph.facebook.com/${API_VERSION}/me/custom_labels?fields=name,id,color&access_token=${this.pageAccessToken}`
+    const apiUrl = `https://graph.facebook.com/${this.apiVersion}/me/custom_labels?fields=name,id,color&access_token=${this.pageAccessToken}`
     try {
       const response = await fetch(apiUrl)
       const data = await response.json()
@@ -595,7 +603,7 @@ export class FacebookProvider
     logger.info(`'createLabel' - Creating Facebook Page Conversation Label: ${options.name}`)
     await this.ensureInitialized()
     // API: POST /me/custom_labels?name={name} (color not directly supported via API)
-    const apiUrl = `https://graph.facebook.com/${API_VERSION}/me/custom_labels`
+    const apiUrl = `https://graph.facebook.com/${this.apiVersion}/me/custom_labels`
     const params = new URLSearchParams({ name: options.name, access_token: this.pageAccessToken! })
     try {
       const response = await fetch(apiUrl, { method: 'POST', body: params })
@@ -624,7 +632,7 @@ export class FacebookProvider
     logger.info(`'deleteLabel' - Deleting Facebook Page Conversation Label ID: ${labelId}`)
     await this.ensureInitialized()
     // API: DELETE /{page-label-id}?access_token={page_access_token}
-    const apiUrl = `https://graph.facebook.com/${API_VERSION}/${labelId}?access_token=${this.pageAccessToken}`
+    const apiUrl = `https://graph.facebook.com/${this.apiVersion}/${labelId}?access_token=${this.pageAccessToken}`
     try {
       const response = await fetch(apiUrl, { method: 'DELETE' })
       const data = await response.json()
@@ -655,7 +663,7 @@ export class FacebookProvider
     logger.info(`Attempting to add label ${labelId} to conversation ${externalId}`)
     await this.ensureInitialized()
     // API: POST /{conversation-id}/custom_labels?label_id={label-id}
-    const apiUrl = `https://graph.facebook.com/${API_VERSION}/${externalId}/custom_labels`
+    const apiUrl = `https://graph.facebook.com/${this.apiVersion}/${externalId}/custom_labels`
     const params = new URLSearchParams({ label_id: labelId, access_token: this.pageAccessToken! })
     try {
       const response = await fetch(apiUrl, { method: 'POST', body: params })
@@ -687,7 +695,7 @@ export class FacebookProvider
     logger.info(`Attempting to remove label ${labelId} from conversation ${externalId}`)
     await this.ensureInitialized()
     // API: DELETE /{conversation-id}/custom_labels?label_id={label-id}
-    const apiUrl = `https://graph.facebook.com/${API_VERSION}/${externalId}/custom_labels`
+    const apiUrl = `https://graph.facebook.com/${this.apiVersion}/${externalId}/custom_labels`
     const params = new URLSearchParams({ label_id: labelId, access_token: this.pageAccessToken! })
     try {
       const response = await fetch(`${apiUrl}?${params.toString()}`, { method: 'DELETE' })
@@ -709,7 +717,7 @@ export class FacebookProvider
     logger.info(`Getting Facebook conversation info for: ${externalThreadId}`)
     await this.ensureInitialized()
     // API: GET /{conversation-id}?fields=participants,updated_time,snippet,message_count,unread_count,link
-    const apiUrl = `https://graph.facebook.com/${API_VERSION}/${externalThreadId}?fields=id,participants{id,name},updated_time,snippet,message_count,unread_count,link&access_token=${this.pageAccessToken}`
+    const apiUrl = `https://graph.facebook.com/${this.apiVersion}/${externalThreadId}?fields=id,participants{id,name},updated_time,snippet,message_count,unread_count,link&access_token=${this.pageAccessToken}`
     try {
       const response = await fetch(apiUrl)
       const data = await response.json()

@@ -22,7 +22,8 @@ import { getProviderCapabilities, type ProviderCapabilities } from '../provider-
 import { type InstagramIntegrationMetadata, InstagramOAuthService } from './instagram-oauth'
 
 const logger = createScopedLogger('instagram-provider')
-const API_VERSION = configService.get<string>('FACEBOOK_GRAPH_API_VERSION') || 'v19.0'
+const DEFAULT_API_VERSION = 'v19.0'
+
 // --- Interface Definitions (Align with Graph API) ---
 interface InstagramSendMessagePayload {
   recipient: {
@@ -60,10 +61,17 @@ export class InstagramProvider
   private pageAccessToken: string | null = null // LL Page Token (used for API calls)
   private pageId: string | null = null // Linked FB Page ID
   private instagramBusinessAccountId: string | null = null // IGBID
+  private apiVersion: string
   private oauthService: InstagramOAuthService
   private storageService: MessageStorageService
   constructor(organizationId: string) {
     super(IntegrationProviderType.instagram, '', organizationId)
+    try {
+      this.apiVersion =
+        configService.get<string>('FACEBOOK_GRAPH_API_VERSION') || DEFAULT_API_VERSION
+    } catch {
+      this.apiVersion = DEFAULT_API_VERSION
+    }
     this.oauthService = InstagramOAuthService.getInstance()
     this.storageService = new MessageStorageService(organizationId)
   }
@@ -197,7 +205,7 @@ export class InstagramProvider
       // TODO: Handle messaging_type variations (e.g., MESSAGE_TAG) via options.metadata if needed
     }
     // API endpoint uses the *Facebook Page ID* associated with the Instagram account
-    const apiUrl = `https://graph.facebook.com/${API_VERSION}/${this.pageId}/messages?access_token=${this.pageAccessToken}`
+    const apiUrl = `https://graph.facebook.com/${this.apiVersion}/${this.pageId}/messages?access_token=${this.pageAccessToken}`
     try {
       logger.debug(
         `Sending Instagram message from IGBID ${this.instagramBusinessAccountId} (via Page ${this.pageId}) to IGSID ${recipientIgsid}`
@@ -269,7 +277,7 @@ export class InstagramProvider
     try {
       // Use the Conversation API, specifying platform=instagram and the Page ID
       let conversationsLink: string | null =
-        `https://graph.facebook.com/${API_VERSION}/${this.pageId}/conversations?platform=instagram&fields=id,participants{id,username},updated_time,snippet,message_count,unread_count&access_token=${this.pageAccessToken}`
+        `https://graph.facebook.com/${this.apiVersion}/${this.pageId}/conversations?platform=instagram&fields=id,participants{id,username},updated_time,snippet,message_count,unread_count&access_token=${this.pageAccessToken}`
       let totalMessagesProcessed = 0
       const processedConversationIds = new Set<string>() // Avoid reprocessing
       // --- Paginate through Conversations ---
@@ -330,7 +338,7 @@ export class InstagramProvider
           }
           // --- Paginate through Messages for this Conversation ---
           let messagesLink: string | null =
-            `https://graph.facebook.com/${API_VERSION}/${conversationId}/messages?access_token=${this.pageAccessToken}&fields=id,created_time,from{id,username},to{id,username},message{text,attachments,mid}` // Fetch usernames if available
+            `https://graph.facebook.com/${this.apiVersion}/${conversationId}/messages?access_token=${this.pageAccessToken}&fields=id,created_time,from{id,username},to{id,username},message{text,attachments,mid}` // Fetch usernames if available
           const messagesToStore: MessageData[] = []
           // Apply 'since' filter to messages if provided
           if (since) {
@@ -579,7 +587,7 @@ export class InstagramProvider
     logger.info("'getLabels' - Checking linked Facebook Page Conversation Labels for Instagram.")
     // Re-use FB implementation via Page Token
     await this.ensureInitialized()
-    const apiUrl = `https://graph.facebook.com/${API_VERSION}/me/custom_labels?fields=name,id,color&access_token=${this.pageAccessToken}`
+    const apiUrl = `https://graph.facebook.com/${this.apiVersion}/me/custom_labels?fields=name,id,color&access_token=${this.pageAccessToken}`
     try {
       /* ... Fetch labels ... */ return [] /* Return FB labels if applicable */
     } catch (error) {
@@ -590,7 +598,7 @@ export class InstagramProvider
     logger.warn("'createLabel' - Creating linked Facebook Page Conversation Label.")
     // Re-use FB implementation via Page Token
     await this.ensureInitialized()
-    const apiUrl = `https://graph.facebook.com/${API_VERSION}/me/custom_labels`
+    const apiUrl = `https://graph.facebook.com/${this.apiVersion}/me/custom_labels`
     const params = new URLSearchParams({ name: options.name, access_token: this.pageAccessToken! })
     try {
       /* ... POST request ... */
@@ -613,7 +621,7 @@ export class InstagramProvider
     logger.warn(`'deleteLabel' - Deleting linked Facebook Page Conversation Label ID: ${labelId}`)
     // Re-use FB implementation via Page Token
     await this.ensureInitialized()
-    const apiUrl = `https://graph.facebook.com/${API_VERSION}/${labelId}?access_token=${this.pageAccessToken}`
+    const apiUrl = `https://graph.facebook.com/${this.apiVersion}/${labelId}?access_token=${this.pageAccessToken}`
     try {
       /* ... DELETE request ... */ return true
     } catch (error) {
@@ -632,7 +640,7 @@ export class InstagramProvider
     logger.info(`Attempting to add FB label ${labelId} to IG conversation ${externalId}`)
     // Re-use FB implementation
     await this.ensureInitialized()
-    const apiUrl = `https://graph.facebook.com/${API_VERSION}/${externalId}/custom_labels`
+    const apiUrl = `https://graph.facebook.com/${this.apiVersion}/${externalId}/custom_labels`
     const params = new URLSearchParams({ label_id: labelId, access_token: this.pageAccessToken! })
     try {
       /* ... POST request ... */ return true
@@ -651,7 +659,7 @@ export class InstagramProvider
     logger.info(`Attempting to remove FB label ${labelId} from IG conversation ${externalId}`)
     // Re-use FB implementation
     await this.ensureInitialized()
-    const apiUrl = `https://graph.facebook.com/${API_VERSION}/${externalId}/custom_labels`
+    const apiUrl = `https://graph.facebook.com/${this.apiVersion}/${externalId}/custom_labels`
     const params = new URLSearchParams({ label_id: labelId, access_token: this.pageAccessToken! })
     try {
       /* ... DELETE request ... */ return true
@@ -666,7 +674,7 @@ export class InstagramProvider
     )
     // Re-use FB implementation
     await this.ensureInitialized()
-    const apiUrl = `https://graph.facebook.com/${API_VERSION}/${externalThreadId}?fields=id,participants{id,username},updated_time,snippet,message_count,unread_count,link&access_token=${this.pageAccessToken}`
+    const apiUrl = `https://graph.facebook.com/${this.apiVersion}/${externalThreadId}?fields=id,participants{id,username},updated_time,snippet,message_count,unread_count,link&access_token=${this.pageAccessToken}`
     try {
       /* ... GET request ... */
     } catch (error) {

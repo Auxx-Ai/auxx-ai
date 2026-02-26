@@ -20,6 +20,7 @@ export const rds = new sst.aws.Postgres('AuxxAiRdsV2', {
 
 export const redis = new sst.aws.Redis('AuxxAiRedisV2', {
   vpc,
+  cluster: false,
   dev: {
     host: 'localhost',
     port: 6379,

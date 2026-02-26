@@ -13,13 +13,17 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
 
   if (provider === 'aws') {
     const url = configService.get<string>('ELASTICACHE_URL')
-    const tls = configService.get<string>('ELASTICACHE_TLS') === 'true'
+    const tls = !!configService.get<boolean>('ELASTICACHE_TLS')
 
     if (!url) {
       throw new Error('ELASTICACHE_URL environment variable is required for AWS ElastiCache')
     }
 
-    logger.info('Creating AWS ElastiCache Redis client with enhanced support')
+    logger.info('Creating AWS ElastiCache Redis client with enhanced support', {
+      url: url ? `${url.substring(0, 20)}...` : 'undefined',
+      tls,
+      rawEnv: process.env.ELASTICACHE_TLS,
+    })
 
     client = new Redis(url, {
       tls: tls ? {} : undefined,
@@ -44,13 +48,19 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
     if (!host) {
       throw new Error('REDIS_HOST environment variable is required for hosted Redis')
     }
-    logger.info('Creating hosted Redis client with enhanced support')
+    logger.info('Creating hosted Redis client with enhanced support', {
+      host,
+      port,
+      tls: !!configService.get<boolean>('ELASTICACHE_TLS'),
+      rawEnv: process.env.ELASTICACHE_TLS,
+      hasPassword: hasExplicitPassword,
+    })
     if (!hasExplicitPassword) {
       logger.warn(
         'REDIS_PASSWORD is not set for hosted Redis. If your Redis requires auth, connection will fail with NOAUTH.'
       )
     }
-    const tls = configService.get<string>('ELASTICACHE_TLS') === 'true'
+    const tls = !!configService.get<boolean>('ELASTICACHE_TLS')
 
     client = new Redis({
       tls: tls ? {} : undefined,

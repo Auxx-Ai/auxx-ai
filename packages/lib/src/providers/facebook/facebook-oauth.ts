@@ -9,7 +9,7 @@ import { InboxService } from '../../inboxes/inbox-service'
 import { IntegrationTokenAccessor } from '../integration-token-accessor'
 
 const logger = createScopedLogger('facebook-oauth')
-const API_VERSION = configService.get<string>('FACEBOOK_GRAPH_API_VERSION') || 'v19.0' // Use a recent, stable version
+const DEFAULT_API_VERSION = 'v19.0'
 
 // Interface describing the data stored for Facebook integration authentication
 export interface FacebookIntegrationMetadata {
@@ -25,6 +25,7 @@ export class FacebookOAuthService {
   private clientId: string
   private clientSecret: string
   private redirectUri: string
+  private apiVersion: string
 
   // Scopes needed for Messenger integration
   static scopes = [
@@ -36,6 +37,14 @@ export class FacebookOAuthService {
   ]
 
   private constructor() {
+    // Resolve API version lazily here (not at module level) to avoid crashing
+    // when FACEBOOK_GRAPH_API_VERSION is not linked in the SST config
+    try {
+      this.apiVersion =
+        configService.get<string>('FACEBOOK_GRAPH_API_VERSION') || DEFAULT_API_VERSION
+    } catch {
+      this.apiVersion = DEFAULT_API_VERSION
+    }
     this.clientId = configService.get<string>('FACEBOOK_APP_ID') || ''
     this.clientSecret = configService.get<string>('FACEBOOK_APP_SECRET') || ''
     // Define the callback route for Facebook
@@ -92,7 +101,7 @@ export class FacebookOAuthService {
       state: encodedState,
     })
 
-    const url = `https://www.facebook.com/${API_VERSION}/dialog/oauth?${params.toString()}`
+    const url = `https://www.facebook.com/${this.apiVersion}/dialog/oauth?${params.toString()}`
 
     logger.info('Generated Facebook OAuth URL', {
       organizationId,
@@ -129,7 +138,7 @@ export class FacebookOAuthService {
 
     try {
       // 1. Exchange code for a short-lived User Access Token
-      const tokenUrl = `https://graph.facebook.com/${API_VERSION}/oauth/access_token`
+      const tokenUrl = `https://graph.facebook.com/${this.apiVersion}/oauth/access_token`
       const tokenParams = new URLSearchParams({
         client_id: this.clientId,
         redirect_uri: this.redirectUri,
@@ -150,7 +159,7 @@ export class FacebookOAuthService {
       logger.debug('Obtained short-lived User Access Token', { orgId })
 
       // 2. Exchange short-lived User Token for a Long-Lived User Token
-      const longLivedUrl = `https://graph.facebook.com/${API_VERSION}/oauth/access_token`
+      const longLivedUrl = `https://graph.facebook.com/${this.apiVersion}/oauth/access_token`
       const longLivedParams = new URLSearchParams({
         grant_type: 'fb_exchange_token',
         client_id: this.clientId,
@@ -171,13 +180,13 @@ export class FacebookOAuthService {
 
       // 3. Get the User's Facebook ID (optional but good for reference)
       const meRes = await fetch(
-        `https://graph.facebook.com/${API_VERSION}/me?access_token=${longLivedUserToken || shortLivedUserToken}`
+        `https://graph.facebook.com/${this.apiVersion}/me?access_token=${longLivedUserToken || shortLivedUserToken}`
       )
       const meData = await meRes.json()
       const facebookUserId = meData.id
 
       // 4. Get Pages the user has granted access to
-      const accountsUrl = `https://graph.facebook.com/${API_VERSION}/me/accounts?access_token=${longLivedUserToken || shortLivedUserToken}&fields=id,name,access_token`
+      const accountsUrl = `https://graph.facebook.com/${this.apiVersion}/me/accounts?access_token=${longLivedUserToken || shortLivedUserToken}&fields=id,name,access_token`
       const accountsRes = await fetch(accountsUrl)
       const accountsData = await accountsRes.json()
 
@@ -202,7 +211,7 @@ export class FacebookOAuthService {
       // 5. Exchange the short-lived Page Token for a Long-Lived Page Token
       // IMPORTANT: Use the *User* token for this exchange if possible, otherwise use the short-lived Page token.
       // Let's use the short-lived Page token as obtained from /me/accounts
-      const longLivedPageUrl = `https://graph.facebook.com/${API_VERSION}/oauth/access_token`
+      const longLivedPageUrl = `https://graph.facebook.com/${this.apiVersion}/oauth/access_token`
       const longLivedPageParams = new URLSearchParams({
         grant_type: 'fb_exchange_token',
         client_id: this.clientId,
@@ -318,7 +327,7 @@ export class FacebookOAuthService {
    * Subscribe the connected page to webhook events from this app.
    */
   private async subscribePageToApp(pageId: string, pageAccessToken: string): Promise<void> {
-    const subscribeUrl = `https://graph.facebook.com/${API_VERSION}/${pageId}/subscribed_apps`
+    const subscribeUrl = `https://graph.facebook.com/${this.apiVersion}/${pageId}/subscribed_apps`
     const subscribeParams = new URLSearchParams({
       subscribed_fields: FacebookOAuthService.scopes.join(','), // Subscribe to fields corresponding to granted scopes
       access_token: pageAccessToken,
@@ -351,7 +360,7 @@ export class FacebookOAuthService {
    * Unsubscribe the page from app webhooks.
    */
   private async unsubscribePageFromApp(pageId: string, pageAccessToken: string): Promise<void> {
-    const unsubscribeUrl = `https://graph.facebook.com/${API_VERSION}/${pageId}/subscribed_apps`
+    const unsubscribeUrl = `https://graph.facebook.com/${this.apiVersion}/${pageId}/subscribed_apps`
     const unsubscribeParams = new URLSearchParams({ access_token: pageAccessToken })
 
     try {
@@ -390,7 +399,7 @@ export class FacebookOAuthService {
     const pageAccessToken = tokens.accessToken
 
     try {
-      const debugUrl = `https://graph.facebook.com/${API_VERSION}/debug_token`
+      const debugUrl = `https://graph.facebook.com/${this.apiVersion}/debug_token`
       const debugParams = new URLSearchParams({
         input_token: pageAccessToken,
         access_token: `${this.clientId}|${this.clientSecret}`,
@@ -475,7 +484,7 @@ export class FacebookOAuthService {
 
       // 2. Revoke App Permissions for the User
       if (facebookUserId && userAccessToken && userAccessToken !== 'N/A') {
-        const revokeUrl = `https://graph.facebook.com/${API_VERSION}/${facebookUserId}/permissions`
+        const revokeUrl = `https://graph.facebook.com/${this.apiVersion}/${facebookUserId}/permissions`
         const revokeParams = new URLSearchParams({ access_token: userAccessToken })
         try {
           const revokeRes = await fetch(`${revokeUrl}?${revokeParams.toString()}`, {

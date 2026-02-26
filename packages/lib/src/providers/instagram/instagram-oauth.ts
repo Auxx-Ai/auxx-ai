@@ -9,7 +9,7 @@ import { InboxService } from '../../inboxes/inbox-service'
 import { IntegrationTokenAccessor } from '../integration-token-accessor'
 
 const logger = createScopedLogger('instagram-oauth')
-const API_VERSION = configService.get<string>('FACEBOOK_GRAPH_API_VERSION') || 'v19.0' // Use a recent, stable version
+const DEFAULT_API_VERSION = 'v19.0'
 
 // Interface describing the data stored for Instagram integration authentication
 // Managed via a Facebook Page
@@ -28,6 +28,7 @@ export class InstagramOAuthService {
   private clientId: string
   private clientSecret: string
   private redirectUri: string
+  private apiVersion: string
 
   // Scopes needed for Instagram Messaging via Facebook Page
   static scopes = [
@@ -40,6 +41,12 @@ export class InstagramOAuthService {
   ]
 
   private constructor() {
+    try {
+      this.apiVersion =
+        configService.get<string>('FACEBOOK_GRAPH_API_VERSION') || DEFAULT_API_VERSION
+    } catch {
+      this.apiVersion = DEFAULT_API_VERSION
+    }
     this.clientId = configService.get<string>('FACEBOOK_APP_ID') || ''
     this.clientSecret = configService.get<string>('FACEBOOK_APP_SECRET') || ''
     // Define the callback route for Instagram via Facebook Login
@@ -101,7 +108,7 @@ export class InstagramOAuthService {
       state: encodedState,
     })
 
-    const url = `https://www.facebook.com/${API_VERSION}/dialog/oauth?${params.toString()}`
+    const url = `https://www.facebook.com/${this.apiVersion}/dialog/oauth?${params.toString()}`
 
     logger.info('Generated Instagram OAuth URL', {
       organizationId,
@@ -290,7 +297,7 @@ export class InstagramOAuthService {
   // --- Helper Methods for OAuth Steps ---
 
   private async exchangeCodeForToken(code: string): Promise<string> {
-    const url = `https://graph.facebook.com/${API_VERSION}/oauth/access_token`
+    const url = `https://graph.facebook.com/${this.apiVersion}/oauth/access_token`
     const params = new URLSearchParams({
       client_id: this.clientId,
       redirect_uri: this.redirectUri,
@@ -306,7 +313,7 @@ export class InstagramOAuthService {
   }
 
   private async exchangeShortTokenForLong(shortToken: string): Promise<string | undefined> {
-    const url = `https://graph.facebook.com/${API_VERSION}/oauth/access_token`
+    const url = `https://graph.facebook.com/${this.apiVersion}/oauth/access_token`
     const params = new URLSearchParams({
       grant_type: 'fb_exchange_token',
       client_id: this.clientId,
@@ -330,7 +337,7 @@ export class InstagramOAuthService {
   private async getFacebookUserId(accessToken: string): Promise<string | undefined> {
     try {
       const res = await fetch(
-        `https://graph.facebook.com/${API_VERSION}/me?fields=id&access_token=${accessToken}`
+        `https://graph.facebook.com/${this.apiVersion}/me?fields=id&access_token=${accessToken}`
       )
       const data = await res.json()
       return data?.id
@@ -345,7 +352,7 @@ export class InstagramOAuthService {
   ): Promise<Array<{ id: string; name: string; access_token: string }>> {
     try {
       // Fetch pages with their own access tokens
-      const url = `https://graph.facebook.com/${API_VERSION}/me/accounts?fields=id,name,access_token&access_token=${accessToken}`
+      const url = `https://graph.facebook.com/${this.apiVersion}/me/accounts?fields=id,name,access_token&access_token=${accessToken}`
       const res = await fetch(url)
       const data = await res.json()
       if (!res.ok || !data.data) {
@@ -364,7 +371,7 @@ export class InstagramOAuthService {
     pageAccessToken: string
   ): Promise<{ id: string; username: string } | null> {
     try {
-      const url = `https://graph.facebook.com/${API_VERSION}/${pageId}?fields=instagram_business_account{id,username}&access_token=${pageAccessToken}`
+      const url = `https://graph.facebook.com/${this.apiVersion}/${pageId}?fields=instagram_business_account{id,username}&access_token=${pageAccessToken}`
       const res = await fetch(url)
       const data = await res.json()
       if (res.ok && data.instagram_business_account) {
@@ -385,7 +392,7 @@ export class InstagramOAuthService {
 
   /** Subscribe Page to App Webhooks */
   private async subscribePageToApp(pageId: string, pageAccessToken: string): Promise<void> {
-    const subscribeUrl = `https://graph.facebook.com/${API_VERSION}/${pageId}/subscribed_apps`
+    const subscribeUrl = `https://graph.facebook.com/${this.apiVersion}/${pageId}/subscribed_apps`
     // Subscribe specifically to fields needed for Instagram Messaging
     const subscribedFields = 'messages, messaging_postbacks' // Add others if needed, like message_reads
     const subscribeParams = new URLSearchParams({
@@ -414,7 +421,7 @@ export class InstagramOAuthService {
 
   /** Unsubscribe Page from App Webhooks */
   private async unsubscribePageFromApp(pageId: string, pageAccessToken: string): Promise<void> {
-    const unsubscribeUrl = `https://graph.facebook.com/${API_VERSION}/${pageId}/subscribed_apps`
+    const unsubscribeUrl = `https://graph.facebook.com/${this.apiVersion}/${pageId}/subscribed_apps`
     const unsubscribeParams = new URLSearchParams({ access_token: pageAccessToken })
     logger.info(`Unsubscribing page ${pageId} from webhook fields.`)
     try {
@@ -461,7 +468,7 @@ export class InstagramOAuthService {
       }
 
       if (facebookUserId && userAccessToken && userAccessToken !== 'N/A') {
-        const revokeUrl = `https://graph.facebook.com/${API_VERSION}/${facebookUserId}/permissions`
+        const revokeUrl = `https://graph.facebook.com/${this.apiVersion}/${facebookUserId}/permissions`
         const revokeParams = new URLSearchParams({ access_token: userAccessToken })
         try {
           const revokeRes = await fetch(`${revokeUrl}?${revokeParams.toString()}`, {
@@ -517,7 +524,7 @@ export class InstagramOAuthService {
     const pageAccessToken = tokens.accessToken
 
     try {
-      const debugUrl = `https://graph.facebook.com/${API_VERSION}/debug_token`
+      const debugUrl = `https://graph.facebook.com/${this.apiVersion}/debug_token`
       const debugParams = new URLSearchParams({
         input_token: pageAccessToken,
         access_token: `${this.clientId}|${this.clientSecret}`,
