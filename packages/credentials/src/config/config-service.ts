@@ -295,8 +295,13 @@ export class ConfigService {
       }
     }
 
-    const res = this.sstResource[key]
-    return typeof res?.value === 'string' ? res.value : undefined
+    try {
+      const res = this.sstResource[key]
+      return typeof res?.value === 'string' ? res.value : undefined
+    } catch {
+      // SST Resource proxy throws for unlinked resources — treat as missing
+      return undefined
+    }
   }
 
   /** Validate a value against its definition. */

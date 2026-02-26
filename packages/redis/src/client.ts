@@ -72,7 +72,9 @@ export function getRedisProvider(): 'upstash' | 'aws' | 'hosted' {
   return detectRedisProvider()
 }
 
-type RedisConnectionOptions = Pick<RedisUrlComponents, 'host' | 'password' | 'port'>
+type RedisConnectionOptions = Pick<RedisUrlComponents, 'host' | 'password' | 'port'> & {
+  tls?: Record<string, never>
+}
 
 export const WORKER_CONNECTION_CONFIG: RedisConnectionOptions = {
   host: configService.get<string>('REDIS_HOST')!,
@@ -80,8 +82,9 @@ export const WORKER_CONNECTION_CONFIG: RedisConnectionOptions = {
   password: configService.get<string>('REDIS_PASSWORD')!,
 }
 
-export function getConnectionOptions() {
+export function getConnectionOptions(): RedisConnectionOptions {
   const provider = getRedisProvider()
+  const tls = !!configService.get<boolean>('ELASTICACHE_TLS')
 
   let connectionConfig: RedisConnectionOptions
   switch (provider) {
@@ -94,6 +97,11 @@ export function getConnectionOptions() {
       connectionConfig = WORKER_CONNECTION_CONFIG
     }
   }
+
+  if (tls) {
+    connectionConfig.tls = {}
+  }
+
   return connectionConfig
 }
 
