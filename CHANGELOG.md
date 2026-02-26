@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.19](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.18...auxx-v0.1.19) (2026-02-26)
+
+
+### Features
+
+* enhance Redis client and configuration management ([#92](https://github.com/Auxx-Ai/auxx-ai/issues/92)) ([a1c859f](https://github.com/Auxx-Ai/auxx-ai/commit/a1c859f467a8e0bc3e996a3796ce249e278f6c48))
+
 ## [0.1.18](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.17...auxx-v0.1.18) (2026-02-26)
 
 
