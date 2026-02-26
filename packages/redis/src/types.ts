@@ -26,10 +26,13 @@ export interface RedisClient {
   psubscribe(pattern: string): Promise<number>
   punsubscribe(pattern: string): Promise<number>
 
+  // Connection lifecycle
+  connect(): Promise<void>
+  disconnect(): void
+
   // Event handling
   on(event: string, listener: (...args: any[]) => void): void
   removeListener(event: string, listener: (...args: any[]) => void): void
-  disconnect(): void
 
   // Additional operations for polling-based providers
   keys(pattern: string): Promise<string[]>

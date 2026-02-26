@@ -13,7 +13,7 @@ import type { ConfigVariableDefinition } from './types'
  * 1. Add an entry to CONFIG_VARIABLES below
  * 2. That's it — the UI, API, and service layer pick it up automatically
  */
-export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
+export const CONFIG_VARIABLES = {
   // ── SERVER ──────────────────────────────────────────────
   API_PORT: {
     key: 'API_PORT',
@@ -392,7 +392,7 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     description: 'Email sending provider',
     type: ConfigVariableType.ENUM,
     group: ConfigVariableGroup.EMAIL,
-    defaultValue: 'mailgun',
+    defaultValue: 'smtp',
     isSensitive: false,
     isEnvOnly: false,
     options: ['mailgun', 'ses', 'smtp', 'sendmail'],
@@ -998,7 +998,10 @@ export const CONFIG_VARIABLES: Record<string, ConfigVariableDefinition> = {
     isSensitive: false,
     isEnvOnly: true,
   },
-}
+} satisfies Record<string, ConfigVariableDefinition>
+
+/** Union of all known config variable keys. */
+export type ConfigKey = keyof typeof CONFIG_VARIABLES
 
 /**
  * Group metadata for UI display
@@ -1090,7 +1093,7 @@ export function getAllConfigDefinitions(): ConfigVariableDefinition[] {
  * Get a single variable definition by key
  */
 export function getConfigDefinition(key: string): ConfigVariableDefinition | undefined {
-  return CONFIG_VARIABLES[key]
+  return (CONFIG_VARIABLES as Record<string, ConfigVariableDefinition>)[key]
 }
 
 /**

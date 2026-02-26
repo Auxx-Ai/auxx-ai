@@ -176,6 +176,32 @@ export const secretsConfig = {
     description: 'PostHog project API key',
   },
 
+  // Email / SMTP
+  EMAIL_PROVIDER: {
+    secret: new sst.Secret('EMAIL_PROVIDER'),
+    description: 'Email sending provider (smtp, mailgun, ses, sendmail)',
+  },
+  SMTP_HOST: {
+    secret: new sst.Secret('SMTP_HOST'),
+    description: 'SMTP server hostname',
+  },
+  SMTP_PORT: {
+    secret: new sst.Secret('SMTP_PORT'),
+    description: 'SMTP server port',
+  },
+  SMTP_SECURE: {
+    secret: new sst.Secret('SMTP_SECURE'),
+    description: 'Use TLS for SMTP connection',
+  },
+  SMTP_USER: {
+    secret: new sst.Secret('SMTP_USER'),
+    description: 'SMTP authentication username',
+  },
+  SMTP_PASS: {
+    secret: new sst.Secret('SMTP_PASS'),
+    description: 'SMTP authentication password',
+  },
+
   // Mailgun
   MAILGUN_API_KEY: {
     secret: new sst.Secret('MAILGUN_API_KEY'),

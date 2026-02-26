@@ -15,6 +15,29 @@ import {
   type RedisProviderCapabilities,
 } from '../types'
 
+/** Timeout for connection verification pings (ms) */
+const PING_TIMEOUT_MS = 5_000
+
+/**
+ * Race a promise against a timeout. Rejects with a clear message if the
+ * timeout fires first.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    promise.then(
+      (v) => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(timer)
+        reject(e)
+      }
+    )
+  })
+}
+
 /**
  * Factory pattern for creating Redis clients
  * Provides provider-agnostic client creation with automatic capability detection
@@ -59,20 +82,9 @@ export class RedisClientFactory {
   ): Promise<RedisClient> {
     const cacheKey = `${provider ?? 'auto'}-${instanceId}`
 
-    // Return existing instance if available
+    // Return existing instance if available (no ping — verified on creation)
     if (RedisClientFactory.instances.has(cacheKey)) {
-      const existingClient = RedisClientFactory.instances.get(cacheKey)!
-      try {
-        // Test if connection is still alive
-        await existingClient.ping()
-        return existingClient
-      } catch (error) {
-        logger.warn(`Existing Redis client ${cacheKey} failed ping, creating new instance`, {
-          error: (error as Error).message,
-        })
-        // Remove failed instance
-        RedisClientFactory.instances.delete(cacheKey)
-      }
+      return RedisClientFactory.instances.get(cacheKey)!
     }
 
     const detectedProvider = provider ?? getRedisProvider()
@@ -100,14 +112,19 @@ export class RedisClientFactory {
         throw new Error(`Unsupported Redis provider: ${detectedProvider}`)
     }
 
-    // Test connection
+    // Establish connection and verify with ping (with timeouts to prevent hanging on Lambda/serverless)
     try {
-      await client.ping()
+      await withTimeout(client.connect(), PING_TIMEOUT_MS, `Redis connect (${cacheKey})`)
+      await withTimeout(client.ping(), PING_TIMEOUT_MS, `Redis ping (${cacheKey})`)
       logger.info(`Redis client ${cacheKey} connection successful`)
     } catch (error) {
       logger.error(`Redis client ${cacheKey} connection failed`, {
         error: (error as Error).message,
       })
+      // Force-close the client so it doesn't leak
+      try {
+        client.disconnect()
+      } catch {}
       throw RedisClientFactory.toConnectionError(detectedProvider, error)
     }
 
@@ -146,12 +163,16 @@ export class RedisClientFactory {
         throw new Error(`Unsupported Redis provider: ${detectedProvider}`)
     }
 
-    // Test connection
+    // Establish connection and verify with ping (with timeouts to prevent hanging on Lambda/serverless)
     try {
-      await client.ping()
+      await withTimeout(client.connect(), PING_TIMEOUT_MS, `Redis connect (dedicated)`)
+      await withTimeout(client.ping(), PING_TIMEOUT_MS, `Redis ping (dedicated)`)
       logger.info(`Dedicated Redis client connection successful`)
     } catch (error) {
       logger.error(`Dedicated Redis client connection failed`, { error: (error as Error).message })
+      try {
+        client.disconnect()
+      } catch {}
       throw RedisClientFactory.toConnectionError(detectedProvider, error)
     }
 

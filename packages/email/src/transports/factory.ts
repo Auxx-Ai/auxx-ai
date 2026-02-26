@@ -17,7 +17,7 @@ export class TransportFactory {
    * Create a transporter for the configured provider
    */
   static create(): nodemailer.Transporter {
-    const provider = configService.get<string>('EMAIL_PROVIDER') || 'mailgun'
+    const provider = configService.get<string>('EMAIL_PROVIDER') || 'smtp'
 
     switch (provider) {
       case 'ses':
