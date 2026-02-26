@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.23](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.22...auxx-v0.1.23) (2026-02-26)
+
+
+### Features
+
+* add SDK_CLIENT_SECRET to env config and update related services ([#100](https://github.com/Auxx-Ai/auxx-ai/issues/100)) ([83fe932](https://github.com/Auxx-Ai/auxx-ai/commit/83fe9323fa37c3d5c0916f4823a72c2e799e59d7))
+
 ## [0.1.22](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.21...auxx-v0.1.22) (2026-02-26)
 
 
