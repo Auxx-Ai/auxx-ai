@@ -45,10 +45,16 @@ export class SystemUserService {
    */
   static async getOrganizationSystemUser(organizationId: string): Promise<UserEntity | null> {
     try {
+      logger.debug('getOrganizationSystemUser: getting Redis client', { organizationId })
       const redisClient = await SystemUserService.getRedisClient()
       // Check Redis cache first
       if (redisClient) {
+        logger.debug('getOrganizationSystemUser: checking Redis cache', { organizationId })
         const cachedUserId = await redisClient.get(`system-user:org:${organizationId}`)
+        logger.debug('getOrganizationSystemUser: Redis cache result', {
+          organizationId,
+          cachedUserId,
+        })
         if (cachedUserId) {
           const [systemUser] = await getUserByIdStmt.execute({ $1: cachedUserId })
           if (systemUser) {
@@ -63,6 +69,7 @@ export class SystemUserService {
         }
       }
       // Fallback to database (using regular query to avoid prepared statement cache issues)
+      logger.debug('getOrganizationSystemUser: querying DB', { organizationId })
       const orgWithUser = await db
         .select({
           organization: schema.Organization,
@@ -72,6 +79,7 @@ export class SystemUserService {
         .leftJoin(schema.User, eq(schema.Organization.systemUserId, schema.User.id))
         .where(eq(schema.Organization.id, organizationId))
         .limit(1)
+      logger.debug('getOrganizationSystemUser: DB query complete', { organizationId })
 
       const systemUser = orgWithUser[0]?.systemUser || null
       // Cache the system user ID if found
@@ -96,6 +104,7 @@ export class SystemUserService {
   ): Promise<UserEntity> {
     try {
       // Check if organization already has a system user
+      logger.info('createSystemUser: checking for existing system user', { organizationId })
       const existingSystemUser = await SystemUserService.getOrganizationSystemUser(organizationId)
       if (existingSystemUser) {
         logger.warn('Organization already has a system user', {
@@ -104,13 +113,17 @@ export class SystemUserService {
         })
         return existingSystemUser
       }
+      logger.info('createSystemUser: no existing system user, proceeding', { organizationId })
 
       // Invalidate any stale cache before creating
+      logger.info('createSystemUser: invalidating cache', { organizationId })
       await SystemUserService.invalidateSystemUserCache(organizationId)
+      logger.info('createSystemUser: cache invalidated, starting transaction', { organizationId })
 
       // Use transaction to ensure atomicity
       const systemUser = await db.transaction(async (tx) => {
         // Create the system user
+        logger.info('createSystemUser: inserting system user', { organizationId })
         const [newUser] = await tx
           .insert(schema.User)
           .values({
@@ -123,21 +136,28 @@ export class SystemUserService {
             updatedAt: new Date(),
           })
           .returning()
+        logger.info('createSystemUser: system user inserted, linking to org', {
+          organizationId,
+          systemUserId: newUser!.id,
+        })
 
         // Link system user to organization
         await tx
           .update(schema.Organization)
           .set({ systemUserId: newUser!.id })
           .where(eq(schema.Organization.id, organizationId))
+        logger.info('createSystemUser: org linked, committing', { organizationId })
 
         return newUser!
       })
+      logger.info('createSystemUser: transaction committed, caching', { organizationId })
 
       // Cache the new system user ID AFTER transaction commits
       const redisClient = await SystemUserService.getRedisClient()
       if (redisClient) {
         await redisClient.setex(`system-user:org:${organizationId}`, 86400, systemUser.id)
       }
+      logger.info('createSystemUser: cached', { organizationId })
 
       logger.info('Created system user for organization', {
         organizationId,

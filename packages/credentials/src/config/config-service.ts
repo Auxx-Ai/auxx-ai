@@ -4,7 +4,7 @@ import { ConfigSource } from '@auxx/types/config'
 import { ConfigCache } from './config-cache'
 import {
   CONFIG_GROUP_META,
-  CONFIG_VARIABLES,
+  type ConfigKey,
   getAllConfigDefinitions,
   getConfigDefinition,
 } from './config-registry'
@@ -39,6 +39,9 @@ export class ConfigService {
   private refreshTimer: ReturnType<typeof setInterval> | null = null
   private initPromise: Promise<void> | null = null
   private initialized = false
+
+  /** Cached SST Resource object. null = unchecked, false = unavailable. */
+  private sstResource: Record<string, any> | null | false = null
 
   /**
    * Whether DB overrides are enabled.
@@ -88,7 +91,7 @@ export class ConfigService {
    * 5. Fallback param
    */
   get<T extends string | number | boolean | string[] = string>(
-    key: string,
+    key: ConfigKey | (string & {}),
     fallback?: T
   ): T | undefined {
     const definition = getConfigDefinition(key)
@@ -137,7 +140,7 @@ export class ConfigService {
    * Validates against the registry definition.
    * Cache updates immediately — takes effect on next get() call.
    */
-  async set(key: string, value: unknown, userId?: string): Promise<void> {
+  async set(key: ConfigKey | (string & {}), value: unknown, userId?: string): Promise<void> {
     const definition = getConfigDefinition(key)
 
     if (!definition) {
@@ -162,7 +165,7 @@ export class ConfigService {
   /**
    * Delete a DB override (revert to env/default).
    */
-  async delete(key: string): Promise<void> {
+  async delete(key: ConfigKey | (string & {})): Promise<void> {
     const definition = getConfigDefinition(key)
     if (!definition) {
       throw new Error(`Unknown config variable: ${key}`)
@@ -214,47 +217,63 @@ export class ConfigService {
    * Sensitive values are masked for the admin UI.
    */
   private resolve(definition: ConfigVariableDefinition): ResolvedConfigVariable {
-    let value: unknown = null
-    let source: (typeof ConfigSource)[keyof typeof ConfigSource] = ConfigSource.DEFAULT
-    let hasDbOverride = false
+    const raw = this.resolveRaw(definition.key)
+    let value: unknown = raw.value
+    if (value !== null && definition.isSensitive) {
+      value = '••••••••'
+    }
+    return { definition, value: value as any, source: raw.source, hasDbOverride: raw.hasDbOverride }
+  }
+
+  /**
+   * Internal resolution that returns the raw value and its source.
+   * Shared by both get() hot-path and resolve() admin-UI path.
+   */
+  private resolveRaw(key: string): {
+    value: unknown
+    source: (typeof ConfigSource)[keyof typeof ConfigSource]
+    hasDbOverride: boolean
+  } {
+    const definition = getConfigDefinition(key)
 
     // 1. Check DB override
-    if (this.isDbEnabled && !definition.isEnvOnly) {
-      const cached = this.cache.get(definition.key)
+    if (this.isDbEnabled && definition && !definition.isEnvOnly) {
+      const cached = this.cache.get(key)
       if (cached.found && cached.value !== undefined) {
-        value = definition.isSensitive ? '••••••••' : cached.value
-        source = ConfigSource.DATABASE
-        hasDbOverride = true
+        return { value: cached.value, source: ConfigSource.DATABASE, hasDbOverride: true }
       }
     }
 
-    // 2. Check process.env (if no DB override)
-    if (!hasDbOverride) {
-      const envRaw = process.env[definition.key]
-      if (envRaw !== undefined && envRaw !== '') {
-        const converted = convertEnvValue(envRaw, definition.type)
-        value = definition.isSensitive ? '••••••••' : (converted ?? envRaw)
-        source = ConfigSource.ENVIRONMENT
+    // 2. Check process.env
+    const envRaw = process.env[key]
+    if (envRaw !== undefined && envRaw !== '') {
+      const converted = definition ? convertEnvValue(envRaw, definition.type) : undefined
+      return {
+        value: converted ?? envRaw,
+        source: ConfigSource.ENVIRONMENT,
+        hasDbOverride: false,
       }
     }
 
-    // 2.5 Check SST Resource (if no DB or env value)
-    if (value === null && this.isSstRuntime) {
-      const resourceValue = this.getSstResourceValue(definition.key)
+    // 3. Check SST Resource (if in SST runtime)
+    if (this.isSstRuntime) {
+      const resourceValue = this.getSstResourceValue(key)
       if (resourceValue !== undefined) {
-        const converted = convertEnvValue(resourceValue, definition.type)
-        value = definition.isSensitive ? '••••••••' : (converted ?? resourceValue)
-        source = ConfigSource.SST_RESOURCE
+        const converted = definition ? convertEnvValue(resourceValue, definition.type) : undefined
+        return {
+          value: converted ?? resourceValue,
+          source: ConfigSource.SST_RESOURCE,
+          hasDbOverride: false,
+        }
       }
     }
 
-    // 3. Fall back to default
-    if (value === null && definition.defaultValue !== undefined) {
-      value = definition.defaultValue
-      source = ConfigSource.DEFAULT
+    // 4. Fall back to default
+    if (definition?.defaultValue !== undefined) {
+      return { value: definition.defaultValue, source: ConfigSource.DEFAULT, hasDbOverride: false }
     }
 
-    return { definition, value: value as any, source, hasDbOverride }
+    return { value: null, source: ConfigSource.DEFAULT, hasDbOverride: false }
   }
 
   /** Guard: only true in deployed Lambda or `sst dev`, never during Next.js build */
@@ -264,14 +283,20 @@ export class ConfigService {
 
   /** Only sst.Secret resources have .value — buckets have .name, RDS has .host etc. */
   private getSstResourceValue(key: string): string | undefined {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { Resource } = require('sst')
-      const res = (Resource as any)[key]
-      return typeof res?.value === 'string' ? res.value : undefined
-    } catch {
-      return undefined
+    if (this.sstResource === false) return undefined
+
+    if (this.sstResource === null) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        this.sstResource = require('sst').Resource
+      } catch {
+        this.sstResource = false
+        return undefined
+      }
     }
+
+    const res = this.sstResource[key]
+    return typeof res?.value === 'string' ? res.value : undefined
   }
 
   /** Validate a value against its definition. */
@@ -287,7 +312,15 @@ export class ConfigService {
         break
       }
       case 'BOOLEAN':
-        if (typeof value !== 'boolean' && value !== 'true' && value !== 'false')
+        if (
+          typeof value !== 'boolean' &&
+          value !== 'true' &&
+          value !== 'false' &&
+          value !== '1' &&
+          value !== '0' &&
+          value !== 'yes' &&
+          value !== 'no'
+        )
           throw new Error(`'${definition.key}' must be a boolean`)
         break
       case 'ENUM':
@@ -308,11 +341,7 @@ export class ConfigService {
   private async refreshCache(): Promise<void> {
     try {
       const allOverrides = await this.storage.getAllSystem()
-      const allKnownKeys = Object.keys(CONFIG_VARIABLES)
-      this.cache.warmUp(
-        allOverrides.map((o) => ({ key: o.key, value: o.value })),
-        allKnownKeys
-      )
+      this.cache.warmUp(allOverrides.map((o) => ({ key: o.key, value: o.value })))
     } catch (error) {
       console.error('[ConfigService] Failed to refresh cache from DB:', error)
     }
@@ -344,6 +373,7 @@ export class ConfigService {
     }
     this.initialized = false
     this.initPromise = null
+    this.sstResource = null
     this.cache.clear()
   }
 }

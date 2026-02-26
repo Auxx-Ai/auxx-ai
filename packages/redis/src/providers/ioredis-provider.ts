@@ -23,14 +23,16 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
 
     client = new Redis(url, {
       tls: tls ? {} : undefined,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
+      maxRetriesPerRequest: 3,
+      enableReadyCheck: true,
+      lazyConnect: true,
       retryStrategy: (times: number) => {
-        const delay = Math.min(2 ** times * 100, 10000)
+        if (times > 5) return null // stop retrying after 5 attempts
+        const delay = Math.min(2 ** times * 100, 5000)
         logger.warn(`AWS Redis reconnecting in ${delay}ms (attempt ${times})`)
         return delay
       },
-      connectTimeout: 10000,
+      connectTimeout: 5000,
     })
   } else {
     // hosted
@@ -55,14 +57,16 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
       host,
       port,
       password,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
+      maxRetriesPerRequest: 3,
+      enableReadyCheck: true,
+      lazyConnect: true,
       retryStrategy: (times: number) => {
-        const delay = Math.min(2 ** times * 100, 10000)
+        if (times > 5) return null // stop retrying after 5 attempts
+        const delay = Math.min(2 ** times * 100, 5000)
         logger.warn(`Hosted Redis reconnecting in ${delay}ms (attempt ${times})`)
         return delay
       },
-      connectTimeout: 10000,
+      connectTimeout: 5000,
     })
   }
 
@@ -111,11 +115,16 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
     psubscribe: async (pattern: string) => (await client.psubscribe(pattern)) as number,
     punsubscribe: async (pattern: string) => (await client.punsubscribe(pattern)) as number,
 
+    // Connection lifecycle
+    connect: async () => {
+      await client.connect()
+    },
+    disconnect: () => client.disconnect(),
+
     // Event handling
     on: (event: string, listener: (...args: any[]) => void) => client.on(event, listener),
     removeListener: (event: string, listener: (...args: any[]) => void) =>
       client.removeListener(event, listener),
-    disconnect: () => client.disconnect(),
 
     // Additional operations for compatibility
     keys: async (pattern: string) => await client.keys(pattern),

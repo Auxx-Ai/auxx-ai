@@ -95,6 +95,10 @@ export function createUpstashClient(): RedisClient {
       return 'OK'
     },
 
+    // Connection lifecycle
+    connect: async () => {
+      // No-op — Upstash uses stateless HTTP requests
+    },
     disconnect: () => {
       logger.info('Force disconnecting Upstash Redis client')
       // No-op for REST client

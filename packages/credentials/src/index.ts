@@ -27,6 +27,7 @@ export const credentialManager = new CredentialManager()
 export const createCredentialManager = () => new CredentialManager()
 
 export type {
+  ConfigKey,
   ConfigVariableDefinition,
   ConfigVariableGroupData,
   ResolvedConfigVariable,

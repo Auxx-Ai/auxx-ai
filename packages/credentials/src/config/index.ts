@@ -5,6 +5,7 @@ export { ConfigCache } from './config-cache'
 export {
   CONFIG_GROUP_META,
   CONFIG_VARIABLES,
+  type ConfigKey,
   getAllConfigDefinitions,
   getConfigDefinition,
   getConfigDefinitionsByGroup,

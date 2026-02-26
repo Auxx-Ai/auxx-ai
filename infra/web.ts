@@ -35,6 +35,6 @@ export const web = new sst.aws.Nextjs('AuxxAiWeb', {
     runtime: 'nodejs22.x',
     install: ['sharp'],
     // memory: '2048 MB',
-    // timeout: '20 seconds',
+    timeout: '60 seconds',
   },
 })

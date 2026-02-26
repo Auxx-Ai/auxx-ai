@@ -24,8 +24,9 @@ async function initializeApp() {
   await configService.init()
 
   // Initialize Stripe client for billing jobs
-  if (process.env.STRIPE_SECRET_KEY) {
-    stripeClient.initialize(process.env.STRIPE_SECRET_KEY)
+  const stripeKey = configService.get<string>('STRIPE_SECRET_KEY')
+  if (stripeKey) {
+    stripeClient.initialize(stripeKey)
     console.log('Stripe client initialized.')
   } else {
     console.warn('STRIPE_SECRET_KEY not set - billing jobs will fail')
