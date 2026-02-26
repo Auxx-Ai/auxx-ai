@@ -34,8 +34,6 @@ const getBullMQOptions = () => {
   return {
     connection: {
       ...connectionOptions,
-      // Optional: Add connection timeout and retry strategy
-      // tls: {},
       connectTimeout: 10000,
     },
     defaultJobOptions: DEFAULT_JOB_OPTIONS,
