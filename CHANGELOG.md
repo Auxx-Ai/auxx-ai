@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.21](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.20...auxx-v0.1.21) (2026-02-26)
+
+
+### Features
+
+* update Redis instance name to AuxxAiRedisV3 ([#96](https://github.com/Auxx-Ai/auxx-ai/issues/96)) ([1e3aa1b](https://github.com/Auxx-Ai/auxx-ai/commit/1e3aa1b5bed5378369e74ecd47f40c55d9e3bab7))
+
 ## [0.1.20](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.19...auxx-v0.1.20) (2026-02-26)
 
 
