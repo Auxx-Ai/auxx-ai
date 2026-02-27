@@ -85,7 +85,18 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
   pnpm --filter=web run build:prod
 
 # ──────────────────────────────────────────────
-# Stage 4: RUNNER — minimal production image
+# Stage 4: MIGRATE-DEPS — flat node_modules for database migrations
+# ──────────────────────────────────────────────
+FROM installer AS migrate-deps
+
+COPY --from=builder /app .
+
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm --filter @auxx/database --prod deploy --legacy /database-deploy 2>&1 \
+    | grep -v 'WARN  Skip adding .* to the default catalog'
+
+# ──────────────────────────────────────────────
+# Stage 5: RUNNER — minimal production image
 # ──────────────────────────────────────────────
 FROM node:${NODE_VERSION}-bookworm-slim AS runner
 
@@ -121,8 +132,8 @@ RUN mkdir -p apps/web/.next apps/web/.next/cache && \
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 
-# Copy packages/database for drizzle-kit migrations (used by migrate service)
-COPY --from=builder --chown=nextjs:nodejs /app/packages/database ./packages/database
+# Copy packages/database with flat node_modules for migrations (pre-deploy / migrate service)
+COPY --from=migrate-deps --chown=nextjs:nodejs /database-deploy /app/packages/database
 
 # Copy the docker entrypoint for runtime env replacement
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
