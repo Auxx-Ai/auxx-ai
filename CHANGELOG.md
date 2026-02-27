@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.27](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.26...auxx-v0.1.27) (2026-02-27)
+
+
+### Features
+
+* add warm configuration for production environments in Next.js apps ([#108](https://github.com/Auxx-Ai/auxx-ai/issues/108)) ([680e2c2](https://github.com/Auxx-Ai/auxx-ai/commit/680e2c286d4e23c60dc890b5e77923d248607c3e))
+
 ## [0.1.26](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.25...auxx-v0.1.26) (2026-02-27)
 
 
