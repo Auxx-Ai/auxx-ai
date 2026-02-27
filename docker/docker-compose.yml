@@ -121,6 +121,7 @@ services:
 
   migrate:
     image: ghcr.io/auxx-ai/web:${VERSION:-latest}
+    platform: linux/amd64
     command: ["node", "scripts/docker-migrate.mjs"]
     working_dir: /app/packages/database
     environment:
@@ -135,6 +136,7 @@ services:
 
   web:
     image: ghcr.io/auxx-ai/web:${VERSION:-latest}
+    platform: linux/amd64
     env_file: .env
     environment:
       <<: [*common-env, *db-env, *db-pool-env, *redis-env, *url-env]
@@ -157,6 +159,7 @@ services:
 
   api:
     image: ghcr.io/auxx-ai/api:${VERSION:-latest}
+    platform: linux/amd64
     env_file: .env
     environment:
       <<: [*common-env, *db-env, *db-pool-env, *redis-env, *url-env]
@@ -180,6 +183,7 @@ services:
 
   worker:
     image: ghcr.io/auxx-ai/worker:${VERSION:-latest}
+    platform: linux/amd64
     env_file: .env
     environment:
       <<: [*common-env, *db-env, *db-pool-env, *redis-env, *url-env]
@@ -203,6 +207,7 @@ services:
 
   lambda:
     image: ghcr.io/auxx-ai/lambda-server:${VERSION:-latest}
+    platform: linux/amd64
     environment:
       PORT: ${LAMBDA_PORT:-3008}
       S3_ENDPOINT: http://minio:9000
