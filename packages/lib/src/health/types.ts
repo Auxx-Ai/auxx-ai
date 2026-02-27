@@ -94,6 +94,22 @@ export interface HealthIndicatorDefinition {
   }>
 }
 
+/** A single completed or failed job run */
+export interface QueueRun {
+  id: string | undefined
+  name: string
+  finishedOn: string | null
+  attemptsMade: number
+  failedReason: string | null
+  returnvalue: string | null
+}
+
+/** Cursor-paginated response for queue job runs */
+export interface QueueRunsResponse {
+  runs: QueueRun[]
+  nextCursor: number | null
+}
+
 /** Error message constants */
 export const HEALTH_ERROR_MESSAGES = {
   DATABASE_TIMEOUT: 'Database check timeout',
