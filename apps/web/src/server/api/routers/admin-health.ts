@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/admin-health.ts
 
 import { getIndicatorHealth, getSystemHealth } from '@auxx/lib/health/health-service'
-import { getQueueMetrics } from '@auxx/lib/health/queue-metrics'
+import { clearQueueFailedJobs, getQueueMetrics, getQueueRuns } from '@auxx/lib/health/queue-metrics'
 import { z } from 'zod'
 import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
 
@@ -37,5 +37,26 @@ export const adminHealthRouter = createTRPCRouter({
     )
     .query(async ({ input }) => {
       return getQueueMetrics(input.queueName, input.timeRange)
+    }),
+
+  /** Get recent job runs (completed or failed) for a queue */
+  getQueueRuns: superAdminProcedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        status: z.enum(['completed', 'failed']),
+        cursor: z.number().int().min(0).default(0),
+        limit: z.number().int().min(1).max(50).default(20),
+      })
+    )
+    .query(async ({ input }) => {
+      return getQueueRuns(input.queueName, input.status, input.cursor, input.limit)
+    }),
+
+  /** Clear all failed jobs for a queue */
+  clearFailedJobs: superAdminProcedure
+    .input(z.object({ queueName: z.string() }))
+    .mutation(async ({ input }) => {
+      return clearQueueFailedJobs(input.queueName)
     }),
 })

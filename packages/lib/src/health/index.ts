@@ -1,7 +1,7 @@
 // packages/lib/src/health/index.ts
 
 export { getIndicatorHealth, getSystemHealth } from './health-service'
-export { getQueueMetrics } from './queue-metrics'
+export { clearQueueFailedJobs, getQueueMetrics, getQueueRuns } from './queue-metrics'
 export { HealthStateManager } from './state-manager'
 export { withHealthCheckTimeout } from './timeout'
 export {
@@ -18,5 +18,7 @@ export {
   type QueueMetricsResponse,
   type QueueMetricsSeries,
   type QueueMetricsTimeRange,
+  type QueueRun,
+  type QueueRunsResponse,
   type SystemHealth,
 } from './types'

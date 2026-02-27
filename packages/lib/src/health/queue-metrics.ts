@@ -2,7 +2,7 @@
 
 import { getQueue } from '../jobs/queues'
 import type { Queues } from '../jobs/queues/types'
-import type { QueueMetricsResponse, QueueMetricsTimeRange } from './types'
+import type { QueueMetricsResponse, QueueMetricsTimeRange, QueueRunsResponse } from './types'
 
 /** Number of minutes of data to fetch per time range */
 const POINTS_NEEDED: Record<QueueMetricsTimeRange, number> = {
@@ -59,6 +59,63 @@ export async function getQueueMetrics(
       { id: 'Failed', data: failedData.map((y, x) => ({ x, y })) },
     ],
   }
+}
+
+/**
+ * Get cursor-paginated job runs for a queue (completed or failed).
+ * Cursor is the offset index into the BullMQ sorted set.
+ */
+export async function getQueueRuns(
+  queueName: string,
+  status: 'completed' | 'failed',
+  cursor: number,
+  limit: number
+): Promise<QueueRunsResponse> {
+  const queue = getQueue(queueName as Queues)
+
+  const jobs =
+    status === 'completed'
+      ? await queue.getCompleted(cursor, cursor + limit - 1)
+      : await queue.getFailed(cursor, cursor + limit - 1)
+
+  const nextCursor = jobs.length === limit ? cursor + limit : null
+
+  return {
+    runs: jobs.map((job) => ({
+      id: job.id,
+      name: job.name,
+      finishedOn: job.finishedOn ? new Date(job.finishedOn).toISOString() : null,
+      attemptsMade: job.attemptsMade,
+      failedReason: job.failedReason ?? null,
+      returnvalue: job.returnvalue ? summarizeReturnValue(job.returnvalue) : null,
+    })),
+    nextCursor,
+  }
+}
+
+/**
+ * Clear all failed jobs for a queue.
+ */
+export async function clearQueueFailedJobs(queueName: string): Promise<{ cleared: number }> {
+  const queue = getQueue(queueName as Queues)
+  const failed = await queue.getFailed(0, -1)
+
+  let cleared = 0
+  for (const job of failed) {
+    await job.remove()
+    cleared++
+  }
+
+  return { cleared }
+}
+
+/** Summarize a job return value to a display string */
+function summarizeReturnValue(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'object' && value !== null) {
+    return JSON.stringify(value)
+  }
+  return String(value)
 }
 
 /** Downsample raw metrics by taking the max value per chunk */
