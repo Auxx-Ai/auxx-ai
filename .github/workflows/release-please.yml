@@ -72,6 +72,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set build time
+        id: build_time
+        run: echo "build_time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -84,6 +88,10 @@ jobs:
             ${{ matrix.image }}:latest
             ${{ matrix.image }}:${{ needs.release-please.outputs.tag_name }}
             ${{ matrix.image }}:${{ needs.release-please.outputs.version }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            APP_VERSION=${{ needs.release-please.outputs.version }}
+            BUILD_TIME=${{ steps.build_time.outputs.build_time }}
           cache-from: type=registry,ref=${{ matrix.image }}:buildcache
           cache-to: type=registry,ref=${{ matrix.image }}:buildcache,mode=max
 

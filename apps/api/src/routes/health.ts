@@ -19,6 +19,9 @@ health.get('/', async (c) => {
       successResponse({
         status: 'healthy',
         timestamp: new Date().toISOString(),
+        version: process.env.APP_VERSION || 'dev',
+        sha: process.env.GIT_SHA?.slice(0, 7) || 'local',
+        buildTime: process.env.BUILD_TIME || null,
         database: 'connected',
       })
     )
