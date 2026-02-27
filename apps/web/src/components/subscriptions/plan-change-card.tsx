@@ -8,10 +8,20 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
 import { CreditCard, X } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import { useState } from 'react'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
-import { PlanChangeSummary } from './plan-change-summary'
+
+const PlanChangeSummary = dynamic(
+  () =>
+    import('./plan-change-summary').then((module) => ({
+      default: module.PlanChangeSummary,
+    })),
+  {
+    ssr: false,
+  }
+)
 
 /**
  * Card component showing current plan with option to change it
@@ -171,7 +181,7 @@ export function PlanChangeCard() {
         ) : null}
       </div>
 
-      <PlanChangeSummary open={dialogOpen} onOpenChange={setDialogOpen} />
+      {dialogOpen ? <PlanChangeSummary open={dialogOpen} onOpenChange={setDialogOpen} /> : null}
     </>
   )
 }

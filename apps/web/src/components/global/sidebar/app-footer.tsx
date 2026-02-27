@@ -37,14 +37,24 @@ import {
   Twitter,
   Zap,
 } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
-import { PlanChangeSummary } from '~/components/subscriptions/plan-change-summary'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useSubscription } from '~/hooks/use-subscription'
 import { useEnv } from '~/providers/dehydrated-state-provider'
 import { NotificationCenter } from '../notifications/notification-center'
+
+const PlanChangeSummary = dynamic(
+  () =>
+    import('~/components/subscriptions/plan-change-summary').then((module) => ({
+      default: module.PlanChangeSummary,
+    })),
+  {
+    ssr: false,
+  }
+)
 
 type Props = {}
 
@@ -293,7 +303,7 @@ function UpgradeButton() {
         </SidebarButton>
       </div>
 
-      <PlanChangeSummary open={dialogOpen} onOpenChange={setDialogOpen} />
+      {dialogOpen ? <PlanChangeSummary open={dialogOpen} onOpenChange={setDialogOpen} /> : null}
     </>
   )
 }
