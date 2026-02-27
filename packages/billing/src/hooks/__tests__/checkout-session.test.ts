@@ -25,6 +25,15 @@ vi.mock('@auxx/billing/services/stripe-client', () => ({
   },
 }))
 
+vi.mock('@auxx/database', () => ({
+  schema: {
+    PlanSubscription: { id: 'id', organizationId: 'organizationId' },
+    Plan: {},
+  },
+  eq: vi.fn(),
+  and: vi.fn(),
+}))
+
 vi.mock('@auxx/logger', () => ({
   createScopedLogger: () => ({
     info: vi.fn(),

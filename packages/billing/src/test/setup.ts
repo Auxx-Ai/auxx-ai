@@ -5,6 +5,13 @@ import { afterEach, vi } from 'vitest'
 // Set test environment
 process.env.NODE_ENV = 'test'
 
+// Mock @auxx/credentials — stripe-client uses configService
+vi.mock('@auxx/credentials', () => ({
+  configService: {
+    get: (key: string) => process.env[key],
+  },
+}))
+
 // Mock @auxx/logger — all billing files use createScopedLogger
 vi.mock('@auxx/logger', () => ({
   createScopedLogger: () => ({

@@ -219,7 +219,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       storageLocationId,
     })
 
-    // 3.2 Compute download URL for SSE (especially for avatars)
+    // 3.2 Invalidate dehydration cache so next page load fetches fresh data
+    if (session.entityType === 'USER_PROFILE') {
+      const { DehydrationService } = await import('@auxx/lib/dehydration')
+      const dehydrationService = new DehydrationService()
+      await dehydrationService.invalidateUser(session.userId)
+    }
+
+    // 3.3 Compute download URL for SSE
     let downloadUrl: string | null = null
     try {
       if (session.entityType === 'USER_PROFILE' && result.assetId) {
@@ -268,7 +275,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       })
     }
 
-    // 3.3 Publish progress events with URL for client preview
+    // 3.4 Publish progress events with URL for client preview
     await ProgressPublisher.publishCompleted(sessionId, {
       fileId: result.fileId,
       assetId: result.assetId,
@@ -287,7 +294,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       },
     })
 
-    // 3.3 Kick off background jobs (if needed)
+    // 3.5 Kick off background jobs (if needed)
     // await BackgroundJobManager.scheduleProcessing(result.fileId)
 
     return NextResponse.json({

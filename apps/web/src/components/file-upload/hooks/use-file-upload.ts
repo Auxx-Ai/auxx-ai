@@ -211,7 +211,7 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
     const validatedEntityType = entityType || 'FILE'
     const sessionId = await createSessionWithGuard(uploaderId, {
       entityType: validatedEntityType,
-      entityId: entityId || generateId('entity'),
+      entityId,
       validationConfig: {
         maxFiles,
         maxFileSize,
