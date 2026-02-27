@@ -1,0 +1,237 @@
+# docker/docker-compose.yml
+# Auxx.ai — Local development server.
+# Pre-built GHCR images, no Traefik/SSL.
+#
+# Quick start:
+#   bash <(curl -sL https://raw.githubusercontent.com/Auxx-Ai/auxx-ai/main/docker/scripts/install.sh)
+#
+# Or manually:
+#   cp .env.example .env   # then fill in secrets
+#   docker compose up -d
+
+x-common-env: &common-env
+  DEPLOYMENT_MODE: self-hosted
+  NODE_ENV: production
+  IS_CONFIG_VARIABLES_IN_DB_ENABLED: "true"
+  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+  WORKFLOW_CREDENTIAL_ENCRYPTION_KEY: ${WORKFLOW_CREDENTIAL_ENCRYPTION_KEY}
+  PUBLIC_WORKFLOW_JWT_SECRET: ${PUBLIC_WORKFLOW_JWT_SECRET}
+  API_KEY_SALT: ${API_KEY_SALT}
+  LAMBDA_INVOKE_SECRET: ${LAMBDA_INVOKE_SECRET}
+  SDK_CLIENT_SECRET: ${SDK_CLIENT_SECRET}
+
+x-db-env: &db-env
+  DATABASE_URL: postgresql://postgres:${DATABASE_PASSWORD}@postgres:5432/auxx-ai
+
+x-db-pool-env: &db-pool-env
+  DB_POOL_MAX: "10"
+  DB_POOL_IDLE_TIMEOUT: "30000"
+
+x-redis-env: &redis-env
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: ${REDIS_PASSWORD}
+  CACHE_PROVIDER: hosted
+
+x-url-env: &url-env
+  DOMAIN: localhost
+  APP_URL: http://localhost:${APP_PORT:-3000}
+  API_URL: http://localhost:${API_PORT:-3007}
+  HOMEPAGE_URL: http://localhost:${APP_PORT:-3000}
+
+services:
+  # ---- Infrastructure ----
+
+  postgres:
+    image: pgvector/pgvector:0.8.0-pg17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: auxx-ai
+    ports:
+      - "${DATABASE_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - auxx-local
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a ${REDIS_PASSWORD} ping | grep PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - auxx-local
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'mc ready local']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - auxx-local
+    restart: unless-stopped
+
+  # Create default buckets on first start
+  minio-init:
+    image: minio/mc
+    depends_on:
+      minio: { condition: service_healthy }
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set auxx http://minio:9000 $${MINIO_ROOT_USER:-minioadmin} $${MINIO_ROOT_PASSWORD:-minioadmin};
+      mc mb --ignore-existing auxx/${S3_PUBLIC_BUCKET:-auxx-public-local};
+      mc mb --ignore-existing auxx/${S3_PRIVATE_BUCKET:-auxx-private-local};
+      mc anonymous set download auxx/${S3_PUBLIC_BUCKET:-auxx-public-local};
+      echo 'Buckets created.';
+      "
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+    networks:
+      - auxx-local
+    restart: "no"
+
+  # ---- Init ----
+
+  migrate:
+    image: ghcr.io/auxx-ai/web:${VERSION:-latest}
+    command: ["node", "scripts/docker-migrate.mjs"]
+    working_dir: /app/packages/database
+    environment:
+      <<: *db-env
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks:
+      - auxx-local
+    restart: "no"
+
+  # ---- Application Services ----
+
+  web:
+    image: ghcr.io/auxx-ai/web:${VERSION:-latest}
+    env_file: .env
+    environment:
+      <<: [*common-env, *db-env, *db-pool-env, *redis-env, *url-env]
+      PORT: ${APP_PORT:-3000}
+      APP_NAME: auxx-web
+    ports:
+      - "${APP_PORT:-3000}:${APP_PORT:-3000}"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:${APP_PORT:-3000}/health || exit 1']
+      interval: 15s
+      timeout: 10s
+      start_period: 30s
+      retries: 5
+    networks:
+      - auxx-local
+    restart: unless-stopped
+
+  api:
+    image: ghcr.io/auxx-ai/api:${VERSION:-latest}
+    env_file: .env
+    environment:
+      <<: [*common-env, *db-env, *db-pool-env, *redis-env, *url-env]
+      PORT: ${API_PORT:-3007}
+      LAMBDA_EXECUTOR_URL: http://lambda:${LAMBDA_PORT:-3008}
+      APP_NAME: auxx-api
+    ports:
+      - "${API_PORT:-3007}:${API_PORT:-3007}"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:${API_PORT:-3007}/health || exit 1']
+      interval: 15s
+      timeout: 10s
+      start_period: 15s
+      retries: 5
+    networks:
+      - auxx-local
+    restart: unless-stopped
+
+  worker:
+    image: ghcr.io/auxx-ai/worker:${VERSION:-latest}
+    env_file: .env
+    environment:
+      <<: [*common-env, *db-env, *db-pool-env, *redis-env, *url-env]
+      WORKER_PORT: ${WORKER_PORT:-3005}
+      LAMBDA_EXECUTOR_URL: http://lambda:${LAMBDA_PORT:-3008}
+      APP_NAME: auxx-worker
+    ports:
+      - "${WORKER_PORT:-3005}:${WORKER_PORT:-3005}"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:${WORKER_PORT:-3005}/health || exit 1']
+      interval: 15s
+      timeout: 10s
+      start_period: 15s
+      retries: 5
+    networks:
+      - auxx-local
+    restart: unless-stopped
+
+  lambda:
+    image: ghcr.io/auxx-ai/lambda-server:${VERSION:-latest}
+    environment:
+      PORT: ${LAMBDA_PORT:-3008}
+      S3_ENDPOINT: http://minio:9000
+      AWS_REGION: ${S3_REGION:-us-west-1}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+      BUNDLES_BUCKET_NAME: ${S3_PRIVATE_BUCKET:-auxx-private-local}
+      LAMBDA_API_URL: http://api:${API_PORT:-3007}
+      LAMBDA_INVOKE_SECRET: ${LAMBDA_INVOKE_SECRET}
+    ports:
+      - "${LAMBDA_PORT:-3008}:${LAMBDA_PORT:-3008}"
+    depends_on:
+      api: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:${LAMBDA_PORT:-3008}/health || exit 1']
+      interval: 15s
+      timeout: 10s
+      start_period: 10s
+      retries: 5
+    networks:
+      - auxx-local
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+
+networks:
+  auxx-local:
+    driver: bridge
