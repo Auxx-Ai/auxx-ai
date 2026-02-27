@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.26](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.25...auxx-v0.1.26) (2026-02-27)
+
+
+### Features
+
+* add SDK_CLIENT_SECRET to Docker workflow and enhance user profi… ([#106](https://github.com/Auxx-Ai/auxx-ai/issues/106)) ([1530784](https://github.com/Auxx-Ai/auxx-ai/commit/1530784169c70f030e1690fa2c59b6b2345ce348))
+
 ## [0.1.25](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.24...auxx-v0.1.25) (2026-02-27)
 
 
