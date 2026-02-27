@@ -82,7 +82,14 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 # ──────────────────────────────────────────────
 FROM node:${NODE_VERSION}-bookworm-slim AS runner
 
+ARG GIT_SHA
+ARG APP_VERSION
+ARG BUILD_TIME
+
 ENV NODE_ENV=production
+ENV GIT_SHA=$GIT_SHA
+ENV APP_VERSION=$APP_VERSION
+ENV BUILD_TIME=$BUILD_TIME
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*

@@ -138,6 +138,16 @@ jobs:
             type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true' }}
             type=sha,prefix=sha-
 
+      - name: Read app version
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.image == 'all' || github.event.inputs.image == matrix.name }}
+        id: version
+        run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Set build time
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.image == 'all' || github.event.inputs.image == matrix.name }}
+        id: build_time
+        run: echo "build_time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
       - name: Build and optionally push
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.image == 'all' || github.event.inputs.image == matrix.name }}
         uses: docker/build-push-action@v6
@@ -149,5 +159,9 @@ jobs:
           push: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            APP_VERSION=${{ steps.version.outputs.version }}
+            BUILD_TIME=${{ steps.build_time.outputs.build_time }}
           cache-from: type=registry,ref=${{ matrix.image }}:buildcache
           cache-to: type=registry,ref=${{ matrix.image }}:buildcache,mode=max

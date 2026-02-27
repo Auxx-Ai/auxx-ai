@@ -38,6 +38,14 @@ RUN deno compile \
 # Minimal runtime image
 FROM gcr.io/distroless/cc-debian12
 
+ARG GIT_SHA
+ARG APP_VERSION
+ARG BUILD_TIME
+
+ENV GIT_SHA=$GIT_SHA
+ENV APP_VERSION=$APP_VERSION
+ENV BUILD_TIME=$BUILD_TIME
+
 COPY --from=builder /app/dist/server /server
 
 EXPOSE 3008

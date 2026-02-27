@@ -121,7 +121,7 @@ services:
 
   migrate:
     image: ghcr.io/auxx-ai/web:${VERSION:-latest}
-    command: ["npx", "drizzle-kit", "migrate"]
+    command: ["node", "scripts/docker-migrate.mjs"]
     working_dir: /app/packages/database
     environment:
       <<: [*db-env]
