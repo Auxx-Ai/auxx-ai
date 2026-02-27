@@ -12,6 +12,7 @@ export const docs = new sst.aws.Nextjs('AuxxAiDocs', {
   environment: getSelectedEnvVars('docs'),
   link: getSecretsForLinking('docs'),
   openNextVersion: '3.9.15',
+  warm: $app.stage === 'production' ? 3 : 1,
   dev: {
     autostart: false, // Optional: set to true if you want auto-start
     command: 'pnpm dev',

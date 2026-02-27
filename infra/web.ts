@@ -19,6 +19,7 @@ export const web = new sst.aws.Nextjs('AuxxAiWeb', {
   // Link secrets and database resources for Resource access
   link: [...getSecretsForLinking('web'), rds, redis, publicBucket, privateBucket],
   openNextVersion: '3.9.15',
+  warm: $app.stage === 'production' ? 5 : 3,
   dev: {
     autostart: true,
     command: 'pnpm dev',
@@ -34,7 +35,7 @@ export const web = new sst.aws.Nextjs('AuxxAiWeb', {
   server: {
     runtime: 'nodejs22.x',
     install: ['sharp'],
-    // memory: '2048 MB',
+    memory: '2048 MB',
     timeout: '60 seconds',
   },
 })
