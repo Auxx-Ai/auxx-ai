@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.25](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.24...auxx-v0.1.25) (2026-02-27)
+
+
+### Features
+
+* code structure for improved readability and maintainability ([#104](https://github.com/Auxx-Ai/auxx-ai/issues/104)) ([39bcbc2](https://github.com/Auxx-Ai/auxx-ai/commit/39bcbc2171e9a8f8c4accd16e93a84c1f68af4d2))
+
 ## [0.1.24](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.23...auxx-v0.1.24) (2026-02-26)
 
 
