@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.28](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.27...auxx-v0.1.28) (2026-02-27)
+
+
+### Features
+
+* enhance Docker workflows and application metadata with build in… ([#110](https://github.com/Auxx-Ai/auxx-ai/issues/110)) ([74f61c7](https://github.com/Auxx-Ai/auxx-ai/commit/74f61c7f3d78e7575d3d266dcfefe884e9321af5))
+
 ## [0.1.27](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.26...auxx-v0.1.27) (2026-02-27)
 
 
