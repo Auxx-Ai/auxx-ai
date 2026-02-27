@@ -18,6 +18,7 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@auxx/credentials": "workspace:*",
     "@auxx/database": "workspace:*",
     "@auxx/deployment": "workspace:*",
     "@auxx/logger": "workspace:*",

@@ -28,8 +28,8 @@ vi.mock('@auxx/credentials', () => ({
   configService: {
     get: vi.fn().mockReturnValue(undefined),
   },
-  credentialManager: {
-    getCredentials: vi.fn().mockResolvedValue({}),
+  CredentialService: {
+    loadCredential: vi.fn().mockResolvedValue({}),
   },
 }))
 

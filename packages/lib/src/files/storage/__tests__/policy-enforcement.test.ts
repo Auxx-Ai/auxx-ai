@@ -4,13 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UploadPreparedConfig } from '../../upload/init-types'
 import { StorageManager } from '../storage-manager'
 
-// Mock credentials module used by StorageManager
+// Mock credentials module used by StorageManager and S3Adapter
 vi.mock('@auxx/credentials', () => ({
   configService: {
     get: vi.fn(),
   },
-  credentialManager: {
-    getCredentials: vi.fn().mockResolvedValue({
+  CredentialService: {
+    loadCredential: vi.fn().mockResolvedValue({
       accessToken: 'mock-access-token',
       region: 'us-east-1',
       bucket: 'test-bucket',
@@ -76,6 +76,14 @@ vi.mock('../../adapters/s3-adapter', () => ({
         metadata: true,
         multipart: true,
       }
+    }
+
+    resolvePlatformAuth() {
+      return { region: 'us-east-1', bucket: 'test-bucket' }
+    }
+
+    resolveBucket() {
+      return 'test-bucket'
     }
 
     presignUpload = mockPresignUpload

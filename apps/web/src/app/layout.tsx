@@ -6,7 +6,7 @@ import '@auxx/ui/global.css'
 import '~/styles/react-flow.css'
 import '~/lib/immer-config' // Enable Immer MapSet plugin
 
-import { WEBAPP_URL } from '@auxx/config/server'
+import { WEBAPP_URL } from '@auxx/config/client'
 import { IS_MAC_SCRIPT } from '@auxx/utils'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'

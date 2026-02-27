@@ -21,6 +21,7 @@ const logger = createScopedLogger('enhanced-progress-tracker')
 export class EnhancedProgressTracker {
   private activeUploads = new Map<string, UploadProgressState>()
   private eventEmitter = new EventEmitter()
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null
 
   /**
    * Create a new upload progress tracker
@@ -350,6 +351,24 @@ export class EnhancedProgressTracker {
     }
   }
 
+  /** Start periodic cleanup of stale uploads. Idempotent. */
+  startCleanupInterval(): void {
+    if (this.cleanupTimer) return
+    this.cleanupTimer = setInterval(() => this.cleanup(), 60 * 60 * 1000)
+    // Don't keep Node.js alive solely for this interval
+    if (typeof this.cleanupTimer === 'object' && 'unref' in this.cleanupTimer) {
+      this.cleanupTimer.unref()
+    }
+  }
+
+  /** Stop periodic cleanup (for graceful shutdown). */
+  stopCleanupInterval(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer)
+      this.cleanupTimer = null
+    }
+  }
+
   /**
    * Clean up old inactive uploads
    */
@@ -450,13 +469,12 @@ class EnhancedProgressContextImpl implements ProgressContext {
   }
 }
 
-// Export singleton instance
-export const enhancedProgressTracker = new EnhancedProgressTracker()
-
-// Start cleanup interval
-setInterval(
-  () => {
-    enhancedProgressTracker.cleanup()
-  },
-  60 * 60 * 1000
-) // Every hour
+/** Lazy singleton — constructed on first access, not at module load. */
+let _instance: EnhancedProgressTracker | null = null
+export function getEnhancedProgressTracker(): EnhancedProgressTracker {
+  if (!_instance) {
+    _instance = new EnhancedProgressTracker()
+    _instance.startCleanupInterval()
+  }
+  return _instance
+}

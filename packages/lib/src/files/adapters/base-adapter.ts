@@ -320,6 +320,21 @@ export interface StorageAdapter {
     auth?: ProviderAuth
   ): Promise<NodeJS.ReadableStream>
 
+  // ============= Platform Auth Resolution =============
+
+  /**
+   * Resolve platform-level auth from configService.
+   * Each adapter knows its own config keys and how to build auth from them.
+   * Returns null if this adapter requires explicit credentials (credentialId).
+   */
+  resolvePlatformAuth?(): ProviderAuth | null
+
+  /**
+   * Resolve default bucket name from platform config.
+   * Used by StorageManager to enrich StorageLocationRef metadata.
+   */
+  resolveBucket?(): string | undefined
+
   // ============= Authentication Management =============
 
   /**

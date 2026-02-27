@@ -9,7 +9,6 @@ import { database } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
-import { getStripe } from '~/lib/stripe'
 
 /**
  * Logger scoped to the billing webhook route for structured logs.
@@ -28,8 +27,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Ensure Stripe singleton is initialized before WebhookService uses it
-    getStripe()
     const body = await req.text()
     const signature = req.headers.get('stripe-signature')
     logger.info('process stripe webhook')

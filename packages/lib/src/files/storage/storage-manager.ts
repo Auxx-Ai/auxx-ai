@@ -1,6 +1,6 @@
 // packages/lib/src/files/storage/storage-manager.ts
 
-import { configService, credentialManager } from '@auxx/credentials'
+import { CredentialService } from '@auxx/credentials'
 import type { StorageLocationEntity as StorageLocation } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import type {
@@ -881,33 +881,54 @@ export class StorageManager {
   // ============= Provider Authentication =============
 
   /**
-   * Get provider authentication for a specific adapter (provider-aware)
+   * Get provider authentication for a specific adapter.
+   * 1. Explicit credentialId → user-connected provider (via CredentialService)
+   * 2. No credentialId → platform storage (via adapter.resolvePlatformAuth)
    */
   private async getProviderAuth(
     adapterId: ProviderId,
     credentialId?: string
   ): Promise<ProviderAuth> {
-    const adapter = await this.getAdapter(adapterId)
-    const credentialProviderId = adapter.credentialProviderId
-
-    try {
-      const auth = await credentialManager.getCredentials(
-        credentialProviderId!,
-        this.organizationId,
-        credentialId
-      )
-
-      return auth
-    } catch (error) {
-      // Enhanced error handling with fallback information
-      const errorMessage = error instanceof Error ? error.message : String(error)
-
-      throw new StorageAuthError(
-        adapterId,
-        'getProviderAuth',
-        `Failed to get credentials for ${adapterId}: ${errorMessage}.`
-      )
+    // 1. Explicit credential → user-connected provider (Dropbox, user's own S3, etc.)
+    if (credentialId) {
+      if (!this.organizationId) {
+        throw new StorageAuthError(
+          adapterId,
+          'getProviderAuth',
+          new Error(`credentialId '${credentialId}' provided but organizationId is missing.`)
+        )
+      }
+      try {
+        const orgCredential = await CredentialService.loadCredential(
+          credentialId,
+          this.organizationId
+        )
+        return orgCredential as ProviderAuth
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        throw new StorageAuthError(
+          adapterId,
+          'getProviderAuth',
+          new Error(`Failed to load credential for ${adapterId}: ${errorMessage}.`)
+        )
+      }
     }
+
+    // 2. Platform storage → ask adapter to resolve its own config
+    const adapter = await this.getAdapter(adapterId)
+    const platformAuth = adapter.resolvePlatformAuth?.()
+    if (platformAuth) {
+      return platformAuth
+    }
+
+    // 3. No auth available
+    throw new StorageAuthError(
+      adapterId,
+      'getProviderAuth',
+      new Error(
+        `No credentials available for ${adapterId}. Configure platform storage (e.g. S3_REGION, S3_PRIVATE_BUCKET) or provide a credentialId.`
+      )
+    )
   }
 
   /**
@@ -1001,12 +1022,8 @@ export class StorageManager {
       }
     }
 
-    if (!bucket) {
-      bucket =
-        configService.get<string>('S3_PRIVATE_BUCKET') ||
-        configService.get<string>('S3_PUBLIC_BUCKET') ||
-        undefined
-    }
+    // Platform bucket resolution now happens via getProviderAuth → adapter.resolvePlatformAuth(),
+    // which returns auth.bucket from configService. No separate configService fallback needed.
 
     return bucket || undefined
   }
@@ -1040,31 +1057,11 @@ export class StorageManager {
     capabilities?: StorageCapabilities
   }> {
     try {
-      // Get the adapter and credential provider ID
-      const adapter = await this.getAdapter(adapterId)
-      const credentialProviderId = adapter.credentialProviderId || adapterId.toLowerCase()
+      // Test by resolving auth (will throw if broken)
+      await this.getProviderAuth(adapterId, credentialId)
+      const capabilities = await this.getProviderCapabilities(adapterId)
 
-      // Test connection using CredentialManager
-      const connectionResult = await credentialManager.testCredentials(
-        credentialProviderId,
-        credentialId,
-        this.organizationId
-      )
-
-      if (connectionResult.success) {
-        // Get adapter capabilities
-        const capabilities = await this.getProviderCapabilities(adapterId)
-
-        return {
-          connected: true,
-          capabilities,
-        }
-      } else {
-        return {
-          connected: false,
-          error: connectionResult.message,
-        }
-      }
+      return { connected: true, capabilities }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
 
@@ -1074,10 +1071,7 @@ export class StorageManager {
         error: errorMessage,
       })
 
-      return {
-        connected: false,
-        error: errorMessage,
-      }
+      return { connected: false, error: errorMessage }
     }
   }
 
@@ -2237,14 +2231,14 @@ export class StorageManager {
     let metadata = rawMetadata ? { ...rawMetadata } : undefined
 
     if (location.provider === 'S3') {
+      const adapter = StorageManager.adapterCache.get('S3')
       const bucketCandidate =
         metadata?.bucket ||
         metadata?.Bucket ||
         metadata?.s3Bucket ||
         metadata?.publicBucket ||
         metadata?.privateBucket ||
-        configService.get<string>('S3_PRIVATE_BUCKET') ||
-        configService.get<string>('S3_PUBLIC_BUCKET')
+        adapter?.resolveBucket?.()
 
       if (bucketCandidate) {
         if (!metadata) {
