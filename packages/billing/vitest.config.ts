@@ -26,6 +26,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@auxx/billing': path.resolve(__dirname, './src'),
+      '@auxx/credentials': path.resolve(__dirname, '../credentials/src'),
       '@auxx/database': path.resolve(__dirname, '../database/src'),
       '@auxx/logger': path.resolve(__dirname, '../logger/src'),
       '@auxx/lib': path.resolve(__dirname, '../lib/src'),

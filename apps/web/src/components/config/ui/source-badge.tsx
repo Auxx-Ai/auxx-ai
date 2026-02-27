@@ -6,6 +6,7 @@ import { Badge, type Variant } from '@auxx/ui/components/badge'
 import {
   Braces,
   Circle,
+  Cloud,
   Database,
   Hash,
   List,
@@ -19,6 +20,7 @@ import {
 const SOURCE_STYLES: Record<ConfigSource, { variant: Variant; label: string; icon: LucideIcon }> = {
   DATABASE: { variant: 'green', label: 'Database', icon: Database },
   ENVIRONMENT: { variant: 'purple', label: 'Env', icon: Terminal },
+  SST_RESOURCE: { variant: 'blue', label: 'SST', icon: Cloud },
   DEFAULT: { variant: 'gray', label: 'Default', icon: Circle },
 }
 

@@ -123,6 +123,9 @@ export class DehydrationService {
    * @private
    */
   private async fetchState(userId: string): Promise<DehydratedState> {
+    // Ensure ConfigService is initialized (SST Resource + DB cache)
+    await configService.init()
+
     // Fetch user with memberships
     const user = await this.fetchUser(userId)
 
@@ -342,6 +345,9 @@ export class DehydrationService {
    * Async to future-proof for Redis lookups (e.g. feature flags, A/B config).
    */
   async getPublicState(): Promise<DehydratedState> {
+    // Ensure ConfigService is initialized (SST Resource + DB cache)
+    await configService.init()
+
     return {
       organizationId: null,
       organizations: [],

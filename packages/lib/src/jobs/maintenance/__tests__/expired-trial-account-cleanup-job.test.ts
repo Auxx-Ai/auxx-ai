@@ -78,12 +78,10 @@ vi.mock('@auxx/logger', () => ({
   }),
 }))
 
-const mockSendTrialDeletionWarningEmail = vi.fn().mockResolvedValue(true)
-const mockSendTrialDeletionFinalEmail = vi.fn().mockResolvedValue(true)
+const mockEnqueueEmailJob = vi.fn().mockResolvedValue(undefined)
 
-vi.mock('@auxx/email', () => ({
-  sendTrialDeletionWarningEmail: (...args: unknown[]) => mockSendTrialDeletionWarningEmail(...args),
-  sendTrialDeletionFinalEmail: (...args: unknown[]) => mockSendTrialDeletionFinalEmail(...args),
+vi.mock('../../email', () => ({
+  enqueueEmailJob: (...args: unknown[]) => mockEnqueueEmailJob(...args),
 }))
 
 vi.mock('../../../organizations', () => ({
@@ -271,8 +269,7 @@ describe('expiredTrialAccountCleanupJob', () => {
 
       await expiredTrialAccountCleanupJob(makeJob({ dryRun: true }))
 
-      expect(mockSendTrialDeletionWarningEmail).not.toHaveBeenCalled()
-      expect(mockSendTrialDeletionFinalEmail).not.toHaveBeenCalled()
+      expect(mockEnqueueEmailJob).not.toHaveBeenCalled()
     })
   })
 
@@ -292,12 +289,17 @@ describe('expiredTrialAccountCleanupJob', () => {
 
       await expiredTrialAccountCleanupJob(makeJob())
 
-      expect(mockSendTrialDeletionWarningEmail).toHaveBeenCalledWith({
-        email: 'warn@test.com',
-        organizationName: 'Warn Org',
-        daysUntilDeletion: 7,
-        reactivationLink: 'https://app.test.com/subscription/reactivate/org-warn',
-      })
+      expect(mockEnqueueEmailJob).toHaveBeenCalledWith(
+        'trial-deletion-warning',
+        expect.objectContaining({
+          recipient: { email: 'warn@test.com' },
+          organizationName: 'Warn Org',
+          daysUntilDeletion: 7,
+          reactivationLink: 'https://app.test.com/subscription/reactivate/org-warn',
+          source: 'expired-trial-cleanup',
+          organizationId: 'org-warn',
+        })
+      )
     })
 
     it('should send final notice email with correct parameters', async () => {
@@ -313,12 +315,17 @@ describe('expiredTrialAccountCleanupJob', () => {
 
       await expiredTrialAccountCleanupJob(makeJob())
 
-      expect(mockSendTrialDeletionFinalEmail).toHaveBeenCalledWith({
-        email: 'final@test.com',
-        organizationName: 'Final Org',
-        hoursUntilDeletion: 24,
-        reactivationLink: 'https://app.test.com/subscription/reactivate/org-final',
-      })
+      expect(mockEnqueueEmailJob).toHaveBeenCalledWith(
+        'trial-deletion-final',
+        expect.objectContaining({
+          recipient: { email: 'final@test.com' },
+          organizationName: 'Final Org',
+          hoursUntilDeletion: 24,
+          reactivationLink: 'https://app.test.com/subscription/reactivate/org-final',
+          source: 'expired-trial-cleanup',
+          organizationId: 'org-final',
+        })
+      )
     })
 
     it('should skip notification for organizations with null ownerEmail', async () => {
@@ -333,7 +340,7 @@ describe('expiredTrialAccountCleanupJob', () => {
 
       const stats = await expiredTrialAccountCleanupJob(makeJob())
 
-      expect(mockSendTrialDeletionWarningEmail).not.toHaveBeenCalled()
+      expect(mockEnqueueEmailJob).not.toHaveBeenCalled()
       expect(stats.skipped).toBe(1)
     })
 
@@ -348,8 +355,7 @@ describe('expiredTrialAccountCleanupJob', () => {
 
       const stats = await expiredTrialAccountCleanupJob(makeJob({ sendNotifications: false }))
 
-      expect(mockSendTrialDeletionWarningEmail).not.toHaveBeenCalled()
-      expect(mockSendTrialDeletionFinalEmail).not.toHaveBeenCalled()
+      expect(mockEnqueueEmailJob).not.toHaveBeenCalled()
       // Notifications are suppressed but no notification stats incremented
       expect(stats.notificationsWarning).toBe(0)
       expect(stats.notificationsFinal).toBe(0)
@@ -371,7 +377,7 @@ describe('expiredTrialAccountCleanupJob', () => {
     })
 
     it('should increment errors when email sending fails', async () => {
-      mockSendTrialDeletionWarningEmail.mockRejectedValueOnce(new Error('SMTP failure'))
+      mockEnqueueEmailJob.mockRejectedValueOnce(new Error('SMTP failure'))
 
       mockMainQueryWhere.mockResolvedValue([
         buildExpiredTrialRow({
