@@ -90,6 +90,7 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
   // Use organization ID context to share state with FeatureFlagProvider
   const { organizationId, setOrganizationId } = useOrganizationIdContext()
 
+  const utils = api.useUtils()
   const switchOrganizationMutation = api.organization.setDefault.useMutation()
 
   // Effect to set the current organization ID based on user data
@@ -161,18 +162,20 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
   const switchOrganization = (newOrganizationId: string) => {
     // Validate that the user is a member of this organization
     if (dehydratedUser.memberships.some((m) => m.organizationId === newOrganizationId)) {
+      // Optimistic: update org ID immediately — features, settings, org reads all update
       setOrganizationId(newOrganizationId)
-      // Update the default organization in the database
+      clearResourceCaches()
+
+      // Persist to server
       switchOrganizationMutation.mutate(
         { organizationId: newOrganizationId },
         {
           onSuccess: async () => {
-            // Clear client-side caches before reload to prevent stale data
-            clearResourceCaches()
-            // Force session cache refresh to get updated defaultOrganizationId
             await authClient.getSession({ query: { disableCookieCache: true } })
-            // Full page reload to get fresh dehydrated state from server
-            window.location.reload()
+            // Invalidate all tRPC queries so org-scoped data refetches
+            await utils.invalidate()
+            // Soft refresh to pick up any server-only changes
+            router.refresh()
           },
         }
       )

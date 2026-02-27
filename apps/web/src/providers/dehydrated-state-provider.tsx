@@ -7,16 +7,36 @@ import type {
   DehydratedState,
   DehydratedUser,
 } from '@auxx/lib/dehydration'
-import { createContext, type ReactNode, useContext } from 'react'
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
+
+/**
+ * Context value with state and updater functions
+ */
+interface DehydratedStateContextValue {
+  state: DehydratedState
+  patchUser: (partial: Partial<DehydratedUser>) => void
+  patchOrganization: (orgId: string, partial: Partial<DehydratedOrganization>) => void
+  patchSettings: (orgId: string, settings: Record<string, any>) => void
+  setOrganizationId: (orgId: string | null) => void
+  replaceState: (next: DehydratedState) => void
+}
 
 /**
  * Context for dehydrated state
  */
-const DehydratedStateContext = createContext<DehydratedState | null>(null)
+const DehydratedStateContext = createContext<DehydratedStateContextValue | null>(null)
 
 /**
  * Provider for dehydrated state
- * Receives initial state from server-side rendering
+ * Receives initial state from server-side rendering, supports optimistic patches
  */
 export function DehydratedStateProvider({
   children,
@@ -25,11 +45,88 @@ export function DehydratedStateProvider({
   children: ReactNode
   initialState: DehydratedState
 }) {
+  const [state, setState] = useState<DehydratedState>(initialState)
+
+  // Sync on server re-render. Use a ref to compare by identity,
+  // not by timestamp, to avoid the stale-timestamp-from-cache problem.
+  const prevInitialRef = useRef(initialState)
+  useEffect(() => {
+    if (prevInitialRef.current !== initialState) {
+      prevInitialRef.current = initialState
+      setState(initialState)
+    }
+  }, [initialState])
+
+  const patchUser = useCallback((partial: Partial<DehydratedUser>) => {
+    setState((prev) => ({
+      ...prev,
+      user: prev.user ? { ...prev.user, ...partial } : prev.user,
+      timestamp: Date.now(),
+    }))
+  }, [])
+
+  const patchOrganization = useCallback(
+    (orgId: string, partial: Partial<DehydratedOrganization>) => {
+      setState((prev) => ({
+        ...prev,
+        organizations: prev.organizations.map((org) =>
+          org.id === orgId ? { ...org, ...partial } : org
+        ),
+        timestamp: Date.now(),
+      }))
+    },
+    []
+  )
+
+  const patchSettings = useCallback((orgId: string, settings: Record<string, any>) => {
+    setState((prev) => ({
+      ...prev,
+      organizations: prev.organizations.map((org) =>
+        org.id === orgId ? { ...org, settings: { ...org.settings, ...settings } } : org
+      ),
+      timestamp: Date.now(),
+    }))
+  }, [])
+
+  const setOrganizationId = useCallback((orgId: string | null) => {
+    setState((prev) => ({
+      ...prev,
+      organizationId: orgId,
+      user: prev.user ? { ...prev.user, defaultOrganizationId: orgId } : prev.user,
+      timestamp: Date.now(),
+    }))
+  }, [])
+
+  const replaceState = useCallback((next: DehydratedState) => {
+    setState(next)
+  }, [])
+
+  const contextValue: DehydratedStateContextValue = {
+    state,
+    patchUser,
+    patchOrganization,
+    patchSettings,
+    setOrganizationId,
+    replaceState,
+  }
+
   return (
-    <DehydratedStateContext.Provider value={initialState}>
+    <DehydratedStateContext.Provider value={contextValue}>
       {children}
     </DehydratedStateContext.Provider>
   )
+}
+
+/**
+ * Hook to access the full dehydrated state context (state + updaters)
+ * @throws Error if used outside DehydratedStateProvider
+ */
+export function useDehydratedStateContext(): DehydratedStateContextValue {
+  const ctx = useContext(DehydratedStateContext)
+  if (!ctx) {
+    throw new Error('useDehydratedStateContext must be used within DehydratedStateProvider')
+  }
+  return ctx
 }
 
 /**
@@ -37,11 +134,7 @@ export function DehydratedStateProvider({
  * @throws Error if used outside DehydratedStateProvider
  */
 export function useDehydratedState(): DehydratedState {
-  const ctx = useContext(DehydratedStateContext)
-  if (!ctx) {
-    throw new Error('useDehydratedState must be used within DehydratedStateProvider')
-  }
-  return ctx
+  return useDehydratedStateContext().state
 }
 
 /**

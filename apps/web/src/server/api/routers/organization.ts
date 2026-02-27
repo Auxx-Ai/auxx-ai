@@ -110,9 +110,9 @@ export const organizationRouter = createTRPCRouter({
           .where(eq(schema.User.id, userId))
       }
 
-      // Invalidate dehydration cache so client gets fresh org data
+      // Invalidate dehydration cache for all org members (org data visible to all)
       const dehydrationService = new DehydrationService(ctx.db)
-      await dehydrationService.invalidateUser(userId)
+      await dehydrationService.refreshOrganization(organizationId)
 
       return organization
     }),
@@ -359,6 +359,9 @@ export const organizationRouter = createTRPCRouter({
           })
           .where(eq(schema.User.id, userId))
       }
+
+      const dehydrationService = new DehydrationService(ctx.db)
+      await dehydrationService.refreshUser(userId)
 
       return { success: true }
     }),

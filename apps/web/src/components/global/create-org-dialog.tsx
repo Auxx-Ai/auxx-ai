@@ -35,7 +35,6 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { client as authClient } from '~/auth/auth-client'
 import { clearResourceCaches } from '~/components/resources'
-import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 
 const formSchema = z.object({
@@ -62,7 +61,6 @@ interface CreateOrganizationDialogProps {
  * - Optional website URL
  */
 export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizationDialogProps) {
-  const { setOrganizationId } = useOrganizationIdContext()
   const [handleAvailable, setHandleAvailable] = useState<boolean | null>(null)
   const [handleManuallyEdited, setHandleManuallyEdited] = useState(false)
   const [debouncedHandle, setDebouncedHandle] = useState('')
@@ -134,26 +132,23 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
   }, [availabilityData, debouncedHandle, form])
 
   const createOrganization = api.organization.create.useMutation({
-    onSuccess: async (data) => {
+    onSuccess: async () => {
       // Close dialog
       onOpenChange(false)
-
-      // Set the new organization as current in context
-      setOrganizationId(data.id)
 
       // Reset form
       form.reset()
       setHandleManuallyEdited(false)
       setHandleAvailable(null)
 
-      // Clear client-side caches before reload to prevent stale data
+      // Clear client-side caches before navigation
       clearResourceCaches()
 
       // Force session cache refresh to get updated defaultOrganizationId
       await authClient.getSession({ query: { disableCookieCache: true } })
 
-      // Redirect to onboarding for the new org
-      // The onboarding page will skip to connections step since handle already exists
+      // Full navigation to onboarding — server will fetch fresh dehydrated state
+      // with the new org already set as default
       window.location.href = '/app/onboarding'
     },
     onError: (error) => {

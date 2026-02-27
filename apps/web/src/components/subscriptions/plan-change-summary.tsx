@@ -219,9 +219,8 @@ function PlanChangeSummaryContent({
     onSuccess: () => {
       utils.billing.getCurrentSubscription.invalidate()
       onClose()
-      // Use hard navigation to force full page reload including layouts
-      // This ensures the dehydrated state is refreshed from the database
-      window.location.reload()
+      // Soft refresh to pick up server-side subscription changes
+      router.refresh()
     },
     onError: (error) => {
       toastError({

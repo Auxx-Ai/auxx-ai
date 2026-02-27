@@ -306,6 +306,9 @@ export const billingRouter = createTRPCRouter({
         returnUrl: '', // No longer needed
       })
 
+      const dehydrationService = new DehydrationService(ctx.db)
+      await dehydrationService.refreshOrganization(organizationId)
+
       return { success: true }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : ''
@@ -329,6 +332,10 @@ export const billingRouter = createTRPCRouter({
       const subscriptionService = new SubscriptionService(ctx.db, WEBAPP_URL)
 
       await subscriptionService.restoreSubscription({ organizationId })
+
+      const dehydrationService = new DehydrationService(ctx.db)
+      await dehydrationService.refreshOrganization(organizationId)
+
       return { success: true }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : ''
@@ -641,7 +648,7 @@ export const billingRouter = createTRPCRouter({
 
         // Invalidate dehydration cache so app-layout-wrapper gets fresh subscription data
         const dehydrationService = new DehydrationService(ctx.db)
-        await dehydrationService.invalidateOrganization(organizationId)
+        await dehydrationService.refreshOrganization(organizationId)
 
         return result
       } catch (error: unknown) {
@@ -713,6 +720,9 @@ export const billingRouter = createTRPCRouter({
           })
         }
       }
+
+      const dehydrationService = new DehydrationService(ctx.db)
+      await dehydrationService.refreshOrganization(organizationId)
 
       return { success: true }
     } catch (error: unknown) {
