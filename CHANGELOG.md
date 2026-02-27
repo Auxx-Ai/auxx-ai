@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.31](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.30...auxx-v0.1.31) (2026-02-27)
+
+
+### Features
+
+* specify platform for services in Docker Compose ([#116](https://github.com/Auxx-Ai/auxx-ai/issues/116)) ([4cc3c32](https://github.com/Auxx-Ai/auxx-ai/commit/4cc3c324130076be738771f28e99a4da5d9493ef))
+
 ## [0.1.30](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.29...auxx-v0.1.30) (2026-02-27)
 
 
