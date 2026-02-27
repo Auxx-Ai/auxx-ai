@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.30](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.29...auxx-v0.1.30) (2026-02-27)
+
+
+### Features
+
+* add one-click installation script and Docker Compose configuration ([#114](https://github.com/Auxx-Ai/auxx-ai/issues/114)) ([3a28bb1](https://github.com/Auxx-Ai/auxx-ai/commit/3a28bb178d2f4df7d21124878900f7fae32e0781))
+
 ## [0.1.29](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.28...auxx-v0.1.29) (2026-02-27)
 
 
