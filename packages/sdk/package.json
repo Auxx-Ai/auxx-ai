@@ -124,6 +124,11 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Auxx-Ai/auxx-ai.git",
+    "directory": "packages/sdk"
+  },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org"
