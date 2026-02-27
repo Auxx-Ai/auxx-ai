@@ -1,6 +1,6 @@
 {
   "name": "@auxx/sdk",
-  "version": "0.0.1-experimental.1",
+  "version": "0.0.1",
   "description": "CLI tool and SDK for creating Auxx apps",
   "type": "module",
   "bin": {
