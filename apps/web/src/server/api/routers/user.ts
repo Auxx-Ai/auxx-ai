@@ -1,4 +1,5 @@
 import { database as db, schema } from '@auxx/database'
+import { DehydrationService } from '@auxx/lib/dehydration'
 import { MediaAssetService } from '@auxx/lib/files'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
 import { SettingsService, UserSettingsService } from '@auxx/lib/settings'
@@ -41,6 +42,9 @@ export const userRouter = createTRPCRouter({
         .set({ ...updates, updatedAt: new Date() })
         .where(eq(schema.User.id, ctx.session.user.id))
         .returning()
+
+      const dehydrationService = new DehydrationService(db)
+      await dehydrationService.refreshUser(ctx.session.user.id)
 
       return updatedUser
     }),
@@ -192,6 +196,9 @@ export const userRouter = createTRPCRouter({
       .set({ avatarAssetId: null, updatedAt: new Date() })
       .where(eq(schema.User.id, userId))
 
+    const dehydrationService = new DehydrationService(db)
+    await dehydrationService.refreshUser(userId)
+
     return { success: true }
   }),
 
@@ -221,6 +228,9 @@ export const userRouter = createTRPCRouter({
         })
         .where(eq(schema.User.id, userId))
         .returning()
+
+      const dehydrationService = new DehydrationService(db)
+      await dehydrationService.refreshUser(userId)
 
       return updatedUser
     }),

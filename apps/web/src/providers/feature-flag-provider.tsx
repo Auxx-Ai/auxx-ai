@@ -3,8 +3,8 @@
 
 import type { FeatureKey, FeatureLimit } from '@auxx/lib/types'
 import type React from 'react'
-import { createContext, useContext, useMemo, useState } from 'react'
-import { useDehydratedOrganization } from './dehydrated-state-provider'
+import { createContext, useCallback, useContext, useMemo } from 'react'
+import { useDehydratedOrganization, useDehydratedStateContext } from './dehydrated-state-provider'
 
 // Type for the feature map object
 type FeatureMapObject = Record<string, FeatureLimit | boolean> | null
@@ -30,16 +30,19 @@ const OrganizationIdContext = createContext<{
 } | null>(null)
 
 /**
- * Provider for organization ID that FeatureFlagProvider can consume
+ * Provider for organization ID — derives from dehydrated state (single source of truth).
+ * No prop needed; reads organizationId from DehydratedStateProvider.
  */
-export function OrganizationIdProvider({
-  children,
-  initialOrganizationId,
-}: {
-  children: React.ReactNode
-  initialOrganizationId?: string | null
-}) {
-  const [organizationId, setOrganizationId] = useState<string | null>(initialOrganizationId ?? null)
+export function OrganizationIdProvider({ children }: { children: React.ReactNode }) {
+  const { state, setOrganizationId: setDehydratedOrgId } = useDehydratedStateContext()
+  const organizationId = state.organizationId
+
+  const setOrganizationId = useCallback(
+    (id: string | null) => {
+      setDehydratedOrgId(id)
+    },
+    [setDehydratedOrgId]
+  )
 
   return (
     <OrganizationIdContext.Provider value={{ organizationId, setOrganizationId }}>

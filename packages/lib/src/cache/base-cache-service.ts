@@ -137,22 +137,25 @@ export class BaseCacheService {
                 })
               }
               return entry.value
-            } else {
-              if (this.isDevelopment) {
-                logger.debug(`Cache expired (Redis):[${fullKey}]`)
-              }
-              // Expired, clean up
-              this.delete(key).catch(() => {})
-              return null
             }
+            if (this.isDevelopment) {
+              logger.debug(`Cache expired (Redis):[${fullKey}]`)
+            }
+            // Expired, clean up
+            this.delete(key).catch(() => {})
           } catch (error) {
             logger.warn(`Failed to parse Redis cache entry:[${fullKey}]`, { error })
-            return null
           }
         }
+        // Redis is healthy and says key doesn't exist (or expired) — authoritative miss.
+        // Do NOT fall through to memory.
+        if (this.isDevelopment) {
+          logger.debug(`Cache miss:[${fullKey}]`)
+        }
+        return null
       }
 
-      // Fallback to memory cache
+      // Redis unavailable — degraded mode, use memory
       const entry = this.memoryCache.get(fullKey)
       if (entry && entry.expires > Date.now()) {
         if (this.isDevelopment) {
@@ -162,11 +165,11 @@ export class BaseCacheService {
           })
         }
         return entry.value
-      } else if (entry) {
+      }
+      if (entry) {
         if (this.isDevelopment) {
           logger.debug(`Cache expired (Memory):[${fullKey}]`)
         }
-        // Expired, clean up
         this.memoryCache.delete(fullKey)
       }
 
@@ -175,6 +178,16 @@ export class BaseCacheService {
       }
       return null
     } catch (error) {
+      // Redis threw — degraded mode, try memory
+      const entry = this.memoryCache.get(fullKey)
+      if (entry && entry.expires > Date.now()) {
+        if (this.isDevelopment) {
+          logger.debug(`Cache hit (Memory, degraded):[${fullKey}]`, {
+            ttlRemaining: Math.round((entry.expires - Date.now()) / 1000),
+          })
+        }
+        return entry.value
+      }
       logger.error(`Cache get error:[${fullKey}]`, {
         error: error instanceof Error ? error.message : String(error),
       })

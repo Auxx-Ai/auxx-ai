@@ -48,7 +48,7 @@ export default async function ProtectedLayout({ children }: ProtectedLayoutProps
       />
 
       <DehydratedStateProvider initialState={dehydratedState}>
-        <OrganizationIdProvider initialOrganizationId={dehydratedState.organizationId}>
+        <OrganizationIdProvider>
           <FeatureFlagProvider>
             <PostHogProvider>{children}</PostHogProvider>
           </FeatureFlagProvider>

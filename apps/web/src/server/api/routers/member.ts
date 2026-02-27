@@ -2,6 +2,7 @@
 
 import { schema } from '@auxx/database'
 import { MemberType, OrganizationRole } from '@auxx/database/enums'
+import { DehydrationService } from '@auxx/lib/dehydration'
 import { MemberService } from '@auxx/lib/members'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
@@ -160,11 +161,16 @@ export const memberRouter = createTRPCRouter({
     .input(z.object({ memberId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const memberService = new MemberService(ctx.db)
-      return memberService.removeMember({
+      const result = await memberService.removeMember({
         organizationId: ctx.session.organizationId,
         removerUserId: ctx.session.user.id,
         memberToRemoveId: input.memberId,
       })
+
+      const dehydrationService = new DehydrationService(ctx.db)
+      await dehydrationService.refreshUser(input.memberId)
+
+      return result
     }),
 
   /** Update a member's role */
@@ -177,12 +183,17 @@ export const memberRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const memberService = new MemberService(ctx.db)
-      return memberService.updateMemberRole({
+      const result = await memberService.updateMemberRole({
         organizationId: ctx.session.organizationId,
         updaterUserId: ctx.session.user.id,
         memberToUpdateId: input.memberId,
         newRole: input.role,
       })
+
+      const dehydrationService = new DehydrationService(ctx.db)
+      await dehydrationService.refreshUser(input.memberId)
+
+      return result
     }),
 
   // ─────────────────────────────────────────────────────────────
@@ -270,11 +281,16 @@ export const memberRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const memberService = new MemberService(ctx.db)
       try {
-        return await memberService.acceptInvitation({
+        const result = await memberService.acceptInvitation({
           token: input.token,
           acceptingUserId: ctx.session.user.id,
           acceptingUserEmail: ctx.session.user.email,
         })
+
+        const dehydrationService = new DehydrationService(ctx.db)
+        await dehydrationService.refreshUser(ctx.session.user.id)
+
+        return result
       } catch (error) {
         if (error instanceof TRPCError) throw error
         logger.error('Unexpected error during acceptInvitation:', {
@@ -295,11 +311,16 @@ export const memberRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const memberService = new MemberService(ctx.db)
       try {
-        return await memberService.acceptInvitationByIdentity({
+        const result = await memberService.acceptInvitationByIdentity({
           invitationId: input.invitationId,
           acceptingUserId: ctx.session.user.id,
           acceptingUserEmail: ctx.session.user.email,
         })
+
+        const dehydrationService = new DehydrationService(ctx.db)
+        await dehydrationService.refreshUser(ctx.session.user.id)
+
+        return result
       } catch (error) {
         if (error instanceof TRPCError) throw error
         logger.error('Unexpected error during acceptInvitationById:', {

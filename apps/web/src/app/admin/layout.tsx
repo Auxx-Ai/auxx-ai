@@ -67,7 +67,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className='h-screen flex flex-1 flex-col w-full h-full'>
       <DehydratedStateProvider initialState={dehydratedState}>
-        <OrganizationIdProvider initialOrganizationId={dehydratedState.organizationId}>
+        <OrganizationIdProvider>
           <FeatureFlagProvider>
             <SidebarProvider>
               <AdminAppSidebar user={user} variant='inset' />

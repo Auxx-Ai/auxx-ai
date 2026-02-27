@@ -2,6 +2,7 @@
 
 import { schema } from '@auxx/database'
 import { ChatWidgetService } from '@auxx/lib/chat'
+import { DehydrationService } from '@auxx/lib/dehydration'
 import { getUserOrganizationId, requireAdminAccess } from '@auxx/lib/email'
 import { SyncMessages } from '@auxx/lib/messages'
 import { IntegrationService } from '@auxx/lib/providers'
@@ -92,7 +93,12 @@ export const integrationRouter = createTRPCRouter({
       await requireAdminAccess(userId, organizationId)
 
       const service = new IntegrationService(ctx.db, organizationId, userId)
-      return service.disconnect(input.integrationId)
+      const result = await service.disconnect(input.integrationId)
+
+      const dehydrationService = new DehydrationService(ctx.db)
+      await dehydrationService.refreshOrganization(organizationId)
+
+      return result
     }),
 
   /**
@@ -162,7 +168,12 @@ export const integrationRouter = createTRPCRouter({
       await requireAdminAccess(userId, organizationId)
 
       const service = new IntegrationService(ctx.db, organizationId, userId)
-      return service.addOpenPhoneIntegration(input)
+      const result = await service.addOpenPhoneIntegration(input)
+
+      const dehydrationService = new DehydrationService(ctx.db)
+      await dehydrationService.refreshOrganization(organizationId)
+
+      return result
     }),
 
   /**
@@ -195,7 +206,12 @@ export const integrationRouter = createTRPCRouter({
       await requireAdminAccess(userId, organizationId)
 
       const service = new ChatWidgetService(ctx.db, organizationId)
-      return service.addChatWidgetIntegration(input)
+      const result = await service.addChatWidgetIntegration(input)
+
+      const dehydrationService = new DehydrationService(ctx.db)
+      await dehydrationService.refreshOrganization(organizationId)
+
+      return result
     }),
 
   /**

@@ -8,6 +8,7 @@ import { getCurrentTimeInTimezone } from '@auxx/utils/date'
 import { Globe } from 'lucide-react'
 import { useState } from 'react'
 import { TimeZonePicker } from '~/components/pickers/timezone-picker'
+import { useDehydratedStateContext } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 
 interface TimezoneSettingsProps {
@@ -20,11 +21,11 @@ interface TimezoneSettingsProps {
 export function TimezoneSettings({ currentTimezone }: TimezoneSettingsProps) {
   const [selectedTimezone, setSelectedTimezone] = useState(currentTimezone || 'UTC')
   const [open, setOpen] = useState(false)
+  const { patchUser } = useDehydratedStateContext()
 
   const updateTimezone = api.user.updateTimezone.useMutation({
     onSuccess: () => {
-      // Refresh user data to get updated timezone
-      window.location.reload()
+      patchUser({ preferredTimezone: selectedTimezone })
     },
     onError: (error) => {
       toastError({

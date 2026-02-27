@@ -6,6 +6,7 @@ import { type Database, database as ddb, schema } from '@auxx/database'
 import { getDeploymentMode } from '@auxx/deployment'
 import { execSync } from 'child_process'
 import { count, eq } from 'drizzle-orm'
+import { PromiseMemoizer } from '../cache/promise-memoizer'
 import { MediaAssetService } from '../files'
 import { createScopedLogger } from '../logger'
 import { FeaturePermissionService } from '../permissions'
@@ -87,6 +88,7 @@ export function buildEnvironment(): DehydratedEnvironment {
 export class DehydrationService {
   private cache: DehydrationCacheService
   private db: Database
+  private memoizer = new PromiseMemoizer<DehydratedState>()
 
   constructor(db?: unknown) {
     this.db = db && typeof (db as any).select === 'function' ? (db as Database) : (ddb as Database)
@@ -95,27 +97,30 @@ export class DehydrationService {
 
   /**
    * Get complete dehydrated state for a user
-   * Uses cache with fallback to database
+   * Uses cache with fallback to database.
+   * Concurrent requests for the same user share a single in-flight fetch.
    * @param userId - User ID
    * @returns Complete dehydrated state
    */
   async getState(userId: string): Promise<DehydratedState> {
-    // Try cache first
-    const cached = await this.cache.getState(userId)
-    if (cached) {
-      logger.debug(`Cache hit for user ${userId}`)
-      return cached
-    }
+    return this.memoizer.memoize(`user:${userId}`, async () => {
+      // Try cache first
+      const cached = await this.cache.getState(userId)
+      if (cached) {
+        logger.debug(`Cache hit for user ${userId}`)
+        return cached
+      }
 
-    logger.debug(`Cache miss for user ${userId}, fetching fresh data`)
+      logger.debug(`Cache miss for user ${userId}, fetching fresh data`)
 
-    // Fetch fresh data
-    const state = await this.fetchState(userId)
+      // Fetch fresh data
+      const state = await this.fetchState(userId)
 
-    // Cache it
-    await this.cache.setState(userId, state)
+      // Cache it
+      await this.cache.setState(userId, state)
 
-    return state
+      return state
+    })
   }
 
   /**
@@ -389,5 +394,31 @@ export class DehydrationService {
       .where(eq(schema.OrganizationMember.organizationId, organizationId))
 
     await Promise.all(members.map((m) => this.cache.invalidateUser(m.userId)))
+  }
+
+  /**
+   * RULE: Any tRPC mutation that modifies data returned by fetchState() MUST
+   * call refreshUser() or refreshOrganization() before returning.
+   *
+   * Dehydrated state includes: User (profile, auth, memberships), Organization
+   * (name, handle, website, completedOnboarding), PlanSubscription (all fields),
+   * feature permissions, user settings, Integration count (hasIntegrations).
+   */
+
+  /** Invalidate + eager recompute for a single user */
+  async refreshUser(userId: string): Promise<void> {
+    await this.cache.invalidateUser(userId)
+    try {
+      const state = await this.fetchState(userId)
+      await this.cache.setState(userId, state)
+    } catch {
+      // Eager recompute failed — next read will rebuild from DB
+    }
+  }
+
+  /** Invalidate all members of an org (org-visible data changed) */
+  async refreshOrganization(organizationId: string): Promise<void> {
+    await this.cache.invalidateOrganization(organizationId)
+    // Eager recompute is per-user; just invalidate. Next read per user rebuilds.
   }
 }
