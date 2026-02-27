@@ -74,12 +74,12 @@ jobs:
 
       - name: Verify package contents
         working-directory: packages/sdk
-        run: npm pack --dry-run
+        run: pnpm pack
 
       - name: Publish to npm
         if: ${{ !inputs.dry-run }}
         working-directory: packages/sdk
-        run: npm publish --provenance --access public --tag ${{ inputs.tag }}
+        run: pnpm publish --provenance --access public --tag ${{ inputs.tag }} --no-git-checks
 
       - name: Commit version bump & tag
         if: ${{ !inputs.dry-run }}
