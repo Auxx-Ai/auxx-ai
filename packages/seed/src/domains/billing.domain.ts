@@ -4,6 +4,7 @@
  * Creates plans in database and corresponding Stripe products/prices.
  */
 
+import { configService } from '@auxx/credentials'
 import { schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import Stripe from 'stripe'
@@ -256,7 +257,7 @@ export class BillingDomain {
       return this.stripeClient
     }
 
-    const secretKey = process.env.STRIPE_SECRET_KEY
+    const secretKey = configService.get<string>('STRIPE_SECRET_KEY')
     if (!secretKey) {
       throw new Error('STRIPE_SECRET_KEY is required to seed Stripe resources')
     }

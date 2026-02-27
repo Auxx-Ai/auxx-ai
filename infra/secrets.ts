@@ -307,6 +307,10 @@ export function getSelectedEnvVars(
     REDIS_PASSWORD,
     ELASTICACHE_TLS: process.env.ELASTICACHE_TLS || 'true',
     SUPER_ADMIN_EMAIL: getSecretValue('SUPER_ADMIN_EMAIL'),
+    // Database pool tuning per service
+    DB_POOL_MAX: app === 'web' ? '3' : app === 'api' ? '5' : '10',
+    DB_POOL_IDLE_TIMEOUT: app === 'web' ? '10000' : '30000',
+    APP_NAME: `auxx-${app}`,
   }
 
   // Lambda function URL is an AWS-generated URL only available at deploy time

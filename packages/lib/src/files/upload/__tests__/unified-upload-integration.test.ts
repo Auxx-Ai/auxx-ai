@@ -126,13 +126,12 @@ vi.mock('@auxx/credentials', () => ({
   configService: {
     get: vi.fn().mockReturnValue(undefined),
   },
-  credentialManager: {
-    getCredentials: vi.fn().mockResolvedValue({
+  CredentialService: {
+    loadCredential: vi.fn().mockResolvedValue({
       accessToken: 'mock-access-token',
       region: 'us-east-1',
       bucket: 'test-bucket',
     }),
-    testCredentials: vi.fn().mockResolvedValue({ success: true }),
   },
 }))
 

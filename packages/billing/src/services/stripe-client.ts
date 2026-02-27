@@ -3,31 +3,38 @@
  * Stripe client singleton wrapper.
  */
 
+import { configService } from '@auxx/credentials'
 import { createScopedLogger } from '@auxx/logger'
 import Stripe from 'stripe'
 
+/** Logger used by Stripe client singleton operations. */
 const logger = createScopedLogger('stripe-client')
 
 /** Stripe client singleton */
 class StripeClientService {
   private client: Stripe | null = null
 
-  initialize(apiKey: string) {
+  /** Get Stripe client, lazily creating it on first use. */
+  getClient(): Stripe {
     if (!this.client) {
+      const apiKey = configService.get<string>('STRIPE_SECRET_KEY')
+      if (!apiKey) {
+        throw new Error('STRIPE_SECRET_KEY not configured')
+      }
+
       this.client = new Stripe(apiKey, {
         apiVersion: '2025-09-30.clover',
         typescript: true,
       })
       logger.info('Stripe client initialized')
     }
+
     return this.client
   }
 
-  getClient(): Stripe {
-    if (!this.client) {
-      throw new Error('Stripe client not initialized')
-    }
-    return this.client
+  /** Warm the singleton during app boot for fail-fast startup checks. */
+  warmClient(): Stripe {
+    return this.getClient()
   }
 
   /** Resolve price ID from lookup key */

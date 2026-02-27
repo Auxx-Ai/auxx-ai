@@ -37,20 +37,18 @@ packages/billing/
 
 ## Usage
 
-### 1. Initialize Stripe Client
+### 1. Stripe Client Initialization
 
 ```typescript
-// apps/web/src/lib/stripe.ts
 import { stripeClient } from '@auxx/billing'
 
-stripeClient.initialize(process.env.STRIPE_SECRET_KEY!)
+const stripe = stripeClient.getClient() // Lazy-initializes on first use
 ```
 
 ### 2. Use Services in tRPC Router
 
 ```typescript
 import { SubscriptionService, BillingPortalService } from '@auxx/billing'
-import '~/lib/stripe' // Ensure Stripe is initialized
 
 const subscriptionService = new SubscriptionService(
   ctx.db,

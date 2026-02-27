@@ -13,7 +13,7 @@ import type {
   UploadStrategyHandler,
 } from './enhanced-types'
 import { UploadError } from './enhanced-types'
-import { enhancedProgressTracker } from './progress/enhanced-progress-tracker'
+import { getEnhancedProgressTracker } from './progress/enhanced-progress-tracker'
 import { fileUploadEventPublisher } from './progress/sse-publisher'
 import { DirectUploadStrategy } from './strategies/direct-upload'
 import { MultipartUploadStrategy } from './strategies/multipart-upload'
@@ -77,7 +77,7 @@ export class FileUploadService {
    */
   async upload(request: UploadRequest): Promise<UploadResult> {
     const uploadId = this.generateUploadId()
-    const tracker = enhancedProgressTracker.create(uploadId, request)
+    const tracker = getEnhancedProgressTracker().create(uploadId, request)
 
     logger.info('Starting enhanced upload', {
       uploadId,
@@ -102,7 +102,7 @@ export class FileUploadService {
       await this.postProcessUpload(result, request, tracker)
 
       // Complete tracking
-      enhancedProgressTracker.complete(uploadId, 'Upload completed successfully')
+      getEnhancedProgressTracker().complete(uploadId, 'Upload completed successfully')
 
       logger.info('Enhanced upload completed', {
         uploadId,
@@ -196,7 +196,7 @@ export class FileUploadService {
    * Cancel an in-progress upload
    */
   async cancelUpload(uploadId: string): Promise<void> {
-    enhancedProgressTracker.cancel(uploadId, 'Upload cancelled by user')
+    getEnhancedProgressTracker().cancel(uploadId, 'Upload cancelled by user')
 
     // Additional cleanup would go here (abort multipart uploads, etc.)
     logger.info('Upload cancelled', { uploadId })
@@ -206,14 +206,14 @@ export class FileUploadService {
    * Get upload progress for active uploads
    */
   getUploadProgress(uploadId: string) {
-    return enhancedProgressTracker.getProgress(uploadId)
+    return getEnhancedProgressTracker().getProgress(uploadId)
   }
 
   /**
    * Get all active uploads for this organization
    */
   getActiveUploads() {
-    return enhancedProgressTracker.getActiveUploads()
+    return getEnhancedProgressTracker().getActiveUploads()
   }
 
   // ============= Strategy Selection =============
@@ -544,7 +544,7 @@ export class FileUploadService {
             error instanceof Error ? error : undefined
           )
 
-    enhancedProgressTracker.fail(uploadId, uploadError)
+    getEnhancedProgressTracker().fail(uploadId, uploadError)
 
     logger.error('Enhanced upload failed', {
       uploadId,

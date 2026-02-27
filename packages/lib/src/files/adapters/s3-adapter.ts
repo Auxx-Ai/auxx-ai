@@ -113,6 +113,44 @@ export class S3Adapter extends BaseStorageAdapter {
   }
 
   /**
+   * Resolve platform-level S3 auth from configService.
+   * SST: returns { region, bucket, publicBucket } — S3Client uses IAM role.
+   * Self-hosted: also includes accessKeyId/secretAccessKey from env vars.
+   */
+  resolvePlatformAuth(): ProviderAuth | null {
+    const region = configService.get<string>('S3_REGION')
+    const bucket = configService.get<string>('S3_PRIVATE_BUCKET')
+    const publicBucket = configService.get<string>('S3_PUBLIC_BUCKET')
+
+    if (!region || !bucket) {
+      return null
+    }
+
+    const accessKeyId = configService.get<string>('S3_ACCESS_KEY_ID')
+    const secretAccessKey = configService.get<string>('S3_SECRET_ACCESS_KEY')
+    const endpoint = configService.get<string>('S3_ENDPOINT')
+
+    return {
+      region,
+      bucket,
+      publicBucket,
+      ...(accessKeyId && secretAccessKey && { accessKeyId, secretAccessKey }),
+      ...(endpoint && { endpoint }),
+    } as ProviderAuth
+  }
+
+  /**
+   * Resolve default bucket name from platform config.
+   */
+  resolveBucket(): string | undefined {
+    return (
+      configService.get<string>('S3_PRIVATE_BUCKET') ||
+      configService.get<string>('S3_PUBLIC_BUCKET') ||
+      undefined
+    )
+  }
+
+  /**
    * Build external URL for S3 object.
    * Prefers CDN URL if configured, then falls back to AWS virtual-hosted-style URL.
    */

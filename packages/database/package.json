@@ -21,6 +21,7 @@
   },
   "scripts": {
     "build": "tsdown",
+    "dev": "tsdown --watch",
     "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo",
     "db:generate": "npx drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",

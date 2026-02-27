@@ -19,32 +19,39 @@ vi.mock('@auxx/billing/services/stripe-client', async (importOriginal) => {
 
 describe('StripeClientService', () => {
   beforeEach(() => {
+    delete process.env.STRIPE_SECRET_KEY
     vi.resetModules()
   })
 
-  it('getClient() throws when not initialized', async () => {
+  it('getClient() throws when STRIPE_SECRET_KEY is missing', async () => {
     // Re-import to get a fresh singleton
     const { stripeClient } = await import('../stripe-client')
-    expect(() => stripeClient.getClient()).toThrow('Stripe client not initialized')
+    expect(() => stripeClient.getClient()).toThrow('STRIPE_SECRET_KEY not configured')
   })
 
-  it('initialize() creates client and returns it', async () => {
+  it('getClient() lazily initializes and returns the Stripe client', async () => {
+    process.env.STRIPE_SECRET_KEY = 'sk_test_123'
+
     const { stripeClient } = await import('../stripe-client')
-    const client = stripeClient.initialize('sk_test_123')
+    const client = stripeClient.getClient()
     expect(client).toBeDefined()
     expect(client.prices).toBeDefined()
   })
 
-  it('initialize() is idempotent — calling twice returns same client', async () => {
+  it('getClient() is idempotent and returns the same singleton instance', async () => {
+    process.env.STRIPE_SECRET_KEY = 'sk_test_123'
+
     const { stripeClient } = await import('../stripe-client')
-    const first = stripeClient.initialize('sk_test_123')
-    const second = stripeClient.initialize('sk_test_different')
+    const first = stripeClient.getClient()
+    const second = stripeClient.getClient()
     expect(first).toBe(second)
   })
 
   it('resolvePriceId() calls Stripe prices.list with correct params', async () => {
+    process.env.STRIPE_SECRET_KEY = 'sk_test_123'
+
     const { stripeClient } = await import('../stripe-client')
-    const client = stripeClient.initialize('sk_test_123')
+    const client = stripeClient.getClient()
     const listMock = client.prices.list as ReturnType<typeof vi.fn>
     listMock.mockResolvedValueOnce({ data: [{ id: 'price_resolved' }] })
 
@@ -59,8 +66,10 @@ describe('StripeClientService', () => {
   })
 
   it('resolvePriceId() returns undefined when no price found', async () => {
+    process.env.STRIPE_SECRET_KEY = 'sk_test_123'
+
     const { stripeClient } = await import('../stripe-client')
-    const client = stripeClient.initialize('sk_test_123')
+    const client = stripeClient.getClient()
     const listMock = client.prices.list as ReturnType<typeof vi.fn>
     listMock.mockResolvedValueOnce({ data: [] })
 

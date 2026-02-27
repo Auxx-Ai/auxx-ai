@@ -17,25 +17,25 @@ export type Connection = NodePgDatabase<typeof schema & typeof relations> & { $c
 /** Database is either a single primary connection or a withReplicas wrapper */
 export type Database = Connection | PgWithReplicas<Connection>
 
-/** Default pool configuration for general workloads */
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL environment variable is required')
+}
+
+/** Pool configuration with env-driven overrides per service */
 const POOL_CONFIG: PoolConfig = {
-  max: 10,
+  max: Number(process.env.DB_POOL_MAX) || 10,
   min: 0,
-  idleTimeoutMillis: 30_000,
-  // Database-level timeouts can also be set via connection string or per-session statements
-  // These properties are recognized by pg when passed via connection parameters
+  idleTimeoutMillis: Number(process.env.DB_POOL_IDLE_TIMEOUT) || 30_000,
   idle_in_transaction_session_timeout: 30_000,
   statement_timeout: 30_000,
 }
 
+// ---------------------------------------------------------------------------
+// Query logger — enable via DB_QUERY_LOGGING=true
+// ---------------------------------------------------------------------------
+
 /** Maximum number of characters logged for any SQL parameter to suppress large payloads. */
 const MAX_SQL_PARAM_LENGTH = 256
-
-/** Placeholder used when a SQL parameter is skipped due to size. */
-const SQL_PARAM_OMITTED_PLACEHOLDER = '[omitted]'
-
-/** Placeholder used when a SQL parameter is redacted for sensitivity. */
-const SQL_PARAM_REDACTED_PLACEHOLDER = '[redacted]'
 
 /** List of substrings that mark a SQL parameter key as sensitive. */
 const SQL_SENSITIVE_FIELD_MARKERS = ['password', 'secret', 'token', 'apikey']
@@ -43,14 +43,12 @@ const SQL_SENSITIVE_FIELD_MARKERS = ['password', 'secret', 'token', 'apikey']
 /** Scoped logger dedicated to Drizzle SQL query logging. */
 const drizzleQueryLogger = createScopedLogger('drizzle-query')
 
-/**
- * Sanitizes SQL parameter values to prevent extremely large payloads from flooding logs.
- */
+/** Sanitizes SQL parameter values to prevent large payloads from flooding logs. */
 function sanitizeSqlParam(param: unknown): unknown {
   if (param === null || param === undefined) return param
   if (typeof param === 'string') {
     if (param.length <= MAX_SQL_PARAM_LENGTH) return param
-    return `${SQL_PARAM_OMITTED_PLACEHOLDER} length=${param.length}`
+    return `[omitted] length=${param.length}`
   }
   if (Array.isArray(param)) {
     return param.map((value) => sanitizeSqlParam(value))
@@ -58,30 +56,16 @@ function sanitizeSqlParam(param: unknown): unknown {
   if (typeof param === 'object') {
     return Object.fromEntries(
       Object.entries(param as Record<string, unknown>).map(([key, value]) => {
-        const normalized = normalizeParamKey(key)
-        if (isSensitiveParamKey(normalized)) {
-          return [key, SQL_PARAM_REDACTED_PLACEHOLDER]
-        }
-        return [key, sanitizeSqlParam(value)]
+        const normalized = key.replace(/[^a-z0-9]/gi, '').toLowerCase()
+        const isSensitive = SQL_SENSITIVE_FIELD_MARKERS.some((m) => normalized.includes(m))
+        return [key, isSensitive ? '[redacted]' : sanitizeSqlParam(value)]
       })
     )
   }
   return param
 }
 
-/** Normalizes SQL parameter keys for comparison purposes. */
-function normalizeParamKey(key: string): string {
-  return key.replace(/[^a-z0-9]/gi, '').toLowerCase()
-}
-
-/** Determines whether a normalized SQL parameter key should be redacted. */
-function isSensitiveParamKey(normalizedKey: string): boolean {
-  return SQL_SENSITIVE_FIELD_MARKERS.some((marker) => normalizedKey.includes(marker))
-}
-
-/**
- * Logger implementation for Drizzle that emits structured, sanitized SQL query logs.
- */
+/** Logger implementation for Drizzle that emits structured, sanitized SQL query logs. */
 class SanitizedDrizzleLogger implements DrizzleLogger {
   logQuery(query: string, params: unknown[]): void {
     drizzleQueryLogger.debug('Executed SQL query', {
@@ -91,48 +75,45 @@ class SanitizedDrizzleLogger implements DrizzleLogger {
   }
 }
 
-/** Shared instance of the sanitized Drizzle logger. */
-const sanitizedDrizzleLogger = new SanitizedDrizzleLogger()
+const logger = process.env.DB_QUERY_LOGGING === 'true' ? new SanitizedDrizzleLogger() : undefined
+
+// ---------------------------------------------------------------------------
+// Connection pools
+// ---------------------------------------------------------------------------
+
+const drizzleSchema = { ...schema, ...relations }
+
+/** Tracks all pools for graceful shutdown */
+const pools: IPool[] = []
+
+/** Creates a pg Pool with shared config, registers it for shutdown, and sets application_name. */
+function createPool(connectionString: string, name: string): IPool {
+  const pool = new Pool({
+    ...POOL_CONFIG,
+    connectionString,
+    application_name: name,
+  })
+  pools.push(pool)
+  return pool
+}
 
 /** Primary write pool initialized from DATABASE_URL.
  * Uses process.env directly because @auxx/credentials depends on @auxx/database,
  * so importing configService here would create a circular dependency. */
-const writePool = new Pool({
-  ...POOL_CONFIG,
-  connectionString: process.env.DATABASE_URL,
-})
+const writePool = createPool(process.env.DATABASE_URL, process.env.APP_NAME || 'auxx-ai')
 
 /** Collect optional read replicas if configured */
-const readReplicas: Connection[] = []
+const replicaUrls = [process.env.READ_DATABASE_URL, process.env.READ_2_DATABASE_URL].filter(
+  Boolean
+) as string[]
 
-if (process.env.READ_DATABASE_URL) {
-  const read1 = new Pool({ ...POOL_CONFIG, connectionString: process.env.READ_DATABASE_URL })
-  readReplicas.push(
-    drizzle(read1, {
-      schema: { ...schema, ...relations },
-      // logger: sanitizedDrizzleLogger,
-      logger: undefined,
-    }) as Connection
-  )
-}
-
-if (process.env.READ_2_DATABASE_URL) {
-  const read2 = new Pool({ ...POOL_CONFIG, connectionString: process.env.READ_2_DATABASE_URL })
-  readReplicas.push(
-    drizzle(read2, {
-      schema: { ...schema, ...relations },
-      // logger: sanitizedDrizzleLogger,
-      logger: undefined,
-    }) as Connection
-  )
-}
+const readReplicas: Connection[] = replicaUrls.map((url, i) => {
+  const pool = createPool(url, `${process.env.APP_NAME || 'auxx-ai'}-read-${i + 1}`)
+  return drizzle(pool, { schema: drizzleSchema, logger }) as Connection
+})
 
 /** Primary Drizzle client bound to the write pool */
-const primary = drizzle(writePool, {
-  schema: { ...schema, ...relations },
-  // logger: sanitizedDrizzleLogger,
-  logger: undefined,
-}) as Connection
+const primary = drizzle(writePool, { schema: drizzleSchema, logger }) as Connection
 
 /**
  * database is the singleton export for all DB access
@@ -145,3 +126,8 @@ export const database: Database =
     : primary
 
 export type Transaction = Parameters<Parameters<typeof database.transaction>[0]>[0]
+
+/** Gracefully close all connection pools. Call during process shutdown. */
+export async function closePools(): Promise<void> {
+  await Promise.allSettled(pools.map((pool) => pool.end()))
+}

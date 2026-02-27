@@ -1,6 +1,6 @@
 // packages/credentials/src/types/index.ts
 
-import type { ICredentialType, NodeData, OAuth2Config } from '@auxx/workflow-nodes/types'
+import type { ICredentialType, OAuth2Config } from '@auxx/workflow-nodes/types'
 
 /**
  * Core credential management types
@@ -44,41 +44,6 @@ export interface ProviderCapabilities {
 }
 
 /**
- * Credential reference for listing operations
- */
-export interface CredentialReference {
-  id: string
-  name: string
-  type: 'org' | 'system'
-  providerId: string
-  organizationId?: string
-  metadata?: CredentialMetadata
-}
-
-/**
- * System credential information
- */
-export interface SystemCredentialInfo {
-  providerId: string
-  displayName: string
-  available: boolean
-  missingEnvVars?: string[]
-  source: 'environment' | 'config' | 'secrets-manager'
-}
-
-/**
- * Credential metadata
- */
-export interface CredentialMetadata {
-  description?: string
-  tags?: string[]
-  environment?: 'development' | 'staging' | 'production'
-  lastUsed?: Date
-  createdBy?: string
-  expiresAt?: Date
-}
-
-/**
  * Validation result
  */
 export interface ValidationResult {
@@ -110,18 +75,6 @@ export interface ConnectionTestResult {
 }
 
 /**
- * OAuth2 system credentials
- */
-export interface OAuth2SystemCredentials {
-  clientId: string
-  clientSecret: string
-  scopes: string[]
-  authUrl: string
-  tokenUrl: string
-  redirectUri?: string
-}
-
-/**
  * Core interfaces for credential management
  */
 
@@ -138,77 +91,4 @@ export interface ICredentialTypeRegistry {
   // System credential support detection
   getProvidersWithSystemCredentials(): ICredentialType[]
   hasSystemCredentialSupport(providerId: string): boolean
-}
-
-export interface ISystemCredentialService {
-  // Core credential access
-  getSystemCredentials(providerId: string): Promise<Record<string, string> | null>
-  hasSystemCredentials(providerId: string): boolean
-
-  // Validation and testing
-  validateSystemCredentials(providerId: string): ValidationResult
-  listAvailableSystemCredentials(): Promise<SystemCredentialInfo[]>
-
-  // Environment variable helpers
-  getRequiredEnvVar(key: string): string
-  getOptionalEnvVar(key: string, defaultValue?: string): string | undefined
-
-  // OAuth2 system credentials
-  getOAuth2SystemCredentials(oauth2Config: OAuth2Config): Promise<OAuth2SystemCredentials | null>
-
-  // System credential sources (simplified)
-  getCredentialSources(): string[]
-}
-
-export interface IOrgCredentialService {
-  // Existing CredentialService methods
-  loadCredential(credentialId: string, organizationId: string): Promise<NodeData>
-
-  // CredentialManager integration
-  getCredentialsByProvider(
-    providerId: string,
-    organizationId: string
-  ): Promise<CredentialReference[]>
-  getCredentialWithProviderInfo(
-    credentialId: string,
-    organizationId: string
-  ): Promise<{
-    credential: NodeData
-    providerInfo: ProviderInfo
-  }>
-
-  // Enhanced metadata
-  getCredentialMetadata(credentialId: string): Promise<CredentialMetadata>
-  updateCredentialMetadata(
-    credentialId: string,
-    metadata: Partial<CredentialMetadata>
-  ): Promise<void>
-}
-
-export interface ICredentialManager {
-  // Primary credential resolution
-  getCredentials(
-    providerId: string,
-    organizationId?: string,
-    credentialId?: string
-  ): Promise<ProviderAuth>
-
-  // System credential availability
-  hasSystemCredentials(providerId: string): boolean
-  listSystemCredentials(): Promise<SystemCredentialInfo[]>
-
-  // Organization credential management
-  listOrgCredentials(providerId: string, organizationId: string): Promise<CredentialReference[]>
-
-  // Testing and validation
-  testCredentials(
-    providerId: string,
-    credentialId?: string,
-    organizationId?: string
-  ): Promise<ConnectionTestResult>
-  validateCredentials(providerId: string, credentialData: unknown): Promise<ValidationResult>
-
-  // Provider information
-  getProviderInfo(providerId: string): ProviderInfo | null
-  listSupportedProviders(): ProviderInfo[]
 }

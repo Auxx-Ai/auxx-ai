@@ -311,10 +311,6 @@ export class OrganizationSeeder {
     })
 
     try {
-      // Initialize Stripe client if not already initialized
-      const { stripeClient } = await import('@auxx/billing')
-      stripeClient.initialize(configService.get<string>('STRIPE_SECRET_KEY')!)
-
       const subscriptionService = new SubscriptionService(this.db, baseUrl)
 
       await subscriptionService.createTrialSubscription({

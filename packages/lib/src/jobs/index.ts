@@ -1,21 +1,74 @@
-export * from './billing'
-export * from './datasets'
+// Billing
+export {
+  type ApplyScheduledChangesJobData,
+  type ApplyScheduledChangesResult,
+  applyScheduledSubscriptionChangesJob,
+} from './billing/apply-scheduled-subscription-changes-job'
+export {
+  type StripeSubscriptionSyncJobData,
+  type StripeSubscriptionSyncResult,
+  stripeSubscriptionSyncJob,
+} from './billing/stripe-subscription-sync-job'
+// Datasets
+export {
+  batchOperationJob,
+  finalizeDocumentJob,
+  generateEmbeddingJob,
+  generateEmbeddingsFlowJob,
+  processDocumentJob,
+} from './datasets/document-processing-jobs'
+export {
+  cleanupDatasetJob,
+  cleanupOrphanedDataJob,
+  reindexDatasetJob,
+} from './datasets/maintenance-jobs'
+// Email
 export { createEmailEnqueuer, enqueueEmailJob } from './email/enqueue-email-job'
 export { sendEmailJob } from './email/send-email-job'
 export type { EmailPayloadByType, EmailType, SendEmailJobData } from './email/types'
-// Export flow types and utilities
+// Flows
 export {
   createDocumentProcessingFlow,
   DocumentFlowJobs,
   type FinalizeDocumentJobData,
   type FlowEmbeddingGenerationJobData,
 } from './flows'
-export { type ExecutePlanJobProps, executePlanJob } from './import/execute-plan-job'
 // Data import jobs
+export { type ExecutePlanJobProps, executePlanJob } from './import/execute-plan-job'
 export { type GeneratePlanJobProps, generatePlanJob } from './import/generate-plan-job'
 export { type ResolveValuesJobProps, resolveValuesJob } from './import/resolve-values-job'
-export * from './maintenance'
+// Maintenance
+export {
+  type CleanupStats,
+  expiredTrialAccountCleanupJob,
+  type OrganizationToDelete,
+} from './maintenance/expired-trial-account-cleanup-job'
 export { generateThumbnailJob, generateThumbnailSchema } from './maintenance/generate-thumbnail-job'
+export {
+  type GettingStartedStats,
+  sendGettingStartedEmailsJob,
+} from './maintenance/getting-started-job'
+export {
+  type IntegrationTokenRefreshJobData,
+  integrationTokenRefreshJob,
+} from './maintenance/integration-token-refresh-job'
+export {
+  type IntegrationTokenRefreshScannerJobData,
+  integrationTokenRefreshScannerJob,
+} from './maintenance/integration-token-refresh-scanner-job'
+export {
+  cleanupExpiredMediaAssetsJob,
+  getMediaAssetCleanupStats,
+} from './maintenance/media-asset-cleanup-job'
+export { type MidTrialStats, sendMidTrialEmailsJob } from './maintenance/mid-trial-job'
+export { oauth2TokenRefreshScannerJob } from './maintenance/oauth2-token-refresh-scanner-job'
+export { type QuotaResetStats, quotaResetJob } from './maintenance/quota-reset-job'
+export { getThumbnailCleanupStats, thumbnailCleanupJob } from './maintenance/thumbnail-cleanup-job'
+export {
+  sendTrialConversionEmailsJob,
+  type TrialConversionStats,
+} from './maintenance/trial-conversion-job'
+// Messages
 export {
   MONITOR_RECHECK_DELAY_MS,
   type MonitorMessageSyncJobData,
@@ -30,7 +83,9 @@ export {
   type SyncSingleIntegrationMessagesJobData,
   syncSingleIntegrationMessagesJob,
 } from './messages/sync-single-integration-messages-job'
+// OAuth2
 export { oauth2TokenRefreshJob } from './oauth2-refresh'
+// Polling
 export {
   messageListFetchJob,
   messagesImportJob,
@@ -38,11 +93,22 @@ export {
   pollingStaleCheckJob,
   pollingSyncScannerJob,
 } from './polling'
-export * from './shopify'
-// Export job context types
+// Shopify
+export { customerWebhookJob } from './shopify/customer-webhook-job'
+export { orderWebhookJob } from './shopify/order-webhook-job'
+export { productWebhookJob } from './shopify/product-webhook-job'
+export { type SyncCustomersJobProps, syncCustomersJob } from './shopify/sync-customers-job'
+export { type SyncOrdersJobProps, syncOrdersJob } from './shopify/sync-orders-job'
+export { type SyncProductsJobProps, syncProductsJob } from './shopify/sync-products-job'
+// Job context types
 export type { JobContext, JobHandler, LegacyJobHandler } from './types'
-
-export * from './webhooks'
+// Webhooks
+export {
+  type ProcessSingleWebhookJobData,
+  processSingleWebhookJob,
+} from './webhooks/process-single-webhook-job'
+export { processWebhookJob, WEBHOOK_EVENTS } from './webhooks/process-webhook-job'
+// Workflow
 export { approvalReminderJob } from './workflow/approval-reminder-job'
 export { approvalTimeoutJob } from './workflow/approval-timeout-job'
 export {

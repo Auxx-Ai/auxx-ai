@@ -24,6 +24,10 @@ x-common-env: &common-env
 x-db-env: &db-env
   DATABASE_URL: postgresql://postgres:${DATABASE_PASSWORD:?Set DATABASE_PASSWORD}@postgres:5432/auxx-ai
 
+x-db-pool-env: &db-pool-env
+  DB_POOL_MAX: "10"
+  DB_POOL_IDLE_TIMEOUT: "30000"
+
 x-redis-env: &redis-env
   REDIS_HOST: redis
   REDIS_PORT: "6379"
@@ -135,8 +139,11 @@ services:
       - path: .env
         required: false
     environment:
-      <<: [*common-env, *db-env, *redis-env, *url-env]
+      <<: [*common-env, *db-env, *db-pool-env, *redis-env, *url-env]
       PORT: ${APP_PORT:-3000}
+      DB_POOL_MAX: "3"
+      DB_POOL_IDLE_TIMEOUT: "10000"
+      APP_NAME: auxx-web
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -174,9 +181,11 @@ services:
       - path: .env
         required: false
     environment:
-      <<: [*common-env, *db-env, *redis-env, *url-env]
+      <<: [*common-env, *db-env, *db-pool-env, *redis-env, *url-env]
       PORT: ${API_PORT:-3007}
       LAMBDA_EXECUTOR_URL: http://lambda:${LAMBDA_PORT:-3008}
+      DB_POOL_MAX: "5"
+      APP_NAME: auxx-api
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -207,9 +216,10 @@ services:
       - path: .env
         required: false
     environment:
-      <<: [*common-env, *db-env, *redis-env, *url-env]
+      <<: [*common-env, *db-env, *db-pool-env, *redis-env, *url-env]
       WORKER_PORT: ${WORKER_PORT:-3005}
       LAMBDA_EXECUTOR_URL: http://lambda:${LAMBDA_PORT:-3008}
+      APP_NAME: auxx-worker
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }

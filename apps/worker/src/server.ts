@@ -1,8 +1,8 @@
 // apps/worker/src/server.ts
 
-import { stripeClient } from '@auxx/billing'
 import { getDevPort } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
+import { closePools } from '@auxx/database'
 import { closeAllQueues, closeFlowProducer } from '@auxx/lib/jobs/queues'
 import { serve } from '@hono/node-server'
 import type { Worker } from 'bullmq'
@@ -22,15 +22,6 @@ let workersInstance: Worker[] // Use a different name to avoid conflict with the
 // --- Wrap async setup in an async function ---
 async function initializeApp() {
   await configService.init()
-
-  // Initialize Stripe client for billing jobs
-  const stripeKey = configService.get<string>('STRIPE_SECRET_KEY')
-  if (stripeKey) {
-    stripeClient.initialize(stripeKey)
-    console.log('Stripe client initialized.')
-  } else {
-    console.warn('STRIPE_SECRET_KEY not set - billing jobs will fail')
-  }
 
   console.log('Setting up schedules...')
   await setupSchedules()
@@ -103,6 +94,11 @@ const gracefulShutdown = async (signal: string) => {
     console.log('Closing queues...')
     await closeAllQueues()
     console.log('Queues closed.')
+
+    // Close database connection pools
+    console.log('Closing database pools...')
+    await closePools()
+    console.log('Database pools closed.')
 
     if (server) {
       server.close((err) => {

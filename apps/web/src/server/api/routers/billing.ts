@@ -1,6 +1,6 @@
 // ~/server/api/routers/billing.ts
 
-import { BillingPortalService, SubscriptionService } from '@auxx/billing'
+import { BillingPortalService, SubscriptionService, stripeClient } from '@auxx/billing'
 import { WEBAPP_URL } from '@auxx/config/server'
 import { schema } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
@@ -10,7 +10,6 @@ import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, desc, eq, lt } from 'drizzle-orm'
 import { z } from 'zod'
-import { getStripe } from '~/lib/stripe'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('billing-router')
@@ -390,7 +389,7 @@ export const billingRouter = createTRPCRouter({
         return null
       }
 
-      const stripe = getStripe()
+      const stripe = stripeClient.getClient()
       const customer = await stripe.customers.retrieve(subscription.stripeCustomerId)
 
       if (customer.deleted) {
@@ -444,7 +443,7 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'No Stripe customer found' })
         }
 
-        const stripe = getStripe()
+        const stripe = stripeClient.getClient()
         await stripe.customers.update(subscription.stripeCustomerId, {
           email: input.email,
           name: input.companyName,
@@ -486,7 +485,7 @@ export const billingRouter = createTRPCRouter({
         return []
       }
 
-      const stripe = getStripe()
+      const stripe = stripeClient.getClient()
       const paymentMethods = await stripe.paymentMethods.list({
         customer: subscription.stripeCustomerId,
         type: 'card',
@@ -534,7 +533,7 @@ export const billingRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'No Stripe customer found' })
       }
 
-      const stripe = getStripe()
+      const stripe = stripeClient.getClient()
       const setupIntent = await stripe.setupIntents.create({
         customer: subscription.stripeCustomerId,
         payment_method_types: ['card'],
@@ -570,7 +569,7 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'No Stripe customer found' })
         }
 
-        const stripe = getStripe()
+        const stripe = stripeClient.getClient()
         await stripe.customers.update(subscription.stripeCustomerId, {
           invoice_settings: {
             default_payment_method: input.paymentMethodId,
@@ -599,7 +598,7 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
-        const stripe = getStripe()
+        const stripe = stripeClient.getClient()
         await stripe.paymentMethods.detach(input.paymentMethodId)
 
         return { success: true }
@@ -697,7 +696,7 @@ export const billingRouter = createTRPCRouter({
             : subscription.plan.stripePriceIdMonthly
 
         if (priceId) {
-          const stripe = getStripe()
+          const stripe = stripeClient.getClient()
           const stripeSubscription = await stripe.subscriptions.retrieve(
             subscription.stripeSubscriptionId
           )

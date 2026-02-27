@@ -111,6 +111,7 @@ function main() {
   const exportsObj: Record<string, unknown> = {
     '.': {
       types: './src/index.ts',
+      source: './src/index.ts',
       import: './dist/index.mjs',
       default: './src/index.ts',
     },
@@ -145,6 +146,7 @@ function main() {
   for (const [subpath, srcPath] of resolved) {
     exportsObj[subpath] = {
       types: srcPath,
+      source: srcPath,
       import: toDistPath(srcPath),
       default: srcPath,
     }
