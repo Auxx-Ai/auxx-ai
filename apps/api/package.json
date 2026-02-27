@@ -29,7 +29,7 @@
     "dotenv": "catalog:",
     "drizzle-orm": "catalog:",
     "hono": "^4.7.11",
-    "jose": "^6.1.0",
+    "jose": "catalog:",
     "neverthrow": "^8.2.0",
     "pg": "catalog:",
     "zod": "catalog:"

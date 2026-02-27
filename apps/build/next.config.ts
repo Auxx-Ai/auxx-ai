@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   transpilePackages: [
     '@auxx/config',
+    '@auxx/credentials',
     '@auxx/database',
     '@auxx/logger',
     '@auxx/services',

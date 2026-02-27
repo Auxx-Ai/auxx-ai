@@ -19,6 +19,7 @@ x-common-env: &common-env
   API_KEY_SALT: ${API_KEY_SALT}
   LAMBDA_INVOKE_SECRET: ${LAMBDA_INVOKE_SECRET}
   SDK_CLIENT_SECRET: ${SDK_CLIENT_SECRET}
+  LOGIN_TOKEN_PUBLIC_KEY: ${LOGIN_TOKEN_PUBLIC_KEY}
 
 x-db-env: &db-env
   DATABASE_URL: postgresql://postgres:${DATABASE_PASSWORD}@postgres:5432/auxx-ai
@@ -142,6 +143,7 @@ services:
       <<: [*common-env, *db-env, *db-pool-env, *redis-env, *url-env]
       PORT: ${APP_PORT:-3000}
       APP_NAME: auxx-web
+      LOGIN_TOKEN_PRIVATE_KEY: ${LOGIN_TOKEN_PRIVATE_KEY}
     ports:
       - "${APP_PORT:-3000}:${APP_PORT:-3000}"
     depends_on:

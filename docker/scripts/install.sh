@@ -142,6 +142,18 @@ WORKFLOW_CREDENTIAL_ENCRYPTION_KEY=$(generate_secret 16)
 PUBLIC_WORKFLOW_JWT_SECRET=$(generate_secret 32)
 SDK_CLIENT_SECRET=$(generate_secret 32)
 
+# Generate Ed25519 keypair for cross-app login token signing
+LOGIN_TOKEN_KEYS=$(node -e "
+  const { generateKeyPairSync } = require('crypto');
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+  const priv = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString().trim().replace(/\n/g, '\\\\n');
+  const pub = publicKey.export({ type: 'spki', format: 'pem' }).toString().trim().replace(/\n/g, '\\\\n');
+  console.log(priv + '|||' + pub);
+" 2>/dev/null || true)
+LOGIN_TOKEN_PRIVATE_KEY="${LOGIN_TOKEN_KEYS%%|||*}"
+LOGIN_TOKEN_PUBLIC_KEY="${LOGIN_TOKEN_KEYS##*|||}"
+BUILD_SESSION_SECRET=$(generate_secret 32)
+
 do_sed "s|^DATABASE_PASSWORD=.*|DATABASE_PASSWORD=$DATABASE_PASSWORD|" .env
 do_sed "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=$REDIS_PASSWORD|" .env
 do_sed "s|^BETTER_AUTH_SECRET=.*|BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET|" .env
@@ -150,6 +162,9 @@ do_sed "s|^LAMBDA_INVOKE_SECRET=.*|LAMBDA_INVOKE_SECRET=$LAMBDA_INVOKE_SECRET|" 
 do_sed "s|^WORKFLOW_CREDENTIAL_ENCRYPTION_KEY=.*|WORKFLOW_CREDENTIAL_ENCRYPTION_KEY=$WORKFLOW_CREDENTIAL_ENCRYPTION_KEY|" .env
 do_sed "s|^PUBLIC_WORKFLOW_JWT_SECRET=.*|PUBLIC_WORKFLOW_JWT_SECRET=$PUBLIC_WORKFLOW_JWT_SECRET|" .env
 do_sed "s|^SDK_CLIENT_SECRET=.*|SDK_CLIENT_SECRET=$SDK_CLIENT_SECRET|" .env
+do_sed "s|^LOGIN_TOKEN_PRIVATE_KEY=.*|LOGIN_TOKEN_PRIVATE_KEY=$LOGIN_TOKEN_PRIVATE_KEY|" .env
+do_sed "s|^LOGIN_TOKEN_PUBLIC_KEY=.*|LOGIN_TOKEN_PUBLIC_KEY=$LOGIN_TOKEN_PUBLIC_KEY|" .env
+do_sed "s|^BUILD_SESSION_SECRET=.*|BUILD_SESSION_SECRET=$BUILD_SESSION_SECRET|" .env
 
 # ─── Set DATABASE_URL for Docker networking ───────────────
 

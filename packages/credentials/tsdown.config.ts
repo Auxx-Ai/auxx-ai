@@ -9,6 +9,7 @@ export default defineConfig({
     'src/manager/index.ts',
     'src/service/index.ts',
     'src/types/index.ts',
+    'src/login-token/index.ts',
     'src/config/index.ts',
     'src/config/client.ts',
   ],

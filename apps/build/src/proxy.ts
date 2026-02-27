@@ -3,51 +3,37 @@
 import { WEBAPP_URL } from '@auxx/config/urls'
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
+import { verifyLocalSession } from '~/lib/auth'
+
+/** Public paths that don't require authentication */
+const PUBLIC_PATHS = ['/api/auth', '/auth/verify', '/health']
 
 /**
- * Proxy to protect routes and redirect to login
+ * Middleware to protect routes using local session verification.
+ * No server-to-server call — JWT signature check is ~0.1ms.
  */
 export async function proxy(request: NextRequest) {
-  const sessionCookie = request.cookies.get('better-auth.session_token')
+  const { pathname } = request.nextUrl
 
-  // Public paths that don't require authentication
-  const publicPaths = ['/api/auth', '/health']
-  const isPublicPath = publicPaths.some((path) => request.nextUrl.pathname.startsWith(path))
-
+  // Skip auth for public paths
+  const isPublicPath = PUBLIC_PATHS.some((path) => pathname.startsWith(path))
   if (isPublicPath) {
     return NextResponse.next()
   }
 
-  // If no session cookie, redirect to login
-  if (!sessionCookie) {
-    const callbackUrl = request.url
-    const loginUrl = `${WEBAPP_URL}/login?callbackUrl=${encodeURIComponent(callbackUrl)}`
-    return NextResponse.redirect(loginUrl)
-  }
-
-  // Validate session with apps/web
-  try {
-    const response = await fetch(`${WEBAPP_URL}/api/auth/session`, {
-      headers: {
-        Cookie: `better-auth.session_token=${sessionCookie.value}`,
-      },
-      cache: 'no-store',
-    })
-
-    if (!response.ok) {
-      const callbackUrl = request.url
-      const loginUrl = `${WEBAPP_URL}/login?callbackUrl=${encodeURIComponent(callbackUrl)}`
-      return NextResponse.redirect(loginUrl)
+  // Check local session cookie
+  const sessionCookie = request.cookies.get('auxx-build.session')
+  if (sessionCookie?.value) {
+    const session = await verifyLocalSession(sessionCookie.value)
+    if (session) {
+      return NextResponse.next()
     }
-
-    return NextResponse.next()
-  } catch (error) {
-    console.error('Session validation failed:', error)
-
-    const callbackUrl = request.url
-    const loginUrl = `${WEBAPP_URL}/login?callbackUrl=${encodeURIComponent(callbackUrl)}`
-    return NextResponse.redirect(loginUrl)
   }
+
+  // No valid session → redirect to central login
+  const returnTo = pathname + request.nextUrl.search
+  const loginUrl = `${WEBAPP_URL}/login?callbackApp=build&returnTo=${encodeURIComponent(returnTo)}`
+  return NextResponse.redirect(loginUrl)
 }
 
 export const config = {

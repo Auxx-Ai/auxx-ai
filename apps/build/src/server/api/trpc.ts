@@ -6,17 +6,17 @@ import { initTRPC, TRPCError } from '@trpc/server'
 import type { FetchCreateContextFnOptions } from '@trpc/server/adapters/fetch'
 import SuperJSON from 'superjson'
 import { ZodError } from 'zod'
-import { getSession } from '~/lib/auth'
+import { getLocalSession } from '~/lib/auth'
 
 /**
  * Create context for tRPC requests
  */
 export async function createTRPCContext(opts: FetchCreateContextFnOptions) {
-  const session = await getSession()
+  const session = await getLocalSession()
 
   return {
     db: database,
-    session,
+    session: session ? { userId: session.userId, userEmail: session.email } : null,
     headers: opts.req.headers,
   }
 }
@@ -108,10 +108,6 @@ export const protectedProcedure = t.procedure.meta({ authRequired: true }).use((
       session: {
         userId: ctx.session.userId,
         userEmail: ctx.session.userEmail,
-        userName: ctx.session.userName,
-        userFirstName: ctx.session.userFirstName,
-        userLastName: ctx.session.userLastName,
-        userImage: ctx.session.userImage,
       },
     },
   })

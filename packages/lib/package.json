@@ -623,7 +623,7 @@
     "groq-sdk": "^0.19.0",
     "handlebars": "catalog:",
     "html-to-text": "^9.0.5",
-    "jose": "^6.0.11",
+    "jose": "catalog:",
     "jsdom": "catalog:",
     "jsep": "^1.4.0",
     "json-logic-js": "^2.0.5",

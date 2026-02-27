@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@auxx/config": "workspace:*",
+    "@auxx/credentials": "workspace:*",
     "@auxx/database": "workspace:*",
     "@auxx/logger": "workspace:*",
     "@auxx/lib": "workspace:*",
@@ -30,6 +31,7 @@
     "@trpc/react-query": "^11.0.0-rc.446",
     "@trpc/server": "catalog:",
     "drizzle-orm": "catalog:",
+    "jose": "catalog:",
     "sonner": "^2.0.7",
     "superjson": "^2.2.1",
     "zod": "catalog:"

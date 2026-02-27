@@ -46,7 +46,7 @@ export function BuildNavUser({ user, accountSlug }: Props) {
   const initials = getInitialsFromName(user.name || user.email || '', 'U')
 
   const handleLogout = () => {
-    window.location.href = '/api/auth/sign-out'
+    window.location.href = '/api/auth/logout'
   }
 
   const handleSelectAccount = (slug: string) => {

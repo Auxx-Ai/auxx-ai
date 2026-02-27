@@ -1,59 +1,76 @@
 // apps/build/src/lib/auth.ts
 // Authentication utilities for developer portal
 
-import { DEV_PORTAL_URL, WEBAPP_URL } from '@auxx/config/client'
+import { WEBAPP_URL } from '@auxx/config/urls'
+import { configService } from '@auxx/credentials'
 import { DeveloperAccountMember, database } from '@auxx/database'
+import { getRedisClient } from '@auxx/redis'
 import { and, eq } from 'drizzle-orm'
+import { jwtVerify, SignJWT } from 'jose'
 import { cookies } from 'next/headers'
+
+const SESSION_COOKIE_NAME = 'auxx-build.session'
+const SESSION_DURATION = 60 * 60 // 1 hour in seconds
 
 /** Session type */
 export interface Session {
   userId: string
-  userEmail: string
-  userName: string | null
-  userFirstName: string | null
-  userLastName: string | null
-  userImage: string | null
+  email: string
 }
 
-/**
- * Get current session by validating with apps/web
- */
-export async function getSession(): Promise<Session | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('better-auth.session_token')
+/** Get the session signing secret — fails fast if not configured */
+function getSessionSecret(): Uint8Array {
+  const secret = configService.get<string>('BUILD_SESSION_SECRET')
+  if (!secret) throw new Error('BUILD_SESSION_SECRET not configured')
+  return new TextEncoder().encode(secret)
+}
 
-  if (!sessionCookie) {
-    return null
-  }
+/** Create a signed local session JWT */
+export async function createLocalSession(user: { userId: string; email: string }): Promise<string> {
+  return new SignJWT({ email: user.email })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setSubject(user.userId)
+    .setIssuedAt()
+    .setExpirationTime(`${SESSION_DURATION}s`)
+    .sign(getSessionSecret())
+}
 
+/** Verify a local session cookie, return user info or null */
+export async function verifyLocalSession(
+  token: string
+): Promise<{ userId: string; email: string } | null> {
   try {
-    // Validate session with apps/web
-    const response = await fetch(`${WEBAPP_URL}/api/auth/session`, {
-      headers: {
-        Cookie: `better-auth.session_token=${sessionCookie.value}`,
-      },
-      cache: 'no-store',
-    })
+    const { payload } = await jwtVerify(token, getSessionSecret())
 
-    if (!response.ok) {
-      return null
-    }
-
-    const data = await response.json()
-    return data.session
-  } catch (error) {
-    console.error('Failed to validate session:', error)
+    if (!payload.sub || !payload.email) return null
+    return { userId: payload.sub, email: payload.email as string }
+  } catch {
     return null
   }
+}
+
+/** Consume a login token jti (single-use). Returns true if consumed, false if already used. */
+export async function consumeLoginTokenJti(jti: string): Promise<boolean> {
+  const redis = await getRedisClient()
+  if (!redis) return false
+  // SET NX EX: only set if not exists, expire after 10 minutes
+  const result = await redis.set(`login-token:${jti}`, 'consumed', 'EX', 600, 'NX')
+  return result === 'OK'
+}
+
+/** Get local session from cookie */
+export async function getLocalSession(): Promise<Session | null> {
+  const cookieStore = await cookies()
+  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)
+  if (!sessionCookie?.value) return null
+  return verifyLocalSession(sessionCookie.value)
 }
 
 /**
  * Get login URL with return path
  */
 export function getLoginUrl(returnPath?: string): string {
-  const callbackUrl = `${DEV_PORTAL_URL}${returnPath || '/'}`
-  return `${WEBAPP_URL}/login?callbackUrl=${encodeURIComponent(callbackUrl)}`
+  return `${WEBAPP_URL}/login?callbackApp=build&returnTo=${encodeURIComponent(returnPath || '/')}`
 }
 
 /**

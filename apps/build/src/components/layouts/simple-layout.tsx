@@ -19,7 +19,9 @@ interface SimpleLayoutProps {
  * Lightweight header with logo and basic navigation.
  */
 export function SimpleLayout({ children, title, showBackToDashboard = true }: SimpleLayoutProps) {
-  const handleLogout = async () => {}
+  const handleLogout = () => {
+    window.location.href = '/api/auth/logout'
+  }
 
   return (
     <ColorfulBg>
