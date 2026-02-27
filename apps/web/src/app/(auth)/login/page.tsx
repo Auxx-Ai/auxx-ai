@@ -1,10 +1,12 @@
 // src/app/(auth)/login/page.tsx
 
-import { isTrustedHostname } from '@auxx/config/server'
+import { isTrustedHostname, WEBAPP_URL } from '@auxx/config/server'
+import { issueLoginToken } from '@auxx/credentials/login-token'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react' // Import Suspense
 import { auth } from '~/auth/server'
+import { getTrustedAppOrigin } from '~/auth/trusted-apps'
 import { Logo } from '~/components/global/login/logo'
 import LoginForm from '../_components/login-form'
 
@@ -51,9 +53,18 @@ const resolveRedirectTarget = (value: string | string[] | undefined): string => 
 // LoginPageContent renders the login form once query params are resolved.
 async function LoginPageContent({ searchParams }: LoginContentProps) {
   const callbackUrl = searchParams?.callbackUrl
+  const callbackApp = searchParams?.callbackApp as string | undefined
+  const returnTo = searchParams?.returnTo as string | undefined
   const error = searchParams?.error as string | undefined // Get error from URL
 
-  return <LoginForm callbackUrl={callbackUrl} errorMsg={error} />
+  return (
+    <LoginForm
+      callbackUrl={callbackUrl}
+      callbackApp={callbackApp}
+      returnTo={returnTo}
+      errorMsg={error}
+    />
+  )
 }
 
 // Login guards the login route, redirecting authenticated users server-side.
@@ -63,6 +74,32 @@ async function Login({ searchParams }: LoginPageProps) {
   const session = await auth.api.getSession({ headers: await headers() })
 
   if (session?.user) {
+    // Cross-app flow: user is already logged in, issue token and redirect to satellite
+    const callbackApp = q?.callbackApp as string | undefined
+    if (callbackApp) {
+      const targetOrigin = getTrustedAppOrigin(callbackApp)
+      if (targetOrigin) {
+        const returnTo = (q?.returnTo as string) || '/'
+        const safePath =
+          typeof returnTo === 'string' &&
+          returnTo.startsWith('/') &&
+          !returnTo.startsWith('//') &&
+          !returnTo.includes('..')
+            ? returnTo
+            : '/'
+        const result = await issueLoginToken({
+          userId: session.user.id,
+          email: session.user.email,
+          targetOrigin,
+          issuerOrigin: WEBAPP_URL,
+          returnTo: safePath,
+        })
+        if (result.isOk()) {
+          redirect(`${targetOrigin}/auth/verify?loginToken=${result.value.token}`)
+        }
+      }
+    }
+
     // Check if this is an OAuth flow (client_id parameter indicates OAuth)
     if (q?.client_id) {
       // For OAuth flows with an already-authenticated user, redirect back to authorize

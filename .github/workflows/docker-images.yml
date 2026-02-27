@@ -101,6 +101,9 @@ jobs:
           API_KEY_SALT: test
           LAMBDA_INVOKE_SECRET: test
           SDK_CLIENT_SECRET: test
+          LOGIN_TOKEN_PRIVATE_KEY: test
+          LOGIN_TOKEN_PUBLIC_KEY: test
+          BUILD_SESSION_SECRET: test
           S3_REGION: us-east-1
           S3_ACCESS_KEY_ID: test
           S3_SECRET_ACCESS_KEY: test

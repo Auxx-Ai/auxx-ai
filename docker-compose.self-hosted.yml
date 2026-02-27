@@ -20,6 +20,7 @@ x-common-env: &common-env
   API_KEY_SALT: ${API_KEY_SALT:?Run ./setup.sh to generate secrets}
   LAMBDA_INVOKE_SECRET: ${LAMBDA_INVOKE_SECRET:?Run ./setup.sh to generate secrets}
   SDK_CLIENT_SECRET: ${SDK_CLIENT_SECRET:?Run ./setup.sh to generate secrets}
+  LOGIN_TOKEN_PUBLIC_KEY: ${LOGIN_TOKEN_PUBLIC_KEY:?Run ./setup.sh to generate secrets}
 
 x-db-env: &db-env
   DATABASE_URL: postgresql://postgres:${DATABASE_PASSWORD:?Set DATABASE_PASSWORD}@postgres:5432/auxx-ai
@@ -144,6 +145,7 @@ services:
       DB_POOL_MAX: "3"
       DB_POOL_IDLE_TIMEOUT: "10000"
       APP_NAME: auxx-web
+      LOGIN_TOKEN_PRIVATE_KEY: ${LOGIN_TOKEN_PRIVATE_KEY:?Run ./setup.sh to generate secrets}
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }

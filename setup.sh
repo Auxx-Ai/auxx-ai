@@ -69,6 +69,18 @@ WORKFLOW_CREDENTIAL_ENCRYPTION_KEY=$(generate_secret 16)
 PUBLIC_WORKFLOW_JWT_SECRET=$(generate_secret 32)
 SDK_CLIENT_SECRET=$(generate_secret 32)
 
+# Generate Ed25519 keypair for cross-app login token signing
+LOGIN_TOKEN_KEYS=$(node -e "
+  const { generateKeyPairSync } = require('crypto');
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+  const priv = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString().trim().replace(/\n/g, '\\\\n');
+  const pub = publicKey.export({ type: 'spki', format: 'pem' }).toString().trim().replace(/\n/g, '\\\\n');
+  console.log(priv + '|||' + pub);
+")
+LOGIN_TOKEN_PRIVATE_KEY="${LOGIN_TOKEN_KEYS%%|||*}"
+LOGIN_TOKEN_PUBLIC_KEY="${LOGIN_TOKEN_KEYS##*|||}"
+BUILD_SESSION_SECRET=$(generate_secret 32)
+
 # ─── Fill mode: only set vars that are empty/missing ───────
 if [ "$FILL_MODE" = true ]; then
   fill_if_empty() {
@@ -101,6 +113,9 @@ if [ "$FILL_MODE" = true ]; then
   fill_if_empty "WORKFLOW_CREDENTIAL_ENCRYPTION_KEY" "$WORKFLOW_CREDENTIAL_ENCRYPTION_KEY"
   fill_if_empty "PUBLIC_WORKFLOW_JWT_SECRET" "$PUBLIC_WORKFLOW_JWT_SECRET"
   fill_if_empty "SDK_CLIENT_SECRET" "$SDK_CLIENT_SECRET"
+  fill_if_empty "LOGIN_TOKEN_PRIVATE_KEY" "$LOGIN_TOKEN_PRIVATE_KEY"
+  fill_if_empty "LOGIN_TOKEN_PUBLIC_KEY" "$LOGIN_TOKEN_PUBLIC_KEY"
+  fill_if_empty "BUILD_SESSION_SECRET" "$BUILD_SESSION_SECRET"
 
   # Rebuild DATABASE_URL if it contains a stale password
   DB_PASS=$(grep "^DATABASE_PASSWORD=" .env | cut -d'=' -f2- | tr -d '"')
@@ -193,6 +208,9 @@ do_sed "s|^LAMBDA_INVOKE_SECRET=.*|LAMBDA_INVOKE_SECRET=${LAMBDA_INVOKE_SECRET}|
 do_sed "s|^WORKFLOW_CREDENTIAL_ENCRYPTION_KEY=.*|WORKFLOW_CREDENTIAL_ENCRYPTION_KEY=${WORKFLOW_CREDENTIAL_ENCRYPTION_KEY}|" .env
 do_sed "s|^PUBLIC_WORKFLOW_JWT_SECRET=.*|PUBLIC_WORKFLOW_JWT_SECRET=${PUBLIC_WORKFLOW_JWT_SECRET}|" .env
 do_sed "s|^SDK_CLIENT_SECRET=.*|SDK_CLIENT_SECRET=${SDK_CLIENT_SECRET}|" .env
+do_sed "s|^LOGIN_TOKEN_PRIVATE_KEY=.*|LOGIN_TOKEN_PRIVATE_KEY=${LOGIN_TOKEN_PRIVATE_KEY}|" .env
+do_sed "s|^LOGIN_TOKEN_PUBLIC_KEY=.*|LOGIN_TOKEN_PUBLIC_KEY=${LOGIN_TOKEN_PUBLIC_KEY}|" .env
+do_sed "s|^BUILD_SESSION_SECRET=.*|BUILD_SESSION_SECRET=${BUILD_SESSION_SECRET}|" .env
 
 # ─── Build DATABASE_URL from generated password ───────────
 do_sed "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:${DATABASE_PASSWORD}@${DB_HOST}:5432/${DB_NAME}|" .env
@@ -223,6 +241,9 @@ echo "    LAMBDA_INVOKE_SECRET (used for Lambda executor auth)"
 echo "    WORKFLOW_CREDENTIAL_ENCRYPTION_KEY (used for credential encryption)"
 echo "    PUBLIC_WORKFLOW_JWT_SECRET (used for workflow passport signing)"
 echo "    SDK_CLIENT_SECRET       (used for SDK OIDC/JWT signing)"
+echo "    LOGIN_TOKEN_PRIVATE_KEY (Ed25519 private key for cross-app login tokens)"
+echo "    LOGIN_TOKEN_PUBLIC_KEY  (Ed25519 public key for cross-app login tokens)"
+echo "    BUILD_SESSION_SECRET    (used for apps/build local session cookies)"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
 if [ "$SELF_HOSTED" = true ]; then

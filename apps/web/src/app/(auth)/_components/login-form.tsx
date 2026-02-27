@@ -38,9 +38,13 @@ import { GeneralSubmitButton } from './submit-button'
 
 export default function LoginForm({
   callbackUrl,
+  callbackApp,
+  returnTo,
   errorMsg: _errorMsg, // Pass error from page searchParams
 }: {
   callbackUrl?: string | string[] // Can be array if multiple values passed
+  callbackApp?: string
+  returnTo?: string
   errorMsg?: string
 }) {
   const router = useRouter()
@@ -100,8 +104,9 @@ export default function LoginForm({
       await client.signIn.passkey({
         autoFill: true,
         fetchOptions: {
-          onSuccess: () => {
+          onSuccess: async () => {
             posthog?.capture('user_logged_in', { method: 'passkey' })
+            if (await handleCrossAppRedirect()) return
             if (isExternal) {
               window.location.href = redirectTo
             } else {
@@ -178,6 +183,27 @@ export default function LoginForm({
     // on success Better Auth will redirect
   }
 
+  /** After successful login, redirect to satellite app via login token if callbackApp is set */
+  const handleCrossAppRedirect = async (): Promise<boolean> => {
+    if (!callbackApp) return false
+
+    try {
+      const res = await fetch('/api/auth/login-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callbackApp, returnTo: returnTo || '/' }),
+      })
+      const data = await res.json()
+      if (data.redirectUrl) {
+        window.location.href = data.redirectUrl
+        return true
+      }
+    } catch (error) {
+      console.error('Failed to get login token:', error)
+    }
+    return false
+  }
+
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -196,6 +222,9 @@ export default function LoginForm({
     }
 
     posthog?.capture('user_logged_in', { method: 'email' })
+
+    // Cross-app flow: get login token and redirect to satellite app
+    if (await handleCrossAppRedirect()) return
 
     // For external callbacks, manually redirect
     if (isExternalCallback) {
@@ -229,7 +258,12 @@ export default function LoginForm({
   let redirectToPath = defaultRedirectPath
   let isExternalCallback = false
 
-  if (isOAuthFlow) {
+  // Cross-app flow: after OAuth, redirect back to this login page so the server-side
+  // handler can detect the session + callbackApp and issue a login token.
+  if (callbackApp) {
+    const params = new URLSearchParams({ callbackApp, returnTo: returnTo || '/' })
+    redirectToPath = `/login?${params.toString()}`
+  } else if (isOAuthFlow) {
     // For OAuth flows, DO NOT redirect back to authorize endpoint
     // Better-auth's OIDC provider stores the authorization request internally
     // and will complete it automatically after successful login

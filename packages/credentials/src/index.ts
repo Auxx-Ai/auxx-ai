@@ -20,6 +20,9 @@ export {
   getConfigDefinitionsByGroup,
   valueToString,
 } from './config'
+export type { LoginTokenError, LoginTokenPayload, VerifiedLoginToken } from './login-token'
+// Login token
+export { issueLoginToken, verifyLoginToken } from './login-token'
 // Export everything from manager
 export * from './manager'
 // Export everything from service

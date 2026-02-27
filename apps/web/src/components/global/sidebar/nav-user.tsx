@@ -48,7 +48,7 @@ import { client } from '~/auth/auth-client' // Use the correct import for your a
 import { useAnalytics } from '~/hooks/use-analytics'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useUser } from '~/hooks/use-user'
-import { useEnv } from '~/providers/dehydrated-state-provider'
+
 import { CreateOrganizationDialog } from '../create-org-dialog'
 
 type Prop = {
@@ -68,7 +68,7 @@ export function NavUser({ user }: Prop) {
   const router = useRouter()
   const posthog = useAnalytics()
   const selfHosted = useIsSelfHosted()
-  const { devPortalUrl } = useEnv()
+
   // const session = await auth();
   const {
     user: userData, // Full user data
@@ -205,7 +205,10 @@ export function NavUser({ user }: Prop) {
                     Account
                   </DropdownMenuItem>
                 </Link>
-                <Link href={devPortalUrl} target='_blank' rel='noopener noreferrer'>
+                <Link
+                  href='/login?callbackApp=build&returnTo=/'
+                  target='_blank'
+                  rel='noopener noreferrer'>
                   <DropdownMenuItem>
                     <Code />
                     Developer Portal

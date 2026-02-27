@@ -329,6 +329,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
     getRowId: getRowId ?? ((row, index) => (row.id ? String(row.id) : String(index))),
     manualPagination: Boolean(props.pageCount),
     pageCount: props.pageCount,
+    autoResetPageIndex: false,
   })
 
   // Ref to maintain stable reference to table for callbacks

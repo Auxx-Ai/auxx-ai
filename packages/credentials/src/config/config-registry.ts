@@ -182,6 +182,32 @@ export const CONFIG_VARIABLES = {
     isSensitive: true,
     isEnvOnly: true,
   },
+  LOGIN_TOKEN_PRIVATE_KEY: {
+    key: 'LOGIN_TOKEN_PRIVATE_KEY',
+    description:
+      'Ed25519 private key (PEM) for signing cross-app login tokens. Only needed on the central auth app (apps/web).',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.AUTH,
+    isSensitive: true,
+    isEnvOnly: true,
+  },
+  LOGIN_TOKEN_PUBLIC_KEY: {
+    key: 'LOGIN_TOKEN_PUBLIC_KEY',
+    description:
+      'Ed25519 public key (PEM) for verifying cross-app login tokens. Deployed to all satellite apps.',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.AUTH,
+    isSensitive: false,
+    isEnvOnly: true,
+  },
+  BUILD_SESSION_SECRET: {
+    key: 'BUILD_SESSION_SECRET',
+    description: 'HMAC secret for signing apps/build local session cookies.',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.AUTH,
+    isSensitive: true,
+    isEnvOnly: true,
+  },
   SUPER_ADMIN_EMAIL: {
     key: 'SUPER_ADMIN_EMAIL',
     description: 'Email of the super admin user',

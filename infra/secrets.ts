@@ -35,6 +35,18 @@ export const secretsConfig = {
     secret: new sst.Secret('SDK_CLIENT_SECRET'),
     description: 'SDK client secret for OIDC/JWT signing',
   },
+  LOGIN_TOKEN_PRIVATE_KEY: {
+    secret: new sst.Secret('LOGIN_TOKEN_PRIVATE_KEY'),
+    description: 'Ed25519 private key for signing cross-app login tokens (web only)',
+  },
+  LOGIN_TOKEN_PUBLIC_KEY: {
+    secret: new sst.Secret('LOGIN_TOKEN_PUBLIC_KEY'),
+    description: 'Ed25519 public key for verifying cross-app login tokens',
+  },
+  BUILD_SESSION_SECRET: {
+    secret: new sst.Secret('BUILD_SESSION_SECRET'),
+    description: 'HMAC secret for apps/build local session cookies',
+  },
 
   // OAuth - GitHub
   AUTH_GITHUB_ID: {
