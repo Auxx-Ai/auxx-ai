@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.29](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.28...auxx-v0.1.29) (2026-02-27)
+
+
+### Features
+
+* add migration stage for database dependencies in Dockerfile ([#112](https://github.com/Auxx-Ai/auxx-ai/issues/112)) ([475e218](https://github.com/Auxx-Ai/auxx-ai/commit/475e21859490ba672184af0efba77aee2f6e8e94))
+
 ## [0.1.28](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.27...auxx-v0.1.28) (2026-02-27)
 
 
