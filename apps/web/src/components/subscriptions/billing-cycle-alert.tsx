@@ -6,9 +6,19 @@ import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { format } from 'date-fns'
 import { Calendar } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
-import { PlanChangeSummary } from './plan-change-summary'
+
+const PlanChangeSummary = dynamic(
+  () =>
+    import('./plan-change-summary').then((module) => ({
+      default: module.PlanChangeSummary,
+    })),
+  {
+    ssr: false,
+  }
+)
 
 /** Alert component showing trial countdown or next billing cycle */
 export function BillingCycleAlert() {
@@ -70,7 +80,7 @@ export function BillingCycleAlert() {
         </div>
       </Alert>
 
-      <PlanChangeSummary open={dialogOpen} onOpenChange={setDialogOpen} />
+      {dialogOpen ? <PlanChangeSummary open={dialogOpen} onOpenChange={setDialogOpen} /> : null}
     </>
   )
 }

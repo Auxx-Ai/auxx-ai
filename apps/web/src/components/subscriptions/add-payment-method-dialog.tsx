@@ -11,13 +11,12 @@ import {
 } from '@auxx/ui/components/dialog'
 import { toastError } from '@auxx/ui/components/toast'
 import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js'
-import { loadStripe } from '@stripe/stripe-js'
 import { useEffect, useState } from 'react'
-import { getEnv } from '~/providers/dehydrated-state-provider'
+import { getStripePromise } from '~/lib/stripe'
 import { api } from '~/trpc/react'
 
 /** Initialize Stripe */
-const stripePromise = loadStripe(getEnv()?.stripe.publishableKey || '')
+const stripePromise = getStripePromise()
 
 /** Props for add payment method dialog */
 type AddPaymentMethodDialogProps = {

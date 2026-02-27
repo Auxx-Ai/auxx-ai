@@ -11,18 +11,17 @@ import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js'
-import { loadStripe } from '@stripe/stripe-js'
 import { Building2, Users } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useAnalytics } from '~/hooks/use-analytics'
-import { getEnv } from '~/providers/dehydrated-state-provider'
+import { getStripePromise } from '~/lib/stripe'
 import { api } from '~/trpc/react'
 import { type Plan, PlanComparison } from './plan-comparison'
 
 /** Initialize Stripe */
-const stripePromise = loadStripe(getEnv()?.stripe.publishableKey || '')
+const stripePromise = getStripePromise()
 
 /** Billing address form data type */
 type BillingAddressFormData = {
