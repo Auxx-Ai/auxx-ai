@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.32](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.31...auxx-v0.1.32) (2026-02-27)
+
+
+### Features
+
+* enhance docker-entrypoint.sh to support multiple URL replacements ([#118](https://github.com/Auxx-Ai/auxx-ai/issues/118)) ([73280b0](https://github.com/Auxx-Ai/auxx-ai/commit/73280b061f5706291761dfc8494b4069cdb835e4))
+
 ## [0.1.31](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.30...auxx-v0.1.31) (2026-02-27)
 
 
