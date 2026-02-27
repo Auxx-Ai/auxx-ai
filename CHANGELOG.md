@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.33](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.32...auxx-v0.1.33) (2026-02-27)
+
+
+### Features
+
+* add cross-app login token functionality with Ed25519 signing ([#123](https://github.com/Auxx-Ai/auxx-ai/issues/123)) ([4d1a603](https://github.com/Auxx-Ai/auxx-ai/commit/4d1a603b9cde8b303feabffe727b70feb6d77c9f))
+* implement queue metrics and job runs management with clear fail… ([#124](https://github.com/Auxx-Ai/auxx-ai/issues/124)) ([c48af6c](https://github.com/Auxx-Ai/auxx-ai/commit/c48af6c6d0efd07f8f2deb9b18fe087c04ec8236))
+* refactor dehydrated state management and organization context h… ([#122](https://github.com/Auxx-Ai/auxx-ai/issues/122)) ([e09ed48](https://github.com/Auxx-Ai/auxx-ai/commit/e09ed488eb86745637e7c5b257b09788c1aaa8d1))
+* refactor Stripe initialization and dynamically load PlanChangeS… ([#120](https://github.com/Auxx-Ai/auxx-ai/issues/120)) ([60bac33](https://github.com/Auxx-Ai/auxx-ai/commit/60bac33504985ab3ff7d835beb131d522b71c290))
+
 ## [0.1.32](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.31...auxx-v0.1.32) (2026-02-27)
 
 
