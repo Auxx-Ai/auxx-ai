@@ -1,37 +1,48 @@
 // apps/api/src/lib/s3.ts
 
+import { configService } from '@auxx/credentials'
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import type { Result } from 'neverthrow'
-import {
-  AWS_ACCESS_KEY_ID,
-  AWS_REGION,
-  AWS_SECRET_ACCESS_KEY,
-  S3_BUCKET_NAME as BUCKET_NAME,
-  S3_ENDPOINT,
-} from '../config'
 import type { AppVersionBundleError } from './errors'
 import { fromS3 } from './utils'
 
-/**
- * S3 bucket name for app bundles
- */
-export const S3_BUCKET_NAME = BUCKET_NAME
+let _s3Client: S3Client | null = null
 
 /**
- * S3 client instance with credentials
+ * Lazily initializes and returns the S3 client.
+ * Deferred so configService.init() has run before credentials are read.
  */
-export const s3Client = new S3Client({
-  region: AWS_REGION,
-  ...(S3_ENDPOINT ? { endpoint: S3_ENDPOINT, forcePathStyle: true } : {}),
-  credentials:
-    AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY
-      ? {
-          accessKeyId: AWS_ACCESS_KEY_ID,
-          secretAccessKey: AWS_SECRET_ACCESS_KEY,
-        }
-      : undefined, // Falls back to environment/IAM role if not provided
-})
+export function getS3Client(): S3Client {
+  if (!_s3Client) {
+    const region = configService.get<string>('S3_REGION') || 'us-west-1'
+    const endpoint = configService.get<string>('S3_ENDPOINT')
+    const accessKeyId = configService.get<string>('S3_ACCESS_KEY_ID')
+    const secretAccessKey = configService.get<string>('S3_SECRET_ACCESS_KEY')
+
+    console.log('[s3] Initializing S3 client:', {
+      region,
+      endpoint: endpoint || '(default AWS)',
+      bucket: configService.get<string>('S3_PRIVATE_BUCKET') || 'auxx-private-local (default)',
+      hasAccessKey: !!accessKeyId,
+      hasSecretKey: !!secretAccessKey,
+    })
+
+    _s3Client = new S3Client({
+      region,
+      ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
+      credentials: accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined,
+    })
+  }
+  return _s3Client
+}
+
+/**
+ * Lazily returns the S3 bucket name for app bundles.
+ */
+export function getS3BucketName(): string {
+  return configService.get<string>('S3_PRIVATE_BUCKET') || 'auxx-private-local'
+}
 
 /**
  * Generate a presigned URL for uploading a file to S3
@@ -45,9 +56,9 @@ export async function generatePresignedUploadUrl(
   expiresIn: number = 3600
 ): Promise<Result<string, AppVersionBundleError>> {
   const command = new PutObjectCommand({
-    Bucket: S3_BUCKET_NAME,
+    Bucket: getS3BucketName(),
     Key: key,
   })
 
-  return await fromS3(getSignedUrl(s3Client, command, { expiresIn }), 'generate-presigned-url')
+  return await fromS3(getSignedUrl(getS3Client(), command, { expiresIn }), 'generate-presigned-url')
 }

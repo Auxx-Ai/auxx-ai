@@ -126,14 +126,14 @@ export class Fetcher {
         const bodyText = await response.text().catch(() => undefined)
 
         // Debug logging for failed requests
-        // process.stderr.write('\n[Fetcher Error]\n')
-        // process.stderr.write(`URL: ${url}\n`)
-        // process.stderr.write(`Method: ${method}\n`)
-        // process.stderr.write(`Status: ${response.status} ${response.statusText}\n`)
-        // if (bodyText) {
-        //   process.stderr.write(`Response Body: ${bodyText}\n`)
-        // }
-        // process.stderr.write('\n')
+        process.stderr.write('\n[Fetcher Error]\n')
+        process.stderr.write(`URL: ${url}\n`)
+        process.stderr.write(`Method: ${method}\n`)
+        process.stderr.write(`Status: ${response.status} ${response.statusText}\n`)
+        if (bodyText) {
+          process.stderr.write(`Response Body: ${bodyText}\n`)
+        }
+        process.stderr.write('\n')
 
         return {
           success: false,

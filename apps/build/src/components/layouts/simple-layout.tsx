@@ -3,9 +3,11 @@
 
 import { WEBAPP_URL } from '@auxx/config/client'
 import { Button } from '@auxx/ui/components/button'
+import { Separator } from '@auxx/ui/components/separator'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Logo } from '~/components/logo'
+import { useAuthenticatedUser } from '~/components/providers/dehydrated-state-provider'
 import { ColorfulBg } from './colorful-bg'
 
 interface SimpleLayoutProps {
@@ -19,6 +21,8 @@ interface SimpleLayoutProps {
  * Lightweight header with logo and basic navigation.
  */
 export function SimpleLayout({ children, title, showBackToDashboard = true }: SimpleLayoutProps) {
+  const user = useAuthenticatedUser()
+
   const handleLogout = () => {
     window.location.href = '/api/auth/logout'
   }
@@ -44,6 +48,9 @@ export function SimpleLayout({ children, title, showBackToDashboard = true }: Si
                 <Link href="/app/dashboard">Dashboard</Link>
               </Button>
             )} */}
+
+            <span className='text-muted-foreground text-xs px-1'>{user.email}</span>
+            <Separator orientation='vertical' className='h-4' />
 
             <Button variant='ghost' asChild size='sm'>
               <Link href={`${WEBAPP_URL}/organizations`}>Organizations</Link>
