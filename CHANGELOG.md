@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.34](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.33...auxx-v0.1.34) (2026-02-28)
+
+
+### Features
+
+* add API service implementation and environment variable loader ([#130](https://github.com/Auxx-Ai/auxx-ai/issues/130)) ([648e63e](https://github.com/Auxx-Ai/auxx-ai/commit/648e63eea42c0a4f15dc288caf06ca5d4577908b))
+* enhance SDK publish workflow and add repository metadata ([#129](https://github.com/Auxx-Ai/auxx-ai/issues/129)) ([622ce55](https://github.com/Auxx-Ai/auxx-ai/commit/622ce5550af907cf496db3501d60a636e2beffc3))
+* enhance SDK publish workflow with preflight checks ([#128](https://github.com/Auxx-Ai/auxx-ai/issues/128)) ([226594c](https://github.com/Auxx-Ai/auxx-ai/commit/226594c495bcad2b8d568313000317dfb083e07a))
+* switch npm commands to pnpm for package verification and publis… ([#125](https://github.com/Auxx-Ai/auxx-ai/issues/125)) ([8462cd8](https://github.com/Auxx-Ai/auxx-ai/commit/8462cd817f2d8749859e3a3aa120b65d1756cad2))
+
 ## [0.1.33](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.32...auxx-v0.1.33) (2026-02-27)
 
 
