@@ -30,7 +30,7 @@ export class SmtpTester {
       }
 
       // Create transporter with credential data
-      const transporter = nodemailer.createTransporter({
+      const transporter = nodemailer.createTransport({
         host,
         port,
         secure,
