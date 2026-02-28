@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // packages/sdk/src/auxx.ts
 
+import './env-loader.js'
+
 import { Command } from 'commander'
 import { apps } from './commands/apps.js'
 import { build } from './commands/build.js'
