@@ -1,5 +1,6 @@
 // apps/lambda/src/index.ts
 
+import { verifyInboundRequest } from './auth/verify-inbound.ts'
 import { loadBundle } from './bundle-loader.ts'
 import { createRuntimeContext } from './context-provider.ts'
 import { executeCode } from './executors/code-executor.ts'
@@ -78,13 +79,83 @@ async function executeCodeEvent(validatedEvent: ValidatedLambdaEvent) {
   return await executeCode(validatedEvent)
 }
 
+/** Caller-type allowlist: which callers can invoke which event types */
+const CALLER_TYPE_ALLOWLIST: Record<string, string[]> = {
+  api: ['function', 'workflow-block'],
+  'webhook-route': ['webhook'],
+  'app-events': ['event'],
+  'workflow-engine': ['workflow-block', 'code'],
+  worker: ['workflow-block', 'code', 'event'],
+}
+
+/** Maximum payload size (5 MB) */
+const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024
+
 /**
  * Lambda handler - entry point for all server function executions
  */
-export async function handler(event: LambdaEvent): Promise<LambdaResponse> {
+export async function handler(
+  event: LambdaEvent,
+  meta?: { headers: Record<string, string>; rawBody: string }
+): Promise<LambdaResponse> {
   const startTime = Date.now()
 
   try {
+    // 0a. Payload size check
+    if (meta?.rawBody && meta.rawBody.length > MAX_PAYLOAD_BYTES) {
+      return {
+        statusCode: 413,
+        body: JSON.stringify({
+          error: { message: 'Payload too large', code: 'PAYLOAD_TOO_LARGE' },
+        }),
+      }
+    }
+
+    // 0b. Auth gate — reject unsigned requests
+    const secret = Deno.env.get('LAMBDA_INVOKE_SECRET')
+    let authCaller: string | undefined
+
+    if (!secret) {
+      if (Deno.env.get('NODE_ENV') !== 'development') {
+        return {
+          statusCode: 500,
+          body: JSON.stringify({
+            error: { message: 'Auth not configured', code: 'AUTH_CONFIG_ERROR' },
+          }),
+        }
+      }
+    } else if (meta?.headers && meta?.rawBody) {
+      const authResult = await verifyInboundRequest({
+        headers: meta.headers,
+        body: meta.rawBody,
+        secret,
+      })
+
+      console.log('[Lambda:Auth]', {
+        decision: authResult.valid ? 'accept' : 'reject',
+        caller: authResult.caller,
+        reason: authResult.reason,
+        requestId: meta.headers['x-amzn-requestid'],
+      })
+
+      if (!authResult.valid) {
+        return {
+          statusCode: 401,
+          body: JSON.stringify({
+            error: { message: authResult.reason, code: 'AUTH_FAILED' },
+          }),
+        }
+      }
+      authCaller = authResult.caller
+    } else if (Deno.env.get('NODE_ENV') !== 'development') {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({
+          error: { message: 'Missing auth headers', code: 'AUTH_REQUIRED' },
+        }),
+      }
+    }
+
     // 1. Validate input - returns Zod safeParse result
     const validationResult = validateLambdaEvent(event)
 
@@ -110,9 +181,25 @@ export async function handler(event: LambdaEvent): Promise<LambdaResponse> {
     }
 
     const validatedEvent = validationResult.data
+    const eventType = validatedEvent.type || 'function'
+
+    // 1b. Caller-type allowlist check
+    if (authCaller) {
+      const allowed = CALLER_TYPE_ALLOWLIST[authCaller]
+      if (!allowed || !allowed.includes(eventType)) {
+        return {
+          statusCode: 403,
+          body: JSON.stringify({
+            error: {
+              message: `Caller "${authCaller}" cannot invoke type "${eventType}"`,
+              code: 'CALLER_TYPE_DENIED',
+            },
+          }),
+        }
+      }
+    }
 
     // 2. Route to appropriate executor based on event type
-    const eventType = validatedEvent.type || 'function'
     const executionResult =
       eventType === 'code'
         ? await executeCodeEvent(validatedEvent)
@@ -123,6 +210,7 @@ export async function handler(event: LambdaEvent): Promise<LambdaResponse> {
 
     console.log('[Lambda] Execution successful:', {
       type: eventType,
+      caller: authCaller,
       duration,
       hasSettingsSchema: !!executionResult.metadata?.settingsSchema,
       logCount: executionResult.metadata?.consoleLogs?.length || 0,

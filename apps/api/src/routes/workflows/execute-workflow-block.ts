@@ -139,6 +139,7 @@ executeWorkflowBlock.post('/:workflowId/runs/:runId/blocks/:blockId/execute', as
 
     // Invoke Lambda using helper
     const lambdaResult = await invokeLambdaExecutor({
+      caller: 'api',
       payload: {
         type: 'workflow-block',
         bundleKey: bundle.serverBundleS3Key,

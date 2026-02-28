@@ -45,12 +45,31 @@ function isFunctionUrlEvent(event: unknown): event is {
 
 /**
  * Extract the internal payload from a Lambda event.
- * - Function URL envelope: parse body as JSON
+ * - Function URL envelope: parse body as JSON, extract headers
  * - Direct invocation: pass through as-is
  */
-function extractPayload(event: unknown): { payload: unknown; fromFunctionUrl: boolean } {
+function extractPayload(event: unknown): {
+  payload: unknown
+  headers: Record<string, string>
+  rawBody: string
+  fromFunctionUrl: boolean
+} {
   if (!isFunctionUrlEvent(event)) {
-    return { payload: event, fromFunctionUrl: false }
+    const rawBody = JSON.stringify(event)
+    return { payload: event, headers: {}, rawBody, fromFunctionUrl: false }
+  }
+
+  // Extract headers from Function URL envelope (lowercased by API Gateway v2)
+  const headers: Record<string, string> = {}
+  if (
+    (event as Record<string, unknown>).headers &&
+    typeof (event as Record<string, unknown>).headers === 'object'
+  ) {
+    for (const [k, v] of Object.entries(
+      (event as Record<string, unknown>).headers as Record<string, string>
+    )) {
+      headers[k.toLowerCase()] = v
+    }
   }
 
   let body = event.body ?? ''
@@ -60,19 +79,23 @@ function extractPayload(event: unknown): { payload: unknown; fromFunctionUrl: bo
     body = atob(body)
   }
 
+  const rawBody = typeof body === 'string' ? body : JSON.stringify(body)
+
   // Parse JSON body
   if (typeof body === 'string') {
     try {
-      return { payload: JSON.parse(body), fromFunctionUrl: true }
+      return { payload: JSON.parse(body), headers, rawBody, fromFunctionUrl: true }
     } catch {
       return {
         payload: { __parseError: true, message: 'Invalid JSON in request body' },
+        headers,
+        rawBody,
         fromFunctionUrl: true,
       }
     }
   }
 
-  return { payload: body, fromFunctionUrl: true }
+  return { payload: body, headers, rawBody, fromFunctionUrl: true }
 }
 
 /**
@@ -99,8 +122,8 @@ async function runtimeLoop(): Promise<never> {
     const rawEvent = await next.json()
 
     try {
-      // 2. Extract internal payload
-      const { payload, fromFunctionUrl } = extractPayload(rawEvent)
+      // 2. Extract internal payload and headers
+      const { payload, headers, rawBody, fromFunctionUrl } = extractPayload(rawEvent)
 
       // Handle JSON parse errors from Function URL
       if (
@@ -129,8 +152,8 @@ async function runtimeLoop(): Promise<never> {
         continue
       }
 
-      // 3. Call handler with normalized payload
-      const result = await handler(payload as any)
+      // 3. Call handler with normalized payload and auth metadata
+      const result = await handler(payload as any, { headers, rawBody })
 
       // 4. Post response back
       const responseBody = fromFunctionUrl

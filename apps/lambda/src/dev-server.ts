@@ -35,7 +35,14 @@ async function handleRequest(req: Request): Promise<Response> {
   // Main execution endpoint
   if (url.pathname === '/' && req.method === 'POST') {
     try {
-      const event = (await req.json()) as unknown as LambdaEvent
+      const rawBody = await req.text()
+      const event = JSON.parse(rawBody) as unknown as LambdaEvent
+
+      // Extract request headers for auth verification
+      const headers: Record<string, string> = {}
+      for (const [k, v] of req.headers.entries()) {
+        headers[k.toLowerCase()] = v
+      }
 
       console.log('[DevServer] Received request:', {
         type: event.type,
@@ -43,8 +50,8 @@ async function handleRequest(req: Request): Promise<Response> {
         ...('bundleKey' in event && { bundleKey: event.bundleKey }),
       })
 
-      // Call the same handler as Lambda
-      const response = await handler(event)
+      // Call the same handler as Lambda, with auth metadata
+      const response = await handler(event, { headers, rawBody })
 
       return new Response(response.body, {
         status: response.statusCode,

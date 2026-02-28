@@ -17,6 +17,7 @@ import {
 } from '@auxx/services/app-webhook-handlers'
 import { Hono } from 'hono'
 import { z } from 'zod'
+import { verifyCallbackAuth } from '../lib/callback-auth'
 import { ERROR_STATUS_MAP, errorResponse } from '../lib/response'
 import type { AppContext } from '../types/context'
 
@@ -124,13 +125,10 @@ const updateWebhookHandlerSchema = z.object({
  */
 webhookHandlers.get('/', async (c) => {
   try {
-    const appInstallationId = c.req.header('X-App-Installation-Id')
+    const auth = verifyCallbackAuth(c, 'webhooks')
+    if (!auth) return c.res
 
-    if (!appInstallationId) {
-      return c.json(errorResponse('UNAUTHORIZED', 'App installation ID required'), 401)
-    }
-
-    const result = await listWebhookHandlers({ appInstallationId })
+    const result = await listWebhookHandlers({ appInstallationId: auth.installationId })
 
     if (result.isErr()) {
       const status = ERROR_STATUS_MAP[result.error.code] || 500
@@ -220,18 +218,14 @@ webhookHandlers.get('/', async (c) => {
  */
 webhookHandlers.post('/', async (c) => {
   try {
-    // Get app installation ID from header (set by Lambda runtime)
-    const appInstallationId = c.req.header('X-App-Installation-Id')
-
-    if (!appInstallationId) {
-      return c.json(errorResponse('UNAUTHORIZED', 'App installation ID required'), 401)
-    }
+    const auth = verifyCallbackAuth(c, 'webhooks')
+    if (!auth) return c.res
 
     const body = await c.req.json()
     const { fileName, metadata } = createWebhookHandlerSchema.parse(body)
 
     const result = await createWebhookHandler({
-      appInstallationId,
+      appInstallationId: auth.installationId,
       fileName,
       metadata,
     })
@@ -335,18 +329,15 @@ webhookHandlers.post('/', async (c) => {
 webhookHandlers.patch('/:handlerId', async (c) => {
   try {
     const handlerId = c.req.param('handlerId')
-    const appInstallationId = c.req.header('X-App-Installation-Id')
-
-    if (!appInstallationId) {
-      return c.json(errorResponse('UNAUTHORIZED', 'App installation ID required'), 401)
-    }
+    const auth = verifyCallbackAuth(c, 'webhooks')
+    if (!auth) return c.res
 
     const body = await c.req.json()
     const { externalWebhookId, metadata } = updateWebhookHandlerSchema.parse(body)
 
     const result = await updateWebhookHandler({
       handlerId,
-      appInstallationId,
+      appInstallationId: auth.installationId,
       externalWebhookId,
       metadata,
     })
@@ -438,13 +429,10 @@ webhookHandlers.patch('/:handlerId', async (c) => {
 webhookHandlers.delete('/:handlerId', async (c) => {
   try {
     const handlerId = c.req.param('handlerId')
-    const appInstallationId = c.req.header('X-App-Installation-Id')
+    const auth = verifyCallbackAuth(c, 'webhooks')
+    if (!auth) return c.res
 
-    if (!appInstallationId) {
-      return c.json(errorResponse('UNAUTHORIZED', 'App installation ID required'), 401)
-    }
-
-    const result = await deleteWebhookHandler({ handlerId, appInstallationId })
+    const result = await deleteWebhookHandler({ handlerId, appInstallationId: auth.installationId })
 
     if (result.isErr()) {
       const status = ERROR_STATUS_MAP[result.error.code] || 500

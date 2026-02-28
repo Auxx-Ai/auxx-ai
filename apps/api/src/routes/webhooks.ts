@@ -1,9 +1,9 @@
 // apps/api/src/routes/webhooks.ts
 
-import { LAMBDA_API_URL, SERVER_FUNCTION_EXECUTOR_URL } from '@auxx/config/urls'
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getWebhookHandler } from '@auxx/services/app-webhook-handlers'
+import { invokeLambdaExecutor, prepareLambdaContext } from '@auxx/services/lambda-execution'
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { errorResponse } from '../lib/response'
@@ -77,44 +77,39 @@ async function handleWebhookRequest(c: any) {
       body,
     }
 
-    // 4. Get Lambda executor URL from environment
-    const executorUrl = SERVER_FUNCTION_EXECUTOR_URL
-    // const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+    log.info('Invoking Lambda for webhook execution', { handlerId })
 
-    log.info('Invoking Lambda for webhook execution', { executorUrl, handlerId })
+    // 4. Build context and invoke Lambda via shared helper
+    const context = prepareLambdaContext({
+      appId: installationResult.appId,
+      installationId,
+      organizationId: installationResult.organizationId,
+      organizationHandle: installationResult.organization.handle,
+      userId: 'system',
+      userEmail: 'system@webhook',
+      userName: null,
+    })
 
-    // 5. Invoke Lambda via HTTP (works in dev AND production)
-    const response = await fetch(executorUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const lambdaResult = await invokeLambdaExecutor({
+      caller: 'webhook-route',
+      payload: {
         type: 'webhook',
         bundleKey: versionBundle.serverBundleS3Key,
         handlerId,
         request: webRequest,
-        context: {
-          organizationId: installationResult.organizationId,
-          organizationHandle: installationResult.organization.handle,
-          appId: installationResult.appId,
-          appInstallationId: installationId,
-          apiUrl: LAMBDA_API_URL,
-          // Webhooks don't have user context - use system defaults
-          userId: 'system',
-          userEmail: 'system@webhook',
-          // Connection data will be fetched by Lambda if needed
-        },
-      }),
+        context,
+      },
     })
 
-    if (!response.ok) {
-      const errorData = await response.json()
-      log.error('Webhook execution failed', { error: errorData, installationId, handlerId })
+    if (lambdaResult.isErr()) {
+      const error = lambdaResult.error
+      log.error('Webhook execution failed', { error, installationId, handlerId })
       return c.json(errorResponse('EXECUTION_ERROR', 'Webhook execution failed'), 500)
     }
 
-    const result = await response.json()
+    const result = lambdaResult.value
 
-    // 6. Return handler's response to third-party service
+    // 5. Return handler's response to third-party service
     const handlerExecutionResult = result.execution_result
 
     log.info('Webhook execution completed', {

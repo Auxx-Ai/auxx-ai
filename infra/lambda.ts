@@ -2,6 +2,7 @@
 /// <reference path="../.sst/platform/config.d.ts" />
 
 import { vpc } from './router-vpc'
+import { secretsConfig } from './secrets'
 import { privateBucket } from './storage'
 
 /**
@@ -28,6 +29,7 @@ export const serverFunctionExecutor = $dev
       environment: {
         NODE_ENV: $dev ? 'development' : 'production',
         S3_PRIVATE_BUCKET: privateBucket.name, // Server bundles stored in private bucket
+        LAMBDA_INVOKE_SECRET: secretsConfig.LAMBDA_INVOKE_SECRET.secret.value,
       },
 
       // Link resources (NOT secrets - extensions should not access platform secrets)
@@ -44,13 +46,9 @@ export const serverFunctionExecutor = $dev
       ],
 
       // Enable function URL (simpler than API Gateway)
+      // No CORS — Lambda is only called server-to-server, never from browsers
       url: {
-        cors: {
-          allowOrigins: ['*'], // Will be restricted by auth in API layer
-          allowMethods: ['POST'],
-          allowHeaders: ['*'],
-        },
-        authorization: 'none', // Auth handled by API layer
+        authorization: 'none', // Auth handled at application level (HMAC-SHA256)
       },
 
       // Development - container runtime not supported in sst dev

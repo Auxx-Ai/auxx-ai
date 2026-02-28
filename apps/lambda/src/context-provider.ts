@@ -51,5 +51,8 @@ export function createRuntimeContext(execContext: ExecutionContext): RuntimeCont
     // Connection data
     userConnection: execContext.userConnection,
     organizationConnection: execContext.organizationConnection,
+
+    // Callback tokens for SDK → API authentication
+    callbackTokens: execContext.callbackTokens,
   }
 }

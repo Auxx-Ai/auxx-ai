@@ -127,6 +127,7 @@ export class CodeProcessor extends BaseNodeProcessor {
     const { invokeLambdaExecutor } = await import('@auxx/services/lambda-execution')
 
     const lambdaResult = await invokeLambdaExecutor({
+      caller: 'workflow-engine',
       payload: {
         type: 'code',
         code: config.code,

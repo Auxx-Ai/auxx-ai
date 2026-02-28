@@ -1,6 +1,7 @@
 // packages/services/src/lambda-execution/invoke-lambda-executor.ts
 
 import { SERVER_FUNCTION_EXECUTOR_URL } from '@auxx/config/server'
+import { signInboundRequest } from '@auxx/credentials/lambda-auth'
 import type { Result } from 'neverthrow'
 import { err, ok } from 'neverthrow'
 
@@ -39,23 +40,34 @@ export interface LambdaExecutionError {
 }
 
 /**
- * Standardized Lambda invocation with error handling
- * Handles both server function and workflow block executions
+ * Standardized Lambda invocation with HMAC signing and error handling.
+ * All Lambda invocations must go through this function.
  *
- * @param params - Object containing payload and optional Lambda URL
- * @returns Result with execution result or structured error
+ * @param params.payload - The event payload to send to Lambda
+ * @param params.caller - Identity of the calling service (used for caller-type allowlist)
+ * @param params.lambdaUrl - Optional URL override (defaults to SERVER_FUNCTION_EXECUTOR_URL)
  */
 export async function invokeLambdaExecutor(params: {
   payload: any
+  caller: string
   lambdaUrl?: string
 }): Promise<Result<LambdaExecutionResult, LambdaExecutionError>> {
-  const { payload, lambdaUrl = SERVER_FUNCTION_EXECUTOR_URL } = params
+  const { payload, caller, lambdaUrl = SERVER_FUNCTION_EXECUTOR_URL } = params
 
   try {
+    const body = JSON.stringify(payload)
+
+    // Sign the request with HMAC-SHA256
+    const secret = process.env.LAMBDA_INVOKE_SECRET
+    const authHeaders = secret ? signInboundRequest({ body, caller, secret }) : {}
+
     const lambdaResponse = await fetch(lambdaUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
+      body,
     })
 
     if (!lambdaResponse.ok) {

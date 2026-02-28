@@ -12,6 +12,7 @@ export default defineConfig({
     'src/login-token/index.ts',
     'src/config/index.ts',
     'src/config/client.ts',
+    'src/lambda-auth/index.ts',
   ],
   format: 'esm',
   target: 'es2022',

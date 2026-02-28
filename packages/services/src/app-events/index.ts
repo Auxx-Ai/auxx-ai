@@ -1,10 +1,10 @@
 // packages/services/src/app-events/index.ts
 
-import { LAMBDA_API_URL, SERVER_FUNCTION_EXECUTOR_URL } from '@auxx/config/urls'
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
-import { err, ok, type Result } from 'neverthrow'
+import { err, ok } from 'neverthrow'
+import { invokeLambdaExecutor, prepareLambdaContext } from '../lambda-execution'
 import type { DatabaseError } from '../shared/errors'
 import { fromDatabase } from '../shared/utils'
 
@@ -35,33 +35,6 @@ export type AppEventError =
 
 /**
  * Connection data for event payload
- *
- * @description
- * Represents a connection object that can be passed to app event handlers.
- * Used when triggering connection-related events (connection-added, connection-removed).
- *
- * @example
- * // OAuth2 connection
- * const oauthConnection: EventConnectionData = {
- *   id: 'conn_123',
- *   type: 'oauth2-code',
- *   value: 'oauth2_access_token_xyz',
- *   metadata: {
- *     scopes: ['read', 'write'],
- *     expiresAt: '2025-12-31T23:59:59Z'
- *   }
- * }
- *
- * @example
- * // Secret/API key connection
- * const secretConnection: EventConnectionData = {
- *   id: 'conn_456',
- *   type: 'secret',
- *   value: 'sk_live_abc123xyz',
- *   metadata: {
- *     environment: 'production'
- *   }
- * }
  */
 export interface EventConnectionData {
   /** Unique identifier for the connection */
@@ -77,84 +50,8 @@ export interface EventConnectionData {
 /**
  * Trigger an app event handler
  *
- * @description
- * Executes an app's server-side event handler by invoking the Lambda executor.
- * This function:
- * 1. Retrieves the app installation and organization details
- * 2. Fetches the app version bundle containing the server code
- * 3. Invokes the Lambda executor with the event payload and context
- * 4. Returns once the event handler completes
- *
- * @param params - Event trigger parameters
- * @param params.appInstallationId - The ID of the app installation to trigger the event for
- * @param params.eventType - The type of event to trigger ('connection-added' | 'connection-removed')
- * @param params.payload - The event payload containing connection data
- * @param params.payload.connection - Connection data to pass to the event handler
- *
- * @returns {Promise<Result<void, AppEventError>>} Result indicating success or failure
- *
- * @example
- * // Trigger connection-added event
- * const result = await triggerAppEvent({
- *   appInstallationId: 'app_inst_123',
- *   eventType: 'connection-added',
- *   payload: {
- *     connection: {
- *       id: 'conn_456',
- *       type: 'oauth2-code',
- *       value: 'oauth2_access_token_xyz',
- *       metadata: {
- *         scopes: ['read', 'write']
- *       }
- *     }
- *   }
- * })
- *
- * if (result.isErr()) {
- *   console.error('Failed to trigger event:', result.error.message)
- * }
- *
- * @example
- * // Trigger connection-removed event
- * const result = await triggerAppEvent({
- *   appInstallationId: 'app_inst_789',
- *   eventType: 'connection-removed',
- *   payload: {
- *     connection: {
- *       id: 'conn_101',
- *       type: 'secret',
- *       value: 'sk_live_removed'
- *     }
- *   }
- * })
- *
- * if (result.isOk()) {
- *   console.log('Event triggered successfully')
- * }
- *
- * @example
- * // Usage in a tRPC mutation
- * const addConnection = api.appConnection.create.useMutation({
- *   onSuccess: async (connection) => {
- *     // Trigger event after connection is created
- *     const result = await triggerAppEvent({
- *       appInstallationId: connection.appInstallationId,
- *       eventType: 'connection-added',
- *       payload: {
- *         connection: {
- *           id: connection.id,
- *           type: connection.type,
- *           value: connection.value,
- *           metadata: connection.metadata
- *         }
- *       }
- *     })
- *
- *     if (result.isErr()) {
- *       throw new Error(`Failed to trigger event: ${result.error.message}`)
- *     }
- *   }
- * })
+ * Executes an app's server-side event handler by invoking the Lambda executor
+ * through the shared `invokeLambdaExecutor()` helper with HMAC signing.
  */
 export async function triggerAppEvent(params: {
   appInstallationId: string
@@ -227,54 +124,40 @@ export async function triggerAppEvent(params: {
     return ok(undefined)
   }
 
-  // Get Lambda executor URL and API URL from environment
-  const executorUrl = SERVER_FUNCTION_EXECUTOR_URL
+  // Build context and invoke Lambda via shared helper
+  const context = prepareLambdaContext({
+    appId: installation.appId,
+    installationId: appInstallationId,
+    organizationId: installation.organizationId,
+    organizationHandle: installation.organization.handle,
+    userId: 'system',
+    userEmail: 'system@auxx.ai',
+    userName: null,
+  })
 
-  // Invoke Lambda via HTTP (works in dev AND production)
-  try {
-    const response = await fetch(executorUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'event',
-        bundleKey: versionBundle.serverBundleS3Key,
-        eventType,
-        eventPayload: payload,
-        context: {
-          organizationId: installation.organizationId,
-          organizationHandle: installation.organization.handle,
-          appId: installation.appId,
-          appInstallationId,
-          apiUrl: LAMBDA_API_URL,
-          // Events don't have user context - use system defaults
-          userId: 'system',
-          userEmail: 'system@auxx.ai',
-        },
-      }),
-    })
+  const lambdaResult = await invokeLambdaExecutor({
+    caller: 'app-events',
+    payload: {
+      type: 'event',
+      bundleKey: versionBundle.serverBundleS3Key,
+      eventType,
+      eventPayload: payload,
+      context,
+    },
+  })
 
-    if (!response.ok) {
-      const error = await response.json()
-      logger.error('Event execution failed', { error, appInstallationId, eventType })
-      return err({
-        code: 'EVENT_EXECUTION_FAILED' as const,
-        message: `Event execution failed: ${error.message || error.error?.message}`,
-        appInstallationId,
-        eventType,
-        cause: error,
-      })
-    }
-
-    logger.info('Event execution completed', { appInstallationId, eventType })
-    return ok(undefined)
-  } catch (error) {
-    logger.error('Event execution error', { error, appInstallationId, eventType })
+  if (lambdaResult.isErr()) {
+    const error = lambdaResult.error
+    logger.error('Event execution failed', { error, appInstallationId, eventType })
     return err({
       code: 'EVENT_EXECUTION_FAILED' as const,
-      message: `Event execution error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      message: `Event execution failed: ${error.message}`,
       appInstallationId,
       eventType,
       cause: error,
     })
   }
+
+  logger.info('Event execution completed', { appInstallationId, eventType })
+  return ok(undefined)
 }

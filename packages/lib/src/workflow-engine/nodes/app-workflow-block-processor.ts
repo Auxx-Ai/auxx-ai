@@ -539,6 +539,7 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
 
       // 4. Invoke Lambda executor
       const lambdaResult = await invokeLambdaExecutor({
+        caller: 'workflow-engine',
         payload: {
           type: 'workflow-block',
           bundleKey: bundle.serverBundleS3Key,

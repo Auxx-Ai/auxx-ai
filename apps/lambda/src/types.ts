@@ -76,6 +76,12 @@ export interface RuntimeContext {
   // Connection data (decrypted and passed from API)
   userConnection?: ConnectionData
   organizationConnection?: ConnectionData
+
+  // Scoped callback tokens for SDK → API authentication
+  callbackTokens?: {
+    webhooks: string
+    settings: string
+  }
 }
 
 /**

@@ -12,6 +12,7 @@ import { database } from '@auxx/database'
 import { getAppSettings, saveAppSettings, setAppSetting } from '@auxx/services/app-settings'
 import { Hono } from 'hono'
 import { z } from 'zod'
+import { verifyCallbackAuth } from '../lib/callback-auth'
 import { ERROR_STATUS_MAP, errorResponse } from '../lib/response'
 import type { AppContext } from '../types/context'
 
@@ -101,15 +102,12 @@ const setSettingSchema = z.object({
  */
 settings.get('/', async (c) => {
   try {
-    const appInstallationId = c.req.header('X-App-Installation-Id')
-
-    if (!appInstallationId) {
-      return c.json(errorResponse('UNAUTHORIZED', 'App installation ID required'), 401)
-    }
+    const auth = verifyCallbackAuth(c, 'settings')
+    if (!auth) return c.res
 
     // Load installation to get current version
     const installation = await database.query.AppInstallation.findFirst({
-      where: (inst, { eq }) => eq(inst.id, appInstallationId),
+      where: (inst, { eq }) => eq(inst.id, auth.installationId),
       columns: {
         id: true,
         currentVersionId: true,
@@ -136,7 +134,7 @@ settings.get('/', async (c) => {
 
     // Get settings with schema for default merging
     const result = await getAppSettings({
-      appInstallationId,
+      appInstallationId: auth.installationId,
       schema,
     })
 
@@ -208,15 +206,12 @@ settings.get('/', async (c) => {
 settings.get('/:key', async (c) => {
   try {
     const key = c.req.param('key')
-    const appInstallationId = c.req.header('X-App-Installation-Id')
-
-    if (!appInstallationId) {
-      return c.json(errorResponse('UNAUTHORIZED', 'App installation ID required'), 401)
-    }
+    const auth = verifyCallbackAuth(c, 'settings')
+    if (!auth) return c.res
 
     // Load installation to get current version
     const installation = await database.query.AppInstallation.findFirst({
-      where: (inst, { eq }) => eq(inst.id, appInstallationId),
+      where: (inst, { eq }) => eq(inst.id, auth.installationId),
       columns: {
         id: true,
         currentVersionId: true,
@@ -242,7 +237,7 @@ settings.get('/:key', async (c) => {
 
     // Get all settings with schema (so defaults work), then extract the key
     const result = await getAppSettings({
-      appInstallationId,
+      appInstallationId: auth.installationId,
       schema,
     })
 
@@ -327,18 +322,15 @@ settings.get('/:key', async (c) => {
  */
 settings.post('/', async (c) => {
   try {
-    const appInstallationId = c.req.header('X-App-Installation-Id')
-
-    if (!appInstallationId) {
-      return c.json(errorResponse('UNAUTHORIZED', 'App installation ID required'), 401)
-    }
+    const auth = verifyCallbackAuth(c, 'settings')
+    if (!auth) return c.res
 
     const body = await c.req.json()
     const { settings: settingsToSave } = saveSettingsSchema.parse(body)
 
     // Load installation to get current version
     const installation = await database.query.AppInstallation.findFirst({
-      where: (inst, { eq }) => eq(inst.id, appInstallationId),
+      where: (inst, { eq }) => eq(inst.id, auth.installationId),
       columns: {
         id: true,
         currentVersionId: true,
@@ -354,7 +346,7 @@ settings.post('/', async (c) => {
 
     // Save settings with version ID to track which version they were saved with
     const result = await saveAppSettings({
-      appInstallationId,
+      appInstallationId: auth.installationId,
       appVersionId: installation.currentVersionId ?? undefined,
       settings: settingsToSave,
     })
@@ -427,18 +419,15 @@ settings.post('/', async (c) => {
 settings.put('/:key', async (c) => {
   try {
     const key = c.req.param('key')
-    const appInstallationId = c.req.header('X-App-Installation-Id')
-
-    if (!appInstallationId) {
-      return c.json(errorResponse('UNAUTHORIZED', 'App installation ID required'), 401)
-    }
+    const auth = verifyCallbackAuth(c, 'settings')
+    if (!auth) return c.res
 
     const body = await c.req.json()
     const { value } = setSettingSchema.parse(body)
 
     // Load installation to get current version
     const installation = await database.query.AppInstallation.findFirst({
-      where: (inst, { eq }) => eq(inst.id, appInstallationId),
+      where: (inst, { eq }) => eq(inst.id, auth.installationId),
       columns: {
         id: true,
         currentVersionId: true,
@@ -451,7 +440,7 @@ settings.put('/:key', async (c) => {
 
     // Set setting with version ID
     const result = await setAppSetting({
-      appInstallationId,
+      appInstallationId: auth.installationId,
       appVersionId: installation.currentVersionId ?? undefined,
       key,
       value,

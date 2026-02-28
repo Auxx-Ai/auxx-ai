@@ -1,10 +1,9 @@
 // apps/api/src/routes/organizations/execute-server-function.ts
 
-import { SERVER_FUNCTION_EXECUTOR_URL } from '@auxx/config/server'
-import { LAMBDA_API_URL } from '@auxx/config/urls'
 import { resolveAppConnectionForRuntime } from '@auxx/services/app-connections'
 import { getInstallationBundle } from '@auxx/services/app-installations'
 import { logServerFunctionExecution } from '@auxx/services/apps'
+import { invokeLambdaExecutor, prepareLambdaContext } from '@auxx/services/lambda-execution'
 import { Hono } from 'hono'
 import { ERROR_STATUS_MAP, errorResponse } from '../../lib/response'
 import type { AppContext } from '../../types/context'
@@ -15,22 +14,6 @@ const executeServerFunction = new Hono<AppContext>()
  * POST /api/v1/organizations/:handle/apps/:appId/installations/:installationId/execute-server-function
  *
  * Execute a server function from an extension's server bundle.
- *
- * Request body:
- *   {
- *     function_identifier: string  // moduleHash (e.g., "actions/myAction.server")
- *     function_args: string         // JSON-stringified array of arguments
- *   }
- *
- * Response:
- *   {
- *     execution_result: any  // Result from server function
- *   }
- *
- * OR error:
- *   {
- *     error: { message: string, code: string }
- *   }
  */
 executeServerFunction.post(
   '/apps/:appId/installations/:installationId/execute-server-function',
@@ -83,55 +66,45 @@ executeServerFunction.post(
 
       const connections = connectionsResult.value
 
-      const lambdaResponse = await fetch(SERVER_FUNCTION_EXECUTOR_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // 4. Build context and invoke Lambda
+      const context = prepareLambdaContext({
+        appId,
+        installationId,
+        organizationId: organization.id,
+        organizationHandle: organization.handle,
+        userId: user.id,
+        userEmail: user.email,
+        userName: user.name,
+        userConnection: connections.userConnection,
+        organizationConnection: connections.organizationConnection,
+      })
+
+      const lambdaResult = await invokeLambdaExecutor({
+        caller: 'api',
+        payload: {
           type: 'function',
           bundleKey: bundle.serverBundleS3Key,
           functionIdentifier: function_identifier,
           functionArgs: function_args,
-          context: {
-            organizationId: organization.id,
-            organizationHandle: organization.handle,
-            userId: user.id,
-            userEmail: user.email,
-            appId,
-            apiUrl: LAMBDA_API_URL,
-            appInstallationId: installationId,
-
-            // Pass connections
-            userConnection: connections.userConnection,
-            organizationConnection: connections.organizationConnection,
-          },
-        }),
+          context,
+        },
       })
 
-      if (!lambdaResponse.ok) {
-        let errorData
-        try {
-          errorData = await lambdaResponse.json()
-        } catch {
-          const errorText = await lambdaResponse.text()
-          errorData = { error: { message: errorText, code: 'UNKNOWN_ERROR' } }
-        }
+      if (lambdaResult.isErr()) {
+        const error = lambdaResult.error
 
         // Check for connection errors (not found or expired)
-        if (
-          errorData.error?.code === 'CONNECTION_NOT_FOUND' ||
-          errorData.error?.code === 'CONNECTION_EXPIRED'
-        ) {
+        if (error.code === 'CONNECTION_REQUIRED') {
           console.log('[ExecuteServerFunction] Connection error, returning prompt:', {
-            code: errorData.error.code,
-            scope: errorData.error.scope,
+            code: error.code,
+            scope: error.details?.scope,
           })
           return c.json(
             {
               error: {
                 code: 'CONNECTION_REQUIRED',
-                message: errorData.error.message,
-                scope: errorData.error.scope || 'user',
-                // Frontend uses this to show connection prompt
+                message: error.message,
+                scope: error.details?.scope || 'user',
               },
             },
             403
@@ -139,27 +112,26 @@ executeServerFunction.post(
         }
 
         console.error('[ExecuteServerFunction] Lambda invocation failed:', {
-          status: lambdaResponse.status,
-          error: errorData,
+          status: error.statusCode,
+          error,
         })
-        const statusCode = lambdaResponse.status as 400 | 500
-        // Return structured error to client
+        const statusCode = error.statusCode as 400 | 500
         return c.json(
           {
             error: {
-              message: errorData.error?.message || 'Server function execution failed',
-              code: errorData.error?.code || 'EXECUTION_ERROR',
-              details: errorData.error?.details,
+              message: error.message,
+              code: error.code,
+              details: error.details,
             },
           },
           statusCode
         )
       }
 
-      const result = await lambdaResponse.json()
+      const result = lambdaResult.value
 
       // 5. Store console logs in database using service
-      if (result.metadata?.console_logs && result.metadata.console_logs.length > 0) {
+      if (result.metadata?.consoleLogs && result.metadata.consoleLogs.length > 0) {
         const logResult = await logServerFunctionExecution({
           appId,
           organizationId: organization.id,
@@ -167,17 +139,16 @@ executeServerFunction.post(
           userId: user.id,
           functionIdentifier: function_identifier,
           installationId,
-          consoleLogs: result.metadata.console_logs,
+          consoleLogs: result.metadata.consoleLogs,
           durationMs: result.metadata?.duration,
         })
 
         if (logResult.isErr()) {
-          // Don't fail the request if logging fails, just log the error
           console.error('[ExecuteServerFunction] Failed to store console logs:', logResult.error)
         } else {
           console.log('[ExecuteServerFunction] Stored console logs:', {
             logged: logResult.value.logged,
-            logCount: result.metadata.console_logs.length,
+            logCount: result.metadata.consoleLogs.length,
           })
         }
       }
