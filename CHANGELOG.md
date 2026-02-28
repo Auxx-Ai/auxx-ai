@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.39](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.38...auxx-v0.1.39) (2026-02-28)
+
+
+### Features
+
+* refactor S3 client initialization and update download URL gener… ([#139](https://github.com/Auxx-Ai/auxx-ai/issues/139)) ([4f28860](https://github.com/Auxx-Ai/auxx-ai/commit/4f2886028373d92c8febfbd21681dfbce3ad1e00))
+
 ## [0.1.38](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.37...auxx-v0.1.38) (2026-02-28)
 
 
