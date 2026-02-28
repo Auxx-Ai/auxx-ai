@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.35](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.34...auxx-v0.1.35) (2026-02-28)
+
+
+### Features
+
+* remove export of constants from index file ([#131](https://github.com/Auxx-Ai/auxx-ai/issues/131)) ([e877f55](https://github.com/Auxx-Ai/auxx-ai/commit/e877f55e8148aae64a8d0b8c449c26897fa9f420))
+
 ## [0.1.34](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.33...auxx-v0.1.34) (2026-02-28)
 
 
