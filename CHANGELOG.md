@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.36](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.35...auxx-v0.1.36) (2026-02-28)
+
+
+### Bug Fixes
+
+* correct redirectURLs to redirectUrls in auth configuration ([#133](https://github.com/Auxx-Ai/auxx-ai/issues/133)) ([d7aebd4](https://github.com/Auxx-Ai/auxx-ai/commit/d7aebd4db501a5ab537ecfadf755db163e1d7453))
+
 ## [0.1.35](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.34...auxx-v0.1.35) (2026-02-28)
 
 
