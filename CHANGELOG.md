@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.40](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.39...auxx-v0.1.40) (2026-02-28)
+
+
+### Features
+
+* refactor email configuration and transport handling for S3 comp… ([#141](https://github.com/Auxx-Ai/auxx-ai/issues/141)) ([12899be](https://github.com/Auxx-Ai/auxx-ai/commit/12899bec507a24a305cea3aca386c4eafaccfc2d))
+
 ## [0.1.39](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.38...auxx-v0.1.39) (2026-02-28)
 
 
