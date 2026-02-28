@@ -45,13 +45,17 @@ versions.post('/:appId/dev-versions', requireScope(['developer', 'apps:write']),
   const body = await c.req.json()
   const { target_organization_id, environment_variables, cli_version } = body
 
+  console.log('[dev-versions] Starting for app:', appId, 'user:', userId)
+
   // Step 1: Verify app access
   const accessResult = await verifyAppAccess({ appId, userId })
   if (accessResult.isErr()) {
     const error = accessResult.error
+    console.error('[dev-versions] Step 1 failed (verifyAppAccess):', error.code, error.message)
     const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
     return c.json(errorResponse('INTERNAL_ERROR', error.message), statusCode)
   }
+  console.log('[dev-versions] Step 1 passed (verifyAppAccess)')
 
   // Step 2: Verify org membership
   const orgResult = await verifyOrgMembership({
@@ -61,9 +65,11 @@ versions.post('/:appId/dev-versions', requireScope(['developer', 'apps:write']),
 
   if (orgResult.isErr()) {
     const error = orgResult.error
+    console.error('[dev-versions] Step 2 failed (verifyOrgMembership):', error.code, error.message)
     const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
     return c.json(errorResponse('INTERNAL_ERROR', error.message), statusCode)
   }
+  console.log('[dev-versions] Step 2 passed (verifyOrgMembership)')
 
   // Step 3: Create version
   const versionResult = await createDevVersion({
@@ -75,9 +81,11 @@ versions.post('/:appId/dev-versions', requireScope(['developer', 'apps:write']),
   })
   if (versionResult.isErr()) {
     const error = versionResult.error
+    console.error('[dev-versions] Step 3 failed (createDevVersion):', error.code, error.message)
     const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
     return c.json(errorResponse(error.code, error.message), statusCode)
   }
+  console.log('[dev-versions] Step 3 passed (createDevVersion):', versionResult.value.id)
 
   // Step 4: Create bundle
   const bundleResult = await createBundle({
@@ -86,9 +94,11 @@ versions.post('/:appId/dev-versions', requireScope(['developer', 'apps:write']),
   })
   if (bundleResult.isErr()) {
     const error = bundleResult.error
+    console.error('[dev-versions] Step 4 failed (createBundle):', error.code, error.message)
     const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
     return c.json(errorResponse(error.code, error.message), statusCode)
   }
+  console.log('[dev-versions] Step 4 passed (createBundle):', bundleResult.value.id)
 
   // Step 5: Generate upload URLs
   const urlsResult = await generateBundleUploadUrls({
@@ -98,9 +108,15 @@ versions.post('/:appId/dev-versions', requireScope(['developer', 'apps:write']),
   })
   if (urlsResult.isErr()) {
     const error = urlsResult.error
+    console.error(
+      '[dev-versions] Step 5 failed (generateBundleUploadUrls):',
+      error.code,
+      error.message
+    )
     const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
     return c.json(errorResponse(error.code, error.message), statusCode)
   }
+  console.log('[dev-versions] Step 5 passed (generateBundleUploadUrls)')
 
   // Success response
   return c.json({

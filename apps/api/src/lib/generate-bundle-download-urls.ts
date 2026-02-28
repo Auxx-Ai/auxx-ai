@@ -5,7 +5,7 @@ import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { err, ok, type Result } from 'neverthrow'
 import type { AppVersionBundleError } from './errors'
-import { S3_BUCKET_NAME, s3Client } from './s3'
+import { getS3BucketName, getS3Client } from './s3'
 import { fromDatabase, fromS3 } from './utils'
 
 /**
@@ -69,22 +69,22 @@ export async function generateBundleDownloadUrls(params: {
   const DOWNLOAD_URL_EXPIRY = 60 * 60 // 1 hour
 
   const clientCommand = new GetObjectCommand({
-    Bucket: S3_BUCKET_NAME,
+    Bucket: getS3BucketName(),
     Key: bundle.clientBundleS3Key,
   })
 
   const serverCommand = new GetObjectCommand({
-    Bucket: S3_BUCKET_NAME,
+    Bucket: getS3BucketName(),
     Key: bundle.serverBundleS3Key,
   })
 
   const [clientUrlResult, serverUrlResult] = await Promise.all([
     fromS3(
-      getSignedUrl(s3Client, clientCommand, { expiresIn: DOWNLOAD_URL_EXPIRY }),
+      getSignedUrl(getS3Client(), clientCommand, { expiresIn: DOWNLOAD_URL_EXPIRY }),
       'generate-download-url'
     ),
     fromS3(
-      getSignedUrl(s3Client, serverCommand, { expiresIn: DOWNLOAD_URL_EXPIRY }),
+      getSignedUrl(getS3Client(), serverCommand, { expiresIn: DOWNLOAD_URL_EXPIRY }),
       'generate-download-url'
     ),
   ])
