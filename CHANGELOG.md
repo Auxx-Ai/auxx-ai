@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.41](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.40...auxx-v0.1.41) (2026-02-28)
+
+
+### Features
+
+* upgrade nodemailer and AWS SDK dependencies; refactor SES trans… ([#143](https://github.com/Auxx-Ai/auxx-ai/issues/143)) ([45441b8](https://github.com/Auxx-Ai/auxx-ai/commit/45441b822306f574d7cf302a0d482055bbb54faa))
+
 ## [0.1.40](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.39...auxx-v0.1.40) (2026-02-28)
 
 
