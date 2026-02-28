@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.38](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.37...auxx-v0.1.38) (2026-02-28)
+
+
+### Features
+
+* enhance logging for Pusher auth and session verification processes ([#137](https://github.com/Auxx-Ai/auxx-ai/issues/137)) ([0f51f24](https://github.com/Auxx-Ai/auxx-ai/commit/0f51f244487ac57cfcbe4f4150762ba8ecb641c7))
+
 ## [0.1.37](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.36...auxx-v0.1.37) (2026-02-28)
 
 
