@@ -580,7 +580,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@aws-sdk/client-s3": "catalog:",
-    "@aws-sdk/client-sesv2": "catalog:",
     "@aws-sdk/s3-presigned-post": "catalog:",
     "@aws-sdk/s3-request-presigner": "catalog:",
     "@azure/msal-node": "^3.4.1",

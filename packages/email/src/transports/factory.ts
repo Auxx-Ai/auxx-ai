@@ -2,7 +2,7 @@
 
 import { configService } from '@auxx/credentials'
 import { createScopedLogger } from '@auxx/logger'
-import { SESv2Client } from '@aws-sdk/client-sesv2'
+import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2'
 import nodemailer from 'nodemailer'
 import { parseBoolean } from '../lib/utils'
 import { createMailgunTransport } from './mailgun-transport'
@@ -52,11 +52,9 @@ export class TransportFactory {
 
     logger.info('Creating SESv2 transporter', { region })
 
-    // Nodemailer supports AWS SDK v3 via the SES option
     return nodemailer.createTransport({
-      SES: { ses: sesv2, aws: { SESv2Client } as any },
-      sendingRate: 14,
-    } as any)
+      SES: { sesClient: sesv2, SendEmailCommand },
+    })
   }
 
   /**
