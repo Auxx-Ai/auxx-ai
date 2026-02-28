@@ -344,7 +344,7 @@ export const auth = betterAuth({
             configService.get<string>('SDK_CLIENT_SECRET') || 'auxx-sdk-cli-secret-for-jwt-signing',
           name: 'Auxx SDK CLI',
           type: 'public', // Public client - uses PKCE, not clientSecret for auth
-          redirectURLs: [
+          redirectUrls: [
             'http://localhost:3000/callback',
             'http://localhost:3001/callback',
             'http://localhost:3002/callback',
@@ -378,7 +378,7 @@ export const auth = betterAuth({
             configService.get<string>('TEST_APP_CLIENT_SECRET') || 'test-app-connection-secret',
           name: 'Test App Connection',
           type: 'web', // Web application - uses client_id + client_secret
-          redirectURLs: [
+          redirectUrls: [
             `${WEBAPP_URL}/api/apps/test-app/oauth2/callback`,
             `${DEV_PORTAL_URL}/api/apps/test-app/oauth2/callback`,
           ],
