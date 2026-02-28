@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.37](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.36...auxx-v0.1.37) (2026-02-28)
+
+
+### Features
+
+* implement fallback state for dehydration failures in PortalLayout ([#135](https://github.com/Auxx-Ai/auxx-ai/issues/135)) ([4c9eba9](https://github.com/Auxx-Ai/auxx-ai/commit/4c9eba98c0bcf2bb4bd24b9f0b7e498e264da17c))
+
 ## [0.1.36](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.35...auxx-v0.1.36) (2026-02-28)
 
 
