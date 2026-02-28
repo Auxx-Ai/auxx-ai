@@ -213,10 +213,10 @@ services:
     environment:
       PORT: ${LAMBDA_PORT:-3008}
       S3_ENDPOINT: http://minio:9000
-      AWS_REGION: ${S3_REGION:-us-west-1}
-      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-minioadmin}
-      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-minioadmin}
-      BUNDLES_BUCKET_NAME: ${S3_PRIVATE_BUCKET:-auxx-private-local}
+      S3_REGION: ${S3_REGION:-us-west-1}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-minioadmin}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+      S3_PRIVATE_BUCKET: ${S3_PRIVATE_BUCKET:-auxx-private-local}
       LAMBDA_API_URL: http://api:${API_PORT:-3007}
       LAMBDA_INVOKE_SECRET: ${LAMBDA_INVOKE_SECRET}
     ports:

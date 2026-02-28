@@ -9,16 +9,17 @@ import { parseError } from './utils.ts'
 
 /** Custom S3 endpoint for non-AWS providers */
 const s3Endpoint = Deno.env.get('S3_ENDPOINT')
+const forcePathStyle = Deno.env.get('S3_FORCE_PATH_STYLE') !== 'false'
 
 /** S3 client instance (reused across invocations) */
 const s3Client = new S3Client({
-  region: Deno.env.get('AWS_REGION') || 'us-west-1',
-  ...(s3Endpoint ? { endpoint: s3Endpoint, forcePathStyle: true } : {}),
+  region: Deno.env.get('S3_REGION') || 'us-west-1',
+  ...(s3Endpoint ? { endpoint: s3Endpoint, forcePathStyle } : {}),
   credentials:
-    Deno.env.get('AWS_ACCESS_KEY_ID') && Deno.env.get('AWS_SECRET_ACCESS_KEY')
+    Deno.env.get('S3_ACCESS_KEY_ID') && Deno.env.get('S3_SECRET_ACCESS_KEY')
       ? {
-          accessKeyId: Deno.env.get('AWS_ACCESS_KEY_ID')!,
-          secretAccessKey: Deno.env.get('AWS_SECRET_ACCESS_KEY')!,
+          accessKeyId: Deno.env.get('S3_ACCESS_KEY_ID')!,
+          secretAccessKey: Deno.env.get('S3_SECRET_ACCESS_KEY')!,
         }
       : undefined, // Falls back to environment/IAM role if not provided
 })
@@ -49,10 +50,10 @@ export async function loadBundle(bundleKey: string): Promise<string> {
   }
 
   // Production: Download from S3
-  const bucketName = Deno.env.get('BUNDLES_BUCKET_NAME')
+  const bucketName = Deno.env.get('S3_PRIVATE_BUCKET')
 
   if (!bucketName) {
-    throw new Error('BUNDLES_BUCKET_NAME environment variable not set')
+    throw new Error('S3_PRIVATE_BUCKET environment variable not set')
   }
 
   console.log('[BundleLoader] Downloading from S3:', { bucket: bucketName, key: bundleKey })
