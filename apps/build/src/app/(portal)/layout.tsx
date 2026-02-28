@@ -1,10 +1,41 @@
 // apps/build/src/app/(portal)/layout.tsx
 
-import { cookies } from 'next/headers'
+import { DEV_PORTAL_URL, WEBAPP_URL } from '@auxx/config/urls'
 import { redirect } from 'next/navigation'
 import { BuildDehydratedStateProvider } from '~/components/providers/dehydrated-state-provider'
 import { getLocalSession, getLoginUrl } from '~/lib/auth'
+import type { BuildDehydratedState } from '~/lib/dehydration'
 import { BuildDehydrationService } from '~/lib/dehydration'
+
+/** Minimal fallback state when dehydration fails (prevents redirect loop) */
+function createFallbackState(session: { userId: string; email: string }): BuildDehydratedState {
+  return {
+    authenticatedUser: {
+      id: session.userId,
+      name: null,
+      email: session.email,
+      emailVerified: false,
+      image: null,
+      firstName: null,
+      lastName: null,
+      phoneNumber: null,
+      phoneNumberVerified: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    developerAccounts: [],
+    apps: [],
+    organizations: [],
+    invitedDeveloperAccounts: [],
+    environment: {
+      devPortalUrl: DEV_PORTAL_URL || '',
+      webappUrl: WEBAPP_URL || '',
+      nodeEnv: process.env.NODE_ENV || 'development',
+      isDevelopment: process.env.NODE_ENV === 'development',
+    },
+    timestamp: Date.now(),
+  }
+}
 
 /**
  * Portal layout - wraps all authenticated developer portal pages
@@ -20,17 +51,15 @@ export default async function PortalLayout({ children }: { children: React.React
 
   // Fetch dehydrated state for this user
   const dehydrationService = new BuildDehydrationService()
-  let dehydratedState
+  let dehydratedState: BuildDehydratedState
 
   try {
     dehydratedState = await dehydrationService.getState(session.userId)
   } catch (error) {
     console.error('Failed to fetch dehydrated state:', error)
-
-    // Clear stale session cookie to prevent infinite redirect loop.
-    const cookieStore = await cookies()
-    cookieStore.delete('auxx-build.session')
-    redirect(getLoginUrl('/'))
+    // Use fallback state instead of deleting the cookie and redirecting,
+    // which would create an infinite redirect loop when the error is persistent.
+    dehydratedState = createFallbackState(session)
   }
 
   return (

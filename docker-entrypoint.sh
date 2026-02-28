@@ -20,7 +20,8 @@
 # any remaining occurrences.
 
 PLACEHOLDER="__RUNTIME_DOMAIN__"
-NEXT_DIR="/app/.next"
+# Resolve relative to WORKDIR (set by each app's Dockerfile to /app/apps/<app>/)
+NEXT_DIR="$(pwd)/.next"
 
 replace_in_next() {
   local pattern="$1"
