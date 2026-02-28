@@ -28,6 +28,12 @@ export const ExecutionContextSchema = z.object({
   appInstallationId: z.string().min(1),
   userConnection: ConnectionDataSchema.optional(),
   organizationConnection: ConnectionDataSchema.optional(),
+  callbackTokens: z
+    .object({
+      webhooks: z.string(),
+      settings: z.string(),
+    })
+    .optional(),
 })
 
 // ============================================================================

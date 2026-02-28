@@ -263,6 +263,22 @@ export interface ServerSDKFetchResponse {
  * ```
  */
 export function createServerSDK(context: RuntimeContext): ServerSDK {
+  /**
+   * Build callback headers for SDK → API requests.
+   * Uses scoped callback tokens when available, falls back to installation ID only.
+   */
+  function getCallbackHeaders(scope: 'webhooks' | 'settings'): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-App-Installation-Id': context.app.installationId,
+    }
+    const token = context.callbackTokens?.[scope]
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+    return headers
+  }
+
   // Create SDK fetch function that will be shared by all SDK methods
   const sdkFetch = async (options: ServerSDKFetchOptions): Promise<ServerSDKFetchResponse> => {
     console.log('[ServerSDK] fetch:', options.method, options.url)
@@ -473,10 +489,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
         const response = await sdkFetch({
           method: 'POST',
           url: `${context.apiUrl}/api/v1/apps/webhooks`,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-App-Installation-Id': context.app.installationId,
-          },
+          headers: getCallbackHeaders('webhooks'),
           body: {
             fileName: options.fileName,
             metadata: options.metadata,
@@ -516,10 +529,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
       const response = await sdkFetch({
         method: 'PATCH',
         url: `${context.apiUrl}/api/v1/apps/webhooks/${handlerId}`,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-App-Installation-Id': context.app.installationId,
-        },
+        headers: getCallbackHeaders('webhooks'),
         body: updates,
       })
 
@@ -537,9 +547,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
       const response = await sdkFetch({
         method: 'DELETE',
         url: `${context.apiUrl}/api/v1/apps/webhooks/${handlerId}`,
-        headers: {
-          'X-App-Installation-Id': context.app.installationId,
-        },
+        headers: getCallbackHeaders('webhooks'),
       })
 
       if (response.status !== 200) {
@@ -557,9 +565,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
         const response = await sdkFetch({
           method: 'GET',
           url: `${context.apiUrl}/api/v1/apps/webhooks`,
-          headers: {
-            'X-App-Installation-Id': context.app.installationId,
-          },
+          headers: getCallbackHeaders('webhooks'),
         })
 
         if (response.status !== 200) {
@@ -592,9 +598,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
         const response = await sdkFetch({
           method: 'GET',
           url: `${context.apiUrl}/api/v1/apps/settings/${key}`,
-          headers: {
-            'X-App-Installation-Id': context.app.installationId,
-          },
+          headers: getCallbackHeaders('settings'),
         })
 
         if (response.status !== 200) {
@@ -623,9 +627,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
         const response = await sdkFetch({
           method: 'GET',
           url: `${context.apiUrl}/api/v1/apps/settings`,
-          headers: {
-            'X-App-Installation-Id': context.app.installationId,
-          },
+          headers: getCallbackHeaders('settings'),
         })
 
         if (response.status !== 200) {
@@ -654,10 +656,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
         const response = await sdkFetch({
           method: 'PUT',
           url: `${context.apiUrl}/api/v1/apps/settings/${key}`,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-App-Installation-Id': context.app.installationId,
-          },
+          headers: getCallbackHeaders('settings'),
           body: { value },
         })
 
@@ -684,10 +683,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
         const response = await sdkFetch({
           method: 'POST',
           url: `${context.apiUrl}/api/v1/apps/settings`,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-App-Installation-Id': context.app.installationId,
-          },
+          headers: getCallbackHeaders('settings'),
           body: { settings },
         })
 

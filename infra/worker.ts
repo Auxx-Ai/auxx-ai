@@ -27,4 +27,10 @@ export const worker = $dev
         lambdaExecutorUrl: serverFunctionExecutorUrl,
       }),
       link: [...getSecretsForLinking('worker'), rds, redis, publicBucket, privateBucket],
+      permissions: [
+        {
+          actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+          resources: ['*'],
+        },
+      ],
     })

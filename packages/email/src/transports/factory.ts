@@ -45,12 +45,19 @@ export class TransportFactory {
       configService.get<string>('AWS_SES_SECRET_ACCESS_KEY') ||
       configService.get<string>('AWS_SECRET_ACCESS_KEY')
 
-    const sesv2 = new SESv2Client({
+    const useExplicitCredentials = !!(accessKeyId && secretAccessKey)
+
+    logger.info('Creating SESv2 transporter', {
       region,
-      credentials: accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined,
+      credentialSource: useExplicitCredentials ? 'explicit' : 'default-chain (IAM role)',
+      hasAccessKeyId: !!accessKeyId,
+      hasSecretAccessKey: !!secretAccessKey,
     })
 
-    logger.info('Creating SESv2 transporter', { region })
+    const sesv2 = new SESv2Client({
+      region,
+      credentials: useExplicitCredentials ? { accessKeyId, secretAccessKey } : undefined,
+    })
 
     return nodemailer.createTransport({
       SES: { sesClient: sesv2, SendEmailCommand },
