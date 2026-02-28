@@ -1,4 +1,4 @@
-// packages/lib/src/email/nodemailer-service.ts
+// packages/email/src/mailer/nodemailer-service.ts
 
 import { configService } from '@auxx/credentials'
 import { createScopedLogger } from '@auxx/logger'
@@ -8,28 +8,70 @@ import type { EmailOptions, EmailResult } from '../types'
 
 const logger = createScopedLogger('nodemailer-service')
 
+/** All config keys that affect transport creation — derived from TransportFactory */
+const TRANSPORT_CONFIG_KEYS = [
+  // Provider selection
+  'EMAIL_PROVIDER',
+  // SES
+  'AWS_REGION',
+  'AWS_SES_ACCESS_KEY_ID',
+  'AWS_SES_SECRET_ACCESS_KEY',
+  'AWS_ACCESS_KEY_ID',
+  'AWS_SECRET_ACCESS_KEY',
+  // Mailgun
+  'MAILGUN_API_KEY',
+  'SYSTEM_FROM_EMAIL',
+  'MAILGUN_DOMAIN',
+  'MAILGUN_REGION',
+  // SMTP
+  'SMTP_HOST',
+  'SMTP_PORT',
+  'SMTP_SECURE',
+  'SMTP_USER',
+  'SMTP_PASS',
+] as const
+
 /**
- * Lightweight wrapper around Nodemailer with lazy verification and a unified send API
+ * Lightweight wrapper around Nodemailer with lazy verification and a unified send API.
+ * Automatically recreates the transport when email config changes.
  */
 export class NodemailerService {
-  private static instance: NodemailerService
+  private static instance: NodemailerService | null = null
+  private static configFingerprint: string | null = null
   private transporter: nodemailer.Transporter
   private initialized = false
 
-  /**
-   * Private constructor to enforce singleton usage
-   */
   private constructor() {
     this.transporter = TransportFactory.create()
   }
 
+  /** Build a fingerprint from all transport-relevant config values */
+  private static getConfigFingerprint(): string {
+    return TRANSPORT_CONFIG_KEYS.map((k) => `${k}=${configService.get(k) ?? ''}`).join('|')
+  }
+
   /**
-   * Get singleton instance of the email service
+   * Get singleton instance of the email service.
+   * Recreates the transport if any relevant config has changed.
    */
   public static getInstance(): NodemailerService {
+    const fingerprint = NodemailerService.getConfigFingerprint()
+
+    if (NodemailerService.instance && fingerprint !== NodemailerService.configFingerprint) {
+      logger.info('Email config changed, recreating transport')
+      try {
+        NodemailerService.instance.transporter.close()
+      } catch {
+        // Ignore close errors — transport may not support close or may already be closed
+      }
+      NodemailerService.instance = null
+    }
+
     if (!NodemailerService.instance) {
       NodemailerService.instance = new NodemailerService()
+      NodemailerService.configFingerprint = fingerprint
     }
+
     return NodemailerService.instance
   }
 

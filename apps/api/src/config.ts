@@ -39,20 +39,5 @@ export const isDevelopment = NODE_ENV === 'development'
 /** Is production environment */
 export const isProduction = NODE_ENV === 'production'
 
-/** Custom S3 endpoint for non-AWS providers (R2, DO Spaces, etc.) */
-export const S3_ENDPOINT = configService.get<string>('S3_ENDPOINT')
-
-/** AWS Region for S3 */
-export const AWS_REGION = configService.get<string>('S3_REGION') || 'us-west-1'
-
-/** AWS Access Key ID for S3 */
-export const AWS_ACCESS_KEY_ID = configService.get<string>('S3_ACCESS_KEY_ID')
-
-/** AWS Secret Access Key for S3 */
-export const AWS_SECRET_ACCESS_KEY = configService.get<string>('S3_SECRET_ACCESS_KEY')
-
-/** S3 Bucket name for app bundles (private) */
-export const S3_BUCKET_NAME = configService.get<string>('S3_PRIVATE_BUCKET') || 'auxx-private-local'
-
 /** Development user ID for bypassing auth in development mode */
 export const DEV_USER_ID = configService.get<string>('DEV_USER_ID')

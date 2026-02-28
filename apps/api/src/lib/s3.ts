@@ -28,9 +28,11 @@ export function getS3Client(): S3Client {
       hasSecretKey: !!secretAccessKey,
     })
 
+    const forcePathStyle = configService.get<string>('S3_FORCE_PATH_STYLE') !== 'false'
+
     _s3Client = new S3Client({
       region,
-      ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
+      ...(endpoint ? { endpoint, forcePathStyle } : {}),
       credentials: accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined,
     })
   }

@@ -12,8 +12,6 @@ import { authMiddleware } from '../middleware/auth'
 import { requireScope } from '../middleware/scope'
 import type { AppContext } from '../types/context'
 
-// generateBundleUploadUrls
-
 const versions = new Hono<AppContext>()
 
 versions.use('/*', authMiddleware)

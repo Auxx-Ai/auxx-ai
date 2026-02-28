@@ -127,8 +127,11 @@ apps/lambda/
 
 ### Production
 - `NODE_ENV=production`
-- `AWS_REGION=us-west-1`
-- `BUNDLES_BUCKET_NAME=auxx-private-[stage]`
+- `S3_REGION=us-west-1`
+- `S3_PRIVATE_BUCKET=auxx-private-[stage]`
+- `S3_ACCESS_KEY_ID` (self-hosted only, omit for AWS IAM)
+- `S3_SECRET_ACCESS_KEY` (self-hosted only, omit for AWS IAM)
+- `S3_ENDPOINT` (self-hosted only, for non-AWS S3)
 
 ## Monitoring
 

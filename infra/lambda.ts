@@ -27,7 +27,7 @@ export const serverFunctionExecutor = $dev
       // Environment variables
       environment: {
         NODE_ENV: $dev ? 'development' : 'production',
-        BUNDLES_BUCKET_NAME: privateBucket.name, // Server bundles stored in private bucket
+        S3_PRIVATE_BUCKET: privateBucket.name, // Server bundles stored in private bucket
       },
 
       // Link resources (NOT secrets - extensions should not access platform secrets)
