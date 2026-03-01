@@ -27,7 +27,7 @@ import type { FunctionExecutionEvent } from '../validator.ts'
  * Uses FunctionExecutionEvent type from validator for type safety
  */
 export async function executeServerFunction(
-  options: Omit<FunctionExecutionEvent, 'context' | 'bundleKey'> & {
+  options: Omit<FunctionExecutionEvent, 'context' | 'serverBundleSha'> & {
     bundleCode: string
     context: RuntimeContext
   }

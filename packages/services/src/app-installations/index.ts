@@ -1,5 +1,5 @@
-// apps/api/src/services/app-installations/index.ts
+// packages/services/src/app-installations/index.ts
 
 export { getDevInstallation } from './get-dev-installation'
-export { getInstallationBundle } from './get-installation-bundle'
+export { getInstallationDeployment } from './get-installation-deployment'
 export { getInstalledApps } from './get-installed-apps'

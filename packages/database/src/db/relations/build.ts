@@ -4,12 +4,12 @@
 import { relations } from 'drizzle-orm/relations'
 import {
   App,
+  AppBundle,
+  AppDeployment,
   AppEventLog,
   AppInstallation,
   AppMarketplaceImage,
   AppSetting,
-  AppVersion,
-  AppVersionBundle,
   AppWebhookHandler,
   ConnectionDefinition,
   DeveloperAccount,
@@ -42,7 +42,6 @@ export const developerAccountMemberRelations = relations(
       fields: [DeveloperAccountMember.userId],
       references: [User.id],
     }),
-    createdVersions: many(AppVersion),
   })
 )
 
@@ -64,25 +63,42 @@ export const appRelations = relations(App, ({ one, many }) => ({
     fields: [App.oauthApplicationId],
     references: [oauthApplication.id],
   }),
-  versions: many(AppVersion),
+  bundles: many(AppBundle),
+  deployments: many(AppDeployment),
   marketplaceImages: many(AppMarketplaceImage),
   connectionDefinitions: many(ConnectionDefinition),
   eventLogs: many(AppEventLog),
-  // App connections via WorkflowCredentials
   connections: many(WorkflowCredentials),
 }))
 
-/** Relations for AppVersion */
-export const appVersionRelations = relations(AppVersion, ({ one, many }) => ({
+/** Relations for AppBundle */
+export const appBundleRelations = relations(AppBundle, ({ one }) => ({
   app: one(App, {
-    fields: [AppVersion.appId],
+    fields: [AppBundle.appId],
     references: [App.id],
   }),
-  createdBy: one(DeveloperAccountMember, {
-    fields: [AppVersion.createdById],
-    references: [DeveloperAccountMember.id],
+}))
+
+/** Relations for AppDeployment */
+export const appDeploymentRelations = relations(AppDeployment, ({ one, many }) => ({
+  app: one(App, {
+    fields: [AppDeployment.appId],
+    references: [App.id],
   }),
-  bundles: many(AppVersionBundle),
+  clientBundle: one(AppBundle, {
+    fields: [AppDeployment.clientBundleId],
+    references: [AppBundle.id],
+    relationName: 'clientBundle',
+  }),
+  serverBundle: one(AppBundle, {
+    fields: [AppDeployment.serverBundleId],
+    references: [AppBundle.id],
+    relationName: 'serverBundle',
+  }),
+  targetOrganization: one(Organization, {
+    fields: [AppDeployment.targetOrganizationId],
+    references: [Organization.id],
+  }),
   eventLogs: many(AppEventLog),
   settings: many(AppSetting),
 }))
@@ -97,11 +113,10 @@ export const appInstallationRelations = relations(AppInstallation, ({ one, many 
     fields: [AppInstallation.organizationId],
     references: [Organization.id],
   }),
-  currentVersion: one(AppVersion, {
-    fields: [AppInstallation.currentVersionId],
-    references: [AppVersion.id],
+  currentDeployment: one(AppDeployment, {
+    fields: [AppInstallation.currentDeploymentId],
+    references: [AppDeployment.id],
   }),
-  // App connections via WorkflowCredentials
   connections: many(WorkflowCredentials),
   webhookHandlers: many(AppWebhookHandler),
   settings: many(AppSetting),
@@ -113,9 +128,9 @@ export const appSettingRelations = relations(AppSetting, ({ one }) => ({
     fields: [AppSetting.appInstallationId],
     references: [AppInstallation.id],
   }),
-  appVersion: one(AppVersion, {
-    fields: [AppSetting.appVersionId],
-    references: [AppVersion.id],
+  appDeployment: one(AppDeployment, {
+    fields: [AppSetting.appDeploymentId],
+    references: [AppDeployment.id],
   }),
 }))
 
@@ -151,14 +166,6 @@ export const connectionDefinitionRelations = relations(ConnectionDefinition, ({ 
   }),
 }))
 
-/** Relations for AppVersionBundle */
-export const appVersionBundleRelations = relations(AppVersionBundle, ({ one }) => ({
-  appVersion: one(AppVersion, {
-    fields: [AppVersionBundle.appVersionId],
-    references: [AppVersion.id],
-  }),
-}))
-
 /** Relations for AppEventLog */
 export const appEventLogRelations = relations(AppEventLog, ({ one }) => ({
   app: one(App, {
@@ -169,9 +176,9 @@ export const appEventLogRelations = relations(AppEventLog, ({ one }) => ({
     fields: [AppEventLog.organizationId],
     references: [Organization.id],
   }),
-  appVersion: one(AppVersion, {
-    fields: [AppEventLog.appVersionId],
-    references: [AppVersion.id],
+  appDeployment: one(AppDeployment, {
+    fields: [AppEventLog.appDeploymentId],
+    references: [AppDeployment.id],
   }),
 }))
 

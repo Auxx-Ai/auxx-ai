@@ -20,6 +20,7 @@ interface MessageClientWrapperProps {
   appInstallationId: string
   appTitle: string
   organizationId: string
+  clientBundleSha: string
   connectionDefinition?: {
     label: string
     global: boolean
@@ -37,6 +38,7 @@ export function MessageClientWrapper({
   appInstallationId,
   appTitle,
   organizationId,
+  clientBundleSha,
   connectionDefinition,
 }: MessageClientWrapperProps) {
   const { store } = useInternalAppsContext()
@@ -90,8 +92,8 @@ export function MessageClientWrapper({
     // Load extension bundle and register with AppStore only when ready
     const loadBundle = async () => {
       try {
-        // Get bundle URL (API will redirect to S3 presigned URL)
-        const bundleUrl = `${apiUrl}/organizations/${orgHandle}/apps/${appId}/installations/${appInstallationId}/bundle`
+        // Content-addressed bundle URL — same SHA always returns same content
+        const bundleUrl = `${apiUrl}/bundles/${appId}/client/${clientBundleSha}.js`
 
         // Initialize with context (passed to platform runtime via URL params)
         await client.initialize(bundleUrl, {
@@ -136,6 +138,7 @@ export function MessageClientWrapper({
     appInstallationId,
     appTitle,
     organizationId,
+    clientBundleSha,
     stableConnectionDef,
     store,
     apiUrl,

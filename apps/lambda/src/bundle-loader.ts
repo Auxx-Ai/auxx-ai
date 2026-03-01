@@ -27,14 +27,19 @@ const s3Client = new S3Client({
 /**
  * Download bundle from S3 or load from filesystem (dev)
  */
-export async function loadBundle(bundleKey: string): Promise<string> {
+export async function loadBundle(appId: string, serverBundleSha: string): Promise<string> {
+  const s3Key = `apps/${appId}/bundles/server/${serverBundleSha}.js`
   const localBundlesPath = Deno.env.get('LOCAL_BUNDLES_PATH')
 
   // Development: Load from filesystem
   if (localBundlesPath) {
-    console.log('[BundleLoader] Loading from filesystem:', { bundleKey, localBundlesPath })
+    console.log('[BundleLoader] Loading from filesystem:', {
+      appId,
+      serverBundleSha,
+      localBundlesPath,
+    })
 
-    const filePath = `${localBundlesPath}/${bundleKey}`
+    const filePath = `${localBundlesPath}/${s3Key}`
 
     try {
       const bundleCode = await Deno.readTextFile(filePath)
@@ -56,24 +61,24 @@ export async function loadBundle(bundleKey: string): Promise<string> {
     throw new Error('S3_PRIVATE_BUCKET environment variable not set')
   }
 
-  console.log('[BundleLoader] Downloading from S3:', { bucket: bucketName, key: bundleKey })
+  console.log('[BundleLoader] Downloading from S3:', { bucket: bucketName, key: s3Key })
 
   const command = new GetObjectCommand({
     Bucket: bucketName,
-    Key: bundleKey,
+    Key: s3Key,
   })
 
   const response = await s3Client.send(command)
 
   if (!response.Body) {
-    throw new Error(`Bundle not found in S3: ${bundleKey}`)
+    throw new Error(`Bundle not found in S3: ${s3Key}`)
   }
 
   const bundleCode = await response.Body.transformToString()
 
   console.log('[BundleLoader] Bundle downloaded from S3:', {
     size: bundleCode.length,
-    key: bundleKey,
+    key: s3Key,
   })
 
   return bundleCode

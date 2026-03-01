@@ -1,13 +1,9 @@
 // apps/api/src/routes/organizations/bundles.ts
 
-// Service imports
-import { getInstallationBundle } from '@auxx/services/app-installations'
+import { getInstallationDeployment } from '@auxx/services/app-installations'
 import { Hono } from 'hono'
-import { generateBundleDownloadUrls } from '../../lib/generate-bundle-download-urls'
 import { ERROR_STATUS_MAP, errorResponse } from '../../lib/response'
 import type { AppContext } from '../../types/context'
-
-// import { generateBundleDownloadUrls } from '@auxx/services/app-bundles'
 
 const bundles = new Hono<AppContext>()
 
@@ -15,99 +11,56 @@ const bundles = new Hono<AppContext>()
 
 /**
  * GET /api/v1/organizations/:handle/apps/:appId/installations/:installationId/bundle
- * Direct download of client bundle (with CDN caching)
- *
- * Default behavior: Returns client bundle
- * For server bundle, use /bundle/server endpoint
+ * Redirect to stable, CDN-friendly client bundle URL.
  */
 bundles.get('/apps/:appId/installations/:installationId/bundle', async (c) => {
   const organization = c.get('organization')
-  const organizationHandle = organization.handle
   const appId = c.req.param('appId')
   const installationId = c.req.param('installationId')
 
-  // Organization access already verified by organizationMiddleware
-
-  // Get installation with current version bundle
-  const installationResult = await getInstallationBundle({
+  const result = await getInstallationDeployment({
     installationId,
-    organizationHandle: organizationHandle!,
+    organizationHandle: organization.handle!,
     appId,
   })
 
-  if (installationResult.isErr()) {
-    const error = installationResult.error
+  if (result.isErr()) {
+    const error = result.error
     const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
     return c.json(errorResponse('INTERNAL_ERROR', error.message), statusCode)
   }
 
-  const { bundle } = installationResult.value
+  const { clientBundleSha } = result.value
 
-  // Generate download URLs
-  const urlsResult = await generateBundleDownloadUrls({
-    bundleId: bundle.id,
-  })
-
-  if (urlsResult.isErr()) {
-    const error = urlsResult.error
-    const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
-    return c.json(errorResponse('INTERNAL_ERROR', error.message), statusCode)
-  }
-
-  // Set cache headers (1 hour cache)
-  // c.header('Cache-Control', 'public, max-age=3600')
-  c.header('Cache-Control', 'no-cache, no-store, must-revalidate')
-
-  c.header('X-Bundle-Id', bundle.id)
-
-  // Redirect to S3 presigned URL for client bundle (CDN will cache the response)
-  return c.redirect(urlsResult.value.urls.clientBundleDownloadUrl, 302)
+  // Redirect to the stable, immutable bundle URL
+  return c.redirect(`/api/v1/bundles/${appId}/client/${clientBundleSha}.js`, 302)
 })
 
 /**
  * GET /api/v1/organizations/:handle/apps/:appId/installations/:installationId/bundle/server
- * Direct download of server bundle (with CDN caching)
+ * Redirect to stable server bundle URL.
  */
 bundles.get('/apps/:appId/installations/:installationId/bundle/server', async (c) => {
   const organization = c.get('organization')
-  const organizationHandle = organization.handle
   const appId = c.req.param('appId')
   const installationId = c.req.param('installationId')
 
-  // Organization access already verified by organizationMiddleware
-
-  // Get installation with current version bundle
-  const installationResult = await getInstallationBundle({
+  const result = await getInstallationDeployment({
     installationId,
-    organizationHandle: organizationHandle!,
+    organizationHandle: organization.handle!,
     appId,
   })
 
-  if (installationResult.isErr()) {
-    const error = installationResult.error
+  if (result.isErr()) {
+    const error = result.error
     const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
     return c.json(errorResponse('INTERNAL_ERROR', error.message), statusCode)
   }
 
-  const { bundle } = installationResult.value
+  const { serverBundleSha } = result.value
 
-  // Generate download URLs
-  const urlsResult = await generateBundleDownloadUrls({
-    bundleId: bundle.id,
-  })
-
-  if (urlsResult.isErr()) {
-    const error = urlsResult.error
-    const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
-    return c.json(errorResponse('INTERNAL_ERROR', error.message), statusCode)
-  }
-
-  // Set cache headers (1 hour cache)
-  c.header('Cache-Control', 'public, max-age=3600')
-  c.header('X-Bundle-Id', bundle.id)
-
-  // Redirect to S3 presigned URL for server bundle (CDN will cache the response)
-  return c.redirect(urlsResult.value.urls.serverBundleDownloadUrl, 302)
+  // Redirect to the stable, immutable bundle URL
+  return c.redirect(`/api/v1/bundles/${appId}/server/${serverBundleSha}.js`, 302)
 })
 
 export default bundles

@@ -89,7 +89,7 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
       apps: installations.map((i) => ({
         slug: i.app.slug,
         type: i.installationType,
-        version: i.currentVersion?.versionString,
+        version: i.currentDeployment?.version,
       })),
     }
   )
@@ -104,61 +104,64 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
         {!isLoading &&
           !error &&
           organizationId &&
-          installations.map((installation) => {
-            const isDevLoggingEnabled = false //installation.installationType === 'development'
+          installations
+            .filter((i) => i.currentDeployment?.clientBundleSha)
+            .map((installation) => {
+              const isDevLoggingEnabled = false //installation.installationType === 'development'
 
-            return (
-              <Fragment key={installation.installationId}>
-                {/* Error boundary isolates failures - one bad extension won't crash others */}
-                <ErrorBoundary
-                  fallback={null} // Silent failure - extension just won't load
-                  onError={(error) => {
-                    console.error(`[Extensions] ${installation.app.title} failed:`, error)
+              return (
+                <Fragment key={installation.installationId}>
+                  {/* Error boundary isolates failures - one bad extension won't crash others */}
+                  <ErrorBoundary
+                    fallback={null} // Silent failure - extension just won't load
+                    onError={(error) => {
+                      console.error(`[Extensions] ${installation.app.title} failed:`, error)
 
-                    // Show toast in dev mode for better debugging experience
-                    if (isDevLoggingEnabled) {
-                      toastError({
-                        title: `Extension error: ${installation.app.title}`,
-                        description: error.message,
-                      })
-                    }
-                  }}>
-                  {/* 1. Create MessageClient for this extension (Plan 3) */}
-                  <MessageClientWrapper
-                    appId={installation.app.id}
-                    appSlug={installation.app.slug}
-                    appInstallationId={installation.installationId}
-                    appTitle={installation.app.title}
-                    organizationId={organizationId}
-                    connectionDefinition={installation.connectionDefinition}
-                  />
-
-                  {/* 2. Set up data handlers for this extension (Plan 4) */}
-                  <Suspense>
-                    <ExtensionDataHandlerContextProvider
+                      // Show toast in dev mode for better debugging experience
+                      if (isDevLoggingEnabled) {
+                        toastError({
+                          title: `Extension error: ${installation.app.title}`,
+                          description: error.message,
+                        })
+                      }
+                    }}>
+                    {/* 1. Create MessageClient for this extension (Plan 3) */}
+                    <MessageClientWrapper
                       appId={installation.app.id}
+                      appSlug={installation.app.slug}
                       appInstallationId={installation.installationId}
-                      isDevLoggingEnabled={isDevLoggingEnabled}>
-                      {/* Listen for surface registration */}
-                      <SurfacesDataHandler />
+                      appTitle={installation.app.title}
+                      organizationId={organizationId}
+                      clientBundleSha={installation.currentDeployment!.clientBundleSha}
+                      connectionDefinition={installation.connectionDefinition}
+                    />
 
-                      {/* Listen for asset registration */}
-                      <AssetsDataHandler />
+                    {/* 2. Set up data handlers for this extension (Plan 4) */}
+                    <Suspense>
+                      <ExtensionDataHandlerContextProvider
+                        appId={installation.app.id}
+                        appInstallationId={installation.installationId}
+                        isDevLoggingEnabled={isDevLoggingEnabled}>
+                        {/* Listen for surface registration */}
+                        <SurfacesDataHandler />
 
-                      {/* Listen for render updates */}
-                      <RenderDataHandler />
+                        {/* Listen for asset registration */}
+                        <AssetsDataHandler />
 
-                      {/* Listen for trigger completion */}
-                      <TriggerDataHandler />
+                        {/* Listen for render updates */}
+                        <RenderDataHandler />
 
-                      {/* Listen for dialog render/unrender */}
-                      <DialogDataHandler />
-                    </ExtensionDataHandlerContextProvider>
-                  </Suspense>
-                </ErrorBoundary>
-              </Fragment>
-            )
-          })}
+                        {/* Listen for trigger completion */}
+                        <TriggerDataHandler />
+
+                        {/* Listen for dialog render/unrender */}
+                        <DialogDataHandler />
+                      </ExtensionDataHandlerContextProvider>
+                    </Suspense>
+                  </ErrorBoundary>
+                </Fragment>
+              )
+            })}
 
         {/* Main app content */}
         {children}

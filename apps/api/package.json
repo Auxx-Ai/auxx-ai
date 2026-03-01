@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --conditions source --env-file .env --import tsx/esm --watch src/index.ts",
+    "dev": "node --conditions source --env-file ../../.env --env-file .env --import tsx/esm --watch src/index.ts",
     "build": "tsdown",
     "build:platform-runtime": "NODE_ENV=development tsx build-platform-runtime.ts",
     "dev:platform-runtime": "NODE_ENV=development tsx build-platform-runtime.ts --watch --include ../../packages/sdk/src --include ../../packages/sdk/lib",

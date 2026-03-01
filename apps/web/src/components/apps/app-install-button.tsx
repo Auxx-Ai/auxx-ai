@@ -1,4 +1,4 @@
-// apps-web/src/components/apps/app-install-button.tsx
+// apps/web/src/components/apps/app-install-button.tsx
 
 'use client'
 
@@ -24,12 +24,12 @@ type Props = {
   appSlug: string
   isInstalled: boolean
   installationType?: 'development' | 'production'
-  availableVersions: Array<{
+  availableDeployments: Array<{
     id: string
-    versionString: string
-    versionType: 'dev' | 'prod'
+    version: string | null
+    deploymentType: 'development' | 'production'
     status: string
-    releasedAt: Date | null
+    createdAt: Date
   }>
 }
 
@@ -40,7 +40,7 @@ export default function AppInstallButton({
   appSlug,
   isInstalled,
   installationType,
-  availableVersions,
+  availableDeployments,
 }: Props) {
   const router = useRouter()
   const utils = api.useUtils()
@@ -67,12 +67,12 @@ export default function AppInstallButton({
   })
 
   /**
-   * Handle install for a specific version
+   * Handle install for a specific deployment
    */
-  const handleInstall = async (versionId: string) => {
+  const handleInstall = async (deploymentId: string) => {
     await install.mutateAsync({
       appSlug,
-      versionId,
+      deploymentId,
     })
     posthog?.capture('app_installed', { app_slug: appSlug })
     await utils.apps.getBySlug.invalidate({ appSlug })
@@ -107,8 +107,10 @@ export default function AppInstallButton({
     )
   }
 
-  // Get recommended version (first active version)
-  const recommendedVersion = availableVersions.find((v) => v.status === 'active')
+  // Get recommended deployment (first installable deployment)
+  const recommendedDeployment = availableDeployments.find((d) =>
+    d.deploymentType === 'development' ? d.status === 'active' : d.status === 'published'
+  )
 
   // Not installed - show split button with dropdown
   return (
@@ -117,10 +119,10 @@ export default function AppInstallButton({
       <Button
         variant='default'
         size='sm'
-        onClick={() => recommendedVersion && handleInstall(recommendedVersion.id)}
+        onClick={() => recommendedDeployment && handleInstall(recommendedDeployment.id)}
         loading={isPending}
         loadingText='Installing...'
-        disabled={!recommendedVersion}
+        disabled={!recommendedDeployment}
         className='rounded-r-none border-r-0'>
         Install
       </Button>
@@ -137,35 +139,42 @@ export default function AppInstallButton({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align='end' className='w-[250px]'>
-          {availableVersions.map((version) => (
-            <DropdownMenuItem
-              key={version.id}
-              onClick={() => handleInstall(version.id)}
-              disabled={version.status !== 'active'}
-              className=''>
-              <div className='flex items-center justify-between w-full'>
-                <div className='flex items-center gap-2'>
-                  <span className='font-medium'>v{version.versionString}</span>
-                  {version.status !== 'active' && (
-                    <Badge variant='outline' className='text-xs'>
-                      {version.status}
+          {availableDeployments.map((deployment) => {
+            const isInstallable =
+              deployment.deploymentType === 'development'
+                ? deployment.status === 'active'
+                : deployment.status === 'published'
+
+            return (
+              <DropdownMenuItem
+                key={deployment.id}
+                onClick={() => handleInstall(deployment.id)}
+                disabled={!isInstallable}
+                className=''>
+                <div className='flex items-center justify-between w-full'>
+                  <div className='flex items-center gap-2'>
+                    <span className='font-medium'>
+                      {deployment.version ? `v${deployment.version}` : 'Latest'}
+                    </span>
+                    {!isInstallable && (
+                      <Badge variant='outline' className='text-xs'>
+                        {deployment.status}
+                      </Badge>
+                    )}
+                    <div className='text-xs text-muted-foreground'>
+                      {format(new Date(deployment.createdAt), 'MMM d, yyyy')}
+                    </div>
+                  </div>
+                  {deployment.deploymentType === 'development' && (
+                    <Badge variant='secondary' className='text-xs'>
+                      <Code className='size-3' />
+                      Dev
                     </Badge>
                   )}
-                  <div className='text-xs text-muted-foreground'>
-                    {version.releasedAt
-                      ? format(new Date(version.releasedAt), 'MMM d, yyyy')
-                      : 'Not released'}
-                  </div>
                 </div>
-                {version.versionType === 'dev' && (
-                  <Badge variant='secondary' className='text-xs'>
-                    <Code className='size-3' />
-                    Dev
-                  </Badge>
-                )}
-              </div>
-            </DropdownMenuItem>
-          ))}
+              </DropdownMenuItem>
+            )
+          })}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

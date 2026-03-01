@@ -32,15 +32,11 @@ export type ExecutionContext =
 
 /**
  * Log app execution (server function or workflow block) with console logs
- * Supports both server function and workflow block executions
- *
- * @param params - Execution context and console logs
- * @returns Result with log entry or error
  */
 export async function logAppExecution(params: {
   appId: string
   organizationId: string
-  appVersionId: string
+  appDeploymentId: string
   userId: string
   installationId: string
   consoleLogs: ConsoleLog[]
@@ -50,7 +46,7 @@ export async function logAppExecution(params: {
   const {
     appId,
     organizationId,
-    appVersionId,
+    appDeploymentId,
     userId,
     installationId,
     consoleLogs,
@@ -63,7 +59,6 @@ export async function logAppExecution(params: {
     return ok({ logged: false })
   }
 
-  // Build event type and data based on execution type
   const eventType =
     execution.type === 'server-function' ? 'server-function-execution' : 'workflow-block-execution'
 
@@ -94,7 +89,7 @@ export async function logAppExecution(params: {
       .values({
         appId,
         organizationId,
-        appVersionId,
+        appDeploymentId,
         userId,
         eventType,
         eventData,
@@ -107,9 +102,7 @@ export async function logAppExecution(params: {
     'log-app-execution'
   )
 
-  if (insertResult.isErr()) {
-    return insertResult
-  }
+  if (insertResult.isErr()) return insertResult
 
   const [logEntry] = insertResult.value
 
@@ -119,14 +112,11 @@ export async function logAppExecution(params: {
 /**
  * Log server function execution with console logs
  * Backward compatibility wrapper for existing code
- *
- * @param params - Execution context and console logs
- * @returns Result with log entry or error
  */
 export async function logServerFunctionExecution(params: {
   appId: string
   organizationId: string
-  appVersionId: string
+  appDeploymentId: string
   userId: string
   functionIdentifier: string
   installationId: string
@@ -136,7 +126,7 @@ export async function logServerFunctionExecution(params: {
   return logAppExecution({
     appId: params.appId,
     organizationId: params.organizationId,
-    appVersionId: params.appVersionId,
+    appDeploymentId: params.appDeploymentId,
     userId: params.userId,
     installationId: params.installationId,
     consoleLogs: params.consoleLogs,

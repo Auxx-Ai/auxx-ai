@@ -20,7 +20,7 @@ import type { EventExecutionEvent } from '../validator.ts'
  * Uses EventExecutionEvent type from validator for type safety
  */
 export async function executeEventHandler(
-  options: Omit<EventExecutionEvent, 'context' | 'bundleKey'> & {
+  options: Omit<EventExecutionEvent, 'context' | 'serverBundleSha'> & {
     bundleCode: string
     context: RuntimeContext
   }

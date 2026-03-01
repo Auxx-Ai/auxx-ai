@@ -485,14 +485,14 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
 
     try {
       // Import services dynamically to avoid circular dependencies
-      const { getInstallationBundle } = await import('@auxx/services/app-installations')
+      const { getInstallationDeployment } = await import('@auxx/services/app-installations')
       const { resolveAppConnectionForRuntime } = await import('@auxx/services/app-connections')
       const { prepareLambdaContext, invokeLambdaExecutor } = await import(
         '@auxx/services/lambda-execution'
       )
 
-      // 1. Get app installation and bundle
-      const installationResult = await getInstallationBundle({
+      // 1. Get app installation and deployment
+      const installationResult = await getInstallationDeployment({
         installationId,
         organizationHandle: workflowContext.organization.handle!,
         appId,
@@ -500,12 +500,12 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
 
       if (installationResult.isErr()) {
         const error = installationResult.error
-        throw new Error(`Failed to get installation bundle: ${error.message}`)
+        throw new Error(`Failed to get installation deployment: ${error.message}`)
       }
 
-      const { installation, bundle } = installationResult.value
+      const { installation, serverBundleSha } = installationResult.value
 
-      if (!bundle.serverBundleS3Key) {
+      if (!serverBundleSha) {
         throw new Error('App does not have a server bundle')
       }
 
@@ -514,7 +514,6 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
         appId,
         organizationId: workflowContext.organization.id,
         userId: workflowContext.user.id,
-        versionMajor: installation.currentVersion?.major || 1,
       })
 
       if (connectionsResult.isErr()) {
@@ -542,7 +541,7 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
         caller: 'workflow-engine',
         payload: {
           type: 'workflow-block',
-          bundleKey: bundle.serverBundleS3Key,
+          serverBundleSha,
           blockId,
           workflowContext,
           workflowInput,

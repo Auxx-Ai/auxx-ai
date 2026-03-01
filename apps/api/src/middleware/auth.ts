@@ -3,66 +3,16 @@
 import { database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { createMiddleware } from 'hono/factory'
-import { DEV_USER_ID, isDevelopment } from '../config'
 import { extractBearerToken, validateBetterAuthToken } from '../lib/jwt-validator'
 import { errorResponse } from '../lib/response'
 import type { AppContext } from '../types/context'
 
 /**
- * Development mode authentication bypass
- * Loads a hardcoded user from the database and attaches to context
- */
-async function handleDevAuth(c: any, next: any) {
-  if (!DEV_USER_ID) {
-    return null
-  }
-
-  // Load dev user from database
-  const users = await database
-    .select()
-    .from(schema.User)
-    .where(eq(schema.User.email, DEV_USER_ID))
-    .limit(1)
-
-  const user = users[0]
-
-  if (!user) {
-    return c.json(
-      errorResponse(
-        'DEV_CONFIG_ERROR',
-        `Development user not found: ${DEV_USER_ID}. Please set DEV_USER_ID to a valid user ID in your .env file.`
-      ),
-      500
-    )
-  }
-
-  // Attach to context with developer scope
-  c.set('userId', user.id)
-  c.set('user', user)
-  c.set('scopes', ['developer', 'apps:read', 'apps:write'])
-  c.set('token', {
-    userId: user.id,
-    email: user.email,
-    scopes: ['developer', 'apps:read', 'apps:write'],
-    exp: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
-  })
-
-  await next()
-  return true
-}
-
-/**
  * Authentication middleware
- * Validates JWT token and loads user from database
+ * Validates OAuth2 access token via better-auth userinfo endpoint
  * Attaches user and token data to context
  */
 export const authMiddleware = createMiddleware<AppContext>(async (c, next) => {
-  // Try development auth first
-  if (isDevelopment) {
-    const handled = await handleDevAuth(c, next)
-    if (handled) return
-  }
-
   const authHeader = c.req.header('Authorization')
   const token = extractBearerToken(authHeader)
 

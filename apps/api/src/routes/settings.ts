@@ -105,12 +105,19 @@ settings.get('/', async (c) => {
     const auth = verifyCallbackAuth(c, 'settings')
     if (!auth) return c.res
 
-    // Load installation to get current version
+    // Load installation with current deployment for settings schema
     const installation = await database.query.AppInstallation.findFirst({
       where: (inst, { eq }) => eq(inst.id, auth.installationId),
       columns: {
         id: true,
-        currentVersionId: true,
+        currentDeploymentId: true,
+      },
+      with: {
+        currentDeployment: {
+          columns: {
+            settingsSchema: true,
+          },
+        },
       },
     })
 
@@ -118,19 +125,11 @@ settings.get('/', async (c) => {
       return c.json(errorResponse('NOT_FOUND', 'Installation not found'), 404)
     }
 
-    // Load schema from app version
-    let schema
-    if (installation.currentVersionId) {
-      const version = await database.query.AppVersion.findFirst({
-        where: (ver, { eq }) => eq(ver.id, installation.currentVersionId!),
-        columns: {
-          settingsSchema: true,
-        },
-      })
-
-      // Extract organization schema
-      schema = version?.settingsSchema?.organization
-    }
+    // Extract organization schema from deployment
+    const settingsSchemaObj = installation.currentDeployment?.settingsSchema as {
+      organization?: any
+    } | null
+    const schema = settingsSchemaObj?.organization
 
     // Get settings with schema for default merging
     const result = await getAppSettings({
@@ -155,53 +154,9 @@ settings.get('/', async (c) => {
 
 /**
  * Gets a single setting value by key.
- * Returns the setting value or null if not found.
  *
  * @route GET /apps/settings/:key
  * @access Protected - Requires X-App-Installation-Id header
- *
- * @param {Object} c - Hono context object
- * @param {Function} c.req.param - Function to get URL parameters
- * @param {Function} c.req.header - Function to get request headers
- * @param {Function} c.json - Function to return JSON response
- *
- * @returns {Promise<Response>} JSON response with setting value or error
- *
- * @example URL Parameters
- * key: "apiKey"
- *
- * @example Request Headers
- * {
- *   "X-App-Installation-Id": "app_install_abc123xyz"
- * }
- *
- * @example Success Response (200)
- * {
- *   "success": true,
- *   "data": {
- *     "value": "sk_abc123"
- *   }
- * }
- *
- * @example Success Response - Not Found (200)
- * {
- *   "success": true,
- *   "data": {
- *     "value": null
- *   }
- * }
- *
- * @example Error Response - Unauthorized (401)
- * {
- *   "success": false,
- *   "error": {
- *     "code": "UNAUTHORIZED",
- *     "message": "App installation ID required"
- *   }
- * }
- *
- * @throws {UnauthorizedError} When X-App-Installation-Id header is missing
- * @throws {InternalError} When database operation fails
  */
 settings.get('/:key', async (c) => {
   try {
@@ -209,12 +164,19 @@ settings.get('/:key', async (c) => {
     const auth = verifyCallbackAuth(c, 'settings')
     if (!auth) return c.res
 
-    // Load installation to get current version
+    // Load installation with current deployment for settings schema
     const installation = await database.query.AppInstallation.findFirst({
       where: (inst, { eq }) => eq(inst.id, auth.installationId),
       columns: {
         id: true,
-        currentVersionId: true,
+        currentDeploymentId: true,
+      },
+      with: {
+        currentDeployment: {
+          columns: {
+            settingsSchema: true,
+          },
+        },
       },
     })
 
@@ -222,18 +184,11 @@ settings.get('/:key', async (c) => {
       return c.json(errorResponse('NOT_FOUND', 'Installation not found'), 404)
     }
 
-    // Load schema from app version
-    let schema
-    if (installation.currentVersionId) {
-      const version = await database.query.AppVersion.findFirst({
-        where: (ver, { eq }) => eq(ver.id, installation.currentVersionId!),
-        columns: {
-          settingsSchema: true,
-        },
-      })
-
-      schema = version?.settingsSchema?.organization
-    }
+    // Extract organization schema from deployment
+    const settingsSchemaObj = installation.currentDeployment?.settingsSchema as {
+      organization?: any
+    } | null
+    const schema = settingsSchemaObj?.organization
 
     // Get all settings with schema (so defaults work), then extract the key
     const result = await getAppSettings({
@@ -328,12 +283,12 @@ settings.post('/', async (c) => {
     const body = await c.req.json()
     const { settings: settingsToSave } = saveSettingsSchema.parse(body)
 
-    // Load installation to get current version
+    // Load installation to get current deployment
     const installation = await database.query.AppInstallation.findFirst({
       where: (inst, { eq }) => eq(inst.id, auth.installationId),
       columns: {
         id: true,
-        currentVersionId: true,
+        currentDeploymentId: true,
       },
     })
 
@@ -341,13 +296,10 @@ settings.post('/', async (c) => {
       return c.json(errorResponse('NOT_FOUND', 'Installation not found'), 404)
     }
 
-    // TODO: Load schema for server-side validation (future enhancement)
-    // For now, trust client-side validation
-
-    // Save settings with version ID to track which version they were saved with
+    // Save settings with deployment ID to track which deployment they were saved with
     const result = await saveAppSettings({
       appInstallationId: auth.installationId,
-      appVersionId: installation.currentVersionId ?? undefined,
+      appDeploymentId: installation.currentDeploymentId ?? undefined,
       settings: settingsToSave,
     })
 
@@ -425,12 +377,12 @@ settings.put('/:key', async (c) => {
     const body = await c.req.json()
     const { value } = setSettingSchema.parse(body)
 
-    // Load installation to get current version
+    // Load installation to get current deployment
     const installation = await database.query.AppInstallation.findFirst({
       where: (inst, { eq }) => eq(inst.id, auth.installationId),
       columns: {
         id: true,
-        currentVersionId: true,
+        currentDeploymentId: true,
       },
     })
 
@@ -438,10 +390,10 @@ settings.put('/:key', async (c) => {
       return c.json(errorResponse('NOT_FOUND', 'Installation not found'), 404)
     }
 
-    // Set setting with version ID
+    // Set setting with deployment ID
     const result = await setAppSetting({
       appInstallationId: auth.installationId,
-      appVersionId: installation.currentVersionId ?? undefined,
+      appDeploymentId: installation.currentDeploymentId ?? undefined,
       key,
       value,
     })

@@ -9,7 +9,8 @@ export type AppBundleError =
   | {
       code: 'BUNDLE_NOT_FOUND'
       message: string
-      bundleId: string
+      appId: string
+      sha256: string
     }
   | {
       code: 'BUNDLE_UPLOAD_FAILED'
@@ -18,12 +19,7 @@ export type AppBundleError =
       reason: string
     }
   | {
-      code: 'BUNDLE_NOT_COMPLETE'
-      message: string
-      bundleId: string
-    }
-  | {
-      code: 'BUNDLE_ALREADY_COMPLETE'
+      code: 'BUNDLE_NOT_UPLOADED'
       message: string
       bundleId: string
     }

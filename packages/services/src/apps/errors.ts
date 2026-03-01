@@ -25,15 +25,15 @@ export type AppError =
       installationType: 'development' | 'production'
     }
   | {
-      code: 'NO_VERSIONS_AVAILABLE'
+      code: 'NO_DEPLOYMENTS_AVAILABLE'
       message: string
       appId: string
-      versionType?: string
+      deploymentType?: string
     }
   | {
-      code: 'VERSION_ACCESS_DENIED'
+      code: 'DEPLOYMENT_ACCESS_DENIED'
       message: string
-      versionId: string
+      deploymentId: string
       organizationId: string
     }
   | {
@@ -74,8 +74,8 @@ export type AppError =
       code: 'INVALID_STATUS_TRANSITION'
       message: string
       appId: string
-      currentStatus: string
-      targetStatus: string
+      currentStatus?: string
+      targetStatus?: string
     }
   | {
       code: 'APP_NOT_ELIGIBLE_FOR_REVIEW'

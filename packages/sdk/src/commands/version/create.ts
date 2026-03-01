@@ -1,3 +1,5 @@
+// packages/sdk/src/commands/version/create.ts
+
 import chalk from 'chalk'
 import { Command } from 'commander'
 import { api } from '../../api/api.js'
@@ -11,9 +13,8 @@ import {
 } from '../../print-errors.js'
 import { getAppInfo } from '../../spinners/get-app-info.spinner.js'
 import { getAppSlugFromPackageJson } from '../../spinners/get-app-slug-from-package-json.js'
-import { getVersions } from '../../spinners/get-versions.spinner.js'
 import { assertAppSettings } from '../../util/assert-app-settings.js'
-import { calculateBundleShas } from '../../util/calculate-bundle-sha.js'
+import { calculateBundleSha } from '../../util/calculate-bundle-sha.js'
 import { ensureAppEntryPoint } from '../../util/ensure-app-entry-point.js'
 import { exitWithMissingAppSettings } from '../../util/exit-with-missing-app-settings.js'
 import { exitWithMissingEntryPoint } from '../../util/exit-with-missing-entry-point.js'
@@ -25,7 +26,7 @@ import { printBuildContextError } from '../dev/prepare-build-context.js'
 import { bundleJavaScript } from './create/bundle-javascript.js'
 
 export const versionCreate = new Command('create')
-  .description('Create a new unpublished version of your auxx app')
+  .description('Create a new deployment of your auxx app')
   .action(async () => {
     if (USE_APP_TS) {
       const appEntryPointResult = await ensureAppEntryPoint()
@@ -83,69 +84,77 @@ export const versionCreate = new Command('create')
       process.stdout.write(`${chalk.green('✓ ')}Settings schema extracted\n`)
     }
 
-    // Calculate combined SHA for the bundles
-    const bundleSha = calculateBundleShas(clientBundle, serverBundle)
-
-    const versionsResult = await getVersions(appInfo)
-    if (isErrored(versionsResult)) {
-      printFetcherError('Error fetching versions', versionsResult.error)
-      process.exit(1)
-    }
-    const versions = versionsResult.value
-    const versionResult = await spinnerify('Uploading...', 'Upload complete', async () => {
+    const deployResult = await spinnerify('Uploading...', 'Upload complete', async () => {
       const cliVersionResult = loadAuxxCliVersion()
       if (isErrored(cliVersionResult)) {
         printCliVersionError(cliVersionResult)
         process.exit(1)
       }
       const cliVersion = cliVersionResult.value
-      const versionResult = await api.createVersion({
+
+      // 1. Compute individual SHAs
+      const clientSha = calculateBundleSha(clientBundle)
+      const serverSha = calculateBundleSha(serverBundle)
+
+      // 2. Check which bundles already exist
+      const checkResult = await api.checkBundles({ appId: appInfo.id, clientSha, serverSha })
+      if (isErrored(checkResult)) {
+        printFetcherError('Error checking bundles', checkResult)
+        process.exit(1)
+      }
+
+      // 3. Upload only missing bundles
+      const uploads = []
+      if (!checkResult.value.client.exists) {
+        uploads.push(uploadBundle(clientBundle, checkResult.value.client.uploadUrl!))
+      }
+      if (!checkResult.value.server.exists) {
+        uploads.push(uploadBundle(serverBundle, checkResult.value.server.uploadUrl!))
+      }
+      if (uploads.length > 0) {
+        const uploadResult = await combineAsync(uploads)
+        if (isErrored(uploadResult)) {
+          process.stderr.write(`${chalk.red('✖ ')}Failed to upload bundle\n`)
+          process.exit(1)
+        }
+      }
+
+      // 4. Confirm upload
+      const confirmResult = await api.confirmBundles({
         appId: appInfo.id,
-        major: versions.length === 0 ? 1 : Math.max(...versions.map((version) => version.major), 1),
-        cliVersion,
+        clientSha,
+        serverSha,
       })
-
-      if (isErrored(versionResult)) {
-        printFetcherError('Error creating version', versionResult)
+      if (isErrored(confirmResult)) {
+        printFetcherError('Error confirming bundles', confirmResult)
         process.exit(1)
       }
 
-      const { bundle } = versionResult.value
-      const uploadResult = await combineAsync([
-        uploadBundle(clientBundle, bundle.clientBundleUploadUrl),
-        uploadBundle(serverBundle, bundle.serverBundleUploadUrl),
-      ])
-      if (isErrored(uploadResult)) {
-        process.stderr.write(
-          `${chalk.red('✖ ')}Failed to upload bundle to: ${uploadResult.error.uploadUrl}\n`
-        )
+      // 5. Create production deployment
+      const result = await api.createDeployment({
+        appId: appInfo.id,
+        clientBundleSha: clientSha,
+        serverBundleSha: serverSha,
+        deploymentType: 'production',
+        settingsSchema,
+        metadata: { cliVersion },
+      })
+      if (isErrored(result)) {
+        printFetcherError('Error creating deployment', result)
         process.exit(1)
       }
-      return versionResult
+
+      return result
     })
-    if (isErrored(versionResult)) {
-      process.stderr.write(`${chalk.red('✖ ')}Failed to create version: ${versionResult.error}\n`)
+
+    if (isErrored(deployResult)) {
+      process.stderr.write(`${chalk.red('✖ ')}Failed to create deployment: ${deployResult.error}\n`)
       process.exit(1)
     }
-    const version = versionResult.value
-    const signingResult = await spinnerify(
-      'Signing bundles...',
-      'Bundles signed',
-      async () =>
-        await api.completeProdBundleUpload({
-          appId: appInfo.id,
-          versionId: version.versionId,
-          bundleId: version.bundle.id,
-          bundleSha,
-          settingsSchema,
-        })
-    )
-    if (isErrored(signingResult)) {
-      printFetcherError('Error signing bundles', signingResult.error)
-      process.exit(1)
-    }
+
+    const deployment = deployResult.value
     process.stdout.write(
-      `\nVersion ${chalk.green(`${version.major}.${version.minor}`)} created!\n\n`
+      `\nDeployment ${chalk.green(deployment.version ?? deployment.deploymentId)} created!\n\n`
     )
     process.exit(0)
   })

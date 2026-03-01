@@ -9,14 +9,14 @@ import {
 import { getInstalledApps } from '@auxx/services/app-installations'
 import { getAppSettings, saveAppSettings, schemaToZod } from '@auxx/services/app-settings'
 import {
-  getAppVersions,
+  getAppDeployments,
   getAppWithInstallationStatus,
   getAvailableApps,
   installApp,
   installAppRequestSchema,
   listAppsQuerySchema,
+  listDeploymentsQuerySchema,
   listInstalledAppsQuerySchema,
-  listVersionsQuerySchema,
   uninstallApp,
   uninstallAppRequestSchema,
 } from '@auxx/services/apps'
@@ -130,13 +130,13 @@ export const appsRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const { appSlug, type, versionId } = input
+      const { appSlug, type, deploymentId } = input
 
       const result = await installApp({
         appSlug,
         organizationId,
         installationType: type!,
-        versionId,
+        deploymentId,
         installedById: userId,
       })
 
@@ -194,32 +194,32 @@ export const appsRouter = createTRPCRouter({
     }),
 
   /**
-   * List available versions for an app
+   * List available deployments for an app
    */
-  listVersions: protectedProcedure
+  listDeployments: protectedProcedure
     .input(
       z
         .object({
           appSlug: z.string(),
         })
-        .merge(listVersionsQuerySchema)
+        .merge(listDeploymentsQuerySchema)
     )
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const { appSlug, type, status } = input
+      const { appSlug, deploymentType, status } = input
 
-      const result = await getAppVersions({
+      const result = await getAppDeployments({
         appSlug,
         organizationId,
         filters: {
-          versionType: type,
+          deploymentType,
           status,
         },
       })
 
       if (result.isErr()) {
         const error = result.error
-        logger.error('Failed to get app versions', { error, appSlug, organizationId })
+        logger.error('Failed to get app deployments', { error, appSlug, organizationId })
 
         throw new TRPCError({
           code: error.code === 'APP_NOT_FOUND' ? 'NOT_FOUND' : 'INTERNAL_SERVER_ERROR',
@@ -384,20 +384,20 @@ export const appsRouter = createTRPCRouter({
         })
       }
 
-      // Get app version
-      if (!app.installation.currentVersionId) {
-        return {} // No schema if no version
+      // Get deployment
+      if (!app.installation.currentDeploymentId) {
+        return {} // No schema if no deployment
       }
 
-      const version = await ctx.db.query.AppVersion.findFirst({
-        where: (ver, { eq }) => eq(ver.id, app.installation.currentVersionId!),
+      const deployment = await ctx.db.query.AppDeployment.findFirst({
+        where: (d, { eq }) => eq(d.id, app.installation.currentDeploymentId!),
         columns: {
           settingsSchema: true,
         },
       })
 
-      // Return the settings schema from AppVersion.settingsSchema
-      return version?.settingsSchema?.organization || {}
+      // Return the settings schema from AppDeployment.settingsSchema
+      return deployment?.settingsSchema?.organization || {}
     }),
 
   /**
@@ -452,17 +452,17 @@ export const appsRouter = createTRPCRouter({
         })
       }
 
-      // Load schema from app version for default merging
+      // Load schema from deployment for default merging
       let schema
-      if (app.installation.currentVersionId) {
-        const version = await ctx.db.query.AppVersion.findFirst({
-          where: (ver, { eq }) => eq(ver.id, app.installation.currentVersionId!),
+      if (app.installation.currentDeploymentId) {
+        const deployment = await ctx.db.query.AppDeployment.findFirst({
+          where: (d, { eq }) => eq(d.id, app.installation.currentDeploymentId!),
           columns: {
             settingsSchema: true,
           },
         })
 
-        schema = version?.settingsSchema?.organization
+        schema = deployment?.settingsSchema?.organization
       }
 
       // Get settings with schema for default merging
@@ -541,15 +541,15 @@ export const appsRouter = createTRPCRouter({
 
       // Load schema for server-side validation
       let schema
-      if (app.installation.currentVersionId) {
-        const version = await ctx.db.query.AppVersion.findFirst({
-          where: (ver, { eq }) => eq(ver.id, app.installation.currentVersionId!),
+      if (app.installation.currentDeploymentId) {
+        const deployment = await ctx.db.query.AppDeployment.findFirst({
+          where: (d, { eq }) => eq(d.id, app.installation.currentDeploymentId!),
           columns: {
             settingsSchema: true,
           },
         })
 
-        schema = version?.settingsSchema?.organization
+        schema = deployment?.settingsSchema?.organization
       }
 
       // SERVER-SIDE VALIDATION using Zod
@@ -597,7 +597,7 @@ export const appsRouter = createTRPCRouter({
       // Save settings (now validated)
       const saveResult = await saveAppSettings({
         appInstallationId: app.installation.id!,
-        appVersionId: app.installation.currentVersionId ?? undefined,
+        appDeploymentId: app.installation.currentDeploymentId ?? undefined,
         settings,
       })
 

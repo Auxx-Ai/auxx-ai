@@ -2,7 +2,6 @@
 
 import { database } from '@auxx/database'
 import { err, ok } from 'neverthrow'
-// import type { AppError } from './errors'
 import { fromDatabase } from '../shared/utils'
 
 /**
@@ -25,57 +24,38 @@ export interface GetAvailableAppsInput {
  * App details with installation status
  */
 export interface AvailableApp {
-  // App details
   id: string
   slug: string
   title: string
   description: string | null
-
-  // Avatar
   avatarId: string | null
   avatarUrl: string | null
-
-  // Marketplace listing
   category: string | null
   websiteUrl: string | null
   documentationUrl: string | null
   contactUrl: string | null
   supportSiteUrl: string | null
   termsOfServiceUrl: string | null
-
-  // Content
   overview: string | null
   contentOverview: string | null
   contentHowItWorks: string | null
   contentConfigure: string | null
-
-  // Permissions
   scopes: string[]
-
-  // OAuth
   hasOauth: boolean
   oauthExternalEntrypointUrl: string | null
-
-  // Publication status flags
   isDevelopment: boolean
   isPublished: boolean
-
-  // Installation status for this organization
   isInstalled: boolean
   installationType?: 'development' | 'production'
-  installedVersionId?: string
-
-  // Developer account
+  installedDeploymentId?: string
   developerAccount: {
     title: string
     logoUrl: string | null
   }
-
-  // Version info
-  latestVersion?: {
+  latestDeployment?: {
     id: string
-    versionString: string
-    status: string | null
+    version: string | null
+    status: string
   }
 }
 
@@ -89,9 +69,6 @@ export interface GetAvailableAppsOutput {
 
 /**
  * Get all apps available to an organization (published marketplace apps + dev apps targeting this org)
- *
- * @param input - Organization ID and optional filters/pagination
- * @returns Result with available apps and total count
  */
 export async function getAvailableApps(input: GetAvailableAppsInput) {
   const { organizationId, filters, pagination } = input
@@ -121,14 +98,10 @@ export async function getAvailableApps(input: GetAvailableAppsInput) {
       },
       with: {
         developerAccount: true,
-        versions: {
-          where: (versions, { eq, and }) =>
-            and(eq(versions.versionType, 'prod'), eq(versions.status, 'active')),
-          orderBy: (versions, { desc }) => [
-            desc(versions.major),
-            desc(versions.minor),
-            desc(versions.patch),
-          ],
+        deployments: {
+          where: (deployments, { eq, and }) =>
+            and(eq(deployments.deploymentType, 'production'), eq(deployments.status, 'published')),
+          orderBy: (deployments, { desc }) => [desc(deployments.createdAt)],
           limit: 1,
         },
       },
@@ -149,18 +122,14 @@ export async function getAvailableApps(input: GetAvailableAppsInput) {
     database.query.App.findMany({
       with: {
         developerAccount: true,
-        versions: {
-          where: (versions, { eq, and }) =>
+        deployments: {
+          where: (deployments, { eq, and }) =>
             and(
-              eq(versions.versionType, 'dev'),
-              eq(versions.targetOrganizationId, organizationId),
-              eq(versions.status, 'active')
+              eq(deployments.deploymentType, 'development'),
+              eq(deployments.targetOrganizationId, organizationId),
+              eq(deployments.status, 'active')
             ),
-          orderBy: (versions, { desc }) => [
-            desc(versions.major),
-            desc(versions.minor),
-            desc(versions.patch),
-          ],
+          orderBy: (deployments, { desc }) => [desc(deployments.createdAt)],
           limit: 1,
         },
       },
@@ -176,8 +145,8 @@ export async function getAvailableApps(input: GetAvailableAppsInput) {
     })
   }
 
-  // Filter dev apps that have at least one version for this org
-  const devApps = devAppsResult.value.filter((app) => app.versions.length > 0)
+  // Filter dev apps that have at least one deployment for this org
+  const devApps = devAppsResult.value.filter((app) => app.deployments.length > 0)
 
   // Query installations for this organization
   const installationsResult = await fromDatabase(
@@ -197,28 +166,24 @@ export async function getAvailableApps(input: GetAvailableAppsInput) {
   }
 
   // Create a map of installations by appId + type for quick lookup
-  // Key format: "appId:installationType" (e.g., "my-app:development")
-  // This allows both dev and prod installations to coexist in the map
   const installationMap = new Map(
     installationsResult.value.map((inst) => [
       `${inst.appId}:${inst.installationType}`,
       {
         installationType: inst.installationType,
-        installedVersionId: inst.currentVersionId,
+        installedDeploymentId: inst.currentDeploymentId,
       },
     ])
   )
 
   // Combine published and dev apps, deduplicating by app ID
-  // Dev apps take priority over published apps (if an app has both)
   const appsMap = new Map<string, (typeof publishedAppsResult.value)[0]>()
 
-  // Add published apps first
   for (const app of publishedAppsResult.value) {
     appsMap.set(app.id, app)
   }
 
-  // Add/override with dev apps (they take priority)
+  // Dev apps take priority
   for (const app of devApps) {
     appsMap.set(app.id, app)
   }
@@ -227,13 +192,9 @@ export async function getAvailableApps(input: GetAvailableAppsInput) {
 
   // Format apps with installation status
   const formattedApps: AvailableApp[] = allApps.map((app) => {
-    const latestVersion = app.versions[0]
+    const latestDeployment = app.deployments[0]
 
-    // Determine if this is showing a dev version or prod version
-    const isDev = app.versions.some((v) => v.versionType === 'dev')
-
-    // Look up installation matching the version type we're displaying
-    // This ensures we show the correct installation status when both dev and prod are installed
+    const isDev = app.deployments.some((d) => d.deploymentType === 'development')
     const installationType = isDev ? 'development' : 'production'
     const installation = installationMap.get(`${app.id}:${installationType}`)
 
@@ -261,16 +222,16 @@ export async function getAvailableApps(input: GetAvailableAppsInput) {
       isPublished: app.publicationStatus === 'published',
       isInstalled: !!installation,
       installationType: installation?.installationType as 'development' | 'production' | undefined,
-      installedVersionId: installation?.installedVersionId ?? undefined,
+      installedDeploymentId: installation?.installedDeploymentId ?? undefined,
       developerAccount: {
         title: app.developerAccount.title,
         logoUrl: app.developerAccount.logoUrl,
       },
-      latestVersion: latestVersion
+      latestDeployment: latestDeployment
         ? {
-            id: latestVersion.id,
-            versionString: `${latestVersion.major}.${latestVersion.minor}.${latestVersion.patch}`,
-            status: latestVersion.status,
+            id: latestDeployment.id,
+            version: latestDeployment.version,
+            status: latestDeployment.status,
           }
         : undefined,
     }

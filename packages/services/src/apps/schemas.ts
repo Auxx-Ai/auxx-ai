@@ -43,14 +43,14 @@ export const availableAppSchema = z.object({
   // Installation status
   isInstalled: z.boolean(),
   installationType: z.enum(['development', 'production']).optional(),
-  installedVersionId: z.string().optional(),
+  installedDeploymentId: z.string().optional(),
 
-  // Version info
-  latestVersion: z
+  // Deployment info
+  latestDeployment: z
     .object({
       id: z.string(),
-      versionString: z.string(),
-      status: z.string().nullable(),
+      version: z.string().nullable(),
+      status: z.string(),
     })
     .optional(),
 })
@@ -74,7 +74,7 @@ export const installAppInputSchema = z.object({
   appSlug: z.string().min(1),
   organizationId: z.string().min(1),
   installationType: z.enum(['development', 'production']).default('development'),
-  versionId: z.string().optional(),
+  deploymentId: z.string().optional(),
   installedById: z.string().min(1),
 })
 
@@ -115,7 +115,7 @@ export type AppDetails = z.infer<typeof appDetailsSchema>
  */
 export const installAppRequestSchema = z.object({
   type: z.enum(['development', 'production']).optional(),
-  versionId: z.string().optional(),
+  deploymentId: z.string().optional(),
 })
 
 export type InstallAppRequest = z.infer<typeof installAppRequestSchema>
@@ -134,15 +134,15 @@ export const listAppsQuerySchema = z.object({
 export type ListAppsQuery = z.infer<typeof listAppsQuerySchema>
 
 /**
- * List versions query parameters schema
- * Used to filter app versions by type and status
+ * List deployments query parameters schema
+ * Used to filter app deployments by type and status
  */
-export const listVersionsQuerySchema = z.object({
-  type: z.enum(['dev', 'prod']).optional(),
-  status: z.enum(['draft', 'active', 'deprecated']).optional(),
+export const listDeploymentsQuerySchema = z.object({
+  deploymentType: z.enum(['development', 'production']).optional(),
+  status: z.string().optional(),
 })
 
-export type ListVersionsQuery = z.infer<typeof listVersionsQuerySchema>
+export type ListDeploymentsQuery = z.infer<typeof listDeploymentsQuerySchema>
 
 /**
  * List installed apps query parameters schema

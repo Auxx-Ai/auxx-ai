@@ -19,7 +19,7 @@ import type { WebhookExecutionEvent } from '../validator.ts'
  * Uses WebhookExecutionEvent type from validator for type safety
  */
 export async function executeWebhookHandler(
-  options: Omit<WebhookExecutionEvent, 'context' | 'bundleKey'> & {
+  options: Omit<WebhookExecutionEvent, 'context' | 'serverBundleSha'> & {
     bundleCode: string
     context: RuntimeContext
   }

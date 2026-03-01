@@ -1,7 +1,7 @@
 // apps/api/src/routes/organizations/execute-server-function.ts
 
 import { resolveAppConnectionForRuntime } from '@auxx/services/app-connections'
-import { getInstallationBundle } from '@auxx/services/app-installations'
+import { getInstallationDeployment } from '@auxx/services/app-installations'
 import { logServerFunctionExecution } from '@auxx/services/apps'
 import { invokeLambdaExecutor, prepareLambdaContext } from '@auxx/services/lambda-execution'
 import { Hono } from 'hono'
@@ -27,8 +27,8 @@ executeServerFunction.post(
       const body = await c.req.json()
       const { function_identifier, function_args } = body
 
-      // 1. Get app installation from database
-      const installationResult = await getInstallationBundle({
+      // 1. Get app installation and deployment
+      const installationResult = await getInstallationDeployment({
         installationId,
         organizationHandle: organization.handle!,
         appId,
@@ -40,22 +40,13 @@ executeServerFunction.post(
         return c.json(errorResponse('INTERNAL_ERROR', error.message), statusCode)
       }
 
-      const { installation, bundle } = installationResult.value
+      const { installation, deployment, serverBundleSha } = installationResult.value
 
-      // 2. Check if server bundle exists
-      if (!bundle.serverBundleS3Key) {
-        return c.json(
-          errorResponse('NO_SERVER_BUNDLE', 'This app does not have a server bundle'),
-          400
-        )
-      }
-
-      // 3. Resolve app connections
+      // 2. Resolve app connections
       const connectionsResult = await resolveAppConnectionForRuntime({
         appId,
         organizationId: organization.id,
         userId: user.id,
-        versionMajor: installation.currentVersion?.major || 1,
       })
 
       if (connectionsResult.isErr()) {
@@ -83,7 +74,8 @@ executeServerFunction.post(
         caller: 'api',
         payload: {
           type: 'function',
-          bundleKey: bundle.serverBundleS3Key,
+          serverBundleSha,
+          appId,
           functionIdentifier: function_identifier,
           functionArgs: function_args,
           context,
@@ -135,7 +127,7 @@ executeServerFunction.post(
         const logResult = await logServerFunctionExecution({
           appId,
           organizationId: organization.id,
-          appVersionId: installation.currentVersionId!,
+          appDeploymentId: deployment.id,
           userId: user.id,
           functionIdentifier: function_identifier,
           installationId,

@@ -19,6 +19,10 @@
         "-c",
         "export $(grep ^DATABASE_URL .env | xargs) && pnpm dlx @modelcontextprotocol/server-postgres $DATABASE_URL"
       ]
+    },
+    "chrome-devtools": {
+      "type": "stdio",
+      "command": "chrome-devtools-mcp"
     }
   }
 }
