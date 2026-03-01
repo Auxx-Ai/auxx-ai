@@ -39,7 +39,7 @@ export function AppListCard({ app, href }: { app: AvailableApp; href?: string })
             </div>
           </div>
         </div>
-        <div className='h-[32px] flex flex-col items-start w-full '>
+        <div className='h-[32px] flex flex-col'>
           <div className='truncate text-sm text-muted-foreground'>{app.description}</div>
         </div>
       </div>
