@@ -89,7 +89,7 @@ const Button = ({ __instanceId, __onCallHandler, __hasOnClick, label, onClick, .
 /**
  * Separator wrapper with mandatory margin styles.
  */
-const Separator = (props: any) => {
+const Separator = ({ __instanceId, __onCallHandler, ...props }: any) => {
   return <ShadcnSeparator className='my-3' {...props} />
 }
 

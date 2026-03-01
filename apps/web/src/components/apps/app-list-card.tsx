@@ -27,9 +27,11 @@ export function AppListCard({ app, href }: { app: AvailableApp; href?: string })
                       <Code className='size-3' />
                     </div>
                   )}
-                  <div className='h-5 gap-2 px-1 shrink-0 bg-primary-100 border flex items-center justify-center rounded-lg'>
-                    <span className='text-xs'>Installed</span>
-                  </div>
+                  {app.isInstalled && (
+                    <div className='h-5 gap-2 px-1 shrink-0 bg-primary-100 border flex items-center justify-center rounded-lg'>
+                      <span className='text-xs'>Installed</span>
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -6,14 +6,24 @@ import { createMiddleware } from 'hono/factory'
 import { extractBearerToken, validateBetterAuthToken } from '../lib/jwt-validator'
 import { errorResponse } from '../lib/response'
 import type { AppContext } from '../types/context'
+import { internalAuthMiddleware } from './internal-auth'
 
 /**
  * Authentication middleware
  * Validates OAuth2 access token via better-auth userinfo endpoint
  * Attaches user and token data to context
+ *
+ * Also supports internal service auth (HMAC-signed requests from Next.js server)
+ * via the `Authorization: Internal <signature>` scheme.
  */
 export const authMiddleware = createMiddleware<AppContext>(async (c, next) => {
   const authHeader = c.req.header('Authorization')
+
+  // Delegate to internal auth middleware for service-to-service calls
+  if (authHeader?.startsWith('Internal ')) {
+    return internalAuthMiddleware(c, next)
+  }
+
   const token = extractBearerToken(authHeader)
 
   if (!token) {

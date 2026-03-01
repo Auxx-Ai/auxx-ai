@@ -99,8 +99,10 @@ export function reconstructReactTree(
       // Build props, injecting special props at root level
       const props: any = isRoot ? { key, ...attributes, ...injectedProps } : { key, ...attributes }
 
-      // Pass onCallHandler and instance_id to all components (for event handling)
-      if (onCallHandler && instance_id !== undefined) {
+      // Only inject __instanceId/__onCallHandler when the node has event handlers (__has* keys)
+      const hasEventHandlers =
+        attributes && Object.keys(attributes).some((k) => k.startsWith('__has'))
+      if (onCallHandler && instance_id !== undefined && hasEventHandlers) {
         props.__instanceId = instance_id
         props.__onCallHandler = onCallHandler
       }

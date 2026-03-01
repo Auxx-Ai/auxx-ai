@@ -54,7 +54,15 @@ export const corsMiddleware = cors({
     }
     return ''
   },
-  allowHeaders: ['Content-Type', 'Authorization', 'X-Workflow-Passport'],
+  allowHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Workflow-Passport',
+    'X-Internal-User-Id',
+    'X-Internal-User-Email',
+    'X-Internal-User-Name',
+    'X-Internal-Timestamp',
+  ],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
   maxAge: 600,

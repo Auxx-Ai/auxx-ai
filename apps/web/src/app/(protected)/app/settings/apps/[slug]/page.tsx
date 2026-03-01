@@ -30,7 +30,7 @@ async function AppPage({ params }: Props) {
           appSlug={slug}
           isInstalled={appData.installation.isInstalled}
           installationType={appData.installation.installationType}
-          availableVersions={appData.availableVersions}
+          availableDeployments={appData.availableDeployments}
         />
       }>
       <AppAbout app={appData} />

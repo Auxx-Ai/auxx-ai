@@ -45,19 +45,16 @@ export function setupServerFunctionHandler(
     'run-server-function',
     async (data: { moduleHash: string; args: string }): Promise<ServerExecutionResult> => {
       try {
-        // Make HTTP POST to API
-        const endpoint =
-          `${context.apiUrl}/organizations/${context.organizationHandle}` +
-          `/apps/${context.appId}/installations/${context.appInstallationId}/execute-server-function`
-
-        const response = await fetch(endpoint, {
+        // Proxy through Next.js API route (handles auth via session cookies)
+        const response = await fetch('/api/extensions/execute-server-function', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            // Include auth headers (session cookie will be sent automatically)
           },
-          credentials: 'include', // Send cookies
           body: JSON.stringify({
+            appId: context.appId,
+            installationId: context.appInstallationId,
+            organizationHandle: context.organizationHandle,
             function_identifier: data.moduleHash,
             function_args: data.args,
           }),
