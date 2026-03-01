@@ -1,0 +1,30 @@
+{
+  "name": "@auxx/test-utils",
+  "version": "0.0.1",
+  "description": "Shared test utilities, fixtures, and infrastructure for Auxxai integration tests",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage"
+  },
+  "dependencies": {
+    "@auxx/database": "workspace:*",
+    "@auxx/logger": "workspace:*",
+    "@paralleldrive/cuid2": "^3.3.0",
+    "dotenv": "catalog:",
+    "drizzle-orm": "catalog:",
+    "pg": "catalog:"
+  },
+  "devDependencies": {
+    "@auxx/typescript-config": "workspace:*",
+    "@types/pg": "catalog:",
+    "@types/node": "catalog:",
+    "vitest": "catalog:",
+    "typescript": "catalog:"
+  }
+}

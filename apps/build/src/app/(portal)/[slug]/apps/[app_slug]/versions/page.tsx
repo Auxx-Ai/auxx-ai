@@ -1,6 +1,6 @@
+// apps/build/src/app/(portal)/[slug]/apps/[app_slug]/versions/page.tsx
 'use client'
 
-import { formatVersion } from '@auxx/services/shared/utils'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -30,10 +30,36 @@ import { useApp } from '~/components/providers/dehydrated-state-provider'
 import { api, type RouterOutputs } from '~/trpc/react'
 
 /**
- * Command to create a new version
+ * Command to create a new deployment
  */
-const CREATE_VERSION_COMMAND = 'npx auxx version create'
-type Version = RouterOutputs['versions']['list'][number]
+const CREATE_DEPLOYMENT_COMMAND = 'npx auxx version create'
+type Deployment = RouterOutputs['versions']['list'][number]
+
+/**
+ * Get badge variant for deployment status
+ */
+function getStatusVariant(
+  status: string
+): 'outline' | 'secondary' | 'default' | 'destructive' | 'green' {
+  switch (status) {
+    case 'active':
+      return 'default'
+    case 'pending-review':
+    case 'in-review':
+      return 'secondary'
+    case 'approved':
+      return 'green'
+    case 'published':
+      return 'default'
+    case 'rejected':
+      return 'destructive'
+    case 'withdrawn':
+    case 'deprecated':
+      return 'outline'
+    default:
+      return 'outline'
+  }
+}
 
 /**
  * Versions page component
@@ -46,73 +72,73 @@ function VersionsPage() {
 
   const [confirm, ConfirmDialog] = useConfirm()
 
-  // Fetch versions
+  // Fetch deployments
   const {
-    data: versions,
+    data: deployments,
     isLoading,
     refetch,
   } = api.versions.list.useQuery({ appId: app?.id || '' }, { enabled: !!app?.id })
 
-  const updateVersionStatus = api.versions.updatePublicationStatus.useMutation({
+  const updateDeploymentStatus = api.versions.updateDeploymentStatus.useMutation({
     onSuccess: () => {
       router.refresh()
       void refetch()
     },
     onError: (error) => {
-      toastError({ title: 'Failed to update version status', description: error.message })
+      toastError({ title: 'Failed to update deployment status', description: error.message })
     },
   })
 
   const [copied, setCopied] = useState(false)
 
   /**
-   * Handle unpublishing a version
+   * Handle deprecating a deployment
    */
-  const handleUnpublish = async (version: Version) => {
+  const handleDeprecate = async (deployment: Deployment) => {
     const confirmed = await confirm({
-      title: 'Unpublish version?',
-      description: 'This version will no longer be available for new installations.',
-      confirmText: 'Unpublish',
+      title: 'Deprecate deployment?',
+      description: 'This deployment will no longer be available for new installations.',
+      confirmText: 'Deprecate',
       cancelText: 'Cancel',
       destructive: true,
     })
 
     if (confirmed) {
-      updateVersionStatus.mutate({ versionId: version.id, action: 'unpublish' })
+      updateDeploymentStatus.mutate({ deploymentId: deployment.id, action: 'deprecate' })
     }
   }
 
   /**
-   * Handle withdrawing version from review
+   * Handle withdrawing deployment from review
    */
-  const handleWithdraw = async (version: Version) => {
+  const handleWithdraw = async (deployment: Deployment) => {
     const confirmed = await confirm({
       title: 'Withdraw from review?',
-      description: 'This version will return to draft status.',
+      description: 'This deployment will return to active status.',
       confirmText: 'Withdraw',
       cancelText: 'Cancel',
       destructive: true,
     })
 
     if (confirmed) {
-      updateVersionStatus.mutate({ versionId: version.id, action: 'withdraw' })
+      updateDeploymentStatus.mutate({ deploymentId: deployment.id, action: 'withdraw' })
     }
   }
 
   /**
-   * Handle publishing an approved version
+   * Handle publishing an approved deployment
    */
-  const handlePublish = async (version: Version) => {
+  const handlePublish = async (deployment: Deployment) => {
     const confirmed = await confirm({
-      title: 'Publish version?',
+      title: 'Publish deployment?',
       description:
-        'This version will be published to the marketplace and available for installation.',
+        'This deployment will be published to the marketplace and available for installation.',
       confirmText: 'Publish',
       cancelText: 'Cancel',
     })
 
     if (confirmed) {
-      updateVersionStatus.mutate({ versionId: version.id, action: 'publish' })
+      updateDeploymentStatus.mutate({ deploymentId: deployment.id, action: 'publish' })
     }
   }
 
@@ -121,7 +147,7 @@ function VersionsPage() {
    */
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(CREATE_VERSION_COMMAND)
+      await navigator.clipboard.writeText(CREATE_DEPLOYMENT_COMMAND)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
@@ -138,8 +164,8 @@ function VersionsPage() {
             <EmptyMedia variant='icon'>
               <Loader2 className='animate-spin' />
             </EmptyMedia>
-            <EmptyTitle>Loading versions...</EmptyTitle>
-            <EmptyDescription>Fetching version history</EmptyDescription>
+            <EmptyTitle>Loading deployments...</EmptyTitle>
+            <EmptyDescription>Fetching deployment history</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </div>
@@ -147,7 +173,7 @@ function VersionsPage() {
   }
 
   // Empty state
-  if (!versions || versions.length === 0) {
+  if (!deployments || deployments.length === 0) {
     return (
       <div className='flex flex-col items-center justify-center flex-1 overflow-y-auto'>
         <Empty className='border-0'>
@@ -155,13 +181,14 @@ function VersionsPage() {
             <EmptyMedia variant='icon'>
               <PackageOpen />
             </EmptyMedia>
-            <EmptyTitle>No versions yet</EmptyTitle>
+            <EmptyTitle>No deployments yet</EmptyTitle>
             <EmptyDescription>
-              Run this command in your project's directory to create a version and upload your code:
+              Run this command in your project's directory to create a deployment and upload your
+              code:
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent className='bg-primary-150 px-4 py-4 rounded-2xl relative'>
-            <code className='font-mono text-sm flex-1'>{CREATE_VERSION_COMMAND}</code>
+            <code className='font-mono text-sm flex-1'>{CREATE_DEPLOYMENT_COMMAND}</code>
             <Button
               className='absolute right-3 top-1/2 -translate-y-1/2'
               variant='ghost'
@@ -185,84 +212,57 @@ function VersionsPage() {
             <TableRow>
               <TableHead>Version</TableHead>
               <TableHead>Created at</TableHead>
-              <TableHead>Installations</TableHead>
-              <TableHead>State</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {versions.map((version) => (
-              <TableRow key={version.id}>
+            {deployments.map((deployment) => (
+              <TableRow key={deployment.id}>
                 <TableCell className='font-mono'>
-                  <div className='truncate'>
-                    {formatVersion(version.major, version.minor ?? 0, version.patch ?? 0)}
-                  </div>
+                  <div className='truncate'>{deployment.version || '—'}</div>
                 </TableCell>
                 <TableCell>
                   <div className='truncate'>
-                    {format(new Date(version.createdAt), 'MMM dd, yyyy')}
+                    {format(new Date(deployment.createdAt), 'MMM dd, yyyy')}
                   </div>
                 </TableCell>
                 <TableCell>
-                  <div className='truncate'>{version.numInstallations || 0}</div>
-                </TableCell>
-                <TableCell>
-                  <div className='flex gap-2'>
-                    {version.reviewStatus ? (
-                      <Badge
-                        variant={
-                          version.reviewStatus === 'approved'
-                            ? 'green'
-                            : version.reviewStatus === 'rejected'
-                              ? 'destructive'
-                              : version.reviewStatus === 'pending-review' ||
-                                  version.reviewStatus === 'in-review'
-                                ? 'secondary'
-                                : 'outline'
-                        }>
-                        {version.reviewStatus === 'pending-review'
-                          ? 'pending review'
-                          : version.reviewStatus}
-                      </Badge>
-                    ) : (
-                      <Badge variant='outline'>draft</Badge>
-                    )}
-                    {version.publicationStatus === 'published' && (
-                      <Badge variant='default'>published</Badge>
-                    )}
-                  </div>
+                  <Badge variant={getStatusVariant(deployment.status)}>
+                    {deployment.status === 'pending-review' ? 'pending review' : deployment.status}
+                  </Badge>
                 </TableCell>
                 <TableCell className='text-right'>
-                  {version.publicationStatus === 'published' ? (
+                  {deployment.status === 'published' ? (
                     <Button
                       variant='outline'
                       size='sm'
-                      onClick={() => handleUnpublish(version)}
-                      loading={updateVersionStatus.isPending}>
-                      Unpublish
+                      onClick={() => handleDeprecate(deployment)}
+                      loading={updateDeploymentStatus.isPending}>
+                      Deprecate
                     </Button>
-                  ) : version.reviewStatus === 'pending-review' ||
-                    version.reviewStatus === 'in-review' ? (
+                  ) : deployment.status === 'pending-review' ||
+                    deployment.status === 'in-review' ? (
                     <Button
                       variant='outline'
                       size='sm'
-                      onClick={() => handleWithdraw(version)}
-                      loading={updateVersionStatus.isPending}>
+                      onClick={() => handleWithdraw(deployment)}
+                      loading={updateDeploymentStatus.isPending}>
                       Withdraw
                     </Button>
-                  ) : version.reviewStatus === 'approved' ? (
+                  ) : deployment.status === 'approved' ? (
                     <Button
                       variant='default'
                       size='sm'
-                      onClick={() => handlePublish(version)}
-                      loading={updateVersionStatus.isPending}>
+                      onClick={() => handlePublish(deployment)}
+                      loading={updateDeploymentStatus.isPending}>
                       Publish
                     </Button>
-                  ) : (
+                  ) : deployment.status === 'active' ? (
                     <PublishAppDialog
                       mode='version'
                       appSlug={params.app_slug}
-                      version={version}
+                      deployment={deployment}
                       trigger={
                         <Button variant='outline' size='sm'>
                           Submit for Review
@@ -270,7 +270,7 @@ function VersionsPage() {
                       }
                       onSuccess={() => void refetch()}
                     />
-                  )}
+                  ) : null}
                 </TableCell>
               </TableRow>
             ))}

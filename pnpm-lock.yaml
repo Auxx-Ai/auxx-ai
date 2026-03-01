@@ -2043,6 +2043,43 @@ importers:
         specifier: 'catalog:'
         version: 4.0.18(@opentelemetry/api@1.9.0)(@types/node@22.19.13)(@vitest/ui@4.0.18)(jiti@2.6.1)(jsdom@28.1.0(@noble/hashes@2.0.1))(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
 
+  packages/test-utils:
+    dependencies:
+      '@auxx/database':
+        specifier: workspace:*
+        version: link:../database
+      '@auxx/logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@paralleldrive/cuid2':
+        specifier: ^3.3.0
+        version: 3.3.0
+      dotenv:
+        specifier: 'catalog:'
+        version: 16.6.1
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.44.5(@opentelemetry/api@1.9.0)(@types/pg@8.16.0)(@upstash/redis@1.36.2)(kysely@0.28.11)(pg@8.19.0)(postgres@3.4.8)
+      pg:
+        specifier: 'catalog:'
+        version: 8.19.0
+    devDependencies:
+      '@auxx/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.13
+      '@types/pg':
+        specifier: 'catalog:'
+        version: 8.16.0
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.2
+      vitest:
+        specifier: 'catalog:'
+        version: 4.0.18(@opentelemetry/api@1.9.0)(@types/node@22.19.13)(@vitest/ui@4.0.18)(jiti@2.6.1)(jsdom@28.1.0(@noble/hashes@2.0.1))(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
+
   packages/types:
     dependencies:
       '@auxx/database':
@@ -19828,7 +19865,7 @@ snapshots:
 
   '@types/cors@2.8.19':
     dependencies:
-      '@types/node': 22.19.13
+      '@types/node': 20.19.35
 
   '@types/d3-array@3.2.2': {}
 
@@ -19916,7 +19953,7 @@ snapshots:
   '@types/jsonwebtoken@9.0.10':
     dependencies:
       '@types/ms': 2.1.0
-      '@types/node': 22.19.13
+      '@types/node': 20.19.35
 
   '@types/keyv@3.1.4':
     dependencies:
@@ -19952,7 +19989,7 @@ snapshots:
 
   '@types/node-fetch@2.6.13':
     dependencies:
-      '@types/node': 22.19.13
+      '@types/node': 20.19.35
       form-data: 4.0.5
 
   '@types/node-notifier@8.0.5':
@@ -21563,7 +21600,7 @@ snapshots:
   engine.io@6.6.5:
     dependencies:
       '@types/cors': 2.8.19
-      '@types/node': 22.19.13
+      '@types/node': 20.19.35
       accepts: 1.3.8
       base64id: 2.0.0
       cookie: 0.7.2

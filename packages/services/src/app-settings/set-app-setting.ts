@@ -7,13 +7,13 @@ import { saveAppSettings } from './save-app-settings'
  */
 export async function setAppSetting(params: {
   appInstallationId: string
-  appVersionId?: string
+  appDeploymentId?: string
   key: string
   value: any
 }) {
   return saveAppSettings({
     appInstallationId: params.appInstallationId,
-    appVersionId: params.appVersionId,
+    appDeploymentId: params.appDeploymentId,
     settings: { [params.key]: params.value },
   })
 }

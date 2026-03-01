@@ -6,23 +6,21 @@ import { Fetcher } from './fetcher.js'
 
 // import { complete, errored, isErrored } from '../errors.js'
 
-import type { DotenvParseOutput } from 'dotenv'
 import { AUTH_API } from '../env.js'
 import {
   appInfoSchema,
-  completeBundleUploadSchema,
-  createDevVersionSchema,
-  createVersionSchema,
+  checkBundlesResponseSchema,
+  confirmBundlesResponseSchema,
+  createDeploymentResponseSchema,
   fetchAppLogsResponseSchema,
   installationSchema,
-  // developerAccountSchema,
   listAppsResponseSchema,
+  listDeploymentsResponseSchema,
   listDevOrganizationsResponseSchema,
   oidcUserInfoSchema,
   TEST_APP_INFO,
   TEST_ORGANIZATIONS,
   tokenResponseSchema,
-  versionsSchema,
   whoamiSchema,
 } from './schemas.js'
 
@@ -30,11 +28,10 @@ export type ApiError =
   | { code: 'WHOAMI_ERROR'; error: FetcherError }
   | { code: 'FETCH_APPS_ERROR'; error: FetcherError }
   | { code: 'FETCH_APP_INFO_ERROR'; error: FetcherError }
-  | { code: 'CREATE_VERSION_ERROR'; error: FetcherError }
-  | { code: 'CREATE_DEV_VERSION_ERROR'; error: FetcherError }
-  | { code: 'COMPLETE_BUNDLE_UPLOAD_ERROR'; error: FetcherError }
-  | { code: 'COMPLETE_PROD_BUNDLE_UPLOAD_ERROR'; error: FetcherError }
-  | { code: 'FETCH_VERSIONS_ERROR'; error: FetcherError }
+  | { code: 'CHECK_BUNDLES_ERROR'; error: FetcherError }
+  | { code: 'CONFIRM_BUNDLES_ERROR'; error: FetcherError }
+  | { code: 'CREATE_DEPLOYMENT_ERROR'; error: FetcherError }
+  | { code: 'LIST_DEPLOYMENTS_ERROR'; error: FetcherError }
   | { code: 'FETCH_INSTALLATION_ERROR'; error: FetcherError }
   | { code: 'GET_TOKEN_ERROR'; error: FetcherError }
   | { code: 'REFRESH_TOKEN_ERROR'; error: FetcherError }
@@ -199,110 +196,113 @@ class ApiImpl {
     return complete(result.value.organizations)
   }
 
-  async createVersion({
+  /**
+   * Check which bundles already exist (content-addressed)
+   */
+  async checkBundles({
     appId,
-    major,
-    cliVersion,
+    clientSha,
+    serverSha,
   }: {
     appId: string
-    major: number
-    cliVersion: string
+    clientSha: string
+    serverSha: string
   }) {
     const result = await this.fetcher.post({
-      path: `/api/v1/apps/${appId}/prod-versions`,
-      body: {
-        major,
-        cli_version: cliVersion,
-      },
-      schema: createVersionSchema,
+      path: `/api/v1/apps/${appId}/bundles/check`,
+      body: { clientSha, serverSha },
+      schema: checkBundlesResponseSchema,
     })
     if (!result.success) {
-      return errored({ code: 'CREATE_VERSION_ERROR', error: result.error as unknown as Error })
+      return errored({ code: 'CHECK_BUNDLES_ERROR', error: result.error })
     }
     return complete(result.value)
-  }
-
-  async completeBundleUpload({
-    appId,
-    versionId,
-    bundleId,
-    bundleSha,
-    settingsSchema,
-  }: {
-    appId: string
-    versionId: string
-    bundleId: string
-    bundleSha: string
-    settingsSchema?: { organization?: Record<string, unknown>; user?: Record<string, unknown> }
-  }) {
-    const result = await this.fetcher.post({
-      path: `/api/v1/apps/${appId}/dev-versions/${versionId}/bundles/${bundleId}/complete`,
-      body: {
-        bundle_sha: bundleSha,
-        settings_schema: settingsSchema,
-      },
-      schema: completeBundleUploadSchema,
-    })
-    if (!result.success) {
-      return errored({ code: 'COMPLETE_BUNDLE_UPLOAD_ERROR', error: result.error })
-    }
-    return complete(undefined)
-  }
-
-  async completeProdBundleUpload({
-    appId,
-    versionId,
-    bundleId,
-    bundleSha,
-    settingsSchema,
-  }: {
-    appId: string
-    versionId: string
-    bundleId: string
-    bundleSha: string
-    settingsSchema?: { organization?: Record<string, unknown>; user?: Record<string, unknown> }
-  }) {
-    const result = await this.fetcher.post({
-      path: `/api/v1/apps/${appId}/prod-versions/${versionId}/bundles/${bundleId}/complete`,
-      body: {
-        bundle_sha: bundleSha,
-        settings_schema: settingsSchema,
-      },
-      schema: completeBundleUploadSchema,
-    })
-    if (!result.success) {
-      return errored({ code: 'COMPLETE_PROD_BUNDLE_UPLOAD_ERROR', error: result.error })
-    }
-    return complete(undefined)
   }
 
   /**
-   * Create a new development version for an app
+   * Confirm bundles have been uploaded
    */
-  async createDevVersion({
+  async confirmBundles({
     appId,
-    cliVersion,
-    targetOrganizationId,
-    environmentVariables,
+    clientSha,
+    serverSha,
   }: {
     appId: string
-    cliVersion: string
-    targetOrganizationId: string
-    environmentVariables: DotenvParseOutput
+    clientSha: string
+    serverSha: string
   }) {
     const result = await this.fetcher.post({
-      path: `/api/v1/apps/${appId}/dev-versions`,
-      body: {
-        target_organization_id: targetOrganizationId,
-        environment_variables: environmentVariables,
-        cli_version: cliVersion,
-      },
-      schema: createDevVersionSchema,
+      path: `/api/v1/apps/${appId}/bundles/confirm`,
+      body: { clientSha, serverSha },
+      schema: confirmBundlesResponseSchema,
     })
     if (!result.success) {
-      return errored({ code: 'CREATE_DEV_VERSION_ERROR', error: result.error })
+      return errored({ code: 'CONFIRM_BUNDLES_ERROR', error: result.error })
     }
     return complete(result.value)
+  }
+
+  /**
+   * Create a deployment (development or production)
+   */
+  async createDeployment({
+    appId,
+    clientBundleSha,
+    serverBundleSha,
+    deploymentType,
+    settingsSchema,
+    targetOrganizationId,
+    environmentVariables,
+    version,
+    metadata,
+  }: {
+    appId: string
+    clientBundleSha: string
+    serverBundleSha: string
+    deploymentType: 'development' | 'production'
+    settingsSchema?: { organization?: Record<string, unknown>; user?: Record<string, unknown> }
+    targetOrganizationId?: string
+    environmentVariables?: Record<string, string>
+    version?: string
+    metadata?: Record<string, unknown>
+  }) {
+    const result = await this.fetcher.post({
+      path: `/api/v1/apps/${appId}/deployments`,
+      body: {
+        clientBundleSha,
+        serverBundleSha,
+        deploymentType,
+        settingsSchema,
+        targetOrganizationId,
+        environmentVariables,
+        version,
+        metadata,
+      },
+      schema: createDeploymentResponseSchema,
+    })
+    if (!result.success) {
+      return errored({ code: 'CREATE_DEPLOYMENT_ERROR', error: result.error })
+    }
+    return complete(result.value)
+  }
+
+  /**
+   * List deployments for an app
+   */
+  async listDeployments({ appId, type }: { appId: string; type?: 'development' | 'production' }) {
+    const params = new URLSearchParams()
+    if (type) params.append('type', type)
+    const queryString = params.toString()
+    const path = `/api/v1/apps/${appId}/deployments${queryString ? `?${queryString}` : ''}`
+
+    const result = await this.fetcher.get({
+      path,
+      schema: listDeploymentsResponseSchema,
+    })
+    if (!result.success) {
+      return errored({ code: 'LIST_DEPLOYMENTS_ERROR', error: result.error })
+    }
+    return complete(result.value.deployments)
   }
 
   async fetchInstallation({ appId, organizationId }: { appId: string; organizationId: string }) {
@@ -319,20 +319,6 @@ class ApiImpl {
       return errored({ code: 'FETCH_INSTALLATION_ERROR', error: result.error })
     }
     return complete(result)
-  }
-
-  /**
-   * Fetch all production versions for an app
-   */
-  async fetchVersions(appId: string) {
-    const result = await this.fetcher.get({
-      path: `/api/v1/apps/${appId}/prod-versions`,
-      schema: versionsSchema,
-    })
-    if (!result.success) {
-      return errored({ code: 'FETCH_VERSIONS_ERROR', error: result.error })
-    }
-    return complete(result.value.app_prod_versions) //{ success: true, value: result.value.app_prod_versions }
   }
 
   /**

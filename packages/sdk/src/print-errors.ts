@@ -1,16 +1,14 @@
 import chalk from 'chalk'
+import type { ApiError } from './api/api.js'
 import { API as APP } from './env.js'
 import type {
   AppSlugError,
   CliVersionError,
   CreateProjectError,
-  // FetcherError,
   DetermineOrganizationError,
   Errored,
   UploadError,
 } from './errors.js'
-
-// import type { ApiError } from './api/api.js'
 
 type AuxxError = {
   message: string
@@ -50,20 +48,25 @@ export function printFetcherError(message: string, { error }: any) {
       break
   }
 }
-export function printUploadError(error: Errored<UploadError>) {
-  const e = error.error
+export function printUploadError(result: Errored<UploadError | ApiError>) {
+  const e = result.error
   switch (e.code) {
     case 'BUNDLE_UPLOAD_ERROR':
       process.stderr.write(chalk.red(`Error uploading bundle: ${e.uploadUrl}\n`))
+      if (e.status) {
+        process.stderr.write(chalk.red(`  Status: ${e.status} ${e.statusText ?? ''}\n`))
+      }
       break
     case 'START_UPLOAD_ERROR':
-      process.stderr.write(chalk.red(`Error starting upload: ${e}\n`))
-
-      // printFetcherError('Error starting upload', e)
+      process.stderr.write(chalk.red(`Error starting upload: ${e.error.message}\n`))
       break
-    case 'COMPLETE_BUNDLE_UPLOAD_ERROR':
-      process.stderr.write(chalk.red(`Error completing bundle upload: ${e}\n`))
-      // printFetcherError('Error completing bundle upload', error)
+    case 'CHECK_BUNDLES_ERROR':
+    case 'CONFIRM_BUNDLES_ERROR':
+    case 'CREATE_DEPLOYMENT_ERROR':
+      printFetcherError(`Upload failed (${e.code})`, e)
+      break
+    default:
+      process.stderr.write(chalk.red(`Upload error: ${e.code}\n`))
       break
   }
 }

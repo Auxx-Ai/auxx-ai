@@ -31,7 +31,7 @@ import { api } from '~/trpc/react'
  */
 export interface LogsFilter {
   organizationSlug: string
-  appVersionId?: string
+  appDeploymentId?: string
   startTimestamp?: number
   endTimestamp?: number
   query?: string
@@ -45,7 +45,7 @@ interface FlattenedLogEntry {
   timestamp: Date
   logType: 'log' | 'warn' | 'error'
   message: string
-  appVersionId: string | null
+  appDeploymentId: string | null
 }
 
 /**
@@ -65,7 +65,7 @@ function flattenAppEventLogs(appEventLogs: any[]): FlattenedLogEntry[] {
         timestamp: new Date(log.timestamp),
         logType: log.level,
         message: log.message,
-        appVersionId: eventLog.appVersionId,
+        appDeploymentId: eventLog.appDeploymentId,
       })
     }
   }
@@ -141,7 +141,7 @@ function LogsPage() {
     {
       appId: app?.id || '',
       organizationSlug: filter.organizationSlug,
-      appVersionId: filter.appVersionId,
+      appDeploymentId: filter.appDeploymentId,
       startTimestamp: filter.startTimestamp,
       endTimestamp: filter.endTimestamp,
       query: debouncedQuery,
@@ -236,11 +236,11 @@ function LogsPage() {
           <div className='flex items-center justify-start w-[180px]'>
             {/* Version selector - versions endpoint TODO */}
             <Select
-              value={filter.appVersionId || 'all'}
+              value={filter.appDeploymentId || 'all'}
               onValueChange={(value) =>
                 setFilter((prev) => ({
                   ...prev,
-                  appVersionId: value === 'all' ? undefined : value,
+                  appDeploymentId: value === 'all' ? undefined : value,
                 }))
               }>
               <SelectTrigger className='w-full' size='sm'>
@@ -285,7 +285,9 @@ function LogsPage() {
                 <TableBody>
                   {flattenedLogs.map((log) => {
                     const badge = getLogTypeBadge(log.logType)
-                    const versionDisplay = log.appVersionId ? log.appVersionId.slice(-4) : 'N/A'
+                    const versionDisplay = log.appDeploymentId
+                      ? log.appDeploymentId.slice(-4)
+                      : 'N/A'
                     return (
                       <TableRow key={log.id} className=' w-full'>
                         <TableCell className='font-mono text-xs w-[200px]'>

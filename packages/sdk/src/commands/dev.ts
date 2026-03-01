@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { authenticator } from '../auth/auth.js'
 import { HIDDEN_AUXX_DIRECTORY } from '../constants/hidden-auxx-directory.js'
 import { USE_APP_TS, USE_SETTINGS } from '../env.js'
-import { type Errored, isErrored, type UploadError } from '../errors.js'
+import { isErrored } from '../errors.js'
 import { printUploadError } from '../print-errors.js'
 import { addAuxxHiddenDirectoryToTsConfig } from '../util/add-auxx-hidden-directory-to-ts-config.js'
 import { ensureAppEntryPoint } from '../util/ensure-app-entry-point.js'
@@ -113,15 +113,9 @@ export const dev = new Command('dev')
       }
     }
     try {
-      const {
-        appId,
-        appSlug,
-        organization,
-        devVersionId,
-        bundleId,
-        clientBundleUploadUrl,
-        serverBundleUploadUrl,
-      } = await boot({ organizationSlug })
+      const { appId, appSlug, organization, environmentVariables, cliVersion } = await boot({
+        organizationSlug,
+      })
 
       // const cleanupGraphqlServer = graphqlServer()
 
@@ -168,15 +162,14 @@ export const dev = new Command('dev')
           }
           const uploadResult = await upload({
             contents,
-            versionId: devVersionId,
-            bundleId,
-            clientBundleUploadUrl,
-            serverBundleUploadUrl,
             appId,
+            targetOrganizationId: organization.id,
+            environmentVariables,
+            cliVersion,
             settingsSchema,
           })
           if (isErrored(uploadResult)) {
-            printUploadError(uploadResult.error as Errored<UploadError>)
+            printUploadError(uploadResult)
           }
         },
 

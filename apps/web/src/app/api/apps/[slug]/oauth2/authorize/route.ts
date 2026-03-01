@@ -107,11 +107,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           eq(inst.organizationId, organizationId)
         ),
       with: {
-        currentVersion: {
-          columns: {
-            major: true,
-          },
-        },
         app: {
           columns: {
             title: true,
@@ -124,14 +119,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Installation not found' }, { status: 404 })
     }
 
-    // Get connection definition
+    // Get connection definition (simplified — no version major needed)
     const connDef = await db.query.ConnectionDefinition.findFirst({
-      where: (cd, { eq, and }) =>
-        and(
-          eq(cd.appId, appId),
-          eq(cd.major, installation.currentVersion!.major),
-          eq(cd.global, isGlobal)
-        ),
+      where: (cd, { eq, and }) => and(eq(cd.appId, appId), eq(cd.global, isGlobal)),
     })
 
     if (!connDef || connDef.connectionType !== 'oauth2-code') {

@@ -1,9 +1,8 @@
 // packages/services/src/apps/uninstall-app.ts
 
 import { database, schema, type Transaction } from '@auxx/database'
-import { eq, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
-// import type { AppError } from './errors'
 import { fromDatabase } from '../shared/utils'
 
 /**
@@ -123,21 +122,11 @@ export async function uninstallApp(input: UninstallAppInput) {
         throw new Error('Failed to uninstall app')
       }
 
-      // If production install, decrement version's installation counter
-      if (updated.installationType === 'production' && updated.currentVersionId) {
-        await tx
-          .update(schema.AppVersion)
-          .set({
-            numInstallations: sql`GREATEST(0, ${schema.AppVersion.numInstallations} - 1)`,
-          })
-          .where(eq(schema.AppVersion.id, updated.currentVersionId))
-      }
-
       // Log event
       await tx.insert(schema.AppEventLog).values({
         appId: app.id,
         organizationId: organizationId,
-        appVersionId: updated.currentVersionId,
+        appDeploymentId: updated.currentDeploymentId,
         userId: uninstalledById,
         eventType: 'app.uninstalled',
         eventData: {

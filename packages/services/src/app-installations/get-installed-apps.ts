@@ -1,4 +1,4 @@
-// apps/api/src/services/organizations/apps/get-installed-apps.ts
+// packages/services/src/app-installations/get-installed-apps.ts
 
 import { database } from '@auxx/database'
 import { ok } from 'neverthrow'
@@ -35,12 +35,14 @@ export interface InstalledApp {
     category: string | null
   }
 
-  // Current version details
-  currentVersion: {
+  // Current deployment details
+  currentDeployment: {
     id: string
-    versionString: string
+    version: string | null
+    deploymentType: string
     status: string
-    releasedAt: Date | null
+    clientBundleSha: string
+    createdAt: Date
   } | null
 
   // Connection definition
@@ -80,7 +82,11 @@ export async function getInstalledApps(input: GetInstalledAppsInput) {
       },
       with: {
         app: true,
-        currentVersion: true,
+        currentDeployment: {
+          with: {
+            clientBundle: true,
+          },
+        },
       },
       orderBy: (installations, { desc }) => desc(installations.installedAt),
     }),
@@ -98,26 +104,16 @@ export async function getInstalledApps(input: GetInstalledAppsInput) {
     // Get connection definition for this app
     let connectionDefinition: ConnectionDefinitionSummary | undefined
 
-    if (installation.currentVersion) {
-      // Try user-scoped connection first
-      const userConnDefResult = await getAppConnectionDefinition(
-        installation.app.id,
-        installation.currentVersion.major,
-        false
-      )
+    // Try user-scoped connection first
+    const userConnDefResult = await getAppConnectionDefinition(installation.app.id, false)
 
-      if (userConnDefResult.isOk() && userConnDefResult.value) {
-        connectionDefinition = userConnDefResult.value
-      } else {
-        // Try organization-scoped
-        const organizationConnDefResult = await getAppConnectionDefinition(
-          installation.app.id,
-          installation.currentVersion.major,
-          true
-        )
-        if (organizationConnDefResult.isOk() && organizationConnDefResult.value) {
-          connectionDefinition = organizationConnDefResult.value
-        }
+    if (userConnDefResult.isOk() && userConnDefResult.value) {
+      connectionDefinition = userConnDefResult.value
+    } else {
+      // Try organization-scoped
+      const organizationConnDefResult = await getAppConnectionDefinition(installation.app.id, true)
+      if (organizationConnDefResult.isOk() && organizationConnDefResult.value) {
+        connectionDefinition = organizationConnDefResult.value
       }
     }
 
@@ -133,12 +129,14 @@ export async function getInstalledApps(input: GetInstalledAppsInput) {
         avatarUrl: installation.app.avatarUrl,
         category: installation.app.category,
       },
-      currentVersion: installation.currentVersion
+      currentDeployment: installation.currentDeployment
         ? {
-            id: installation.currentVersion.id,
-            versionString: `${installation.currentVersion.major}.${installation.currentVersion.minor}.${installation.currentVersion.patch}`,
-            status: installation.currentVersion.status ?? '',
-            releasedAt: installation.currentVersion.releasedAt,
+            id: installation.currentDeployment.id,
+            version: installation.currentDeployment.version,
+            deploymentType: installation.currentDeployment.deploymentType,
+            status: installation.currentDeployment.status,
+            clientBundleSha: installation.currentDeployment.clientBundle.sha256,
+            createdAt: installation.currentDeployment.createdAt,
           }
         : null,
       connectionDefinition,

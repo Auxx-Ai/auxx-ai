@@ -21,7 +21,7 @@ export const logsRouter = createTRPCRouter({
       z.object({
         appId: z.string(),
         organizationSlug: z.string(),
-        appVersionId: z.string().optional(),
+        appDeploymentId: z.string().optional(),
         startTimestamp: z.number().optional(),
         endTimestamp: z.number().optional(),
         query: z.string().optional(),
@@ -37,7 +37,7 @@ export const logsRouter = createTRPCRouter({
       const result = await listAppEventLogs({
         appId: input.appId,
         organizationSlug: input.organizationSlug,
-        appVersionId: input.appVersionId,
+        appDeploymentId: input.appDeploymentId,
         startTimestamp,
         endTimestamp,
         query: input.query,

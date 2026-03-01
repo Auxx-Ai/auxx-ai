@@ -73,9 +73,13 @@ export function onboarding({ appId, appSlug, organization }: OnboardingProp) {
 
   /**
    * Polls the API to check if the app has been installed.
-   * If not installed, prompts the user and continues polling every 60 seconds.
+   * Waits before the first check to give the initial upload time to auto-create the installation.
+   * If not installed after that, prompts the user and continues polling every 60 seconds.
    */
   const poll = async () => {
+    // Wait for the first upload to complete and auto-create the installation
+    await new Promise((resolve) => setTimeout(resolve, 15_000))
+
     const installationResult = await api.fetchInstallation({
       appId,
       organizationId: organization.id,

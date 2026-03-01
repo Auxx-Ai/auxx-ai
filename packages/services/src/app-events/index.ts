@@ -1,9 +1,9 @@
 // packages/services/src/app-events/index.ts
 
-import { database, schema } from '@auxx/database'
+import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
+import { getBundleS3Key } from '../app-bundles/s3-key'
 import { invokeLambdaExecutor, prepareLambdaContext } from '../lambda-execution'
 import type { DatabaseError } from '../shared/errors'
 import { fromDatabase } from '../shared/utils'
@@ -21,7 +21,7 @@ export type AppEventError =
       appInstallationId: string
     }
   | {
-      code: 'NO_VERSION_INSTALLED'
+      code: 'NO_DEPLOYMENT_ACTIVE'
       message: string
       appInstallationId: string
     }
@@ -64,7 +64,7 @@ export async function triggerAppEvent(params: {
 
   logger.info('Triggering app event', { appInstallationId, eventType })
 
-  // Get app installation with organization
+  // Get app installation with deployment and bundles
   const installationResult = await fromDatabase(
     database.query.AppInstallation.findFirst({
       where: (inst, { eq }) => eq(inst.id, appInstallationId),
@@ -73,6 +73,11 @@ export async function triggerAppEvent(params: {
           columns: {
             id: true,
             handle: true,
+          },
+        },
+        currentDeployment: {
+          with: {
+            serverBundle: true,
           },
         },
       },
@@ -94,31 +99,17 @@ export async function triggerAppEvent(params: {
     })
   }
 
-  if (!installation.currentVersionId) {
+  if (!installation.currentDeployment) {
     return err({
-      code: 'NO_VERSION_INSTALLED' as const,
-      message: `App installation has no current version: ${appInstallationId}`,
+      code: 'NO_DEPLOYMENT_ACTIVE' as const,
+      message: `App installation has no active deployment: ${appInstallationId}`,
       appInstallationId,
     })
   }
 
-  // Get version bundle
-  const bundleResult = await fromDatabase(
-    database
-      .select()
-      .from(schema.AppVersionBundle)
-      .where(eq(schema.AppVersionBundle.appVersionId, installation.currentVersionId))
-      .limit(1),
-    'get-version-bundle-for-event'
-  )
+  const { serverBundle } = installation.currentDeployment
 
-  if (bundleResult.isErr()) {
-    return err(bundleResult.error)
-  }
-
-  const [versionBundle] = bundleResult.value
-
-  if (!versionBundle?.serverBundleS3Key) {
+  if (!serverBundle) {
     // No server bundle - app doesn't have event handlers
     logger.info('No server bundle for app, skipping event', { appInstallationId })
     return ok(undefined)
@@ -139,7 +130,8 @@ export async function triggerAppEvent(params: {
     caller: 'app-events',
     payload: {
       type: 'event',
-      bundleKey: versionBundle.serverBundleS3Key,
+      serverBundleSha: serverBundle.sha256,
+      appId: installation.appId,
       eventType,
       eventPayload: payload,
       context,

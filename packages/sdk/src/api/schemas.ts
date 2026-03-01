@@ -70,38 +70,46 @@ export const listAppsResponseSchema = z.object({
   }),
 })
 
-/** Bundle object in version creation response */
-const bundleSchema = z.object({
-  id: z.string(),
-  clientBundleUploadUrl: z.string().url(),
-  serverBundleUploadUrl: z.string().url(),
-  // Optional for backward compatibility during rollout
-  bundleSha: z.string().optional(),
+/** Response item from POST /bundles/check */
+const bundleCheckItemSchema = z.object({
+  exists: z.boolean(),
+  bundleId: z.string(),
+  uploadUrl: z.string().nullable(),
 })
 
-/** Bundle upload completion request */
-export const completeBundleRequestSchema = z.object({
-  bundleSha: z.string(),
+/** Response from POST /bundles/check */
+export const checkBundlesResponseSchema = z.object({
+  client: bundleCheckItemSchema,
+  server: bundleCheckItemSchema,
 })
 
-/** Bundle upload completion response */
-export const completeBundleUploadSchema = z.object({
+/** Response from POST /bundles/confirm */
+export const confirmBundlesResponseSchema = z.object({
   success: z.boolean(),
 })
 
-/** App version information */
-export const versionSchema = z.object({
-  major: z.number(),
-  minor: z.number(),
-  created_at: z.string(),
-  released_at: z.string().nullable().optional(),
-  is_published: z.boolean(),
-  num_installations: z.number(),
-  publication_status: z.enum(['private', 'in-review', 'published', 'rejected', 'unpublished']),
+/** Response from POST /deployments */
+export const createDeploymentResponseSchema = z.object({
+  deploymentId: z.string(),
+  version: z.string().nullable(),
 })
-/** List of versions */
-export const versionsSchema = z.object({
-  app_prod_versions: z.array(versionSchema),
+
+/** Individual deployment item */
+export const deploymentSchema = z.object({
+  id: z.string(),
+  deploymentType: z.enum(['development', 'production']),
+  version: z.string().nullable(),
+  status: z.string(),
+  clientBundleSha: z.string(),
+  serverBundleSha: z.string(),
+  settingsSchema: z.unknown().nullable(),
+  metadata: z.unknown().nullable(),
+  createdAt: z.string(),
+})
+
+/** Response from GET /deployments */
+export const listDeploymentsResponseSchema = z.object({
+  deployments: z.array(deploymentSchema),
 })
 
 export const organizationResponseSchema = z.object({
@@ -113,23 +121,6 @@ export const organizationResponseSchema = z.object({
 
 export const listDevOrganizationsResponseSchema = z.object({
   organizations: z.array(organizationResponseSchema),
-})
-/** Production version creation response */
-export const createVersionSchema = z.object({
-  versionId: z.string(),
-  appId: z.string(),
-  major: z.number(),
-  minor: z.number(),
-  bundle: bundleSchema,
-})
-
-/** Development version creation response */
-export const createDevVersionSchema = z.object({
-  versionId: z.string(),
-  appId: z.string(),
-  major: z.number(),
-  minor: z.number(),
-  bundle: bundleSchema,
 })
 
 export const installationSchema = z.object({

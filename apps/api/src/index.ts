@@ -13,6 +13,9 @@ import { allowedOrigins, corsMiddleware } from './middleware/cors'
 import { errorMiddleware } from './middleware/error'
 import appRuntime from './routes/app-runtime'
 import apps from './routes/apps'
+import bundleAssets from './routes/bundle-assets'
+import sdkBundles from './routes/bundles'
+import deployments from './routes/deployments'
 import developers from './routes/developers'
 // Routes
 import health from './routes/health'
@@ -20,7 +23,6 @@ import installations from './routes/installations'
 import me from './routes/me'
 import organizations from './routes/organizations'
 import settings from './routes/settings'
-import versions from './routes/versions'
 import webhookHandlers from './routes/webhook-handlers'
 import webhooks from './routes/webhooks'
 import workflows from './routes/workflows'
@@ -61,8 +63,10 @@ async function main() {
   app.route('/api/v1/developers', developers)
   app.route('/api/v1/me', me)
   app.route('/api/v1/apps', apps)
-  app.route('/api/v1/apps', versions)
+  app.route('/api/v1/apps', sdkBundles) // POST /apps/:appId/bundles/check, /bundles/confirm
+  app.route('/api/v1/apps', deployments) // POST/GET /apps/:appId/deployments
   app.route('/api/v1/apps', installations)
+  app.route('/api/v1/bundles', bundleAssets) // GET /bundles/:appId/:type/:sha.js (stable CDN URLs)
   app.route('/api/v1/organizations', organizations) // Organization-scoped routes (including bundles)
   app.route('/api/v1/app-runtime', appRuntime) // Platform runtime files (shared by all extensions)
   app.route('/api/v1/apps/webhooks', webhookHandlers) // For SDK calls from Lambda

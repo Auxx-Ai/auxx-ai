@@ -1,4 +1,5 @@
-import { api } from '../../api/api.js'
+// packages/sdk/src/commands/dev/boot.ts
+
 import { isErrored } from '../../errors.js'
 import {
   printCliVersionError,
@@ -40,24 +41,12 @@ export async function boot({ organizationSlug }: { organizationSlug?: string }) 
     process.exit(1)
   }
   const cliVersion = cliVersionResult.value
-  const devVersionResult = await api.createDevVersion({
-    appId: appInfo.id,
-    cliVersion,
-    targetOrganizationId: organization.id,
-    environmentVariables,
-  })
-  if (isErrored(devVersionResult)) {
-    printFetcherError('Error creating dev version', devVersionResult.error)
-    process.exit(1)
-  }
-  const devVersion = devVersionResult.value
+
   return {
     appId: appInfo.id,
     appSlug,
-    devVersionId: devVersion.versionId,
-    bundleId: devVersion.bundle.id,
-    clientBundleUploadUrl: devVersion.bundle.clientBundleUploadUrl,
-    serverBundleUploadUrl: devVersion.bundle.serverBundleUploadUrl,
     organization,
+    environmentVariables,
+    cliVersion,
   }
 }

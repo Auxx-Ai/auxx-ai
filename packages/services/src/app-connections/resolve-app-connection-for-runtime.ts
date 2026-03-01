@@ -8,102 +8,25 @@ import type { DecryptedConnectionData, RuntimeConnectionData } from './types'
 import { logger } from './utils'
 
 /**
- * Resolve app connections for runtime execution
+ * Resolve app connections for runtime execution.
  *
  * Fetches and decrypts both user-scoped and organization-scoped connections for an app,
- * preparing them for use in the runtime execution environment. This is a comprehensive
- * connection resolver that provides the runtime with all available connections based on
- * the app's connection definitions.
- *
- * Unlike `getAppConnection()` which returns only one connection (with user fallback to org),
- * this function returns BOTH connection types separately, allowing the runtime to:
- * - Pass user-specific credentials to user-scoped functions
- * - Pass organization credentials to org-scoped functions
- * - Let the app decide which connection to use in different contexts
- *
- * The resolution process:
- * 1. Queries connection definitions to determine what connection types the app supports
- * 2. If app has user-scoped definition (global: false), fetches and decrypts user connection
- * 3. If app has org-scoped definition (global: true), fetches and decrypts org connection
- * 4. Returns both connections (either may be undefined if not configured)
- *
- * Connection availability scenarios:
- * - App supports both types: Both connections returned (if configured)
- * - App supports only user type: Only userConnection returned
- * - App supports only org type: Only organizationConnection returned
- * - Neither configured: Both undefined (app functions will fail without connections)
- *
- * This function is called by the lambda runtime before executing app code to ensure
- * all necessary credentials are available in the execution context.
- *
- * @param {Object} input - The resolution parameters
- * @param {string} input.appId - The unique identifier of the app needing connections.
- * @param {string} input.organizationId - The unique identifier of the organization.
- *                                        Used for access control and decryption.
- * @param {string} input.userId - The unique identifier of the user executing the app.
- *                                Used to fetch user-scoped connections.
- * @param {number} input.versionMajor - The major version of the app (e.g., 1 for v1.2.3).
- *                                      Connection definitions are versioned with the app.
- *
- * @returns {Promise<Result<{ userConnection?: RuntimeConnectionData, organizationConnection?: RuntimeConnectionData }, Error>>}
- *          A Result containing either:
- *          - Success: Object with optional userConnection and organizationConnection
- *          - Error: DATABASE_ERROR if queries fail, or DECRYPTION_ERROR if decryption fails
- *
- * @example
- * // Resolve connections for Gmail app execution
- * const result = await resolveAppConnectionForRuntime({
- *   appId: 'gmail-app-id',
- *   organizationId: 'org-123',
- *   userId: 'user-456',
- *   versionMajor: 1
- * })
- *
- * if (result.isOk()) {
- *   const { userConnection, organizationConnection } = result.value
- *
- *   if (userConnection) {
- *     // Use personal Gmail account for user-specific functions
- *     console.log('User Gmail:', userConnection.value)
- *   }
- *
- *   if (organizationConnection) {
- *     // Use company Gmail account for org-wide functions
- *     console.log('Org Gmail:', organizationConnection.value)
- *   }
- * }
- *
- * @example
- * // Handle missing connections
- * const result = await resolveAppConnectionForRuntime(input)
- * if (result.isOk()) {
- *   const { userConnection, organizationConnection } = result.value
- *
- *   if (!userConnection && !organizationConnection) {
- *     throw new Error('No connections configured for this app')
- *   }
- *
- *   // Use whichever is available
- *   const connection = userConnection || organizationConnection
- *   await executeAppFunction(connection)
- * }
+ * preparing them for use in the runtime execution environment.
  */
 export async function resolveAppConnectionForRuntime(input: {
   appId: string
   organizationId: string
   userId: string
-  versionMajor: number
 }) {
-  const { appId, organizationId, userId, versionMajor } = input
+  const { appId, organizationId, userId } = input
 
-  logger.info('resolveAppConnectionForRuntime', { appId, organizationId, userId, versionMajor })
+  logger.info('resolveAppConnectionForRuntime', { appId, organizationId, userId })
 
-  // 1. Get connection definitions for this app version
+  // 1. Get connection definitions for this app
   // Try user-scoped first (global: false)
   const userConnDefResult = await fromDatabase(
     database.query.ConnectionDefinition.findFirst({
-      where: (connDef, { eq, and }) =>
-        and(eq(connDef.appId, appId), eq(connDef.major, versionMajor), eq(connDef.global, false)),
+      where: (connDef, { eq, and }) => and(eq(connDef.appId, appId), eq(connDef.global, false)),
       columns: {
         id: true,
         connectionType: true,
@@ -122,8 +45,7 @@ export async function resolveAppConnectionForRuntime(input: {
   // Try organization-scoped (global: true)
   const orgConnDefResult = await fromDatabase(
     database.query.ConnectionDefinition.findFirst({
-      where: (connDef, { eq, and }) =>
-        and(eq(connDef.appId, appId), eq(connDef.major, versionMajor), eq(connDef.global, true)),
+      where: (connDef, { eq, and }) => and(eq(connDef.appId, appId), eq(connDef.global, true)),
       columns: {
         id: true,
         connectionType: true,

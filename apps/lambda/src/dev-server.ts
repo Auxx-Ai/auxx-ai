@@ -47,7 +47,7 @@ async function handleRequest(req: Request): Promise<Response> {
       console.log('[DevServer] Received request:', {
         type: event.type,
         ...('functionIdentifier' in event && { functionIdentifier: event.functionIdentifier }),
-        ...('bundleKey' in event && { bundleKey: event.bundleKey }),
+        ...('serverBundleSha' in event && { serverBundleSha: event.serverBundleSha }),
       })
 
       // Call the same handler as Lambda, with auth metadata

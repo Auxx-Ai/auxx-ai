@@ -5,7 +5,7 @@
  */
 
 import { resolveAppConnectionForRuntime } from '@auxx/services/app-connections'
-import { getInstallationBundle } from '@auxx/services/app-installations'
+import { getInstallationDeployment } from '@auxx/services/app-installations'
 import { logAppExecution } from '@auxx/services/apps'
 import { invokeLambdaExecutor, prepareLambdaContext } from '@auxx/services/lambda-execution'
 import { createWorkflowNodeExecution, getWorkflowRun } from '@auxx/services/workflows'
@@ -69,8 +69,8 @@ executeWorkflowBlock.post('/:workflowId/runs/:runId/blocks/:blockId/execute', as
       return c.json(errorResponse('FORBIDDEN', 'Workflow does not belong to organization'), 403)
     }
 
-    // 3. Get app installation and bundle
-    const installationResult = await getInstallationBundle({
+    // 3. Get app installation and deployment
+    const installationResult = await getInstallationDeployment({
       installationId,
       organizationHandle: organization.handle!,
       appId,
@@ -82,18 +82,13 @@ executeWorkflowBlock.post('/:workflowId/runs/:runId/blocks/:blockId/execute', as
       return c.json(errorResponse(error.code, error.message), statusCode)
     }
 
-    const { installation, bundle } = installationResult.value
-
-    if (!bundle.serverBundleS3Key) {
-      return c.json(errorResponse('NO_SERVER_BUNDLE', 'App does not have a server bundle'), 400)
-    }
+    const { installation, deployment, serverBundleSha } = installationResult.value
 
     // 4. Resolve app connections
     const connectionsResult = await resolveAppConnectionForRuntime({
       appId,
       organizationId: organization.id,
       userId: user.id,
-      versionMajor: installation.currentVersion?.major || 1,
     })
 
     if (connectionsResult.isErr()) {
@@ -142,7 +137,8 @@ executeWorkflowBlock.post('/:workflowId/runs/:runId/blocks/:blockId/execute', as
       caller: 'api',
       payload: {
         type: 'workflow-block',
-        bundleKey: bundle.serverBundleS3Key,
+        serverBundleSha,
+        appId,
         blockId,
         workflowContext,
         workflowInput: data,
@@ -218,7 +214,7 @@ executeWorkflowBlock.post('/:workflowId/runs/:runId/blocks/:blockId/execute', as
       const logResult = await logAppExecution({
         appId,
         organizationId: organization.id,
-        appVersionId: installation.currentVersionId!,
+        appDeploymentId: deployment.id,
         userId: user.id,
         installationId: installation.id,
         consoleLogs: result.metadata.consoleLogs,

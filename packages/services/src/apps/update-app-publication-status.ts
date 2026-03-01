@@ -1,22 +1,20 @@
 // packages/services/src/apps/update-app-publication-status.ts
 
-import { App, AppVersion, database } from '@auxx/database'
+import { App, AppDeployment, database } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 
 /**
  * Update app publication status
- * This submits ALL production versions for review together
+ * This submits ALL production deployments for review together
  *
  * Actions:
- * - 'review': Submit app (and all prod versions) for review
+ * - 'review': Submit app (and all prod deployments) for review
  * - 'withdraw': Withdraw app from review
+ * - 'unpublish': Unpublish app
  *
  * Note: Admin actions (approve, reject, publish) are handled separately
- *
- * @param params - Object containing appId, userId, and targetStatus
- * @returns Result with updated app or error
  */
 export async function updateAppPublicationStatus(params: {
   appId: string
@@ -33,18 +31,12 @@ export async function updateAppPublicationStatus(params: {
     'get-app'
   )
 
-  if (appResult.isErr()) {
-    return appResult
-  }
+  if (appResult.isErr()) return appResult
 
   const app = appResult.value
 
   if (!app) {
-    return err({
-      code: 'APP_NOT_FOUND',
-      message: 'App not found',
-      appSlug: appId,
-    })
+    return err({ code: 'APP_NOT_FOUND', message: 'App not found', appSlug: appId })
   }
 
   // Step 2: Verify user is a member of the developer account
@@ -56,13 +48,9 @@ export async function updateAppPublicationStatus(params: {
     'check-member-access'
   )
 
-  if (memberResult.isErr()) {
-    return memberResult
-  }
+  if (memberResult.isErr()) return memberResult
 
-  const member = memberResult.value
-
-  if (!member) {
+  if (!memberResult.value) {
     return err({
       code: 'DEVELOPER_ACCESS_DENIED',
       message: 'You do not have permission to update this app',
@@ -71,42 +59,30 @@ export async function updateAppPublicationStatus(params: {
     })
   }
 
-  // Step 3: Handle action
   switch (targetStatus) {
-    case 'review': {
+    case 'review':
       return await handleSubmitForReview(appId, app)
-    }
-
-    case 'withdraw': {
+    case 'withdraw':
       return await handleWithdrawFromReview(appId, app)
-    }
-
-    case 'unpublish': {
+    case 'unpublish':
       return await handleUnpublish(appId, app)
-    }
-
-    default: {
+    default:
       return err({
         code: 'INVALID_STATUS_TRANSITION',
         message: `Invalid target status: ${targetStatus}`,
         appId,
       })
-    }
   }
 }
 
 /**
  * Handle submitting app for review
- * Sets app and all prod versions to pending-review
+ * Sets app reviewStatus and transitions all active prod deployments to pending-review
  */
 async function handleSubmitForReview(appId: string, app: typeof App.$inferSelect) {
-  // Validate app eligibility
   const eligibilityResult = await validateAppEligibility(appId, app)
-  if (eligibilityResult.isErr()) {
-    return eligibilityResult
-  }
+  if (eligibilityResult.isErr()) return eligibilityResult
 
-  // Validate current state - can only submit if not already in review or approved
   if (app.reviewStatus === 'pending-review' || app.reviewStatus === 'in-review') {
     return err({
       code: 'APP_ALREADY_IN_REVIEW',
@@ -120,39 +96,32 @@ async function handleSubmitForReview(appId: string, app: typeof App.$inferSelect
   const updateResult = await fromDatabase(
     database
       .update(App)
-      .set({
-        reviewStatus: 'pending-review',
-        updatedAt: new Date(),
-      })
+      .set({ reviewStatus: 'pending-review', updatedAt: new Date() })
       .where(eq(App.id, appId))
       .returning(),
     'update-app-status'
   )
 
-  if (updateResult.isErr()) {
-    return updateResult
-  }
+  if (updateResult.isErr()) return updateResult
 
   const [updatedApp] = updateResult.value
-
   if (!updatedApp) {
-    return err({
-      code: 'APP_UPDATE_FAILED',
-      message: 'Failed to update app status',
-      appId,
-    })
+    return err({ code: 'APP_UPDATE_FAILED', message: 'Failed to update app status', appId })
   }
 
-  // Update all prod versions to 'pending-review'
+  // Transition active production deployments to pending-review
   await fromDatabase(
     database
-      .update(AppVersion)
-      .set({
-        reviewStatus: 'pending-review',
-        updatedAt: new Date(),
-      })
-      .where(and(eq(AppVersion.appId, appId), eq(AppVersion.versionType, 'prod'))),
-    'update-versions-to-pending-review'
+      .update(AppDeployment)
+      .set({ status: 'pending-review' })
+      .where(
+        and(
+          eq(AppDeployment.appId, appId),
+          eq(AppDeployment.deploymentType, 'production'),
+          eq(AppDeployment.status, 'active')
+        )
+      ),
+    'update-deployments-to-pending-review'
   )
 
   return ok({ app: updatedApp })
@@ -160,10 +129,8 @@ async function handleSubmitForReview(appId: string, app: typeof App.$inferSelect
 
 /**
  * Handle withdrawing from review
- * Sets app and all prod versions reviewStatus to withdrawn
  */
 async function handleWithdrawFromReview(appId: string, app: typeof App.$inferSelect) {
-  // Validate current state
   if (app.reviewStatus !== 'pending-review' && app.reviewStatus !== 'in-review') {
     return err({
       code: 'APP_NOT_IN_REVIEW',
@@ -173,50 +140,35 @@ async function handleWithdrawFromReview(appId: string, app: typeof App.$inferSel
     })
   }
 
-  // Update app to withdrawn
   const updateResult = await fromDatabase(
     database
       .update(App)
-      .set({
-        reviewStatus: 'withdrawn',
-        updatedAt: new Date(),
-      })
+      .set({ reviewStatus: 'withdrawn', updatedAt: new Date() })
       .where(eq(App.id, appId))
       .returning(),
     'update-app-status'
   )
 
-  if (updateResult.isErr()) {
-    return updateResult
-  }
+  if (updateResult.isErr()) return updateResult
 
   const [updatedApp] = updateResult.value
-
   if (!updatedApp) {
-    return err({
-      code: 'APP_UPDATE_FAILED',
-      message: 'Failed to update app status',
-      appId,
-    })
+    return err({ code: 'APP_UPDATE_FAILED', message: 'Failed to update app status', appId })
   }
 
-  // Update all prod versions in review to 'withdrawn'
+  // Withdraw deployments that are in review
   await fromDatabase(
     database
-      .update(AppVersion)
-      .set({
-        reviewStatus: 'withdrawn',
-        updatedAt: new Date(),
-      })
+      .update(AppDeployment)
+      .set({ status: 'withdrawn' })
       .where(
         and(
-          eq(AppVersion.appId, appId),
-          eq(AppVersion.versionType, 'prod'),
-          // Only withdraw versions that are in review
-          eq(AppVersion.reviewStatus, 'pending-review')
+          eq(AppDeployment.appId, appId),
+          eq(AppDeployment.deploymentType, 'production'),
+          eq(AppDeployment.status, 'pending-review')
         )
       ),
-    'withdraw-versions-from-review'
+    'withdraw-deployments-from-review'
   )
 
   return ok({ app: updatedApp })
@@ -224,16 +176,10 @@ async function handleWithdrawFromReview(appId: string, app: typeof App.$inferSel
 
 /**
  * Handle unpublishing app
- * Unpublishes all published versions
  */
 async function handleUnpublish(appId: string, app: typeof App.$inferSelect) {
-  // Check if app is published
   if (app.publicationStatus !== 'published') {
-    return err({
-      code: 'APP_NOT_PUBLISHED',
-      message: 'App is not published',
-      appId,
-    })
+    return err({ code: 'APP_NOT_PUBLISHED', message: 'App is not published', appId })
   }
 
   // Check for active installations
@@ -245,65 +191,47 @@ async function handleUnpublish(appId: string, app: typeof App.$inferSelect) {
     'check-installations'
   )
 
-  if (installationsResult.isErr()) {
-    return installationsResult
-  }
+  if (installationsResult.isErr()) return installationsResult
 
-  const activeInstallations = installationsResult.value
-
-  if (activeInstallations.length > 0) {
+  if (installationsResult.value.length > 0) {
     return err({
       code: 'APP_HAS_ACTIVE_INSTALLATIONS',
-      message: `Cannot unpublish app with ${activeInstallations.length} active installation(s)`,
+      message: `Cannot unpublish app with ${installationsResult.value.length} active installation(s)`,
       appId,
-      installationCount: activeInstallations.length,
+      installationCount: installationsResult.value.length,
     })
   }
 
-  // Update all published versions to unpublished
+  // Deprecate published deployments
   await fromDatabase(
     database
-      .update(AppVersion)
-      .set({
-        publicationStatus: 'unpublished',
-        updatedAt: new Date(),
-        // NOTE: reviewStatus stays 'approved'
-      })
+      .update(AppDeployment)
+      .set({ status: 'deprecated' })
       .where(
         and(
-          eq(AppVersion.appId, appId),
-          eq(AppVersion.versionType, 'prod'),
-          eq(AppVersion.publicationStatus, 'published')
+          eq(AppDeployment.appId, appId),
+          eq(AppDeployment.deploymentType, 'production'),
+          eq(AppDeployment.status, 'published')
         )
       ),
-    'unpublish-versions'
+    'deprecate-published-deployments'
   )
 
   // Update app to unpublished
   const updateResult = await fromDatabase(
     database
       .update(App)
-      .set({
-        publicationStatus: 'unpublished',
-        updatedAt: new Date(),
-      })
+      .set({ publicationStatus: 'unpublished', updatedAt: new Date() })
       .where(eq(App.id, appId))
       .returning(),
     'update-app-status'
   )
 
-  if (updateResult.isErr()) {
-    return updateResult
-  }
+  if (updateResult.isErr()) return updateResult
 
   const [updatedApp] = updateResult.value
-
   if (!updatedApp) {
-    return err({
-      code: 'APP_UPDATE_FAILED',
-      message: 'Failed to update app status',
-      appId,
-    })
+    return err({ code: 'APP_UPDATE_FAILED', message: 'Failed to update app status', appId })
   }
 
   return ok({ app: updatedApp })
@@ -311,10 +239,8 @@ async function handleUnpublish(appId: string, app: typeof App.$inferSelect) {
 
 /**
  * Validate app eligibility for review submission
- * Checks listing completeness, production version or OAuth config
  */
 async function validateAppEligibility(appId: string, app: typeof App.$inferSelect) {
-  // Check 1: App listing must be complete
   const listingFields = {
     category: app.category,
     description: app.description,
@@ -331,16 +257,13 @@ async function validateAppEligibility(appId: string, app: typeof App.$inferSelec
   const MINIMUM_CONTENT_LENGTH = 100
   const missingFields: string[] = []
 
-  // Validate basic fields
   if (!listingFields.category?.trim()) missingFields.push('category')
   if (!listingFields.description?.trim()) missingFields.push('description')
-  // if (!listingFields.avatarUrl?.trim()) missingFields.push('avatarUrl')
   if (!listingFields.websiteUrl?.trim()) missingFields.push('websiteUrl')
   if (!listingFields.documentationUrl?.trim()) missingFields.push('documentationUrl')
   if (!listingFields.contactUrl?.trim()) missingFields.push('contactUrl')
   if (!listingFields.termsOfServiceUrl?.trim()) missingFields.push('termsOfServiceUrl')
 
-  // Validate content fields (minimum length)
   if (
     !listingFields.contentOverview ||
     listingFields.contentOverview.trim().length < MINIMUM_CONTENT_LENGTH
@@ -369,37 +292,30 @@ async function validateAppEligibility(appId: string, app: typeof App.$inferSelec
     })
   }
 
-  // Check 2: Must have production version OR OAuth configured
-  const versionsResult = await fromDatabase(
-    database.query.AppVersion.findFirst({
-      where: (versions, { and, eq }) =>
-        and(eq(versions.appId, appId), eq(versions.versionType, 'prod')),
+  // Must have production deployment OR OAuth configured
+  const deploymentResult = await fromDatabase(
+    database.query.AppDeployment.findFirst({
+      where: (d, { and, eq }) => and(eq(d.appId, appId), eq(d.deploymentType, 'production')),
     }),
-    'check-prod-versions'
+    'check-prod-deployments'
   )
 
-  const hasProdVersion = versionsResult.isOk() && !!versionsResult.value
+  const hasProdDeployment = deploymentResult.isOk() && !!deploymentResult.value
   const hasOAuth = app.hasOauth
 
-  if (!hasProdVersion && !hasOAuth) {
+  if (!hasProdDeployment && !hasOAuth) {
     return err({
       code: 'APP_NO_PROD_VERSION',
-      message: 'App must have at least one production version or OAuth enabled',
+      message: 'App must have at least one production deployment or OAuth enabled',
       appId,
     })
   }
 
-  // Check 3: If OAuth is enabled, config must be complete
   if (hasOAuth) {
     const oauthMissingFields: string[] = []
-
-    if (!app.oauthExternalEntrypointUrl?.trim()) {
+    if (!app.oauthExternalEntrypointUrl?.trim())
       oauthMissingFields.push('oauthExternalEntrypointUrl')
-    }
-
-    if (!app.scopes || app.scopes.length === 0) {
-      oauthMissingFields.push('scopes')
-    }
+    if (!app.scopes || app.scopes.length === 0) oauthMissingFields.push('scopes')
 
     if (oauthMissingFields.length > 0) {
       return err({

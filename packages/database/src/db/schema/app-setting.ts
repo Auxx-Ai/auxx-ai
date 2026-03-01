@@ -3,8 +3,8 @@
 
 import { createId } from '@paralleldrive/cuid2'
 import { type AnyPgColumn, index, jsonb, pgTable, text, timestamp, uniqueIndex } from './_shared'
+import { AppDeployment } from './app-deployment'
 import { AppInstallation } from './app-installation'
-import { AppVersion } from './app-version'
 
 /** Drizzle table for AppSetting */
 export const AppSetting = pgTable(
@@ -20,7 +20,7 @@ export const AppSetting = pgTable(
         onUpdate: 'cascade',
         onDelete: 'cascade',
       }),
-    appVersionId: text().references((): AnyPgColumn => AppVersion.id, {
+    appDeploymentId: text().references((): AnyPgColumn => AppDeployment.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
@@ -39,6 +39,6 @@ export const AppSetting = pgTable(
       'btree',
       table.appInstallationId.asc().nullsLast()
     ),
-    index('AppSetting_appVersionId_idx').using('btree', table.appVersionId.asc().nullsLast()),
+    index('AppSetting_appDeploymentId_idx').using('btree', table.appDeploymentId.asc().nullsLast()),
   ]
 )

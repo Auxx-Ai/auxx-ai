@@ -29,7 +29,7 @@ import type { WorkflowBlockExecutionEvent } from '../validator.ts'
  * Uses WorkflowBlockExecutionEvent type from validator for type safety
  */
 export async function executeWorkflowBlock(
-  options: Omit<WorkflowBlockExecutionEvent, 'context' | 'bundleKey'> & {
+  options: Omit<WorkflowBlockExecutionEvent, 'context' | 'serverBundleSha'> & {
     bundleCode: string
     context: any
   }

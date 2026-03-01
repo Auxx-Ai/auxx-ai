@@ -9,10 +9,10 @@ import { fromDatabase } from '../shared/utils'
  */
 export async function saveAppSettings(params: {
   appInstallationId: string
-  appVersionId?: string
+  appDeploymentId?: string
   settings: Record<string, any>
 }) {
-  const { appInstallationId, appVersionId, settings } = params
+  const { appInstallationId, appDeploymentId, settings } = params
 
   // Upsert each setting (filter out undefined values)
   const promises = Object.entries(settings)
@@ -23,7 +23,7 @@ export async function saveAppSettings(params: {
           .insert(AppSetting)
           .values({
             appInstallationId,
-            appVersionId: appVersionId ?? null,
+            appDeploymentId: appDeploymentId ?? null,
             key,
             value,
             updatedAt: new Date(),
@@ -32,7 +32,7 @@ export async function saveAppSettings(params: {
             target: [AppSetting.appInstallationId, AppSetting.key],
             set: {
               value,
-              appVersionId: appVersionId ?? null,
+              appDeploymentId: appDeploymentId ?? null,
               updatedAt: new Date(),
             },
           }),

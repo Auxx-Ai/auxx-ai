@@ -62,22 +62,17 @@ export type OrganizationMemberError =
     }
 
 /**
- * App version related errors
+ * App deployment related errors
  */
-export type AppVersionError =
+export type AppDeploymentError =
   | {
-      code: 'CREATE_FAILED'
+      code: 'DEPLOYMENT_NOT_FOUND'
       message: string
-      cause: unknown
-    }
-  | {
-      code: 'VERSION_NOT_FOUND'
-      message: string
-      versionId?: string
+      deploymentId?: string
       appId?: string
     }
   | {
-      code: 'INVALID_VERSION_NUMBER'
+      code: 'INVALID_STATUS_TRANSITION'
       message: string
       details: string
     }
@@ -88,28 +83,18 @@ export type AppVersionError =
     }
 
 /**
- * App version bundle related errors
+ * App bundle related errors
  */
-export type AppVersionBundleError =
-  | {
-      code: 'CREATE_FAILED'
-      message: string
-      cause: unknown
-    }
+export type AppBundleError =
   | {
       code: 'BUNDLE_NOT_FOUND'
       message: string
-      bundleId: string
+      bundleId?: string
     }
   | {
-      code: 'BUNDLE_NOT_COMPLETE'
+      code: 'BUNDLE_NOT_UPLOADED'
       message: string
-      bundleId: string
-    }
-  | {
-      code: 'BUNDLE_ALREADY_COMPLETE'
-      message: string
-      bundleId: string
+      bundleId?: string
     }
   | {
       code: 'S3_ERROR'
@@ -135,12 +120,7 @@ export type AppInstallationError =
       organizationId?: string
     }
   | {
-      code: 'NO_VERSION_INSTALLED'
-      message: string
-      installationId: string
-    }
-  | {
-      code: 'NO_BUNDLE_FOUND'
+      code: 'NO_DEPLOYMENT_ACTIVE'
       message: string
       installationId: string
     }
@@ -183,16 +163,10 @@ export type AppError =
       installationType: 'development' | 'production'
     }
   | {
-      code: 'NO_VERSIONS_AVAILABLE'
+      code: 'NO_DEPLOYMENTS_AVAILABLE'
       message: string
       appId: string
-      versionType?: string
-    }
-  | {
-      code: 'VERSION_ACCESS_DENIED'
-      message: string
-      versionId: string
-      organizationId: string
+      deploymentType?: string
     }
   | {
       code: 'INVALID_INSTALLATION_TYPE'
@@ -245,7 +219,7 @@ export type AnyServiceError =
   | DeveloperAccountError
   | OrganizationMemberError
   | OrganizationAccessError
-  | AppVersionError
-  | AppVersionBundleError
+  | AppDeploymentError
+  | AppBundleError
   | AppInstallationError
   | AppError

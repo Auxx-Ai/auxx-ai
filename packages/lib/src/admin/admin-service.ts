@@ -127,7 +127,11 @@ export interface AppWithMetrics {
     title: string
     slug: string
   } | null
-  latestVersion: string | null
+  latestDeployment: {
+    id: string
+    version: string | null
+    status: string
+  } | null
 }
 
 /**
@@ -155,13 +159,11 @@ export interface AppDetails {
     title: string
     slug: string
   } | null
-  versions: Array<{
+  deployments: Array<{
     id: string
-    versionString: string
-    publicationStatus: string | null
-    reviewStatus: string | null
-    status: string | null
-    releasedAt: Date | null
+    version: string | null
+    deploymentType: string
+    status: string
     createdAt: Date
   }>
 }
@@ -775,12 +777,11 @@ export class AdminService {
     offset?: number
     search?: string
     publicationStatus?: 'unpublished' | 'published'
-    reviewStatus?: 'pending-review' | 'in-review' | 'approved' | 'rejected' | 'withdrawn'
   }): Promise<AppWithMetrics[]> {
-    const { limit = 100, offset = 0, search, publicationStatus, reviewStatus } = params
+    const { limit = 100, offset = 0, search, publicationStatus } = params
 
     logger.debug(
-      `Fetching apps with limit=${limit}, offset=${offset}, search=${search}, publicationStatus=${publicationStatus}, reviewStatus=${reviewStatus}`
+      `Fetching apps with limit=${limit}, offset=${offset}, search=${search}, publicationStatus=${publicationStatus}`
     )
 
     // Build where conditions
@@ -788,10 +789,6 @@ export class AdminService {
 
     if (publicationStatus) {
       conditions.push(eq(schema.App.publicationStatus, publicationStatus))
-    }
-
-    if (reviewStatus) {
-      conditions.push(eq(schema.App.reviewStatus, reviewStatus))
     }
 
     if (search) {
@@ -825,24 +822,20 @@ export class AdminService {
       .limit(limit)
       .offset(offset)
 
-    // For each app, get the latest production version
-    const appsWithVersions = await Promise.all(
+    // For each app, get the latest production deployment
+    const appsWithDeployments = await Promise.all(
       apps.map(async (app) => {
-        const [latestVersion] = await this.db
+        const [latestDeployment] = await this.db
           .select({
-            major: schema.AppVersion.major,
-            minor: schema.AppVersion.minor,
-            patch: schema.AppVersion.patch,
+            id: schema.AppDeployment.id,
+            version: schema.AppDeployment.version,
+            status: schema.AppDeployment.status,
           })
-          .from(schema.AppVersion)
+          .from(schema.AppDeployment)
           .where(
-            sql`${schema.AppVersion.appId} = ${app.id} AND ${schema.AppVersion.versionType} = 'prod'`
+            sql`${schema.AppDeployment.appId} = ${app.id} AND ${schema.AppDeployment.deploymentType} = 'production'`
           )
-          .orderBy(
-            desc(schema.AppVersion.major),
-            desc(schema.AppVersion.minor),
-            desc(schema.AppVersion.patch)
-          )
+          .orderBy(desc(schema.AppDeployment.createdAt))
           .limit(1)
 
         return {
@@ -852,15 +845,13 @@ export class AdminService {
           publicationStatus: app.publicationStatus,
           createdAt: app.createdAt,
           developerAccount: app.developerAccount,
-          latestVersion: latestVersion
-            ? `${latestVersion.major}.${latestVersion.minor}.${latestVersion.patch}`
-            : null,
+          latestDeployment: latestDeployment ?? null,
         }
       })
     )
 
-    logger.debug(`Found ${appsWithVersions.length} apps`)
-    return appsWithVersions
+    logger.debug(`Found ${appsWithDeployments.length} apps`)
+    return appsWithDeployments
   }
 
   /**
@@ -883,22 +874,13 @@ export class AdminService {
             slug: true,
           },
         },
-        versions: {
-          where: (versions, { eq }) => eq(versions.versionType, 'prod'),
-          orderBy: (versions, { desc }) => [
-            desc(versions.major),
-            desc(versions.minor),
-            desc(versions.patch),
-          ],
+        deployments: {
+          orderBy: (deployments, { desc }) => [desc(deployments.createdAt)],
           columns: {
             id: true,
-            major: true,
-            minor: true,
-            patch: true,
-            publicationStatus: true,
-            reviewStatus: true,
+            version: true,
+            deploymentType: true,
             status: true,
-            releasedAt: true,
             createdAt: true,
           },
         },
@@ -927,14 +909,12 @@ export class AdminService {
       createdAt: app.createdAt,
       updatedAt: app.updatedAt,
       developerAccount: app.developerAccount,
-      versions: app.versions.map((v) => ({
-        id: v.id,
-        versionString: `${v.major}.${v.minor ?? 0}.${v.patch ?? 0}`,
-        publicationStatus: v.publicationStatus,
-        reviewStatus: v.reviewStatus,
-        status: v.status,
-        releasedAt: v.releasedAt,
-        createdAt: v.createdAt,
+      deployments: app.deployments.map((d) => ({
+        id: d.id,
+        version: d.version,
+        deploymentType: d.deploymentType,
+        status: d.status,
+        createdAt: d.createdAt,
       })),
     }
   }
@@ -947,8 +927,8 @@ export class AdminService {
   async deleteApp(appId: string): Promise<void> {
     logger.info(`Admin deletion requested for app ${appId}`)
 
-    // Delete all versions first (cascade)
-    await this.db.delete(schema.AppVersion).where(eq(schema.AppVersion.appId, appId))
+    // Delete all deployments first (cascade)
+    await this.db.delete(schema.AppDeployment).where(eq(schema.AppDeployment.appId, appId))
 
     // Delete app
     await this.db.delete(schema.App).where(eq(schema.App.id, appId))

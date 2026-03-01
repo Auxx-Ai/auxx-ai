@@ -53,37 +53,25 @@ function getPublicationStatusVariant(status: string): 'outline' | 'default' {
 }
 
 /**
- * Get badge variant for review status
+ * Get badge variant for deployment status (unified state machine)
  */
-function getReviewStatusVariant(
-  status: string | null
+function getDeploymentStatusVariant(
+  status: string
 ): 'outline' | 'secondary' | 'default' | 'destructive' {
   switch (status) {
+    case 'active':
+      return 'default'
     case 'pending-review':
     case 'in-review':
       return 'secondary'
     case 'approved':
+    case 'published':
       return 'default'
     case 'rejected':
       return 'destructive'
     case 'withdrawn':
-      return 'outline'
-    default:
-      return 'outline'
-  }
-}
-
-/**
- * Get badge variant for lifecycle status
- */
-function getLifecycleVariant(status: string | null): 'outline' | 'default' | 'secondary' {
-  switch (status) {
-    case 'draft':
-      return 'outline'
-    case 'active':
-      return 'default'
     case 'deprecated':
-      return 'secondary'
+      return 'outline'
     default:
       return 'outline'
   }
@@ -98,15 +86,15 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
   const { data: app, isLoading } = api.admin.apps.getApp.useQuery({ id })
   const [confirm, ConfirmDialog] = useConfirm()
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
-  const [rejectVersionId, setRejectVersionId] = useState<string | null>(null)
+  const [rejectDeploymentId, setRejectDeploymentId] = useState<string | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
   const utils = api.useUtils()
 
   const deleteApp = api.admin.apps.deleteApp.useMutation()
-  const approveVersion = api.admin.apps.approveVersion.useMutation()
-  const rejectVersion = api.admin.apps.rejectVersion.useMutation()
-  const unpublishVersion = api.admin.apps.unpublishVersion.useMutation()
-  const deleteVersion = api.admin.apps.deleteVersion.useMutation()
+  const approveDeployment = api.admin.apps.approveDeployment.useMutation()
+  const rejectDeployment = api.admin.apps.rejectDeployment.useMutation()
+  const deprecateDeployment = api.admin.apps.deprecateDeployment.useMutation()
+  const deleteDeployment = api.admin.apps.deleteDeployment.useMutation()
   const toggleAutoApprove = api.admin.apps.toggleAutoApprove.useMutation()
 
   /**
@@ -116,7 +104,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
     const confirmed = await confirm({
       title: 'Delete this app?',
       description:
-        'This will permanently delete the app and all its versions. This action cannot be undone.',
+        'This will permanently delete the app and all its deployments. This action cannot be undone.',
       confirmText: 'Delete',
       cancelText: 'Cancel',
       destructive: true,
@@ -134,12 +122,12 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
   }
 
   /**
-   * Handle approve version
+   * Handle approve deployment
    */
-  const handleApproveVersion = async (versionId: string) => {
+  const handleApproveDeployment = async (deploymentId: string) => {
     const confirmed = await confirm({
-      title: 'Approve this version?',
-      description: 'This will make the version available in the marketplace.',
+      title: 'Approve this deployment?',
+      description: 'This will make the deployment available for publishing.',
       confirmText: 'Approve',
       cancelText: 'Cancel',
     })
@@ -147,57 +135,53 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
     if (!confirmed) return
 
     try {
-      await approveVersion.mutateAsync({ versionId })
+      await approveDeployment.mutateAsync({ deploymentId })
       router.refresh()
       await utils.admin.apps.getApp.invalidate({ id })
-      // Invalidate build app cache so developers see updated status
-      // await utils.apps.get.invalidate()
     } catch (error: any) {
-      toastError({ title: 'Failed to approve version', description: error.message })
+      toastError({ title: 'Failed to approve deployment', description: error.message })
     }
   }
 
   /**
-   * Handle reject version - opens dialog
+   * Handle reject deployment - opens dialog
    */
-  const handleRejectVersionClick = (versionId: string) => {
-    setRejectVersionId(versionId)
+  const handleRejectDeploymentClick = (deploymentId: string) => {
+    setRejectDeploymentId(deploymentId)
     setRejectionReason('')
     setRejectDialogOpen(true)
   }
 
   /**
-   * Handle reject version submit
+   * Handle reject deployment submit
    */
-  const handleRejectVersionSubmit = async () => {
-    if (!rejectVersionId || rejectionReason.length < 10) return
+  const handleRejectDeploymentSubmit = async () => {
+    if (!rejectDeploymentId || rejectionReason.length < 10) return
 
     try {
-      await rejectVersion.mutateAsync({
-        versionId: rejectVersionId,
+      await rejectDeployment.mutateAsync({
+        deploymentId: rejectDeploymentId,
         reason: rejectionReason,
       })
       setRejectDialogOpen(false)
-      setRejectVersionId(null)
+      setRejectDeploymentId(null)
       setRejectionReason('')
       router.refresh()
       await utils.admin.apps.getApp.invalidate({ id })
-      // Invalidate build app cache so developers see updated status
-      // await utils.apps.get.invalidate()
     } catch (error: any) {
-      toastError({ title: 'Failed to reject version', description: error.message })
+      toastError({ title: 'Failed to reject deployment', description: error.message })
     }
   }
 
   /**
-   * Handle unpublish version
+   * Handle deprecate deployment
    */
-  const handleUnpublishVersion = async (versionId: string) => {
+  const handleDeprecateDeployment = async (deploymentId: string) => {
     const confirmed = await confirm({
-      title: 'Unpublish this version?',
+      title: 'Deprecate this deployment?',
       description:
-        'This will remove the version from the marketplace. Existing installations will continue to work.',
-      confirmText: 'Unpublish',
+        'This will remove the deployment from the marketplace. Existing installations will continue to work.',
+      confirmText: 'Deprecate',
       cancelText: 'Cancel',
       destructive: true,
     })
@@ -205,22 +189,20 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
     if (!confirmed) return
 
     try {
-      await unpublishVersion.mutateAsync({ versionId })
+      await deprecateDeployment.mutateAsync({ deploymentId })
       router.refresh()
       await utils.admin.apps.getApp.invalidate({ id })
-      // Invalidate build app cache so developers see updated status
-      // await utils.apps.get.invalidate()
     } catch (error: any) {
-      toastError({ title: 'Failed to unpublish version', description: error.message })
+      toastError({ title: 'Failed to deprecate deployment', description: error.message })
     }
   }
 
   /**
-   * Handle delete version
+   * Handle delete deployment
    */
-  const handleDeleteVersion = async (versionId: string) => {
+  const handleDeleteDeployment = async (deploymentId: string) => {
     const confirmed = await confirm({
-      title: 'Delete this version?',
+      title: 'Delete this deployment?',
       description: 'This action cannot be undone.',
       confirmText: 'Delete',
       cancelText: 'Cancel',
@@ -230,11 +212,11 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
     if (!confirmed) return
 
     try {
-      await deleteVersion.mutateAsync({ versionId })
+      await deleteDeployment.mutateAsync({ deploymentId })
       router.refresh()
       await utils.admin.apps.getApp.invalidate({ id })
     } catch (error: any) {
-      toastError({ title: 'Failed to delete version', description: error.message })
+      toastError({ title: 'Failed to delete deployment', description: error.message })
     }
   }
 
@@ -304,9 +286,9 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject Version</DialogTitle>
+            <DialogTitle>Reject Deployment</DialogTitle>
             <DialogDescription>
-              Please provide a reason for rejecting this version. The developer will be notified.
+              Please provide a reason for rejecting this deployment. The developer will be notified.
             </DialogDescription>
           </DialogHeader>
           <div className='space-y-4 py-4'>
@@ -314,7 +296,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
               <Label htmlFor='reason'>Rejection Reason</Label>
               <Textarea
                 id='reason'
-                placeholder='Explain why this version is being rejected...'
+                placeholder='Explain why this deployment is being rejected...'
                 value={rejectionReason}
                 onChange={(e) => setRejectionReason(e.target.value)}
                 className='min-h-[100px]'
@@ -330,11 +312,11 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
             </Button>
             <Button
               variant='destructive'
-              onClick={handleRejectVersionSubmit}
-              disabled={rejectionReason.length < 10 || rejectVersion.isPending}
-              loading={rejectVersion.isPending}
+              onClick={handleRejectDeploymentSubmit}
+              disabled={rejectionReason.length < 10 || rejectDeployment.isPending}
+              loading={rejectDeployment.isPending}
               loadingText='Rejecting...'>
-              Reject Version
+              Reject Deployment
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -350,9 +332,6 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
                   className='bg-green-500/10 text-green-500 border-green-500/20'>
                   Auto-Approve
                 </Badge>
-              )}
-              {app.reviewStatus && (
-                <Badge variant={getReviewStatusVariant(app.reviewStatus)}>{app.reviewStatus}</Badge>
               )}
               <Badge variant={getPublicationStatusVariant(app.publicationStatus)}>
                 {app.publicationStatus}
@@ -409,18 +388,6 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
                           </Badge>
                         </TableCell>
                       </TableRow>
-                      {app.reviewStatus && (
-                        <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                          <TableCell className='bg-muted/50 py-2 font-medium'>
-                            Review Status
-                          </TableCell>
-                          <TableCell className='py-2'>
-                            <Badge variant={getReviewStatusVariant(app.reviewStatus)}>
-                              {app.reviewStatus}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      )}
                       <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
                         <TableCell className='bg-muted/50 py-2 font-medium'>Auto-Approve</TableCell>
                         <TableCell className='py-2'>
@@ -531,98 +498,87 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
 
             <Card className='col-span-2 border-none rounded-none shadow-none'>
               <CardHeader>
-                <CardTitle>Versions</CardTitle>
-                <CardDescription>Manage app versions</CardDescription>
+                <CardTitle>Deployments</CardTitle>
+                <CardDescription>Manage app deployments</CardDescription>
               </CardHeader>
               <CardContent>
-                {app.versions.length === 0 ? (
+                {app.deployments.length === 0 ? (
                   <div className='flex h-40 items-center justify-center text-muted-foreground'>
-                    No versions found
+                    No deployments found
                   </div>
                 ) : (
                   <div className='rounded-md border'>
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Version</TableHead>
+                          <TableHead>Deployment</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {app.versions.map((version) => (
-                          <TableRow key={version.id}>
+                        {app.deployments.map((deployment) => (
+                          <TableRow key={deployment.id}>
                             <TableCell>
                               <div>
-                                <div className='font-medium font-mono'>{version.versionString}</div>
+                                <div className='font-medium font-mono'>
+                                  {deployment.version || 'Development'}
+                                </div>
                                 <div className='text-xs text-muted-foreground'>
-                                  <Badge
-                                    variant={getLifecycleVariant(version.status)}
-                                    className='mr-2'>
-                                    {version.status}
+                                  <Badge variant='outline' className='mr-2'>
+                                    {deployment.deploymentType}
                                   </Badge>
-                                  {version.releasedAt &&
-                                    formatDistanceToNow(new Date(version.releasedAt), {
-                                      addSuffix: true,
-                                    })}
+                                  {formatDistanceToNow(new Date(deployment.createdAt), {
+                                    addSuffix: true,
+                                  })}
                                 </div>
                               </div>
                             </TableCell>
                             <TableCell>
-                              <div className='flex gap-2'>
-                                {version.reviewStatus && (
-                                  <Badge variant={getReviewStatusVariant(version.reviewStatus)}>
-                                    {version.reviewStatus}
-                                  </Badge>
-                                )}
-                                <Badge
-                                  variant={getPublicationStatusVariant(
-                                    version.publicationStatus || 'unpublished'
-                                  )}>
-                                  {version.publicationStatus || 'unpublished'}
-                                </Badge>
-                              </div>
+                              <Badge variant={getDeploymentStatusVariant(deployment.status)}>
+                                {deployment.status}
+                              </Badge>
                             </TableCell>
                             <TableCell>
                               <div className='flex gap-1 justify-between'>
                                 <div className='flex gap-0.5'>
-                                  {(version.reviewStatus === 'pending-review' ||
-                                    version.reviewStatus === 'in-review') && (
+                                  {(deployment.status === 'pending-review' ||
+                                    deployment.status === 'in-review') && (
                                     <>
                                       <Button
                                         size='sm'
                                         variant='outline'
-                                        onClick={() => handleApproveVersion(version.id)}
-                                        loading={approveVersion.isPending}>
+                                        onClick={() => handleApproveDeployment(deployment.id)}
+                                        loading={approveDeployment.isPending}>
                                         <CheckCircle />
                                         Approve
                                       </Button>
                                       <Button
                                         size='sm'
                                         variant='outline'
-                                        onClick={() => handleRejectVersionClick(version.id)}
-                                        loading={rejectVersion.isPending}>
+                                        onClick={() => handleRejectDeploymentClick(deployment.id)}
+                                        loading={rejectDeployment.isPending}>
                                         <XCircle />
                                         Reject
                                       </Button>
                                     </>
                                   )}
-                                  {version.publicationStatus === 'published' && (
+                                  {deployment.status === 'published' && (
                                     <Button
                                       size='sm'
                                       variant='outline'
-                                      onClick={() => handleUnpublishVersion(version.id)}
-                                      loading={unpublishVersion.isPending}>
+                                      onClick={() => handleDeprecateDeployment(deployment.id)}
+                                      loading={deprecateDeployment.isPending}>
                                       <Ban />
-                                      Unpublish
+                                      Deprecate
                                     </Button>
                                   )}
                                 </div>
                                 <Button
                                   size='sm'
                                   variant='destructive-hover'
-                                  onClick={() => handleDeleteVersion(version.id)}
-                                  loading={deleteVersion.isPending}>
+                                  onClick={() => handleDeleteDeployment(deployment.id)}
+                                  loading={deleteDeployment.isPending}>
                                   <Trash2 />
                                 </Button>
                               </div>

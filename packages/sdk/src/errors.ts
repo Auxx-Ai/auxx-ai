@@ -26,7 +26,6 @@ export type FetcherError =
   | { code: 'PARSE_ERROR'; error: Error }
   | { code: 'VALIDATION_ERROR'; error: z.ZodError }
   | { code: 'INVALID_RESPONSE'; error: Error }
-  | { code: 'CREATE_VERSION_ERROR'; error?: Error }
 
 /**
  * CLI version loading error types
@@ -55,7 +54,9 @@ export type UploadError =
       error?: string
     }
   | { code: 'START_UPLOAD_ERROR'; error: Error }
-  | { code: 'COMPLETE_BUNDLE_UPLOAD_ERROR'; error: Error }
+  | { code: 'CHECK_BUNDLES_ERROR'; error: Error }
+  | { code: 'CONFIRM_BUNDLES_ERROR'; error: Error }
+  | { code: 'CREATE_DEPLOYMENT_ERROR'; error: Error }
 
 export type CreateProjectError =
   | { code: 'DIRECTORY_ALREADY_EXISTS'; path: string }

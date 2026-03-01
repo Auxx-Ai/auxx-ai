@@ -22,12 +22,12 @@ type Props = {
  * AppAbout component displays detailed information about an app
  */
 function AppAbout({ app }: Props) {
-  // Get the actual latest version (already sorted by backend, first = latest by version number)
-  const latestVersion = app.availableVersions[0]
+  // Get the actual latest deployment (already sorted by backend, first = latest)
+  const latestDeployment = app.availableDeployments[0]
 
-  // Get installed version if app is installed
-  const installedVersion = app.installation.isInstalled
-    ? app.availableVersions.find((v) => v.id === app.installation.currentVersionId)
+  // Get installed deployment if app is installed
+  const installedDeployment = app.installation.isInstalled
+    ? app.availableDeployments.find((d) => d.id === app.installation.currentDeploymentId)
     : null
 
   return (
@@ -95,14 +95,12 @@ function AppAbout({ app }: Props) {
               </ItemContent>
             </Item>
           )} */}
-          {latestVersion && (
+          {latestDeployment && (
             <Item className='p-0 gap-1'>
               <ItemHeader className='text-xs text-primary-400'>Latest version</ItemHeader>
               <ItemContent className='flex-row items-center'>
-                {latestVersion.versionString}
-                {latestVersion.releasedAt &&
-                  ` (${format(latestVersion.releasedAt, 'MMM d, yyyy')})`}
-                {latestVersion.versionType === 'dev' && (
+                {latestDeployment.version || 'Development'}
+                {latestDeployment.deploymentType === 'development' && (
                   <Badge variant='secondary' className='text-xs'>
                     Dev
                   </Badge>
@@ -110,14 +108,12 @@ function AppAbout({ app }: Props) {
               </ItemContent>
             </Item>
           )}
-          {installedVersion && (
+          {installedDeployment && (
             <Item className='p-0 gap-1'>
               <ItemHeader className='text-xs text-primary-400'>Installed version</ItemHeader>
               <ItemContent className='flex flex-row items-center '>
-                {installedVersion.versionString}
-                {installedVersion.releasedAt &&
-                  ` (${format(installedVersion.releasedAt, 'MMM d, yyyy')})`}
-                {installedVersion.versionType === 'dev' && (
+                {installedDeployment.version || 'Development'}
+                {installedDeployment.deploymentType === 'development' && (
                   <Badge variant='secondary' className='text-xs'>
                     <Code className='size-3' />
                     Dev

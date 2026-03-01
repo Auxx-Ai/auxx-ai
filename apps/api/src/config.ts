@@ -33,11 +33,5 @@ export const BETTER_AUTH_SECRET = configService.get<string>('BETTER_AUTH_SECRET'
 export const SDK_CLIENT_SECRET =
   configService.get<string>('SDK_CLIENT_SECRET') || 'auxx-sdk-cli-secret-for-jwt-signing'
 
-/** Is development environment */
-export const isDevelopment = NODE_ENV === 'development'
-
 /** Is production environment */
 export const isProduction = NODE_ENV === 'production'
-
-/** Development user ID for bypassing auth in development mode */
-export const DEV_USER_ID = configService.get<string>('DEV_USER_ID')

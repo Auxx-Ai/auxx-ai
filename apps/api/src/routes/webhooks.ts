@@ -1,10 +1,9 @@
 // apps/api/src/routes/webhooks.ts
 
-import { database, schema } from '@auxx/database'
+import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getWebhookHandler } from '@auxx/services/app-webhook-handlers'
 import { invokeLambdaExecutor, prepareLambdaContext } from '@auxx/services/lambda-execution'
-import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { errorResponse } from '../lib/response'
 import type { AppContext } from '../types/context'
@@ -34,8 +33,8 @@ async function handleWebhookRequest(c: any) {
       return c.json(errorResponse('NOT_FOUND', 'Webhook handler not found'), 404)
     }
 
-    // 2. Get app installation and bundle (with organization)
-    const installationResult = await database.query.AppInstallation.findFirst({
+    // 2. Get app installation with current deployment and bundles
+    const installation = await database.query.AppInstallation.findFirst({
       where: (inst, { eq }) => eq(inst.id, installationId),
       with: {
         organization: {
@@ -44,24 +43,21 @@ async function handleWebhookRequest(c: any) {
             handle: true,
           },
         },
+        currentDeployment: {
+          with: {
+            serverBundle: true,
+          },
+        },
       },
     })
 
-    if (!installationResult || !installationResult.currentVersionId) {
-      log.error('Installation not found or no version', { installationId })
+    if (!installation || !installation.currentDeployment) {
+      log.error('Installation not found or no active deployment', { installationId })
       return c.json(errorResponse('NOT_FOUND', 'Installation not found'), 404)
     }
 
-    const [versionBundle] = await database
-      .select()
-      .from(schema.AppVersionBundle)
-      .where(eq(schema.AppVersionBundle.appVersionId, installationResult.currentVersionId))
-      .limit(1)
-
-    if (!versionBundle?.serverBundleS3Key) {
-      log.error('Server bundle not found', { installationId })
-      return c.json(errorResponse('NOT_FOUND', 'Server bundle not found'), 500)
-    }
+    const { currentDeployment } = installation
+    const serverBundleSha = currentDeployment.serverBundle.sha256
 
     // 3. Convert request to serializable format
     const body = await c.req.text()
@@ -81,10 +77,10 @@ async function handleWebhookRequest(c: any) {
 
     // 4. Build context and invoke Lambda via shared helper
     const context = prepareLambdaContext({
-      appId: installationResult.appId,
+      appId: installation.appId,
       installationId,
-      organizationId: installationResult.organizationId,
-      organizationHandle: installationResult.organization.handle,
+      organizationId: installation.organizationId,
+      organizationHandle: installation.organization.handle,
       userId: 'system',
       userEmail: 'system@webhook',
       userName: null,
@@ -94,7 +90,8 @@ async function handleWebhookRequest(c: any) {
       caller: 'webhook-route',
       payload: {
         type: 'webhook',
-        bundleKey: versionBundle.serverBundleS3Key,
+        serverBundleSha,
+        appId: installation.appId,
         handlerId,
         request: webRequest,
         context,

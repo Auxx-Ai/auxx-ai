@@ -58,15 +58,9 @@ export function isMainAppListingComplete(app: AppForPublishCheck): boolean {
     contentConfigure: isValidContentField(app.contentConfigure),
   }
 
-  const failedChecks = Object.entries(checks)
-    .filter(([_, isValid]) => !isValid)
-    .map(([field]) => field)
-
-  if (failedChecks.length > 0) {
-    console.log('❌ App listing incomplete. Missing/invalid fields:', failedChecks)
-  } else {
-    console.log('✅ App listing complete')
-  }
+  // const failedChecks = Object.entries(checks)
+  //   .filter(([_, isValid]) => !isValid)
+  //   .map(([field]) => field)
 
   return Object.values(checks).every((check) => check)
 }
@@ -88,15 +82,15 @@ export function isOAuthConfigComplete(app: AppForPublishCheck): boolean {
     scopes: app.scopes.length > 0,
   }
 
-  const failedChecks = Object.entries(checks)
-    .filter(([_, isValid]) => !isValid)
-    .map(([field]) => field)
+  // const failedChecks = Object.entries(checks)
+  //   .filter(([_, isValid]) => !isValid)
+  //   .map(([field]) => field)
 
-  if (failedChecks.length > 0) {
-    console.log('❌ OAuth config incomplete. Missing/invalid fields:', failedChecks)
-  } else {
-    console.log('✅ OAuth config complete')
-  }
+  // if (failedChecks.length > 0) {
+  //   console.log('❌ OAuth config incomplete. Missing/invalid fields:', failedChecks)
+  // } else {
+  //   console.log('✅ OAuth config complete')
+  // }
 
   return Object.values(checks).every((check) => check)
 }

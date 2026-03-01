@@ -1,8 +1,8 @@
 // apps/api/src/routes/organizations/apps.ts
 
 import { getInstalledApps } from '@auxx/services/app-installations'
+import { listDeployments } from '@auxx/services/app-versions'
 import {
-  getAppVersions,
   getAppWithInstallationStatus,
   getAvailableApps,
   installApp,
@@ -10,7 +10,6 @@ import {
   listAppEventLogs,
   listAppsQuerySchema,
   listInstalledAppsQuerySchema,
-  listVersionsQuerySchema,
   uninstallApp,
   uninstallAppRequestSchema,
 } from '@auxx/services/apps'
@@ -42,7 +41,7 @@ interface FlattenedLogEvent {
   metadata: {
     eventId: string
     eventType: string
-    appVersionId: string | null
+    appDeploymentId: string | null
     userId: string | null
     requestMethod: string | null
     requestPath: string | null
@@ -61,7 +60,7 @@ function flattenAppEventLogs(
     id: string
     appId: string
     organizationId: string
-    appVersionId: string | null
+    appDeploymentId: string | null
     userId: string | null
     eventType: string
     eventData: any
@@ -95,7 +94,7 @@ function flattenAppEventLogs(
         metadata: {
           eventId: eventLog.id,
           eventType: eventLog.eventType,
-          appVersionId: eventLog.appVersionId,
+          appDeploymentId: eventLog.appDeploymentId,
           userId: eventLog.userId,
           requestMethod: eventLog.requestMethod,
           requestPath: eventLog.requestPath,
@@ -307,33 +306,29 @@ apps.delete('/:appSlug/uninstall', requireOrganizationRole(['ADMIN', 'OWNER']), 
 })
 
 /**
- * GET /api/v1/organizations/:handle/apps/:appSlug/versions
- * List available versions for app
+ * GET /api/v1/organizations/:handle/apps/:appSlug/deployments
+ * List deployments for an app
  */
-apps.get('/:appSlug/versions', async (c) => {
+apps.get('/:appSlug/deployments', async (c) => {
   const appSlug = c.req.param('appSlug')
   const organizationId = c.get('organizationId')
+  const deploymentType = c.req.query('type') as 'development' | 'production' | undefined
 
-  // Parse and validate query parameters
-  const queryResult = listVersionsQuerySchema.safeParse(c.req.query())
-
-  if (!queryResult.success) {
-    return c.json(
-      errorResponse('BAD_REQUEST', 'Invalid query parameters', queryResult.error.issues),
-      400
-    )
-  }
-
-  const { type, status } = queryResult.data
-
-  // Get app versions
-  const result = await getAppVersions({
+  // First, resolve app slug to app ID
+  const appResult = await getAppWithInstallationStatus({
     appSlug,
     organizationId,
-    filters: {
-      versionType: type,
-      status,
-    },
+  })
+
+  if (appResult.isErr()) {
+    const error = appResult.error
+    const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
+    return c.json(errorResponse(error.code, error.message, error), statusCode)
+  }
+
+  const result = await listDeployments({
+    appId: appResult.value.app.id,
+    deploymentType,
   })
 
   if (result.isErr()) {
@@ -342,7 +337,19 @@ apps.get('/:appSlug/versions', async (c) => {
     return c.json(errorResponse(error.code, error.message, error), statusCode)
   }
 
-  return c.json(successResponse(result.value))
+  return c.json(
+    successResponse({
+      deployments: result.value.map((d) => ({
+        id: d.id,
+        deploymentType: d.deploymentType,
+        version: d.version,
+        status: d.status,
+        clientBundleSha: d.clientBundle.sha256,
+        serverBundleSha: d.serverBundle.sha256,
+        createdAt: d.createdAt.toISOString(),
+      })),
+    })
+  )
 })
 
 /**

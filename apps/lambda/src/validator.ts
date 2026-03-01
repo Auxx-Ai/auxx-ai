@@ -52,8 +52,8 @@ const BaseLambdaEventSchema = z.object({
 
 /** App event schema - extends base with app-specific fields */
 const AppEventSchema = BaseLambdaEventSchema.extend({
-  // Bundle location (required for all app executions)
-  bundleKey: z.string().regex(/^apps\/[\w-]+\/versions\/[\w-]+\/bundles\/[\w-]+\/server\.js$/),
+  // Content-addressed bundle SHA (required for all app executions)
+  serverBundleSha: z.string().min(1),
 
   // Execution context (required for all app executions)
   context: ExecutionContextSchema,

@@ -178,7 +178,9 @@ export default function AppsPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {app.latestVersion || <span className='text-muted-foreground'>-</span>}
+                          {app.latestDeployment?.version || (
+                            <span className='text-muted-foreground'>-</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge variant={getStatusVariant(app.publicationStatus)}>

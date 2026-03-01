@@ -40,26 +40,26 @@ async function executeAppEvent(validatedEvent: ValidatedLambdaEvent) {
   }
 
   // Load bundle and create runtime context (required for all app events)
-  const bundleCode = await loadBundle(validatedEvent.bundleKey)
+  const bundleCode = await loadBundle(validatedEvent.context.appId, validatedEvent.serverBundleSha)
   const context = createRuntimeContext(validatedEvent.context)
 
   // Route with type-specific guards for full type safety
   // Destructure inside each case after TypeScript narrows the union type
   switch (validatedEvent.type) {
     case 'event': {
-      const { context: _, bundleKey: __, ...eventData } = validatedEvent
+      const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
       return executeEventHandler({ ...eventData, bundleCode, context })
     }
     case 'webhook': {
-      const { context: _, bundleKey: __, ...eventData } = validatedEvent
+      const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
       return executeWebhookHandler({ ...eventData, bundleCode, context })
     }
     case 'workflow-block': {
-      const { context: _, bundleKey: __, ...eventData } = validatedEvent
+      const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
       return executeWorkflowBlock({ ...eventData, bundleCode, context })
     }
     case 'function': {
-      const { context: _, bundleKey: __, ...eventData } = validatedEvent
+      const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
       return executeServerFunction({ ...eventData, bundleCode, context })
     }
   }

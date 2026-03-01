@@ -3,10 +3,10 @@
 import { database } from '@auxx/database'
 import { AdminService } from '@auxx/lib/admin'
 import {
-  adminApproveVersion,
-  adminDeleteVersion,
-  adminRejectVersion,
-  adminUnpublishVersion,
+  adminApproveDeployment,
+  adminDeleteDeployment,
+  adminDeprecateDeployment,
+  adminRejectDeployment,
 } from '@auxx/services/app-versions'
 import { z } from 'zod'
 import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
@@ -26,9 +26,6 @@ export const adminAppsRouter = createTRPCRouter({
         offset: z.number().min(0).default(0),
         search: z.string().optional(),
         publicationStatus: z.enum(['unpublished', 'published']).optional(),
-        reviewStatus: z
-          .enum(['pending-review', 'in-review', 'approved', 'rejected', 'withdrawn'])
-          .optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -37,7 +34,7 @@ export const adminAppsRouter = createTRPCRouter({
     }),
 
   /**
-   * Get single app details with versions
+   * Get single app details with deployments
    */
   getApp: superAdminProcedure
     .input(
@@ -66,19 +63,20 @@ export const adminAppsRouter = createTRPCRouter({
     }),
 
   /**
-   * Approve version (sets reviewStatus to 'approved')
-   * Note: Approval does not automatically publish. Use separate publish action.
+   * Approve deployment (sets status to 'approved' or 'published' with autoPublish)
    */
-  approveVersion: superAdminProcedure
+  approveDeployment: superAdminProcedure
     .input(
       z.object({
-        versionId: z.string(),
+        deploymentId: z.string(),
+        autoPublish: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const result = await adminApproveVersion({
-        versionId: input.versionId,
+      const result = await adminApproveDeployment({
+        deploymentId: input.deploymentId,
         adminUserId: ctx.session.user.id,
+        autoPublish: input.autoPublish,
       })
 
       if (result.isErr()) {
@@ -86,31 +84,31 @@ export const adminAppsRouter = createTRPCRouter({
       }
 
       // Get app to invalidate developer cache
-      const version = await database.query.AppVersion.findFirst({
-        where: (versions, { eq }) => eq(versions.id, input.versionId),
+      const deployment = await database.query.AppDeployment.findFirst({
+        where: (deployments, { eq }) => eq(deployments.id, input.deploymentId),
         with: { app: true },
       })
 
-      if (version?.app?.developerAccountId) {
-        await invalidateBuildCacheForDeveloperAccount(version.app.developerAccountId)
+      if (deployment?.app?.developerAccountId) {
+        await invalidateBuildCacheForDeveloperAccount(deployment.app.developerAccountId)
       }
 
       return { success: true }
     }),
 
   /**
-   * Reject version (sets reviewStatus to 'rejected')
+   * Reject deployment (sets status to 'rejected')
    */
-  rejectVersion: superAdminProcedure
+  rejectDeployment: superAdminProcedure
     .input(
       z.object({
-        versionId: z.string(),
+        deploymentId: z.string(),
         reason: z.string().min(10, 'Rejection reason must be at least 10 characters'),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const result = await adminRejectVersion({
-        versionId: input.versionId,
+      const result = await adminRejectDeployment({
+        deploymentId: input.deploymentId,
         reason: input.reason,
         adminUserId: ctx.session.user.id,
       })
@@ -120,31 +118,30 @@ export const adminAppsRouter = createTRPCRouter({
       }
 
       // Get app to invalidate developer cache
-      const version = await database.query.AppVersion.findFirst({
-        where: (versions, { eq }) => eq(versions.id, input.versionId),
+      const deployment = await database.query.AppDeployment.findFirst({
+        where: (deployments, { eq }) => eq(deployments.id, input.deploymentId),
         with: { app: true },
       })
 
-      if (version?.app?.developerAccountId) {
-        await invalidateBuildCacheForDeveloperAccount(version.app.developerAccountId)
+      if (deployment?.app?.developerAccountId) {
+        await invalidateBuildCacheForDeveloperAccount(deployment.app.developerAccountId)
       }
 
       return { success: true }
     }),
 
   /**
-   * Unpublish version (published → unpublished)
-   * Note: reviewStatus remains 'approved'
+   * Deprecate deployment (published → deprecated)
    */
-  unpublishVersion: superAdminProcedure
+  deprecateDeployment: superAdminProcedure
     .input(
       z.object({
-        versionId: z.string(),
+        deploymentId: z.string(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const result = await adminUnpublishVersion({
-        versionId: input.versionId,
+      const result = await adminDeprecateDeployment({
+        deploymentId: input.deploymentId,
         adminUserId: ctx.session.user.id,
       })
 
@@ -153,30 +150,30 @@ export const adminAppsRouter = createTRPCRouter({
       }
 
       // Get app to invalidate developer cache
-      const version = await database.query.AppVersion.findFirst({
-        where: (versions, { eq }) => eq(versions.id, input.versionId),
+      const deployment = await database.query.AppDeployment.findFirst({
+        where: (deployments, { eq }) => eq(deployments.id, input.deploymentId),
         with: { app: true },
       })
 
-      if (version?.app?.developerAccountId) {
-        await invalidateBuildCacheForDeveloperAccount(version.app.developerAccountId)
+      if (deployment?.app?.developerAccountId) {
+        await invalidateBuildCacheForDeveloperAccount(deployment.app.developerAccountId)
       }
 
       return { success: true }
     }),
 
   /**
-   * Delete version
+   * Delete deployment
    */
-  deleteVersion: superAdminProcedure
+  deleteDeployment: superAdminProcedure
     .input(
       z.object({
-        versionId: z.string(),
+        deploymentId: z.string(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const result = await adminDeleteVersion({
-        versionId: input.versionId,
+      const result = await adminDeleteDeployment({
+        deploymentId: input.deploymentId,
         adminUserId: ctx.session.user.id,
       })
 

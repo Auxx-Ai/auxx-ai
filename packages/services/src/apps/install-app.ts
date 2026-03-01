@@ -1,22 +1,10 @@
 // packages/services/src/apps/install-app.ts
 
 import { database, schema, type Transaction } from '@auxx/database'
-import { eq, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
-// import type { AppError } from './errors'
 import { fromDatabase } from '../shared/utils'
 import type { InstallAppInput } from './schemas'
-
-/**
- * Input parameters for installApp
- */
-// export interface InstallAppInput {
-//   appSlug: string
-//   organizationId: string
-//   installationType: 'development' | 'production'
-//   versionId?: string
-//   installedById: string
-// }
 
 /**
  * Installation result
@@ -27,7 +15,7 @@ export interface InstallAppOutput {
     appId: string
     organizationId: string
     installationType: 'development' | 'production'
-    currentVersionId: string | null
+    currentDeploymentId: string | null
     installedAt: Date
   }
   app: {
@@ -35,9 +23,9 @@ export interface InstallAppOutput {
     slug: string
     title: string
   }
-  version: {
+  deployment: {
     id: string
-    versionString: string
+    version: string | null
   } | null
 }
 
@@ -48,24 +36,24 @@ export interface InstallAppOutput {
  * @returns Result with installation details
  */
 export async function installApp(input: InstallAppInput) {
-  const { appSlug, organizationId, versionId, installedById } = input
+  const { appSlug, organizationId, deploymentId, installedById } = input
   let { installationType } = input
 
-  // Query app with versions
+  // Query app with deployments
   const appResult = await fromDatabase(
     database.query.App.findFirst({
       where: (apps, { eq }) => eq(apps.slug, appSlug),
       with: {
-        versions: {
-          where: (versions, { or, and, eq }) =>
+        deployments: {
+          where: (deployments, { or, and, eq }) =>
             or(
-              // Dev versions for this org
+              // Dev deployments for this org
               and(
-                eq(versions.versionType, 'dev'),
-                eq(versions.targetOrganizationId, organizationId)
+                eq(deployments.deploymentType, 'development'),
+                eq(deployments.targetOrganizationId, organizationId)
               ),
-              // Published prod versions
-              and(eq(versions.versionType, 'prod'), eq(versions.publicationStatus, 'published'))
+              // Published prod deployments
+              and(eq(deployments.deploymentType, 'production'), eq(deployments.status, 'published'))
             ),
         },
       },
@@ -74,7 +62,6 @@ export async function installApp(input: InstallAppInput) {
   )
 
   if (appResult.isErr()) {
-    // Map database error to AppError
     return err({
       code: 'DATABASE_ERROR' as const,
       message: appResult.error.message,
@@ -84,7 +71,6 @@ export async function installApp(input: InstallAppInput) {
 
   const app = appResult.value
 
-  // App not found
   if (!app) {
     return err({
       code: 'APP_NOT_FOUND' as const,
@@ -94,12 +80,12 @@ export async function installApp(input: InstallAppInput) {
   }
 
   // Check if org has access to this app
-  const hasDevVersions = app.versions.some(
-    (v) => v.versionType === 'dev' && v.targetOrganizationId === organizationId
+  const hasDevDeployments = app.deployments.some(
+    (d) => d.deploymentType === 'development' && d.targetOrganizationId === organizationId
   )
   const isPublished = app.publicationStatus === 'published'
 
-  if (!isPublished && !hasDevVersions) {
+  if (!isPublished && !hasDevDeployments) {
     return err({
       code: 'APP_ACCESS_DENIED' as const,
       message: `You do not have access to app "${appSlug}"`,
@@ -108,67 +94,67 @@ export async function installApp(input: InstallAppInput) {
     })
   }
 
-  // Determine which version to install
-  let selectedVersion: (typeof app.versions)[0] | null = null
+  // Determine which deployment to install
+  let selectedDeployment: (typeof app.deployments)[0] | null = null
 
-  if (versionId) {
-    // Verify version exists and is accessible
-    selectedVersion = app.versions.find((v) => v.id === versionId) ?? null
+  if (deploymentId) {
+    // Verify deployment exists and is accessible
+    selectedDeployment = app.deployments.find((d) => d.id === deploymentId) ?? null
 
-    if (!selectedVersion) {
+    if (!selectedDeployment) {
       return err({
-        code: 'VERSION_ACCESS_DENIED' as const,
-        message: `Version ${versionId} not found or not accessible`,
-        versionId,
+        code: 'DEPLOYMENT_ACCESS_DENIED' as const,
+        message: `Deployment ${deploymentId} not found or not accessible`,
+        deploymentId,
         organizationId,
       })
     }
 
-    // Infer installation type from version type if not provided
+    // Infer installation type from deployment type if not provided
     if (!installationType) {
-      installationType = selectedVersion.versionType === 'dev' ? 'development' : 'production'
+      installationType = selectedDeployment.deploymentType as 'development' | 'production'
     }
 
-    // Validate installation type matches version type
-    if (installationType === 'production' && selectedVersion.versionType === 'dev') {
+    // Validate installation type matches deployment type
+    if (installationType === 'production' && selectedDeployment.deploymentType === 'development') {
       return err({
         code: 'INVALID_INSTALLATION_TYPE' as const,
-        message: 'Cannot install development version as production',
-        details: 'Development versions can only be installed as development installations',
+        message: 'Cannot install development deployment as production',
+        details: 'Development deployments can only be installed as development installations',
       })
     }
 
-    // Verify version is active
-    if (selectedVersion.status !== 'active') {
+    // Verify deployment is installable
+    const installableStatuses =
+      selectedDeployment.deploymentType === 'development' ? ['active'] : ['published']
+    if (!installableStatuses.includes(selectedDeployment.status)) {
       return err({
         code: 'INVALID_INSTALLATION_TYPE' as const,
-        message: 'Cannot install version with status: ' + selectedVersion.status,
-        details: 'Only active versions can be installed',
+        message: `Cannot install deployment with status: ${selectedDeployment.status}`,
+        details: 'Only active (dev) or published (prod) deployments can be installed',
       })
     }
   } else {
-    // If no version specified and no installation type, default to production
+    // If no deployment specified and no installation type, default to production
     if (!installationType) {
       installationType = 'production'
     }
 
-    // Find latest active version based on installation type
-    const targetVersionType = installationType === 'production' ? 'prod' : 'dev'
-    selectedVersion =
-      app.versions
-        .filter((v) => v.versionType === targetVersionType && v.status === 'active')
-        .sort((a, b) => {
-          if (a.major !== b.major) return b.major - a.major
-          if ((a.minor ?? 0) !== (b.minor ?? 0)) return (b.minor ?? 0) - (a.minor ?? 0)
-          return (b.patch ?? 0) - (a.patch ?? 0)
-        })[0] ?? null
+    // Find latest installable deployment based on installation type
+    const targetType = installationType === 'production' ? 'production' : 'development'
+    const targetStatus = installationType === 'production' ? 'published' : 'active'
 
-    if (!selectedVersion) {
+    selectedDeployment =
+      app.deployments
+        .filter((d) => d.deploymentType === targetType && d.status === targetStatus)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null
+
+    if (!selectedDeployment) {
       return err({
-        code: 'NO_VERSIONS_AVAILABLE' as const,
-        message: `No active ${targetVersionType} versions available for app "${appSlug}"`,
+        code: 'NO_DEPLOYMENTS_AVAILABLE' as const,
+        message: `No installable ${targetType} deployments available for app "${appSlug}"`,
         appId: app.id,
-        versionType: targetVersionType,
+        deploymentType: targetType,
       })
     }
   }
@@ -188,7 +174,6 @@ export async function installApp(input: InstallAppInput) {
   )
 
   if (existingInstallationResult.isErr()) {
-    // Map database error to AppError
     return err({
       code: 'DATABASE_ERROR' as const,
       message: existingInstallationResult.error.message,
@@ -198,7 +183,6 @@ export async function installApp(input: InstallAppInput) {
 
   const existingInstallation = existingInstallationResult.value
 
-  // If already installed, return existing installation
   if (existingInstallation) {
     return err({
       code: 'APP_ALREADY_INSTALLED' as const,
@@ -213,7 +197,6 @@ export async function installApp(input: InstallAppInput) {
   const transactionResult = await fromDatabase(
     database.transaction(async (tx: Transaction) => {
       // Delete any old uninstalled records to avoid unique constraint violation
-      // The unique index doesn't consider uninstalledAt, so we need to clean up
       await tx.delete(schema.AppInstallation).where(
         sql`${schema.AppInstallation.appId} = ${app.id}
               AND ${schema.AppInstallation.organizationId} = ${organizationId}
@@ -228,7 +211,7 @@ export async function installApp(input: InstallAppInput) {
           appId: app.id,
           organizationId,
           installationType,
-          currentVersionId: selectedVersion!.id,
+          currentDeploymentId: selectedDeployment!.id,
           installedAt: new Date(),
         })
         .returning()
@@ -237,35 +220,26 @@ export async function installApp(input: InstallAppInput) {
         throw new Error('Failed to create installation')
       }
 
-      // If production install, increment version's installation counter
-      if (installationType === 'production' && selectedVersion) {
-        await tx
-          .update(schema.AppVersion)
-          .set({ numInstallations: sql`${schema.AppVersion.numInstallations} + 1` })
-          .where(eq(schema.AppVersion.id, selectedVersion.id))
-      }
-
       // Log event
       await tx.insert(schema.AppEventLog).values({
         appId: app.id,
-        organizationId: organizationId,
-        appVersionId: selectedVersion!.id,
+        organizationId,
+        appDeploymentId: selectedDeployment!.id,
         userId: installedById,
         eventType: 'app.installed',
         eventData: {
           installationType,
-          versionId: selectedVersion!.id,
-          versionString: `${selectedVersion!.major}.${selectedVersion!.minor}.${selectedVersion!.patch}`,
+          deploymentId: selectedDeployment!.id,
+          version: selectedDeployment!.version,
         },
       })
 
-      return { installation, version: selectedVersion }
+      return { installation, deployment: selectedDeployment }
     }),
     'install-app-transaction'
   )
 
   if (transactionResult.isErr()) {
-    // Map database error to AppError
     return err({
       code: 'DATABASE_ERROR' as const,
       message: transactionResult.error.message,
@@ -273,7 +247,7 @@ export async function installApp(input: InstallAppInput) {
     })
   }
 
-  const { installation, version } = transactionResult.value
+  const { installation, deployment } = transactionResult.value
 
   return ok({
     installation: {
@@ -281,7 +255,7 @@ export async function installApp(input: InstallAppInput) {
       appId: installation.appId,
       organizationId: installation.organizationId,
       installationType: installation.installationType as 'development' | 'production',
-      currentVersionId: installation.currentVersionId,
+      currentDeploymentId: installation.currentDeploymentId,
       installedAt: installation.installedAt,
     },
     app: {
@@ -289,10 +263,10 @@ export async function installApp(input: InstallAppInput) {
       slug: app.slug,
       title: app.title,
     },
-    version: version
+    deployment: deployment
       ? {
-          id: version.id,
-          versionString: `${version.major}.${version.minor ?? 0}.${version.patch ?? 0}`,
+          id: deployment.id,
+          version: deployment.version,
         }
       : null,
   })

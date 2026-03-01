@@ -4,7 +4,7 @@
 import { createId } from '@paralleldrive/cuid2'
 import { type AnyPgColumn, index, pgTable, text, timestamp, uniqueIndex } from './_shared'
 import { App } from './app'
-import { AppVersion } from './app-version'
+import { AppDeployment } from './app-deployment'
 import { Organization } from './organization'
 
 /** Drizzle table for AppInstallation */
@@ -25,8 +25,8 @@ export const AppInstallation = pgTable(
     // Installation type
     installationType: text().notNull(), // 'development' | 'production'
 
-    // Currently installed version
-    currentVersionId: text().references((): AnyPgColumn => AppVersion.id, {
+    // Currently deployed version
+    currentDeploymentId: text().references((): AnyPgColumn => AppDeployment.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),

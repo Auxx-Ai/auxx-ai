@@ -4,7 +4,7 @@
 import { createId } from '@paralleldrive/cuid2'
 import { type AnyPgColumn, index, integer, jsonb, pgTable, text, timestamp } from './_shared'
 import { App } from './app'
-import { AppVersion } from './app-version'
+import { AppDeployment } from './app-deployment'
 import { Organization } from './organization'
 
 /** Drizzle table for AppEventLog */
@@ -23,7 +23,7 @@ export const AppEventLog = pgTable(
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
-    appVersionId: text().references((): AnyPgColumn => AppVersion.id, {
+    appDeploymentId: text().references((): AnyPgColumn => AppDeployment.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
@@ -46,7 +46,10 @@ export const AppEventLog = pgTable(
   (table) => [
     index('AppEventLog_appId_idx').using('btree', table.appId.asc().nullsLast()),
     index('AppEventLog_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
-    index('AppEventLog_appVersionId_idx').using('btree', table.appVersionId.asc().nullsLast()),
+    index('AppEventLog_appDeploymentId_idx').using(
+      'btree',
+      table.appDeploymentId.asc().nullsLast()
+    ),
     index('AppEventLog_timestamp_idx').using('btree', table.timestamp.asc().nullsLast()),
   ]
 )
