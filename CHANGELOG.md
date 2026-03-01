@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.42](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.41...auxx-v0.1.42) (2026-03-01)
+
+
+### Features
+
+* add shared test utilities and fixtures for integration tests ([#147](https://github.com/Auxx-Ai/auxx-ai/issues/147)) ([5f812f9](https://github.com/Auxx-Ai/auxx-ai/commit/5f812f9132f29e74613ebdf164d52abbd53070ab))
+* implement HMAC signing for Lambda invocations and add callback … ([#145](https://github.com/Auxx-Ai/auxx-ai/issues/145)) ([36e1156](https://github.com/Auxx-Ai/auxx-ai/commit/36e1156a588da3a4339ea88288296388b7b65e8d))
+
 ## [0.1.41](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.40...auxx-v0.1.41) (2026-02-28)
 
 

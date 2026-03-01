@@ -1,6 +1,6 @@
 {
   "name": "auxx-ai",
-  "version": "0.1.41",
+  "version": "0.1.42",
   "private": true,
   "workspaces": [
     "apps/*",
