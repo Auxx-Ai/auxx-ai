@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.43](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.42...auxx-v0.1.43) (2026-03-01)
+
+
+### Features
+
+* implement internal authentication middleware and update auth ha… ([#148](https://github.com/Auxx-Ai/auxx-ai/issues/148)) ([4f4c510](https://github.com/Auxx-Ai/auxx-ai/commit/4f4c5105fa48af0136eb0b648832e53947540e3d))
+
+
+### Bug Fixes
+
+* remove unnecessary class from AppListCard component ([#150](https://github.com/Auxx-Ai/auxx-ai/issues/150)) ([4dba483](https://github.com/Auxx-Ai/auxx-ai/commit/4dba483c1598342ffa6f658cf43c4324add9718a))
+
 ## [0.1.42](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.41...auxx-v0.1.42) (2026-03-01)
 
 
