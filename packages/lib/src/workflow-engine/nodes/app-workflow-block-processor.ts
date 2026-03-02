@@ -137,25 +137,35 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
       )
     }
 
-    // 2. Resolve variables in input fields
+    // 2. Resolve variables in input fields using mode-driven resolution
     const resolvedInputs: Record<string, any> = {}
+    const fieldModes: Record<string, boolean> = node.data.fieldModes || {}
 
     for (const [fieldName, fieldValue] of Object.entries(node.data)) {
       // Skip metadata fields (prefixed with _)
       if (fieldName.startsWith('_')) continue
-
+      // Skip fieldModes itself
+      if (fieldName === 'fieldModes') continue
       // Skip non-input fields
       if (!this.blockMetadata.schema.inputs[fieldName]) continue
 
-      // Resolve {{variable}} syntax to actual values
-      const resolved = await this.resolveVariableValue(fieldValue, contextManager)
-      resolvedInputs[fieldName] = resolved
+      // Mode-driven resolution: fieldModes[field] !== false means constant (pass through)
+      const isConstant = fieldModes[fieldName] !== false
+
+      if (isConstant) {
+        // Constant mode — pass raw value through, no resolution
+        resolvedInputs[fieldName] = fieldValue
+      } else {
+        // Variable mode — resolve based on value shape
+        resolvedInputs[fieldName] = await this.resolveAppFieldValue(fieldValue, contextManager)
+      }
 
       logger.debug('Resolved input field', {
         nodeId: node.nodeId,
         fieldName,
         original: fieldValue,
-        resolved,
+        resolved: resolvedInputs[fieldName],
+        mode: isConstant ? 'constant' : 'variable',
       })
     }
 
@@ -286,22 +296,57 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
   }
 
   /**
-   * Extract variables from app block inputs
+   * Resolve a variable-mode field value.
+   * Handles both template strings ({{variable}}) and plain variable paths (PICKER mode).
+   * Only called for fields where fieldModes[field] === false (variable mode).
+   */
+  private async resolveAppFieldValue(
+    value: any,
+    contextManager: ExecutionContextManager
+  ): Promise<any> {
+    if (typeof value !== 'string') return value
+
+    // Template strings: "Hello {{name}}, your order {{order.id}} is ready"
+    if (value.includes('{{') && value.includes('}}')) {
+      return await this.resolveVariableValue(value, contextManager)
+    }
+
+    // Plain variable path (PICKER mode): "node_abc.userId"
+    // In variable mode, the entire string IS the variable path — resolve it directly
+    if (value.length > 0) {
+      const resolved = await contextManager.getVariable(value)
+      return resolved !== undefined ? resolved : value
+    }
+
+    return value
+  }
+
+  /**
+   * Extract variables from app block inputs using fieldModes.
+   * Only extracts variables from fields in variable mode (fieldModes[field] === false).
    */
   protected extractRequiredVariables(node: WorkflowNode): string[] {
     const config = node.data
+    const fieldModes: Record<string, boolean> = config.fieldModes || {}
     const variables = new Set<string>()
 
-    // Extract from all input fields that might contain {{variable}} syntax
-    if (config.inputs && typeof config.inputs === 'object') {
-      Object.values(config.inputs).forEach((value: any) => {
-        if (typeof value === 'string') {
-          this.extractVariableIds(value).forEach((v) => variables.add(v))
-        } else if (value && typeof value === 'object') {
-          // Handle nested objects recursively
-          this.extractVariablesFromValue(value, variables)
+    for (const [fieldName, fieldValue] of Object.entries(config)) {
+      if (fieldName.startsWith('_')) continue
+      if (fieldName === 'fieldModes') continue
+      if (!this.blockMetadata?.schema?.inputs?.[fieldName]) continue
+
+      // Only extract variables from fields in variable mode
+      const isConstant = fieldModes[fieldName] !== false
+      if (isConstant) continue
+
+      if (typeof fieldValue === 'string') {
+        // Extract {{variable}} references from templates
+        this.extractVariableIds(fieldValue).forEach((v) => variables.add(v))
+        // Also add the raw value as a potential variable path (PICKER mode)
+        if (!fieldValue.includes('{{') && fieldValue.length > 0) {
+          variables.add(fieldValue)
         }
-      })
+      }
     }
 
     return Array.from(variables)

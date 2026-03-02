@@ -35,7 +35,11 @@ import {
   WorkflowNodeText,
   WorkflowPanel,
 } from './components/workflow'
-import { BooleanInput, NumberInput, SelectInput, StringInput } from './components/workflow/inputs'
+import { WorkflowVarField } from './components/workflow/fields/var-field'
+import { WorkflowVarFieldGroup } from './components/workflow/fields/var-field-group'
+// Note: Old input components (StringInput, NumberInput, etc.) are still available from
+// './components/workflow/inputs' for settings panels where VarEditor isn't needed.
+import { VarInputInternal } from './components/workflow/inputs/var-input'
 import {
   InputGroup,
   Section,
@@ -263,10 +267,16 @@ export const componentRegistry = {
   WorkflowNodeText: WorkflowNodeText,
   WorkflowNodeHandle: WorkflowNodeHandle,
   WorkflowPanel: WorkflowPanel,
-  StringInputInternal: StringInput,
-  NumberInputInternal: NumberInput,
-  BooleanInputInternal: BooleanInput,
-  SelectInputInternal: SelectInput,
+  // VarEditor-backed input components (v2 — all point to VarInputInternal)
+  VarInputInternal: VarInputInternal,
+  StringInputInternal: VarInputInternal,
+  NumberInputInternal: VarInputInternal,
+  BooleanInputInternal: VarInputInternal,
+  OptionsInputInternal: VarInputInternal,
+  SelectInputInternal: VarInputInternal, // Backward compat alias
+  // VarField wrappers
+  WorkflowVarField: WorkflowVarField,
+  WorkflowVarFieldGroup: WorkflowVarFieldGroup,
   WorkflowSection: Section,
   WorkflowInputGroup: InputGroup,
   WorkflowSeparator: WorkflowSeparatorComponent,

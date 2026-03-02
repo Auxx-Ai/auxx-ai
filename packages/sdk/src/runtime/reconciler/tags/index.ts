@@ -28,6 +28,9 @@ import { WorkflowSectionTag } from './workflow-section-tag.js'
 import { WorkflowSelectInputTag } from './workflow-select-input-tag.js'
 import { WorkflowSeparatorTag } from './workflow-separator-tag.js'
 import { WorkflowStringInputTag } from './workflow-string-input-tag.js'
+import { WorkflowVarFieldGroupTag } from './workflow-var-field-group-tag.js'
+import { WorkflowVarFieldTag } from './workflow-var-field-tag.js'
+import { WorkflowVarInputTag } from './workflow-var-input-tag.js'
 import { WorkflowVariableInputTag } from './workflow-variable-input-tag.js'
 
 /**
@@ -64,6 +67,10 @@ export const TAG_REGISTRY: Record<string, new (props: Record<string, any>) => Ba
   auxxworkflowconditionalrender: WorkflowConditionalRenderTag,
   auxxworkflowvariableinput: WorkflowVariableInputTag,
   auxxworkflowinputeditor: WorkflowInputEditorTag,
+  // v2: VarEditor-backed components (no event handlers)
+  auxxworkflowvarinput: WorkflowVarInputTag,
+  auxxworkflowvarfield: WorkflowVarFieldTag,
+  auxxworkflowvarfieldgroup: WorkflowVarFieldGroupTag,
 }
 
 /**
@@ -113,4 +120,7 @@ export { WorkflowSectionTag } from './workflow-section-tag.js'
 export { WorkflowSelectInputTag } from './workflow-select-input-tag.js'
 export { WorkflowSeparatorTag } from './workflow-separator-tag.js'
 export { WorkflowStringInputTag } from './workflow-string-input-tag.js'
+export { WorkflowVarFieldGroupTag } from './workflow-var-field-group-tag.js'
+export { WorkflowVarFieldTag } from './workflow-var-field-tag.js'
+export { WorkflowVarInputTag } from './workflow-var-input-tag.js'
 export { WorkflowVariableInputTag } from './workflow-variable-input-tag.js'

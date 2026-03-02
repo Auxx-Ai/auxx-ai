@@ -2,13 +2,15 @@
 
 'use client'
 
-import { createElement, type ReactElement, useCallback, useEffect, useMemo, useRef } from 'react'
+import { createElement, type ReactElement, useCallback, useMemo } from 'react'
 import type { InferWorkflowInput, WorkflowSchema } from '../../../root/workflow/types.js'
-import { BooleanInput, type BooleanInputProps } from '../components/inputs/boolean-input.js'
-import { NumberInput, type NumberInputProps } from '../components/inputs/number-input.js'
-import { SelectInput, type SelectInputProps } from '../components/inputs/select-input.js'
-// Import JSX components (these create custom elements)
-import { StringInput, type StringInputProps } from '../components/inputs/string-input.js'
+import { VarField, type VarFieldProps } from '../components/fields/var-field.js'
+import { VarFieldGroup, type VarFieldGroupProps } from '../components/fields/var-field-group.js'
+import { VarInput, type VarInputProps } from '../components/fields/var-input.js'
+import type { BooleanInputProps } from '../components/inputs/boolean-input.js'
+import type { NumberInputProps } from '../components/inputs/number-input.js'
+import type { SelectInputProps } from '../components/inputs/select-input.js'
+import type { StringInputProps } from '../components/inputs/string-input.js'
 import { InputGroup, type InputGroupProps } from '../components/layout/input-group.js'
 import { Section, type SectionProps } from '../components/layout/section.js'
 import {
@@ -28,27 +30,6 @@ function get(obj: any, path: string): any {
     result = result?.[key]
   }
   return result
-}
-
-/**
- * Helper to set nested value in object using dot notation
- */
-function set(obj: any, path: string, value: any): any {
-  const keys = path.split('.')
-  const lastKey = keys.pop()!
-  let current = obj
-
-  // Navigate to the parent object
-  for (const key of keys) {
-    if (!(key in current)) {
-      current[key] = {}
-    }
-    current = current[key]
-  }
-
-  // Set the value
-  current[lastKey] = value
-  return { ...obj }
 }
 
 /**
@@ -92,6 +73,41 @@ export interface WorkflowSelectInputProps<TSchema extends WorkflowSchema>
 }
 
 /**
+ * Props for workflow options input component (VarEditor-backed select).
+ * Same type-safe name as SelectInput but renders through VarEditor.
+ */
+export interface WorkflowOptionsInputProps<TSchema extends WorkflowSchema> {
+  /** Type-safe path to select field in schema */
+  name: PathToField<TSchema['inputs'], 'select'>
+  /** Dynamic options override (overrides schema options) */
+  options?: readonly (string | { label: string; value: string })[]
+  /** Placeholder text */
+  placeholder?: string
+}
+
+/**
+ * Props for VarInput component exposed by useWorkflow.
+ */
+export interface WorkflowVarInputProps {
+  /** Field name */
+  name: string
+  /** Field type: 'string' | 'number' | 'boolean' | 'select' */
+  type: string
+  /** Placeholder text */
+  placeholder?: string
+  /** Whether field accepts variable references */
+  acceptsVariables?: boolean
+  /** Allowed variable types */
+  variableTypes?: string[]
+  /** Format hint */
+  format?: string
+  /** Options for select fields */
+  options?: readonly (string | { label: string; value: string })[]
+  /** Multiline mode for string type */
+  multiline?: boolean
+}
+
+/**
  * Props for conditional render component.
  * Omits data since it's provided automatically by useWorkflow.
  */
@@ -108,57 +124,37 @@ export interface WorkflowConditionalRenderProps<TSchema extends WorkflowSchema>
  * and apply schema metadata.
  */
 export interface UseWorkflowApi<TSchema extends WorkflowSchema> {
-  /**
-   * String input field with automatic data binding.
-   *
-   * Automatically gets/sets value from WorkflowContext and applies
-   * label, description, and placeholder from schema metadata.
-   */
+  /** Base VarEditor component — renders any type based on `type` prop. */
+  VarInput: (props: WorkflowVarInputProps) => ReactElement
+
+  /** String input — convenience wrapper for VarInput type="string". */
   StringInput: (props: WorkflowStringInputProps<TSchema>) => ReactElement
 
-  /**
-   * Number input field with automatic data binding.
-   *
-   * Automatically gets/sets value from WorkflowContext and applies
-   * label, description, placeholder, min, max, step from schema metadata.
-   */
+  /** Number input — convenience wrapper for VarInput type="number". */
   NumberInput: (props: WorkflowNumberInputProps<TSchema>) => ReactElement
 
-  /**
-   * Boolean input field (checkbox/switch) with automatic data binding.
-   *
-   * Automatically gets/sets value from WorkflowContext and applies
-   * label and description from schema metadata.
-   */
+  /** Boolean input — convenience wrapper for VarInput type="boolean". */
   BooleanInput: (props: WorkflowBooleanInputProps<TSchema>) => ReactElement
 
-  /**
-   * Select/dropdown input field with automatic data binding.
-   *
-   * Automatically gets/sets value from WorkflowContext and applies
-   * label, description, placeholder, and options from schema metadata.
-   */
+  /** Select input — convenience wrapper for VarInput type="select". */
   SelectInput: (props: WorkflowSelectInputProps<TSchema>) => ReactElement
 
-  /**
-   * Section container for grouping inputs visually.
-   *
-   * Renders a titled section with optional description.
-   */
+  /** Options input — VarEditor-backed select with dynamic options support. */
+  OptionsInput: (props: WorkflowOptionsInputProps<TSchema>) => ReactElement
+
+  /** VarField — VarEditorFieldRow wrapper (title, description, type icon, clear button). */
+  VarField: (props: VarFieldProps) => ReactElement
+
+  /** VarFieldGroup — VarEditorField container (rounded border, background). */
+  VarFieldGroup: (props: VarFieldGroupProps) => ReactElement
+
+  /** Section container for grouping inputs visually. */
   Section: (props: SectionProps) => ReactElement
 
-  /**
-   * Input group for horizontal layout of inputs.
-   *
-   * Automatically arranges inputs in a responsive grid.
-   */
+  /** Input group for horizontal layout of inputs. */
   InputGroup: (props: InputGroupProps) => ReactElement
 
-  /**
-   * Conditional rendering based on data values.
-   *
-   * Evaluates condition function and renders children only if true.
-   */
+  /** Conditional rendering based on data values. */
   ConditionalRender: (props: WorkflowConditionalRenderProps<TSchema>) => ReactElement
 }
 
@@ -197,8 +193,8 @@ export interface UseWorkflowApi<TSchema extends WorkflowSchema> {
 export function useWorkflow<TSchema extends WorkflowSchema>(
   schema: TSchema
 ): UseWorkflowApi<TSchema> {
-  // Get data and updateData from WorkflowContext (source of truth)
-  const { data, updateData } = useWorkflowContext<InferWorkflowInput<TSchema>>()
+  // Get data from WorkflowContext (source of truth)
+  const { data } = useWorkflowContext<InferWorkflowInput<TSchema>>()
 
   // Extract input schema for metadata lookups
   const inputSchema = schema.inputs
@@ -214,91 +210,122 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
     return result
   }, [])
 
-  // ✓ Store updateData in ref to avoid recreating callbacks
-  const updateDataRef = useRef(updateData)
-  useEffect(() => {
-    updateDataRef.current = updateData
-  }, [updateData])
+  // VarInput: Base component for all VarEditor-backed inputs
+  const WorkflowVarInput = useCallback(
+    (props: WorkflowVarInputProps): ReactElement => {
+      const fieldJson = get(serializedInputSchema, props.name)
+      const metadata = fieldJson?._metadata || {}
 
-  // ✓ Create stable onChange factory
-  const createOnChange = useCallback((fieldName: string) => {
-    return (value: any) => {
-      updateDataRef.current(set({}, fieldName, value) as Partial<InferWorkflowInput<TSchema>>)
-    }
-  }, []) // ✓ No dependencies - stable reference
+      return createElement(VarInput, {
+        name: props.name,
+        type: props.type,
+        placeholder: props.placeholder ?? metadata.placeholder,
+        acceptsVariables: props.acceptsVariables ?? fieldJson?.acceptsVariables,
+        variableTypes: props.variableTypes ?? fieldJson?.variableTypes,
+        format: props.format ?? metadata.format,
+        options: props.options ?? metadata.options,
+        multiline: props.multiline,
+      })
+    },
+    [serializedInputSchema]
+  )
 
-  // StringInput: Workflow string input component
+  // StringInput: VarInput type="string" convenience wrapper
   const WorkflowStringInput = useCallback(
     (props: WorkflowStringInputProps<TSchema>): ReactElement => {
-      // Get field metadata from schema
-      const metadata = get(serializedInputSchema, props.name as string)?._metadata || {}
+      const fieldJson = get(serializedInputSchema, props.name as string)
+      const metadata = fieldJson?._metadata || {}
 
-      console.log('[useWorkflow] Creating StringInput:', {
-        name: props.name,
-        metadata,
-        currentValue: get(data, props.name as string),
-        allData: data,
-      })
-
-      // Create element using JSX component (which creates custom element)
-      return createElement(StringInput, {
-        ...metadata, // Schema defaults (label, description, placeholder)
-        ...props, // User overrides
+      return createElement(VarInput, {
         name: props.name as string,
-        value: get(data, props.name as string) || '',
-        onChange: createOnChange(props.name as string), // ✓ Stable reference
+        type: 'string',
+        placeholder: props.placeholder ?? metadata.placeholder,
+        acceptsVariables: fieldJson?.acceptsVariables,
+        variableTypes: fieldJson?.variableTypes,
+        format: metadata.format,
+        multiline: props.multiline,
       })
     },
-    [data, serializedInputSchema, createOnChange]
+    [serializedInputSchema]
   )
 
-  // NumberInput: Workflow number input component
+  // NumberInput: VarInput type="number" convenience wrapper
   const WorkflowNumberInput = useCallback(
     (props: WorkflowNumberInputProps<TSchema>): ReactElement => {
-      const metadata = get(serializedInputSchema, props.name as string)?._metadata || {}
+      const fieldJson = get(serializedInputSchema, props.name as string)
+      const metadata = fieldJson?._metadata || {}
 
-      return createElement(NumberInput, {
-        ...metadata, // Schema defaults (label, description, min, max, step)
-        ...props, // User overrides
+      return createElement(VarInput, {
         name: props.name as string,
-        value: get(data, props.name as string) ?? undefined,
-        onChange: createOnChange(props.name as string), // ✓ Stable reference
+        type: 'number',
+        placeholder: metadata.placeholder,
+        acceptsVariables: fieldJson?.acceptsVariables,
+        variableTypes: fieldJson?.variableTypes,
       })
     },
-    [data, serializedInputSchema, createOnChange]
+    [serializedInputSchema]
   )
 
-  // BooleanInput: Workflow boolean input component
+  // BooleanInput: VarInput type="boolean" convenience wrapper
   const WorkflowBooleanInput = useCallback(
     (props: WorkflowBooleanInputProps<TSchema>): ReactElement => {
-      const metadata = get(serializedInputSchema, props.name as string)?._metadata || {}
+      const fieldJson = get(serializedInputSchema, props.name as string)
 
-      return createElement(BooleanInput, {
-        ...metadata, // Schema defaults (label, description)
-        ...props, // User overrides
+      return createElement(VarInput, {
         name: props.name as string,
-        value: get(data, props.name as string) ?? false,
-        onChange: createOnChange(props.name as string), // ✓ Stable reference
+        type: 'boolean',
+        acceptsVariables: fieldJson?.acceptsVariables,
+        variableTypes: fieldJson?.variableTypes,
       })
     },
-    [data, serializedInputSchema, createOnChange]
+    [serializedInputSchema]
   )
 
-  // SelectInput: Workflow select input component
+  // SelectInput: VarInput type="select" convenience wrapper (legacy name)
   const WorkflowSelectInput = useCallback(
     (props: WorkflowSelectInputProps<TSchema>): ReactElement => {
-      const metadata = get(serializedInputSchema, props.name as string)?._metadata || {}
+      const fieldJson = get(serializedInputSchema, props.name as string)
+      const metadata = fieldJson?._metadata || {}
 
-      return createElement(SelectInput, {
-        ...metadata, // Schema defaults (label, description, options)
-        ...props, // User overrides
+      return createElement(VarInput, {
         name: props.name as string,
-        value: get(data, props.name as string) || '',
-        onChange: createOnChange(props.name as string), // ✓ Stable reference
+        type: 'select',
+        placeholder: metadata.placeholder,
+        acceptsVariables: fieldJson?.acceptsVariables,
+        variableTypes: fieldJson?.variableTypes,
+        options: props.options ?? metadata.options,
       })
     },
-    [data, serializedInputSchema, createOnChange]
+    [serializedInputSchema]
   )
+
+  // OptionsInput: VarInput type="select" with explicit dynamic options
+  const WorkflowOptionsInput = useCallback(
+    (props: WorkflowOptionsInputProps<TSchema>): ReactElement => {
+      const fieldJson = get(serializedInputSchema, props.name as string)
+      const metadata = fieldJson?._metadata || {}
+
+      return createElement(VarInput, {
+        name: props.name as string,
+        type: 'select',
+        placeholder: props.placeholder ?? metadata.placeholder,
+        acceptsVariables: fieldJson?.acceptsVariables,
+        variableTypes: fieldJson?.variableTypes,
+        options: props.options ?? metadata.options,
+      })
+    },
+    [serializedInputSchema]
+  )
+
+  // VarField: Wrapper component (no data binding)
+  const WorkflowVarField = useCallback((props: VarFieldProps): ReactElement => {
+    return createElement(VarField, props)
+  }, [])
+
+  // VarFieldGroup: Container component (no data binding)
+  const WorkflowVarFieldGroup = useCallback((props: VarFieldGroupProps): ReactElement => {
+    return createElement(VarFieldGroup, props)
+  }, [])
 
   // Section: Layout component (no data binding needed)
   const WorkflowSection = useCallback((props: SectionProps): ReactElement => {
@@ -323,10 +350,14 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
   )
 
   return {
+    VarInput: WorkflowVarInput,
     StringInput: WorkflowStringInput,
     NumberInput: WorkflowNumberInput,
     BooleanInput: WorkflowBooleanInput,
     SelectInput: WorkflowSelectInput,
+    OptionsInput: WorkflowOptionsInput,
+    VarField: WorkflowVarField,
+    VarFieldGroup: WorkflowVarFieldGroup,
     Section: WorkflowSection,
     InputGroup: WorkflowInputGroup,
     ConditionalRender: WorkflowConditionalRender,
