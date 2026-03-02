@@ -81,9 +81,13 @@ export function useRunSingleNode(nodeId?: string) {
       if (nodeDefinition?.validator) {
         const validationResult = nodeDefinition.validator(data)
         if (validationResult && !validationResult.isValid) {
+          const fieldErrors = validationResult.errors
+            .filter((e: any) => e.type !== 'warning')
+            .map((e: any) => e.message)
+            .join(', ')
           toastError({
             title: 'Invalid configuration',
-            description: 'Please fix the node configuration before running',
+            description: fieldErrors || 'Please fix the node configuration before running',
           })
           return
         }

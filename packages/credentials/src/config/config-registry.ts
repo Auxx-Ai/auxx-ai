@@ -982,17 +982,9 @@ export const CONFIG_VARIABLES = {
     isSensitive: false,
     isEnvOnly: true,
   },
-  LAMBDA_EXECUTOR_URL: {
-    key: 'LAMBDA_EXECUTOR_URL',
+  LAMBDA_URL: {
+    key: 'LAMBDA_URL',
     description: 'Lambda executor URL',
-    type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.SERVER,
-    isSensitive: false,
-    isEnvOnly: true,
-  },
-  LAMBDA_API_URL: {
-    key: 'LAMBDA_API_URL',
-    description: 'API URL used by Lambda for callbacks (Docker internal networking)',
     type: ConfigVariableType.STRING,
     group: ConfigVariableGroup.SERVER,
     isSensitive: false,

@@ -338,6 +338,16 @@ export class WorkflowExecutionService {
         throw new Error('Workflow not found')
       }
 
+      // Get organization details for execution context (name + handle required by app blocks)
+      const [organization] = await this.db
+        .select({
+          name: schema.Organization.name,
+          handle: schema.Organization.handle,
+        })
+        .from(schema.Organization)
+        .where(eq(schema.Organization.id, organizationId))
+        .limit(1)
+
       // Build graph to find node (engine handles all transformation)
       const graph = WorkflowGraphBuilder.buildGraph(workflow)
       const graphNode = graph.nodes.get(nodeId)
@@ -423,7 +433,8 @@ export class WorkflowExecutionService {
             userId,
             userEmail: params.userEmail,
             userName: params.userName,
-            organizationName: params.organizationName,
+            organizationName: params.organizationName ?? organization?.name,
+            organizationHandle: params.organizationHandle ?? organization?.handle,
           },
           this.workflowEngine.getNodeRegistry(),
           workflow,

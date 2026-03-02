@@ -433,6 +433,6 @@ ok | 25 passed | 0 failed (234ms)
 
 After testing locally:
 1. Deploy to AWS with `pnpm sst deploy --stage dev`
-2. Update `SERVER_FUNCTION_EXECUTOR_URL` in API config
+2. Update `LAMBDA_URL` in API config
 3. Test with production Lambda URL
 4. Monitor CloudWatch logs and metrics

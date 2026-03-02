@@ -135,7 +135,8 @@ export class WorkflowBlockRegistry {
       ) as ComponentType<NodePanelProps>,
 
       // Execution
-      canRunSingle: block.config?.canRunSingle ?? false,
+      canRunSingle: block.config?.canRunSingle ?? true,
+      extractVariables: (data: any) => this.extractAppBlockVariables(block, data),
 
       // App metadata stored in defaultData
       // The actual node component (AppWorkflowNode) will be registered separately
@@ -184,18 +185,10 @@ export class WorkflowBlockRegistry {
   private validateBlockData(block: WorkflowBlock, data: any): ValidationResult {
     const errors: Array<{ field: string; message: string; type?: 'warning' | 'error' }> = []
 
-    // Check required fields
-    for (const [name, input] of Object.entries(block.schema.inputs || {})) {
-      if (input.required && !data[name]) {
-        errors.push({
-          field: name,
-          message: `${input.label} is required`,
-          type: 'error',
-        })
-      }
-    }
-
-    // Custom validation if defined
+    // Only run custom validation if the block defines it.
+    // Required-field checks are intentionally omitted here: the serialized schema
+    // cannot know which fields are currently visible (conditional on mode selectors),
+    // and the Lambda execute function validates required fields with full context.
     if (block.schema.validation?.custom) {
       const customResult = block.schema.validation.custom(data)
       if (!customResult.valid) {
@@ -222,6 +215,39 @@ export class WorkflowBlockRegistry {
     const computedOutputs = data?._computedOutputs || {}
     const merged = { ...staticOutputs, ...computedOutputs }
     return convertOutputFieldsToVariables(merged, nodeId)
+  }
+
+  /**
+   * Extract variable IDs referenced by an app block's input fields.
+   * Mirrors the backend's AppWorkflowBlockProcessor.extractRequiredVariables() logic:
+   * only fields in variable mode (fieldModes[field] === false) are scanned.
+   */
+  private extractAppBlockVariables(block: WorkflowBlock, data: any): string[] {
+    const fieldModes: Record<string, boolean> = data?.fieldModes || {}
+    const variables = new Set<string>()
+    const varPattern = /\{\{([^}]+)\}\}/g
+
+    for (const fieldName of Object.keys(block.schema.inputs || {})) {
+      // Only extract from fields in variable mode (constant mode = true/undefined)
+      if (fieldModes[fieldName] !== false) continue
+
+      const value = data?.[fieldName]
+      if (typeof value !== 'string' || !value) continue
+
+      // Extract {{variable}} template references
+      let match: RegExpExecArray | null
+      while ((match = varPattern.exec(value)) !== null) {
+        const varId = match[1].trim()
+        if (varId) variables.add(varId)
+      }
+
+      // Plain variable path (PICKER mode — no {{ }} wrapper)
+      if (!value.includes('{{') && value.length > 0) {
+        variables.add(value)
+      }
+    }
+
+    return Array.from(variables)
   }
 
   /**

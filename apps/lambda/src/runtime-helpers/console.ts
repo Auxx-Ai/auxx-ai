@@ -211,6 +211,11 @@ function createConsoleInterceptor(level: 'log' | 'warn' | 'error') {
  * ```
  */
 export function interceptConsole(): void {
+  // Guard against double-interception on concurrent requests.
+  // If originalConsole is already set, console.log is already an interceptor —
+  // overwriting originalConsole with it would cause infinite recursion.
+  if (originalConsole) return
+
   // Store original console methods
   originalConsole = {
     log: console.log.bind(console),

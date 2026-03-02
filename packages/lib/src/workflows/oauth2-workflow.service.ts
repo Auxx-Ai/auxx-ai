@@ -683,7 +683,8 @@ export class OAuth2WorkflowService {
     }
 
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+      // RFC 6749 §4.1.3 requires form-encoded bodies
+      'Content-Type': 'application/x-www-form-urlencoded',
     }
 
     // Handle basic-auth vs request-body
@@ -697,7 +698,7 @@ export class OAuth2WorkflowService {
     const response = await fetch(tokenUrl, {
       method: 'POST',
       headers,
-      body: JSON.stringify(tokenRequestBody),
+      body: new URLSearchParams(tokenRequestBody).toString(),
     })
 
     if (!response.ok) {

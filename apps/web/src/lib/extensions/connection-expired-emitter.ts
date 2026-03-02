@@ -1,7 +1,8 @@
 // apps/web/src/lib/extensions/connection-expired-emitter.ts
 
 /**
- * Event data emitted when a connection expires during server function execution
+ * Event data emitted when a connection is required (expired or never connected)
+ * during server function execution
  */
 export type ConnectionExpiredEvent = {
   appId: string
@@ -11,6 +12,8 @@ export type ConnectionExpiredEvent = {
   scope: 'user' | 'organization'
   connectionType: 'oauth2-code' | 'secret'
   connectionLabel: string
+  /** Whether the connection existed but expired, or was never connected */
+  reason: 'expired' | 'missing'
   // Store pending function call for retry
   pendingCall: {
     moduleHash: string

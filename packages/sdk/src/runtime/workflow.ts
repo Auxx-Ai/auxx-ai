@@ -210,7 +210,7 @@ function serializeFields(
 
       // Metadata
       description: metadata.description,
-      required: metadata.required ?? !json.isOptional,
+      required: metadata.required ?? false,
       default: metadata.defaultValue,
 
       // Input-specific (from workflow fields)
@@ -271,7 +271,7 @@ function serializeFields(
         label: itemMetadata.label || 'Item',
         type: itemJson.type,
         description: itemMetadata.description,
-        required: itemMetadata.required ?? !itemJson.isOptional,
+        required: itemMetadata.required ?? false,
         default: itemMetadata.defaultValue,
         min: itemMetadata.min,
         max: itemMetadata.max,
@@ -322,7 +322,7 @@ function serializeFieldsFromJSON(
       label: metadata.label || key,
       type: fieldJson.type,
       description: metadata.description,
-      required: metadata.required ?? !fieldJson.isOptional,
+      required: metadata.required ?? false,
       default: metadata.defaultValue,
       placeholder: metadata.placeholder,
       acceptsVariables: fieldJson.acceptsVariables,
@@ -374,7 +374,7 @@ function serializeNestedField(fieldJson: any, kind: 'input' | 'output'): any {
     label: metadata.label || '',
     type: fieldJson.type,
     description: metadata.description,
-    required: metadata.required ?? !fieldJson.isOptional,
+    required: metadata.required ?? false,
     default: metadata.defaultValue,
     min: metadata.min,
     max: metadata.max,

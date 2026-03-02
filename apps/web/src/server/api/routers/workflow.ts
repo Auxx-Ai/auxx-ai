@@ -659,9 +659,6 @@ export const workflowRouter = createTRPCRouter({
         workflowAppId: z.string(),
         workflowId: z.string(),
         nodeId: z.string(),
-        userEmail: z.string().optional(),
-        userName: z.string().optional(),
-        organizationName: z.string().optional(),
         inputs: z.array(
           z.object({
             variableId: z.string(),
@@ -682,6 +679,8 @@ export const workflowRouter = createTRPCRouter({
           ...input,
           userId: ctx.session.userId,
           organizationId: ctx.session.organizationId,
+          userEmail: ctx.session.user.email ?? undefined,
+          userName: ctx.session.user.name ?? undefined,
         })
       } catch (error) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to run node' })

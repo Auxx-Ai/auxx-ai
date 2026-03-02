@@ -111,10 +111,8 @@ function LogsPage() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(filter.query)
-      // Reset cursor and logs when query changes
       setCursor(undefined)
-      setAllLogs([])
-    }, 500) // 500ms debounce
+    }, 500)
 
     return () => clearTimeout(timer)
   }, [filter.query])

@@ -24,7 +24,7 @@ export const worker = $dev
       cpu: '0.25 vCPU',
       memory: '0.5 GB',
       environment: getSelectedEnvVars('worker', {
-        lambdaExecutorUrl: serverFunctionExecutorUrl,
+        lambdaUrl: serverFunctionExecutorUrl,
       }),
       link: [...getSecretsForLinking('worker'), rds, redis, publicBucket, privateBucket],
       permissions: [

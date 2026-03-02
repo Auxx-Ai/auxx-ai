@@ -14,7 +14,6 @@ async function AppPage({ params }: Props) {
 
   // Fetch app details with installation status
   const appData = await api.apps.getBySlug({ appSlug: slug })
-  console.log('Fetched app data:', appData) // Debug log
   return (
     <SettingsPage
       title={appData.app.title}

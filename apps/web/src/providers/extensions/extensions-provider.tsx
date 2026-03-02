@@ -182,6 +182,7 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
             scope={expiredConnection.scope}
             connectionType={expiredConnection.connectionType}
             connectionLabel={expiredConnection.connectionLabel}
+            reason={expiredConnection.reason}
             onReconnected={() => {
               // Close dialog - user can manually retry the operation
               setExpiredConnection(null)
