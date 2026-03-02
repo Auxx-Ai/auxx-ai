@@ -196,6 +196,12 @@
       "import": "./dist/files/index.mjs",
       "default": "./src/files/index.ts"
     },
+    "./files/adapters": {
+      "types": "./src/files/adapters/index.ts",
+      "source": "./src/files/adapters/index.ts",
+      "import": "./dist/files/adapters/index.mjs",
+      "default": "./src/files/adapters/index.ts"
+    },
     "./files/client": {
       "types": "./src/files/client.ts",
       "source": "./src/files/client.ts",

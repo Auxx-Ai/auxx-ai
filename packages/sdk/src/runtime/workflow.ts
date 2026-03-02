@@ -393,6 +393,23 @@ function serializeNestedField(fieldJson: any, kind: 'input' | 'output'): any {
 }
 
 /**
+ * Resolve a block icon string, auto-prefixing bare data URLs and http(s) URLs.
+ * App developers can set `icon: slackIcon` (imported PNG → data URL) or
+ * `icon: 'https://...'` and the SDK normalizes them to `base64:` / `url:` prefixes.
+ */
+function resolveBlockIcon(icon: unknown): string | undefined {
+  if (typeof icon !== 'string' || !icon) return undefined
+  // Already prefixed — pass through
+  if (icon.startsWith('url:') || icon.startsWith('base64:')) return icon
+  // Bare data URL from PNG import → prefix with base64:
+  if (icon.startsWith('data:')) return `base64:${icon}`
+  // Bare HTTP(S) URL → prefix with url:
+  if (icon.startsWith('http://') || icon.startsWith('https://')) return `url:${icon}`
+  // Lucide name or emoji — pass through
+  return icon
+}
+
+/**
  * Get all registered workflow blocks from SURFACES registry.
  * Returns only serializable metadata (no React components or functions).
  * Full blocks remain in SURFACES and are accessed via getWorkflowBlock().
@@ -413,7 +430,7 @@ export function getWorkflowBlocks(): WorkflowBlock[] {
         label: fullBlock.label,
         description: fullBlock.description,
         category: fullBlock.category,
-        icon: fullBlock.icon,
+        icon: resolveBlockIcon(fullBlock.icon),
         color: fullBlock.color,
         config: fullBlock.config,
       }

@@ -12,7 +12,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import { Input } from '@auxx/ui/components/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { cn } from '@auxx/ui/lib/utils'
@@ -55,6 +54,7 @@ import {
 import { usePanelStore } from '~/components/workflow/store/panel-store'
 // types
 import { NodeType } from '~/components/workflow/types'
+import { AppIcon } from '~/components/workflow/ui/app-icon'
 import { BlockSelector } from '~/components/workflow/ui/block-selector'
 import NextStep from '~/components/workflow/ui/next-step'
 // Specific UI imports
@@ -269,7 +269,7 @@ export const BasePanel = memo<BasePanelProps>(
       <div className='flex-1 h-full w-full flex flex-col overflow-y-auto [--sticky-offset:89px]'>
         <DrawerHeader
           icon={
-            <EntityIcon
+            <AppIcon
               iconId={nodeIconName}
               className='size-6 text-white'
               style={{ backgroundColor: nodeColor }}

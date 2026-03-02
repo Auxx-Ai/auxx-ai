@@ -31,6 +31,7 @@ export async function updateApp(input: {
     hasOauth: boolean
     avatarId: string
     avatarUrl: string
+    screenshots: string[]
   }>
 }) {
   const { appId, userId, data } = input

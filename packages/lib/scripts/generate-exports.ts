@@ -17,7 +17,7 @@ const UNRESOLVED_ALLOWLIST = new Set<string>([
 
 const SCAN_DIRS = [path.join(ROOT, 'apps'), path.join(ROOT, 'packages')]
 
-const SKIP_DIRS = new Set(['node_modules', 'dist', '.next', '.turbo', 'build', 'coverage'])
+const SKIP_DIRS = new Set(['node_modules', 'dist', '.next', '.turbo', 'coverage'])
 
 function extractLibImports(sourceText: string, fileName: string): string[] {
   const sf = ts.createSourceFile(fileName, sourceText, ts.ScriptTarget.Latest, false)

@@ -589,6 +589,13 @@
       "when": 1772333001428,
       "tag": "0083_content-addressed-bundles",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1772418424591,
+      "tag": "0084_add-app-screenshots",
+      "breakpoints": true
     }
   ]
 }

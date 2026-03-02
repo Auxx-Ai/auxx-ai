@@ -37,6 +37,7 @@ import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { AppIconUpload } from '~/components/apps/app-icon-upload'
+import { AppScreenshotUpload } from '~/components/apps/app-screenshot-upload'
 import { toastError } from '~/components/global/toast'
 import { useBuildDehydratedState } from '~/components/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
@@ -416,6 +417,23 @@ export function AppUpdateForm({ appSlug }: AppUpdateFormProps) {
                   )}
                 </Field>
               </FieldGroup>
+            </FieldSet>
+
+            <FieldSeparator />
+
+            {/* Screenshots Section */}
+            <FieldSet>
+              <FieldLegend>Screenshots</FieldLegend>
+              <FieldDescription>
+                Upload up to 3 screenshots for your marketplace listing
+              </FieldDescription>
+              {displayApp && (
+                <AppScreenshotUpload
+                  appId={displayApp.id}
+                  appSlug={displayApp.slug}
+                  currentScreenshots={(displayApp as any).screenshots || []}
+                />
+              )}
             </FieldSet>
 
             {/* Submit Button */}

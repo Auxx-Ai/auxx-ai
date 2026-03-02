@@ -506,7 +506,7 @@ export const getIcon = (iconId: string): IconItem | undefined =>
   ICON_DATA.find((item) => item.id === iconId)
 
 /** EntityIcon variants using CVA */
-const entityIconVariants = cva('flex items-center justify-center shrink-0', {
+export const entityIconVariants = cva('flex items-center justify-center shrink-0', {
   variants: {
     variant: {
       default: 'rounded-md',

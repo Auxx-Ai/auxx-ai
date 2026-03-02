@@ -160,6 +160,9 @@ export const appsRouter = createTRPCRouter({
         // Avatar
         avatarUrl: z.string().url().optional(),
 
+        // Screenshots
+        screenshots: z.array(z.string().url()).max(3).optional(),
+
         // Other
         hasOauth: z.boolean().optional(),
       })
