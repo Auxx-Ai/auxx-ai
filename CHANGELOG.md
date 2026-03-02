@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.44](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.43...auxx-v0.1.44) (2026-03-02)
+
+
+### Features
+
+* add app icon upload component and presigned URL API for S3 uploads ([#151](https://github.com/Auxx-Ai/auxx-ai/issues/151)) ([cc428dd](https://github.com/Auxx-Ai/auxx-ai/commit/cc428dd968047b67b6b9d5cde3c8bcde05c9c726))
+
 ## [0.1.43](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.42...auxx-v0.1.43) (2026-03-01)
 
 
