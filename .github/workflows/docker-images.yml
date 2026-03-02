@@ -109,7 +109,6 @@ jobs:
           S3_SECRET_ACCESS_KEY: test
           S3_PUBLIC_BUCKET: test
           S3_PRIVATE_BUCKET: test
-          NEXT_PUBLIC_CDN_URL: https://cdn.example.com
           DOMAIN: example.com
           ACME_EMAIL: test@example.com
 

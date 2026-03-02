@@ -22,7 +22,7 @@ export function useNodeDefinition(nodeType: string | undefined): NodeDefinition 
 
   return useMemo(
     () => (nodeType ? unifiedNodeRegistry.getDefinition(nodeType) : undefined),
-    [nodeType]
+    [nodeType, version]
   )
 }
 
@@ -41,7 +41,7 @@ export function useTriggerDefinitions(): NodeDefinition[] {
     return unsubscribe
   }, [])
 
-  return useMemo(() => unifiedNodeRegistry.getTriggerDefinitions(), [])
+  return useMemo(() => unifiedNodeRegistry.getTriggerDefinitions(), [version])
 }
 
 /**
@@ -59,7 +59,7 @@ export function useNonTriggerDefinitions(): NodeDefinition[] {
     return unsubscribe
   }, [])
 
-  return useMemo(() => unifiedNodeRegistry.getNonTriggerDefinitions(), [])
+  return useMemo(() => unifiedNodeRegistry.getNonTriggerDefinitions(), [version])
 }
 
 /**
@@ -78,7 +78,7 @@ export function useRegistrySelector<T>(selector: (registry: typeof unifiedNodeRe
     return unsubscribe
   }, [])
 
-  return useMemo(() => selector(unifiedNodeRegistry), [selector])
+  return useMemo(() => selector(unifiedNodeRegistry), [selector, version])
 }
 
 /**

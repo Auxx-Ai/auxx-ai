@@ -60,7 +60,7 @@ export const useAvailableBlocks = (
     }
 
     return prevBlocks
-  }, [nodeType, isInLoop])
+  }, [nodeType, isInLoop, registryVersion])
 
   const availableNextBlocks = useMemo(() => {
     // If this is an input handle type, return input blocks instead
@@ -108,7 +108,7 @@ export const useAvailableBlocks = (
     }
 
     return nextBlocks
-  }, [nodeType, isInLoop, handleType])
+  }, [nodeType, isInLoop, handleType, registryVersion])
 
   return {
     availablePrevBlocks,

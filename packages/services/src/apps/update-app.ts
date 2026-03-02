@@ -29,6 +29,8 @@ export async function updateApp(input: {
     supportSiteUrl: string
     termsOfServiceUrl: string
     hasOauth: boolean
+    avatarId: string
+    avatarUrl: string
   }>
 }) {
   const { appId, userId, data } = input
