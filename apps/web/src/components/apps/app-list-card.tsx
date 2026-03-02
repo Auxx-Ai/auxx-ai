@@ -1,8 +1,11 @@
 // apps/web/src/components/apps/app-list-card.tsx
 
+'use client'
+
 import type { AvailableApp } from '@auxx/services/apps'
 import { Code, Mail } from 'lucide-react'
 import Link from 'next/link'
+import { AppIcon } from '~/components/workflow/ui/app-icon'
 
 /**
  * AppListCard component
@@ -15,8 +18,12 @@ export function AppListCard({ app, href }: { app: AvailableApp; href?: string })
       <div className='rounded-2xl bg-primary-50 flex flex-col p-3 gap-2 border'>
         <div className='flex flex-row items-start justify-between gap-2 w-full'>
           <div className='flex flex-1 flex-row items-start gap-2'>
-            <div className='size-8 rounded-xl border flex items-center justify-center'>
-              <Mail className='size-4' />
+            <div className='size-8 rounded-xl border flex items-center justify-center overflow-hidden'>
+              {app.avatarUrl ? (
+                <AppIcon iconId={app.avatarUrl} size='sm' />
+              ) : (
+                <Mail className='size-4' />
+              )}
             </div>
             <div className='flex flex-col flex-1'>
               <div className='flex flex-1 flex-row justify-between'>

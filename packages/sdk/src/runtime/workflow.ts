@@ -38,6 +38,15 @@ interface WorkflowBlock {
         errors: Array<{ field: string; message: string; type?: 'warning' | 'error' }>
       }
     }
+    layout?: Array<{
+      type: 'section'
+      title: string
+      description?: string
+      fields: string[]
+      collapsible?: boolean
+      initialOpen?: boolean
+    }>
+    computeOutputs?: (inputs: Record<string, any>) => Record<string, any>
   }
   config?: {
     canRunSingle?: boolean

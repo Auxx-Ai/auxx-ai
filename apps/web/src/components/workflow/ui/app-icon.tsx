@@ -27,6 +27,9 @@ export function parseIconString(icon: string): ParsedIcon {
   if (icon.startsWith('base64:')) {
     return { type: 'base64', value: icon.slice(7) }
   }
+  if (icon.startsWith('https://') || icon.startsWith('http://')) {
+    return { type: 'url', value: icon }
+  }
   if (EMOJI_RE.test(icon)) {
     return { type: 'emoji', value: icon }
   }

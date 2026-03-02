@@ -26,6 +26,7 @@ const nextConfig = {
     '@auxx/workflow-nodes',
     '@auxx/ui',
   ],
+  serverExternalPackages: ['@auxx/seed'],
   experimental: {
     turbopackFileSystemCacheForDev: true,
     webpackMemoryOptimizations: true,

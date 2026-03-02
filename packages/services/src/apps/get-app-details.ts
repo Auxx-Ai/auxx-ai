@@ -39,6 +39,9 @@ export interface AppWithStatusOutput {
     hasOauth: boolean
     hasBundle: boolean
 
+    // Media
+    screenshots: string[]
+
     publicationStatus: string
   }
 
@@ -168,6 +171,7 @@ export async function getAppWithInstallationStatus(input: GetAppWithStatusInput)
       scopes: (app.scopes as string[]) || [],
       hasOauth: app.hasOauth,
       hasBundle: app.hasBundle,
+      screenshots: (app.screenshots as string[]) ?? [],
       publicationStatus: app.publicationStatus,
     },
     developerAccount: {
