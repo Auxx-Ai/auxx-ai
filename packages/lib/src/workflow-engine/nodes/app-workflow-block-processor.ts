@@ -141,13 +141,32 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
     const resolvedInputs: Record<string, any> = {}
     const fieldModes: Record<string, boolean> = node.data.fieldModes || {}
 
+    // When the metadata schema has a populated inputs map, use it as an allowlist so only
+    // declared input fields are forwarded to the Lambda.  When the schema is empty (the
+    // permissive-defaults path in fetchBlockMetadata), fall back to a denylist of known
+    // platform-injected node-data keys so that all app-authored fields are forwarded.
+    const schemaInputKeys = Object.keys(this.blockMetadata.schema.inputs)
+    const hasSchema = schemaInputKeys.length > 0
+    const platformMetadataFields = new Set([
+      'title',
+      'desc',
+      'appId',
+      'blockId',
+      'installationId',
+      'type',
+    ])
+
     for (const [fieldName, fieldValue] of Object.entries(node.data)) {
       // Skip metadata fields (prefixed with _)
       if (fieldName.startsWith('_')) continue
       // Skip fieldModes itself
       if (fieldName === 'fieldModes') continue
-      // Skip non-input fields
-      if (!this.blockMetadata.schema.inputs[fieldName]) continue
+      // Skip non-input fields — strategy depends on whether we have a real schema
+      if (hasSchema) {
+        if (!this.blockMetadata.schema.inputs[fieldName]) continue
+      } else {
+        if (platformMetadataFields.has(fieldName)) continue
+      }
 
       // Mode-driven resolution: fieldModes[field] !== false means constant (pass through)
       const isConstant = fieldModes[fieldName] !== false

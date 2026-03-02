@@ -23,6 +23,12 @@ export interface VarInputProps {
   options?: readonly (string | { label: string; value: string })[]
   /** Use multiline mode for string type */
   multiline?: boolean
+  /**
+   * When inside a VarFieldGroup with layout="row", this child expands to fill
+   * remaining space (flex-1). Other children shrink to fit their content.
+   * If no child in the row has expand, the last child expands by default.
+   */
+  expand?: boolean
 }
 
 /**

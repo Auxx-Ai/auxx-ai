@@ -37,6 +37,7 @@ export const VarInputInternal = ({
   format,
   options,
   multiline,
+  expand: _expand,
 }: {
   name: string
   type: string
@@ -46,6 +47,7 @@ export const VarInputInternal = ({
   format?: string
   options?: readonly (string | { label: string; value: string })[]
   multiline?: boolean
+  expand?: boolean // consumed by parent WorkflowVarFieldGroup, ignored here
 }) => {
   const { nodeId, nodeData, handleFieldChange, getFieldMode, schema } = useAppWorkflowFieldContext()
 

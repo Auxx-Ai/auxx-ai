@@ -35,6 +35,8 @@ import {
   WorkflowNodeText,
   WorkflowPanel,
 } from './components/workflow'
+import { WorkflowFieldDivider } from './components/workflow/fields/field-divider'
+import { WorkflowFieldRow } from './components/workflow/fields/field-row'
 import { WorkflowVarField } from './components/workflow/fields/var-field'
 import { WorkflowVarFieldGroup } from './components/workflow/fields/var-field-group'
 // Note: Old input components (StringInput, NumberInput, etc.) are still available from
@@ -277,6 +279,8 @@ export const componentRegistry = {
   // VarField wrappers
   WorkflowVarField: WorkflowVarField,
   WorkflowVarFieldGroup: WorkflowVarFieldGroup,
+  WorkflowFieldDivider: WorkflowFieldDivider,
+  WorkflowFieldRow: WorkflowFieldRow,
   WorkflowSection: Section,
   WorkflowInputGroup: InputGroup,
   WorkflowSeparator: WorkflowSeparatorComponent,
