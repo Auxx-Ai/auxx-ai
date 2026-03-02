@@ -15,7 +15,12 @@ export const publicBucket = new sst.aws.Bucket('PublicAssets', {
         {
           allowedHeaders: ['*'],
           allowedMethods: ['GET', 'HEAD', 'PUT', 'POST'],
-          allowedOrigins: ['http://localhost:3000', 'https://*.auxx.ai', 'https://auxx.ai'],
+          allowedOrigins: [
+            'http://localhost:3000',
+            'http://localhost:3006',
+            'https://*.auxx.ai',
+            'https://auxx.ai',
+          ],
           exposeHeaders: ['ETag'],
           maxAgeSeconds: 3600,
         },
@@ -68,7 +73,12 @@ export const privateBucket = new sst.aws.Bucket('PrivateAssets', {
         {
           allowedHeaders: ['*'],
           allowedMethods: ['GET', 'PUT', 'POST', 'DELETE', 'HEAD'],
-          allowedOrigins: ['http://localhost:3000', 'https://*.auxx.ai', 'https://auxx.ai'],
+          allowedOrigins: [
+            'http://localhost:3000',
+            'http://localhost:3006',
+            'https://*.auxx.ai',
+            'https://auxx.ai',
+          ],
           exposeHeaders: ['ETag'],
           maxAgeSeconds: 3600,
         },

@@ -43,6 +43,7 @@ export class WorkflowBlockLoader {
   async loadAppWorkflowBlocks(appId: string, installationId: string): Promise<void> {
     // Check if already loaded
     if (this.loadedBlocks.has(appId)) {
+      console.log(`[WorkflowBlockLoader] Blocks already loaded for ${appId}, skipping`)
       return
     }
 
@@ -54,21 +55,33 @@ export class WorkflowBlockLoader {
       })
 
       if (!messageClient) {
-        return // Don't throw - let it fail gracefully
+        console.warn(
+          `[WorkflowBlockLoader] No MessageClient for app ${appId} (installation: ${installationId})`
+        )
+        return
       }
 
       // Wait for client to be ready (iframe load + SDK ready)
       try {
+        console.log(`[WorkflowBlockLoader] Waiting for MessageClient ready: ${appId}`)
         await messageClient.waitUntilReady()
+        console.log(`[WorkflowBlockLoader] MessageClient ready: ${appId}`)
       } catch (readyError) {
-        return // Don't throw - let it fail gracefully
+        console.error(`[WorkflowBlockLoader] MessageClient not ready for ${appId}:`, readyError)
+        return
       }
 
       // Request workflow blocks from iframe
       try {
+        console.log(`[WorkflowBlockLoader] Sending get-workflow-blocks to ${appId}`)
         const result = await messageClient.sendRequest<{
           blocks: Omit<WorkflowBlock, 'appId' | 'installationId'>[]
         }>('get-workflow-blocks', {}, { timeout: 10000 })
+
+        console.log(
+          `[WorkflowBlockLoader] Got ${result.blocks?.length ?? 0} blocks from ${appId}:`,
+          result.blocks?.map((b) => b.id)
+        )
 
         if (result.blocks && result.blocks.length > 0) {
           // Enrich blocks with appId and installationId
@@ -81,10 +94,14 @@ export class WorkflowBlockLoader {
           this.loadedBlocks.set(appId, enrichedBlocks)
         }
       } catch (requestError) {
-        return // Don't throw - let it fail gracefully
+        console.error(
+          `[WorkflowBlockLoader] get-workflow-blocks failed for ${appId}:`,
+          requestError
+        )
+        return
       }
     } catch (error) {
-      // Don't throw - already handled by Promise.allSettled
+      console.error(`[WorkflowBlockLoader] Unexpected error for ${appId}:`, error)
     }
   }
 

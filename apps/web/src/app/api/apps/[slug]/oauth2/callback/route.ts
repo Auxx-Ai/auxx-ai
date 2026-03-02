@@ -4,6 +4,9 @@ import { WEBAPP_URL } from '@auxx/config/urls'
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
+
+const OAUTH_REDIRECT_BASE = process.env.NGROK_URL || WEBAPP_URL
+
 import { saveAppConnection } from '@auxx/services/app-connections'
 import { type NextRequest, NextResponse } from 'next/server'
 
@@ -93,7 +96,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       code,
       client_id: connDef.oauth2ClientId!,
       client_secret: connDef.oauth2ClientSecret!,
-      redirect_uri: `${WEBAPP_URL}/api/apps/${slug}/oauth2/callback`,
+      redirect_uri: `${OAUTH_REDIRECT_BASE}/api/apps/${slug}/oauth2/callback`,
       grant_type: 'authorization_code',
     }
 
@@ -201,8 +204,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     })
 
     // Redirect back to the app's connection page with success indicator
-    const redirectUrl = `/app/settings/apps/installed/${slug}/connections?success=true`
-    return NextResponse.redirect(new URL(redirectUrl, request.url))
+    const redirectUrl = `${WEBAPP_URL}/app/settings/apps/installed/${slug}/connections?success=true`
+    return NextResponse.redirect(redirectUrl)
   } catch (error) {
     logger.error('OAuth callback failed', {
       error: error instanceof Error ? error.message : String(error),

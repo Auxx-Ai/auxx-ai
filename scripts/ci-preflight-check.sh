@@ -148,8 +148,6 @@ else
   echo ""
   echo "  --- Variables (will be pushed) ---"
   VARIABLES=(
-    NEXT_PUBLIC_S3_REGION
-    NEXT_PUBLIC_S3_BUCKET
     POSTHOG_KEY
     POSTHOG_HOST
     STRIPE_PUBLISHABLE_KEY

@@ -90,6 +90,8 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
         slug: i.app.slug,
         type: i.installationType,
         version: i.currentDeployment?.version,
+        clientBundleSha: i.currentDeployment?.clientBundleSha ?? null,
+        hasDeployment: !!i.currentDeployment,
       })),
     }
   )
@@ -107,7 +109,7 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
           installations
             .filter((i) => i.currentDeployment?.clientBundleSha)
             .map((installation) => {
-              const isDevLoggingEnabled = false //installation.installationType === 'development'
+              const isDevLoggingEnabled = true //installation.installationType === 'development'
 
               return (
                 <Fragment key={installation.installationId}>

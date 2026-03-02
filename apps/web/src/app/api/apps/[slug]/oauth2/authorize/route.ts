@@ -5,6 +5,9 @@ import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import crypto from 'crypto'
+
+const OAUTH_REDIRECT_BASE = process.env.NGROK_URL || WEBAPP_URL
+
 import { headers } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
 import { auth } from '~/auth/server'
@@ -33,6 +36,11 @@ function ensureOfflineAccessScope(
       scopes,
       additionalParams: { access_type: 'offline', prompt: 'consent' },
     }
+  }
+
+  // Slack: Tokens don't expire, no refresh token flow
+  if (authUrl.includes('slack.com')) {
+    return { scopes }
   }
 
   // Microsoft/Azure: Use offline_access scope
@@ -159,7 +167,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Build OAuth authorization URL
     const authUrl = new URL(connDef.oauth2AuthorizeUrl!)
     authUrl.searchParams.set('client_id', connDef.oauth2ClientId!)
-    authUrl.searchParams.set('redirect_uri', `${WEBAPP_URL}/api/apps/${slug}/oauth2/callback`)
+    authUrl.searchParams.set(
+      'redirect_uri',
+      `${OAUTH_REDIRECT_BASE}/api/apps/${slug}/oauth2/callback`
+    )
     authUrl.searchParams.set('scope', enhancedScopes.join(' '))
     authUrl.searchParams.set('state', state)
     authUrl.searchParams.set('response_type', 'code')

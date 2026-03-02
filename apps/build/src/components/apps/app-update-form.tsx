@@ -36,6 +36,7 @@ import {
 import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { AppIconUpload } from '~/components/apps/app-icon-upload'
 import { toastError } from '~/components/global/toast'
 import { useBuildDehydratedState } from '~/components/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
@@ -246,6 +247,14 @@ export function AppUpdateForm({ appSlug }: AppUpdateFormProps) {
                 Update your app's basic information and marketplace details
               </FieldDescription>
               <FieldGroup>
+                {displayApp && (
+                  <AppIconUpload
+                    appId={displayApp.id}
+                    appSlug={displayApp.slug}
+                    appTitle={displayApp.title}
+                    currentAvatarUrl={displayApp.avatarUrl}
+                  />
+                )}
                 <div className='grid grid-cols-2 gap-4'>
                   <Field>
                     <FieldLabel htmlFor='app-name'>Name</FieldLabel>
