@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.48](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.47...auxx-v0.1.48) (2026-03-02)
+
+
+### Features
+
+* unify Lambda URL configuration ([#159](https://github.com/Auxx-Ai/auxx-ai/issues/159)) ([b1eaad5](https://github.com/Auxx-Ai/auxx-ai/commit/b1eaad59f3e287fc2f0463143410aee3f17b3167))
+
 ## [0.1.47](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.46...auxx-v0.1.47) (2026-03-02)
 
 
