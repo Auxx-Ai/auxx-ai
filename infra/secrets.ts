@@ -283,7 +283,7 @@ export function getSecretsForLinking(app: AppType = 'web') {
  */
 export function getSelectedEnvVars(
   app: AppType = 'web',
-  opts: { lambdaExecutorUrl?: string } = {}
+  opts: { lambdaUrl?: string } = {}
 ): Record<string, string> {
   const base: Record<string, string> = {
     SST: '1',
@@ -310,7 +310,6 @@ export function getSelectedEnvVars(
   const vars: Record<string, string> = {
     ...base,
     IS_CONFIG_VARIABLES_IN_DB_ENABLED: 'true',
-    LAMBDA_API_URL: getAppUrl('api'),
     BETTER_AUTH_SECRET: getSecretValue('BETTER_AUTH_SECRET'),
     DATABASE_URL,
     REDIS_URL,
@@ -326,8 +325,8 @@ export function getSelectedEnvVars(
   }
 
   // Lambda function URL is an AWS-generated URL only available at deploy time
-  if (opts.lambdaExecutorUrl) {
-    vars.LAMBDA_EXECUTOR_URL = opts.lambdaExecutorUrl
+  if (opts.lambdaUrl) {
+    vars.LAMBDA_URL = opts.lambdaUrl
   }
 
   return vars

@@ -102,7 +102,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Use appropriate auth method
     const tokenRequestHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
+      // RFC 6749 §4.1.3 requires form-encoded bodies
+      'Content-Type': 'application/x-www-form-urlencoded',
     }
 
     if (connDef.oauth2TokenRequestAuthMethod === 'basic-auth') {
@@ -125,7 +126,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const tokenResponse = await fetch(connDef.oauth2AccessTokenUrl!, {
       method: 'POST',
       headers: tokenRequestHeaders,
-      body: JSON.stringify(tokenRequestBody),
+      body: new URLSearchParams(tokenRequestBody).toString(),
     })
 
     if (!tokenResponse.ok) {
@@ -140,6 +141,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const tokens = await tokenResponse.json()
+
+    // Slack (and some other providers) return HTTP 200 even on failure
+    if (tokens.ok === false) {
+      throw new Error(`OAuth token exchange failed: ${tokens.error}`)
+    }
+    if (!tokens.access_token) {
+      throw new Error('OAuth token exchange returned no access_token')
+    }
 
     logger.info('Successfully received OAuth tokens', {
       appId,

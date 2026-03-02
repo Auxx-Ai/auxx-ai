@@ -63,7 +63,7 @@ const APP_REGISTRY = {
     defaultPort: 3008,
     portEnv: 'LAMBDA_PORT',
     subdomain: 'lambda',
-    urlEnv: 'LAMBDA_EXECUTOR_URL',
+    urlEnv: 'LAMBDA_URL',
     visibility: 'internal',
   },
 } as const
@@ -229,11 +229,7 @@ export const HOMEPAGE_URL = resolveAppUrl('homepage')
 export const DOCS_URL = resolveAppUrl('docs')
 export const DEV_PORTAL_URL = resolveAppUrl('build')
 export const API_URL = resolveAppUrl('api')
-export const SERVER_FUNCTION_EXECUTOR_URL = resolveAppUrl('lambda')
-
-/** API URL that Lambda should use to call back to the platform API. */
-export const LAMBDA_API_URL =
-  readEnv('LAMBDA_API_URL') || readEnv('API_URL') || resolveAppUrl('api')
+export const LAMBDA_URL = resolveAppUrl('lambda')
 
 // ─── URL builder helpers ─────────────────────────────────
 
@@ -248,6 +244,6 @@ export function getApiUrl(path = ''): string {
 }
 
 /** Returns the Lambda executor URL, optionally appending a path segment. */
-export function getLambdaExecutorUrl(path = ''): string {
-  return buildUrl(SERVER_FUNCTION_EXECUTOR_URL, path)
+export function getLambdaUrl(path = ''): string {
+  return buildUrl(LAMBDA_URL, path)
 }

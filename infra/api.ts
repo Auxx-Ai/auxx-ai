@@ -24,7 +24,7 @@ export const api = $dev
       cpu: '0.25 vCPU',
       memory: '0.5 GB',
       environment: getSelectedEnvVars('api', {
-        lambdaExecutorUrl: serverFunctionExecutorUrl,
+        lambdaUrl: serverFunctionExecutorUrl,
       }),
       link: [...getSecretsForLinking('api'), rds, redis, publicBucket, privateBucket],
       loadBalancer: {

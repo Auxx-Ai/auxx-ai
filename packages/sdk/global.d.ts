@@ -66,4 +66,10 @@ declare global {
   }
 }
 
+/** Allow importing PNG files — esbuild resolves them to base64 data URLs at build time. */
+declare module '*.png' {
+  const content: string
+  export default content
+}
+
 export {}

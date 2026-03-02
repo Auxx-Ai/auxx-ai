@@ -208,6 +208,8 @@ export interface WorkflowBlockConfig {
   retries?: number
   /** Whether this block requires an app connection */
   requiresConnection?: boolean
+  /** Whether this block can be run individually via the Input/Result tabs (default: true) */
+  canRunSingle?: boolean
 }
 
 /**

@@ -243,6 +243,10 @@ export interface RunNodeParams {
   inputs: NodeInput[]
   userId: string
   organizationId: string
+  userEmail?: string
+  userName?: string
+  organizationName?: string
+  organizationHandle?: string
 }
 export interface WorkflowEvent {
   event: string

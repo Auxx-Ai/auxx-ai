@@ -1,6 +1,6 @@
 // packages/services/src/lambda-execution/prepare-lambda-context.ts
 
-import { LAMBDA_API_URL } from '@auxx/config/urls'
+import { API_URL } from '@auxx/config/urls'
 import { type CallbackScope, createCallbackToken } from '@auxx/credentials/lambda-auth'
 
 /**
@@ -45,7 +45,7 @@ export function prepareLambdaContext(params: {
     userEmail: params.userEmail,
     userName: params.userName,
     appId: params.appId,
-    apiUrl: LAMBDA_API_URL,
+    apiUrl: API_URL,
     appInstallationId: params.installationId,
     userConnection: params.userConnection,
     organizationConnection: params.organizationConnection,

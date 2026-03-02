@@ -185,7 +185,7 @@ services:
     environment:
       <<: [*common-env, *db-env, *db-pool-env, *redis-env, *url-env]
       PORT: ${API_PORT:-3007}
-      LAMBDA_EXECUTOR_URL: http://lambda:${LAMBDA_PORT:-3008}
+      LAMBDA_URL: http://lambda:${LAMBDA_PORT:-3008}
       DB_POOL_MAX: "5"
       APP_NAME: auxx-api
     depends_on:
@@ -220,7 +220,7 @@ services:
     environment:
       <<: [*common-env, *db-env, *db-pool-env, *redis-env, *url-env]
       WORKER_PORT: ${WORKER_PORT:-3005}
-      LAMBDA_EXECUTOR_URL: http://lambda:${LAMBDA_PORT:-3008}
+      LAMBDA_URL: http://lambda:${LAMBDA_PORT:-3008}
       APP_NAME: auxx-worker
     depends_on:
       migrate: { condition: service_completed_successfully }
@@ -253,7 +253,7 @@ services:
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
       S3_PRIVATE_BUCKET: ${S3_PRIVATE_BUCKET}
-      LAMBDA_API_URL: http://api:${API_PORT:-3007}
+      API_URL: http://api:${API_PORT:-3007}
       LAMBDA_INVOKE_SECRET: ${LAMBDA_INVOKE_SECRET:?Run ./setup.sh to generate secrets}
     depends_on:
       api: { condition: service_healthy }

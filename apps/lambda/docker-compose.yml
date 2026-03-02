@@ -19,10 +19,10 @@ services:
       - S3_REGION=us-west-1
       - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
       - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
-      - S3_PRIVATE_BUCKET=auxx-private-local
+      - S3_PRIVATE_BUCKET=${S3_PRIVATE_BUCKET:-auxx-dev-private}
       # - LOCAL_BUNDLES_PATH=/bundles  # Commented out to test S3
       - PORT=3008
-      - LAMBDA_API_URL=${LAMBDA_API_URL:-http://host.docker.internal:3007}
+      - API_URL=${API_URL:-http://host.docker.internal:3007}
       - LAMBDA_INVOKE_SECRET=${LAMBDA_INVOKE_SECRET:?Run ./setup.sh to generate secrets}
     volumes:
       # Mount source for hot reload

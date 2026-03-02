@@ -32,6 +32,7 @@ interface ConnectionExpiredDialogProps {
   scope: 'user' | 'organization'
   connectionType: 'oauth2-code' | 'secret'
   connectionLabel: string
+  reason?: 'expired' | 'missing'
   onReconnected?: () => void
 }
 
@@ -52,6 +53,7 @@ export function ConnectionExpiredDialog({
   scope,
   connectionType,
   connectionLabel,
+  reason = 'expired',
   onReconnected,
 }: ConnectionExpiredDialogProps) {
   const [secret, setSecret] = useState('')
@@ -108,11 +110,14 @@ export function ConnectionExpiredDialog({
         <DialogHeader>
           <div className='flex items-center gap-2 mb-2'>
             <Clock className='h-5 w-5 text-yellow-500' />
-            <DialogTitle>Connection Expired</DialogTitle>
+            <DialogTitle>
+              {reason === 'missing' ? 'Connection Required' : 'Connection Expired'}
+            </DialogTitle>
           </div>
           <DialogDescription>
-            Your {scope} connection to {appName} has expired. Please reconnect to continue using
-            this feature.
+            {reason === 'missing'
+              ? `Your ${scope} connection to ${appName} is not set up. Please connect to continue using this feature.`
+              : `Your ${scope} connection to ${appName} has expired. Please reconnect to continue using this feature.`}
           </DialogDescription>
         </DialogHeader>
 

@@ -83,12 +83,10 @@ export function setupServerFunctionHandler(
             // Check if it's a CONNECTION_REQUIRED error
             if (errorData?.error?.code === 'CONNECTION_REQUIRED') {
               const scope = errorData.error.scope || 'user'
-
-              // Check if this is an expired connection vs missing connection
               const isExpired = errorData.error.message?.toLowerCase().includes('expired')
 
-              if (isExpired && context.connectionDefinition) {
-                // Emit event for expired connection to show inline relogin dialog
+              if (context.connectionDefinition) {
+                // Show inline reconnect dialog for both expired and missing connections
                 connectionExpiredEmitter.emit({
                   appId: context.appId,
                   appSlug: context.appSlug,
@@ -97,6 +95,7 @@ export function setupServerFunctionHandler(
                   scope,
                   connectionType: context.connectionDefinition.connectionType,
                   connectionLabel: context.connectionDefinition.label,
+                  reason: isExpired ? 'expired' : 'missing',
                   pendingCall: {
                     moduleHash: data.moduleHash,
                     args: data.args,
@@ -104,20 +103,18 @@ export function setupServerFunctionHandler(
                 })
 
                 return { error: 'connection-expired-awaiting-reauth' }
-              } else {
-                // Missing connection - show toast as before
-                const connectionUrl = `/app/settings/apps/installed/${context.appSlug}/connections`
+              }
 
-                toastError({
-                  title: `Connection Required`,
-                  description:
-                    errorData.error.message ||
-                    `Please connect your ${scope} account to use this feature. Go to Settings > Apps to connect.`,
-                })
+              // No connectionDefinition — fall back to toast
+              toastError({
+                title: 'Connection Required',
+                description:
+                  errorData.error.message ||
+                  `Please connect your ${scope} account to use this feature. Go to Settings > Apps to connect.`,
+              })
 
-                return {
-                  error: scope === 'user' ? 'no-user-connection' : 'no-organization-connection',
-                }
+              return {
+                error: scope === 'user' ? 'no-user-connection' : 'no-organization-connection',
               }
             }
 

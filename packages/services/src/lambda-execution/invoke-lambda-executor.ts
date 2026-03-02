@@ -1,6 +1,6 @@
 // packages/services/src/lambda-execution/invoke-lambda-executor.ts
 
-import { SERVER_FUNCTION_EXECUTOR_URL } from '@auxx/config/server'
+import { LAMBDA_URL } from '@auxx/config/server'
 import { signInboundRequest } from '@auxx/credentials/lambda-auth'
 import type { Result } from 'neverthrow'
 import { err, ok } from 'neverthrow'
@@ -45,14 +45,14 @@ export interface LambdaExecutionError {
  *
  * @param params.payload - The event payload to send to Lambda
  * @param params.caller - Identity of the calling service (used for caller-type allowlist)
- * @param params.lambdaUrl - Optional URL override (defaults to SERVER_FUNCTION_EXECUTOR_URL)
+ * @param params.lambdaUrl - Optional URL override (defaults to LAMBDA_URL)
  */
 export async function invokeLambdaExecutor(params: {
   payload: any
   caller: string
   lambdaUrl?: string
 }): Promise<Result<LambdaExecutionResult, LambdaExecutionError>> {
-  const { payload, caller, lambdaUrl = SERVER_FUNCTION_EXECUTOR_URL } = params
+  const { payload, caller, lambdaUrl = LAMBDA_URL } = params
 
   try {
     const body = JSON.stringify(payload)
