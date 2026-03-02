@@ -34,9 +34,17 @@ function AppAbout({ app }: Props) {
     <div className='flex-1 flex-col space-y-6 px-6 py-6'>
       <div className='flex w-full  flex-row'>
         <div className='w-full grid grid-cols-3 gap-3'>
-          <div className='h-[200px] w-full bg-muted border rounded-2xl'></div>
-          <div className='h-[200px] w-full bg-muted border rounded-2xl'></div>
-          <div className='h-[200px] w-full bg-muted border rounded-2xl'></div>
+          {app.app.screenshots && app.app.screenshots.length > 0
+            ? app.app.screenshots.map((url, i) => (
+                <div
+                  key={i}
+                  className='h-[200px] w-full bg-muted border rounded-2xl overflow-hidden'>
+                  <img src={url} alt={`Screenshot ${i + 1}`} className='size-full object-cover' />
+                </div>
+              ))
+            : Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className='h-[200px] w-full bg-muted border rounded-2xl' />
+              ))}
         </div>
       </div>
       <div className='grid grid-cols-3 gap-3'>
