@@ -4,6 +4,8 @@
 
 import { createElement, type ReactElement, useCallback, useMemo } from 'react'
 import type { InferWorkflowInput, WorkflowSchema } from '../../../root/workflow/types.js'
+import { FieldDivider } from '../components/fields/field-divider.js'
+import { FieldRow, type FieldRowProps } from '../components/fields/field-row.js'
 import { VarField, type VarFieldProps } from '../components/fields/var-field.js'
 import { VarFieldGroup, type VarFieldGroupProps } from '../components/fields/var-field-group.js'
 import { VarInput } from '../components/fields/var-input.js'
@@ -40,6 +42,8 @@ export interface WorkflowStringInputProps<TSchema extends WorkflowSchema>
   extends Omit<StringInputProps, 'name' | 'value' | 'onChange'> {
   /** Type-safe path to string field in schema */
   name: PathToField<TSchema['inputs'], 'string'>
+  /** Expand to fill remaining space in a VarFieldGroup layout="row" */
+  expand?: boolean
 }
 
 /**
@@ -50,6 +54,8 @@ export interface WorkflowNumberInputProps<TSchema extends WorkflowSchema>
   extends Omit<NumberInputProps, 'name' | 'value' | 'onChange'> {
   /** Type-safe path to number field in schema */
   name: PathToField<TSchema['inputs'], 'number'>
+  /** Expand to fill remaining space in a VarFieldGroup layout="row" */
+  expand?: boolean
 }
 
 /**
@@ -60,6 +66,8 @@ export interface WorkflowBooleanInputProps<TSchema extends WorkflowSchema>
   extends Omit<BooleanInputProps, 'name' | 'value' | 'onChange'> {
   /** Type-safe path to boolean field in schema */
   name: PathToField<TSchema['inputs'], 'boolean'>
+  /** Expand to fill remaining space in a VarFieldGroup layout="row" */
+  expand?: boolean
 }
 
 /**
@@ -70,6 +78,8 @@ export interface WorkflowSelectInputProps<TSchema extends WorkflowSchema>
   extends Omit<SelectInputProps, 'name' | 'value' | 'onChange'> {
   /** Type-safe path to select field in schema */
   name: PathToField<TSchema['inputs'], 'select'>
+  /** Expand to fill remaining space in a VarFieldGroup layout="row" */
+  expand?: boolean
 }
 
 /**
@@ -83,6 +93,8 @@ export interface WorkflowOptionsInputProps<TSchema extends WorkflowSchema> {
   options?: readonly (string | { label: string; value: string })[]
   /** Placeholder text */
   placeholder?: string
+  /** Expand to fill remaining space in a VarFieldGroup layout="row" */
+  expand?: boolean
 }
 
 /**
@@ -105,6 +117,8 @@ export interface WorkflowVarInputProps {
   options?: readonly (string | { label: string; value: string })[]
   /** Multiline mode for string type */
   multiline?: boolean
+  /** Expand to fill remaining space in a VarFieldGroup layout="row" */
+  expand?: boolean
 }
 
 /**
@@ -148,6 +162,9 @@ export interface UseWorkflowApi<TSchema extends WorkflowSchema> {
   /** VarFieldGroup — VarEditorField container (rounded border, background). */
   VarFieldGroup: (props: VarFieldGroupProps) => ReactElement
 
+  /** FieldRow — horizontal layout container for placing inputs side-by-side within VarFieldGroup. */
+  FieldRow: (props: FieldRowProps) => ReactElement
+
   /** Section container for grouping inputs visually. */
   Section: (props: SectionProps) => ReactElement
 
@@ -156,6 +173,9 @@ export interface UseWorkflowApi<TSchema extends WorkflowSchema> {
 
   /** Conditional rendering based on data values. */
   ConditionalRender: (props: WorkflowConditionalRenderProps<TSchema>) => ReactElement
+
+  /** FieldDivider — vertical separator for use between inputs in VarFieldGroup layout="row". */
+  FieldDivider: () => ReactElement
 }
 
 /**
@@ -225,6 +245,7 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
         format: props.format ?? metadata.format,
         options: props.options ?? metadata.options,
         multiline: props.multiline,
+        expand: props.expand,
       })
     },
     [serializedInputSchema]
@@ -244,6 +265,7 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
         variableTypes: fieldJson?.variableTypes,
         format: metadata.format,
         multiline: props.multiline,
+        expand: props.expand,
       })
     },
     [serializedInputSchema]
@@ -261,6 +283,7 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
         placeholder: metadata.placeholder,
         acceptsVariables: fieldJson?.acceptsVariables,
         variableTypes: fieldJson?.variableTypes,
+        expand: props.expand,
       })
     },
     [serializedInputSchema]
@@ -276,6 +299,7 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
         type: 'boolean',
         acceptsVariables: fieldJson?.acceptsVariables,
         variableTypes: fieldJson?.variableTypes,
+        expand: props.expand,
       })
     },
     [serializedInputSchema]
@@ -294,6 +318,7 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
         acceptsVariables: fieldJson?.acceptsVariables,
         variableTypes: fieldJson?.variableTypes,
         options: props.options ?? metadata.options,
+        expand: props.expand,
       })
     },
     [serializedInputSchema]
@@ -312,10 +337,21 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
         acceptsVariables: fieldJson?.acceptsVariables,
         variableTypes: fieldJson?.variableTypes,
         options: props.options ?? metadata.options,
+        expand: props.expand,
       })
     },
     [serializedInputSchema]
   )
+
+  // FieldDivider: Visual separator for row layout (no data binding)
+  const WorkflowFieldDivider = useCallback((): ReactElement => {
+    return createElement(FieldDivider, {})
+  }, [])
+
+  // FieldRow: Horizontal layout container (no data binding)
+  const WorkflowFieldRowComponent = useCallback((props: FieldRowProps): ReactElement => {
+    return createElement(FieldRow, props)
+  }, [])
 
   // VarField: Wrapper component (no data binding)
   const WorkflowVarField = useCallback((props: VarFieldProps): ReactElement => {
@@ -356,10 +392,12 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
     BooleanInput: WorkflowBooleanInput,
     SelectInput: WorkflowSelectInput,
     OptionsInput: WorkflowOptionsInput,
+    FieldRow: WorkflowFieldRowComponent,
     VarField: WorkflowVarField,
     VarFieldGroup: WorkflowVarFieldGroup,
     Section: WorkflowSection,
     InputGroup: WorkflowInputGroup,
     ConditionalRender: WorkflowConditionalRender,
+    FieldDivider: WorkflowFieldDivider,
   }
 }
