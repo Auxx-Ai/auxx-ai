@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.46](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.45...auxx-v0.1.46) (2026-03-02)
+
+
+### Features
+
+* enhance output variable handling and introduce VarEditor compon… ([#155](https://github.com/Auxx-Ai/auxx-ai/issues/155)) ([c8c2572](https://github.com/Auxx-Ai/auxx-ai/commit/c8c2572d8548f67d2970c8836fe298615ddaad77))
+
 ## [0.1.45](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.44...auxx-v0.1.45) (2026-03-02)
 
 
