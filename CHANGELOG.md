@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.45](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.44...auxx-v0.1.45) (2026-03-02)
+
+
+### Features
+
+* add support for app screenshots and enhance icon handling ([#153](https://github.com/Auxx-Ai/auxx-ai/issues/153)) ([7626230](https://github.com/Auxx-Ai/auxx-ai/commit/76262300afffbf10a1ccefccd14d14bf9573c119))
+
 ## [0.1.44](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.43...auxx-v0.1.44) (2026-03-02)
 
 
