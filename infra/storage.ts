@@ -8,7 +8,7 @@ export const publicBucket = new sst.aws.Bucket('PublicAssets', {
   access: 'public', // SST handles public read policy automatically
   transform: {
     bucket: {
-      bucket: $app.stage === 'production' ? 'auxx-public' : appify('public'), // auxx-public (prod), auxx-public-dev, auxx-public-local
+      bucket: $app.stage === 'production' ? 'auxx-public' : appify('public'), // auxx-public (prod), auxx-dev-public, auxx-local-public
 
       // CORS for browser uploads (still use presigned POST for upload)
       corsRules: [
@@ -58,7 +58,7 @@ export const publicBucket = new sst.aws.Bucket('PublicAssets', {
 export const privateBucket = new sst.aws.Bucket('PrivateAssets', {
   transform: {
     bucket: {
-      bucket: $app.stage === 'production' ? 'auxx-private' : appify('private'), // auxx-private (prod), auxx-private-dev, auxx-private-local
+      bucket: $app.stage === 'production' ? 'auxx-private' : appify('private'), // auxx-private (prod), auxx-dev-private, auxx-local-private
 
       // Block ALL public access
       publicAccessBlockConfiguration: {

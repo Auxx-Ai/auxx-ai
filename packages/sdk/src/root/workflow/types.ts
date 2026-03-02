@@ -169,6 +169,18 @@ export interface WorkflowExecutionContext {
 }
 
 /**
+ * Layout section for auto-generated panels
+ */
+export interface WorkflowLayoutSection {
+  type: 'section'
+  title: string
+  description?: string
+  fields: string[]
+  collapsible?: boolean
+  initialOpen?: boolean
+}
+
+/**
  * Workflow schema definition with input and output fields
  */
 export interface WorkflowSchema {
@@ -176,6 +188,14 @@ export interface WorkflowSchema {
   inputs: Record<string, any>
   /** Output field definitions */
   outputs: Record<string, any>
+  /** Optional layout for auto-generated panels */
+  layout?: WorkflowLayoutSection[]
+  /**
+   * Compute additional output fields based on current input values.
+   * Runs in the SDK iframe whenever panel data changes.
+   * Returned fields are merged on top of static schema.outputs.
+   */
+  computeOutputs?: (inputs: Record<string, any>) => Record<string, any>
 }
 
 /**

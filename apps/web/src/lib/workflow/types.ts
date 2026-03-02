@@ -1,6 +1,18 @@
 // apps/web/src/lib/workflow/types.ts
 
 /**
+ * Layout section for auto-generated panels
+ */
+export interface WorkflowLayoutSection {
+  type: 'section'
+  title: string
+  description?: string
+  fields: string[]
+  collapsible?: boolean
+  initialOpen?: boolean
+}
+
+/**
  * Workflow block definition from an app
  */
 export interface WorkflowBlock {
@@ -19,6 +31,7 @@ export interface WorkflowBlock {
       sources?: Array<{ id: string; label?: string }>
       targets?: Array<{ id: string; label?: string }>
     }
+    layout?: WorkflowLayoutSection[]
     validation?: {
       custom?: (data: any) => {
         valid: boolean
@@ -29,6 +42,8 @@ export interface WorkflowBlock {
   config?: {
     canRunSingle?: boolean
   }
+  /** Whether this block has a custom panel component */
+  hasPanel?: boolean
   components?: {
     node?: any
     panel?: any

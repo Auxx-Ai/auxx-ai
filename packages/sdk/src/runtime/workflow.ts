@@ -85,6 +85,14 @@ function WorkflowPanelContainer({
     return unsubscribe
   }, [nodeId])
 
+  // Evaluate computeOutputs whenever data changes
+  useEffect(() => {
+    const block = getWorkflowBlock(blockId)
+    if (block) {
+      evaluateComputeOutputs(block, nodeId, data)
+    }
+  }, [blockId, nodeId, data])
+
   const updateData = useCallback(
     (updates: Partial<any>) => {
       setData((prev: any) => ({ ...prev, ...updates }))
@@ -441,9 +449,13 @@ export function getWorkflowBlocks(): WorkflowBlock[] {
           inputs: serializeFields(fullBlock.schema.inputs || {}, 'input'),
           outputs: serializeFields(fullBlock.schema.outputs || {}, 'output'),
           handles: fullBlock.schema.handles || { sources: [], targets: [] },
+          layout: fullBlock.schema.layout,
           // Exclude validation.custom function (if present)
         }
       }
+
+      // Flag whether this block has a custom panel
+      metadata.hasPanel = !!fullBlock.panel
 
       // DO NOT include: components.node, components.panel, execute function
       // These remain in SURFACES and are accessed via getWorkflowBlock() for rendering
@@ -555,8 +567,13 @@ async function renderWorkflowPanel(
 
   if (!PanelComponent) {
     // Generate default panel from schema
+    const defaultPanel = generateDefaultPanel(block, data)
+
+    // Evaluate computeOutputs for default panels too
+    evaluateComputeOutputs(block, nodeId, data)
+
     return {
-      component: generateDefaultPanel(block, data),
+      component: defaultPanel,
     }
   }
 
@@ -618,19 +635,75 @@ function createDefaultNodeComponent(block: WorkflowBlock, _data: any): any {
 }
 
 /**
- * Generate default panel from schema
+ * Generate default panel from schema using VarFieldGroup > VarField > VarInput components.
+ *
+ * When a block has no custom panel component, this creates a configuration panel
+ * automatically from the schema's input field definitions and optional layout.
  */
 function generateDefaultPanel(block: WorkflowBlock, _data: any): any {
-  // TODO: Implement automatic panel generation from schema
-  // This would create form fields based on block.schema.inputs
-  // For now, return a simple serialized structure
+  const serializedInputs = serializeFields(block.schema.inputs || {}, 'input')
+  const inputFields = Object.entries(serializedInputs)
+
+  if (inputFields.length === 0) {
+    return {
+      children: [{ instance_type: 'text', text: `Configure ${block.label}` }],
+    }
+  }
+
+  // Use layout if defined, otherwise create a single default section
+  const layout = block.schema.layout || [
+    {
+      type: 'section' as const,
+      title: 'Configuration',
+      fields: inputFields.map(([name]) => name),
+    },
+  ]
+
   return {
-    children: [
-      {
-        instance_type: 'text',
-        text: `Configure ${block.label}`,
+    children: layout.map((section: any) => ({
+      instance_type: 'instance',
+      component: 'WorkflowSection',
+      attributes: {
+        title: section.title,
+        description: section.description,
+        collapsible: section.collapsible,
+        defaultOpen: section.initialOpen ?? true,
       },
-    ],
+      children: [
+        {
+          instance_type: 'instance',
+          component: 'WorkflowVarFieldGroup',
+          attributes: {},
+          children: section.fields
+            .map((fieldName: string) => {
+              const field = serializedInputs[fieldName]
+              if (!field) return null
+
+              return {
+                instance_type: 'instance',
+                component: 'WorkflowVarField',
+                attributes: {},
+                children: [
+                  {
+                    instance_type: 'instance',
+                    component: 'VarInputInternal',
+                    attributes: {
+                      name: fieldName,
+                      type: field.type,
+                      placeholder: field.placeholder,
+                      acceptsVariables: field.acceptsVariables,
+                      variableTypes: field.variableTypes,
+                      format: field.format,
+                      options: field.options,
+                    },
+                  },
+                ],
+              }
+            })
+            .filter(Boolean),
+        },
+      ],
+    })),
   }
 }
 
@@ -648,6 +721,74 @@ function cleanupWorkflowPanelRender(nodeId: string): void {
  */
 function cleanupWorkflowNodeRender(nodeId: string): void {
   activeNodeRenders.delete(nodeId)
+}
+
+// ===== computeOutputs =====
+
+/** Debounce timers per node for computeOutputs evaluation */
+const computeOutputsTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+/**
+ * Evaluate a block's computeOutputs function and send the result to the host.
+ * Debounced to avoid excessive messages during rapid editing.
+ */
+function evaluateComputeOutputs(block: WorkflowBlock, nodeId: string, data: any): void {
+  if (!block.schema?.computeOutputs) return
+
+  // Clear existing timer
+  const existing = computeOutputsTimers.get(nodeId)
+  if (existing) clearTimeout(existing)
+
+  computeOutputsTimers.set(
+    nodeId,
+    setTimeout(() => {
+      computeOutputsTimers.delete(nodeId)
+      try {
+        const computed = block.schema.computeOutputs!(data)
+        if (computed && typeof computed === 'object') {
+          // Serialize the computed output fields
+          const serialized = serializeComputedOutputs(computed)
+          Host.sendMessage('workflow-block-outputs-updated', {
+            nodeId,
+            blockId: block.id,
+            outputs: serialized,
+          })
+        }
+      } catch (err) {
+        console.error('[Workflow] computeOutputs error:', err)
+        // Static outputs remain as fallback — no action needed
+      }
+    }, 300)
+  )
+}
+
+/**
+ * Serialize computed output fields to WorkflowBlockField format.
+ * computeOutputs returns field nodes (same shape as schema.outputs).
+ */
+function serializeComputedOutputs(outputs: Record<string, any>): Record<string, any> {
+  const result: Record<string, any> = {}
+
+  for (const [key, fieldNode] of Object.entries(outputs)) {
+    // If it has toJSON, it's a field node — serialize it
+    if (fieldNode && typeof fieldNode.toJSON === 'function') {
+      const json = fieldNode.toJSON()
+      const metadata = json._metadata || {}
+      result[key] = {
+        name: key,
+        label: metadata.label || key,
+        type: json.type || 'any',
+        description: metadata.description,
+        required: metadata.required,
+        _fieldKind: 'output' as const,
+      }
+    } else if (fieldNode && typeof fieldNode === 'object' && fieldNode.type) {
+      // Already serialized — pass through
+      result[key] = { name: key, ...fieldNode }
+    }
+  }
+
+  return result
 }
 
 // ===== Request Handlers =====

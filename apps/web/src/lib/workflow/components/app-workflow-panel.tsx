@@ -2,13 +2,15 @@
 
 'use client'
 
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNodeCrud } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import { reconstructReactTree } from '~/lib/extensions/reconstruct-react-tree'
 import { useAppStore } from '~/lib/extensions/use-app-store'
 import type { WorkflowBlock } from '../types'
+import { convertOutputFieldsToVariables } from '../utils/type-mapping'
+import { AppWorkflowFieldContext } from './app-workflow-field-context'
 
 /**
  * Props for AppWorkflowPanel component
@@ -44,6 +46,55 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
     useEffect(() => {
       nodeDataRef.current = nodeData
     }, [nodeData])
+
+    /**
+     * Handle field value changes from VarEditor-backed input components.
+     * Writes the raw value and field mode directly to ReactFlow node data.
+     */
+    const handleFieldChange = useCallback(
+      (fieldKey: string, value: any, isConstantMode: boolean) => {
+        setInputs({
+          ...nodeDataRef.current,
+          [fieldKey]: value,
+          fieldModes: {
+            ...(nodeDataRef.current.fieldModes || {}),
+            [fieldKey]: isConstantMode,
+          },
+        })
+      },
+      [setInputs]
+    )
+
+    /**
+     * Get the current mode for a field.
+     * Returns true (constant) by default — safe for existing nodes without fieldModes.
+     */
+    const getFieldMode = useCallback(
+      (fieldKey: string): boolean => {
+        return nodeData.fieldModes?.[fieldKey] !== false
+      },
+      [nodeData.fieldModes]
+    )
+
+    /** Context value for AppWorkflowFieldContext */
+    // biome-ignore lint/correctness/useExhaustiveDependencies: nodeData changes drive re-computation
+    const fieldContextValue = useMemo(
+      () => ({
+        nodeId,
+        nodeData,
+        handleFieldChange,
+        getFieldMode,
+        schema: block.schema,
+      }),
+      [nodeId, nodeData, handleFieldChange, getFieldMode, block.schema]
+    )
+
+    /** Merged output variables (static + computed from SDK-side computeOutputs) */
+    const mergedOutputVariables = useMemo(() => {
+      const staticOutputs = block.schema.outputs || {}
+      const computedOutputs = nodeData._computedOutputs || {}
+      return convertOutputFieldsToVariables({ ...staticOutputs, ...computedOutputs }, nodeId)
+    }, [block.schema.outputs, nodeData._computedOutputs, nodeId])
 
     // Load panel component from iframe
     useEffect(() => {
@@ -155,7 +206,8 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
     // Listen for data updates from iframe
     // biome-ignore lint/correctness/useExhaustiveDependencies: setInputs is stable from useNodeCrud
     useEffect(() => {
-      let unsubscribe: (() => void) | undefined
+      let unsubscribeData: (() => void) | undefined
+      let unsubscribeOutputs: (() => void) | undefined
       let isMounted = true
 
       const setupListener = async () => {
@@ -175,14 +227,30 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
 
           if (!isMounted) return
 
-          unsubscribe = messageClient.listenForRequest('workflow-node-data-update', (data: any) => {
-            if (data.nodeId === nodeId) {
-              setInputs({
-                ...nodeDataRef.current,
-                ...data.data,
-              })
+          unsubscribeData = messageClient.listenForRequest(
+            'workflow-node-data-update',
+            (data: any) => {
+              if (data.nodeId === nodeId) {
+                setInputs({
+                  ...nodeDataRef.current,
+                  ...data.data,
+                })
+              }
             }
-          })
+          )
+
+          // Listen for dynamic output updates from SDK-side computeOutputs
+          unsubscribeOutputs = messageClient.listenForRequest(
+            'workflow-block-outputs-updated',
+            (data: any) => {
+              if (data.nodeId === nodeId) {
+                setInputs({
+                  ...nodeDataRef.current,
+                  _computedOutputs: data.outputs,
+                })
+              }
+            }
+          )
         } catch (error) {
           console.error('[AppWorkflowPanel] Setup error:', error)
           // Retry on error
@@ -194,7 +262,8 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
 
       return () => {
         isMounted = false
-        unsubscribe?.()
+        unsubscribeData?.()
+        unsubscribeOutputs?.()
       }
     }, [appId, installationId, nodeId, appStore])
 
@@ -259,34 +328,36 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
           </div>
         ) : panelComponent ? (
           <>
-            {reconstructReactTree(panelComponent, {
-              onCallHandler: async (instanceId: number, eventName: string, ...args: any[]) => {
-                const messageClient = appStore.getMessageClient({
-                  appId,
-                  appInstallationId: installationId,
-                })
+            <AppWorkflowFieldContext.Provider value={fieldContextValue}>
+              {reconstructReactTree(panelComponent, {
+                onCallHandler: async (instanceId: number, eventName: string, ...args: any[]) => {
+                  const messageClient = appStore.getMessageClient({
+                    appId,
+                    appInstallationId: installationId,
+                  })
 
-                if (!messageClient) {
-                  console.error('[AppWorkflowPanel] No message client for event call')
-                  throw new Error('Message client not available')
-                }
+                  if (!messageClient) {
+                    console.error('[AppWorkflowPanel] No message client for event call')
+                    throw new Error('Message client not available')
+                  }
 
-                const result = await messageClient.sendRequest('call-instance-method', {
-                  instanceId,
-                  eventName,
-                  args,
-                })
+                  const result = await messageClient.sendRequest('call-instance-method', {
+                    instanceId,
+                    eventName,
+                    args,
+                  })
 
-                if (result?.error) {
-                  console.error('[AppWorkflowPanel] Event handler error:', result.error)
-                  throw new Error(result.error.message)
-                }
+                  if (result?.error) {
+                    console.error('[AppWorkflowPanel] Event handler error:', result.error)
+                    throw new Error(result.error.message)
+                  }
 
-                return result
-              },
-            })}
+                  return result
+                },
+              })}
+            </AppWorkflowFieldContext.Provider>
             <OutputVariablesDisplay
-              outputs={block.schema.outputs}
+              outputVariables={mergedOutputVariables}
               nodeId={nodeId}
               initialOpen={false}
             />

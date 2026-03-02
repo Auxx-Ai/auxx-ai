@@ -123,8 +123,9 @@ export class WorkflowBlockRegistry {
       // Validation
       validator: (data: any) => this.validateBlockData(block, data),
 
-      // Output variables
-      outputVariables: (data: any, nodeId: string) => this.createOutputVariables(block, nodeId),
+      // Output variables — merges static schema.outputs + computed outputs from data._computedOutputs
+      outputVariables: (data: any, nodeId: string) =>
+        this.createOutputVariables(block, nodeId, data),
 
       // UI Components - wrapped to handle app communication
       panel: this.createPanelComponent(
@@ -209,10 +210,18 @@ export class WorkflowBlockRegistry {
   }
 
   /**
-   * Create output variables for a block
+   * Create output variables for a block.
+   * Merges static schema.outputs with computed outputs from data._computedOutputs.
    */
-  private createOutputVariables(block: WorkflowBlock, nodeId: string): UnifiedVariable[] {
-    return convertOutputFieldsToVariables(block.schema.outputs || {}, nodeId)
+  private createOutputVariables(
+    block: WorkflowBlock,
+    nodeId: string,
+    data?: any
+  ): UnifiedVariable[] {
+    const staticOutputs = block.schema.outputs || {}
+    const computedOutputs = data?._computedOutputs || {}
+    const merged = { ...staticOutputs, ...computedOutputs }
+    return convertOutputFieldsToVariables(merged, nodeId)
   }
 
   /**
