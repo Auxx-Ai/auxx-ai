@@ -5,25 +5,47 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Circle } from 'lucide-react'
 import type React from 'react'
 import { BaseType } from '../types/unified-types'
+import { parseIconString } from '../ui/app-icon'
 
 /**
- * Get an icon component by name
- * Now uses the unified icon system
+ * Get an icon component by name.
+ * Supports Lucide icon IDs, prefixed URLs, prefixed base64, and emojis.
  */
 export const getIcon = (
   iconName: string,
   className: string = 'size-4',
   style?: React.CSSProperties
 ): React.ReactElement => {
-  const iconData = getIconData(iconName)
+  const parsed = parseIconString(iconName)
 
-  if (!iconData) {
-    console.warn(`Icon not found: ${iconName}, using fallback`)
-    return <Circle className={className} style={style} />
+  switch (parsed.type) {
+    case 'url':
+    case 'base64':
+      return (
+        <img
+          src={parsed.value}
+          alt=''
+          className={className}
+          style={{ objectFit: 'contain', ...style }}
+          draggable={false}
+        />
+      )
+    case 'emoji':
+      return (
+        <span className={className} style={style}>
+          {parsed.value}
+        </span>
+      )
+    case 'lucide': {
+      const iconData = getIconData(parsed.value)
+      if (!iconData) {
+        console.warn(`Icon not found: ${parsed.value}, using fallback`)
+        return <Circle className={className} style={style} />
+      }
+      const IconComponent = iconData.icon
+      return <IconComponent className={className} style={style} />
+    }
   }
-
-  const IconComponent = iconData.icon
-  return <IconComponent className={className} style={style} />
 }
 
 /**

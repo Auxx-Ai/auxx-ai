@@ -39,6 +39,9 @@ export const App = pgTable(
     avatarId: text(),
     avatarUrl: text(),
 
+    // Screenshots (marketplace listing images, max 3)
+    screenshots: jsonb().$type<string[]>().default([]),
+
     // Marketplace listing
     category: text(), // analytics, autonomous, billing, etc.
     websiteUrl: text(),

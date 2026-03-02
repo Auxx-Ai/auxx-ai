@@ -2,7 +2,7 @@
 
 import { configService } from '@auxx/credentials'
 import { database } from '@auxx/database'
-import { S3Adapter } from '@auxx/lib/files'
+import { S3Adapter } from '@auxx/lib/files/adapters'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 import { getLocalSession } from '~/lib/auth'
@@ -11,6 +11,7 @@ const logger = createScopedLogger('build-upload-presign')
 
 const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
 const MAX_ICON_SIZE = 2 * 1024 * 1024 // 2MB
+const MAX_SCREENSHOT_SIZE = 5 * 1024 * 1024 // 5MB
 
 /**
  * POST /api/upload/presign
@@ -27,6 +28,7 @@ export async function POST(request: NextRequest) {
     fileName: string
     mimeType: string
     size: number
+    type?: 'icon' | 'screenshot'
   }
 
   try {
@@ -51,9 +53,12 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  if (size > MAX_ICON_SIZE) {
+  const uploadType = body.type || 'icon'
+  const maxSize = uploadType === 'screenshot' ? MAX_SCREENSHOT_SIZE : MAX_ICON_SIZE
+
+  if (size > maxSize) {
     return NextResponse.json(
-      { error: `File too large. Maximum size: ${MAX_ICON_SIZE / 1024 / 1024}MB` },
+      { error: `File too large. Maximum size: ${maxSize / 1024 / 1024}MB` },
       { status: 400 }
     )
   }
@@ -82,7 +87,8 @@ export async function POST(request: NextRequest) {
   // Generate storage key
   const ext = fileName.split('.').pop() || 'png'
   const timestamp = Date.now()
-  const storageKey = `apps/${appId}/icon/${timestamp}.${ext}`
+  const folder = uploadType === 'screenshot' ? 'screenshots' : 'icon'
+  const storageKey = `apps/${appId}/${folder}/${timestamp}.${ext}`
 
   try {
     const adapter = new S3Adapter()

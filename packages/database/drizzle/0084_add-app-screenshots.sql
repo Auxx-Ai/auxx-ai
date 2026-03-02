@@ -1,0 +1,1 @@
+ALTER TABLE "App" ADD COLUMN "screenshots" jsonb DEFAULT '[]'::jsonb;

@@ -254,7 +254,14 @@ export interface WorkflowBlock<TSchema extends WorkflowSchema = WorkflowSchema> 
   /** Block category for organization */
   category?: WorkflowCategory
 
-  /** Icon (emoji or component) */
+  /**
+   * Block icon. Accepts:
+   * - Lucide icon name (e.g. `'message-square'`)
+   * - Emoji (e.g. `'💬'`)
+   * - Imported PNG (`import icon from './icon.png'` — auto-prefixed to `base64:` by the SDK)
+   * - Remote URL (e.g. `'https://cdn.example.com/icon.png'` — auto-prefixed to `url:`)
+   * - Explicit prefix: `'url:https://...'` or `'base64:data:image/...'`
+   */
   icon?: string | ComponentType
 
   /** Icon color (hex color) */
@@ -292,7 +299,14 @@ export interface WorkflowTrigger<TSchema extends WorkflowSchema = WorkflowSchema
   /** Trigger category for organization */
   category?: WorkflowCategory
 
-  /** Icon (emoji or component) */
+  /**
+   * Block icon. Accepts:
+   * - Lucide icon name (e.g. `'message-square'`)
+   * - Emoji (e.g. `'💬'`)
+   * - Imported PNG (`import icon from './icon.png'` — auto-prefixed to `base64:` by the SDK)
+   * - Remote URL (e.g. `'https://cdn.example.com/icon.png'` — auto-prefixed to `url:`)
+   * - Explicit prefix: `'url:https://...'` or `'base64:data:image/...'`
+   */
   icon?: string | ComponentType
 
   /** Icon color (hex color) */
