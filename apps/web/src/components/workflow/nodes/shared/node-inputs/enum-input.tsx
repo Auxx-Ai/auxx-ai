@@ -24,13 +24,26 @@ interface EnumInputProps extends NodeInputProps {
   placeholder?: string
   /** Default value */
   defaultValue?: string
+  /** SelectTrigger variant override */
+  selectVariant?: 'transparent' | 'outline'
 }
 
 /**
  * Enum/Select input component
  */
 export const EnumInput = createNodeInput<EnumInputProps>(
-  ({ inputs, errors, onChange, onError, isLoading, name, options, placeholder, defaultValue }) => {
+  ({
+    inputs,
+    errors,
+    onChange,
+    onError,
+    isLoading,
+    name,
+    options,
+    placeholder,
+    defaultValue,
+    selectVariant,
+  }) => {
     const value = (inputs?.[name] as string | undefined) ?? defaultValue ?? ''
     const error = errors?.[name]
 
@@ -53,7 +66,11 @@ export const EnumInput = createNodeInput<EnumInputProps>(
     // Return just the Select component without wrappers or error displays
     return (
       <Select value={value} onValueChange={handleChange} disabled={isLoading}>
-        <SelectTrigger id={inputId} size='sm' variant='transparent' className='ps-0 pe-1 min-h-8'>
+        <SelectTrigger
+          id={inputId}
+          size={selectVariant === 'outline' ? 'xs' : 'sm'}
+          variant={selectVariant ?? 'transparent'}
+          className='ps-0 pe-1 min-h-8'>
           <SelectValue
             placeholder={
               <span className='text-primary-400 font-normal text-sm pointer-events-none'>

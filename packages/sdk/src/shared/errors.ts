@@ -102,3 +102,51 @@ export class AuxxUnexpectedTransportError extends AuxxError {
     this.name = 'AuxxUnexpectedTransportError'
   }
 }
+
+// ============================================================
+// Workflow block execution errors (thrown inside execute())
+// ============================================================
+
+/**
+ * Throw inside a workflow block's `execute()` function when a required input
+ * field is missing or invalid.
+ *
+ * The platform captures per-field details and surfaces them in the workflow
+ * editor — no generic "execution failed" toast is shown to the user.
+ *
+ * @example
+ * ```typescript
+ * if (!input.channelList) {
+ *   throw new BlockValidationError([
+ *     { field: 'channelList', message: 'Select a channel from the list.' },
+ *   ])
+ * }
+ * ```
+ *
+ * NOTE: Detection across the Lambda sandbox / module boundary uses
+ * `error.name === 'BlockValidationError'`, not `instanceof`.
+ */
+export class BlockValidationError extends AuxxError {
+  readonly fields: Array<{ field: string; message: string }>
+
+  constructor(fields: Array<{ field: string; message: string }> | string) {
+    const normalized = typeof fields === 'string' ? [{ field: '', message: fields }] : fields
+    super(normalized.map((f) => f.message).join('; '), 'BLOCK_VALIDATION_ERROR')
+    this.name = 'BlockValidationError'
+    this.fields = normalized
+  }
+}
+
+/**
+ * Throw inside a workflow block's `execute()` function for expected runtime
+ * failures (API errors, rate limits, service unavailable, etc.).
+ *
+ * The platform shows the message in the result panel as a runtime error.
+ * An optional `code` can be included for programmatic downstream handling.
+ */
+export class BlockRuntimeError extends AuxxError {
+  constructor(message: string, code?: string) {
+    super(message, code ?? 'BLOCK_RUNTIME_ERROR')
+    this.name = 'BlockRuntimeError'
+  }
+}

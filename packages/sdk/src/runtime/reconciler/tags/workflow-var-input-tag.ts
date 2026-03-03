@@ -17,8 +17,18 @@ export class WorkflowVarInputTag extends BaseTag {
   }
 
   getAttributes(props: Record<string, any>): Record<string, any> {
-    const { name, type, placeholder, acceptsVariables, variableTypes, format, options, multiline } =
-      props
+    const {
+      name,
+      type,
+      placeholder,
+      acceptsVariables,
+      variableTypes,
+      format,
+      options,
+      multiline,
+      expand,
+      variant,
+    } = props
 
     return {
       name,
@@ -29,6 +39,8 @@ export class WorkflowVarInputTag extends BaseTag {
       format,
       options,
       multiline,
+      expand,
+      variant,
     }
   }
 }

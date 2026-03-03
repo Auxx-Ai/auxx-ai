@@ -90,6 +90,15 @@ export class ServerBuilder {
         ...createServerBuildConfig(tempFile.path),
         write: mode === 'write-to-disk',
         outfile,
+        loader: {
+          '.png': 'dataurl',
+          '.jpg': 'dataurl',
+          '.jpeg': 'dataurl',
+          '.gif': 'dataurl',
+          '.webp': 'dataurl',
+          '.graphql': 'text',
+          '.gql': 'text',
+        },
       } as esbuild.BuildOptions)
       return complete(new ServerBuilder({ esbuildContext, tempFile, directories }))
     } catch (error) {

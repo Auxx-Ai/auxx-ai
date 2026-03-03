@@ -38,6 +38,7 @@ export const VarInputInternal = ({
   options,
   multiline,
   expand: _expand,
+  variant,
 }: {
   name: string
   type: string
@@ -48,18 +49,23 @@ export const VarInputInternal = ({
   options?: readonly (string | { label: string; value: string })[]
   multiline?: boolean
   expand?: boolean // consumed by parent WorkflowVarFieldGroup, ignored here
+  variant?: string
 }) => {
   const { nodeId, nodeData, handleFieldChange, getFieldMode, schema } = useAppWorkflowFieldContext()
 
   // Resolve options: explicit prop > schema metadata > empty
   const resolvedOptions = options ?? schema?.inputs?.[name]?.options
 
+  // Resolve acceptsVariables: explicit prop > schema metadata (defaults to false when not set)
+  const resolvedAcceptsVariables = acceptsVariables ?? schema?.inputs?.[name]?.acceptsVariables
+
   const { varType, mode, allowConstant, allowedTypes, fieldOptions } = mapFieldToVarEditorProps({
     type,
     format,
     options: resolvedOptions,
-    acceptsVariables,
+    acceptsVariables: resolvedAcceptsVariables,
     variableTypes,
+    variant,
   })
 
   // Dot-path access for nested fields

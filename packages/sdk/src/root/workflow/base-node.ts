@@ -27,7 +27,7 @@ export abstract class WorkflowFieldNode<
    * Check if this field accepts workflow variables
    */
   get acceptsVariables(): boolean {
-    return this._options.acceptsVariables === true
+    return this._options.acceptsVariables !== false
   }
 
   /**
@@ -59,8 +59,8 @@ export abstract class WorkflowFieldNode<
 
     const result: any = { ...base }
 
-    if (acceptsVariables === true) {
-      result.acceptsVariables = true
+    if (acceptsVariables !== undefined) {
+      result.acceptsVariables = acceptsVariables
     }
 
     if (variableTypes !== undefined && variableTypes.length > 0) {

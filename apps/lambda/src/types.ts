@@ -95,6 +95,14 @@ export interface ConsoleLog {
 }
 
 /**
+ * Structured validation error from a workflow block's execute() function.
+ */
+export interface BlockValidationErrorData {
+  fields: Array<{ field: string; message: string }>
+  message: string
+}
+
+/**
  * Execution result with metadata
  */
 export interface ExecutionResult {
@@ -107,5 +115,7 @@ export interface ExecutionResult {
     settingsSchema?: any
     /** Console logs captured during execution */
     consoleLogs?: ConsoleLog[]
+    /** Structured validation error (replaces throwing for input validation failures) */
+    validationError?: BlockValidationErrorData
   }
 }

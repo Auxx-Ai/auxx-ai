@@ -6,6 +6,8 @@ export {
   AuxxNoOrganizationConnectionError,
   AuxxNoUserConnectionError,
   AuxxUnexpectedTransportError,
+  BlockRuntimeError,
+  BlockValidationError,
   ExtensionInitError,
   ExtensionLoadError,
   MessageError,

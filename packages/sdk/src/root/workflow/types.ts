@@ -280,9 +280,12 @@ export interface WorkflowBlock<TSchema extends WorkflowSchema = WorkflowSchema> 
    * Block icon. Accepts:
    * - Lucide icon name (e.g. `'message-square'`)
    * - Emoji (e.g. `'💬'`)
-   * - Imported PNG (`import icon from './icon.png'` — auto-prefixed to `base64:` by the SDK)
+   * - Imported image file — PNG, JPG, GIF, or WebP
+   *   (`import icon from './icon.png'` — auto-prefixed to `base64:` by the SDK)
    * - Remote URL (e.g. `'https://cdn.example.com/icon.png'` — auto-prefixed to `url:`)
    * - Explicit prefix: `'url:https://...'` or `'base64:data:image/...'`
+   *
+   * Note: SVG imports are not supported (XSS risk). Use a remote URL for SVG icons.
    */
   icon?: string | ComponentType
 
@@ -325,9 +328,12 @@ export interface WorkflowTrigger<TSchema extends WorkflowSchema = WorkflowSchema
    * Block icon. Accepts:
    * - Lucide icon name (e.g. `'message-square'`)
    * - Emoji (e.g. `'💬'`)
-   * - Imported PNG (`import icon from './icon.png'` — auto-prefixed to `base64:` by the SDK)
+   * - Imported image file — PNG, JPG, GIF, or WebP
+   *   (`import icon from './icon.png'` — auto-prefixed to `base64:` by the SDK)
    * - Remote URL (e.g. `'https://cdn.example.com/icon.png'` — auto-prefixed to `url:`)
    * - Explicit prefix: `'url:https://...'` or `'base64:data:image/...'`
+   *
+   * Note: SVG imports are not supported (XSS risk). Use a remote URL for SVG icons.
    */
   icon?: string | ComponentType
 

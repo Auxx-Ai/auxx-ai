@@ -53,6 +53,19 @@ export function useRunSingleNode(nodeId?: string) {
       const nodeId = variables.nodeId
       // Store the complete WorkflowNodeExecution directly without transformation
       setNodeResult(nodeId, executionResult)
+
+      // BlockValidationError — show targeted field messages instead of a generic toast
+      const validationError = (executionResult.executionMetadata as any)?.validationError
+      if (validationError) {
+        const description = validationError.fields
+          ?.filter((f: any) => f.message)
+          .map((f: any) => (f.field ? `${f.field}: ${f.message}` : f.message))
+          .join('\n')
+        toastError({
+          title: 'Please fix the configuration',
+          description: description || validationError.message,
+        })
+      }
     },
     onError: (error, variables) => {
       const nodeId = variables.nodeId

@@ -99,6 +99,8 @@ export interface FieldOptions {
   actor?: { target?: 'user' | 'group' | 'both'; multiple?: boolean }
   /** For MULTI_SELECT type — triggers MultiSelectInput instead of ArrayInput */
   multiSelect?: boolean
+  /** For ENUM/SELECT type — SelectTrigger variant override */
+  selectVariant?: 'transparent' | 'outline'
 }
 
 /**
@@ -124,7 +126,10 @@ export function getSpecificPropsForType(
     // BaseType.PHONE uses dedicated PhoneInput component, no special props needed
 
     case BaseType.ENUM:
-      return { options: fieldOptions?.enum || fieldOptions?.options }
+      return {
+        options: fieldOptions?.enum || fieldOptions?.options,
+        selectVariant: fieldOptions?.selectVariant,
+      }
 
     case BaseType.DATE:
       return { type: 'date', triggerProps: { className: 'w-full ps-0' } }

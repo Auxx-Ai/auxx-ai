@@ -294,6 +294,12 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
         },
       }
     } catch (error) {
+      // Re-throw BlockValidationError as-is so the execution service can detect
+      // it and store structured field data instead of treating it as a crash.
+      if (error instanceof Error && error.name === 'BlockValidationError') {
+        throw error
+      }
+
       logger.error('App workflow block execution failed', {
         nodeId: node.nodeId,
         appId,
@@ -620,6 +626,17 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
       }
 
       const result = lambdaResult.value
+
+      // BlockValidationError — re-throw as a named error so executeNode can detect it
+      if (result.metadata?.validation_error) {
+        const ve = result.metadata.validation_error
+        const validationErr = Object.assign(new Error(ve.message), {
+          name: 'BlockValidationError',
+          fields: ve.fields,
+        })
+        throw validationErr
+      }
+
       const endTime = Date.now()
 
       // Extract data from result

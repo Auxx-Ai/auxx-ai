@@ -9,6 +9,7 @@ import { isErrored } from '../errors.js'
 import { printUploadError } from '../print-errors.js'
 import { addAuxxHiddenDirectoryToTsConfig } from '../util/add-auxx-hidden-directory-to-ts-config.js'
 import { ensureAppEntryPoint } from '../util/ensure-app-entry-point.js'
+import { generateAppEnvTypes } from '../util/generate-app-env-types.js'
 import { generateGitignore } from '../util/generate-gitignore.js'
 
 import { generateSettingsFiles } from '../util/generate-settings-files.js'
@@ -68,6 +69,20 @@ export const dev = new Command('dev')
       }
     }
     await generateGitignore()
+    const appEnvTypesResult = await generateAppEnvTypes()
+    if (isErrored(appEnvTypesResult)) {
+      process.stderr.write(
+        chalk.yellow(
+          `Failed to generate src/auxx-env.d.ts at ${appEnvTypesResult.error.path}. TypeScript image imports may show warnings.\n`
+        )
+      )
+    } else if (appEnvTypesResult.value === 'skipped_unmanaged') {
+      process.stderr.write(
+        chalk.yellow(
+          'Skipping src/auxx-env.d.ts generation because the existing file is unmanaged. Add imports for @auxx/sdk/client and @auxx/sdk/global manually.\n'
+        )
+      )
+    }
     if (USE_SETTINGS) {
       const updateTsconfigResult = await addAuxxHiddenDirectoryToTsConfig()
       if (isErrored(updateTsconfigResult)) {

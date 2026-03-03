@@ -121,7 +121,15 @@ export class ClientBuilder {
         },
         write: mode === 'write-to-disk',
         outfile,
-        loader: { '.png': 'dataurl', '.graphql': 'text', '.gql': 'text' },
+        loader: {
+          '.png': 'dataurl',
+          '.jpg': 'dataurl',
+          '.jpeg': 'dataurl',
+          '.gif': 'dataurl',
+          '.webp': 'dataurl',
+          '.graphql': 'text',
+          '.gql': 'text',
+        },
       } as esbuild.BuildOptions)
 
       return complete(

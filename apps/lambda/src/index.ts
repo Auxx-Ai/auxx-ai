@@ -225,6 +225,7 @@ export async function handler(
           cold_start: !(globalThis as Record<string, unknown>).__warm,
           settings_schema: executionResult.metadata?.settingsSchema,
           console_logs: executionResult.metadata?.consoleLogs,
+          validation_error: executionResult.metadata?.validationError,
         },
       }),
     }

@@ -25,6 +25,11 @@ export interface LambdaExecutionResult {
     logs?: any[]
     consoleLogs?: ConsoleLog[]
     console_logs?: ConsoleLog[]
+    /** Structured validation error returned by a BlockValidationError throw in execute() */
+    validation_error?: {
+      fields: Array<{ field: string; message: string }>
+      message: string
+    }
   }
   error?: any
 }
