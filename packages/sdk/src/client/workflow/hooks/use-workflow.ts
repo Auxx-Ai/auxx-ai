@@ -160,6 +160,12 @@ export interface WorkflowConditionalRenderProps<TSchema extends WorkflowSchema>
  * and apply schema metadata.
  */
 export interface UseWorkflowApi<TSchema extends WorkflowSchema> {
+  /** Current node data (read-only snapshot from WorkflowContext). */
+  data: InferWorkflowInput<TSchema>
+
+  /** Update node data (merges with existing data). Use for programmatic field changes like auto-resetting. */
+  updateData: (updates: Partial<InferWorkflowInput<TSchema>>) => void
+
   /** Base VarEditor component — renders any type based on `type` prop. */
   VarInput: (props: WorkflowVarInputProps) => ReactElement
 
@@ -235,8 +241,8 @@ export interface UseWorkflowApi<TSchema extends WorkflowSchema> {
 export function useWorkflow<TSchema extends WorkflowSchema>(
   schema: TSchema
 ): UseWorkflowApi<TSchema> {
-  // Get data from WorkflowContext (source of truth)
-  const { data } = useWorkflowContext<InferWorkflowInput<TSchema>>()
+  // Get data and updateData from WorkflowContext (source of truth)
+  const { data, updateData } = useWorkflowContext<InferWorkflowInput<TSchema>>()
 
   // Extract input schema for metadata lookups
   const inputSchema = schema.inputs
@@ -409,6 +415,8 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
   )
 
   return {
+    data,
+    updateData,
     VarInput: WorkflowVarInput,
     StringInput: WorkflowStringInput,
     NumberInput: WorkflowNumberInput,

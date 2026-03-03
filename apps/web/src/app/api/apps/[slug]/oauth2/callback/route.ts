@@ -91,19 +91,29 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       throw new Error('Connection definition not found')
     }
 
+    // Resolve callback base URL (must match what was sent in the authorize request)
+    const features = (connDef.oauth2Features as Record<string, any>) ?? {}
+    const callbackBase = features.callbackBaseUrl || OAUTH_REDIRECT_BASE
+
     // Exchange authorization code for access token
     const tokenRequestBody: Record<string, string> = {
       code,
       client_id: connDef.oauth2ClientId!,
       client_secret: connDef.oauth2ClientSecret!,
-      redirect_uri: `${OAUTH_REDIRECT_BASE}/api/apps/${slug}/oauth2/callback`,
+      redirect_uri: `${callbackBase}/api/apps/${slug}/oauth2/callback`,
       grant_type: 'authorization_code',
+    }
+
+    // Add code_verifier if PKCE was used (stored during authorize)
+    if (metadata.codeVerifier) {
+      tokenRequestBody.code_verifier = metadata.codeVerifier
     }
 
     // Use appropriate auth method
     const tokenRequestHeaders: Record<string, string> = {
-      // RFC 6749 §4.1.3 requires form-encoded bodies
       'Content-Type': 'application/x-www-form-urlencoded',
+      // GitHub (and some others) return form-encoded by default; request JSON
+      Accept: 'application/json',
     }
 
     if (connDef.oauth2TokenRequestAuthMethod === 'basic-auth') {

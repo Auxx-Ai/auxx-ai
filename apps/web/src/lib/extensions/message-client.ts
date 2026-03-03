@@ -366,6 +366,11 @@ export class MessageClient {
       return
     }
 
+    // Validate appInstallationId if present (prevents cross-installation crosstalk)
+    if (event.data.appInstallationId && event.data.appInstallationId !== this.appInstallationId) {
+      return
+    }
+
     const { type, data, requestId } = event.data
 
     if (!type) {

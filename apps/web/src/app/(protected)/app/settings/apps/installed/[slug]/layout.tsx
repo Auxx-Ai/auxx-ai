@@ -5,6 +5,7 @@ import type React from 'react'
 import AppInstallButton from '~/components/apps/app-install-button'
 import { InstalledAppTabs } from '~/components/apps/installed-app-tabs'
 import SettingsPage from '~/components/global/settings-page'
+import { AppIcon } from '~/components/workflow/ui/app-icon'
 import { api } from '~/trpc/server'
 
 /**
@@ -29,9 +30,15 @@ export default async function InstalledAppLayout({ children, params }: Props) {
     <SettingsPage
       title={appData.app.title}
       icon={
-        <div className='size-10 border rounded-xl flex items-center justify-center bg-primary-100'>
-          <Globe className='size-4' />
-        </div>
+        appData.app.avatarUrl ? (
+          <div className='size-10 rounded-xl overflow-hidden'>
+            <AppIcon iconId={appData.app.avatarUrl} size='lg' />
+          </div>
+        ) : (
+          <div className='size-10 border rounded-xl flex items-center justify-center bg-primary-100'>
+            <Globe className='size-4' />
+          </div>
+        )
       }
       description={appData.app.description ?? 'App description'}
       breadcrumbs={[
@@ -45,7 +52,7 @@ export default async function InstalledAppLayout({ children, params }: Props) {
           appSlug={slug}
           isInstalled={appData.installation.isInstalled}
           installationType={appData.installation.installationType}
-          availableVersions={appData.availableVersions}
+          availableDeployments={appData.availableDeployments}
         />
       }>
       <InstalledAppTabs slug={slug}>{children}</InstalledAppTabs>

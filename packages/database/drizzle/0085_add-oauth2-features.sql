@@ -1,0 +1,1 @@
+ALTER TABLE "ConnectionDefinition" ADD COLUMN "oauth2Features" jsonb DEFAULT '{}'::jsonb;

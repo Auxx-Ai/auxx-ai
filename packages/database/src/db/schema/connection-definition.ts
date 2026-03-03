@@ -15,6 +15,20 @@ import {
 import { App } from './app'
 import { DeveloperAccount } from './developer-account'
 
+/** OAuth2 feature flags and provider-specific configuration */
+export type OAuth2Features = {
+  /** Enable PKCE with S256 (RFC 7636) */
+  pkce?: boolean
+  /** Override the callback base URL (e.g. use localhost instead of NGROK). Falls back to WEBAPP_URL. */
+  callbackBaseUrl?: string
+  /** Static params appended to the authorize URL */
+  additionalAuthorizeParams?: Record<string, string>
+  /** Static params appended to the token exchange request body */
+  additionalTokenParams?: Record<string, string>
+  /** Scope separator character. Default: ' ' (space) */
+  scopeSeparator?: string
+}
+
 /** Drizzle table for ConnectionDefinition */
 export const ConnectionDefinition = pgTable(
   'ConnectionDefinition',
@@ -48,6 +62,7 @@ export const ConnectionDefinition = pgTable(
     oauth2ClientSecret: text(), // Encrypted
     oauth2TokenRequestAuthMethod: text().default('request-body'), // request-body, basic-auth
     oauth2RefreshTokenIntervalSeconds: integer(),
+    oauth2Features: jsonb().$type<OAuth2Features>().default({}),
 
     // Creator
     createdById: text().notNull(), // { id, type: 'developer-account-member' }

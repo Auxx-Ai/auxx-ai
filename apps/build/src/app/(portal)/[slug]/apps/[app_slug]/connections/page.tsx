@@ -25,10 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { Switch } from '@auxx/ui/components/switch'
+import { Textarea } from '@auxx/ui/components/textarea'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Loader2, X } from 'lucide-react'
 import { useParams } from 'next/navigation'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { toastError } from '~/components/global/toast'
@@ -61,6 +63,47 @@ const connectionFormSchema = z
     oauth2Scopes: z.string().optional().or(z.literal('')), // Comma-separated, optional
     oauth2TokenRequestAuthMethod: z.enum(['request-body', 'basic-auth']).optional(),
     oauth2RefreshSchedule: z.enum(['none', 'hourly', 'daily', 'weekly']).optional(),
+    oauth2Pkce: z.boolean().optional(),
+    oauth2CallbackBaseUrl: z
+      .string()
+      .refine((val) => !val || val === '' || z.string().url().safeParse(val).success, {
+        message: 'Must be a valid URL',
+      })
+      .optional()
+      .or(z.literal('')),
+    oauth2ScopeSeparator: z.string().optional().or(z.literal('')),
+    oauth2AdditionalAuthorizeParams: z
+      .string()
+      .refine(
+        (val) => {
+          if (!val || val === '') return true
+          try {
+            const parsed = JSON.parse(val)
+            return typeof parsed === 'object' && !Array.isArray(parsed)
+          } catch {
+            return false
+          }
+        },
+        { message: 'Must be a valid JSON object (e.g. {"key": "value"})' }
+      )
+      .optional()
+      .or(z.literal('')),
+    oauth2AdditionalTokenParams: z
+      .string()
+      .refine(
+        (val) => {
+          if (!val || val === '') return true
+          try {
+            const parsed = JSON.parse(val)
+            return typeof parsed === 'object' && !Array.isArray(parsed)
+          } catch {
+            return false
+          }
+        },
+        { message: 'Must be a valid JSON object (e.g. {"key": "value"})' }
+      )
+      .optional()
+      .or(z.literal('')),
   })
   .refine(
     (data) => {
@@ -110,11 +153,11 @@ function convertSecondsToSchedule(
   return 'none'
 }
 
-/** Split comma-separated scopes into array */
+/** Split scopes string into array (handles comma-separated, space-separated, or mixed) */
 function parseScopesString(scopes: string): string[] {
   if (!scopes) return []
   return scopes
-    .split(',')
+    .split(/[\s,]+/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
 }
@@ -162,6 +205,11 @@ export default function ConnectionsPage() {
       oauth2Scopes: '',
       oauth2TokenRequestAuthMethod: 'request-body',
       oauth2RefreshSchedule: 'none',
+      oauth2Pkce: false,
+      oauth2CallbackBaseUrl: '',
+      oauth2ScopeSeparator: '',
+      oauth2AdditionalAuthorizeParams: '',
+      oauth2AdditionalTokenParams: '',
     },
   })
 
@@ -174,6 +222,8 @@ export default function ConnectionsPage() {
     watch,
   } = form
 
+  const [showAdvanced, setShowAdvanced] = useState(false)
+
   // Watch form fields - using watch instead of useWatch to avoid timing issues with reset
   const connectionType = watch('connectionType') || 'none'
 
@@ -182,6 +232,7 @@ export default function ConnectionsPage() {
     if (connection && !hasLoadedConnection.current) {
       const scheduleValue = convertSecondsToSchedule(connection.oauth2RefreshTokenIntervalSeconds)
       const connectionTypeValue = connection.connectionType as 'none' | 'secret' | 'oauth2-code'
+      const features = (connection.oauth2Features as Record<string, unknown>) ?? {}
 
       reset({
         connectionType: connectionTypeValue,
@@ -196,7 +247,28 @@ export default function ConnectionsPage() {
           (connection.oauth2TokenRequestAuthMethod as 'request-body' | 'basic-auth') ||
           'request-body',
         oauth2RefreshSchedule: scheduleValue,
+        oauth2Pkce: (features.pkce as boolean) ?? false,
+        oauth2CallbackBaseUrl: (features.callbackBaseUrl as string) ?? '',
+        oauth2ScopeSeparator: (features.scopeSeparator as string) ?? '',
+        oauth2AdditionalAuthorizeParams: features.additionalAuthorizeParams
+          ? JSON.stringify(features.additionalAuthorizeParams, null, 2)
+          : '',
+        oauth2AdditionalTokenParams: features.additionalTokenParams
+          ? JSON.stringify(features.additionalTokenParams, null, 2)
+          : '',
       })
+
+      // Auto-open advanced section if any advanced field has a value
+      if (
+        features.pkce ||
+        features.callbackBaseUrl ||
+        features.scopeSeparator ||
+        features.additionalAuthorizeParams ||
+        features.additionalTokenParams
+      ) {
+        setShowAdvanced(true)
+      }
+
       hasLoadedConnection.current = true
     }
   }, [connection, reset])
@@ -204,6 +276,7 @@ export default function ConnectionsPage() {
   // Upsert mutation
   const upsertConnection = api.connections.upsert.useMutation({
     onSuccess: () => {
+      hasLoadedConnection.current = false
       utils.connections.get.invalidate({
         appId: app?.id ?? '',
         version: 1,
@@ -249,6 +322,17 @@ export default function ConnectionsPage() {
         oauth2Scopes: scopesArray,
         oauth2TokenRequestAuthMethod: data.oauth2TokenRequestAuthMethod,
         oauth2RefreshTokenIntervalSeconds: refreshSeconds,
+        oauth2Features: {
+          ...(data.oauth2Pkce && { pkce: true }),
+          ...(data.oauth2CallbackBaseUrl && { callbackBaseUrl: data.oauth2CallbackBaseUrl }),
+          ...(data.oauth2ScopeSeparator && { scopeSeparator: data.oauth2ScopeSeparator }),
+          ...(data.oauth2AdditionalAuthorizeParams && {
+            additionalAuthorizeParams: JSON.parse(data.oauth2AdditionalAuthorizeParams),
+          }),
+          ...(data.oauth2AdditionalTokenParams && {
+            additionalTokenParams: JSON.parse(data.oauth2AdditionalTokenParams),
+          }),
+        },
       }),
     }
 
@@ -463,6 +547,112 @@ export default function ConnectionsPage() {
                       </p>
                     )}
                   </Field>
+                  <FieldSet>
+                    <div className='flex items-center gap-3'>
+                      <Switch
+                        id='app-organization-advanced'
+                        checked={showAdvanced}
+                        onCheckedChange={setShowAdvanced}
+                      />
+                      <FieldLabel htmlFor='app-organization-advanced'>Advanced settings</FieldLabel>
+                    </div>
+
+                    {showAdvanced && (
+                      <FieldGroup>
+                        <Field>
+                          <div className='flex items-center gap-3'>
+                            <Controller
+                              name='oauth2Pkce'
+                              control={control}
+                              render={({ field }) => (
+                                <Switch
+                                  id='app-organization-pkce'
+                                  checked={field.value ?? false}
+                                  onCheckedChange={field.onChange}
+                                />
+                              )}
+                            />
+                            <FieldLabel htmlFor='app-organization-pkce'>Use PKCE (S256)</FieldLabel>
+                          </div>
+                          <FieldDescription>
+                            Enable Proof Key for Code Exchange (RFC 7636). Required by Airtable,
+                            Zoom, Twitter/X, Linear, Figma, and other providers.
+                          </FieldDescription>
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor='app-organization-callback-base-url'>
+                            Callback base URL
+                          </FieldLabel>
+                          <Input
+                            id='app-organization-callback-base-url'
+                            placeholder='https://example.ngrok-free.app'
+                            {...register('oauth2CallbackBaseUrl')}
+                          />
+                          <FieldDescription>
+                            Override the callback redirect URL base. Falls back to WEBAPP_URL if
+                            empty.
+                          </FieldDescription>
+                          {errors.oauth2CallbackBaseUrl && (
+                            <p className='text-sm text-red-600 mt-1'>
+                              {errors.oauth2CallbackBaseUrl.message}
+                            </p>
+                          )}
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor='app-organization-scope-separator'>
+                            Scope separator
+                          </FieldLabel>
+                          <Input
+                            id='app-organization-scope-separator'
+                            placeholder='(space by default)'
+                            {...register('oauth2ScopeSeparator')}
+                          />
+                          <FieldDescription>
+                            Character used to separate scopes in the authorize URL. Defaults to a
+                            space if empty.
+                          </FieldDescription>
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor='app-organization-additional-authorize-params'>
+                            Additional authorize params
+                          </FieldLabel>
+                          <Textarea
+                            id='app-organization-additional-authorize-params'
+                            placeholder='{"prompt": "consent"}'
+                            rows={3}
+                            {...register('oauth2AdditionalAuthorizeParams')}
+                          />
+                          <FieldDescription>
+                            JSON object of extra query params appended to the authorize URL.
+                          </FieldDescription>
+                          {errors.oauth2AdditionalAuthorizeParams && (
+                            <p className='text-sm text-red-600 mt-1'>
+                              {errors.oauth2AdditionalAuthorizeParams.message}
+                            </p>
+                          )}
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor='app-organization-additional-token-params'>
+                            Additional token params
+                          </FieldLabel>
+                          <Textarea
+                            id='app-organization-additional-token-params'
+                            placeholder='{"audience": "https://api.example.com"}'
+                            rows={3}
+                            {...register('oauth2AdditionalTokenParams')}
+                          />
+                          <FieldDescription>
+                            JSON object of extra params appended to the token exchange request body.
+                          </FieldDescription>
+                          {errors.oauth2AdditionalTokenParams && (
+                            <p className='text-sm text-red-600 mt-1'>
+                              {errors.oauth2AdditionalTokenParams.message}
+                            </p>
+                          )}
+                        </Field>
+                      </FieldGroup>
+                    )}
+                  </FieldSet>
                 </FieldGroup>
               )}
             </FieldSet>

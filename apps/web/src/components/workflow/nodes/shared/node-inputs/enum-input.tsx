@@ -70,7 +70,7 @@ export const EnumInput = createNodeInput<EnumInputProps>(
           id={inputId}
           size={selectVariant === 'outline' ? 'xs' : 'sm'}
           variant={selectVariant ?? 'transparent'}
-          className='ps-0 pe-1 min-h-8'>
+          className={selectVariant === 'outline' ? 'mt-1' : 'ps-0 pe-1 min-h-8'}>
           <SelectValue
             placeholder={
               <span className='text-primary-400 font-normal text-sm pointer-events-none'>

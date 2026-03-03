@@ -82,20 +82,25 @@ export function useWorkflowBlocks() {
 
       // Register loaded blocks
       const loadedBlocks = loader.getAllBlocks()
-      const blocksByApp = new Map<string, { installationId: string; blocks: any[] }>()
+      const blocksByInstall = new Map<
+        string,
+        { appId: string; installationId: string; blocks: any[] }
+      >()
 
       for (const block of loadedBlocks) {
-        if (!blocksByApp.has(block.appId)) {
-          blocksByApp.set(block.appId, {
+        const key = `${block.appId}:${block.installationId}`
+        if (!blocksByInstall.has(key)) {
+          blocksByInstall.set(key, {
+            appId: block.appId,
             installationId: block.installationId,
             blocks: [],
           })
         }
-        blocksByApp.get(block.appId)!.blocks.push(block)
+        blocksByInstall.get(key)!.blocks.push(block)
       }
 
-      // Register each app's blocks
-      for (const [appId, { installationId, blocks }] of blocksByApp) {
+      // Register each installation's blocks
+      for (const [, { appId, installationId, blocks }] of blocksByInstall) {
         const nodeDefinitions = registry.registerBlocks(appId, installationId, blocks)
 
         // Register with unified registry
@@ -134,14 +139,14 @@ export function useWorkflowBlocks() {
         }
 
         try {
-          // Clear any previous failed attempts for this app
-          loader.unloadAppBlocks(appId)
+          // Clear any previous failed attempts for this installation
+          loader.unloadAppBlocks(appId, appInstallationId)
 
           // Load blocks from the newly registered app
           await loader.loadAppWorkflowBlocks(appId, appInstallationId)
 
           // Get the loaded blocks
-          const appBlocks = loader.getBlocksForApp(appId)
+          const appBlocks = loader.getBlocksForApp(appId, appInstallationId)
 
           if (appBlocks.length > 0) {
             // Register blocks with local registry

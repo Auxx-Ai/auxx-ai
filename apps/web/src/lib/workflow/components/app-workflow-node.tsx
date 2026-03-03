@@ -9,7 +9,7 @@ import type { BaseNodeData } from '~/components/workflow/types'
 import { NodeSourceHandle } from '~/components/workflow/ui/node-handle/source-handle'
 import { NodeTargetHandle } from '~/components/workflow/ui/node-handle/target-handle'
 import { reconstructReactTree } from '~/lib/extensions/reconstruct-react-tree'
-import { useAppStore } from '~/lib/extensions/use-app-store'
+import { useOptionalMessageClient } from '~/lib/extensions/use-optional-message-client'
 import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 
 /**
@@ -37,7 +37,6 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
   const { id, data, selected } = props
 
   const { setInputs: setNodeData } = useNodeCrud(id, data)
-  const appStore = useAppStore()
   const { appInstallations, isLoading } = useExtensionsContext()
   const [nodeComponent, setNodeComponent] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
@@ -67,14 +66,22 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
       }
     }
 
-    // Look up installationId if not present
+    // Look up installationId if not present — prefer production over dev
     if (!installationId && appId) {
-      const installation = appInstallations.find((i) => i.app.id === appId)
+      const installation =
+        appInstallations.find((i) => i.app.id === appId && i.installationType === 'production') ||
+        appInstallations.find((i) => i.app.id === appId)
       installationId = installation?.installationId
     }
 
     return { appId, blockId, installationId }
   }, [data.appId, data.blockId, data.installationId, data.type, appInstallations])
+
+  // Reactive message client — re-renders when client becomes available or errors
+  const { messageClient, initError } = useOptionalMessageClient({
+    appId,
+    appInstallationId: installationId,
+  })
 
   // Persist resolved metadata back to node data so it survives save/load cycles
   useEffect(() => {
@@ -114,13 +121,8 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
         return
       }
 
-      const messageClient = appStore.getMessageClient({
-        appId,
-        appInstallationId: installationId,
-      })
-
+      // Wait for reactive client — will re-run when messageClient changes
       if (!messageClient) {
-        setError('App not loaded')
         return
       }
 
@@ -147,20 +149,11 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
     }
 
     loadNodeComponent()
-  }, [appId, installationId, blockId, id, appStore, isLoading])
-  // ↑ NO data dependency!
+  }, [appId, installationId, blockId, id, isLoading, messageClient])
+  // ↑ NO data dependency! messageClient triggers re-run when client appears.
 
   // Listen for reactive updates from iframe
   useEffect(() => {
-    if (!appId || !installationId) {
-      return
-    }
-
-    const messageClient = appStore.getMessageClient({
-      appId,
-      appInstallationId: installationId,
-    })
-
     if (!messageClient) {
       return
     }
@@ -176,37 +169,21 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
     )
 
     return unsubscribe
-  }, [appId, installationId, id, appStore])
+  }, [id, messageClient])
 
   // Send data updates to iframe when React Flow data changes
   // biome-ignore lint/correctness/useExhaustiveDependencies: nodeComponent is intentionally excluded - only trigger on data changes from React Flow
   useEffect(() => {
     if (!nodeComponent) return // Wait for initial render
-    if (!appId || !installationId) return
-
-    const messageClient = appStore.getMessageClient({
-      appId,
-      appInstallationId: installationId,
-    })
-
     if (!messageClient) return
 
     // Send updated data to node iframe
     void messageClient.sendRequest(`update-node-data-${id}`, dataRef.current)
-  }, [data, id, appId, installationId, appStore])
+  }, [data, id, messageClient])
   // CRITICAL: No nodeComponent in deps - only trigger on data changes from React Flow
 
   // Listen for data updates from iframe (bidirectional sync)
   useEffect(() => {
-    if (!appId || !installationId) {
-      return
-    }
-
-    const messageClient = appStore.getMessageClient({
-      appId,
-      appInstallationId: installationId,
-    })
-
     if (!messageClient) {
       return
     }
@@ -222,7 +199,7 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
     )
 
     return unsubscribe
-  }, [appId, installationId, id, appStore])
+  }, [id, messageClient])
 
   /**
    * Extract unique handle IDs from connection data
@@ -268,6 +245,10 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
     )
   }, [uniqueHandles, id, data])
 
+  // Derive display error from local error or init error
+  const displayError =
+    error || (initError ? `Extension failed to load: ${initError.message}` : null)
+
   // Render reconstructed component with error handling
   const renderComponent = () => {
     if (!nodeComponent) {
@@ -289,11 +270,6 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
           __reactFlowNodeId: id,
         },
         onCallHandler: async (instanceId: number, eventName: string, ...args: any[]) => {
-          const messageClient = appStore.getMessageClient({
-            appId,
-            appInstallationId: installationId!,
-          })
-
           if (!messageClient) {
             throw new Error('Message client not available')
           }
@@ -324,13 +300,13 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
   return (
     <BaseNode id={id} data={data} selected={selected}>
       {/* Render fallback handles when there's an error */}
-      {error && renderFallbackHandles()}
+      {displayError && renderFallbackHandles()}
 
       <div className='space-y-1 pb-2'>
         {isLoading ? (
           <div className='text-xs text-muted-foreground'>Loading extensions...</div>
-        ) : error ? (
-          <div className='text-xs text-destructive'>Error: {error}</div>
+        ) : displayError ? (
+          <div className='text-xs text-destructive'>Error: {displayError}</div>
         ) : (
           renderComponent()
         )}
