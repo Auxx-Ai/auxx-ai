@@ -6,6 +6,7 @@ import type { Message } from 'esbuild'
 import { isErrored } from '../errors.js'
 import { ensureAppEntryPoint } from '../util/ensure-app-entry-point.js'
 import { printJsError, printTsError } from '../util/error-reporting.js'
+import { generateAppEnvTypes } from '../util/generate-app-env-types.js'
 import { hardExit } from '../util/hard-exit.js'
 import { spinnerify } from '../util/spinner.js'
 import { buildJavaScript } from './build/build-javascript.js'
@@ -34,6 +35,21 @@ export const build = new Command('build')
       }
 
       // Step 2: Validate TypeScript
+      const appEnvTypesResult = await generateAppEnvTypes()
+      if (isErrored(appEnvTypesResult)) {
+        process.stderr.write(
+          chalk.yellow(
+            `⚠ Could not generate src/auxx-env.d.ts at ${appEnvTypesResult.error.path}. TypeScript image imports may show warnings.\n`
+          )
+        )
+      } else if (appEnvTypesResult.value === 'skipped_unmanaged') {
+        process.stderr.write(
+          chalk.yellow(
+            '⚠ Skipping src/auxx-env.d.ts generation because the existing file is unmanaged.\n'
+          )
+        )
+      }
+
       const tsResult = await spinnerify(
         'Validating TypeScript...',
         'TypeScript validation passed',

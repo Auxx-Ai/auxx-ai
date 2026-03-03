@@ -16,6 +16,8 @@ import { WorkflowAlertTag } from './workflow-alert-tag.js'
 import { WorkflowBadgeTag } from './workflow-badge-tag.js'
 import { WorkflowBooleanInputTag } from './workflow-boolean-input-tag.js'
 import { WorkflowConditionalRenderTag } from './workflow-conditional-render-tag.js'
+import { WorkflowFieldDividerTag } from './workflow-field-divider-tag.js'
+import { WorkflowFieldRowTag } from './workflow-field-row-tag.js'
 import { WorkflowInputEditorTag } from './workflow-input-editor-tag.js'
 import { WorkflowInputGroupTag } from './workflow-input-group-tag.js'
 import { WorkflowNodeHandleTag } from './workflow-node-handle-tag.js'
@@ -71,6 +73,8 @@ export const TAG_REGISTRY: Record<string, new (props: Record<string, any>) => Ba
   auxxworkflowvarinput: WorkflowVarInputTag,
   auxxworkflowvarfield: WorkflowVarFieldTag,
   auxxworkflowvarfieldgroup: WorkflowVarFieldGroupTag,
+  auxxworkflowfieldrow: WorkflowFieldRowTag,
+  auxxworkflowfielddivider: WorkflowFieldDividerTag,
 }
 
 /**
@@ -108,6 +112,8 @@ export { WorkflowAlertTag } from './workflow-alert-tag.js'
 export { WorkflowBadgeTag } from './workflow-badge-tag.js'
 export { WorkflowBooleanInputTag } from './workflow-boolean-input-tag.js'
 export { WorkflowConditionalRenderTag } from './workflow-conditional-render-tag.js'
+export { WorkflowFieldDividerTag } from './workflow-field-divider-tag.js'
+export { WorkflowFieldRowTag } from './workflow-field-row-tag.js'
 export { WorkflowInputEditorTag } from './workflow-input-editor-tag.js'
 export { WorkflowInputGroupTag } from './workflow-input-group-tag.js'
 export { WorkflowNodeHandleTag } from './workflow-node-handle-tag.js'

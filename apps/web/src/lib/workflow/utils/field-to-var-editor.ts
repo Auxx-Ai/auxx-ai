@@ -47,8 +47,9 @@ export function mapFieldToVarEditorProps(params: {
   options?: readonly (string | { label: string; value: string })[]
   acceptsVariables?: boolean
   variableTypes?: string[]
+  variant?: string
 }): VarEditorMappedProps {
-  const { type, format, options, acceptsVariables, variableTypes } = params
+  const { type, format, options, acceptsVariables, variableTypes, variant } = params
 
   // Determine allowConstant from acceptsVariables
   // When acceptsVariables is false/undefined, render in constant-only mode
@@ -142,7 +143,7 @@ export function mapFieldToVarEditorProps(params: {
         mode: VAR_MODE.PICKER,
         allowConstant,
         allowedTypes,
-        fieldOptions: { enum: normalizedOptions },
+        fieldOptions: { enum: normalizedOptions, selectVariant: variant },
       }
     }
 

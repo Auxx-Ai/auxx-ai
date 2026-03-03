@@ -11,6 +11,7 @@
     "template",
     "auxx.js",
     "client.d.ts",
+    "assets.d.ts",
     "server.d.ts",
     "global.d.ts",
     "root.d.ts",
@@ -25,6 +26,9 @@
       "types": "./client.d.ts"
     },
     "./global": {
+      "types": "./global.d.ts"
+    },
+    "./globals": {
       "types": "./global.d.ts"
     },
     "./server": {

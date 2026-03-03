@@ -21,7 +21,7 @@ export const WorkflowFieldRow = ({ children }: { children: React.ReactNode }) =>
   const lastIndex = childArray.length - 1
 
   return (
-    <div className='flex flex-row items-stretch border-b dark:border-b-[#404754]/20'>
+    <div className='flex flex-row items-stretch border-b dark:border-b-[#404754]/20 px-0.5'>
       {childArray.map((child, i) => {
         const childExpand = React.isValidElement(child) && (child.props as any).expand === true
         const shouldExpand = hasAnyExpand ? childExpand : i === lastIndex

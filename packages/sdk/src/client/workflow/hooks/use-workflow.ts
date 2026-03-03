@@ -42,6 +42,10 @@ export interface WorkflowStringInputProps<TSchema extends WorkflowSchema>
   extends Omit<StringInputProps, 'name' | 'value' | 'onChange'> {
   /** Type-safe path to string field in schema */
   name: PathToField<TSchema['inputs'], 'string'>
+  /** Whether field accepts variable references (overrides schema setting) */
+  acceptsVariables?: boolean
+  /** Allowed variable types (overrides schema setting) */
+  variableTypes?: string[]
   /** Expand to fill remaining space in a VarFieldGroup layout="row" */
   expand?: boolean
 }
@@ -54,6 +58,10 @@ export interface WorkflowNumberInputProps<TSchema extends WorkflowSchema>
   extends Omit<NumberInputProps, 'name' | 'value' | 'onChange'> {
   /** Type-safe path to number field in schema */
   name: PathToField<TSchema['inputs'], 'number'>
+  /** Whether field accepts variable references (overrides schema setting) */
+  acceptsVariables?: boolean
+  /** Allowed variable types (overrides schema setting) */
+  variableTypes?: string[]
   /** Expand to fill remaining space in a VarFieldGroup layout="row" */
   expand?: boolean
 }
@@ -66,6 +74,10 @@ export interface WorkflowBooleanInputProps<TSchema extends WorkflowSchema>
   extends Omit<BooleanInputProps, 'name' | 'value' | 'onChange'> {
   /** Type-safe path to boolean field in schema */
   name: PathToField<TSchema['inputs'], 'boolean'>
+  /** Whether field accepts variable references (overrides schema setting) */
+  acceptsVariables?: boolean
+  /** Allowed variable types (overrides schema setting) */
+  variableTypes?: string[]
   /** Expand to fill remaining space in a VarFieldGroup layout="row" */
   expand?: boolean
 }
@@ -78,6 +90,10 @@ export interface WorkflowSelectInputProps<TSchema extends WorkflowSchema>
   extends Omit<SelectInputProps, 'name' | 'value' | 'onChange'> {
   /** Type-safe path to select field in schema */
   name: PathToField<TSchema['inputs'], 'select'>
+  /** Whether field accepts variable references (overrides schema setting) */
+  acceptsVariables?: boolean
+  /** Allowed variable types (overrides schema setting) */
+  variableTypes?: string[]
   /** Expand to fill remaining space in a VarFieldGroup layout="row" */
   expand?: boolean
 }
@@ -93,8 +109,14 @@ export interface WorkflowOptionsInputProps<TSchema extends WorkflowSchema> {
   options?: readonly (string | { label: string; value: string })[]
   /** Placeholder text */
   placeholder?: string
+  /** Whether field accepts variable references (overrides schema setting) */
+  acceptsVariables?: boolean
+  /** Allowed variable types (overrides schema setting) */
+  variableTypes?: string[]
   /** Expand to fill remaining space in a VarFieldGroup layout="row" */
   expand?: boolean
+  /** Select trigger style: 'transparent' (default) or 'outline' */
+  variant?: 'transparent' | 'outline'
 }
 
 /**
@@ -261,8 +283,8 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
         name: props.name as string,
         type: 'string',
         placeholder: props.placeholder ?? metadata.placeholder,
-        acceptsVariables: fieldJson?.acceptsVariables,
-        variableTypes: fieldJson?.variableTypes,
+        acceptsVariables: props.acceptsVariables ?? fieldJson?.acceptsVariables,
+        variableTypes: props.variableTypes ?? fieldJson?.variableTypes,
         format: metadata.format,
         multiline: props.multiline,
         expand: props.expand,
@@ -281,8 +303,8 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
         name: props.name as string,
         type: 'number',
         placeholder: metadata.placeholder,
-        acceptsVariables: fieldJson?.acceptsVariables,
-        variableTypes: fieldJson?.variableTypes,
+        acceptsVariables: props.acceptsVariables ?? fieldJson?.acceptsVariables,
+        variableTypes: props.variableTypes ?? fieldJson?.variableTypes,
         expand: props.expand,
       })
     },
@@ -297,8 +319,8 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
       return createElement(VarInput, {
         name: props.name as string,
         type: 'boolean',
-        acceptsVariables: fieldJson?.acceptsVariables,
-        variableTypes: fieldJson?.variableTypes,
+        acceptsVariables: props.acceptsVariables ?? fieldJson?.acceptsVariables,
+        variableTypes: props.variableTypes ?? fieldJson?.variableTypes,
         expand: props.expand,
       })
     },
@@ -315,8 +337,8 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
         name: props.name as string,
         type: 'select',
         placeholder: metadata.placeholder,
-        acceptsVariables: fieldJson?.acceptsVariables,
-        variableTypes: fieldJson?.variableTypes,
+        acceptsVariables: props.acceptsVariables ?? fieldJson?.acceptsVariables,
+        variableTypes: props.variableTypes ?? fieldJson?.variableTypes,
         options: props.options ?? metadata.options,
         expand: props.expand,
       })
@@ -334,10 +356,11 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
         name: props.name as string,
         type: 'select',
         placeholder: props.placeholder ?? metadata.placeholder,
-        acceptsVariables: fieldJson?.acceptsVariables,
-        variableTypes: fieldJson?.variableTypes,
+        acceptsVariables: props.acceptsVariables ?? fieldJson?.acceptsVariables,
+        variableTypes: props.variableTypes ?? fieldJson?.variableTypes,
         options: props.options ?? metadata.options,
         expand: props.expand,
+        variant: props.variant,
       })
     },
     [serializedInputSchema]

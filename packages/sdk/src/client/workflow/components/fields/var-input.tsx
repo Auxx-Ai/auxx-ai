@@ -29,6 +29,8 @@ export interface VarInputProps {
    * If no child in the row has expand, the last child expands by default.
    */
   expand?: boolean
+  /** Select trigger style variant (for select/options fields) */
+  variant?: string
 }
 
 /**

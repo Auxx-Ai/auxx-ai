@@ -461,13 +461,41 @@ export class WorkflowExecutionService {
 
         return updatedExecution
       } catch (executionError) {
-        // Update node execution with error
+        const elapsedTime = (Date.now() - startTime) / 1000
+
+        // BlockValidationError — store structured field data and return instead of
+        // throwing so the frontend onSuccess handler can surface per-field messages.
+        if (
+          executionError instanceof Error &&
+          (executionError as any).name === 'BlockValidationError'
+        ) {
+          const fields = (executionError as any).fields as Array<{
+            field: string
+            message: string
+          }>
+          const [updatedExecution] = await this.db
+            .update(schema.WorkflowNodeExecution)
+            .set({
+              status: NodeRunningStatus.Failed as any,
+              error: executionError.message,
+              elapsedTime,
+              finishedAt: new Date(),
+              executionMetadata: {
+                validationError: { fields, message: executionError.message },
+              },
+            })
+            .where(eq(schema.WorkflowNodeExecution.id, nodeExecution!.id))
+            .returning()
+          return updatedExecution!
+        }
+
+        // All other errors — update DB then re-throw
         await this.db
           .update(schema.WorkflowNodeExecution)
           .set({
             status: NodeRunningStatus.Failed as any,
             error: executionError instanceof Error ? executionError.message : 'Unknown error',
-            elapsedTime: (Date.now() - startTime) / 1000,
+            elapsedTime,
             finishedAt: new Date(),
           })
           .where(eq(schema.WorkflowNodeExecution.id, nodeExecution!.id))

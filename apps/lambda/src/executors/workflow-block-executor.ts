@@ -156,6 +156,21 @@ async function executeInSandbox(
       })
     }
 
+    // BlockValidationError — return a structured result instead of a 500 so the
+    // platform can surface per-field messages in the workflow panel UI.
+    if (error instanceof Error && error.name === 'BlockValidationError') {
+      return {
+        result: null,
+        metadata: {
+          consoleLogs,
+          validationError: {
+            fields: (error as any).fields as Array<{ field: string; message: string }>,
+            message: error.message,
+          },
+        },
+      }
+    }
+
     throw error
   } finally {
     // 9. Clean up

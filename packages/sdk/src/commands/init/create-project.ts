@@ -9,6 +9,7 @@ import type { appInfoSchema } from '../../api/schemas.js'
 import { complete, errored, isErrored } from '../../errors.js'
 import { copyWithTransform } from '../../util/copy-with-transform.js'
 import { createDirectory } from '../../util/create-directory.js'
+import { generateAppEnvTypes } from '../../util/generate-app-env-types.js'
 import { spinnerify } from '../../util/spinner.js'
 
 export type CreateProjectError =
@@ -76,6 +77,15 @@ export async function createProject({ appSlug, appInfo }: { appSlug: string; app
       return result
       // return errored({ code: 'COPY_ERROR', error: result.error.error })
     }
+
+    const appEnvTypesResult = await generateAppEnvTypes(projectDir)
+    if (isErrored(appEnvTypesResult)) {
+      return errored({
+        code: 'COPY_ERROR',
+        error: new Error(`Failed to generate auxx env types: ${appEnvTypesResult.error.path}`),
+      })
+    }
+
     return complete(undefined)
   })
 }
