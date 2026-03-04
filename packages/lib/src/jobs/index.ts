@@ -109,6 +109,10 @@ export {
 } from './webhooks/process-single-webhook-job'
 export { processWebhookJob, WEBHOOK_EVENTS } from './webhooks/process-webhook-job'
 // Workflow
+export {
+  type AppTriggerDispatchJobData,
+  dispatchAppTrigger,
+} from './workflow/app-trigger-dispatch-job'
 export { approvalReminderJob } from './workflow/approval-reminder-job'
 export { approvalTimeoutJob } from './workflow/approval-timeout-job'
 export {

@@ -29,6 +29,10 @@ export const AppWebhookHandler = pgTable(
     // Used to delete webhook when connection is removed
     externalWebhookId: text(),
 
+    // Maps to WorkflowTrigger.id from the app definition
+    // Binds this webhook handler to a specific app trigger for workflow dispatch
+    triggerId: text(),
+
     // Additional metadata from extension
     metadata: text(), // JSON string
 

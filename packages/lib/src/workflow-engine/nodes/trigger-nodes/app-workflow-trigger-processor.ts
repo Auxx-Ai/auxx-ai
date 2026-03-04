@@ -1,0 +1,79 @@
+// packages/lib/src/workflow-engine/nodes/trigger-nodes/app-workflow-trigger-processor.ts
+
+import type { ExecutionContextManager } from '../../core/execution-context'
+import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
+import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { BaseNodeProcessor } from '../base-node'
+
+/**
+ * Processor for extension app trigger nodes.
+ *
+ * App triggers are webhook-driven: a third-party service sends a webhook,
+ * the app's webhook handler parses it into structured triggerData, and
+ * the platform dispatches matching workflows with that data.
+ *
+ * This processor reads the pre-populated triggerData from the execution
+ * context and maps each field to node output variables for downstream nodes.
+ */
+export class AppWorkflowTriggerProcessor extends BaseNodeProcessor {
+  readonly type: WorkflowNodeType = WorkflowNodeType.APP_TRIGGER
+
+  /**
+   * Trigger nodes don't depend on upstream variables — they start workflows.
+   */
+  protected extractRequiredVariables(_node: WorkflowNode): string[] {
+    return []
+  }
+
+  protected async executeNode(
+    node: WorkflowNode,
+    contextManager: ExecutionContextManager
+  ): Promise<Partial<NodeExecutionResult>> {
+    const context = contextManager.getContext()
+    const triggerData = context.triggerData
+
+    if (!triggerData) {
+      throw new Error('No trigger data found in execution context for app trigger')
+    }
+
+    contextManager.log('INFO', node.name, 'App trigger activated', {
+      appId: node.data.appId,
+      triggerId: node.data.triggerId,
+      installationId: node.data.installationId,
+    })
+
+    // Map each trigger data field to a node variable for downstream access
+    // e.g., {{triggerNodeId.orderId}}, {{triggerNodeId.customerEmail}}
+    if (typeof triggerData === 'object' && triggerData !== null) {
+      for (const [key, value] of Object.entries(triggerData)) {
+        contextManager.setNodeVariable(node.nodeId, key, value)
+      }
+    }
+
+    // Also set the full output for convenience
+    contextManager.setNodeVariable(node.nodeId, 'output', triggerData)
+
+    return {
+      status: NodeRunningStatus.Succeeded,
+      output: triggerData,
+      outputHandle: 'source',
+    }
+  }
+
+  protected async validateNodeConfig(node: WorkflowNode): Promise<ValidationResult> {
+    const errors: string[] = []
+    const warnings: string[] = []
+
+    if (!node.data.appId) {
+      errors.push('App ID is required for app trigger')
+    }
+    if (!node.data.triggerId) {
+      errors.push('Trigger ID is required for app trigger')
+    }
+    if (!node.data.installationId) {
+      errors.push('Installation ID is required for app trigger')
+    }
+
+    return { valid: errors.length === 0, errors, warnings }
+  }
+}

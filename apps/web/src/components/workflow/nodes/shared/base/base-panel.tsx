@@ -25,10 +25,12 @@ import {
   Power,
   PowerOff,
   RefreshCw,
+  Settings2,
   Target,
   TextCursorInput,
   Trash2,
 } from 'lucide-react'
+import { usePathname } from 'next/navigation'
 import React, {
   memo,
   type ReactNode,
@@ -38,6 +40,7 @@ import React, {
   useRef,
   useState,
 } from 'react'
+import { AppSettingsDialog } from '~/components/apps/app-settings-dialog'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
 // Hooks
@@ -71,6 +74,14 @@ interface BasePanelProps {
   children: ReactNode
   showNextStep?: boolean
   data?: any
+  /** App context for the "App Settings" button — only set for app workflow nodes */
+  appContext?: {
+    appId: string
+    appSlug: string
+    installationId: string
+    installationType: 'development' | 'production'
+    appName: string
+  }
 }
 
 /**
@@ -85,7 +96,7 @@ const KeyboardShortcut = ({ shortcut }: { shortcut: string }) => (
  * Restored to match original functionality with title, desc, and showNextStep
  */
 export const BasePanel = memo<BasePanelProps>(
-  ({ title, nodeId, children, data, showNextStep = true }) => {
+  ({ title, nodeId, children, data, showNextStep = true, appContext }) => {
     const { inputs: nodeData, setInputs } = useNodeCrud(nodeId, data)
     // Debounce setInputs to prevent double renders (local state + nodeData update)
     const debouncedSetInputs = useDebouncedCallback(setInputs, 300)
@@ -99,6 +110,7 @@ export const BasePanel = memo<BasePanelProps>(
     const setActiveTab = usePanelStore((state) => state.setBasePanelTab)
 
     const { isReadOnly } = useReadOnly()
+    const pathname = usePathname()
     const nodeType = data.type
 
     // Get all non-trigger definitions for node replacement
@@ -438,6 +450,20 @@ export const BasePanel = memo<BasePanelProps>(
                     Result
                   </TabsTrigger>
                 </>
+              )}
+              {appContext && (
+                <div className='ml-auto'>
+                  <AppSettingsDialog
+                    appSlug={appContext.appSlug}
+                    installationType={appContext.installationType}
+                    returnTo={pathname}
+                    trigger={
+                      <Button variant='outline' size='sm'>
+                        <Settings2 /> App Settings
+                      </Button>
+                    }
+                  />
+                </div>
               )}
             </TabsList>
             <TabsContent value='settings' className='flex-1 flex flex-col mt-0'>

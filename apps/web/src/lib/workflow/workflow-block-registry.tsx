@@ -1,5 +1,6 @@
 // apps/web/src/lib/workflow/workflow-block-registry.ts
 
+import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import type { ComponentType } from 'react'
 import type {
   NodeDefinition,
@@ -35,7 +36,12 @@ export class WorkflowBlockRegistry {
   /**
    * Register workflow blocks from an app and cache them
    */
-  registerBlocks(appId: string, installationId: string, blocks: WorkflowBlock[]): NodeDefinition[] {
+  registerBlocks(
+    appId: string,
+    installationId: string,
+    blocks: WorkflowBlock[],
+    appMeta?: { appSlug: string; installationType: 'development' | 'production' }
+  ): NodeDefinition[] {
     // Cache the blocks
     const cacheKey = `${appId}:${installationId}`
     schemaCache.set(cacheKey, blocks)
@@ -49,9 +55,66 @@ export class WorkflowBlockRegistry {
       this.blocks.set(blockKey, block)
 
       // Create NodeDefinition
-      const nodeDefinition = this.createNodeDefinition(appId, installationId, block)
+      const nodeDefinition = this.createNodeDefinition(appId, installationId, block, appMeta)
       this.nodeDefinitions.set(blockKey, nodeDefinition)
       nodeDefinitions.push(nodeDefinition)
+    }
+
+    return nodeDefinitions
+  }
+
+  /**
+   * Register workflow triggers from an app.
+   * Triggers use NodeCategory.TRIGGER + triggerType: APP_TRIGGER so they
+   * appear in the trigger selector UI (not the action block selector).
+   */
+  registerTriggers(
+    appId: string,
+    installationId: string,
+    triggers: WorkflowBlock[],
+    appMeta?: { appSlug: string; installationType: 'development' | 'production' }
+  ): NodeDefinition[] {
+    const nodeDefinitions: NodeDefinition[] = []
+
+    for (const trigger of triggers) {
+      const triggerKey = `${appId}:${trigger.id}`
+      this.blocks.set(triggerKey, trigger)
+
+      const definition: NodeDefinition = {
+        id: triggerKey,
+        category: NodeCategory.TRIGGER,
+        triggerType: WorkflowTriggerType.APP_TRIGGER,
+        displayName: trigger.label,
+        description: trigger.description || '',
+        icon: trigger.icon || '⚡',
+        color: trigger.color,
+
+        defaultData: {
+          title: trigger.label,
+          desc: trigger.description,
+          type: 'app-trigger',
+          appId,
+          appSlug: appMeta?.appSlug,
+          installationId,
+          installationType: appMeta?.installationType,
+          triggerId: trigger.id,
+          ...this.getDefaultInputValues(trigger.schema.inputs),
+        },
+
+        schema: trigger.schema,
+        validator: (data: any) => this.validateBlockData(trigger, data),
+        outputVariables: (data: any, nodeId: string) =>
+          this.createOutputVariables(trigger, nodeId, data),
+        panel: this.createPanelComponent(
+          appId,
+          installationId,
+          trigger
+        ) as ComponentType<NodePanelProps>,
+        canRunSingle: false,
+      }
+
+      this.nodeDefinitions.set(triggerKey, definition)
+      nodeDefinitions.push(definition)
     }
 
     return nodeDefinitions
@@ -97,7 +160,8 @@ export class WorkflowBlockRegistry {
   private createNodeDefinition(
     appId: string,
     installationId: string,
-    block: WorkflowBlock
+    block: WorkflowBlock,
+    appMeta?: { appSlug: string; installationType: 'development' | 'production' }
   ): NodeDefinition {
     return {
       id: `${appId}:${block.id}`,
@@ -113,7 +177,9 @@ export class WorkflowBlockRegistry {
         title: block.label,
         desc: block.description,
         appId: appId,
+        appSlug: appMeta?.appSlug,
         installationId: installationId,
+        installationType: appMeta?.installationType,
         blockId: block.id,
         ...this.getDefaultInputValues(block.schema.inputs),
       },

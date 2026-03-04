@@ -46,6 +46,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const searchParams = request.nextUrl.searchParams
   const installationId = searchParams.get('installation')
   const connectionType = searchParams.get('type') // 'user' or 'organization'
+  const returnTo = searchParams.get('returnTo')
+
+  // Validate returnTo: must be relative path starting with /, not protocol-relative
+  const validReturnTo = returnTo?.startsWith('/') && !returnTo.startsWith('//') ? returnTo : null
 
   if (!installationId || !connectionType) {
     return NextResponse.json(
@@ -127,6 +131,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         connectionDefinitionId: connDef.id,
         global: connDef.global,
         ...(codeVerifier && { codeVerifier }),
+        ...(validReturnTo && { returnTo: validReturnTo }),
       })
     )
 
@@ -169,7 +174,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     })
 
     // Redirect to OAuth provider
-    return NextResponse.redirect(authUrl.toString())
+    const response = NextResponse.redirect(authUrl.toString())
+
+    // Set short-lived cookie as fallback for returnTo (some providers don't include state on error)
+    if (validReturnTo) {
+      response.cookies.set('oauth_return_to', validReturnTo, {
+        maxAge: 600, // 10 min, same as Redis TTL
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        path: '/',
+      })
+    }
+
+    return response
   } catch (error) {
     logger.error('OAuth authorize failed', {
       error: error instanceof Error ? error.message : String(error),

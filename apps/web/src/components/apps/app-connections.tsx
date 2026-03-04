@@ -23,7 +23,7 @@ type Props = {
  */
 function AppConnections({ app }: Props) {
   const searchParams = useSearchParams()
-  const success = searchParams.get('success')
+  const success = searchParams.get('success') || searchParams.get('oauth_success')
 
   // Fetch installed apps to get connection definition
   const { data: installedResult } = api.apps.listInstalled.useQuery({})

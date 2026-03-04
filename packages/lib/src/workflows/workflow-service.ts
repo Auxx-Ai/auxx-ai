@@ -434,6 +434,24 @@ export class WorkflowService {
           if (basicUpdateData.triggerType) workflowUpdates.triggerType = basicUpdateData.triggerType
           if (basicUpdateData.entityDefinitionId !== undefined)
             workflowUpdates.entityDefinitionId = basicUpdateData.entityDefinitionId
+
+          // Extract app trigger fields from graph's trigger node when trigger type is 'app-trigger'
+          if (basicUpdateData.triggerType === 'app-trigger' && graph?.nodes) {
+            const triggerNode = (graph.nodes as any[]).find(
+              (n: any) => n.data?.type === 'app-trigger'
+            )
+            if (triggerNode?.data) {
+              workflowUpdates.triggerAppId = triggerNode.data.appId || null
+              workflowUpdates.triggerTriggerId = triggerNode.data.triggerId || null
+              workflowUpdates.triggerInstallationId = triggerNode.data.installationId || null
+            }
+          } else if (basicUpdateData.triggerType && basicUpdateData.triggerType !== 'app-trigger') {
+            // Clear app trigger fields when switching to a non-app trigger
+            workflowUpdates.triggerAppId = null
+            workflowUpdates.triggerTriggerId = null
+            workflowUpdates.triggerInstallationId = null
+          }
+
           if (graph) workflowUpdates.graph = graph as any
           if (envVars) workflowUpdates.envVars = envVars as any
           if (variables) workflowUpdates.variables = variables as any

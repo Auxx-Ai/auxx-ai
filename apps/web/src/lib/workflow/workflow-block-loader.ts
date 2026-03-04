@@ -10,6 +10,7 @@ import type { WorkflowBlock } from './types'
 export class WorkflowBlockLoader {
   private appStore: AppStore
   private loadedBlocks = new Map<string, WorkflowBlock[]>()
+  private loadedTriggers = new Map<string, WorkflowBlock[]>()
 
   constructor(appStore: AppStore) {
     this.appStore = appStore
@@ -77,10 +78,11 @@ export class WorkflowBlockLoader {
         console.log(`[WorkflowBlockLoader] Sending get-workflow-blocks to ${appId}`)
         const result = await messageClient.sendRequest<{
           blocks: Omit<WorkflowBlock, 'appId' | 'installationId'>[]
+          triggers?: Omit<WorkflowBlock, 'appId' | 'installationId'>[]
         }>('get-workflow-blocks', {}, { timeout: 10000 })
 
         console.log(
-          `[WorkflowBlockLoader] Got ${result.blocks?.length ?? 0} blocks from ${appId}:`,
+          `[WorkflowBlockLoader] Got ${result.blocks?.length ?? 0} blocks, ${result.triggers?.length ?? 0} triggers from ${appId}:`,
           result.blocks?.map((b) => b.id)
         )
 
@@ -93,6 +95,16 @@ export class WorkflowBlockLoader {
           }))
 
           this.loadedBlocks.set(loadKey, enrichedBlocks)
+        }
+
+        if (result.triggers && result.triggers.length > 0) {
+          const enrichedTriggers: WorkflowBlock[] = result.triggers.map((trigger) => ({
+            ...trigger,
+            appId,
+            installationId,
+          }))
+
+          this.loadedTriggers.set(loadKey, enrichedTriggers)
         }
       } catch (requestError) {
         console.error(
@@ -134,9 +146,17 @@ export class WorkflowBlockLoader {
   }
 
   /**
-   * Unload workflow blocks for an app installation
+   * Get workflow triggers for a specific app installation
+   */
+  getTriggersForApp(appId: string, installationId: string): WorkflowBlock[] {
+    return this.loadedTriggers.get(`${appId}:${installationId}`) || []
+  }
+
+  /**
+   * Unload workflow blocks and triggers for an app installation
    */
   unloadAppBlocks(appId: string, installationId: string): void {
     this.loadedBlocks.delete(`${appId}:${installationId}`)
+    this.loadedTriggers.delete(`${appId}:${installationId}`)
   }
 }

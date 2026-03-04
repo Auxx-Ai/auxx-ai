@@ -16,6 +16,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { ChartColumn, History, MousePointerClick, Settings, Workflow } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { use, useState } from 'react'
+import { useOAuthReturn } from '~/components/apps/use-oauth-return'
 import { DockedPanelTarget, DockPortalProvider } from '~/components/global/dock-portal-provider'
 import { DockedPanelsContainer } from '~/components/global/docked-panels-container'
 import { Tooltip } from '~/components/global/tooltip'
@@ -57,6 +58,9 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
 
   // Check if wide screen for auto layout mode
   const isWideScreen = useMedia(`(min-width: ${autoBreakpoint}px)`)
+
+  // Handle OAuth return params (oauth_success, oauth_error) after redirect
+  useOAuthReturn()
 
   const { data: workflow, isLoading } = api.workflow.getById.useQuery(
     { id: workflowId },

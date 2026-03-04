@@ -85,17 +85,44 @@ async function executeWebhookInSandbox(
     })
 
     // Execute: stdin_webhooks_default(handlerId, [Request])
-    const response = await stdin_webhooks_default(handlerId, [webRequest])
+    const handlerResult = await stdin_webhooks_default(handlerId, [webRequest])
 
-    if (!(response instanceof Response)) {
-      throw new Error('Webhook handler must return a Response object')
+    // Support two return formats:
+    // 1. Response object (backward compatible)
+    // 2. { response: Response, triggerData?: Record<string, unknown>, eventId?: string }
+    let response: Response
+    let triggerData: Record<string, unknown> | undefined
+    let eventId: string | undefined
+
+    if (handlerResult instanceof Response) {
+      response = handlerResult
+    } else if (
+      handlerResult &&
+      typeof handlerResult === 'object' &&
+      handlerResult.response instanceof Response
+    ) {
+      response = handlerResult.response
+      triggerData = handlerResult.triggerData
+      eventId = handlerResult.eventId
+    } else {
+      throw new Error(
+        'Webhook handler must return a Response object or { response: Response, triggerData?, eventId? }'
+      )
     }
 
     // Extract response data
-    const responseData = {
+    const responseData: Record<string, any> = {
       status: response.status,
       headers: Object.fromEntries(response.headers.entries()),
       body: await response.text(),
+    }
+
+    // Include trigger data if present
+    if (triggerData) {
+      responseData.triggerData = triggerData
+    }
+    if (eventId) {
+      responseData.eventId = eventId
     }
 
     const consoleLogs = getCapturedLogs()

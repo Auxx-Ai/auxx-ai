@@ -50,6 +50,7 @@ export interface WebhookHandler {
  */
 export async function createWebhookHandler(options: {
   fileName: string
+  triggerId?: string
   metadata?: Record<string, unknown>
 }): Promise<WebhookHandler> {
   // Runtime injection

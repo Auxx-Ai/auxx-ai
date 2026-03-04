@@ -149,12 +149,12 @@ export function SignatureList({ isAdmin = false }: SignatureListProps) {
             </div>
           }
           button={
-            <Link href='/app/settings/signatures/new' asChild>
-              <Button size='sm' variant='outline' onClick={() => {}}>
+            <Button size='sm' variant='outline' asChild>
+              <Link href='/app/settings/signatures/new'>
                 <Plus />
                 Create signature
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           }
         />
       ) : (

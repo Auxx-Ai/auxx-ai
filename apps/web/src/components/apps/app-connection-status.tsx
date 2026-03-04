@@ -39,6 +39,8 @@ interface AppConnectionStatusProps {
     connectionType: 'oauth2-code' | 'secret' | 'none'
   }
   onConnectionSaved?: () => void
+  /** Optional return URL appended to OAuth authorize URL (e.g., for workflow context) */
+  returnTo?: string
 }
 
 /**
@@ -54,6 +56,7 @@ export function AppConnectionStatus({
   credentialId,
   connectionDefinition,
   onConnectionSaved,
+  returnTo,
 }: AppConnectionStatusProps) {
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
@@ -125,7 +128,7 @@ export function AppConnectionStatus({
   }
 
   // Build OAuth authorize URL using app slug
-  const oauthAuthorizeUrl = `/api/apps/${appSlug}/oauth2/authorize?installation=${installationId}&type=${connectionType}`
+  const oauthAuthorizeUrl = `/api/apps/${appSlug}/oauth2/authorize?installation=${installationId}&type=${connectionType}${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''}`
 
   // Determine connection method
   const isOAuth = connectionDefinition?.connectionType === 'oauth2-code'
