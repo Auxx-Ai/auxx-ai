@@ -71,7 +71,6 @@ export class NodeFactory {
     const nodeData = {
       // Core properties
       id: nodeId,
-      type: nodeType as NodeType,
       desc: definition.description,
       icon: definition.icon,
       color: definition.color,
@@ -84,6 +83,8 @@ export class NodeFactory {
       _connectedTargetHandleIds: [],
       // Spread all merged data
       ...mergedData,
+      // type must come after spread so defaultData.type can't overwrite the definition ID
+      type: nodeType as NodeType,
       title: uniqueTitle,
 
       // Ensure title is set correctly

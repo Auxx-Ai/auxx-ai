@@ -11,6 +11,7 @@ import { useStoreApi } from '@xyflow/react'
 import { useCallback, useEffect, useRef } from 'react'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
+import { unifiedNodeRegistry } from '../nodes/unified-registry'
 import { useCanvasStore } from '../store/canvas-store'
 import { useTestInputStore } from '../store/test-input-store'
 import { useVarStore } from '../store/use-var-store'
@@ -125,48 +126,38 @@ export const useWorkflowSave = () => {
         return { ...edge, data: Object.keys(cleanData).length > 0 ? cleanData : undefined }
       })
 
-      // Compute trigger type and entityDefinitionId from node data
-      const triggerNode = cleanNodes.find((n) => n.data.type === 'resource-trigger')
+      // Detect trigger type from node definitions (registry-based)
       let triggerType = workflow.triggerType
       let entityDefinitionId: string | undefined
 
-      if (triggerNode) {
-        const { operation, entityDefinitionId: nodeEntityDefId } = triggerNode.data
+      const triggerNode = cleanNodes.find((n) => {
+        const def = unifiedNodeRegistry.getDefinition(n.data.type as string)
+        return def?.triggerType !== undefined
+      })
 
-        // Use the linker to map resource operations to trigger types
-        if (operation && nodeEntityDefId) {
-          const mappedTriggerType =
-            RESOURCE_OPERATION_TO_TRIGGER_TYPE[operation as ResourceTriggerOperation]
-          if (mappedTriggerType) {
-            triggerType = mappedTriggerType
-            entityDefinitionId = nodeEntityDefId
+      if (triggerNode) {
+        const def = unifiedNodeRegistry.getDefinition(triggerNode.data.type as string)
+        if (def?.triggerType) {
+          triggerType = def.triggerType
+        }
+
+        // Resource triggers need special handling for entityDefinitionId
+        if (triggerNode.data.type === 'resource-trigger') {
+          const { operation, entityDefinitionId: nodeEntityDefId } = triggerNode.data
+          if (operation && nodeEntityDefId) {
+            const mappedTriggerType =
+              RESOURCE_OPERATION_TO_TRIGGER_TYPE[operation as ResourceTriggerOperation]
+            if (mappedTriggerType) {
+              triggerType = mappedTriggerType
+              entityDefinitionId = nodeEntityDefId
+            }
           }
         }
-      }
 
-      // Other trigger types (non-resource) - use NodeType enum values aligned with backend
-      const manualNode = cleanNodes.find((n) => n.data.type === 'manual')
-      if (manualNode) {
-        triggerType = TriggerType.FORM
-        entityDefinitionId = undefined // Form triggers don't have entity
-      }
-
-      const webhookNode = cleanNodes.find((n) => n.data.type === 'webhook')
-      if (webhookNode) {
-        triggerType = TriggerType.WEBHOOK
-        entityDefinitionId = undefined
-      }
-
-      const scheduledNode = cleanNodes.find((n) => n.data.type === 'scheduled')
-      if (scheduledNode) {
-        triggerType = TriggerType.SCHEDULED
-        entityDefinitionId = undefined
-      }
-
-      const messageNode = cleanNodes.find((n) => n.data.type === 'message-received')
-      if (messageNode) {
-        triggerType = TriggerType.MESSAGE_RECEIVED
-        entityDefinitionId = undefined
+        // Manual trigger maps to FORM
+        if (triggerNode.data.type === 'manual') {
+          triggerType = TriggerType.FORM
+        }
       }
 
       payload.graph = { nodes: cleanNodes, edges: cleanEdges, viewport: { x, y, zoom } }

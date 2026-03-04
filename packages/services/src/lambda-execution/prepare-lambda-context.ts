@@ -1,7 +1,10 @@
 // packages/services/src/lambda-execution/prepare-lambda-context.ts
 
-import { API_URL } from '@auxx/config/urls'
+import { INTERNAL_API_URL } from '@auxx/config/urls'
 import { type CallbackScope, createCallbackToken } from '@auxx/credentials/lambda-auth'
+import { createScopedLogger } from '@auxx/logger'
+
+const logger = createScopedLogger('lambda-context')
 
 /**
  * Build standardized Lambda execution context from installation and user/org info.
@@ -38,6 +41,12 @@ export function prepareLambdaContext(params: {
     }
   }
 
+  logger.info('Preparing Lambda context', {
+    apiUrl: INTERNAL_API_URL,
+    appId: params.appId,
+    installationId: params.installationId,
+  })
+
   return {
     organizationId: params.organizationId,
     organizationHandle: params.organizationHandle,
@@ -45,7 +54,7 @@ export function prepareLambdaContext(params: {
     userEmail: params.userEmail,
     userName: params.userName,
     appId: params.appId,
-    apiUrl: API_URL,
+    apiUrl: INTERNAL_API_URL,
     appInstallationId: params.installationId,
     userConnection: params.userConnection,
     organizationConnection: params.organizationConnection,

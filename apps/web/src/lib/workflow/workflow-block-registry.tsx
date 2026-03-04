@@ -93,7 +93,6 @@ export class WorkflowBlockRegistry {
         defaultData: {
           title: trigger.label,
           desc: trigger.description,
-          type: 'app-trigger',
           appId,
           appSlug: appMeta?.appSlug,
           installationId,

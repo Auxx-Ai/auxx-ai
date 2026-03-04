@@ -193,10 +193,22 @@ export async function createWebhookHandler(params: CreateWebhookHandlerParams) {
 
   logger.info('Creating webhook handler', { appInstallationId, fileName, triggerId, connectionId })
 
-  // Generate public webhook URL (append connectionId for per-connection isolation)
+  // Generate externally-reachable webhook URL.
+  // Dev: route through web app proxy (ngrok exposes port 3000, not 3007)
+  // Prod: route directly to API server (publicly reachable)
+  const isDevTunnel = !!process.env.NGROK_URL
+  const webhookBase = isDevTunnel ? process.env.NGROK_URL : API_URL
+  const pathPrefix = isDevTunnel ? '/api/webhooks' : '/webhooks'
+
   const url = connectionId
-    ? `${API_URL}/webhooks/${appInstallationId}/${fileName}/${connectionId}`
-    : `${API_URL}/webhooks/${appInstallationId}/${fileName}`
+    ? `${webhookBase}${pathPrefix}/${appInstallationId}/${fileName}/${connectionId}`
+    : `${webhookBase}${pathPrefix}/${appInstallationId}/${fileName}`
+
+  logger.info('Generated webhook URL', {
+    url,
+    isDevTunnel,
+    webhookBase: isDevTunnel ? 'NGROK_URL' : 'API_URL',
+  })
 
   // Create or update webhook handler
   const dbResult = await fromDatabase(

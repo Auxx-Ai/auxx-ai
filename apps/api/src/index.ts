@@ -69,8 +69,8 @@ async function main() {
   app.route('/api/v1/bundles', bundleAssets) // GET /bundles/:appId/:type/:sha.js (stable CDN URLs)
   app.route('/api/v1/organizations', organizations) // Organization-scoped routes (including bundles)
   app.route('/api/v1/app-runtime', appRuntime) // Platform runtime files (shared by all extensions)
-  app.route('/api/v1/apps/webhooks', webhookHandlers) // For SDK calls from Lambda
-  app.route('/api/v1/apps/settings', settings) // For SDK settings calls from Lambda
+  app.route('/api/v1/sdk/webhooks', webhookHandlers) // SDK callback: Lambda → API
+  app.route('/api/v1/sdk/settings', settings) // SDK callback: Lambda → API
   app.route('/api/v1/workflows', workflows) // Workflow execution routes
   app.route('/webhooks', webhooks) // Public webhook receiver (no /api/v1 prefix)
 

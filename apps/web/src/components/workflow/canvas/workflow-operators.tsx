@@ -12,6 +12,7 @@ import {
   Play,
   Redo,
   Shuffle,
+  Square,
   Undo,
   ZoomIn,
   ZoomOut,
@@ -71,6 +72,7 @@ export const WorkflowOperators = memo(function WorkflowOperators({
 
   // Workflow run hook for SSE and lifecycle management
   const { startRun, stopWorkflow } = useWorkflowRun()
+  const [isStopping, setIsStopping] = useState(false)
 
   // Calculate progress
   const progress = useMemo(() => {
@@ -117,6 +119,24 @@ export const WorkflowOperators = memo(function WorkflowOperators({
     [workflowAppId, startRun]
   )
 
+  const handleStopWorkflow = useCallback(async () => {
+    if (!workflowAppId || isStopping) return
+
+    setIsStopping(true)
+    try {
+      await stopWorkflow(workflowAppId)
+    } catch (error) {
+      console.error('[Workflow Operators] Failed to stop workflow:', error)
+      toastError({
+        title: 'Failed to stop workflow',
+        description:
+          error instanceof Error ? error.message : 'An error occurred while stopping the workflow',
+      })
+    } finally {
+      setIsStopping(false)
+    }
+  }, [workflowAppId, stopWorkflow, isStopping])
+
   // Subscribe to history changes via event bus
   useEffect(() => {
     // Set initial state
@@ -144,14 +164,27 @@ export const WorkflowOperators = memo(function WorkflowOperators({
     <div className={cn('workflow-operators flex flex-row gap-2', className)}>
       {/* Run controls */}
       <div className='flex items-center gap-0.5 p-0.5 bg-white/40 dark:bg-white/10 backdrop-blur-sm rounded-lg ring-black/5 ring-1'>
-        <Button
-          variant={isRunning ? 'secondary' : 'ghost'}
-          size='icon-sm'
-          className='hover:dark:bg-white/15'
-          onClick={handleRunWorkflow}
-          disabled={!canRunWorkflow || isRunning}>
-          {isRunning ? <Loader2 className='animate-spin' /> : <Play />}
-        </Button>
+        {isRunning ? (
+          <Tooltip content='Stop Run'>
+            <Button
+              variant='secondary'
+              size='icon-sm'
+              className='hover:dark:bg-white/15 hover:bg-destructive/10 hover:text-destructive'
+              onClick={handleStopWorkflow}
+              disabled={isStopping}>
+              {isStopping ? <Loader2 className='animate-spin' /> : <Square />}
+            </Button>
+          </Tooltip>
+        ) : (
+          <Button
+            variant='ghost'
+            size='icon-sm'
+            className='hover:dark:bg-white/15'
+            onClick={handleRunWorkflow}
+            disabled={!canRunWorkflow}>
+            <Play />
+          </Button>
+        )}
 
         {/* Progress indicator */}
         {isRunning && activeRun && (

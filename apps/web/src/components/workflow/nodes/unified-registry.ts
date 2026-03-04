@@ -12,6 +12,7 @@ class UnifiedNodeRegistry {
   private categories = new Map<NodeCategory, string[]>()
   private isInitialized = false
   private changeListeners = new Set<() => void>()
+  private version = 0
 
   /**
    * Register a node definition
@@ -67,7 +68,13 @@ class UnifiedNodeRegistry {
    * Notify all listeners of changes
    */
   private notifyChange(): void {
+    this.version++
     this.changeListeners.forEach((listener) => listener())
+  }
+
+  /** Snapshot for useSyncExternalStore — returns version counter */
+  getVersion = (): number => {
+    return this.version
   }
 
   /**

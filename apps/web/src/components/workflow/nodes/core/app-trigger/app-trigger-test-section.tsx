@@ -124,11 +124,13 @@ export function AppTriggerTestSection({
               isListening &&
                 'bg-bad-200 hover:bg-bad-200 text-bad-500 hover:text-bad-500 border-bad-300'
             )}
-            loading={isListening}
-            loadingText='Listening...'
             onClick={() => (isListening ? stopListening() : startListening())}>
-            <Radio />
-            {isListening ? 'Stop Listening' : 'Listen for Events'}
+            {isListening ? (
+              <span className='size-2.5 rounded-full bg-bad-500 animate-pulse' />
+            ) : (
+              <Radio />
+            )}
+            {isListening ? 'Listening...' : 'Listen for Events'}
           </Button>
 
           <Button variant='outline' size='sm' onClick={() => setShowTestEditor(!showTestEditor)}>

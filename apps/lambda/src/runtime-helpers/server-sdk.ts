@@ -495,7 +495,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
         // Call platform API to create webhook handler
         const response = await sdkFetch({
           method: 'POST',
-          url: `${context.apiUrl}/api/v1/apps/webhooks`,
+          url: `${context.apiUrl}/api/v1/sdk/webhooks`,
           headers: getCallbackHeaders('webhooks'),
           body: {
             fileName: options.fileName,
@@ -537,7 +537,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
 
       const response = await sdkFetch({
         method: 'PATCH',
-        url: `${context.apiUrl}/api/v1/apps/webhooks/${handlerId}`,
+        url: `${context.apiUrl}/api/v1/sdk/webhooks/${handlerId}`,
         headers: getCallbackHeaders('webhooks'),
         body: updates,
       })
@@ -555,7 +555,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
 
       const response = await sdkFetch({
         method: 'DELETE',
-        url: `${context.apiUrl}/api/v1/apps/webhooks/${handlerId}`,
+        url: `${context.apiUrl}/api/v1/sdk/webhooks/${handlerId}`,
         headers: getCallbackHeaders('webhooks'),
       })
 
@@ -573,7 +573,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
       try {
         const response = await sdkFetch({
           method: 'GET',
-          url: `${context.apiUrl}/api/v1/apps/webhooks`,
+          url: `${context.apiUrl}/api/v1/sdk/webhooks`,
           headers: getCallbackHeaders('webhooks'),
         })
 
@@ -606,7 +606,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
       try {
         const response = await sdkFetch({
           method: 'GET',
-          url: `${context.apiUrl}/api/v1/apps/settings/${key}`,
+          url: `${context.apiUrl}/api/v1/sdk/settings/${key}`,
           headers: getCallbackHeaders('settings'),
         })
 
@@ -635,7 +635,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
       try {
         const response = await sdkFetch({
           method: 'GET',
-          url: `${context.apiUrl}/api/v1/apps/settings`,
+          url: `${context.apiUrl}/api/v1/sdk/settings`,
           headers: getCallbackHeaders('settings'),
         })
 
@@ -664,7 +664,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
       try {
         const response = await sdkFetch({
           method: 'PUT',
-          url: `${context.apiUrl}/api/v1/apps/settings/${key}`,
+          url: `${context.apiUrl}/api/v1/sdk/settings/${key}`,
           headers: getCallbackHeaders('settings'),
           body: { value },
         })
@@ -691,7 +691,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
       try {
         const response = await sdkFetch({
           method: 'POST',
-          url: `${context.apiUrl}/api/v1/apps/settings`,
+          url: `${context.apiUrl}/api/v1/sdk/settings`,
           headers: getCallbackHeaders('settings'),
           body: { settings },
         })

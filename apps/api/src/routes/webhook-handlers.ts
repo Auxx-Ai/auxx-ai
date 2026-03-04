@@ -81,7 +81,7 @@ const updateWebhookHandlerSchema = z.object({
  * Lists all webhook handlers for an app installation.
  * Returns all webhook handlers (both active and inactive) associated with the app installation.
  *
- * @route GET /apps/webhooks
+ * @route GET /api/v1/sdk/webhooks
  * @access Protected - Requires X-App-Installation-Id header
  *
  * @param {Object} c - Hono context object
@@ -152,7 +152,7 @@ webhookHandlers.get('/', async (c) => {
  * This endpoint is called by app extensions running in Lambda to register a webhook handler
  * that will process incoming webhooks from external services.
  *
- * @route POST /apps/webhooks
+ * @route POST /api/v1/sdk/webhooks
  * @access Protected - Requires X-App-Installation-Id header
  *
  * @param {Object} c - Hono context object
@@ -254,7 +254,7 @@ webhookHandlers.post('/', async (c) => {
  * Used to sync webhook handler state with external services (e.g., updating the Shopify webhook ID
  * after successful registration) or to modify handler metadata.
  *
- * @route PATCH /apps/webhooks/:handlerId
+ * @route PATCH /api/v1/sdk/webhooks/:handlerId
  * @access Protected - Requires X-App-Installation-Id header
  *
  * @param {Object} c - Hono context object
@@ -366,7 +366,7 @@ webhookHandlers.patch('/:handlerId', async (c) => {
  * This is typically called when an app is uninstalled or when a webhook subscription is
  * manually removed. The handler will no longer process incoming webhooks after deletion.
  *
- * @route DELETE /apps/webhooks/:handlerId
+ * @route DELETE /api/v1/sdk/webhooks/:handlerId
  * @access Protected - Requires X-App-Installation-Id header
  *
  * @param {Object} c - Hono context object
@@ -386,7 +386,7 @@ webhookHandlers.patch('/:handlerId', async (c) => {
  * }
  *
  * @example cURL Request
- * curl -X DELETE https://api.auxx.ai/apps/webhooks/wh_handler_xyz789 \
+ * curl -X DELETE https://api.auxx.ai/api/v1/sdk/webhooks/wh_handler_xyz789 \
  *   -H "X-App-Installation-Id: app_install_abc123xyz" \
  *   -H "Content-Type: application/json"
  *
@@ -455,13 +455,13 @@ webhookHandlers.delete('/:handlerId', async (c) => {
 
 /**
  * Export the configured Hono router for webhook handler routes.
- * Mount this router at /apps/webhooks in the main API application.
+ * Mount this router at /api/v1/sdk/webhooks in the main API application.
  *
  * @exports webhookHandlers
  * @type {Hono<AppContext>}
  *
  * @example Mounting the router
  * import webhookHandlers from './routes/webhook-handlers'
- * app.route('/apps/webhooks', webhookHandlers)
+ * app.route('/api/v1/sdk/webhooks', webhookHandlers)
  */
 export default webhookHandlers
