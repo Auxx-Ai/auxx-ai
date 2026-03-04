@@ -8,6 +8,7 @@ import type {
 } from '~/components/workflow/types/registry'
 import { NodeCategory } from '~/components/workflow/types/registry'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
+import { resolveAppBlockOutputFields } from '~/lib/workflow/utils/resolve-app-outputs'
 import { convertOutputFieldsToVariables } from '~/lib/workflow/utils/type-mapping'
 // import { AppWorkflowNode } from './components/app-workflow-node'
 import { AppWorkflowPanel } from './components/app-workflow-panel'
@@ -204,16 +205,14 @@ export class WorkflowBlockRegistry {
 
   /**
    * Create output variables for a block.
-   * Merges static schema.outputs with computed outputs from data._computedOutputs.
+   * Merges static schema.outputs + computed outputs + inferred schema.
    */
   private createOutputVariables(
     block: WorkflowBlock,
     nodeId: string,
     data?: any
   ): UnifiedVariable[] {
-    const staticOutputs = block.schema.outputs || {}
-    const computedOutputs = data?._computedOutputs || {}
-    const merged = { ...staticOutputs, ...computedOutputs }
+    const merged = resolveAppBlockOutputFields(block, data)
     return convertOutputFieldsToVariables(merged, nodeId)
   }
 

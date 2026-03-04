@@ -5,10 +5,13 @@ import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { AlertCircle, CheckCircle2, Clock, Play, XCircle } from 'lucide-react'
-import { memo } from 'react'
+import { AlertCircle, AlertTriangle, CheckCircle2, Clock, Play, XCircle } from 'lucide-react'
+import { memo, useState } from 'react'
 import CodeEditor, { CodeLanguage } from '~/components/workflow/ui/code-editor'
 import Section from '~/components/workflow/ui/section'
+import StructuredOutputGenerator from '~/components/workflow/ui/structured-output-generator'
+import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
+import { jsonToSchema } from '~/components/workflow/utils/schema-to-variable'
 import { useRunSingleNode } from '../../hooks'
 import { useRunStore } from '../../store/run-store'
 
@@ -17,6 +20,10 @@ export interface SingleRunResultTabProps {
   nodeId: string
   /** Handler for running the node */
   onRun?: () => void
+  /** Callback to store inferred schema on node data. Parent provides via useNodeCrud. */
+  onApplySchema?: (schema: SchemaRoot) => void
+  /** Current inferred schema (if any), for showing Edit button */
+  inferredSchema?: SchemaRoot
 }
 
 /**
@@ -25,7 +32,10 @@ export interface SingleRunResultTabProps {
 export const SingleRunResultTab = memo(function SingleRunResultTab({
   nodeId,
   onRun,
+  onApplySchema,
+  inferredSchema,
 }: SingleRunResultTabProps) {
+  const [isSchemaEditorOpen, setIsSchemaEditorOpen] = useState(false)
   // Get data from hooks inside the component
   const { result: runResult, isRunning } = useRunSingleNode(nodeId)
   const nodeExecution = useRunStore((state) => state.getNodeExecution(nodeId))
@@ -61,6 +71,65 @@ export const SingleRunResultTab = memo(function SingleRunResultTab({
   }
   // Error state
   if (status === 'failed') {
+    const execMeta = execution?.executionMetadata as Record<string, any> | undefined
+    const isAppError = execMeta?.runtimeError || execMeta?.appError
+    const consoleLogs = execMeta?.consoleLogs as
+      | Array<{ level: string; message: string }>
+      | undefined
+
+    // App error — the app returned an error, not a platform crash
+    if (isAppError) {
+      const appErrorMessage =
+        execMeta?.runtimeError?.message ||
+        // Strip "Lambda execution failed: " prefix for cleaner display
+        (errorMessage?.startsWith('Lambda execution failed: ')
+          ? errorMessage.slice('Lambda execution failed: '.length)
+          : errorMessage) ||
+        'The app encountered an error'
+
+      return (
+        <div className='space-y-0'>
+          <div className='p-4 pb-0'>
+            <Alert variant='warning'>
+              <AlertTriangle className='size-4' />
+              <AlertTitle>App returned an error</AlertTitle>
+              <AlertDescription>{appErrorMessage}</AlertDescription>
+            </Alert>
+          </div>
+
+          {metadata.duration && (
+            <div className='px-4 pt-2 text-xs text-muted-foreground'>
+              Duration: {metadata.duration.toFixed(0)}ms
+            </div>
+          )}
+
+          {/* Console logs from the app */}
+          {consoleLogs && consoleLogs.length > 0 && (
+            <Section title='App Console Logs'>
+              <pre className='mx-3 mb-3 max-h-48 overflow-auto rounded-md bg-muted p-3 text-xs'>
+                {consoleLogs.map((l) => `[${l.level}] ${l.message}`).join('\n')}
+              </pre>
+            </Section>
+          )}
+
+          {/* Show input data for debugging */}
+          {inputData && Object.keys(inputData).length > 0 && (
+            <Section title='Input Data'>
+              <CodeEditor
+                value={JSON.stringify(inputData, null, 2)}
+                language={CodeLanguage.json}
+                readOnly
+                minHeight={80}
+                title='INPUT'
+                gradientBorder={false}
+              />
+            </Section>
+          )}
+        </div>
+      )
+    }
+
+    // Platform error — current destructive style
     return (
       <div className='p-4'>
         <Alert variant='destructive'>
@@ -193,19 +262,49 @@ export const SingleRunResultTab = memo(function SingleRunResultTab({
       {/* Output data */}
       <Section initialOpen title='Output Data'>
         {outputData ? (
-          <CodeEditor
-            value={JSON.stringify(outputData, null, 2)}
-            language={CodeLanguage.json}
-            readOnly={true}
-            minHeight={120}
-            title='OUTPUT'
-            gradientBorder={false}
-            downloadFilename={`node-${nodeId}-output-${Date.now()}.json`}
-          />
+          <>
+            <CodeEditor
+              value={JSON.stringify(outputData, null, 2)}
+              language={CodeLanguage.json}
+              readOnly={true}
+              minHeight={120}
+              title='OUTPUT'
+              gradientBorder={false}
+              downloadFilename={`node-${nodeId}-output-${Date.now()}.json`}
+            />
+            {onApplySchema && (
+              <div className='flex items-center gap-2 px-3 pb-3'>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() => onApplySchema(jsonToSchema(outputData))}>
+                  Apply as Output Schema
+                </Button>
+                {inferredSchema && (
+                  <Button variant='outline' size='sm' onClick={() => setIsSchemaEditorOpen(true)}>
+                    Edit Output Schema
+                  </Button>
+                )}
+              </div>
+            )}
+          </>
         ) : (
           <p className='text-sm text-muted-foreground'>No output data</p>
         )}
       </Section>
+
+      {/* Schema editor dialog */}
+      {onApplySchema && (
+        <StructuredOutputGenerator
+          isShow={isSchemaEditorOpen}
+          defaultSchema={inferredSchema}
+          onSave={(newSchema) => {
+            onApplySchema(newSchema)
+            setIsSchemaEditorOpen(false)
+          }}
+          onClose={() => setIsSchemaEditorOpen(false)}
+        />
+      )}
     </>
   )
 })

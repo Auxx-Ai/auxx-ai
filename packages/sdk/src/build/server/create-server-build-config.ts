@@ -1,5 +1,7 @@
 import globalExternals from '@fal-works/esbuild-plugin-global-externals'
-export function createServerBuildConfig(entryPoint: string) {
+import type { BuildOptions } from 'esbuild'
+
+export function createServerBuildConfig(entryPoint: string): BuildOptions {
   return {
     entryPoints: [entryPoint],
     bundle: true,
@@ -20,6 +22,6 @@ export function createServerBuildConfig(entryPoint: string) {
           type: 'cjs',
         },
       }),
-    ],
+    ] as BuildOptions['plugins'],
   }
 }

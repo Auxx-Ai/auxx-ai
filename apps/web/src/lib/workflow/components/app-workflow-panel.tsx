@@ -7,8 +7,9 @@ import { useNodeCrud } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import { reconstructReactTree } from '~/lib/extensions/reconstruct-react-tree'
-import { useAppStore } from '~/lib/extensions/use-app-store'
+import { useOptionalMessageClient } from '~/lib/extensions/use-optional-message-client'
 import type { WorkflowBlock } from '../types'
+import { computeOutputSignature, resolveAppBlockOutputFields } from '../utils/resolve-app-outputs'
 import { convertOutputFieldsToVariables } from '../utils/type-mapping'
 import { AppWorkflowFieldContext } from './app-workflow-field-context'
 
@@ -34,13 +35,18 @@ interface AppWorkflowPanelProps {
  */
 export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
   ({ nodeId, appId, installationId, block, data: propData }) => {
-    const appStore = useAppStore()
     // Initialize with actual node data from props instead of empty object
     const { inputs: nodeData, setInputs } = useNodeCrud(nodeId, propData || {})
     const nodeDataRef = useRef(nodeData)
     const [panelComponent, setPanelComponent] = useState<any>(null)
     const [error, setError] = useState<string | null>(null)
     const [isLoading, setIsLoading] = useState(true)
+
+    // Reactive message client — re-renders when client becomes available or errors
+    const { messageClient, initError } = useOptionalMessageClient({
+      appId,
+      appInstallationId: installationId,
+    })
 
     // Keep ref in sync with latest nodeData
     useEffect(() => {
@@ -89,12 +95,11 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
       [nodeId, nodeData, handleFieldChange, getFieldMode, block.schema]
     )
 
-    /** Merged output variables (static + computed from SDK-side computeOutputs) */
+    /** Merged output variables (static + computed + inferred from execution) */
     const mergedOutputVariables = useMemo(() => {
-      const staticOutputs = block.schema.outputs || {}
-      const computedOutputs = nodeData._computedOutputs || {}
-      return convertOutputFieldsToVariables({ ...staticOutputs, ...computedOutputs }, nodeId)
-    }, [block.schema.outputs, nodeData._computedOutputs, nodeId])
+      const merged = resolveAppBlockOutputFields(block, nodeData)
+      return convertOutputFieldsToVariables(merged, nodeId)
+    }, [block, nodeData._computedOutputs, nodeData.inferredSchema, nodeId])
 
     // Load panel component from iframe
     useEffect(() => {
@@ -105,28 +110,9 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
       setPanelComponent(null)
       setError(null)
 
-      const loadPanelComponent = async (retryCount = 0): Promise<void> => {
-        const maxRetries = 3
-        const retryDelay = Math.min(1000 * 2 ** retryCount, 5000) // Exponential backoff, max 5s
-
-        const messageClient = appStore.getMessageClient({
-          appId,
-          appInstallationId: installationId,
-        })
-
+      const loadPanelComponent = async (): Promise<void> => {
+        // Wait for reactive client — will re-run when messageClient changes
         if (!messageClient) {
-          if (retryCount < maxRetries) {
-            await new Promise((resolve) => setTimeout(resolve, retryDelay))
-            if (isMounted) {
-              return loadPanelComponent(retryCount + 1)
-            }
-            return
-          }
-          console.error('[AppWorkflowPanel] Max retries reached - no message client')
-          if (isMounted) {
-            setError('App not loaded')
-            setIsLoading(false)
-          }
           return
         }
 
@@ -180,16 +166,6 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
         } catch (err) {
           console.error('[AppWorkflowPanel] Error loading panel:', err)
           if (!isMounted) return
-
-          if (retryCount < maxRetries) {
-            await new Promise((resolve) => setTimeout(resolve, retryDelay))
-            if (isMounted) {
-              return loadPanelComponent(retryCount + 1)
-            }
-            return
-          }
-
-          console.error('[AppWorkflowPanel] Max retries reached after error:', err)
           setError(err instanceof Error ? err.message : 'Failed to load')
           setIsLoading(false)
         }
@@ -200,29 +176,22 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
       return () => {
         isMounted = false
       }
-    }, [appId, installationId, block.id, nodeId, appStore])
+    }, [appId, installationId, block.id, nodeId, messageClient])
     // ✓ nodeData removed - panel loads once, data flows through context
+    // ✓ messageClient in deps - re-runs when client becomes available
 
     // Listen for data updates from iframe
     // biome-ignore lint/correctness/useExhaustiveDependencies: setInputs is stable from useNodeCrud
     useEffect(() => {
+      if (!messageClient) return
+
       let unsubscribeData: (() => void) | undefined
       let unsubscribeOutputs: (() => void) | undefined
       let isMounted = true
 
       const setupListener = async () => {
         try {
-          const messageClient = appStore.getMessageClient({
-            appId,
-            appInstallationId: installationId,
-          })
-
-          if (!messageClient) {
-            setTimeout(() => isMounted && setupListener(), 500)
-            return
-          }
-
-          // CRITICAL FIX: Wait for client to be ready
+          // Wait for client to be ready
           await messageClient.waitUntilReady()
 
           if (!isMounted) return
@@ -244,17 +213,25 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
             'workflow-block-outputs-updated',
             (data: any) => {
               if (data.nodeId === nodeId) {
-                setInputs({
+                const prevSig = computeOutputSignature(nodeDataRef.current._computedOutputs || {})
+                const newSig = computeOutputSignature(data.outputs || {})
+
+                const updates: any = {
                   ...nodeDataRef.current,
                   _computedOutputs: data.outputs,
-                })
+                }
+
+                // Clear stale inferred schema if computed output shape changed
+                if (prevSig !== newSig && nodeDataRef.current.inferredSchema) {
+                  updates.inferredSchema = undefined
+                }
+
+                setInputs(updates)
               }
             }
           )
         } catch (error) {
           console.error('[AppWorkflowPanel] Setup error:', error)
-          // Retry on error
-          setTimeout(() => isMounted && setupListener(), 1000)
         }
       }
 
@@ -265,15 +242,10 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
         unsubscribeData?.()
         unsubscribeOutputs?.()
       }
-    }, [appId, installationId, nodeId, appStore])
+    }, [nodeId, messageClient])
 
     // Listen for reactive updates from iframe
     useEffect(() => {
-      const messageClient = appStore.getMessageClient({
-        appId,
-        appInstallationId: installationId,
-      })
-
       if (!messageClient) return
 
       const unsubscribe = messageClient.listenForRequest('workflow-panel-updated', (data: any) => {
@@ -284,58 +256,48 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
       })
 
       return unsubscribe
-    }, [appId, installationId, nodeId, appStore])
+    }, [nodeId, messageClient])
 
     // Send data updates to iframe when React Flow data changes
     // biome-ignore lint/correctness/useExhaustiveDependencies: panelComponent is intentionally excluded - only send when nodeData changes
     useEffect(() => {
       if (!panelComponent) return // Wait for initial render
-
-      const messageClient = appStore.getMessageClient({
-        appId,
-        appInstallationId: installationId,
-      })
-
       if (!messageClient) return
 
       void messageClient.sendRequest(`update-panel-data-${nodeId}`, nodeDataRef.current)
-    }, [nodeData, nodeId, appId, installationId, appStore])
+    }, [nodeData, nodeId, messageClient])
     // Note: panelComponent removed from deps - only send when nodeData changes, not on reactive updates
 
     // Cleanup on unmount
     useEffect(() => {
       return () => {
-        const messageClient = appStore.getMessageClient({
-          appId,
-          appInstallationId: installationId,
-        })
-
         if (messageClient) {
           void messageClient.sendMessage('cleanup-panel-render', { nodeId })
         }
       }
-    }, [nodeId, appId, installationId, appStore])
+    }, [nodeId, messageClient])
+
+    // Derive display error from local error or init error
+    const displayError =
+      error || (initError ? `Extension failed to load: ${initError.message}` : null)
 
     return (
       <BasePanel title={block.label} nodeId={nodeId} data={nodeData}>
-        {isLoading ? (
+        {isLoading && !displayError ? (
           <div className='p-4'>
             <div className='text-sm text-muted-foreground'>Loading configuration...</div>
           </div>
-        ) : error ? (
+        ) : displayError ? (
           <div className='p-4'>
-            <div className='text-sm text-destructive'>Error loading configuration: {error}</div>
+            <div className='text-sm text-destructive'>
+              Error loading configuration: {displayError}
+            </div>
           </div>
         ) : panelComponent ? (
           <>
             <AppWorkflowFieldContext.Provider value={fieldContextValue}>
               {reconstructReactTree(panelComponent, {
                 onCallHandler: async (instanceId: number, eventName: string, ...args: any[]) => {
-                  const messageClient = appStore.getMessageClient({
-                    appId,
-                    appInstallationId: installationId,
-                  })
-
                   if (!messageClient) {
                     console.error('[AppWorkflowPanel] No message client for event call')
                     throw new Error('Message client not available')

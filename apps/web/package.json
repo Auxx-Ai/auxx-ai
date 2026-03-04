@@ -186,6 +186,7 @@
     "import-in-the-middle": "^1.14.2",
     "jsdom": "catalog:",
     "postcss": "catalog:",
+    "prettier": "^3.8.1",
     "require-in-the-middle": "^7.5.2",
     "rimraf": "catalog:",
     "tailwindcss": "catalog:",

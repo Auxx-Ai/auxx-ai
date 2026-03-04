@@ -1,6 +1,7 @@
 // apps/web/src/app/(protected)/app/settings/apps/[slug]/page.tsx
 
 import { Globe } from 'lucide-react'
+import { redirect } from 'next/navigation'
 import AppAbout from '~/components/apps/app-about'
 import AppInstallButton from '~/components/apps/app-install-button'
 import SettingsPage from '~/components/global/settings-page'
@@ -14,6 +15,12 @@ async function AppPage({ params }: Props) {
 
   // Fetch app details with installation status
   const appData = await api.apps.getBySlug({ appSlug: slug })
+
+  // Redirect installed apps to the tabbed installed view
+  if (appData.installation.isInstalled) {
+    redirect(`/app/settings/apps/installed/${slug}`)
+  }
+
   return (
     <SettingsPage
       title={appData.app.title}

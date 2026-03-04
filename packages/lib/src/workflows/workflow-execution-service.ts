@@ -489,17 +489,64 @@ export class WorkflowExecutionService {
           return updatedExecution!
         }
 
-        // All other errors — update DB then re-throw
-        await this.db
+        // BlockRuntimeError — store as a failed execution with runtime error metadata.
+        // Return instead of re-throwing so the frontend onSuccess handler can render
+        // the app error differently from a platform crash.
+        if (
+          executionError instanceof Error &&
+          (executionError as any).name === 'BlockRuntimeError'
+        ) {
+          const [updatedExecution] = await this.db
+            .update(schema.WorkflowNodeExecution)
+            .set({
+              status: NodeRunningStatus.Failed as any,
+              error: executionError.message,
+              elapsedTime,
+              finishedAt: new Date(),
+              executionMetadata: {
+                runtimeError: {
+                  message: executionError.message,
+                  code: (executionError as any).code,
+                },
+                consoleLogs: (executionError as any).consoleLogs || [],
+              },
+            })
+            .where(eq(schema.WorkflowNodeExecution.id, nodeExecution!.id))
+            .returning()
+          return updatedExecution!
+        }
+
+        // Unhandled Lambda errors (app threw a plain Error) — store with appError
+        // metadata so the frontend can distinguish app failures from platform crashes.
+        const errorMessage =
+          executionError instanceof Error ? executionError.message : 'Unknown error'
+        const isAppError = errorMessage.startsWith('Lambda execution failed:')
+        const consoleLogs =
+          executionError && typeof executionError === 'object' && 'consoleLogs' in executionError
+            ? (executionError as any).consoleLogs || []
+            : []
+
+        const [updatedExecution] = await this.db
           .update(schema.WorkflowNodeExecution)
           .set({
             status: NodeRunningStatus.Failed as any,
-            error: executionError instanceof Error ? executionError.message : 'Unknown error',
+            error: errorMessage,
             elapsedTime,
             finishedAt: new Date(),
+            ...(isAppError && {
+              executionMetadata: {
+                appError: true,
+                consoleLogs,
+              },
+            }),
           })
           .where(eq(schema.WorkflowNodeExecution.id, nodeExecution!.id))
+          .returning()
 
+        // App errors return (shown in result tab), platform errors re-throw (trigger onError)
+        if (isAppError) {
+          return updatedExecution!
+        }
         throw executionError
       }
     } catch (error) {

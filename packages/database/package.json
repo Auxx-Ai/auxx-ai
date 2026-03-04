@@ -5,17 +5,17 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
-      "import": "./dist/index.mjs",
+      "import": "./src/index.ts",
       "default": "./src/index.ts"
     },
     "./enums": {
       "types": "./src/enums.ts",
-      "import": "./dist/enums.mjs",
+      "import": "./src/enums.ts",
       "default": "./src/enums.ts"
     },
     "./types": {
       "types": "./src/types.ts",
-      "import": "./dist/types.mjs",
+      "import": "./src/types.ts",
       "default": "./src/types.ts"
     }
   },

@@ -59,6 +59,7 @@ import { BlockSelector } from '~/components/workflow/ui/block-selector'
 import NextStep from '~/components/workflow/ui/next-step'
 // Specific UI imports
 import { ReplaceTrigger } from '~/components/workflow/ui/replace-trigger'
+import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { unifiedNodeRegistry } from '../../unified-registry'
 import { SingleRunInputTab } from '../single-run-input-tab'
@@ -227,6 +228,17 @@ export const BasePanel = memo<BasePanelProps>(
         }
       },
       [nodeData?.desc, nodeData, setInputs]
+    )
+
+    // Callback to store inferred output schema on node data
+    const handleApplySchema = useCallback(
+      (schema: SchemaRoot) => {
+        setInputs({
+          ...nodeData,
+          inferredSchema: schema,
+        })
+      },
+      [setInputs, nodeData]
     )
 
     // Ultra-simple run handler that delegates everything
@@ -456,7 +468,12 @@ export const BasePanel = memo<BasePanelProps>(
                   </TabsContent>
                 )}
                 <TabsContent value='result' className='flex-1 flex flex-col p-0 mt-0'>
-                  <SingleRunResultTab nodeId={nodeId} onRun={handleRun} />
+                  <SingleRunResultTab
+                    nodeId={nodeId}
+                    onRun={handleRun}
+                    onApplySchema={handleApplySchema}
+                    inferredSchema={nodeData?.inferredSchema}
+                  />
                 </TabsContent>
               </>
             )}

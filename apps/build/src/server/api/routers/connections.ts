@@ -80,13 +80,32 @@ export const connectionsRouter = createTRPCRouter({
         connectionType: z.enum(['oauth2-code', 'secret', 'none']),
         label: z.string(),
         description: z.string().optional(),
-        oauth2AuthorizeUrl: z.string().url().optional(),
-        oauth2AccessTokenUrl: z.string().url().optional(),
+        oauth2AuthorizeUrl: z.url().optional(),
+        oauth2AccessTokenUrl: z.url().optional(),
         oauth2ClientId: z.string().optional(),
         oauth2ClientSecret: z.string().optional(),
-        oauth2Scopes: z.array(z.string()).optional(),
+        oauth2Scopes: z
+          .array(z.string())
+          .optional()
+          .transform((scopes) => {
+            if (!scopes) return scopes
+            // Normalize: split entries that contain commas or whitespace into individual scopes
+            return scopes
+              .flatMap((s) => s.split(/[\s,]+/))
+              .map((s) => s.trim())
+              .filter((s) => s.length > 0)
+          }),
         oauth2TokenRequestAuthMethod: z.enum(['request-body', 'basic-auth']).optional(),
         oauth2RefreshTokenIntervalSeconds: z.number().optional(),
+        oauth2Features: z
+          .object({
+            pkce: z.boolean().optional(),
+            callbackBaseUrl: z.string().optional(),
+            additionalAuthorizeParams: z.record(z.string(), z.string()).optional(),
+            additionalTokenParams: z.record(z.string(), z.string()).optional(),
+            scopeSeparator: z.string().optional(),
+          })
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -148,6 +167,7 @@ export const connectionsRouter = createTRPCRouter({
         oauth2Scopes: input.oauth2Scopes || [],
         oauth2TokenRequestAuthMethod: input.oauth2TokenRequestAuthMethod || 'request-body',
         oauth2RefreshTokenIntervalSeconds: input.oauth2RefreshTokenIntervalSeconds,
+        oauth2Features: input.oauth2Features ?? {},
         createdById: ctx.session.userId,
       }
 

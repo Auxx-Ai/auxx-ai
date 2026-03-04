@@ -33,7 +33,7 @@ const iconMap = {
 } as const
 
 /** Flag to control whether to show empty categories */
-const SHOW_EMPTY_CATEGORIES = true
+const SHOW_EMPTY_CATEGORIES = false
 
 /**
  * IntegrationList component

@@ -9,7 +9,6 @@ export type { EmailAttachment, MessageData, ParticipantInputData } from './email
 export {
   EmailLabel,
   IdentifierType,
-  IntegrationType,
   MessageStorageService,
   MessageType,
   ParticipantRole,

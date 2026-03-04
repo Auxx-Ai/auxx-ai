@@ -30,6 +30,11 @@ export interface LambdaExecutionResult {
       fields: Array<{ field: string; message: string }>
       message: string
     }
+    /** Structured runtime error returned by a BlockRuntimeError throw in execute() */
+    runtime_error?: {
+      message: string
+      code?: string
+    }
   }
   error?: any
 }
@@ -42,6 +47,7 @@ export interface LambdaExecutionError {
   message: string
   details?: any
   statusCode: number
+  consoleLogs?: ConsoleLog[]
 }
 
 /**
@@ -84,6 +90,10 @@ export async function invokeLambdaExecutor(params: {
         errorData = { error: { message: errorText, code: 'UNKNOWN_ERROR' } }
       }
 
+      // Extract console logs from error response metadata
+      const errorConsoleLogs: ConsoleLog[] | undefined =
+        errorData.metadata?.console_logs || errorData.metadata?.consoleLogs
+
       // Check for connection errors (not found or expired)
       if (
         errorData.error?.code === 'CONNECTION_NOT_FOUND' ||
@@ -96,6 +106,7 @@ export async function invokeLambdaExecutor(params: {
             scope: errorData.error.scope || 'user',
           },
           statusCode: 403,
+          consoleLogs: errorConsoleLogs,
         })
       }
 
@@ -105,6 +116,7 @@ export async function invokeLambdaExecutor(params: {
         message: errorData.error?.message || 'Lambda execution failed',
         details: errorData.error?.details,
         statusCode: lambdaResponse.status,
+        consoleLogs: errorConsoleLogs,
       })
     }
 

@@ -188,7 +188,7 @@ export class ApiKeyModel extends BaseModel<typeof ApiKey, CreateInput, Entity, U
 
 - **Never write raw SQL migration files.** Always modify the Drizzle schema files in `packages/database/src/db/schema/`.
 - When planning tasks that involve schema changes, show the TypeScript schema file changes, not SQL.
-- After modifying schema files, generate the migration: `pnpm db:generate --name <descriptive_name>`
+- After modifying schema files, generate the migration from the `packages/database` folder: `pnpm db:generate --name <descriptive_name>`. From root, use `pnpm db:generate -- --name <descriptive_name>`.
 - Apply the migration: `pnpm db:migrate`
 
 ## Module Exports

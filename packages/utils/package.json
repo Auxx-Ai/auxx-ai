@@ -6,107 +6,107 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
-      "import": "./dist/index.js",
+      "import": "./src/index.ts",
       "default": "./src/index.ts"
     },
     "./arrays": {
       "types": "./src/arrays.ts",
-      "import": "./dist/arrays.js",
+      "import": "./src/arrays.ts",
       "default": "./src/arrays.ts"
     },
     "./comments": {
       "types": "./src/comments.ts",
-      "import": "./dist/comments.js",
+      "import": "./src/comments.ts",
       "default": "./src/comments.ts"
     },
     "./contact": {
       "types": "./src/contact.ts",
-      "import": "./dist/contact.js",
+      "import": "./src/contact.ts",
       "default": "./src/contact.ts"
     },
     "./currency": {
       "types": "./src/currency.ts",
-      "import": "./dist/currency.js",
+      "import": "./src/currency.ts",
       "default": "./src/currency.ts"
     },
     "./date": {
       "types": "./src/date.ts",
-      "import": "./dist/date.js",
+      "import": "./src/date.ts",
       "default": "./src/date.ts"
     },
     "./email": {
       "types": "./src/email.ts",
-      "import": "./dist/email.js",
+      "import": "./src/email.ts",
       "default": "./src/email.ts"
     },
     "./file": {
       "types": "./src/file.ts",
-      "import": "./dist/file.js",
+      "import": "./src/file.ts",
       "default": "./src/file.ts"
     },
     "./fractional-indexing": {
       "types": "./src/fractional-indexing.ts",
-      "import": "./dist/fractional-indexing.js",
+      "import": "./src/fractional-indexing.ts",
       "default": "./src/fractional-indexing.ts"
     },
     "./functions": {
       "types": "./src/functions.ts",
-      "import": "./dist/functions.js",
+      "import": "./src/functions.ts",
       "default": "./src/functions.ts"
     },
     "./generateId": {
       "types": "./src/generateId.ts",
-      "import": "./dist/generateId.js",
+      "import": "./src/generateId.ts",
       "default": "./src/generateId.ts"
     },
     "./headers": {
       "types": "./src/headers.ts",
-      "import": "./dist/headers.js",
+      "import": "./src/headers.ts",
       "default": "./src/headers.ts"
     },
     "./mime": {
       "types": "./src/mime.ts",
-      "import": "./dist/mime.js",
+      "import": "./src/mime.ts",
       "default": "./src/mime.ts"
     },
     "./objects": {
       "types": "./src/objects.ts",
-      "import": "./dist/objects.js",
+      "import": "./src/objects.ts",
       "default": "./src/objects.ts"
     },
     "./parse": {
       "types": "./src/parse.ts",
-      "import": "./dist/parse.js",
+      "import": "./src/parse.ts",
       "default": "./src/parse.ts"
     },
     "./retry": {
       "types": "./src/retry.ts",
-      "import": "./dist/retry.js",
+      "import": "./src/retry.ts",
       "default": "./src/retry.ts"
     },
     "./strings": {
       "types": "./src/strings.ts",
-      "import": "./dist/strings.js",
+      "import": "./src/strings.ts",
       "default": "./src/strings.ts"
     },
     "./timezone": {
       "types": "./src/timezone.ts",
-      "import": "./dist/timezone.js",
+      "import": "./src/timezone.ts",
       "default": "./src/timezone.ts"
     },
     "./task-date": {
       "types": "./src/task-date.ts",
-      "import": "./dist/task-date.js",
+      "import": "./src/task-date.ts",
       "default": "./src/task-date.ts"
     },
     "./calc-expression": {
       "types": "./src/calc-expression.ts",
-      "import": "./dist/calc-expression.js",
+      "import": "./src/calc-expression.ts",
       "default": "./src/calc-expression.ts"
     },
     "./relationships": {
       "types": "./src/relationships.ts",
-      "import": "./dist/relationships.js",
+      "import": "./src/relationships.ts",
       "default": "./src/relationships.ts"
     }
   },

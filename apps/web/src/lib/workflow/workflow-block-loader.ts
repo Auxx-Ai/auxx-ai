@@ -42,8 +42,9 @@ export class WorkflowBlockLoader {
    */
   async loadAppWorkflowBlocks(appId: string, installationId: string): Promise<void> {
     // Check if already loaded
-    if (this.loadedBlocks.has(appId)) {
-      console.log(`[WorkflowBlockLoader] Blocks already loaded for ${appId}, skipping`)
+    const loadKey = `${appId}:${installationId}`
+    if (this.loadedBlocks.has(loadKey)) {
+      console.log(`[WorkflowBlockLoader] Blocks already loaded for ${loadKey}, skipping`)
       return
     }
 
@@ -91,7 +92,7 @@ export class WorkflowBlockLoader {
             installationId,
           }))
 
-          this.loadedBlocks.set(appId, enrichedBlocks)
+          this.loadedBlocks.set(loadKey, enrichedBlocks)
         }
       } catch (requestError) {
         console.error(
@@ -119,10 +120,10 @@ export class WorkflowBlockLoader {
   }
 
   /**
-   * Get workflow blocks for a specific app
+   * Get workflow blocks for a specific app installation
    */
-  getBlocksForApp(appId: string): WorkflowBlock[] {
-    return this.loadedBlocks.get(appId) || []
+  getBlocksForApp(appId: string, installationId: string): WorkflowBlock[] {
+    return this.loadedBlocks.get(`${appId}:${installationId}`) || []
   }
 
   /**
@@ -133,9 +134,9 @@ export class WorkflowBlockLoader {
   }
 
   /**
-   * Unload workflow blocks for an app
+   * Unload workflow blocks for an app installation
    */
-  unloadAppBlocks(appId: string): void {
-    this.loadedBlocks.delete(appId)
+  unloadAppBlocks(appId: string, installationId: string): void {
+    this.loadedBlocks.delete(`${appId}:${installationId}`)
   }
 }

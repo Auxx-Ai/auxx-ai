@@ -13,6 +13,7 @@ import { Separator } from '@auxx/ui/components/separator'
 import { toastError } from '@auxx/ui/components/toast'
 import { Braces, GitBranch } from 'lucide-react'
 import { type FC, useCallback, useState } from 'react'
+import { jsonToSchema } from '~/components/workflow/utils/schema-to-variable'
 import ErrorMessage from './error-message'
 import JsonImporter from './json-importer'
 import SchemaEditor from './schema-editor'
@@ -21,7 +22,6 @@ import {
   checkJsonSchemaDepth,
   convertBooleanToString,
   getValidationErrorMessage,
-  jsonToSchema,
   preValidateSchema,
   validateSchemaAgainstDraft7,
 } from './utils'

@@ -15,50 +15,13 @@ import { auth } from '~/auth/server'
 const logger = createScopedLogger('oauth-authorize')
 
 /**
- * Ensure offline access scope is present for OAuth2 connections to enable refresh tokens
- *
- * Different providers use different mechanisms:
- * - Google: Uses 'access_type=offline' parameter (not a scope)
- * - Microsoft/Azure: Uses 'offline_access' scope
- * - Generic OAuth2: Uses 'offline_access' scope
- *
- * @param scopes - Original scopes from ConnectionDefinition
- * @param authUrl - OAuth provider's authorization URL
- * @returns Enhanced scopes and any additional URL parameters
+ * Google requires access_type=offline as a URL parameter (not a scope) to issue refresh tokens.
+ * All other providers should have their scopes configured directly in the ConnectionDefinition.
  */
-function ensureOfflineAccessScope(
-  scopes: string[],
-  authUrl: string
-): { scopes: string[]; additionalParams?: Record<string, string> } {
-  // Google: Use access_type=offline parameter instead of scope
+function getGoogleOfflineParams(authUrl: string): Record<string, string> | undefined {
   if (authUrl.includes('accounts.google.com')) {
-    return {
-      scopes,
-      additionalParams: { access_type: 'offline', prompt: 'consent' },
-    }
+    return { access_type: 'offline', prompt: 'consent' }
   }
-
-  // Slack: Tokens don't expire, no refresh token flow
-  if (authUrl.includes('slack.com')) {
-    return { scopes }
-  }
-
-  // Microsoft/Azure: Use offline_access scope
-  if (authUrl.includes('login.microsoftonline.com') || authUrl.includes('login.windows.net')) {
-    if (!scopes.includes('offline_access')) {
-      logger.info('Auto-injecting offline_access scope for Microsoft OAuth2')
-      return { scopes: [...scopes, 'offline_access'] }
-    }
-    return { scopes }
-  }
-
-  // Generic OAuth2: Add offline_access if not present
-  if (!scopes.includes('offline_access')) {
-    logger.info('Auto-injecting offline_access scope for OAuth2', { authUrl })
-    return { scopes: [...scopes, 'offline_access'] }
-  }
-
-  return { scopes }
 }
 
 /**
@@ -142,6 +105,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Generate state token for CSRF protection
     const state = crypto.randomBytes(32).toString('hex')
 
+    // PKCE support (RFC 7636)
+    const features = connDef.oauth2Features ?? {}
+    let codeVerifier: string | undefined
+
+    if (features.pkce) {
+      codeVerifier = crypto.randomBytes(96).toString('base64url')
+    }
+
     // Store state in Redis with metadata (expires in 10 minutes)
     const redis = await getRedisClient()
     await redis.setex(
@@ -155,31 +126,37 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         appTitle: installation.app!.title,
         connectionDefinitionId: connDef.id,
         global: connDef.global,
+        ...(codeVerifier && { codeVerifier }),
       })
     )
 
-    // Ensure offline access for refresh tokens
-    const { scopes: enhancedScopes, additionalParams } = ensureOfflineAccessScope(
-      connDef.oauth2Scopes || [],
-      connDef.oauth2AuthorizeUrl!
-    )
+    // Resolve callback base URL (per-connection override or global default)
+    const callbackBase = features.callbackBaseUrl || OAUTH_REDIRECT_BASE
+
+    const scopes = connDef.oauth2Scopes || []
+    const googleParams = getGoogleOfflineParams(connDef.oauth2AuthorizeUrl!)
 
     // Build OAuth authorization URL
     const authUrl = new URL(connDef.oauth2AuthorizeUrl!)
     authUrl.searchParams.set('client_id', connDef.oauth2ClientId!)
-    authUrl.searchParams.set(
-      'redirect_uri',
-      `${OAUTH_REDIRECT_BASE}/api/apps/${slug}/oauth2/callback`
-    )
-    authUrl.searchParams.set('scope', enhancedScopes.join(' '))
+    authUrl.searchParams.set('redirect_uri', `${callbackBase}/api/apps/${slug}/oauth2/callback`)
+    authUrl.searchParams.set('scope', scopes.join(' '))
     authUrl.searchParams.set('state', state)
     authUrl.searchParams.set('response_type', 'code')
 
-    // Add any provider-specific parameters (e.g., access_type=offline for Google)
-    if (additionalParams) {
-      Object.entries(additionalParams).forEach(([key, value]) => {
+    // Google requires access_type=offline as a URL parameter for refresh tokens
+    if (googleParams) {
+      for (const [key, value] of Object.entries(googleParams)) {
         authUrl.searchParams.set(key, value)
-      })
+      }
+    }
+
+    // Append PKCE code_challenge to authorize URL
+    if (features.pkce && codeVerifier) {
+      const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url')
+
+      authUrl.searchParams.set('code_challenge', codeChallenge)
+      authUrl.searchParams.set('code_challenge_method', 'S256')
     }
 
     logger.info('Redirecting to OAuth provider', {
@@ -188,9 +165,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       installationId,
       global: isGlobal,
       provider: connDef.oauth2AuthorizeUrl,
-      originalScopes: connDef.oauth2Scopes,
-      enhancedScopes,
-      additionalParams,
+      scopes,
     })
 
     // Redirect to OAuth provider

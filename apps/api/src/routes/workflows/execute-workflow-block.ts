@@ -164,6 +164,29 @@ executeWorkflowBlock.post('/:workflowId/runs/:runId/blocks/:blockId/execute', as
         )
       }
 
+      // Persist console logs from failed executions
+      if (error.consoleLogs && error.consoleLogs.length > 0) {
+        try {
+          await logAppExecution({
+            appId,
+            organizationId: organization.id,
+            appDeploymentId: deployment.id,
+            userId: user.id,
+            installationId: installation.id,
+            consoleLogs: error.consoleLogs,
+            execution: {
+              type: 'workflow-block',
+              workflowId,
+              runId,
+              nodeId,
+              blockId,
+            },
+          })
+        } catch (logError) {
+          console.error('[ExecuteWorkflowBlock] Failed to store error console logs:', logError)
+        }
+      }
+
       // Other errors
       return c.json(
         {

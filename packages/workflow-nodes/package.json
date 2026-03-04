@@ -6,22 +6,22 @@
   "exports": {
     "./credentials": {
       "types": "./src/credentials/index.ts",
-      "import": "./dist/credentials/index.js",
+      "import": "./src/credentials/index.ts",
       "default": "./src/credentials/index.ts"
     },
     "./types": {
       "types": "./src/types/index.ts",
-      "import": "./dist/types/index.js",
+      "import": "./src/types/index.ts",
       "default": "./src/types/index.ts"
     },
     "./server": {
       "types": "./src/server/index.ts",
-      "import": "./dist/server/index.js",
+      "import": "./src/server/index.ts",
       "default": "./src/server/index.ts"
     },
     "./nodes": {
       "types": "./src/nodes/index.ts",
-      "import": "./dist/nodes/index.js",
+      "import": "./src/nodes/index.ts",
       "default": "./src/nodes/index.ts"
     }
   },
