@@ -12,6 +12,20 @@ import { type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('oauth-callback')
 
+/** Build a redirect URL safely using URL/URLSearchParams */
+function buildRedirectUrl(basePath: string, params: Record<string, string>): string {
+  const url = new URL(basePath, WEBAPP_URL)
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value)
+  }
+  return url.toString()
+}
+
+/** Validate a returnTo value — must be a relative path, not protocol-relative */
+function isValidReturnTo(value: string | undefined | null): value is string {
+  return !!value && value.startsWith('/') && !value.startsWith('//')
+}
+
 /**
  * OAuth Callback Route
  * GET /api/apps/:slug/oauth2/callback
@@ -25,9 +39,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const error = searchParams.get('error')
   const { slug } = await params
 
-  // Handle OAuth errors
+  // Handle OAuth errors (provider-side, e.g. user denied)
   if (error) {
     logger.error('OAuth provider returned error', { error, slug })
+
+    // Check cookie fallback for returnTo (state may not be available on provider errors)
+    const cookieReturnTo = request.cookies.get('oauth_return_to')?.value
+    if (isValidReturnTo(cookieReturnTo)) {
+      const errorRedirectUrl = buildRedirectUrl(cookieReturnTo, {
+        oauth_error: 'true',
+        oauth_error_message: error,
+      })
+      const response = NextResponse.redirect(errorRedirectUrl)
+      response.cookies.delete('oauth_return_to')
+      return response
+    }
+
     return new NextResponse(
       `
       <html>
@@ -222,14 +249,29 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       credentialId: result.value,
     })
 
-    // Redirect back to the app's connection page with success indicator
-    const redirectUrl = `${WEBAPP_URL}/app/settings/apps/installed/${slug}/connections?success=true`
-    return NextResponse.redirect(redirectUrl)
+    // Redirect back — use returnTo from state if available, else default to app connections page
+    const successPath = metadata.returnTo || `/app/settings/apps/installed/${slug}/connections`
+    const redirectUrl = buildRedirectUrl(successPath, { oauth_success: 'true' })
+    const response = NextResponse.redirect(redirectUrl)
+    response.cookies.delete('oauth_return_to')
+    return response
   } catch (error) {
     logger.error('OAuth callback failed', {
       error: error instanceof Error ? error.message : String(error),
       slug,
     })
+
+    // Try cookie fallback for returnTo on error
+    const cookieReturnTo = request.cookies.get('oauth_return_to')?.value
+    if (isValidReturnTo(cookieReturnTo)) {
+      const errorRedirectUrl = buildRedirectUrl(cookieReturnTo, {
+        oauth_error: 'true',
+        oauth_error_message: error instanceof Error ? error.message : 'Unknown error',
+      })
+      const response = NextResponse.redirect(errorRedirectUrl)
+      response.cookies.delete('oauth_return_to')
+      return response
+    }
 
     return new NextResponse(
       `

@@ -1,6 +1,7 @@
 import { constants } from '@auxx/config'
 import { isSelfHosted } from '@auxx/deployment'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
+import { startAppTriggerWorker } from './worker-definitions/app-trigger-worker'
 import { startDataImportWorker } from './worker-definitions/data-import-worker'
 import { startDatasetEmbeddingWorker } from './worker-definitions/dataset-embedding-worker'
 import { startDatasetMaintenanceWorker } from './worker-definitions/dataset-maintenance-worker'
@@ -58,6 +59,9 @@ export async function startWorkers() {
   // Email delivery worker (transactional/system emails)
   const emailWorker = startEmailWorker()
 
+  // App trigger dispatch worker (webhook → workflow)
+  const appTriggerWorker = startAppTriggerWorker()
+
   const workers = [
     // defaultWorker,
     eventsWorker,
@@ -76,6 +80,7 @@ export async function startWorkers() {
     dataImportWorker,
     pollingSyncWorker,
     emailWorker,
+    appTriggerWorker,
   ]
 
   return Promise.all(workers)

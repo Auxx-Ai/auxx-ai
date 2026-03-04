@@ -83,6 +83,7 @@ export const VarInputInternal = ({
       allowedTypes={allowedTypes}
       fieldOptions={fieldOptions}
       placeholder={placeholder}
+      placeholderConstant={placeholder}
       isConstantMode={isConstantMode}
       onConstantModeChange={(isConstant) => {
         // When toggling mode, update fieldModes without changing the value

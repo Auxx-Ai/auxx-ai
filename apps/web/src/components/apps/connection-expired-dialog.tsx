@@ -34,6 +34,8 @@ interface ConnectionExpiredDialogProps {
   connectionLabel: string
   reason?: 'expired' | 'missing'
   onReconnected?: () => void
+  /** Optional return URL appended to OAuth authorize URL (e.g., for workflow context) */
+  returnTo?: string
 }
 
 /**
@@ -55,6 +57,7 @@ export function ConnectionExpiredDialog({
   connectionLabel,
   reason = 'expired',
   onReconnected,
+  returnTo,
 }: ConnectionExpiredDialogProps) {
   const [secret, setSecret] = useState('')
   const [showSecret, setShowSecret] = useState(false)
@@ -99,7 +102,7 @@ export function ConnectionExpiredDialog({
   }
 
   // Build OAuth authorize URL
-  const oauthAuthorizeUrl = `/api/apps/${appSlug}/oauth2/authorize?installation=${installationId}&type=${scope}`
+  const oauthAuthorizeUrl = `/api/apps/${appSlug}/oauth2/authorize?installation=${installationId}&type=${scope}${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''}`
 
   const isOAuth = connectionType === 'oauth2-code'
   const isSecret = connectionType === 'secret'

@@ -29,4 +29,6 @@ export enum Queues {
   pollingSyncQueue = 'polling-sync',
   // Email delivery queue
   emailQueue = 'email',
+  // App trigger dispatch queue
+  appTriggerQueue = 'app-trigger',
 }

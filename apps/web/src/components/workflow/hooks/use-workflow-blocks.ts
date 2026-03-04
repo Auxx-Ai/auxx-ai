@@ -60,11 +60,17 @@ export function useWorkflowBlocks() {
           installation.installationId
         )
 
+        const appMeta = {
+          appSlug: installation.app.slug,
+          installationType: installation.installationType,
+        } as const
+
         if (cachedBlocks) {
           const nodeDefinitions = registry.registerBlocks(
             installation.app.id,
             installation.installationId,
-            cachedBlocks
+            cachedBlocks,
+            appMeta
           )
 
           // Register with unified registry
@@ -101,7 +107,15 @@ export function useWorkflowBlocks() {
 
       // Register each installation's blocks
       for (const [, { appId, installationId, blocks }] of blocksByInstall) {
-        const nodeDefinitions = registry.registerBlocks(appId, installationId, blocks)
+        // Resolve app metadata for this installation
+        const inst = appInstallations.find(
+          (i) => i.app.id === appId && i.installationId === installationId
+        )
+        const meta = inst
+          ? ({ appSlug: inst.app.slug, installationType: inst.installationType } as const)
+          : undefined
+
+        const nodeDefinitions = registry.registerBlocks(appId, installationId, blocks, meta)
 
         // Register with unified registry
         for (const def of nodeDefinitions) {
@@ -109,6 +123,23 @@ export function useWorkflowBlocks() {
             ...def,
             component: AppWorkflowNode,
           })
+        }
+
+        // Register triggers for this installation
+        const appTriggers = loader.getTriggersForApp(appId, installationId)
+        if (appTriggers.length > 0) {
+          const triggerDefinitions = registry.registerTriggers(
+            appId,
+            installationId,
+            appTriggers,
+            meta
+          )
+          for (const def of triggerDefinitions) {
+            unifiedNodeRegistry.registerOrUpdate({
+              ...def,
+              component: AppWorkflowNode,
+            })
+          }
         }
       }
     } catch (err) {
@@ -148,12 +179,41 @@ export function useWorkflowBlocks() {
           // Get the loaded blocks
           const appBlocks = loader.getBlocksForApp(appId, appInstallationId)
 
+          const lateAppMeta = installation
+            ? ({
+                appSlug: installation.app.slug,
+                installationType: installation.installationType,
+              } as const)
+            : undefined
+
           if (appBlocks.length > 0) {
             // Register blocks with local registry
-            const nodeDefinitions = registry.registerBlocks(appId, appInstallationId, appBlocks)
+            const nodeDefinitions = registry.registerBlocks(
+              appId,
+              appInstallationId,
+              appBlocks,
+              lateAppMeta
+            )
 
             // Register with unified registry
             for (const def of nodeDefinitions) {
+              unifiedNodeRegistry.registerOrUpdate({
+                ...def,
+                component: AppWorkflowNode,
+              })
+            }
+          }
+
+          // Register triggers
+          const appTriggers = loader.getTriggersForApp(appId, appInstallationId)
+          if (appTriggers.length > 0) {
+            const triggerDefinitions = registry.registerTriggers(
+              appId,
+              appInstallationId,
+              appTriggers,
+              lateAppMeta
+            )
+            for (const def of triggerDefinitions) {
               unifiedNodeRegistry.registerOrUpdate({
                 ...def,
                 component: AppWorkflowNode,

@@ -433,47 +433,64 @@ function resolveBlockIcon(icon: unknown): string | undefined {
  */
 export function getWorkflowBlocks(): WorkflowBlock[] {
   const surfaces = SURFACES.getAll()
-  const workflowBlockSurfaces = surfaces.filter((s) => s.type === 'workflow-block')
+  const workflowBlockSurfaces = surfaces.filter(
+    (s) => s.type === 'workflow-block' && (s as any).blockType !== 'trigger'
+  )
 
-  // Extract only serializable metadata from each block
-  const blocks = workflowBlockSurfaces
-    .map((surface) => {
-      const fullBlock = (surface as any).block as WorkflowBlock
-      if (!fullBlock) return null
+  return workflowBlockSurfaces
+    .map(serializeBlockSurface)
+    .filter((b): b is WorkflowBlock => b !== null)
+}
 
-      // Extract only serializable properties
-      const metadata: any = {
-        id: fullBlock.id,
-        label: fullBlock.label,
-        description: fullBlock.description,
-        category: fullBlock.category,
-        icon: resolveBlockIcon(fullBlock.icon),
-        color: fullBlock.color,
-        config: fullBlock.config,
-      }
+/**
+ * Get all registered workflow triggers from SURFACES registry.
+ * Returns only serializable metadata (no React components or functions).
+ */
+export function getWorkflowTriggers(): WorkflowBlock[] {
+  const surfaces = SURFACES.getAll()
+  const triggerSurfaces = surfaces.filter(
+    (s) => s.type === 'workflow-block' && (s as any).blockType === 'trigger'
+  )
 
-      // Serialize schema with unified field definitions
-      if (fullBlock.schema) {
-        metadata.schema = {
-          inputs: serializeFields(fullBlock.schema.inputs || {}, 'input'),
-          outputs: serializeFields(fullBlock.schema.outputs || {}, 'output'),
-          handles: fullBlock.schema.handles || { sources: [], targets: [] },
-          layout: fullBlock.schema.layout,
-          // Exclude validation.custom function (if present)
-        }
-      }
+  return triggerSurfaces.map(serializeBlockSurface).filter((b): b is WorkflowBlock => b !== null)
+}
 
-      // Flag whether this block has a custom panel
-      metadata.hasPanel = !!fullBlock.panel
+/**
+ * Serialize a workflow block/trigger surface into JSON-safe metadata.
+ */
+function serializeBlockSurface(surface: any): WorkflowBlock | null {
+  const fullBlock = surface.block as WorkflowBlock
+  if (!fullBlock) return null
 
-      // DO NOT include: components.node, components.panel, execute function
-      // These remain in SURFACES and are accessed via getWorkflowBlock() for rendering
+  // Extract only serializable properties
+  const metadata: any = {
+    id: fullBlock.id,
+    label: fullBlock.label,
+    description: fullBlock.description,
+    category: fullBlock.category,
+    icon: resolveBlockIcon(fullBlock.icon),
+    color: fullBlock.color,
+    config: fullBlock.config,
+  }
 
-      return metadata
-    })
-    .filter(Boolean)
+  // Serialize schema with unified field definitions
+  if (fullBlock.schema) {
+    metadata.schema = {
+      inputs: serializeFields(fullBlock.schema.inputs || {}, 'input'),
+      outputs: serializeFields(fullBlock.schema.outputs || {}, 'output'),
+      handles: fullBlock.schema.handles || { sources: [], targets: [] },
+      layout: fullBlock.schema.layout,
+      // Exclude validation.custom function (if present)
+    }
+  }
 
-  return blocks
+  // Flag whether this block has a custom panel
+  metadata.hasPanel = !!fullBlock.panel
+
+  // DO NOT include: components.node, components.panel, execute function
+  // These remain in SURFACES and are accessed via getWorkflowBlock() for rendering
+
+  return metadata
 }
 
 /**
@@ -802,10 +819,11 @@ function serializeComputedOutputs(outputs: Record<string, any>): Record<string, 
 
 // ===== Request Handlers =====
 
-// Handler for getting workflow blocks
+// Handler for getting workflow blocks and triggers
 Host.onRequest('get-workflow-blocks', async () => {
   const blocks = getWorkflowBlocks()
-  return { blocks }
+  const triggers = getWorkflowTriggers()
+  return { blocks, triggers }
 })
 
 // Handler for rendering workflow node

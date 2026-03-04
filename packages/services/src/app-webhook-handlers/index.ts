@@ -83,6 +83,7 @@ export type WebhookHandlerError =
 export interface CreateWebhookHandlerParams {
   appInstallationId: string
   fileName: string
+  triggerId?: string
   metadata?: Record<string, unknown>
 }
 
@@ -187,9 +188,9 @@ export interface WebhookHandlerResponse {
  * ```
  */
 export async function createWebhookHandler(params: CreateWebhookHandlerParams) {
-  const { appInstallationId, fileName, metadata } = params
+  const { appInstallationId, fileName, triggerId, metadata } = params
 
-  logger.info('Creating webhook handler', { appInstallationId, fileName })
+  logger.info('Creating webhook handler', { appInstallationId, fileName, triggerId })
 
   // Generate public webhook URL
   const url = `${API_URL}/webhooks/${appInstallationId}/${fileName}`
@@ -202,6 +203,7 @@ export async function createWebhookHandler(params: CreateWebhookHandlerParams) {
         appInstallationId,
         handlerId: fileName,
         url,
+        triggerId: triggerId ?? null,
         metadata: metadata ? JSON.stringify(metadata) : null,
         updatedAt: new Date(),
       })
@@ -209,6 +211,7 @@ export async function createWebhookHandler(params: CreateWebhookHandlerParams) {
         target: [schema.AppWebhookHandler.appInstallationId, schema.AppWebhookHandler.handlerId],
         set: {
           url,
+          triggerId: triggerId ?? null,
           metadata: metadata ? JSON.stringify(metadata) : null,
           updatedAt: new Date(),
         },

@@ -28,6 +28,7 @@ import { ListProcessor } from '../nodes/transform-nodes/list-processor'
 // JoinNode removed - merging now handled in workflow-engine.ts
 import { TextClassifierProcessor } from '../nodes/transform-nodes/text-classifier'
 import { VarAssignProcessor } from '../nodes/transform-nodes/var-assign-processor'
+import { AppWorkflowTriggerProcessor } from '../nodes/trigger-nodes/app-workflow-trigger-processor'
 import { ManualTriggerProcessor } from '../nodes/trigger-nodes/manual'
 // Import all processors at the top
 import { MessageReceivedProcessor } from '../nodes/trigger-nodes/message-received'
@@ -177,6 +178,7 @@ export class NodeProcessorRegistry {
         new ManualTriggerProcessor(),
         new ScheduledTriggerProcessor(),
         new ResourceTriggerBase(), // Unified resource trigger for all resource types
+        new AppWorkflowTriggerProcessor(), // Extension app trigger (webhook-driven)
         new IfElseProcessor(),
         new AnswerProcessor(),
         new AIProcessorV2(this), // Pass registry for tools support

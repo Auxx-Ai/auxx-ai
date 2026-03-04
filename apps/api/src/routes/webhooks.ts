@@ -1,9 +1,11 @@
 // apps/api/src/routes/webhooks.ts
 
 import { database } from '@auxx/database'
+import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
 import { getWebhookHandler } from '@auxx/services/app-webhook-handlers'
 import { invokeLambdaExecutor, prepareLambdaContext } from '@auxx/services/lambda-execution'
+import { randomUUID } from 'crypto'
 import { Hono } from 'hono'
 import { errorResponse } from '../lib/response'
 import type { AppContext } from '../types/context'
@@ -114,6 +116,37 @@ async function handleWebhookRequest(c: any) {
       installationId,
       handlerId,
     })
+
+    // 6. If handler returned trigger data and handler has a triggerId, enqueue dispatch job
+    const handler = handlerResult.value
+    if (handlerExecutionResult.triggerData && handler.triggerId) {
+      try {
+        const appTriggerQueue = getQueue(Queues.appTriggerQueue)
+        await appTriggerQueue.add('dispatchAppTrigger', {
+          appInstallationId: installationId,
+          appId: installation.appId,
+          triggerId: handler.triggerId,
+          triggerData: handlerExecutionResult.triggerData,
+          eventId: handlerExecutionResult.eventId || randomUUID(),
+          organizationId: installation.organizationId,
+        })
+
+        log.info('Enqueued app trigger dispatch', {
+          installationId,
+          appId: installation.appId,
+          triggerId: handler.triggerId,
+          eventId: handlerExecutionResult.eventId,
+        })
+      } catch (dispatchError: any) {
+        // Don't fail the webhook response if dispatch fails — log and continue
+        log.error('Failed to enqueue app trigger dispatch', {
+          error: dispatchError.message,
+          installationId,
+          handlerId,
+          triggerId: handler.triggerId,
+        })
+      }
+    }
 
     return new Response(handlerExecutionResult.body, {
       status: handlerExecutionResult.status,

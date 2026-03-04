@@ -8,6 +8,7 @@ import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import { reconstructReactTree } from '~/lib/extensions/reconstruct-react-tree'
 import { useOptionalMessageClient } from '~/lib/extensions/use-optional-message-client'
+import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import type { WorkflowBlock } from '../types'
 import { computeOutputSignature, resolveAppBlockOutputFields } from '../utils/resolve-app-outputs'
 import { convertOutputFieldsToVariables } from '../utils/type-mapping'
@@ -35,6 +36,23 @@ interface AppWorkflowPanelProps {
  */
 export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
   ({ nodeId, appId, installationId, block, data: propData }) => {
+    const { appInstallations } = useExtensionsContext()
+
+    // Resolve app context for the "App Settings" button
+    const appContext = useMemo(() => {
+      const inst = appInstallations.find(
+        (i) => i.app.id === appId && i.installationId === installationId
+      )
+      if (!inst) return undefined
+      return {
+        appId,
+        appSlug: inst.app.slug,
+        installationId,
+        installationType: inst.installationType,
+        appName: inst.app.title,
+      }
+    }, [appId, installationId, appInstallations])
+
     // Initialize with actual node data from props instead of empty object
     const { inputs: nodeData, setInputs } = useNodeCrud(nodeId, propData || {})
     const nodeDataRef = useRef(nodeData)
@@ -282,7 +300,7 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
       error || (initError ? `Extension failed to load: ${initError.message}` : null)
 
     return (
-      <BasePanel title={block.label} nodeId={nodeId} data={nodeData}>
+      <BasePanel title={block.label} nodeId={nodeId} data={nodeData} appContext={appContext}>
         {isLoading && !displayError ? (
           <div className='p-4'>
             <div className='text-sm text-muted-foreground'>Loading configuration...</div>

@@ -75,6 +75,9 @@ export enum WorkflowTriggerType {
   // UI-only identifier for resource trigger node (not stored in DB)
   // Actual trigger type comes from the operation field (created/updated/deleted/manual)
   RESOURCE_TRIGGER = 'resource-trigger',
+
+  // Extension app trigger (webhook-driven, dispatched via BullMQ)
+  APP_TRIGGER = 'app-trigger',
 }
 
 /**
@@ -90,6 +93,7 @@ export const WORKFLOW_TRIGGER_TYPE_VALUES = [
   WorkflowTriggerType.SCHEDULED,
   WorkflowTriggerType.MESSAGE_RECEIVED,
   WorkflowTriggerType.RESOURCE_TRIGGER,
+  WorkflowTriggerType.APP_TRIGGER,
 ] as const
 
 /**
@@ -106,6 +110,7 @@ export const TRIGGER_NAME_MAP: Record<WorkflowTriggerType, string> = {
   [WorkflowTriggerType.SCHEDULED]: 'Scheduled',
   [WorkflowTriggerType.MESSAGE_RECEIVED]: 'Message Received',
   [WorkflowTriggerType.RESOURCE_TRIGGER]: 'Resource Trigger',
+  [WorkflowTriggerType.APP_TRIGGER]: 'App Trigger',
 }
 
 /**
