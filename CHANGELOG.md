@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.50](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.49...auxx-v0.1.50) (2026-03-04)
+
+
+### Features
+
+* add app trigger test events and section components ([#168](https://github.com/Auxx-Ai/auxx-ai/issues/168)) ([bb0adbc](https://github.com/Auxx-Ai/auxx-ai/commit/bb0adbc7302d959149dd10f5b153ff418db9f297))
+* add shared workflow connections and enhance webhook handling ([#166](https://github.com/Auxx-Ai/auxx-ai/issues/166)) ([ecc0f47](https://github.com/Auxx-Ai/auxx-ai/commit/ecc0f47b145481c98e6f4d8a63e0d3278794ff00))
+* update Next.js configuration and package exports ([#169](https://github.com/Auxx-Ai/auxx-ai/issues/169)) ([098fe41](https://github.com/Auxx-Ai/auxx-ai/commit/098fe4160596142c38dad22e10a355e9a9cb7e04))
+
 ## [0.1.49](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.48...auxx-v0.1.49) (2026-03-04)
 
 
