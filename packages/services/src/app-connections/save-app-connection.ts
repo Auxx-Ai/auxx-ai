@@ -2,9 +2,10 @@
 
 import { CredentialService } from '@auxx/credentials'
 import { database, schema } from '@auxx/database'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { triggerAppEvent } from '../app-events'
+import { resolveActiveInstallationId } from '../app-installations/resolve-active-installation'
 import { fromDatabase } from '../shared/utils'
 import { logger, safeSerializeMetadata } from './utils'
 
@@ -106,6 +107,31 @@ export async function saveAppConnection(
   const credentialName = `${appName} Connection`
   const encrypted = CredentialService.encrypt(connectionData as any)
   const now = new Date()
+
+  // Resolve the current active installation ID server-side to guard against
+  // stale frontend caches that may reference a previous (soft-deleted) installation.
+  const resolvedResult = await resolveActiveInstallationId(appId, organizationId)
+  if (resolvedResult.isErr()) {
+    logger.error('Failed to resolve active installation', {
+      appId,
+      organizationId,
+      error: resolvedResult.error.message,
+    })
+    return err(resolvedResult.error)
+  }
+
+  const resolvedInstallationId = resolvedResult.value
+  if (resolvedInstallationId !== appInstallationId) {
+    logger.warn('Stale appInstallationId detected — using resolved active installation', {
+      provided: appInstallationId,
+      resolved: resolvedInstallationId,
+      appId,
+      organizationId,
+    })
+  }
+
+  // Use the resolved ID for all downstream operations
+  appInstallationId = resolvedInstallationId
 
   logger.info('saveAppConnection called with:', {
     appId,

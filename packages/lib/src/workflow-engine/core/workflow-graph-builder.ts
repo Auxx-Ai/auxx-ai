@@ -2,15 +2,8 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import type { NodeProcessorRegistry } from './node-processor-registry'
-import type {
-  ForkPointInfo,
-  JoinPointInfo,
-  Workflow,
-  WorkflowEdge,
-  WorkflowNode,
-  WorkflowNodeType,
-} from './types'
-import { WorkflowTriggerType } from './types'
+import type { ForkPointInfo, JoinPointInfo, Workflow, WorkflowEdge, WorkflowNode } from './types'
+import { WorkflowNodeType, WorkflowTriggerType } from './types'
 
 const logger = createScopedLogger('workflow-graph-builder')
 
@@ -406,6 +399,10 @@ export class WorkflowGraphBuilder {
   }
 
   private static extractNodeType(node: any): WorkflowNodeType {
+    // App trigger nodes have triggerId + appId in data — route to app-trigger processor
+    if (node.data?.triggerId && node.data?.appId) {
+      return WorkflowNodeType.APP_TRIGGER
+    }
     return (node.data?.type || node.type) as WorkflowNodeType
   }
 

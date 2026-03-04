@@ -64,7 +64,7 @@ const setSettingSchema = z.object({
  * Gets all settings for an app installation.
  * Returns all settings merged with schema defaults.
  *
- * @route GET /apps/settings
+ * @route GET /api/v1/sdk/settings
  * @access Protected - Requires X-App-Installation-Id header
  *
  * @param {Object} c - Hono context object
@@ -155,7 +155,7 @@ settings.get('/', async (c) => {
 /**
  * Gets a single setting value by key.
  *
- * @route GET /apps/settings/:key
+ * @route GET /api/v1/sdk/settings/:key
  * @access Protected - Requires X-App-Installation-Id header
  */
 settings.get('/:key', async (c) => {
@@ -220,7 +220,7 @@ settings.get('/:key', async (c) => {
  * Saves multiple settings at once.
  * This is called by app extensions running in Lambda to persist settings.
  *
- * @route POST /apps/settings
+ * @route POST /api/v1/sdk/settings
  * @access Protected - Requires X-App-Installation-Id header
  *
  * @param {Object} c - Hono context object
@@ -322,7 +322,7 @@ settings.post('/', async (c) => {
  * Sets a single setting value by key.
  * Updates or creates the setting with the provided value.
  *
- * @route PUT /apps/settings/:key
+ * @route PUT /api/v1/sdk/settings/:key
  * @access Protected - Requires X-App-Installation-Id header
  *
  * @param {Object} c - Hono context object
@@ -415,13 +415,13 @@ settings.put('/:key', async (c) => {
 
 /**
  * Export the configured Hono router for settings routes.
- * Mount this router at /apps/settings in the main API application.
+ * Mount this router at /api/v1/sdk/settings in the main API application.
  *
  * @exports settings
  * @type {Hono<AppContext>}
  *
  * @example Mounting the router
  * import settings from './routes/settings'
- * app.route('/apps/settings', settings)
+ * app.route('/api/v1/sdk/settings', settings)
  */
 export default settings

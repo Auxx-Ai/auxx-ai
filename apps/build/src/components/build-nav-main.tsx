@@ -48,7 +48,17 @@ export function BuildNavMain({ accountSlug }: Props) {
                   id={app.id}
                   name={app.title}
                   href={`/${accountSlug}/apps/${app.slug}`}
-                  icon={<Package />}
+                  icon={
+                    app.avatarUrl ? (
+                      <img
+                        src={app.avatarUrl}
+                        alt={app.title}
+                        className='size-4 rounded-sm object-cover'
+                      />
+                    ) : (
+                      <Package />
+                    )
+                  }
                   isActive={isActive(app.slug)}
                 />
               </SidebarMenuItem>

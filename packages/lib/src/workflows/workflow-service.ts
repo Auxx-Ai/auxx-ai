@@ -753,10 +753,16 @@ export class WorkflowService {
           .delete(schema.WorkflowNodeExecution)
           .where(eq(schema.WorkflowNodeExecution.workflowAppId, id))
 
-        // 5f. Delete all workflows (versions/drafts)
+        // 5f. Clear WorkflowApp FK references to Workflow before deleting workflows
+        await tx
+          .update(schema.WorkflowApp)
+          .set({ workflowId: null, draftWorkflowId: null })
+          .where(eq(schema.WorkflowApp.id, id))
+
+        // 5g. Delete all workflows (versions/drafts)
         await tx.delete(schema.Workflow).where(eq(schema.Workflow.workflowAppId, id))
 
-        // 5g. Finally delete the WorkflowApp
+        // 5h. Finally delete the WorkflowApp
         await tx.delete(schema.WorkflowApp).where(eq(schema.WorkflowApp.id, id))
       })
 

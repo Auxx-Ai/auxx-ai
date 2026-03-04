@@ -74,6 +74,25 @@ export const calculateTargetBranches = (
 }
 
 /**
+ * Normalize legacy app trigger nodes that have data.type = 'app-trigger'
+ * instead of the correct 'appId:triggerId' format.
+ */
+function normalizeLegacyNodes(nodes: FlowNode[]): FlowNode[] {
+  return nodes.map((node) => {
+    if (node.data?.type === 'app-trigger' && node.data?.appId && node.data?.triggerId) {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          type: `${node.data.appId}:${node.data.triggerId}`,
+        },
+      }
+    }
+    return node
+  })
+}
+
+/**
  * Main initialization function for workflow nodes and edges
  * Ensures all nodes have proper connection metadata and edges have required data
  */
@@ -81,8 +100,11 @@ export const initializeWorkflow = (
   nodes: FlowNode[],
   edges: FlowEdge[]
 ): { nodes: FlowNode[]; edges: FlowEdge[] } => {
+  // Normalize legacy nodes before preprocessing
+  const normalizedNodes = normalizeLegacyNodes(nodes)
+
   // Preprocess to handle loop nodes and their start nodes
-  const preprocessed = preprocessNodesAndEdges(nodes, edges)
+  const preprocessed = preprocessNodesAndEdges(normalizedNodes, edges)
 
   // Initialize all node properties including connection metadata
   const initializedNodes = initialNodes(preprocessed.nodes, preprocessed.edges)

@@ -15,6 +15,11 @@ const PUBLIC_PATHS = ['/api/auth', '/auth/verify', '/health']
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
+  // Allow CORS preflight requests through — browsers don't attach cookies to OPTIONS
+  if (request.method === 'OPTIONS') {
+    return NextResponse.next()
+  }
+
   // Skip auth for public paths
   const isPublicPath = PUBLIC_PATHS.some((path) => pathname.startsWith(path))
   if (isPublicPath) {

@@ -15,6 +15,7 @@ const APP_REGISTRY = {
     portEnv: 'WEB_PORT',
     subdomain: 'app',
     urlEnv: 'APP_URL',
+    internalUrlEnv: 'APP_INTERNAL_URL',
     visibility: 'public',
   },
   homepage: {
@@ -22,6 +23,7 @@ const APP_REGISTRY = {
     portEnv: 'HOMEPAGE_PORT',
     subdomain: null,
     urlEnv: 'HOMEPAGE_URL',
+    internalUrlEnv: null,
     visibility: 'public',
   },
   kb: {
@@ -29,6 +31,7 @@ const APP_REGISTRY = {
     portEnv: 'KB_PORT',
     subdomain: 'kb',
     urlEnv: 'KB_URL',
+    internalUrlEnv: null,
     visibility: 'public',
   },
   docs: {
@@ -36,6 +39,7 @@ const APP_REGISTRY = {
     portEnv: 'DOCS_PORT',
     subdomain: 'docs',
     urlEnv: 'DOCS_URL',
+    internalUrlEnv: null,
     visibility: 'public',
   },
   worker: {
@@ -43,6 +47,7 @@ const APP_REGISTRY = {
     portEnv: 'WORKER_PORT',
     subdomain: 'worker',
     urlEnv: null,
+    internalUrlEnv: null,
     visibility: 'internal',
   },
   build: {
@@ -50,6 +55,7 @@ const APP_REGISTRY = {
     portEnv: 'BUILD_PORT',
     subdomain: 'build',
     urlEnv: 'DEV_PORTAL_URL',
+    internalUrlEnv: null,
     visibility: 'public',
   },
   api: {
@@ -57,6 +63,7 @@ const APP_REGISTRY = {
     portEnv: 'API_PORT',
     subdomain: 'api',
     urlEnv: 'API_URL',
+    internalUrlEnv: 'API_INTERNAL_URL',
     visibility: 'public',
   },
   lambda: {
@@ -64,6 +71,7 @@ const APP_REGISTRY = {
     portEnv: 'LAMBDA_PORT',
     subdomain: 'lambda',
     urlEnv: 'LAMBDA_URL',
+    internalUrlEnv: 'LAMBDA_INTERNAL_URL',
     visibility: 'internal',
   },
 } as const
@@ -222,6 +230,27 @@ export function isTrustedHostnameFromUrls(
   return [...trusted].some((d) => hostname === d || hostname.endsWith(`.${d}`))
 }
 
+// ─── Internal URL resolution ─────────────────────────────
+
+/**
+ * Resolve the internal URL for service-to-service communication.
+ * Falls back to the public URL if no internal URL is configured.
+ *
+ * Use internal URLs when one service calls another server-side.
+ * On platforms like Railway, this routes through the private network
+ * (e.g., http://api.railway.internal:3007) instead of the public internet.
+ */
+function resolveInternalUrl(app: AppName): string {
+  const entry = APP_REGISTRY[app]
+
+  if (entry.internalUrlEnv) {
+    const override = readEnv(entry.internalUrlEnv)
+    if (override) return override
+  }
+
+  return resolveAppUrl(app)
+}
+
 // ─── Stable exports (zero consumer changes) ─────────────
 
 export const WEBAPP_URL = resolveAppUrl('web')
@@ -230,6 +259,17 @@ export const DOCS_URL = resolveAppUrl('docs')
 export const DEV_PORTAL_URL = resolveAppUrl('build')
 export const API_URL = resolveAppUrl('api')
 export const LAMBDA_URL = resolveAppUrl('lambda')
+
+// ─── Internal URL exports (service-to-service) ──────────
+
+/** Internal API URL for server-to-server calls. Falls back to public API_URL. */
+export const INTERNAL_API_URL = resolveInternalUrl('api')
+
+/** Internal Lambda URL for server-to-server calls. Falls back to public Lambda URL. */
+export const INTERNAL_LAMBDA_URL = resolveInternalUrl('lambda')
+
+/** Internal web app URL for server-to-server calls. Falls back to public WEBAPP_URL. */
+export const INTERNAL_WEBAPP_URL = resolveInternalUrl('web')
 
 // ─── URL builder helpers ─────────────────────────────────
 

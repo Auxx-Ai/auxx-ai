@@ -2,7 +2,7 @@
 
 import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
 import { useStore, useStoreApi } from '@xyflow/react'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import {
   dynamicTriggerRegistry,
   type TriggerInputConfig,
@@ -31,18 +31,20 @@ export interface UseWorkflowTriggerReturn {
 
 const nodesLengthSelector = (state: any) => state.nodes.length || 0
 
+const registrySubscribe = (cb: () => void) => unifiedNodeRegistry.subscribe(cb)
+const registryGetVersion = () => unifiedNodeRegistry.getVersion()
+
 /**
  * Hook to detect and manage workflow triggers
  * Provides centralized trigger detection and configuration
  */
 export function useWorkflowTrigger(): UseWorkflowTriggerReturn {
-  // const NodesLengthDisplay = () => {
   const store = useStoreApi()
   const nodesLength = useStore(nodesLengthSelector)
-  // }
-  // console.log('useWorkflowTrigger nodes:', nodes)
+  // Re-run when registry definitions change (e.g. app blocks load async)
+  const registryVersion = useSyncExternalStore(registrySubscribe, registryGetVersion)
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: nodesLength triggers recomputation when nodes change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: nodesLength and registryVersion trigger recomputation
   const triggerData = useMemo(() => {
     // Find trigger node in the workflow
     const { nodes } = store.getState()
@@ -77,7 +79,7 @@ export function useWorkflowTrigger(): UseWorkflowTriggerReturn {
     }
 
     return { hasTrigger: true, triggerNode: triggerNode as FlowNode, triggerType, triggerConfig }
-  }, [nodesLength, store])
+  }, [nodesLength, registryVersion, store])
 
   /**
    * Validate inputs for the current trigger

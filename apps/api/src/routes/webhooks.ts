@@ -110,7 +110,7 @@ async function handleWebhookRequest(c: any) {
       organizationId: installation.organizationId,
       organizationHandle: installation.organization.handle,
       userId: 'system',
-      userEmail: 'system@webhook',
+      userEmail: null,
       userName: null,
     })
 
