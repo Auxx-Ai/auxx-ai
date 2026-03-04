@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.49](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.48...auxx-v0.1.49) (2026-03-04)
+
+
+### Features
+
+* add app trigger functionality to workflows ([#165](https://github.com/Auxx-Ai/auxx-ai/issues/165)) ([dc48fff](https://github.com/Auxx-Ai/auxx-ai/commit/dc48fffac8f1429026b2260211602fc9b64ec69c))
+* add FieldDivider and FieldRow components for improved layout in… ([#161](https://github.com/Auxx-Ai/auxx-ai/issues/161)) ([f01dc9f](https://github.com/Auxx-Ai/auxx-ai/commit/f01dc9f84f42ed15b99b02e1ebb324da9277ab30))
+* enhance workflow block error handling and validation ([#163](https://github.com/Auxx-Ai/auxx-ai/issues/163)) ([eb9a214](https://github.com/Auxx-Ai/auxx-ai/commit/eb9a214da450d310e33682274260d8cb01869e40))
+
 ## [0.1.48](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.47...auxx-v0.1.48) (2026-03-02)
 
 
