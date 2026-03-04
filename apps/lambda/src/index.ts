@@ -14,6 +14,7 @@ import { executeEventHandler } from './executors/event-executor.ts'
 import { executeServerFunction } from './executors/server-function-executor.ts'
 import { executeWebhookHandler } from './executors/webhook-executor.ts'
 import { executeWorkflowBlock } from './executors/workflow-block-executor.ts'
+import { getCapturedLogs } from './runtime-helpers/console.ts'
 import type { LambdaEvent, LambdaResponse } from './types.ts'
 import { parseError } from './utils.ts'
 import { type ValidatedLambdaEvent, validateLambdaEvent } from './validator.ts'
@@ -226,6 +227,7 @@ export async function handler(
           settings_schema: executionResult.metadata?.settingsSchema,
           console_logs: executionResult.metadata?.consoleLogs,
           validation_error: executionResult.metadata?.validationError,
+          runtime_error: executionResult.metadata?.runtimeError,
         },
       }),
     }
@@ -241,6 +243,17 @@ export async function handler(
       duration,
     })
 
+    // Retrieve captured console logs before they're lost
+    let console_logs: ReturnType<typeof getCapturedLogs> | undefined
+    try {
+      const logs = getCapturedLogs()
+      if (logs.length > 0) {
+        console_logs = logs
+      }
+    } catch {
+      // Never let log retrieval fail the error response
+    }
+
     return {
       statusCode: 500,
       body: JSON.stringify({
@@ -252,6 +265,7 @@ export async function handler(
         },
         metadata: {
           duration,
+          console_logs,
         },
       }),
     }

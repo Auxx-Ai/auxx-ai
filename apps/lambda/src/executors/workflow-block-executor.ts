@@ -171,6 +171,21 @@ async function executeInSandbox(
       }
     }
 
+    // BlockRuntimeError — return as structured metadata (HTTP 200) so console logs
+    // flow back intact and the platform can show "app error" instead of "platform crash".
+    if (error instanceof Error && error.name === 'BlockRuntimeError') {
+      return {
+        result: null,
+        metadata: {
+          consoleLogs,
+          runtimeError: {
+            message: error.message,
+            code: (error as any).code,
+          },
+        },
+      }
+    }
+
     throw error
   } finally {
     // 9. Clean up

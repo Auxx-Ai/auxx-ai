@@ -83,8 +83,15 @@ const logger = process.env.DB_QUERY_LOGGING === 'true' ? new SanitizedDrizzleLog
 
 const drizzleSchema = { ...schema, ...relations }
 
+/** Survive Next.js HMR module cache clearing in development */
+const globalForDb = globalThis as unknown as {
+  __dbPools?: IPool[]
+  __dbInstance?: Database
+}
+
 /** Tracks all pools for graceful shutdown */
-const pools: IPool[] = []
+const pools: IPool[] = globalForDb.__dbPools ?? []
+if (!globalForDb.__dbPools) globalForDb.__dbPools = pools
 
 /** Creates a pg Pool with shared config, registers it for shutdown, and sets application_name. */
 function createPool(connectionString: string, name: string): IPool {
@@ -97,33 +104,38 @@ function createPool(connectionString: string, name: string): IPool {
   return pool
 }
 
-/** Primary write pool initialized from DATABASE_URL.
- * Uses process.env directly because @auxx/credentials depends on @auxx/database,
- * so importing configService here would create a circular dependency. */
-const writePool = createPool(process.env.DATABASE_URL, process.env.APP_NAME || 'auxx-ai')
+function createDatabase(): Database {
+  /** Primary write pool initialized from DATABASE_URL.
+   * Uses process.env directly because @auxx/credentials depends on @auxx/database,
+   * so importing configService here would create a circular dependency. */
+  const writePool = createPool(process.env.DATABASE_URL!, process.env.APP_NAME || 'auxx-ai')
 
-/** Collect optional read replicas if configured */
-const replicaUrls = [process.env.READ_DATABASE_URL, process.env.READ_2_DATABASE_URL].filter(
-  Boolean
-) as string[]
+  /** Collect optional read replicas if configured */
+  const replicaUrls = [process.env.READ_DATABASE_URL, process.env.READ_2_DATABASE_URL].filter(
+    Boolean
+  ) as string[]
 
-const readReplicas: Connection[] = replicaUrls.map((url, i) => {
-  const pool = createPool(url, `${process.env.APP_NAME || 'auxx-ai'}-read-${i + 1}`)
-  return drizzle(pool, { schema: drizzleSchema, logger }) as Connection
-})
+  const readReplicas: Connection[] = replicaUrls.map((url, i) => {
+    const pool = createPool(url, `${process.env.APP_NAME || 'auxx-ai'}-read-${i + 1}`)
+    return drizzle(pool, { schema: drizzleSchema, logger }) as Connection
+  })
 
-/** Primary Drizzle client bound to the write pool */
-const primary = drizzle(writePool, { schema: drizzleSchema, logger }) as Connection
+  /** Primary Drizzle client bound to the write pool */
+  const primary = drizzle(writePool, { schema: drizzleSchema, logger }) as Connection
+
+  return readReplicas.length > 0
+    ? withReplicas(primary, readReplicas as [Connection, ...Connection[]])
+    : primary
+}
 
 /**
  * database is the singleton export for all DB access
+ * - Cached on globalThis to survive Next.js HMR in development
  * - If read replicas are configured, wraps primary with replica routing
  * - Else, returns the primary connection
  */
-export const database: Database =
-  readReplicas.length > 0
-    ? withReplicas(primary, readReplicas as [Connection, ...Connection[]])
-    : primary
+export const database: Database = globalForDb.__dbInstance ?? createDatabase()
+if (!globalForDb.__dbInstance) globalForDb.__dbInstance = database
 
 export type Transaction = Parameters<Parameters<typeof database.transaction>[0]>[0]
 

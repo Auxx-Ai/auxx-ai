@@ -3,12 +3,7 @@
 export { ContactTimelineTracker } from './contact-timeline-tracker'
 export {
   ContactEventType,
-  createCustomEntityType,
-  ENTITY_TYPE_PREFIX,
   EntityInstanceEventType,
-  getEntityDefinitionId,
-  isCustomEntityType,
-  isSystemEntityType,
   SYSTEM_ENTITY_TYPES,
   TicketEventType,
   TimelineActorType,

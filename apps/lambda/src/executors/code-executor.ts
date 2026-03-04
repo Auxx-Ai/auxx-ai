@@ -11,26 +11,8 @@ import {
   interceptConsole,
   restoreConsole,
 } from '../runtime-helpers/index.ts'
+import type { ExecutionResult } from '../types.ts'
 import type { CodeExecutionEvent } from '../validator.ts'
-
-/**
- * Execution result
- */
-export interface ExecutionResult {
-  /** Result returned from main() function */
-  result: any
-  /** Execution metadata */
-  metadata: {
-    /** Captured console logs */
-    consoleLogs: Array<{
-      level: 'log' | 'warn' | 'error'
-      message: string
-      args: unknown[]
-      timestamp: number
-    }>
-    settingsSchema?: any
-  }
-}
 
 /**
  * Helper to resolve variable paths with multiple fallback strategies

@@ -6,62 +6,62 @@
   "exports": {
     ".": {
       "types": "./index.ts",
-      "import": "./dist/index.mjs",
+      "import": "./index.ts",
       "default": "./index.ts"
     },
     "./actor": {
       "types": "./actor/index.ts",
-      "import": "./dist/actor/index.mjs",
+      "import": "./actor/index.ts",
       "default": "./actor/index.ts"
     },
     "./custom-field": {
       "types": "./custom-field/index.ts",
-      "import": "./dist/custom-field/index.mjs",
+      "import": "./custom-field/index.ts",
       "default": "./custom-field/index.ts"
     },
     "./field": {
       "types": "./field/index.ts",
-      "import": "./dist/field/index.mjs",
+      "import": "./field/index.ts",
       "default": "./field/index.ts"
     },
     "./field-value": {
       "types": "./field-value/index.ts",
-      "import": "./dist/field-value/index.mjs",
+      "import": "./field-value/index.ts",
       "default": "./field-value/index.ts"
     },
     "./groups": {
       "types": "./groups/index.ts",
-      "import": "./dist/groups/index.mjs",
+      "import": "./groups/index.ts",
       "default": "./groups/index.ts"
     },
     "./pagination": {
       "types": "./pagination/index.ts",
-      "import": "./dist/pagination/index.mjs",
+      "import": "./pagination/index.ts",
       "default": "./pagination/index.ts"
     },
     "./resource": {
       "types": "./resource/index.ts",
-      "import": "./dist/resource/index.mjs",
+      "import": "./resource/index.ts",
       "default": "./resource/index.ts"
     },
     "./task": {
       "types": "./task/index.ts",
-      "import": "./dist/task/index.mjs",
+      "import": "./task/index.ts",
       "default": "./task/index.ts"
     },
     "./draft": {
       "types": "./draft/index.ts",
-      "import": "./dist/draft/index.mjs",
+      "import": "./draft/index.ts",
       "default": "./draft/index.ts"
     },
     "./signature": {
       "types": "./signature/index.ts",
-      "import": "./dist/signature/index.mjs",
+      "import": "./signature/index.ts",
       "default": "./signature/index.ts"
     },
     "./config": {
       "types": "./config/index.ts",
-      "import": "./dist/config/index.mjs",
+      "import": "./config/index.ts",
       "default": "./config/index.ts"
     }
   },

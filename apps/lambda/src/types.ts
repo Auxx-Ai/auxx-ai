@@ -103,6 +103,14 @@ export interface BlockValidationErrorData {
 }
 
 /**
+ * Structured runtime error from a workflow block's execute() function.
+ */
+export interface BlockRuntimeErrorData {
+  message: string
+  code?: string
+}
+
+/**
  * Execution result with metadata
  */
 export interface ExecutionResult {
@@ -117,5 +125,7 @@ export interface ExecutionResult {
     consoleLogs?: ConsoleLog[]
     /** Structured validation error (replaces throwing for input validation failures) */
     validationError?: BlockValidationErrorData
+    /** Structured runtime error (app-side failure, not a platform crash) */
+    runtimeError?: BlockRuntimeErrorData
   }
 }

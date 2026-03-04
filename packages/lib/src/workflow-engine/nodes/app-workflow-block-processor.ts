@@ -300,6 +300,12 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
         throw error
       }
 
+      // Re-throw BlockRuntimeError as-is so the execution service can store it
+      // with metadata and the frontend shows "app error" not "platform crash".
+      if (error instanceof Error && error.name === 'BlockRuntimeError') {
+        throw error
+      }
+
       logger.error('App workflow block execution failed', {
         nodeId: node.nodeId,
         appId,
@@ -552,6 +558,9 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
     const { appId, blockId, installationId, workflowContext, workflowInput, timeout } = options
 
     const startTime = Date.now()
+    // Hoist so the catch block can reference them for console log persistence
+    let installation: any
+    let deployment: any
 
     try {
       // Import services dynamically to avoid circular dependencies
@@ -573,7 +582,9 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
         throw new Error(`Failed to get installation deployment: ${error.message}`)
       }
 
-      const { installation, serverBundleSha } = installationResult.value
+      const { serverBundleSha } = installationResult.value
+      installation = installationResult.value.installation
+      deployment = installationResult.value.deployment
 
       if (!serverBundleSha) {
         throw new Error('App does not have a server bundle')
@@ -622,7 +633,10 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
 
       if (lambdaResult.isErr()) {
         const error = lambdaResult.error
-        throw new Error(`Lambda execution failed: ${error.message}`)
+        const lambdaError = Object.assign(new Error(`Lambda execution failed: ${error.message}`), {
+          consoleLogs: error.consoleLogs,
+        })
+        throw lambdaError
       }
 
       const result = lambdaResult.value
@@ -637,12 +651,53 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
         throw validationErr
       }
 
+      // BlockRuntimeError — re-throw as a named error so the execution service can
+      // store it with metadata and the frontend shows "app error" not "platform crash"
+      if (result.metadata?.runtime_error) {
+        const re = result.metadata.runtime_error
+        const runtimeErr = Object.assign(new Error(re.message), {
+          name: 'BlockRuntimeError',
+          code: re.code,
+          consoleLogs: result.metadata?.consoleLogs || [],
+        })
+        throw runtimeErr
+      }
+
       const endTime = Date.now()
 
       // Extract data from result
       const data = result.execution_result?.data || result.execution_result || {}
-      const logs =
-        result.metadata?.consoleLogs?.map((log: any) => `[${log.level}] ${log.message}`) || []
+      const consoleLogs = result.metadata?.consoleLogs || []
+      const logs = consoleLogs.map((log: any) => `[${log.level}] ${log.message}`)
+
+      // Persist console logs to AppEventLog
+      if (consoleLogs.length > 0) {
+        try {
+          const { logAppExecution } = await import('@auxx/services/apps')
+          await logAppExecution({
+            appId,
+            organizationId: workflowContext.organization.id,
+            appDeploymentId: deployment.id,
+            userId: workflowContext.user.id,
+            installationId: installation.id,
+            consoleLogs,
+            durationMs: endTime - startTime,
+            execution: {
+              type: 'workflow-block',
+              workflowId: workflowContext.workflowId,
+              runId: workflowContext.executionId,
+              nodeId: workflowContext.nodeId,
+              blockId,
+            },
+          })
+        } catch (logError) {
+          logger.error('Failed to persist console logs', {
+            appId,
+            blockId,
+            error: logError instanceof Error ? logError.message : String(logError),
+          })
+        }
+      }
 
       return {
         data,
@@ -656,6 +711,38 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
         blockId,
         error: error instanceof Error ? error.message : String(error),
       })
+
+      // Persist console logs from failed executions (only if deployment was resolved)
+      if (deployment && error && typeof error === 'object' && 'consoleLogs' in error) {
+        const consoleLogs = (error as any).consoleLogs
+        if (Array.isArray(consoleLogs) && consoleLogs.length > 0) {
+          try {
+            const { logAppExecution } = await import('@auxx/services/apps')
+            await logAppExecution({
+              appId,
+              organizationId: workflowContext.organization.id,
+              appDeploymentId: deployment.id,
+              userId: workflowContext.user.id,
+              installationId: installation.id,
+              consoleLogs,
+              durationMs: endTime - startTime,
+              execution: {
+                type: 'workflow-block',
+                workflowId: workflowContext.workflowId,
+                runId: workflowContext.executionId,
+                nodeId: workflowContext.nodeId,
+                blockId,
+              },
+            })
+          } catch (logError) {
+            logger.error('Failed to persist error console logs', {
+              appId,
+              blockId,
+              error: logError instanceof Error ? logError.message : String(logError),
+            })
+          }
+        }
+      }
 
       throw error
     }

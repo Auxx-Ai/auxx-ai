@@ -9,6 +9,7 @@ import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variable
 import { reconstructReactTree } from '~/lib/extensions/reconstruct-react-tree'
 import { useOptionalMessageClient } from '~/lib/extensions/use-optional-message-client'
 import type { WorkflowBlock } from '../types'
+import { computeOutputSignature, resolveAppBlockOutputFields } from '../utils/resolve-app-outputs'
 import { convertOutputFieldsToVariables } from '../utils/type-mapping'
 import { AppWorkflowFieldContext } from './app-workflow-field-context'
 
@@ -94,12 +95,11 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
       [nodeId, nodeData, handleFieldChange, getFieldMode, block.schema]
     )
 
-    /** Merged output variables (static + computed from SDK-side computeOutputs) */
+    /** Merged output variables (static + computed + inferred from execution) */
     const mergedOutputVariables = useMemo(() => {
-      const staticOutputs = block.schema.outputs || {}
-      const computedOutputs = nodeData._computedOutputs || {}
-      return convertOutputFieldsToVariables({ ...staticOutputs, ...computedOutputs }, nodeId)
-    }, [block.schema.outputs, nodeData._computedOutputs, nodeId])
+      const merged = resolveAppBlockOutputFields(block, nodeData)
+      return convertOutputFieldsToVariables(merged, nodeId)
+    }, [block, nodeData._computedOutputs, nodeData.inferredSchema, nodeId])
 
     // Load panel component from iframe
     useEffect(() => {
@@ -213,10 +213,20 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
             'workflow-block-outputs-updated',
             (data: any) => {
               if (data.nodeId === nodeId) {
-                setInputs({
+                const prevSig = computeOutputSignature(nodeDataRef.current._computedOutputs || {})
+                const newSig = computeOutputSignature(data.outputs || {})
+
+                const updates: any = {
                   ...nodeDataRef.current,
                   _computedOutputs: data.outputs,
-                })
+                }
+
+                // Clear stale inferred schema if computed output shape changed
+                if (prevSig !== newSig && nodeDataRef.current.inferredSchema) {
+                  updates.inferredSchema = undefined
+                }
+
+                setInputs(updates)
               }
             }
           )

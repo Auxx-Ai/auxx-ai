@@ -1,4 +1,5 @@
 import globalExternals from '@fal-works/esbuild-plugin-global-externals'
+import type { BuildOptions } from 'esbuild'
 import { proxyBlockModulesPlugin } from '../proxy-block-modules-plugin.js'
 import { proxyServerModulesPlugin } from '../proxy-server-modules-plugin.js'
 
@@ -114,7 +115,7 @@ export function createClientBuildConfig({
   srcDir: string
   entryPoint: string
   workflowBlockModulesRef: any
-}) {
+}): BuildOptions {
   return {
     entryPoints: [entryPoint],
     logLevel: 'silent',
@@ -175,7 +176,7 @@ export function createClientBuildConfig({
       }),
       proxyServerModulesPlugin({ srcDir }),
       proxyBlockModulesPlugin({ appDir, workflowBlockModulesRef }),
-    ],
+    ] as BuildOptions['plugins'],
     define: {
       'process.env.NODE_ENV': '"production"',
     },

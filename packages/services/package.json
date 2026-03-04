@@ -8,22 +8,22 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
-      "import": "./dist/index.mjs",
+      "import": "./src/index.ts",
       "default": "./src/index.ts"
     },
     "./app-settings/client": {
       "types": "./src/app-settings/client.ts",
-      "import": "./dist/app-settings/client.mjs",
+      "import": "./src/app-settings/client.ts",
       "default": "./src/app-settings/client.ts"
     },
     "./shared/utils": {
       "types": "./src/shared/utils.ts",
-      "import": "./dist/shared/utils.mjs",
+      "import": "./src/shared/utils.ts",
       "default": "./src/shared/utils.ts"
     },
     "./*": {
       "types": "./src/*/index.ts",
-      "import": "./dist/*/index.mjs",
+      "import": "./src/*/index.ts",
       "default": "./src/*/index.ts"
     }
   },

@@ -107,6 +107,24 @@ executeServerFunction.post(
           status: error.statusCode,
           error,
         })
+
+        // Persist console logs from failed executions
+        if (error.consoleLogs && error.consoleLogs.length > 0) {
+          try {
+            await logServerFunctionExecution({
+              appId,
+              organizationId: organization.id,
+              appDeploymentId: installationResult.value.deployment.id,
+              userId: user.id,
+              functionIdentifier: function_identifier,
+              installationId,
+              consoleLogs: error.consoleLogs,
+            })
+          } catch (logError) {
+            console.error('[ExecuteServerFunction] Failed to store error console logs:', logError)
+          }
+        }
+
         const statusCode = error.statusCode as 400 | 500
         return c.json(
           {

@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/utils.ts
 
 import { BaseType } from '../../types/unified-types'
-import { ArrayType, type Field, type SchemaRoot, Type } from './types'
+import { ArrayType, type Field, Type } from './types'
 
 /**
  *
@@ -145,65 +145,6 @@ export function validateSchemaAgainstDraft7(schema: any): string[] {
 
 export function getValidationErrorMessage(errors: string[]): string {
   return errors.join('\n')
-}
-
-/**
- *
- */
-export function jsonToSchema(json: any): SchemaRoot {
-  const convertValue = (value: any): Field => {
-    if (value === null || value === undefined) {
-      return { type: Type.string }
-    }
-
-    if (Array.isArray(value)) {
-      if (value.length === 0) {
-        return { type: Type.array, items: { type: Type.string } }
-      }
-
-      const firstItem = value[0]
-      if (typeof firstItem === 'object' && firstItem !== null) {
-        return { type: Type.array, items: convertValue(firstItem) }
-      }
-
-      const itemType = typeof firstItem === 'number' ? Type.number : Type.string
-      return { type: Type.array, items: { type: itemType } }
-    }
-
-    if (typeof value === 'object') {
-      const properties: Record<string, Field> = {}
-      const required: string[] = []
-
-      for (const [key, val] of Object.entries(value)) {
-        properties[key] = convertValue(val)
-        required.push(key)
-      }
-
-      return { type: Type.object, properties, required, additionalProperties: false }
-    }
-
-    switch (typeof value) {
-      case 'number':
-        return { type: Type.number }
-      case 'boolean':
-        return { type: Type.boolean }
-      default:
-        return { type: Type.string }
-    }
-  }
-
-  const schema = convertValue(json)
-
-  if (schema.type !== Type.object) {
-    return {
-      type: Type.object,
-      properties: { value: schema },
-      required: ['value'],
-      additionalProperties: false,
-    }
-  }
-
-  return schema as SchemaRoot
 }
 
 export function getKeyboardKeyNameBySystem(key: string): string {
