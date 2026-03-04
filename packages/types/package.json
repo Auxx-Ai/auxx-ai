@@ -6,62 +6,74 @@
   "exports": {
     ".": {
       "types": "./index.ts",
-      "import": "./index.ts",
+      "source": "./index.ts",
+      "import": "./dist/index.mjs",
       "default": "./index.ts"
     },
     "./actor": {
       "types": "./actor/index.ts",
-      "import": "./actor/index.ts",
+      "source": "./actor/index.ts",
+      "import": "./dist/actor/index.mjs",
       "default": "./actor/index.ts"
     },
     "./custom-field": {
       "types": "./custom-field/index.ts",
-      "import": "./custom-field/index.ts",
+      "source": "./custom-field/index.ts",
+      "import": "./dist/custom-field/index.mjs",
       "default": "./custom-field/index.ts"
     },
     "./field": {
       "types": "./field/index.ts",
-      "import": "./field/index.ts",
+      "source": "./field/index.ts",
+      "import": "./dist/field/index.mjs",
       "default": "./field/index.ts"
     },
     "./field-value": {
       "types": "./field-value/index.ts",
-      "import": "./field-value/index.ts",
+      "source": "./field-value/index.ts",
+      "import": "./dist/field-value/index.mjs",
       "default": "./field-value/index.ts"
     },
     "./groups": {
       "types": "./groups/index.ts",
-      "import": "./groups/index.ts",
+      "source": "./groups/index.ts",
+      "import": "./dist/groups/index.mjs",
       "default": "./groups/index.ts"
     },
     "./pagination": {
       "types": "./pagination/index.ts",
-      "import": "./pagination/index.ts",
+      "source": "./pagination/index.ts",
+      "import": "./dist/pagination/index.mjs",
       "default": "./pagination/index.ts"
     },
     "./resource": {
       "types": "./resource/index.ts",
-      "import": "./resource/index.ts",
+      "source": "./resource/index.ts",
+      "import": "./dist/resource/index.mjs",
       "default": "./resource/index.ts"
     },
     "./task": {
       "types": "./task/index.ts",
-      "import": "./task/index.ts",
+      "source": "./task/index.ts",
+      "import": "./dist/task/index.mjs",
       "default": "./task/index.ts"
     },
     "./draft": {
       "types": "./draft/index.ts",
-      "import": "./draft/index.ts",
+      "source": "./draft/index.ts",
+      "import": "./dist/draft/index.mjs",
       "default": "./draft/index.ts"
     },
     "./signature": {
       "types": "./signature/index.ts",
-      "import": "./signature/index.ts",
+      "source": "./signature/index.ts",
+      "import": "./dist/signature/index.mjs",
       "default": "./signature/index.ts"
     },
     "./config": {
       "types": "./config/index.ts",
-      "import": "./config/index.ts",
+      "source": "./config/index.ts",
+      "import": "./dist/config/index.mjs",
       "default": "./config/index.ts"
     }
   },

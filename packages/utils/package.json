@@ -6,107 +6,128 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
-      "import": "./src/index.ts",
+      "source": "./src/index.ts",
+      "import": "./dist/index.js",
       "default": "./src/index.ts"
     },
     "./arrays": {
       "types": "./src/arrays.ts",
-      "import": "./src/arrays.ts",
+      "source": "./src/arrays.ts",
+      "import": "./dist/arrays.js",
       "default": "./src/arrays.ts"
     },
     "./comments": {
       "types": "./src/comments.ts",
-      "import": "./src/comments.ts",
+      "source": "./src/comments.ts",
+      "import": "./dist/comments.js",
       "default": "./src/comments.ts"
     },
     "./contact": {
       "types": "./src/contact.ts",
-      "import": "./src/contact.ts",
+      "source": "./src/contact.ts",
+      "import": "./dist/contact.js",
       "default": "./src/contact.ts"
     },
     "./currency": {
       "types": "./src/currency.ts",
-      "import": "./src/currency.ts",
+      "source": "./src/currency.ts",
+      "import": "./dist/currency.js",
       "default": "./src/currency.ts"
     },
     "./date": {
       "types": "./src/date.ts",
-      "import": "./src/date.ts",
+      "source": "./src/date.ts",
+      "import": "./dist/date.js",
       "default": "./src/date.ts"
     },
     "./email": {
       "types": "./src/email.ts",
-      "import": "./src/email.ts",
+      "source": "./src/email.ts",
+      "import": "./dist/email.js",
       "default": "./src/email.ts"
     },
     "./file": {
       "types": "./src/file.ts",
-      "import": "./src/file.ts",
+      "source": "./src/file.ts",
+      "import": "./dist/file.js",
       "default": "./src/file.ts"
     },
     "./fractional-indexing": {
       "types": "./src/fractional-indexing.ts",
-      "import": "./src/fractional-indexing.ts",
+      "source": "./src/fractional-indexing.ts",
+      "import": "./dist/fractional-indexing.js",
       "default": "./src/fractional-indexing.ts"
     },
     "./functions": {
       "types": "./src/functions.ts",
-      "import": "./src/functions.ts",
+      "source": "./src/functions.ts",
+      "import": "./dist/functions.js",
       "default": "./src/functions.ts"
     },
     "./generateId": {
       "types": "./src/generateId.ts",
-      "import": "./src/generateId.ts",
+      "source": "./src/generateId.ts",
+      "import": "./dist/generateId.js",
       "default": "./src/generateId.ts"
     },
     "./headers": {
       "types": "./src/headers.ts",
-      "import": "./src/headers.ts",
+      "source": "./src/headers.ts",
+      "import": "./dist/headers.js",
       "default": "./src/headers.ts"
     },
     "./mime": {
       "types": "./src/mime.ts",
-      "import": "./src/mime.ts",
+      "source": "./src/mime.ts",
+      "import": "./dist/mime.js",
       "default": "./src/mime.ts"
     },
     "./objects": {
       "types": "./src/objects.ts",
-      "import": "./src/objects.ts",
+      "source": "./src/objects.ts",
+      "import": "./dist/objects.js",
       "default": "./src/objects.ts"
     },
     "./parse": {
       "types": "./src/parse.ts",
-      "import": "./src/parse.ts",
+      "source": "./src/parse.ts",
+      "import": "./dist/parse.js",
       "default": "./src/parse.ts"
     },
     "./retry": {
       "types": "./src/retry.ts",
-      "import": "./src/retry.ts",
+      "source": "./src/retry.ts",
+      "import": "./dist/retry.js",
       "default": "./src/retry.ts"
     },
     "./strings": {
       "types": "./src/strings.ts",
-      "import": "./src/strings.ts",
+      "source": "./src/strings.ts",
+      "import": "./dist/strings.js",
       "default": "./src/strings.ts"
     },
     "./timezone": {
       "types": "./src/timezone.ts",
-      "import": "./src/timezone.ts",
+      "source": "./src/timezone.ts",
+      "import": "./dist/timezone.js",
       "default": "./src/timezone.ts"
     },
     "./task-date": {
       "types": "./src/task-date.ts",
-      "import": "./src/task-date.ts",
+      "source": "./src/task-date.ts",
+      "import": "./dist/task-date.js",
       "default": "./src/task-date.ts"
     },
     "./calc-expression": {
       "types": "./src/calc-expression.ts",
-      "import": "./src/calc-expression.ts",
+      "source": "./src/calc-expression.ts",
+      "import": "./dist/calc-expression.js",
       "default": "./src/calc-expression.ts"
     },
     "./relationships": {
       "types": "./src/relationships.ts",
-      "import": "./src/relationships.ts",
+      "source": "./src/relationships.ts",
+      "import": "./dist/relationships.js",
       "default": "./src/relationships.ts"
     }
   },

@@ -19,8 +19,6 @@ import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
 
 const logger = createScopedLogger('unified-handler-mutations')
 
-// import type { EntityDefinitionEntity } from '@auxx/database/schema/entity-definition'
-// import type { EntityInstanceEntity } from '@auxx/database/schema/entity-instance'
 type EntityDefinitionEntity = typeof schema.EntityDefinition.$inferSelect
 type EntityInstanceEntity = typeof schema.EntityInstance.$inferSelect
 

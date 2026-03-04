@@ -1,7 +1,6 @@
 // apps/web/src/app/api/app-triggers/[installationId]/[triggerId]/test/route.ts
 
-import { database } from '@auxx/database'
-import { AppInstallation } from '@auxx/database/schema'
+import { AppInstallation, database } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
 import { randomUUID } from 'crypto'
 import { and, eq } from 'drizzle-orm'

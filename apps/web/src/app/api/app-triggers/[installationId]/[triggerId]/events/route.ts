@@ -1,6 +1,6 @@
 // apps/web/src/app/api/app-triggers/[installationId]/[triggerId]/events/route.ts
 
-import { AppInstallation } from '@auxx/database/schema'
+import { AppInstallation } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { createSsePollRoute } from '~/lib/sse/create-sse-poll-route'
 
