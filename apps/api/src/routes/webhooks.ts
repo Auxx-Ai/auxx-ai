@@ -3,9 +3,10 @@
 import { database } from '@auxx/database'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
+import { getRedisClient } from '@auxx/redis'
 import { getWebhookHandler } from '@auxx/services/app-webhook-handlers'
 import { invokeLambdaExecutor, prepareLambdaContext } from '@auxx/services/lambda-execution'
-import { randomUUID } from 'crypto'
+import { randomUUID, timingSafeEqual } from 'crypto'
 import { Hono } from 'hono'
 import { errorResponse } from '../lib/response'
 import type { AppContext } from '../types/context'
@@ -37,7 +38,30 @@ async function handleWebhookRequest(c: any) {
       return c.json(errorResponse('NOT_FOUND', 'Webhook handler not found'), 404)
     }
 
-    // 2. Get app installation with current deployment and bundles
+    // 2. Validate webhook secret if present in handler metadata
+    const handler = handlerResult.value
+    let metadata: Record<string, unknown> | undefined
+    if (handler.metadata) {
+      try {
+        metadata =
+          typeof handler.metadata === 'string' ? JSON.parse(handler.metadata) : handler.metadata
+      } catch {
+        log.warn('Failed to parse webhook handler metadata', { handlerId })
+      }
+    }
+
+    if (metadata?.secretToken) {
+      const headerToken = c.req.header('x-telegram-bot-api-secret-token')
+      const expected = Buffer.from(String(metadata.secretToken))
+      const received = Buffer.from(headerToken ?? '')
+
+      if (expected.length !== received.length || !timingSafeEqual(expected, received)) {
+        log.warn('Webhook secret token mismatch', { installationId, handlerId })
+        return c.json(errorResponse('UNAUTHORIZED', 'Invalid secret token'), 401)
+      }
+    }
+
+    // 3. Get app installation with current deployment and bundles
     const installation = await database.query.AppInstallation.findFirst({
       where: (inst, { eq }) => eq(inst.id, installationId),
       with: {
@@ -63,7 +87,7 @@ async function handleWebhookRequest(c: any) {
     const { currentDeployment } = installation
     const serverBundleSha = currentDeployment.serverBundle.sha256
 
-    // 3. Convert request to serializable format
+    // 4. Convert request to serializable format
     const body = await c.req.text()
     const headers: Record<string, string> = {}
     c.req.raw.headers.forEach((value: string, key: string) => {
@@ -79,7 +103,7 @@ async function handleWebhookRequest(c: any) {
 
     log.info('Invoking Lambda for webhook execution', { handlerId })
 
-    // 4. Build context and invoke Lambda via shared helper
+    // 5. Build context and invoke Lambda via shared helper
     const context = prepareLambdaContext({
       appId: installation.appId,
       installationId,
@@ -110,7 +134,7 @@ async function handleWebhookRequest(c: any) {
 
     const result = lambdaResult.value
 
-    // 5. Return handler's response to third-party service
+    // 6. Return handler's response to third-party service
     const handlerExecutionResult = result.execution_result
 
     log.info('Webhook execution completed', {
@@ -119,8 +143,7 @@ async function handleWebhookRequest(c: any) {
       handlerId,
     })
 
-    // 6. If handler returned trigger data and handler has a triggerId, enqueue dispatch job
-    const handler = handlerResult.value
+    // 7. If handler returned trigger data and handler has a triggerId, enqueue dispatch job
     if (handlerExecutionResult.triggerData && handler.triggerId) {
       try {
         const appTriggerQueue = getQueue(Queues.appTriggerQueue)
@@ -146,6 +169,31 @@ async function handleWebhookRequest(c: any) {
           error: dispatchError.message,
           installationId,
           handlerId,
+          triggerId: handler.triggerId,
+        })
+      }
+
+      // Store trigger event in Redis for the test event SSE stream
+      try {
+        const redis = await getRedisClient(false)
+        if (redis) {
+          const redisKey = `app-trigger-test:${installationId}:${handler.triggerId}:events`
+          const testEvent = {
+            id: randomUUID(),
+            timestamp: new Date().toISOString(),
+            source: 'webhook',
+            triggerData: handlerExecutionResult.triggerData,
+            eventId: handlerExecutionResult.eventId,
+          }
+          await redis.lpush(redisKey, JSON.stringify(testEvent))
+          await redis.ltrim(redisKey, 0, 49)
+          await redis.expire(redisKey, 300)
+        }
+      } catch (redisError: any) {
+        // Don't fail the webhook response if Redis write fails
+        log.warn('Failed to store trigger test event in Redis', {
+          error: redisError.message,
+          installationId,
           triggerId: handler.triggerId,
         })
       }

@@ -477,6 +477,13 @@ export class WorkflowEngine {
       // Update global tracking
       this.currentNodeResults[currentNode.nodeId] = result
       // Determine next node based on result
+      if (result.status === NodeRunningStatus.Skipped) {
+        contextManager.log('INFO', currentNode.name, 'Node skipped, stopping execution branch', {
+          nodeId: currentNode.nodeId,
+          output: result.output,
+        })
+        break
+      }
       if (result.status === NodeRunningStatus.Failed) {
         // Check for error handling using edges
         const errorEdge = workflow.graph?.edges?.find(
@@ -1191,7 +1198,10 @@ export class WorkflowEngine {
           .update(schema.WorkflowNodeExecution)
           .set({
             outputs: result.output,
-            status: NodeRunningStatus.Succeeded,
+            status:
+              result.status === NodeRunningStatus.Skipped
+                ? NodeRunningStatus.Skipped
+                : NodeRunningStatus.Succeeded,
             elapsedTime: result.executionTime ? result.executionTime / 1000 : undefined,
             finishedAt: new Date(),
           })

@@ -16,6 +16,9 @@ export interface WebhookHandler {
   /** External webhook ID from third-party service (e.g., Shopify webhook ID) */
   externalWebhookId?: string
 
+  /** Connection ID this handler belongs to (for scoped cleanup) */
+  connectionId?: string
+
   /** Additional metadata */
   metadata?: Record<string, unknown>
 }

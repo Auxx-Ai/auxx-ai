@@ -42,6 +42,39 @@ export class AppWorkflowTriggerProcessor extends BaseNodeProcessor {
       installationId: node.data.installationId,
     })
 
+    // Apply trigger filters if configured (e.g., update type, chat ID, user ID)
+    const triggerFilters = node.data.triggerFilters as Record<string, string[]> | undefined
+    if (triggerFilters && typeof triggerData === 'object' && triggerData !== null) {
+      for (const [field, allowedValues] of Object.entries(triggerFilters)) {
+        if (!Array.isArray(allowedValues)) continue
+
+        // Empty array means block-all for this field
+        if (allowedValues.length === 0) {
+          contextManager.log('INFO', node.name, 'Trigger filtered out (block-all)', { field })
+          return {
+            status: NodeRunningStatus.Skipped,
+            output: { filtered: true, reason: `No allowed values for field: ${field}` },
+          }
+        }
+
+        const actualValue = String((triggerData as Record<string, unknown>)[field] ?? '')
+        if (!allowedValues.map(String).includes(actualValue)) {
+          contextManager.log('INFO', node.name, 'Trigger filtered out', {
+            field,
+            actualValue,
+            allowedValues,
+          })
+          return {
+            status: NodeRunningStatus.Skipped,
+            output: {
+              filtered: true,
+              reason: `Field "${field}" value "${actualValue}" not in allowed values`,
+            },
+          }
+        }
+      }
+    }
+
     // Map each trigger data field to a node variable for downstream access
     // e.g., {{triggerNodeId.orderId}}, {{triggerNodeId.customerEmail}}
     if (typeof triggerData === 'object' && triggerData !== null) {
