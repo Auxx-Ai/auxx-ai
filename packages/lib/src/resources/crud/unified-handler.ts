@@ -46,9 +46,6 @@ import {
   resolveEntityId,
 } from './unified-handler-queries'
 
-// import type { EntityDefinitionEntity } from '@auxx/database/schema/entity-definition'
-// import type { EntityInstanceEntity } from '@auxx/database/schema/entity-instance'
-
 /** Inferred type for CustomField select (not exported from schema) */
 type CustomFieldEntity = typeof schema.CustomField.$inferSelect
 type EntityDefinitionEntity = typeof schema.EntityDefinition.$inferSelect

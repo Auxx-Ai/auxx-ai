@@ -1,6 +1,6 @@
 // apps/web/src/app/api/workflows/[workflowId]/webhook/events/route.ts
 
-import { WorkflowApp } from '@auxx/database/schema'
+import { WorkflowApp } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { createSsePollRoute } from '~/lib/sse/create-sse-poll-route'
 

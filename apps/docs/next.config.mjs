@@ -14,6 +14,7 @@ const config = {
   // Ensure Docker build produces .next/standalone
   output: 'standalone',
   reactStrictMode: true,
+  transpilePackages: ['@auxx/utils'],
   outputFileTracingRoot: path.join(__dirname, '../../'),
 }
 

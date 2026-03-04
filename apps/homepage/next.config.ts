@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
+  transpilePackages: ['@auxx/config'],
   images: {
     // Avoid requiring sharp in the server Lambda; rely on client-side <img> or our optimizer function
     unoptimized: true,
