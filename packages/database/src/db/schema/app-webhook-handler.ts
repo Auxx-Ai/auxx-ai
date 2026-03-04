@@ -4,6 +4,7 @@
 import { createId } from '@paralleldrive/cuid2'
 import { type AnyPgColumn, boolean, index, pgTable, text, timestamp, uniqueIndex } from './_shared'
 import { AppInstallation } from './app-installation'
+import { WorkflowCredentials } from './workflow-credentials'
 
 /** Drizzle table for AppWebhookHandler */
 export const AppWebhookHandler = pgTable(
@@ -18,6 +19,12 @@ export const AppWebhookHandler = pgTable(
     appInstallationId: text()
       .notNull()
       .references((): AnyPgColumn => AppInstallation.id, { onDelete: 'cascade' }),
+
+    // Connection (WorkflowCredentials) this webhook is scoped to
+    connectionId: text().references((): AnyPgColumn => WorkflowCredentials.id, {
+      onUpdate: 'cascade',
+      onDelete: 'cascade',
+    }),
 
     // Webhook handler identifier (e.g., "prospect-updated")
     handlerId: text().notNull(), // From filename: prospect-updated.webhook.ts
@@ -43,11 +50,12 @@ export const AppWebhookHandler = pgTable(
     updatedAt: timestamp({ precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
-    // One webhook handler per installation + handler ID
+    // One webhook handler per installation + handler ID + connection
     uniqueIndex('AppWebhookHandler_unique_idx').using(
       'btree',
       table.appInstallationId.asc().nullsLast(),
-      table.handlerId.asc().nullsLast()
+      table.handlerId.asc().nullsLast(),
+      table.connectionId.asc().nullsLast()
     ),
     index('AppWebhookHandler_appInstallationId_idx').using(
       'btree',

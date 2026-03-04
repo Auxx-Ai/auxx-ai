@@ -229,7 +229,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           scope: tokens.scope,
           tokenType: tokens.token_type,
         },
-      }
+      },
+      metadata.connectionId ? { connectionId: metadata.connectionId } : undefined
     )
 
     if (result.isErr()) {

@@ -2,7 +2,7 @@
 
 import { CredentialService } from '@auxx/credentials'
 import { database, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { triggerAppEvent } from '../app-events'
 import { fromDatabase } from '../shared/utils'
@@ -97,6 +97,10 @@ export async function saveAppConnection(
     expiresAt?: string
     secret?: string
     metadata?: Record<string, any>
+  },
+  options?: {
+    label?: string
+    connectionId?: string
   }
 ) {
   const credentialName = `${appName} Connection`
@@ -113,44 +117,13 @@ export async function saveAppConnection(
     hasAccess: !!connectionData.accessToken,
     hasRefresh: !!connectionData.refreshToken,
     expiresAt: connectionData.expiresAt,
+    connectionId: options?.connectionId,
   })
 
-  // First try to find existing connection
-  const existingResult = await fromDatabase(
-    database.query.WorkflowCredentials.findFirst({
-      where: (creds, { eq, and, isNull }) => {
-        const conditions = [
-          eq(creds.appId, appId),
-          eq(creds.organizationId, organizationId),
-          eq(creds.type, 'app-connection'),
-        ]
+  // If connectionId provided, update that specific connection (reconnect flow)
+  if (options?.connectionId) {
+    logger.info('Reconnecting existing app connection:', { credentialId: options.connectionId })
 
-        if (userId) {
-          conditions.push(eq(creds.userId, userId))
-        } else {
-          conditions.push(isNull(creds.userId))
-        }
-
-        return and(...conditions)
-      },
-      columns: {
-        id: true,
-      },
-    }),
-    'find-existing-connection'
-  )
-
-  if (existingResult.isErr()) {
-    return existingResult
-  }
-
-  const existing = existingResult.value
-
-  if (existing) {
-    // Update existing connection
-    logger.info('Updating existing app connection:', { credentialId: existing.id })
-
-    // Parse expiresAt for database field (duplicate from encrypted data for querying)
     const expiresAt = connectionData.expiresAt ? new Date(connectionData.expiresAt) : null
 
     const updateResult = await fromDatabase(
@@ -161,20 +134,30 @@ export async function saveAppConnection(
           expiresAt: expiresAt,
           updatedAt: now,
         })
-        .where(eq(schema.WorkflowCredentials.id, existing.id)),
-      'update-connection'
+        .where(
+          and(
+            eq(schema.WorkflowCredentials.id, options.connectionId),
+            eq(schema.WorkflowCredentials.organizationId, organizationId)
+          )
+        ),
+      'reconnect-connection'
     )
 
     if (updateResult.isErr()) {
       return updateResult
     }
 
-    logger.info('Successfully updated app connection:', { credentialId: existing.id })
-    return ok(existing.id)
+    logger.info('Successfully reconnected app connection:', { credentialId: options.connectionId })
+    return ok(options.connectionId)
   }
 
-  // Create new connection
+  // Create new connection with auto-generated label
   logger.info('Creating new app connection')
+
+  // Generate auto-increment label
+  const label =
+    options?.label ||
+    (await generateConnectionLabel(appName, organizationId, appId, appInstallationId))
 
   // Parse expiresAt for database field (duplicate from encrypted data for querying)
   const expiresAt = connectionData.expiresAt ? new Date(connectionData.expiresAt) : null
@@ -189,6 +172,7 @@ export async function saveAppConnection(
         appId,
         appInstallationId,
         name: credentialName,
+        label,
         type: 'app-connection',
         encryptedData: encrypted,
         expiresAt: expiresAt,
@@ -247,4 +231,33 @@ export async function saveAppConnection(
   }
 
   return ok(created.id)
+}
+
+/**
+ * Generate an auto-incrementing connection label.
+ * First connection: "AppName", second: "AppName (2)", etc.
+ */
+async function generateConnectionLabel(
+  appName: string,
+  organizationId: string,
+  appId: string,
+  appInstallationId: string
+): Promise<string> {
+  const existingResult = await fromDatabase(
+    database.query.WorkflowCredentials.findMany({
+      where: (creds, { eq, and, isNull }) =>
+        and(
+          eq(creds.organizationId, organizationId),
+          eq(creds.appId, appId),
+          eq(creds.appInstallationId, appInstallationId),
+          eq(creds.type, 'app-connection'),
+          isNull(creds.userId)
+        ),
+      columns: { id: true },
+    }),
+    'count-existing-connections'
+  )
+
+  const count = existingResult.isOk() ? existingResult.value.length : 0
+  return count === 0 ? appName : `${appName} (${count + 1})`
 }

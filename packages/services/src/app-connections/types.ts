@@ -91,7 +91,9 @@ export type ConnectionDefinitionSummary = UnwrapOk<ReturnType<typeof getAppConne
 export interface AppConnection {
   id: string
   appId: string
+  appInstallationId: string | null
   appName: string
+  label: string | null
   connectionStatus: 'connected' | 'not_connected' | 'expired'
   connectedBy?: string // User name
   connectedAt?: Date

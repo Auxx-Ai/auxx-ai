@@ -41,6 +41,7 @@ export interface WorkflowBlock {
   }
   config?: {
     canRunSingle?: boolean
+    requiresConnection?: boolean
   }
   /** Whether this block has a custom panel component */
   hasPanel?: boolean

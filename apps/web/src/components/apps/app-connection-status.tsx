@@ -224,8 +224,8 @@ interface SecretConnectionDialogContentProps {
   onClose: () => void
 }
 
-/** Inner content component */
-function SecretConnectionDialogContent({
+/** Inner content component for secret connection dialogs. Reused by app-connections.tsx. */
+export function SecretConnectionDialogContent({
   connectionLabel,
   connectionType,
   secret,

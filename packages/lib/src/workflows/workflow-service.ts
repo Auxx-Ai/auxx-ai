@@ -438,18 +438,20 @@ export class WorkflowService {
           // Extract app trigger fields from graph's trigger node when trigger type is 'app-trigger'
           if (basicUpdateData.triggerType === 'app-trigger' && graph?.nodes) {
             const triggerNode = (graph.nodes as any[]).find(
-              (n: any) => n.data?.type === 'app-trigger'
+              (n: any) => n.data?.triggerId && n.data?.appId
             )
             if (triggerNode?.data) {
               workflowUpdates.triggerAppId = triggerNode.data.appId || null
               workflowUpdates.triggerTriggerId = triggerNode.data.triggerId || null
               workflowUpdates.triggerInstallationId = triggerNode.data.installationId || null
+              workflowUpdates.triggerConnectionId = triggerNode.data.connectionId || null
             }
           } else if (basicUpdateData.triggerType && basicUpdateData.triggerType !== 'app-trigger') {
             // Clear app trigger fields when switching to a non-app trigger
             workflowUpdates.triggerAppId = null
             workflowUpdates.triggerTriggerId = null
             workflowUpdates.triggerInstallationId = null
+            workflowUpdates.triggerConnectionId = null
           }
 
           if (graph) workflowUpdates.graph = graph as any

@@ -46,6 +46,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const searchParams = request.nextUrl.searchParams
   const installationId = searchParams.get('installation')
   const connectionType = searchParams.get('type') // 'user' or 'organization'
+  const connectionId = searchParams.get('connectionId') // reconnect mode
   const returnTo = searchParams.get('returnTo')
 
   // Validate returnTo: must be relative path starting with /, not protocol-relative
@@ -130,6 +131,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         appTitle: installation.app!.title,
         connectionDefinitionId: connDef.id,
         global: connDef.global,
+        ...(connectionId && { connectionId }),
         ...(codeVerifier && { codeVerifier }),
         ...(validReturnTo && { returnTo: validReturnTo }),
       })

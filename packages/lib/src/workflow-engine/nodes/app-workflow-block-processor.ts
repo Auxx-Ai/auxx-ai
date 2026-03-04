@@ -76,6 +76,7 @@ interface AppBlockPreprocessedData extends PreprocessedNodeData {
   appId: string
   blockId: string
   installationId: string
+  connectionId?: string
   inputs: Record<string, any> // Resolved input values
   workflowContext: any
 }
@@ -153,6 +154,7 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
       'appId',
       'blockId',
       'installationId',
+      'connectionId',
       'type',
     ])
 
@@ -225,6 +227,7 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
       appId: appId || this.appId,
       blockId: blockId || this.blockId,
       installationId: installationId,
+      connectionId: node.data.connectionId,
       inputs: resolvedInputs,
       workflowContext,
     }
@@ -268,6 +271,7 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
         appId,
         blockId,
         installationId,
+        connectionId: preprocessedData.connectionId,
         workflowContext,
         workflowInput: inputs,
         timeout: this.blockMetadata.timeout || 30000,
@@ -547,6 +551,7 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
     appId: string
     blockId: string
     installationId: string
+    connectionId?: string
     workflowContext: any
     workflowInput: Record<string, any>
     timeout: number
@@ -555,7 +560,15 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
     logs: string[]
     executionTime: number
   }> {
-    const { appId, blockId, installationId, workflowContext, workflowInput, timeout } = options
+    const {
+      appId,
+      blockId,
+      installationId,
+      connectionId,
+      workflowContext,
+      workflowInput,
+      timeout,
+    } = options
 
     const startTime = Date.now()
     // Hoist so the catch block can reference them for console log persistence
@@ -590,11 +603,12 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
         throw new Error('App does not have a server bundle')
       }
 
-      // 2. Resolve app connections
+      // 2. Resolve app connections (pass connectionId when available)
       const connectionsResult = await resolveAppConnectionForRuntime({
         appId,
         organizationId: workflowContext.organization.id,
         userId: workflowContext.user.id,
+        connectionId,
       })
 
       if (connectionsResult.isErr()) {

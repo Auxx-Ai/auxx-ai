@@ -2,56 +2,102 @@
 
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import { toastSuccess } from '@auxx/ui/components/toast'
+import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@auxx/ui/components/input-group'
+import { toastError } from '@auxx/ui/components/toast'
+import {
+  Check,
+  CheckCircle,
+  Clock,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Unplug,
+  X,
+  XCircle,
+} from 'lucide-react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { SecretConnectionDialogContent } from '~/components/apps/app-connection-status'
+import { useConfirm } from '~/hooks/use-confirm'
 import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
-import { AppConnectionStatus } from './app-connection-status'
 
-/**
- * Props for AppConnections component
- */
 type Props = {
   app: RouterOutputs['apps']['getBySlug']
 }
 
-/**
- * AppConnections component
- * Displays and manages app connections for an installed application
- */
 function AppConnections({ app }: Props) {
   const searchParams = useSearchParams()
   const success = searchParams.get('success') || searchParams.get('oauth_success')
+  const utils = api.useUtils()
+  const [confirm, ConfirmDialog] = useConfirm()
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editLabel, setEditLabel] = useState('')
+  const [secretDialogOpen, setSecretDialogOpen] = useState(false)
+  const [secret, setSecret] = useState('')
+  const [showSecret, setShowSecret] = useState(false)
 
-  // Fetch installed apps to get connection definition
   const { data: installedResult } = api.apps.listInstalled.useQuery({})
   const { data: connectionsResult, refetch: refetchConnections } =
     api.apps.listConnections.useQuery()
 
-  // Show success toast and refetch when returning from OAuth
   useEffect(() => {
     if (success === 'true') {
-      toastSuccess({
-        title: 'Connection Successful',
-        description: 'Your app has been connected successfully!',
-      })
-      // Refetch connections to get the latest data
       void refetchConnections()
     }
   }, [success, refetchConnections])
 
   const installations = installedResult?.installations ?? []
-  const connections = connectionsResult ?? []
-
-  // Find the installation for this app
+  const allConnections = connectionsResult ?? []
   const installation = installations.find((inst) => inst.app.id === app.app.id)
-
-  console.log(installation)
-
-  // Check if this app has a connection definition
   const connectionDefinition = installation?.connectionDefinition
+
+  const deleteConnection = api.apps.deleteConnection.useMutation({
+    onSuccess: () => {
+      void utils.apps.listConnections.invalidate()
+      void utils.apps.listInstalled.invalidate()
+    },
+    onError: (error) => {
+      toastError({ title: 'Failed to disconnect', description: error.message })
+    },
+  })
+
+  const saveSecret = api.apps.saveSecretConnection.useMutation({
+    onSuccess: () => {
+      setSecretDialogOpen(false)
+      setSecret('')
+      void utils.apps.listConnections.invalidate()
+      void utils.apps.listInstalled.invalidate()
+    },
+    onError: (error) => {
+      toastError({ title: 'Failed to save connection', description: error.message })
+    },
+  })
+
+  const renameConnection = api.apps.renameConnection.useMutation({
+    onSuccess: () => {
+      setEditingId(null)
+      void utils.apps.listConnections.invalidate()
+    },
+    onError: (error) => {
+      toastError({ title: 'Failed to rename', description: error.message })
+    },
+  })
 
   if (!installation) {
     return (
@@ -77,78 +123,208 @@ function AppConnections({ app }: Props) {
     )
   }
 
-  // Find active connection for this app
-  const activeConnection = connections.find((conn) => conn.appId === app.app.id)
-
-  const connectionStatus: 'connected' | 'not_connected' | 'expired' = activeConnection
-    ? activeConnection.connectionStatus
-    : 'not_connected'
+  // Filter connections for this app + installation (org-scoped only)
+  const appConnections = allConnections.filter(
+    (conn) =>
+      conn.appId === app.app.id &&
+      conn.appInstallationId === installation.installationId &&
+      conn.global
+  )
 
   const connectionType = connectionDefinition.global ? 'organization' : 'user'
+  const isOAuth = connectionDefinition.connectionType === 'oauth2-code'
+
+  const handleDisconnect = async (credentialId: string, label: string | null) => {
+    const confirmed = await confirm({
+      title: 'Disconnect?',
+      description: `Are you sure you want to disconnect "${label || 'Connection'}"? This may affect workflows using this connection.`,
+      confirmText: 'Disconnect',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (confirmed) {
+      deleteConnection.mutate({ credentialId })
+    }
+  }
+
+  const handleRename = (connectionId: string) => {
+    const trimmed = editLabel.trim()
+    if (!trimmed) return
+    renameConnection.mutate({ connectionId, label: trimmed })
+  }
+
+  const handleSaveSecret = () => {
+    if (!secret.trim()) {
+      toastError({ title: 'Validation Error', description: 'Please enter an API key.' })
+      return
+    }
+    saveSecret.mutate({
+      appId: app.app.id,
+      installationId: installation.installationId,
+      appName: app.app.title,
+      connectionType,
+      secret: secret.trim(),
+    })
+  }
+
+  const handleStartEdit = (connectionId: string, currentLabel: string | null) => {
+    setEditingId(connectionId)
+    setEditLabel(currentLabel || '')
+  }
+
+  // Build "Add Connection" URL (new flow — no connectionId)
+  const addConnectionUrl = isOAuth
+    ? `/api/apps/${app.app.slug}/oauth2/authorize?installation=${installation.installationId}&type=${connectionType}`
+    : null
+
+  const StatusIcon = ({ status }: { status: string }) => {
+    if (status === 'connected') return <CheckCircle className='h-4 w-4 text-green-500' />
+    if (status === 'expired') return <Clock className='h-4 w-4 text-yellow-500' />
+    return <XCircle className='h-4 w-4 text-gray-400' />
+  }
 
   return (
     <div className='flex-1 flex-col space-y-6 px-6 py-6'>
       <Card>
-        <CardHeader>
-          <CardTitle>App Connection</CardTitle>
-          <CardDescription>
-            Manage the connection for {app.app.title}. This {connectionType} connection is{' '}
-            {connectionDefinition.global
-              ? 'shared across your organization'
-              : 'specific to your user account'}
-            .
-          </CardDescription>
+        <CardHeader className='flex-row items-center justify-between'>
+          <div>
+            <CardTitle>Connections</CardTitle>
+            <CardDescription>
+              Manage connections for {app.app.title}. Each connection can be used by different
+              workflows.
+            </CardDescription>
+          </div>
+          {addConnectionUrl ? (
+            <Button variant='outline' size='sm' asChild>
+              <Link href={addConnectionUrl}>
+                <Plus />
+                Add Connection
+              </Link>
+            </Button>
+          ) : (
+            connectionDefinition.connectionType === 'secret' && (
+              <Button variant='outline' size='sm' onClick={() => setSecretDialogOpen(true)}>
+                <Plus />
+                Add Connection
+              </Button>
+            )
+          )}
         </CardHeader>
         <CardContent>
-          <div className='space-y-4'>
-            <div>
-              <div className='text-sm font-medium mb-2'>Connection Type</div>
-              <div className='text-sm text-muted-foreground capitalize'>
-                {connectionDefinition.connectionType === 'oauth2-code'
-                  ? 'OAuth 2.0'
-                  : connectionDefinition.connectionType}
-              </div>
+          {appConnections.length === 0 ? (
+            <div className='text-sm text-muted-foreground py-4 text-center'>
+              No connections yet. Add a connection to get started.
             </div>
-
-            <div>
-              <div className='text-sm font-medium mb-2'>Status</div>
-              <AppConnectionStatus
-                appId={app.app.id}
-                appSlug={app.app.slug}
-                installationId={installation.installationId}
-                connectionStatus={connectionStatus}
-                connectionLabel={connectionDefinition.label}
-                connectionType={connectionType}
-                credentialId={activeConnection?.id}
-                connectionDefinition={connectionDefinition}
-                onConnectionSaved={refetchConnections}
-              />
-            </div>
-
-            {activeConnection && (
-              <>
-                {activeConnection.connectedBy && (
-                  <div>
-                    <div className='text-sm font-medium mb-2'>Connected By</div>
-                    <div className='text-sm text-muted-foreground'>
-                      {activeConnection.connectedBy}
+          ) : (
+            <div className='divide-y'>
+              {appConnections.map((conn) => (
+                <div
+                  key={conn.id}
+                  className='flex items-center justify-between py-3 first:pt-0 last:pb-0'>
+                  <div className='flex items-center gap-3'>
+                    <StatusIcon status={conn.connectionStatus} />
+                    <div>
+                      {editingId === conn.id ? (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault()
+                            handleRename(conn.id)
+                          }}>
+                          <InputGroup size='sm'>
+                            <InputGroupInput
+                              value={editLabel}
+                              onChange={(e) => setEditLabel(e.target.value)}
+                              className='h-7 w-48 text-sm'
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Escape') setEditingId(null)
+                              }}
+                            />
+                            <InputGroupAddon align='inline-end' className='gap-0.5'>
+                              <InputGroupButton
+                                type='submit'
+                                size='icon-xs'
+                                aria-label='Save'
+                                title='Save'
+                                disabled={!editLabel.trim()}>
+                                <Check />
+                              </InputGroupButton>
+                              <InputGroupButton
+                                type='button'
+                                size='icon-xs'
+                                aria-label='Cancel'
+                                title='Cancel'
+                                onClick={() => setEditingId(null)}>
+                                <X />
+                              </InputGroupButton>
+                            </InputGroupAddon>
+                          </InputGroup>
+                        </form>
+                      ) : (
+                        <div className='text-sm font-medium'>{conn.label || conn.appName}</div>
+                      )}
+                      <div className='text-xs text-muted-foreground'>
+                        {conn.connectionStatus === 'connected'
+                          ? 'Connected'
+                          : conn.connectionStatus === 'expired'
+                            ? 'Token expired'
+                            : 'Not connected'}
+                        {conn.connectedBy && ` by ${conn.connectedBy}`}
+                      </div>
                     </div>
                   </div>
-                )}
-
-                {activeConnection.connectedAt && (
-                  <div>
-                    <div className='text-sm font-medium mb-2'>Connected At</div>
-                    <div className='text-sm text-muted-foreground'>
-                      {new Date(activeConnection.connectedAt).toLocaleString()}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant='ghost' size='icon-sm'>
+                        <MoreHorizontal />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align='end'>
+                      <DropdownMenuItem onClick={() => handleStartEdit(conn.id, conn.label)}>
+                        <Pencil />
+                        Rename
+                      </DropdownMenuItem>
+                      {(conn.connectionStatus === 'expired' ||
+                        conn.connectionStatus === 'connected') &&
+                        isOAuth && (
+                          <DropdownMenuItem asChild>
+                            <Link
+                              href={`/api/apps/${app.app.slug}/oauth2/authorize?installation=${installation.installationId}&type=${connectionType}&connectionId=${conn.id}`}>
+                              Reconnect
+                            </Link>
+                          </DropdownMenuItem>
+                        )}
+                      <DropdownMenuItem
+                        variant='destructive'
+                        onClick={() => handleDisconnect(conn.id, conn.label)}>
+                        <Unplug />
+                        Disconnect
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
+      <Dialog open={secretDialogOpen} onOpenChange={setSecretDialogOpen}>
+        <DialogContent>
+          <SecretConnectionDialogContent
+            connectionLabel={app.app.title}
+            connectionType={connectionType}
+            secret={secret}
+            setSecret={setSecret}
+            showSecret={showSecret}
+            setShowSecret={setShowSecret}
+            saveSecret={saveSecret}
+            handleSaveSecret={handleSaveSecret}
+            onClose={() => setSecretDialogOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
+      <ConfirmDialog />
     </div>
   )
 }

@@ -143,6 +143,7 @@ export interface ServerSDK {
   createWebhookHandler: (options: {
     fileName: string
     triggerId?: string
+    connectionId?: string
     metadata?: Record<string, unknown>
   }) => Promise<WebhookHandler>
   updateWebhookHandler: (
@@ -479,11 +480,13 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
     createWebhookHandler: async (options: {
       fileName: string
       triggerId?: string
+      connectionId?: string
       metadata?: Record<string, unknown>
     }): Promise<WebhookHandler> => {
       console.log('[ServerSDK] createWebhookHandler called:', {
         fileName: options.fileName,
         triggerId: options.triggerId,
+        connectionId: options.connectionId,
         hasMetadata: !!options.metadata,
       })
 
@@ -496,6 +499,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
           body: {
             fileName: options.fileName,
             triggerId: options.triggerId,
+            connectionId: options.connectionId,
             metadata: options.metadata,
           },
         })

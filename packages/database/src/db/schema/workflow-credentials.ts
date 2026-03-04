@@ -39,6 +39,7 @@ export const WorkflowCredentials = pgTable(
     }),
 
     name: text().notNull(),
+    label: text(), // User-facing label for connection picker (e.g. "Telegram Bot", "Telegram Bot (2)")
     type: text().notNull(),
     encryptedData: text().notNull(),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),

@@ -13,6 +13,7 @@ export type AppTriggerDispatchJobData = {
   appInstallationId: string
   appId: string
   triggerId: string
+  connectionId?: string
   triggerData: Record<string, unknown>
   eventId: string
   organizationId: string
@@ -26,7 +27,15 @@ export type AppTriggerDispatchJobData = {
  * 3. Execute each matching workflow with the trigger data
  */
 export async function dispatchAppTrigger(job: Job<AppTriggerDispatchJobData>) {
-  const { appInstallationId, appId, triggerId, triggerData, eventId, organizationId } = job.data
+  const {
+    appInstallationId,
+    appId,
+    triggerId,
+    connectionId,
+    triggerData,
+    eventId,
+    organizationId,
+  } = job.data
 
   logger.info('Dispatching app trigger', {
     appInstallationId,
@@ -62,6 +71,20 @@ export async function dispatchAppTrigger(job: Job<AppTriggerDispatchJobData>) {
   // 2. Query matching workflows
   // Find all published, enabled workflows that match the specific app + trigger + installation
   try {
+    // Build query conditions — match by connectionId when provided
+    const conditions = [
+      eq(schema.Workflow.organizationId, organizationId),
+      eq(schema.Workflow.triggerType, 'app-trigger'),
+      eq(schema.Workflow.triggerAppId, appId),
+      eq(schema.Workflow.triggerTriggerId, triggerId),
+      eq(schema.Workflow.triggerInstallationId, appInstallationId),
+      eq(schema.WorkflowApp.enabled, true),
+    ]
+
+    if (connectionId) {
+      conditions.push(eq(schema.Workflow.triggerConnectionId, connectionId))
+    }
+
     const matchingWorkflows = await db
       .select({
         workflowAppId: schema.WorkflowApp.id,
@@ -69,16 +92,7 @@ export async function dispatchAppTrigger(job: Job<AppTriggerDispatchJobData>) {
       })
       .from(schema.Workflow)
       .innerJoin(schema.WorkflowApp, eq(schema.WorkflowApp.workflowId, schema.Workflow.id))
-      .where(
-        and(
-          eq(schema.Workflow.organizationId, organizationId),
-          eq(schema.Workflow.triggerType, 'app-trigger'),
-          eq(schema.Workflow.triggerAppId, appId),
-          eq(schema.Workflow.triggerTriggerId, triggerId),
-          eq(schema.Workflow.triggerInstallationId, appInstallationId),
-          eq(schema.WorkflowApp.enabled, true)
-        )
-      )
+      .where(and(...conditions))
 
     if (matchingWorkflows.length === 0) {
       logger.info('No matching workflows found for app trigger', {
