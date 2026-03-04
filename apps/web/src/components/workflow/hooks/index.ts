@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/hooks/index.ts
 
+export { useAppTriggerTestListener } from './use-app-trigger-test-listener'
 // Re-export commonly used hooks for convenience
 export { useAvailableBlocks } from './use-available-blocks'
 export { useAvailableVariables } from './use-available-variables'

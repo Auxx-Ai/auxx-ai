@@ -2,6 +2,7 @@
 
 import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import type { ComponentType } from 'react'
+import { AppTriggerTestSection } from '~/components/workflow/nodes/core/app-trigger/app-trigger-test-section'
 import type {
   NodeDefinition,
   NodePanelProps,
@@ -105,7 +106,7 @@ export class WorkflowBlockRegistry {
         validator: (data: any) => this.validateBlockData(trigger, data),
         outputVariables: (data: any, nodeId: string) =>
           this.createOutputVariables(trigger, nodeId, data),
-        panel: this.createPanelComponent(
+        panel: this.createTriggerPanelComponent(
           appId,
           installationId,
           trigger
@@ -323,7 +324,6 @@ export class WorkflowBlockRegistry {
     installationId: string,
     block: WorkflowBlock
   ): ComponentType<NodePanelProps> {
-    // Return a component that wraps AppWorkflowPanel
     const PanelWrapper = ({ nodeId, data }: NodePanelProps) => {
       return (
         <AppWorkflowPanel
@@ -336,5 +336,34 @@ export class WorkflowBlockRegistry {
       )
     }
     return PanelWrapper
+  }
+
+  /**
+   * Create trigger panel component with test section
+   */
+  private createTriggerPanelComponent(
+    appId: string,
+    installationId: string,
+    trigger: WorkflowBlock
+  ): ComponentType<NodePanelProps> {
+    const TriggerPanelWrapper = ({ nodeId, data }: NodePanelProps) => {
+      return (
+        <>
+          <AppWorkflowPanel
+            nodeId={nodeId}
+            data={data}
+            appId={appId}
+            installationId={installationId}
+            block={trigger}
+          />
+          <AppTriggerTestSection
+            installationId={installationId}
+            triggerId={trigger.id}
+            schema={trigger.schema}
+          />
+        </>
+      )
+    }
+    return TriggerPanelWrapper
   }
 }

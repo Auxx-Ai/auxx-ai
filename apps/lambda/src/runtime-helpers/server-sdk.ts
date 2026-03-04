@@ -110,6 +110,7 @@ export interface WebhookHandler {
   url: string
   fileName: string
   externalWebhookId?: string
+  connectionId?: string
   metadata?: Record<string, unknown>
 }
 
