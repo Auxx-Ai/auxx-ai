@@ -128,7 +128,9 @@ export async function listAppConnections(organizationId: string, userId?: string
     return {
       id: cred.id,
       appId: cred.appId!,
+      appInstallationId: cred.appInstallationId,
       appName: cred.app?.title || 'Unknown App',
+      label: cred.label,
       connectionStatus: status,
       connectedBy: cred.createdBy?.name || undefined,
       connectedAt: cred.createdAt,

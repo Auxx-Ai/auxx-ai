@@ -84,6 +84,7 @@ export interface CreateWebhookHandlerParams {
   appInstallationId: string
   fileName: string
   triggerId?: string
+  connectionId?: string
   metadata?: Record<string, unknown>
 }
 
@@ -188,12 +189,14 @@ export interface WebhookHandlerResponse {
  * ```
  */
 export async function createWebhookHandler(params: CreateWebhookHandlerParams) {
-  const { appInstallationId, fileName, triggerId, metadata } = params
+  const { appInstallationId, fileName, triggerId, connectionId, metadata } = params
 
-  logger.info('Creating webhook handler', { appInstallationId, fileName, triggerId })
+  logger.info('Creating webhook handler', { appInstallationId, fileName, triggerId, connectionId })
 
-  // Generate public webhook URL
-  const url = `${API_URL}/webhooks/${appInstallationId}/${fileName}`
+  // Generate public webhook URL (append connectionId for per-connection isolation)
+  const url = connectionId
+    ? `${API_URL}/webhooks/${appInstallationId}/${fileName}/${connectionId}`
+    : `${API_URL}/webhooks/${appInstallationId}/${fileName}`
 
   // Create or update webhook handler
   const dbResult = await fromDatabase(
@@ -201,6 +204,7 @@ export async function createWebhookHandler(params: CreateWebhookHandlerParams) {
       .insert(schema.AppWebhookHandler)
       .values({
         appInstallationId,
+        connectionId: connectionId ?? null,
         handlerId: fileName,
         url,
         triggerId: triggerId ?? null,
@@ -208,7 +212,11 @@ export async function createWebhookHandler(params: CreateWebhookHandlerParams) {
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
-        target: [schema.AppWebhookHandler.appInstallationId, schema.AppWebhookHandler.handlerId],
+        target: [
+          schema.AppWebhookHandler.appInstallationId,
+          schema.AppWebhookHandler.handlerId,
+          schema.AppWebhookHandler.connectionId,
+        ],
         set: {
           url,
           triggerId: triggerId ?? null,
@@ -431,20 +439,28 @@ export async function deleteWebhookHandler(params: {
  * }
  * ```
  */
-export async function getWebhookHandler(params: { appInstallationId: string; handlerId: string }) {
-  const { appInstallationId, handlerId } = params
+export async function getWebhookHandler(params: {
+  appInstallationId: string
+  handlerId: string
+  connectionId?: string
+}) {
+  const { appInstallationId, handlerId, connectionId } = params
+
+  const conditions = [
+    eq(schema.AppWebhookHandler.appInstallationId, appInstallationId),
+    eq(schema.AppWebhookHandler.handlerId, handlerId),
+    eq(schema.AppWebhookHandler.isActive, true),
+  ]
+
+  if (connectionId) {
+    conditions.push(eq(schema.AppWebhookHandler.connectionId, connectionId))
+  }
 
   const dbResult = await fromDatabase(
     database
       .select()
       .from(schema.AppWebhookHandler)
-      .where(
-        and(
-          eq(schema.AppWebhookHandler.appInstallationId, appInstallationId),
-          eq(schema.AppWebhookHandler.handlerId, handlerId),
-          eq(schema.AppWebhookHandler.isActive, true)
-        )
-      )
+      .where(and(...conditions))
       .limit(1),
     'get-webhook-handler'
   )

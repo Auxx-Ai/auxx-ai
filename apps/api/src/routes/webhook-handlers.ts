@@ -50,6 +50,7 @@ const webhookHandlers = new Hono<AppContext>()
 const createWebhookHandlerSchema = z.object({
   fileName: z.string(),
   triggerId: z.string().optional(),
+  connectionId: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 })
 
@@ -223,12 +224,13 @@ webhookHandlers.post('/', async (c) => {
     if (!auth) return c.res
 
     const body = await c.req.json()
-    const { fileName, triggerId, metadata } = createWebhookHandlerSchema.parse(body)
+    const { fileName, triggerId, connectionId, metadata } = createWebhookHandlerSchema.parse(body)
 
     const result = await createWebhookHandler({
       appInstallationId: auth.installationId,
       fileName,
       triggerId,
+      connectionId,
       metadata,
     })
 

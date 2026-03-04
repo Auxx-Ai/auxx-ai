@@ -17,10 +17,72 @@ export async function resolveAppConnectionForRuntime(input: {
   appId: string
   organizationId: string
   userId: string
+  connectionId?: string
 }) {
-  const { appId, organizationId, userId } = input
+  const { appId, organizationId, userId, connectionId } = input
 
-  logger.info('resolveAppConnectionForRuntime', { appId, organizationId, userId })
+  logger.info('resolveAppConnectionForRuntime', { appId, organizationId, userId, connectionId })
+
+  // If connectionId provided, resolve that specific credential directly
+  if (connectionId) {
+    const credResult = await fromDatabase(
+      database.query.WorkflowCredentials.findFirst({
+        where: (creds, { eq, and }) =>
+          and(
+            eq(creds.id, connectionId),
+            eq(creds.organizationId, organizationId),
+            eq(creds.type, 'app-connection')
+          ),
+      }),
+      'get-connection-by-id'
+    )
+
+    if (credResult.isErr()) {
+      return err({ code: 'DATABASE_ERROR', message: 'Failed to query connection by ID' })
+    }
+
+    const cred = credResult.value
+    if (!cred) {
+      return err({ code: 'CONNECTION_NOT_FOUND', message: `Connection ${connectionId} not found` })
+    }
+
+    try {
+      const decryptedData = CredentialService.decrypt(cred.encryptedData) as DecryptedConnectionData
+
+      // Determine connection type from connection definition
+      const connDefResult = await fromDatabase(
+        database.query.ConnectionDefinition.findFirst({
+          where: (connDef, { eq }) => eq(connDef.appId, appId),
+          columns: { connectionType: true },
+        }),
+        'get-connection-definition-for-id'
+      )
+
+      const connectionType =
+        connDefResult.isOk() && connDefResult.value
+          ? (connDefResult.value.connectionType as 'oauth2-code' | 'secret')
+          : decryptedData.accessToken
+            ? 'oauth2-code'
+            : 'secret'
+
+      const resolved: RuntimeConnectionData = {
+        id: cred.id,
+        type: connectionType,
+        value: decryptedData.accessToken || decryptedData.secret || '',
+        metadata: decryptedData.metadata,
+        expiresAt: decryptedData.expiresAt,
+      }
+
+      // Return as organizationConnection if org-scoped, userConnection if user-scoped
+      if (cred.userId) {
+        return ok({ userConnection: resolved, organizationConnection: undefined })
+      }
+      return ok({ userConnection: undefined, organizationConnection: resolved })
+    } catch (error) {
+      logger.error('Failed to decrypt credential by ID', { error, credentialId: cred.id })
+      return err({ code: 'DECRYPTION_ERROR', message: 'Failed to decrypt credential' })
+    }
+  }
 
   // 1. Get connection definitions for this app
   // Try user-scoped first (global: false)
@@ -98,8 +160,6 @@ export async function resolveAppConnectionForRuntime(input: {
           userCred.encryptedData
         ) as DecryptedConnectionData
 
-        console.log('[ResolveConnection] User connection metadata:', decryptedData.metadata)
-
         userConnection = {
           id: userCred.id,
           type: userConnDef.connectionType as 'oauth2-code' | 'secret',
@@ -148,8 +208,6 @@ export async function resolveAppConnectionForRuntime(input: {
         const decryptedData = CredentialService.decrypt(
           orgCred.encryptedData
         ) as DecryptedConnectionData
-
-        console.log('[ResolveConnection] Org connection metadata:', decryptedData.metadata)
 
         organizationConnection = {
           id: orgCred.id,

@@ -35,13 +35,18 @@ export function printFetcherError(message: string, { error }: any) {
   const fetcherError = error
   switch (fetcherError.code) {
     case 'HTTP_ERROR':
-      process.stderr.write(`HTTP Error (${fetcherError.status}): ${fetcherError}\n`)
+      process.stderr.write(
+        `HTTP Error (${fetcherError.status}): ${fetcherError.statusText}${fetcherError.body ? `\n${fetcherError.body}` : ''}\n`
+      )
       break
     case 'INVALID_RESPONSE':
-      process.stderr.write(`Invalid response: ${fetcherError}\n`)
+      process.stderr.write(`Invalid response: ${fetcherError.error?.message ?? fetcherError}\n`)
+      break
+    case 'VALIDATION_ERROR':
+      process.stderr.write(`Validation error: ${fetcherError.error?.message ?? fetcherError}\n`)
       break
     case 'NETWORK_ERROR':
-      process.stderr.write(`Network error: ${fetcherError}\n`)
+      process.stderr.write(`Network error: ${fetcherError.error?.message ?? 'Unknown error'}\n`)
       break
     case 'UNAUTHORIZED':
       process.stderr.write(`Unauthorized. You must log in with "auxx login"\n`)

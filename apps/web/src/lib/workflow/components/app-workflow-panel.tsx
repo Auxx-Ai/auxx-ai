@@ -12,6 +12,7 @@ import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import type { WorkflowBlock } from '../types'
 import { computeOutputSignature, resolveAppBlockOutputFields } from '../utils/resolve-app-outputs'
 import { convertOutputFieldsToVariables } from '../utils/type-mapping'
+import { AppConnectionPicker } from './app-connection-picker'
 import { AppWorkflowFieldContext } from './app-workflow-field-context'
 
 /**
@@ -98,6 +99,17 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
         return nodeData.fieldModes?.[fieldKey] !== false
       },
       [nodeData.fieldModes]
+    )
+
+    /** Handle connection picker change — write connectionId to node data */
+    const handleConnectionChange = useCallback(
+      (connectionId: string | undefined) => {
+        setInputs({
+          ...nodeDataRef.current,
+          connectionId,
+        })
+      },
+      [setInputs]
     )
 
     /** Context value for AppWorkflowFieldContext */
@@ -301,6 +313,14 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
 
     return (
       <BasePanel title={block.label} nodeId={nodeId} data={nodeData} appContext={appContext}>
+        {block.config?.requiresConnection && (
+          <AppConnectionPicker
+            appId={appId}
+            installationId={installationId}
+            connectionId={nodeData.connectionId}
+            onChange={handleConnectionChange}
+          />
+        )}
         {isLoading && !displayError ? (
           <div className='p-4'>
             <div className='text-sm text-muted-foreground'>Loading configuration...</div>

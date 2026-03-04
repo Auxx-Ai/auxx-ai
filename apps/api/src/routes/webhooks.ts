@@ -20,6 +20,7 @@ const webhooks = new Hono<AppContext>()
 async function handleWebhookRequest(c: any) {
   const installationId = c.req.param('installationId')
   const handlerId = c.req.param('handlerId')
+  const connectionId = c.req.param('connectionId') as string | undefined
 
   log.info('Webhook request received', { installationId, handlerId, method: c.req.method })
 
@@ -28,6 +29,7 @@ async function handleWebhookRequest(c: any) {
     const handlerResult = await getWebhookHandler({
       appInstallationId: installationId,
       handlerId,
+      connectionId,
     })
 
     if (handlerResult.isErr()) {
@@ -126,6 +128,7 @@ async function handleWebhookRequest(c: any) {
           appInstallationId: installationId,
           appId: installation.appId,
           triggerId: handler.triggerId,
+          connectionId: handler.connectionId ?? undefined,
           triggerData: handlerExecutionResult.triggerData,
           eventId: handlerExecutionResult.eventId || randomUUID(),
           organizationId: installation.organizationId,
@@ -159,6 +162,10 @@ async function handleWebhookRequest(c: any) {
 }
 
 // Support both POST and GET (for webhook verification)
+// Connection-scoped routes (must be registered first to avoid ambiguity)
+webhooks.post('/:installationId/:handlerId/:connectionId', handleWebhookRequest)
+webhooks.get('/:installationId/:handlerId/:connectionId', handleWebhookRequest)
+// Legacy routes (no connectionId)
 webhooks.post('/:installationId/:handlerId', handleWebhookRequest)
 webhooks.get('/:installationId/:handlerId', handleWebhookRequest)
 

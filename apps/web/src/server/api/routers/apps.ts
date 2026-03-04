@@ -4,6 +4,7 @@ import { createScopedLogger } from '@auxx/logger'
 import {
   deleteAppConnection,
   listAppConnections,
+  renameAppConnection,
   saveAppConnection,
 } from '@auxx/services/app-connections'
 import { getInstalledApps } from '@auxx/services/app-installations'
@@ -297,11 +298,12 @@ export const appsRouter = createTRPCRouter({
         appName: z.string(),
         connectionType: z.enum(['user', 'organization']),
         secret: z.string().min(1, 'Secret is required'),
+        connectionId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const { appId, installationId, appName, connectionType, secret } = input
+      const { appId, installationId, appName, connectionType, secret, connectionId } = input
 
       // userId is null for organization-wide, userId for user-specific
       const userIdField = connectionType === 'organization' ? null : userId
@@ -313,7 +315,8 @@ export const appsRouter = createTRPCRouter({
         organizationId,
         userId, // createdById
         userIdField, // userId field for scoping
-        { secret }
+        { secret },
+        { connectionId }
       )
 
       if (result.isErr()) {
@@ -330,6 +333,38 @@ export const appsRouter = createTRPCRouter({
       }
 
       return { success: true, credentialId: result.value }
+    }),
+
+  /**
+   * Rename an app connection's label
+   */
+  renameConnection: protectedProcedure
+    .input(
+      z.object({
+        connectionId: z.string(),
+        label: z.string().min(1).max(100),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const { connectionId, label } = input
+
+      const result = await renameAppConnection(connectionId, label, organizationId)
+
+      if (result.isErr()) {
+        logger.error('Failed to rename connection', {
+          error: result.error,
+          connectionId,
+          organizationId,
+        })
+
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: result.error.message,
+        })
+      }
+
+      return { success: true }
     }),
 
   /**

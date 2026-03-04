@@ -36,6 +36,7 @@ export const Workflow = pgTable(
     triggerAppId: text(), // Extension app ID for app-trigger type (e.g., 'y5yf1eh8lr1')
     triggerTriggerId: text(), // Trigger ID within the app for app-trigger type (e.g., 'order-created')
     triggerInstallationId: text(), // Specific app installation ID for app-trigger type
+    triggerConnectionId: text(), // WorkflowCredentials ID for app-trigger connection
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 }).notNull(),
     createdById: text().references((): AnyPgColumn => User.id, {

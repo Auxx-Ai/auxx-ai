@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/pop
 import { cn } from '@auxx/ui/lib/utils'
 import { Plus } from 'lucide-react'
 import { memo, useMemo, useRef, useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
 import { NodeCategory } from '~/components/workflow/types'
 import { useRegistryVersion } from '../../hooks'
 import { unifiedNodeRegistry } from '../../nodes/unified-registry'
@@ -60,7 +61,8 @@ export const BlockSelector = memo(
 
       availableNodes.forEach((node) => {
         if (!node) return
-        if (node.category === NodeCategory.INTEGRATION) {
+        // App blocks (INTEGRATION) and app triggers (TRIGGER with appId) go to "Apps" tab
+        if (node.category === NodeCategory.INTEGRATION || node.defaultData?.appId) {
           apps.push(node)
         } else {
           core.push(node)
@@ -71,6 +73,18 @@ export const BlockSelector = memo(
     }, [availableNodes])
 
     const currentNodes = activeTab === 'nodes' ? coreNodes : appNodes
+
+    const allNodesByCategory = useMemo(() => {
+      const categories: Record<string, typeof availableNodes> = {}
+      availableNodes.forEach((node) => {
+        if (!node) return
+        if (!categories[node.category]) {
+          categories[node.category] = []
+        }
+        categories[node.category].push(node)
+      })
+      return categories
+    }, [availableNodes])
 
     const nodesByCategory = useMemo(() => {
       const categories: Record<string, typeof currentNodes> = {}
@@ -83,6 +97,10 @@ export const BlockSelector = memo(
       })
       return categories
     }, [currentNodes])
+
+    const [searchValue, setSearchValue] = useState('')
+    const isSearching = searchValue.trim().length > 0
+    const displayCategories = isSearching ? allNodesByCategory : nodesByCategory
 
     const triggerClassNameResolved =
       typeof triggerClassName === 'function' ? triggerClassName(open) : triggerClassName
@@ -162,9 +180,13 @@ export const BlockSelector = memo(
               e.stopPropagation()
             }
           }}>
-          <CommandInput ref={inputRef} placeholder={`Search ${activeTab}...`} />
+          <CommandInput
+            ref={inputRef}
+            placeholder={isSearching ? 'Search all...' : `Search ${activeTab}...`}
+            onValueChange={setSearchValue}
+          />
           <CommandList className='max-h-[700px]'>
-            {activeTab === 'apps' && appNodes.length === 0 ? (
+            {!isSearching && activeTab === 'apps' && appNodes.length === 0 ? (
               <div className='p-6 text-center'>
                 <div className='text-sm text-gray-500 mb-2'>No apps available</div>
                 <div className='text-xs text-gray-400'>
@@ -172,50 +194,39 @@ export const BlockSelector = memo(
                 </div>
               </div>
             ) : (
-              Object.entries(nodesByCategory).map(([category, nodes]) => (
+              Object.entries(displayCategories).map(([category, nodes]) => (
                 <CommandGroup key={category} heading={category.toUpperCase()}>
-                  {nodes.map((node) => (
-                    <CommandItem
-                      key={node!.nodeId}
-                      value={node!.nodeId}
-                      onSelect={() => {
-                        // Pass the type from defaults, not the nodeId
-                        onSelect(node!.defaults?.type || node!.nodeId, node!.defaults)
-                      }}
-                      className={cn(
-                        'cursor-pointer data-[selected=true]:bg-primary-300/20 ',
-                        activeTab === 'apps' ? 'py-3 px-3' : 'py-1 px-1'
-                      )}>
-                      {activeTab === 'apps' ? (
-                        // Enhanced app display
-                        <div className='flex items-center space-x-3 w-full'>
-                          <div
-                            className='size-8 rounded-md flex items-center justify-center shrink-0'
-                            style={{ backgroundColor: node!.color }}>
-                            {unifiedNodeRegistry.getNodeIcon(node.id, 'w-5 h-5 text-white')}
-                          </div>
-                          <div className='flex-1 min-w-0'>
-                            <div className='font-medium text-sm'>{node!.displayName}</div>
-                            <div className='text-xs text-gray-500 truncate'>
-                              {node!.description}
-                            </div>
-                          </div>
+                  {nodes.map((node) => {
+                    const isAppNode =
+                      node!.category === NodeCategory.INTEGRATION || !!node!.defaultData?.appId
+                    return (
+                      <Tooltip
+                        key={node!.nodeId}
+                        content={node!.description}
+                        side='right'
+                        sideOffset={12}
+                        className='max-w-[200px]'>
+                        <div>
+                          <CommandItem
+                            value={node!.nodeId}
+                            onSelect={() => {
+                              onSelect(node!.defaults?.type || node!.nodeId, node!.defaults)
+                            }}
+                            className='cursor-pointer data-[selected=true]:bg-primary-300/20 py-1 px-1'>
+                            <span
+                              className={cn(
+                                'rounded-full size-6 flex items-center justify-center shrink-0',
+                                isAppNode && 'bg-primary-200'
+                              )}
+                              style={!isAppNode ? { backgroundColor: node!.color } : undefined}>
+                              {unifiedNodeRegistry.getNodeIcon(node.id, 'size-4 text-white')}
+                            </span>
+                            <span>{node!.displayName}</span>
+                          </CommandItem>
                         </div>
-                      ) : (
-                        // Standard node display
-                        <>
-                          <span
-                            className={cn(
-                              'rounded-full size-6 flex items-center justify-center shrink-0'
-                            )}
-                            style={{ backgroundColor: node!.color }}>
-                            {unifiedNodeRegistry.getNodeIcon(node.id, 'size-4 text-white')}
-                          </span>
-                          <span className=''>{node!.displayName}</span>
-                        </>
-                      )}
-                    </CommandItem>
-                  ))}
+                      </Tooltip>
+                    )
+                  })}
                 </CommandGroup>
               ))
             )}
@@ -241,7 +252,7 @@ export const BlockSelector = memo(
             inputRef.current?.focus()
           }}
           {...props}
-          style={{ width: activeTab === 'nodes' ? '220px' : '320px' }}>
+          style={{ width: '220px' }}>
           {selectorContent}
         </PopoverContent>
       </Popover>
