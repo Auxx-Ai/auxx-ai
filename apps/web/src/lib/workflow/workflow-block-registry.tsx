@@ -2,7 +2,7 @@
 
 import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import type { ComponentType } from 'react'
-import { AppTriggerTestSection } from '~/components/workflow/nodes/core/app-trigger/app-trigger-test-section'
+import { useMemo } from 'react'
 import type {
   NodeDefinition,
   NodePanelProps,
@@ -12,6 +12,7 @@ import { NodeCategory } from '~/components/workflow/types/registry'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { resolveAppBlockOutputFields } from '~/lib/workflow/utils/resolve-app-outputs'
 import { convertOutputFieldsToVariables } from '~/lib/workflow/utils/type-mapping'
+import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 // import { AppWorkflowNode } from './components/app-workflow-node'
 import { AppWorkflowPanel } from './components/app-workflow-panel'
 import type { WorkflowBlock } from './types'
@@ -81,10 +82,15 @@ export class WorkflowBlockRegistry {
       const triggerKey = `${appId}:${trigger.id}`
       this.blocks.set(triggerKey, trigger)
 
+      // Detect polling triggers by checking config.polling
+      const triggerType = trigger.config?.polling
+        ? WorkflowTriggerType.APP_POLLING_TRIGGER
+        : WorkflowTriggerType.APP_TRIGGER
+
       const definition: NodeDefinition = {
         id: triggerKey,
         category: NodeCategory.TRIGGER,
-        triggerType: WorkflowTriggerType.APP_TRIGGER,
+        triggerType,
         displayName: trigger.label,
         description: trigger.description || '',
         icon: trigger.icon || '⚡',
@@ -95,10 +101,11 @@ export class WorkflowBlockRegistry {
           desc: trigger.description,
           appId,
           appSlug: appMeta?.appSlug,
-          installationId,
-          installationType: appMeta?.installationType,
           triggerId: trigger.id,
           ...this.getDefaultInputValues(trigger.schema.inputs),
+          // installationId and installationType removed — resolved at runtime
+          // Store polling config so it's available in the node data for scheduling
+          ...(trigger.config?.polling ? { config: { polling: trigger.config.polling } } : {}),
         },
 
         schema: trigger.schema,
@@ -178,10 +185,9 @@ export class WorkflowBlockRegistry {
         desc: block.description,
         appId: appId,
         appSlug: appMeta?.appSlug,
-        installationId: installationId,
-        installationType: appMeta?.installationType,
         blockId: block.id,
         ...this.getDefaultInputValues(block.schema.inputs),
+        // installationId and installationType removed — resolved at runtime
       },
 
       // Schema (pass through)
@@ -324,12 +330,20 @@ export class WorkflowBlockRegistry {
     block: WorkflowBlock
   ): ComponentType<NodePanelProps> {
     const PanelWrapper = ({ nodeId, data }: NodePanelProps) => {
+      const { appInstallations } = useExtensionsContext()
+      const resolvedInstallationId = useMemo(() => {
+        const inst =
+          appInstallations.find((i) => i.app.id === appId && i.installationType === 'production') ||
+          appInstallations.find((i) => i.app.id === appId)
+        return inst?.installationId ?? installationId // fallback to captured
+      }, [appInstallations])
+
       return (
         <AppWorkflowPanel
           nodeId={nodeId}
           data={data}
           appId={appId}
-          installationId={installationId}
+          installationId={resolvedInstallationId}
           block={block}
         />
       )
@@ -338,7 +352,8 @@ export class WorkflowBlockRegistry {
   }
 
   /**
-   * Create trigger panel component with test section
+   * Create trigger panel component — renders AppWorkflowPanel with isTrigger flag.
+   * PollingIntervalSelector and AppTriggerTestSection are rendered inside AppWorkflowPanel.
    */
   private createTriggerPanelComponent(
     appId: string,
@@ -346,21 +361,23 @@ export class WorkflowBlockRegistry {
     trigger: WorkflowBlock
   ): ComponentType<NodePanelProps> {
     const TriggerPanelWrapper = ({ nodeId, data }: NodePanelProps) => {
+      const { appInstallations } = useExtensionsContext()
+      const resolvedInstallationId = useMemo(() => {
+        const inst =
+          appInstallations.find((i) => i.app.id === appId && i.installationType === 'production') ||
+          appInstallations.find((i) => i.app.id === appId)
+        return inst?.installationId ?? installationId // fallback to captured
+      }, [appInstallations])
+
       return (
-        <>
-          <AppWorkflowPanel
-            nodeId={nodeId}
-            data={data}
-            appId={appId}
-            installationId={installationId}
-            block={trigger}
-          />
-          <AppTriggerTestSection
-            installationId={installationId}
-            triggerId={trigger.id}
-            schema={trigger.schema}
-          />
-        </>
+        <AppWorkflowPanel
+          nodeId={nodeId}
+          data={data}
+          appId={appId}
+          installationId={resolvedInstallationId}
+          block={trigger}
+          isTrigger
+        />
       )
     }
     return TriggerPanelWrapper

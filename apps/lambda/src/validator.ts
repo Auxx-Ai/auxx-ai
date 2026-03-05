@@ -43,7 +43,7 @@ export const ExecutionContextSchema = z.object({
 /** Base schema - common fields for all execution types */
 const BaseLambdaEventSchema = z.object({
   // Execution type (discriminator)
-  type: z.enum(['function', 'event', 'webhook', 'workflow-block', 'code']),
+  type: z.enum(['function', 'event', 'webhook', 'workflow-block', 'polling-trigger', 'code']),
 
   // Common limits with defaults
   timeout: z.number().min(1000).max(30000).default(30000),
@@ -133,6 +133,14 @@ const WorkflowBlockExecutionSchema = AppEventSchema.extend({
   workflowInput: z.record(z.string(), z.any()),
 })
 
+/** Polling trigger execution schema - extends AppEventSchema */
+const PollingTriggerExecutionSchema = AppEventSchema.extend({
+  type: z.literal('polling-trigger'),
+  triggerId: z.string(),
+  triggerInput: z.record(z.string(), z.any()),
+  pollingState: z.record(z.string(), z.unknown()),
+})
+
 // ============================================================================
 // EXPORTED TYPES
 // ============================================================================
@@ -143,6 +151,7 @@ export type FunctionExecutionEvent = z.infer<typeof FunctionExecutionSchema>
 export type EventExecutionEvent = z.infer<typeof EventExecutionSchema>
 export type WebhookExecutionEvent = z.infer<typeof WebhookExecutionSchema>
 export type WorkflowBlockExecutionEvent = z.infer<typeof WorkflowBlockExecutionSchema>
+export type PollingTriggerExecutionEvent = z.infer<typeof PollingTriggerExecutionSchema>
 
 /** Type-safe union of all validated events */
 export type ValidatedLambdaEvent =
@@ -151,6 +160,7 @@ export type ValidatedLambdaEvent =
   | EventExecutionEvent
   | WebhookExecutionEvent
   | WorkflowBlockExecutionEvent
+  | PollingTriggerExecutionEvent
 
 /** Keep existing exports */
 export type ValidatedExecutionContext = z.infer<typeof ExecutionContextSchema>
@@ -185,6 +195,8 @@ export function validateLambdaEvent(event: unknown) {
       return WebhookExecutionSchema.safeParse(event)
     case 'workflow-block':
       return WorkflowBlockExecutionSchema.safeParse(event)
+    case 'polling-trigger':
+      return PollingTriggerExecutionSchema.safeParse(event)
     default:
       // Return error in Zod format for unknown type
       return {

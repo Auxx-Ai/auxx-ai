@@ -458,7 +458,7 @@ export const BasePanel = memo<BasePanelProps>(
                     installationType={appContext.installationType}
                     returnTo={pathname}
                     trigger={
-                      <Button variant='outline' size='sm'>
+                      <Button variant='ghost' size='xs'>
                         <Settings2 /> App Settings
                       </Button>
                     }

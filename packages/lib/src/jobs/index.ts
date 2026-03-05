@@ -116,6 +116,10 @@ export {
 export { approvalReminderJob } from './workflow/approval-reminder-job'
 export { approvalTimeoutJob } from './workflow/approval-timeout-job'
 export {
+  executePollingTrigger,
+  type PollingTriggerJobData,
+} from './workflow/polling-trigger-job'
+export {
   executeResourceTrigger,
   type ResourceTriggerJobData,
 } from './workflow/resource-trigger-job'

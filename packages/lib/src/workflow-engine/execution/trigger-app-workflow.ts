@@ -56,10 +56,13 @@ export async function executeAppTriggeredWorkflow(params: {
     })
   }
 
-  if (publishedWorkflow.triggerType !== 'app-trigger') {
+  if (
+    publishedWorkflow.triggerType !== 'app-trigger' &&
+    publishedWorkflow.triggerType !== 'app-polling-trigger'
+  ) {
     return err({
       code: 'WORKFLOW_TYPE_MISMATCH' as const,
-      message: `Workflow type mismatch. Expected 'app-trigger', got '${publishedWorkflow.triggerType}'`,
+      message: `Workflow type mismatch. Expected 'app-trigger' or 'app-polling-trigger', got '${publishedWorkflow.triggerType}'`,
       expected: 'app-trigger',
       actual: publishedWorkflow.triggerType,
     })
@@ -83,7 +86,7 @@ export async function executeAppTriggeredWorkflow(params: {
         ...triggerData,
       },
       mode: 'production',
-      userId: 'system',
+      userId: null,
       organizationId,
     })
 

@@ -3,7 +3,7 @@
 import { database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
 import type { Job } from 'bullmq'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { createScopedLogger } from '../../logger'
 import { executeAppTriggeredWorkflow } from '../../workflow-engine/execution/trigger-app-workflow'
 
@@ -74,7 +74,7 @@ export async function dispatchAppTrigger(job: Job<AppTriggerDispatchJobData>) {
     // Build query conditions — match by connectionId when provided
     const conditions = [
       eq(schema.Workflow.organizationId, organizationId),
-      eq(schema.Workflow.triggerType, 'app-trigger'),
+      inArray(schema.Workflow.triggerType, ['app-trigger', 'app-polling-trigger']),
       eq(schema.Workflow.triggerAppId, appId),
       eq(schema.Workflow.triggerTriggerId, triggerId),
       eq(schema.Workflow.triggerInstallationId, appInstallationId),

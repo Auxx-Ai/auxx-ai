@@ -25,7 +25,7 @@ export interface SectionProps {
   /** Custom className for the CollapsibleContent wrapper */
   description?: string
   isRequired?: boolean
-  children: React.ReactNode
+  children?: React.ReactNode
   actions?: React.ReactNode
   showEnable?: boolean
   onEnableChange?: (checked: boolean) => void

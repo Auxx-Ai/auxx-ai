@@ -66,12 +66,16 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
       }
     }
 
-    // Look up installationId if not present — prefer production over dev
-    if (!installationId && appId) {
-      const installation =
-        appInstallations.find((i) => i.app.id === appId && i.installationType === 'production') ||
-        appInstallations.find((i) => i.app.id === appId)
-      installationId = installation?.installationId
+    // Resolve installationId at runtime — handles both missing and stale
+    if (appId) {
+      const isStale =
+        installationId && !appInstallations.find((i) => i.installationId === installationId)
+      if (!installationId || isStale) {
+        const installation =
+          appInstallations.find((i) => i.app.id === appId && i.installationType === 'production') ||
+          appInstallations.find((i) => i.app.id === appId)
+        installationId = installation?.installationId
+      }
     }
 
     return { appId, blockId, installationId }
@@ -84,29 +88,21 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
   })
 
   // Persist resolved metadata back to node data so it survives save/load cycles
+  // Note: installationId is NOT persisted — it's a runtime concern (Approach B)
   useEffect(() => {
-    // Check if we resolved any metadata that's not in data
-    const needsUpdate =
-      (appId && appId !== data.appId) ||
-      (blockId && blockId !== data.blockId) ||
-      (installationId && installationId !== data.installationId)
+    const needsUpdate = (appId && appId !== data.appId) || (blockId && blockId !== data.blockId)
 
     if (needsUpdate) {
-      // Build update object with only the fields that changed
       const updates: Record<string, string> = {}
       if (appId && appId !== data.appId) updates.appId = appId
       if (blockId && blockId !== data.blockId) updates.blockId = blockId
-      if (installationId && installationId !== data.installationId) {
-        updates.installationId = installationId
-      }
 
-      // Persist resolved metadata back to node data
       setNodeData({
         ...data,
         ...updates,
       })
     }
-  }, [appId, blockId, installationId, data, setNodeData])
+  }, [appId, blockId, data, setNodeData])
 
   useEffect(() => {
     // Request node component from iframe

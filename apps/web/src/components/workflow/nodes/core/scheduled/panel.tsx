@@ -3,7 +3,13 @@
 'use client'
 
 import { Label } from '@auxx/ui/components/label'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
 import { produce } from 'immer'
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import React, { useState } from 'react'
@@ -117,50 +123,49 @@ const ScheduledTriggerPanelComponent: React.FC<ScheduledTriggerPanelProps> = ({ 
       <Section
         title='Schedule Configuration'
         description='Configure when this workflow should be triggered.'
-        isRequired>
-        <div className='space-y-4'>
-          {/* Configuration Tabs */}
-          <Tabs
+        isRequired
+        actions={
+          <Select
             value={previewConfig.triggerInterval === 'custom' ? 'custom' : 'simple'}
             onValueChange={(value) => {
               if (value === 'custom') {
                 handleIntervalChange('custom')
               } else if (previewConfig.triggerInterval === 'custom') {
-                // Switch back to simple mode with default hours
                 handleIntervalChange('hours')
               }
             }}
-            className='w-full'>
-            <TabsList className='grid w-full grid-cols-2'>
-              <TabsTrigger value='simple'>Simple</TabsTrigger>
-              <TabsTrigger value='custom'>Advanced (Cron)</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value='simple' className='mt-4'>
-              <IntervalSelector
-                nodeId={nodeId}
-                config={previewConfig}
-                onIntervalChange={handleIntervalChange}
-                onValueChange={handleIntervalValueChange}
-                disabled={isReadOnly}
-              />
-            </TabsContent>
-
-            <TabsContent value='custom' className='mt-4'>
-              <CronEditor
-                value={previewConfig.customCron || ''}
-                onChange={handleCronExpressionChange}
-                disabled={isReadOnly}
-                config={previewConfig}
-              />
-            </TabsContent>
-          </Tabs>
+            disabled={isReadOnly}>
+            <SelectTrigger size='sm'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='simple'>Simple</SelectItem>
+              <SelectItem value='custom'>Advanced (Cron)</SelectItem>
+            </SelectContent>
+          </Select>
+        }>
+        <div className='space-y-4'>
+          {previewConfig.triggerInterval === 'custom' ? (
+            <CronEditor
+              value={previewConfig.customCron || ''}
+              onChange={handleCronExpressionChange}
+              disabled={isReadOnly}
+              config={previewConfig}
+            />
+          ) : (
+            <IntervalSelector
+              nodeId={nodeId}
+              config={previewConfig}
+              onIntervalChange={handleIntervalChange}
+              onValueChange={handleIntervalValueChange}
+              disabled={isReadOnly}
+            />
+          )}
 
           {/* Timezone Selection */}
           <Field title='Timezone' description='Select the timezone for the schedule'>
             <TimeZonePicker
               open={false}
-              onOpenChange={() => {}}
               selected={previewConfig.timezone}
               onChange={handleTimezoneChange}
             />

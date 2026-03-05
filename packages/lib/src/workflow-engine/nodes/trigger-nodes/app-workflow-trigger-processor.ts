@@ -103,8 +103,9 @@ export class AppWorkflowTriggerProcessor extends BaseNodeProcessor {
     if (!node.data.triggerId) {
       errors.push('Trigger ID is required for app trigger')
     }
-    if (!node.data.installationId) {
-      errors.push('Installation ID is required for app trigger')
+    // installationId is now resolved at runtime — only require appId for resolution
+    if (!node.data.installationId && !node.data.appId) {
+      errors.push('App ID is required to resolve installation for app trigger')
     }
 
     return { valid: errors.length === 0, errors, warnings }

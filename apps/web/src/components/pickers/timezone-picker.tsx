@@ -60,7 +60,7 @@ interface ProcessedTimezone {
 
 interface TimeZonePickerProps {
   open: boolean
-  onOpenChange: (open: boolean) => void
+  // onOpenChange: (open: boolean) => void
   selected?: string
   onChange: (selected: string) => void
   className?: string

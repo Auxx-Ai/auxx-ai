@@ -5,6 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, count, desc, eq, ilike, inArray, or, type SQL } from 'drizzle-orm'
 import { getQueue, Queues } from '../jobs/queues'
 import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
+import { PollingTriggerService } from './polling-trigger-service'
 import { ScheduledTriggerService } from './scheduled-trigger-service'
 import {
   type TestResult,
@@ -21,6 +22,7 @@ const logger = createScopedLogger('workflow-service')
 
 export class WorkflowService {
   private scheduledTriggerService = new ScheduledTriggerService()
+  private pollingTriggerService = new PollingTriggerService()
 
   constructor(private db: Database) {}
 
@@ -435,18 +437,45 @@ export class WorkflowService {
           if (basicUpdateData.entityDefinitionId !== undefined)
             workflowUpdates.entityDefinitionId = basicUpdateData.entityDefinitionId
 
-          // Extract app trigger fields from graph's trigger node when trigger type is 'app-trigger'
-          if (basicUpdateData.triggerType === 'app-trigger' && graph?.nodes) {
+          // Extract app trigger fields from graph's trigger node for both app trigger types
+          const isAppTrigger =
+            basicUpdateData.triggerType === 'app-trigger' ||
+            basicUpdateData.triggerType === 'app-polling-trigger'
+          if (isAppTrigger && graph?.nodes) {
             const triggerNode = (graph.nodes as any[]).find(
               (n: any) => n.data?.triggerId && n.data?.appId
             )
             if (triggerNode?.data) {
               workflowUpdates.triggerAppId = triggerNode.data.appId || null
               workflowUpdates.triggerTriggerId = triggerNode.data.triggerId || null
-              workflowUpdates.triggerInstallationId = triggerNode.data.installationId || null
               workflowUpdates.triggerConnectionId = triggerNode.data.connectionId || null
+
+              // Resolve triggerInstallationId at save time — fail hard if app not installed
+              // (writing null would silently disable dispatch since the filter matches on exact equality)
+              if (triggerNode.data.appId) {
+                const { resolveActiveInstallationId } = await import(
+                  '@auxx/services/app-installations'
+                )
+                const instResult = await resolveActiveInstallationId(
+                  triggerNode.data.appId,
+                  organizationId
+                )
+                if (instResult.isOk()) {
+                  workflowUpdates.triggerInstallationId = instResult.value
+                } else {
+                  // Fallback to stored value for legacy nodes that still have installationId
+                  workflowUpdates.triggerInstallationId = triggerNode.data.installationId || null
+                  logger.warn('Could not resolve triggerInstallationId, using stored value', {
+                    appId: triggerNode.data.appId,
+                    organizationId,
+                    storedInstallationId: triggerNode.data.installationId,
+                  })
+                }
+              } else {
+                workflowUpdates.triggerInstallationId = triggerNode.data.installationId || null
+              }
             }
-          } else if (basicUpdateData.triggerType && basicUpdateData.triggerType !== 'app-trigger') {
+          } else if (basicUpdateData.triggerType && !isAppTrigger) {
             // Clear app trigger fields when switching to a non-app trigger
             workflowUpdates.triggerAppId = null
             workflowUpdates.triggerTriggerId = null
@@ -516,10 +545,12 @@ export class WorkflowService {
           if (updateData.enabled && result.publishedWorkflow) {
             // Re-schedule triggers when enabling
             await this.scheduledTriggerService.scheduleWorkflowTriggers(result)
+            await this.pollingTriggerService.schedulePollingTrigger(result)
             logger.info('Re-scheduled triggers for enabled workflow', { workflowAppId: id })
           } else if (!updateData.enabled) {
             // Remove schedulers when disabling
             await this.scheduledTriggerService.unscheduleWorkflowTriggers(id)
+            await this.pollingTriggerService.unschedulePollingTrigger(id)
             logger.info('Removed schedulers for disabled workflow', { workflowAppId: id })
           }
         } catch (schedulingError) {
@@ -687,12 +718,13 @@ export class WorkflowService {
         throw new Error('Workflow not found')
       }
 
-      // 2. Remove scheduled triggers (cron jobs)
+      // 2. Remove scheduled triggers and polling triggers (cron jobs)
       try {
         await this.scheduledTriggerService.unscheduleWorkflowTriggers(id)
-        logger.info('Removed scheduled triggers for workflow deletion', { workflowAppId: id })
+        await this.pollingTriggerService.unschedulePollingTrigger(id)
+        logger.info('Removed triggers for workflow deletion', { workflowAppId: id })
       } catch (schedulingError) {
-        logger.error('Failed to remove scheduled triggers during workflow deletion', {
+        logger.error('Failed to remove triggers during workflow deletion', {
           workflowAppId: id,
           error:
             schedulingError instanceof Error ? schedulingError.message : String(schedulingError),

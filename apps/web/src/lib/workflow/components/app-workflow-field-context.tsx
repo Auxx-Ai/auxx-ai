@@ -21,6 +21,8 @@ export interface AppWorkflowFieldContextValue {
   getFieldMode: (fieldKey: string) => boolean
   /** Block schema with input/output field definitions */
   schema: WorkflowBlock['schema'] | null
+  /** Whether this node is a trigger node (no upstream variables available) */
+  isTrigger: boolean
 }
 
 const AppWorkflowFieldContext = createContext<AppWorkflowFieldContextValue | null>(null)

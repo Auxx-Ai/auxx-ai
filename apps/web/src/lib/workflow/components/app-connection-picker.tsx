@@ -2,7 +2,6 @@
 
 'use client'
 
-import { Label } from '@auxx/ui/components/label'
 import {
   Select,
   SelectContent,
@@ -11,6 +10,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { useEffect, useMemo } from 'react'
+import Section from '~/components/workflow/ui/section'
 import { api } from '~/trpc/react'
 
 interface AppConnectionPickerProps {
@@ -57,20 +57,24 @@ export function AppConnectionPicker({
   }
 
   return (
-    <div className='px-4 pb-3'>
-      <Label className='text-xs text-muted-foreground mb-1.5 block'>Connection</Label>
-      <Select value={connectionId || ''} onValueChange={(v) => onChange(v || undefined)}>
-        <SelectTrigger className='h-8 text-sm'>
-          <SelectValue placeholder='Select connection...' />
-        </SelectTrigger>
-        <SelectContent>
-          {availableConnections.map((conn) => (
-            <SelectItem key={conn.id} value={conn.id}>
-              {conn.label || conn.appName}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
+    <Section
+      title='Connection'
+      collapsible={false}
+      className='**:data-slot=section]:pb-0'
+      actions={
+        <Select value={connectionId || ''} onValueChange={(v) => onChange(v || undefined)}>
+          <SelectTrigger size='sm' variant='ghost'>
+            <SelectValue placeholder='Select connection...' />
+          </SelectTrigger>
+          <SelectContent>
+            {availableConnections.map((conn) => (
+              <SelectItem key={conn.id} value={conn.id}>
+                {conn.label || conn.appName}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      }
+    />
   )
 }

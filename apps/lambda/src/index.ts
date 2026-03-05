@@ -5,6 +5,7 @@ import { loadBundle } from './bundle-loader.ts'
 import { createRuntimeContext } from './context-provider.ts'
 import { executeCode } from './executors/code-executor.ts'
 import { executeEventHandler } from './executors/event-executor.ts'
+import { executePollingTrigger } from './executors/polling-trigger-executor.ts'
 /**
  * AWS Lambda Handler for Server Function Execution
  *
@@ -63,6 +64,10 @@ async function executeAppEvent(validatedEvent: ValidatedLambdaEvent) {
       const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
       return executeServerFunction({ ...eventData, bundleCode, context })
     }
+    case 'polling-trigger': {
+      const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
+      return executePollingTrigger({ ...eventData, bundleCode, context })
+    }
   }
 }
 
@@ -86,7 +91,7 @@ const CALLER_TYPE_ALLOWLIST: Record<string, string[]> = {
   'webhook-route': ['webhook'],
   'app-events': ['event'],
   'workflow-engine': ['workflow-block', 'code'],
-  worker: ['workflow-block', 'code', 'event'],
+  worker: ['workflow-block', 'code', 'event', 'polling-trigger'],
 }
 
 /** Maximum payload size (5 MB) */
