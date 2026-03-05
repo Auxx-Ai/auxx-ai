@@ -104,6 +104,7 @@ export const connectionsRouter = createTRPCRouter({
             additionalAuthorizeParams: z.record(z.string(), z.string()).optional(),
             additionalTokenParams: z.record(z.string(), z.string()).optional(),
             scopeSeparator: z.string().optional(),
+            callbackMetadataParams: z.array(z.string()).optional(),
           })
           .optional(),
       })

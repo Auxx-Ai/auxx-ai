@@ -159,6 +159,7 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
     placeholderConstant = 'Enter value',
     varType,
     allowConstant = true,
+    allowVariable = true,
     fieldOptions, // Full field.options for type-specific config (enum via fieldOptions.enum, fieldReference via fieldOptions.fieldReference)
     allowedTypes = [], // Type filtering
     mode = VAR_MODE.RICH,
@@ -175,8 +176,12 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
     // Internal state for uncontrolled mode
     const [internalIsConstantMode, setInternalIsConstantMode] = useState(defaultIsConstantMode)
 
-    // Use controlled value if provided, otherwise internal
-    const isConstantMode = isControlled ? controlledIsConstantMode : internalIsConstantMode
+    // Use controlled value if provided, otherwise internal. Force constant when variables disabled.
+    const isConstantMode = !allowVariable
+      ? true
+      : isControlled
+        ? controlledIsConstantMode
+        : internalIsConstantMode
 
     const [constantValue, setConstantValue] = useState(value ?? '')
 
@@ -335,7 +340,7 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
         )}
         data-focused={isFocused}
         data-readonly={readOnly}>
-        {!readOnly && allowConstant && (
+        {!readOnly && allowConstant && allowVariable && (
           <Tooltip content={isConstantMode ? 'Switch to variable mode' : 'Switch to constant'}>
             <Button
               variant='ghost'

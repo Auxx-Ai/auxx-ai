@@ -52,12 +52,12 @@ export const IntervalSelector: React.FC<IntervalSelectorProps> = ({
     <div className='space-y-4'>
       {/* Interval Type and Value */}
       <VarEditorField>
-        <div className='flex items-center gap-1 flex-row'>
+        <div className='flex items-center gap-3 flex-row'>
           <Select
             value={config.triggerInterval}
             onValueChange={onIntervalChange}
             disabled={disabled}>
-            <SelectTrigger id='interval-type' variant='transparent' className='w-30'>
+            <SelectTrigger id='interval-type' size='sm' className='w-24'>
               <SelectValue placeholder='Select interval type' />
             </SelectTrigger>
             <SelectContent>
@@ -98,7 +98,8 @@ export const IntervalSelector: React.FC<IntervalSelectorProps> = ({
               mode={VAR_MODE.PICKER}
               placeholder='Select variable...'
               placeholderConstant='Enter duration...'
-              allowConstant
+              allowConstant={false}
+              hideClearButton
               disabled={disabled}
             />
           </div>

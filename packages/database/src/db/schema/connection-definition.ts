@@ -27,6 +27,8 @@ export type OAuth2Features = {
   additionalTokenParams?: Record<string, string>
   /** Scope separator character. Default: ' ' (space) */
   scopeSeparator?: string
+  /** Callback query param names to capture and store as connection metadata */
+  callbackMetadataParams?: string[]
 }
 
 /** Drizzle table for ConnectionDefinition */

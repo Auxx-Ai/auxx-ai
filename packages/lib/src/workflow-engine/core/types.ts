@@ -78,6 +78,9 @@ export enum WorkflowTriggerType {
 
   // Extension app trigger (webhook-driven, dispatched via BullMQ)
   APP_TRIGGER = 'app-trigger',
+
+  // Extension app polling trigger (scheduled poll → dispatch via BullMQ)
+  APP_POLLING_TRIGGER = 'app-polling-trigger',
 }
 
 /**
@@ -94,6 +97,7 @@ export const WORKFLOW_TRIGGER_TYPE_VALUES = [
   WorkflowTriggerType.MESSAGE_RECEIVED,
   WorkflowTriggerType.RESOURCE_TRIGGER,
   WorkflowTriggerType.APP_TRIGGER,
+  WorkflowTriggerType.APP_POLLING_TRIGGER,
 ] as const
 
 /**
@@ -111,6 +115,7 @@ export const TRIGGER_NAME_MAP: Record<WorkflowTriggerType, string> = {
   [WorkflowTriggerType.MESSAGE_RECEIVED]: 'Message Received',
   [WorkflowTriggerType.RESOURCE_TRIGGER]: 'Resource Trigger',
   [WorkflowTriggerType.APP_TRIGGER]: 'App Trigger',
+  [WorkflowTriggerType.APP_POLLING_TRIGGER]: 'App Polling Trigger',
 }
 
 /**

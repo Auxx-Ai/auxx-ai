@@ -43,6 +43,8 @@ interface VarEditorArrayProps {
   disabled?: boolean
   /** Allow constant mode toggle */
   allowConstant?: boolean
+  /** Whether variable mode is available. When false, hides toggle and forces constant mode. */
+  allowVariable?: boolean
   /** Placeholder for variable mode */
   placeholder?: string
   /** Placeholder for constant mode */
@@ -71,6 +73,7 @@ function SortableArrayItem({
   nodeId,
   disabled,
   allowConstant,
+  allowVariable,
   placeholder,
   placeholderConstant,
   showHandle,
@@ -84,6 +87,7 @@ function SortableArrayItem({
   nodeId: string
   disabled?: boolean
   allowConstant?: boolean
+  allowVariable?: boolean
   placeholder?: string
   placeholderConstant?: string
   showHandle: boolean
@@ -123,6 +127,7 @@ function SortableArrayItem({
           nodeId={nodeId}
           disabled={disabled}
           allowConstant={allowConstant}
+          allowVariable={allowVariable}
           isConstantMode={mode}
           placeholder={placeholder}
           placeholderConstant={placeholderConstant}
@@ -157,6 +162,7 @@ export const VarEditorArray: React.FC<VarEditorArrayProps> = ({
   nodeId,
   disabled = false,
   allowConstant = true,
+  allowVariable,
   placeholder = 'Enter value or use variables',
   placeholderConstant = 'Enter value',
   modes: externalModes,
@@ -260,6 +266,7 @@ export const VarEditorArray: React.FC<VarEditorArrayProps> = ({
               nodeId={nodeId}
               disabled={disabled}
               allowConstant={allowConstant}
+              allowVariable={allowVariable}
               placeholder={placeholder}
               placeholderConstant={placeholderConstant}
               showHandle={items.length > 1}

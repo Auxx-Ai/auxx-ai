@@ -4,6 +4,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNodeCrud } from '~/components/workflow/hooks'
+import { AppTriggerTestSection } from '~/components/workflow/nodes/core/app-trigger/app-trigger-test-section'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import { reconstructReactTree } from '~/lib/extensions/reconstruct-react-tree'
@@ -14,6 +15,7 @@ import { computeOutputSignature, resolveAppBlockOutputFields } from '../utils/re
 import { convertOutputFieldsToVariables } from '../utils/type-mapping'
 import { AppConnectionPicker } from './app-connection-picker'
 import { AppWorkflowFieldContext } from './app-workflow-field-context'
+import { PollingIntervalSelector } from './polling-interval-selector'
 
 /**
  * Props for AppWorkflowPanel component
@@ -24,6 +26,8 @@ interface AppWorkflowPanelProps {
   installationId: string
   block: WorkflowBlock
   data?: any // Optional data prop from parent
+  /** Whether this node is a trigger (disables variable mode on inputs) */
+  isTrigger?: boolean
 }
 
 /**
@@ -36,19 +40,26 @@ interface AppWorkflowPanelProps {
  * 4. Handles bidirectional data updates between platform and iframe
  */
 export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
-  ({ nodeId, appId, installationId, block, data: propData }) => {
+  ({ nodeId, appId, installationId, block, data: propData, isTrigger = false }) => {
     const { appInstallations } = useExtensionsContext()
 
-    // Resolve app context for the "App Settings" button
+    // Resolve app context — handles both exact match and fallback from appId
     const appContext = useMemo(() => {
-      const inst = appInstallations.find(
+      // Try exact match first (backwards compat with nodes that still have installationId)
+      let inst = appInstallations.find(
         (i) => i.app.id === appId && i.installationId === installationId
       )
+      // Fallback: resolve from appId (Approach B — installationId may be missing or stale)
+      if (!inst && appId) {
+        inst =
+          appInstallations.find((i) => i.app.id === appId && i.installationType === 'production') ||
+          appInstallations.find((i) => i.app.id === appId)
+      }
       if (!inst) return undefined
       return {
         appId,
         appSlug: inst.app.slug,
-        installationId,
+        installationId: inst.installationId,
         installationType: inst.installationType,
         appName: inst.app.title,
       }
@@ -61,10 +72,11 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
     const [error, setError] = useState<string | null>(null)
     const [isLoading, setIsLoading] = useState(true)
 
-    // Reactive message client — re-renders when client becomes available or errors
+    // Reactive message client — use resolved installationId from appContext
+    const resolvedInstallationId = appContext?.installationId ?? installationId
     const { messageClient, initError } = useOptionalMessageClient({
       appId,
-      appInstallationId: installationId,
+      appInstallationId: resolvedInstallationId,
     })
 
     // Keep ref in sync with latest nodeData
@@ -121,8 +133,9 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
         handleFieldChange,
         getFieldMode,
         schema: block.schema,
+        isTrigger,
       }),
-      [nodeId, nodeData, handleFieldChange, getFieldMode, block.schema]
+      [nodeId, nodeData, handleFieldChange, getFieldMode, block.schema, isTrigger]
     )
 
     /** Merged output variables (static + computed + inferred from execution) */
@@ -316,9 +329,24 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
         {block.config?.requiresConnection && (
           <AppConnectionPicker
             appId={appId}
-            installationId={installationId}
+            installationId={resolvedInstallationId}
             connectionId={nodeData.connectionId}
             onChange={handleConnectionChange}
+          />
+        )}
+        {isTrigger && block.config?.polling && (
+          <PollingIntervalSelector
+            nodeId={nodeId}
+            data={nodeData}
+            defaultInterval={block.config.polling.intervalMinutes}
+            minInterval={block.config.polling.minIntervalMinutes}
+          />
+        )}
+        {isTrigger && (
+          <AppTriggerTestSection
+            installationId={resolvedInstallationId}
+            triggerId={block.id}
+            schema={block.schema}
           />
         )}
         {isLoading && !displayError ? (

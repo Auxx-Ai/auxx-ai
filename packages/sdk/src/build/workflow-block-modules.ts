@@ -79,6 +79,11 @@ export interface WorkflowTriggerDefinition {
     timeout?: number
     retries?: number
     requiresConnection?: boolean
+    polling?: {
+      intervalMinutes?: number
+      cron?: string
+      minIntervalMinutes?: number
+    }
   }
 }
 
@@ -139,6 +144,9 @@ export function extractObjectProperties(node: ASTNode): Record<string, any> | un
 
     if (value.type === 'Literal') {
       result[key] = value.value
+    } else if (value.type === 'ObjectExpression') {
+      const nested = extractObjectProperties(value)
+      if (nested) result[key] = nested
     }
   }
 

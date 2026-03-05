@@ -1,5 +1,7 @@
 // packages/sdk/src/server/workflow/index.ts
 
+export type { PollingExecuteResult, PollingState } from '../../root/workflow/types.js'
+
 /**
  * Workflow input definition
  */

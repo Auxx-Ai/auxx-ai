@@ -136,6 +136,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       tokenRequestBody.code_verifier = metadata.codeVerifier
     }
 
+    // Append additional token params from connection definition
+    if (features.additionalTokenParams) {
+      for (const [key, value] of Object.entries(features.additionalTokenParams)) {
+        tokenRequestBody[key] = value
+      }
+    }
+
     // Use appropriate auth method
     const tokenRequestHeaders: Record<string, string> = {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -211,6 +218,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       hasRefresh: !!tokens.refresh_token,
     })
 
+    // Extract callback metadata params declared in the connection definition
+    const callbackMetadata: Record<string, string> = {}
+    if (features.callbackMetadataParams?.length) {
+      for (const param of features.callbackMetadataParams) {
+        const value = searchParams.get(param)
+        if (value) callbackMetadata[param] = value
+      }
+    }
+
     // Save connection to WorkflowCredentials
     const result = await saveAppConnection(
       metadata.appId,
@@ -228,6 +244,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         metadata: {
           scope: tokens.scope,
           tokenType: tokens.token_type,
+          ...callbackMetadata,
         },
       },
       metadata.connectionId ? { connectionId: metadata.connectionId } : undefined

@@ -10,8 +10,7 @@ import { useInternalAppsContext } from '~/providers/extensions/internal-apps-con
  * Handles the 'surface-trigger-complete' and 'surface-trigger-error' messages.
  */
 export function TriggerDataHandler() {
-  const { appId, appInstallationId, isDevLoggingEnabled, messageClient } =
-    useExtensionDataHandlerContext()
+  const { appId, isDevLoggingEnabled, messageClient } = useExtensionDataHandlerContext()
   const { store } = useInternalAppsContext()
 
   useEffect(() => {

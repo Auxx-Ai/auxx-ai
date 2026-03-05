@@ -82,6 +82,8 @@ export interface VarEditorProps {
   /** Whether the input is read-only */
   readOnly?: boolean
   allowConstant?: boolean
+  /** Whether variable mode is available. When false, hides toggle and forces constant mode. Default: true */
+  allowVariable?: boolean
 
   // Constant mode control
   /** External control of constant mode */

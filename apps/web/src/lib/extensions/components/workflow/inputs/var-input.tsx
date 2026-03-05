@@ -51,7 +51,8 @@ export const VarInputInternal = ({
   expand?: boolean // consumed by parent WorkflowVarFieldGroup, ignored here
   variant?: string
 }) => {
-  const { nodeId, nodeData, handleFieldChange, getFieldMode, schema } = useAppWorkflowFieldContext()
+  const { nodeId, nodeData, handleFieldChange, getFieldMode, schema, isTrigger } =
+    useAppWorkflowFieldContext()
 
   // Resolve options: explicit prop > schema metadata > empty
   const resolvedOptions = options ?? schema?.inputs?.[name]?.options
@@ -80,6 +81,7 @@ export const VarInputInternal = ({
       varType={varType}
       mode={mode}
       allowConstant={allowConstant}
+      allowVariable={!isTrigger}
       allowedTypes={allowedTypes}
       fieldOptions={fieldOptions}
       placeholder={placeholder}

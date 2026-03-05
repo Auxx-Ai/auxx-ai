@@ -101,15 +101,9 @@ export async function uninstallApp(input: UninstallAppInput) {
 
   const transactionResult = await fromDatabase(
     database.transaction(async (tx: Transaction) => {
-      // Delete app settings
-      await tx
-        .delete(schema.AppSetting)
-        .where(eq(schema.AppSetting.appInstallationId, installation.id))
-
-      // Delete app connections
-      await tx
-        .delete(schema.WorkflowCredentials)
-        .where(eq(schema.WorkflowCredentials.appInstallationId, installation.id))
+      // Preserve AppSettings and WorkflowCredentials on uninstall so they survive
+      // reinstall (Approach A: stable installation identity). OAuth tokens may expire
+      // but refresh logic or re-auth flow handles that without destroying the row.
 
       // Soft delete installation
       const [updated] = await tx

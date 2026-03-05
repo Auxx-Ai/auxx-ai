@@ -72,8 +72,6 @@ export class NodeFactory {
       // Core properties
       id: nodeId,
       desc: definition.description,
-      icon: definition.icon,
-      color: definition.color,
       isValid: true,
       errors: [],
       disabled: false,

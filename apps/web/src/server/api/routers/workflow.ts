@@ -8,7 +8,7 @@ import {
   type Workflow,
   WorkflowEngine,
   type WorkflowNode,
-  type WorkflowNodeType,
+  WorkflowNodeType,
 } from '@auxx/lib/workflow-engine'
 import {
   TemplateGraphTransformer,
@@ -34,20 +34,38 @@ import { workflowTemplatesRouter } from './workflow-templates'
  */
 function convertToEngineFormat(dbWorkflow: any): Workflow {
   // Convert graph nodes to WorkflowNode format
-  const nodes: WorkflowNode[] = (dbWorkflow.graph?.nodes || []).map((node: any) => ({
-    id: node.id,
-    workflowId: dbWorkflow.id,
-    nodeId: node.id,
-    type: node.data?.type as WorkflowNodeType,
-    name: node.data?.title || node.data?.name || 'Untitled Node',
-    description: node.data?.description || node.data?.desc,
-    data: node.data || {},
-    metadata: {
-      position: node.position,
-      color: node.data?.color,
-      icon: node.data?.icon,
-    },
-  }))
+  const nodes: WorkflowNode[] = (dbWorkflow.graph?.nodes || []).map((node: any) => {
+    // Determine engine node type
+    let engineType = node.data?.type as WorkflowNodeType
+
+    // Normalize app trigger nodes: frontend stores "appId:triggerId" but
+    // the engine expects "app-trigger" or "app-polling-trigger" to recognize it as an entry point
+    if (
+      node.data?.triggerId &&
+      node.data?.appId &&
+      typeof engineType === 'string' &&
+      engineType.includes(':')
+    ) {
+      engineType = node.data?.config?.polling
+        ? WorkflowNodeType.APP_POLLING_TRIGGER
+        : WorkflowNodeType.APP_TRIGGER
+    }
+
+    return {
+      id: node.id,
+      workflowId: dbWorkflow.id,
+      nodeId: node.id,
+      type: engineType,
+      name: node.data?.title || node.data?.name || 'Untitled Node',
+      description: node.data?.description || node.data?.desc,
+      data: node.data || {},
+      metadata: {
+        position: node.position,
+        color: node.data?.color,
+        icon: node.data?.icon,
+      },
+    }
+  })
   return {
     id: dbWorkflow.id,
     workflowId: dbWorkflow.id,

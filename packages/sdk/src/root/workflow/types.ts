@@ -210,6 +210,20 @@ export interface WorkflowBlockConfig {
   requiresConnection?: boolean
   /** Whether this block can be run individually via the Input/Result tabs (default: true) */
   canRunSingle?: boolean
+
+  /**
+   * Polling configuration for polling-based triggers.
+   * Presence of this field indicates the trigger is a polling trigger.
+   * Provide either `intervalMinutes` (simple) or `cron` (advanced), not both.
+   */
+  polling?: {
+    /** Default polling interval in minutes. Users can override in the trigger panel. */
+    intervalMinutes?: number
+    /** Cron expression for custom schedules (alternative to intervalMinutes). */
+    cron?: string
+    /** Minimum allowed interval in minutes — prevents abuse (default: 1). */
+    minIntervalMinutes?: number
+  }
 }
 
 /**
@@ -259,6 +273,36 @@ export interface WorkflowPanelProps<TSchema extends WorkflowSchema = WorkflowSch
 export type WorkflowExecuteFunction<TSchema extends WorkflowSchema = WorkflowSchema> = (
   input: InferWorkflowInput<TSchema>
 ) => Promise<InferWorkflowOutput<TSchema>>
+
+/**
+ * Polling state provided to polling trigger execute functions.
+ */
+export interface PollingState {
+  /** Persisted state from the previous poll (cursor, timestamp, page token, etc.) */
+  state: Record<string, unknown>
+  /** Organization connection credentials */
+  connection: { value: string; metadata?: Record<string, unknown> } | null
+}
+
+/**
+ * Result returned by a polling trigger execute function.
+ */
+export interface PollingExecuteResult {
+  /** Array of events to dispatch as trigger data. Empty = no new events. */
+  events: Record<string, unknown>[]
+  /** Updated state to persist for next poll. Merged with existing state. */
+  state: Record<string, unknown>
+}
+
+/**
+ * Execute function for polling triggers.
+ * The platform calls this on a schedule. It should check for new data
+ * and return events to dispatch + updated polling state.
+ */
+export type PollingExecuteFunction<TSchema extends WorkflowSchema = WorkflowSchema> = (
+  input: InferWorkflowInput<TSchema>,
+  polling: PollingState
+) => Promise<PollingExecuteResult>
 
 /**
  * Workflow block definition
@@ -350,7 +394,7 @@ export interface WorkflowTrigger<TSchema extends WorkflowSchema = WorkflowSchema
   panel?: ComponentType<WorkflowPanelProps<TSchema>>
 
   /** Server-side execution function */
-  execute: WorkflowExecuteFunction<TSchema>
+  execute: WorkflowExecuteFunction<TSchema> | PollingExecuteFunction<TSchema>
 
   /** Trigger configuration */
   config?: WorkflowBlockConfig

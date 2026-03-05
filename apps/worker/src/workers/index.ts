@@ -12,6 +12,7 @@ import { startMaintenanceWorker } from './worker-definitions/maintenance-worker'
 import { startMessageSyncWorker } from './worker-definitions/message-sync-worker'
 import { startOAuth2RefreshWorker } from './worker-definitions/oauth2-refresh-worker'
 import { startPollingSyncWorker } from './worker-definitions/polling-sync-worker'
+import { startPollingTriggerWorker } from './worker-definitions/polling-trigger-worker'
 import { startScheduledTriggerWorker } from './worker-definitions/scheduled-trigger-worker'
 import { startShopifyWorker } from './worker-definitions/shopify-worker'
 import { startThumbnailWorker } from './worker-definitions/thumbnail-worker'
@@ -62,6 +63,9 @@ export async function startWorkers() {
   // App trigger dispatch worker (webhook → workflow)
   const appTriggerWorker = startAppTriggerWorker()
 
+  // App polling trigger worker (scheduled poll → dispatch)
+  const pollingTriggerWorker = startPollingTriggerWorker()
+
   const workers = [
     // defaultWorker,
     eventsWorker,
@@ -81,6 +85,7 @@ export async function startWorkers() {
     pollingSyncWorker,
     emailWorker,
     appTriggerWorker,
+    pollingTriggerWorker,
   ]
 
   return Promise.all(workers)

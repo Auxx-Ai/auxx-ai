@@ -138,6 +138,32 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
       )
     }
 
+    // Resolve installationId at runtime — always resolve from appId to ensure freshness.
+    // This handles missing (new nodes), stale (reinstalled app), or deleted installations.
+    if (appId) {
+      const { resolveActiveInstallationId } = await import('@auxx/services/app-installations')
+      const orgId = contextManager.getContext().organizationId
+      const result = await resolveActiveInstallationId(appId, orgId)
+      if (result.isOk()) {
+        if (result.value !== installationId) {
+          logger.debug('Resolved installationId at runtime', {
+            nodeId: node.nodeId,
+            appId,
+            previous: installationId,
+            resolved: result.value,
+          })
+        }
+        installationId = result.value
+      } else if (!installationId) {
+        // Only throw if we have no installationId at all — if the stored one
+        // might still work (e.g. race condition), let execution proceed
+        throw new Error(
+          `No active installation found for app ${appId} in org ${orgId}. ` +
+            'The app may need to be reinstalled.'
+        )
+      }
+    }
+
     // 2. Resolve variables in input fields using mode-driven resolution
     const resolvedInputs: Record<string, any> = {}
     const fieldModes: Record<string, boolean> = node.data.fieldModes || {}

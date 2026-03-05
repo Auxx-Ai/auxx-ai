@@ -104,6 +104,7 @@ const connectionFormSchema = z
       )
       .optional()
       .or(z.literal('')),
+    oauth2CallbackMetadataParams: z.string().optional().or(z.literal('')),
   })
   .refine(
     (data) => {
@@ -210,6 +211,7 @@ export default function ConnectionsPage() {
       oauth2ScopeSeparator: '',
       oauth2AdditionalAuthorizeParams: '',
       oauth2AdditionalTokenParams: '',
+      oauth2CallbackMetadataParams: '',
     },
   })
 
@@ -256,6 +258,8 @@ export default function ConnectionsPage() {
         oauth2AdditionalTokenParams: features.additionalTokenParams
           ? JSON.stringify(features.additionalTokenParams, null, 2)
           : '',
+        oauth2CallbackMetadataParams:
+          (features.callbackMetadataParams as string[])?.join(', ') ?? '',
       })
 
       // Auto-open advanced section if any advanced field has a value
@@ -264,7 +268,8 @@ export default function ConnectionsPage() {
         features.callbackBaseUrl ||
         features.scopeSeparator ||
         features.additionalAuthorizeParams ||
-        features.additionalTokenParams
+        features.additionalTokenParams ||
+        (features.callbackMetadataParams as string[])?.length
       ) {
         setShowAdvanced(true)
       }
@@ -331,6 +336,12 @@ export default function ConnectionsPage() {
           }),
           ...(data.oauth2AdditionalTokenParams && {
             additionalTokenParams: JSON.parse(data.oauth2AdditionalTokenParams),
+          }),
+          ...(data.oauth2CallbackMetadataParams && {
+            callbackMetadataParams: data.oauth2CallbackMetadataParams
+              .split(/[\s,]+/)
+              .map((s) => s.trim())
+              .filter((s) => s.length > 0),
           }),
         },
       }),
@@ -649,6 +660,21 @@ export default function ConnectionsPage() {
                               {errors.oauth2AdditionalTokenParams.message}
                             </p>
                           )}
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor='app-organization-callback-metadata-params'>
+                            Callback metadata params
+                          </FieldLabel>
+                          <Input
+                            id='app-organization-callback-metadata-params'
+                            placeholder='realmId, tenantId'
+                            {...register('oauth2CallbackMetadataParams')}
+                          />
+                          <FieldDescription>
+                            Comma-separated list of callback URL query params to capture and store
+                            as connection metadata. These are available at runtime via
+                            connection.metadata.
+                          </FieldDescription>
                         </Field>
                       </FieldGroup>
                     )}

@@ -42,6 +42,11 @@ export interface WorkflowBlock {
   config?: {
     canRunSingle?: boolean
     requiresConnection?: boolean
+    polling?: {
+      intervalMinutes?: number
+      cron?: string
+      minIntervalMinutes?: number
+    }
   }
   /** Whether this block has a custom panel component */
   hasPanel?: boolean

@@ -3,6 +3,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
+import { PollingTriggerService } from './polling-trigger-service'
 import { ScheduledTriggerService } from './scheduled-trigger-service'
 import { WorkflowTriggerType, type WorkflowVersion } from './types'
 
@@ -10,6 +11,7 @@ const logger = createScopedLogger('workflow-version-service')
 
 export class WorkflowVersionService {
   private scheduledTriggerService = new ScheduledTriggerService()
+  private pollingTriggerService = new PollingTriggerService()
 
   constructor(private db: Database) {}
 
@@ -72,6 +74,10 @@ export class WorkflowVersionService {
             version: nextVersion,
             triggerType:
               workflowApp.draftWorkflow?.triggerType || WorkflowTriggerType.MESSAGE_RECEIVED,
+            triggerAppId: workflowApp.draftWorkflow?.triggerAppId || undefined,
+            triggerTriggerId: workflowApp.draftWorkflow?.triggerTriggerId || undefined,
+            triggerInstallationId: workflowApp.draftWorkflow?.triggerInstallationId || undefined,
+            triggerConnectionId: workflowApp.draftWorkflow?.triggerConnectionId || undefined,
             entityDefinitionId: workflowApp.draftWorkflow?.entityDefinitionId || undefined,
             graph: workflowApp.draftWorkflow?.graph || undefined,
             envVars: workflowApp.draftWorkflow?.envVars || undefined,
@@ -118,6 +124,7 @@ export class WorkflowVersionService {
         if (workflowAppWithPublished?.publishedWorkflow) {
           if (workflowAppWithPublished.enabled) {
             await this.scheduledTriggerService.scheduleWorkflowTriggers(workflowAppWithPublished)
+            await this.pollingTriggerService.schedulePollingTrigger(workflowAppWithPublished)
             logger.info('Scheduled triggers set up for published enabled workflow', {
               workflowAppId: workflowId,
               versionId: newVersion.id,

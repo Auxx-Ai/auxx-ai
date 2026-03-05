@@ -147,13 +147,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const authUrl = new URL(connDef.oauth2AuthorizeUrl!)
     authUrl.searchParams.set('client_id', connDef.oauth2ClientId!)
     authUrl.searchParams.set('redirect_uri', `${callbackBase}/api/apps/${slug}/oauth2/callback`)
-    authUrl.searchParams.set('scope', scopes.join(' '))
+    const scopeSeparator = features.scopeSeparator || ' '
+    authUrl.searchParams.set('scope', scopes.join(scopeSeparator))
     authUrl.searchParams.set('state', state)
     authUrl.searchParams.set('response_type', 'code')
 
     // Google requires access_type=offline as a URL parameter for refresh tokens
     if (googleParams) {
       for (const [key, value] of Object.entries(googleParams)) {
+        authUrl.searchParams.set(key, value)
+      }
+    }
+
+    // Append additional authorize params from connection definition
+    if (features.additionalAuthorizeParams) {
+      for (const [key, value] of Object.entries(features.additionalAuthorizeParams)) {
         authUrl.searchParams.set(key, value)
       }
     }

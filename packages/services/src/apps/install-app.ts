@@ -1,7 +1,7 @@
 // packages/services/src/apps/install-app.ts
 
 import { database, schema, type Transaction } from '@auxx/database'
-import { sql } from 'drizzle-orm'
+import { and, eq, isNotNull } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { InstallAppInput } from './schemas'
@@ -196,28 +196,53 @@ export async function installApp(input: InstallAppInput) {
   // Create installation in a transaction
   const transactionResult = await fromDatabase(
     database.transaction(async (tx: Transaction) => {
-      // Delete any old uninstalled records to avoid unique constraint violation
-      await tx.delete(schema.AppInstallation).where(
-        sql`${schema.AppInstallation.appId} = ${app.id}
-              AND ${schema.AppInstallation.organizationId} = ${organizationId}
-              AND ${schema.AppInstallation.installationType} = ${installationType}
-              AND ${schema.AppInstallation.uninstalledAt} IS NOT NULL`
-      )
+      // Reactivate soft-deleted installation if one exists (preserves stable installationId
+      // so workflow nodes, webhook handlers, and credentials remain valid across reinstall)
+      const softDeleted = await tx.query.AppInstallation.findFirst({
+        where: and(
+          eq(schema.AppInstallation.appId, app.id),
+          eq(schema.AppInstallation.organizationId, organizationId),
+          eq(schema.AppInstallation.installationType, installationType!),
+          isNotNull(schema.AppInstallation.uninstalledAt)
+        ),
+      })
 
-      // Create installation
-      const [installation] = await tx
-        .insert(schema.AppInstallation)
-        .values({
-          appId: app.id,
-          organizationId,
-          installationType,
-          currentDeploymentId: selectedDeployment!.id,
-          installedAt: new Date(),
-        })
-        .returning()
+      let installation: NonNullable<typeof softDeleted>
 
-      if (!installation) {
-        throw new Error('Failed to create installation')
+      if (softDeleted) {
+        // Reactivate — same ID persists
+        const [reactivated] = await tx
+          .update(schema.AppInstallation)
+          .set({
+            uninstalledAt: null,
+            currentDeploymentId: selectedDeployment!.id,
+            installedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.AppInstallation.id, softDeleted.id))
+          .returning()
+
+        if (!reactivated) {
+          throw new Error('Failed to reactivate installation')
+        }
+        installation = reactivated
+      } else {
+        // Create new installation
+        const [created] = await tx
+          .insert(schema.AppInstallation)
+          .values({
+            appId: app.id,
+            organizationId,
+            installationType,
+            currentDeploymentId: selectedDeployment!.id,
+            installedAt: new Date(),
+          })
+          .returning()
+
+        if (!created) {
+          throw new Error('Failed to create installation')
+        }
+        installation = created
       }
 
       // Log event
