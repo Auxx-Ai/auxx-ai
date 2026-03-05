@@ -28,6 +28,7 @@ export class WorkflowVarInputTag extends BaseTag {
       multiline,
       expand,
       variant,
+      loading,
     } = props
 
     return {
@@ -41,6 +42,7 @@ export class WorkflowVarInputTag extends BaseTag {
       multiline,
       expand,
       variant,
+      loading,
     }
   }
 }

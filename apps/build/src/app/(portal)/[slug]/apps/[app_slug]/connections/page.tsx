@@ -18,6 +18,7 @@ import {
   FieldSet,
 } from '@auxx/ui/components/field'
 import { Input } from '@auxx/ui/components/input'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
 import {
   Select,
   SelectContent,
@@ -27,6 +28,7 @@ import {
 } from '@auxx/ui/components/select'
 import { Switch } from '@auxx/ui/components/switch'
 import { Textarea } from '@auxx/ui/components/textarea'
+import { TooltipError, TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Loader2, X } from 'lucide-react'
 import { useParams } from 'next/navigation'
@@ -442,29 +444,43 @@ export default function ConnectionsPage() {
                 <FieldGroup>
                   <Field>
                     <FieldLabel htmlFor='app-organization-authorize-url'>Authorize URL</FieldLabel>
-                    <Input
-                      id='app-organization-authorize-url'
-                      placeholder='https://auth-server.com/oauth/authorize'
-                      {...register('oauth2AuthorizeUrl')}
-                    />
-                    {errors.oauth2AuthorizeUrl && (
-                      <p className='text-sm text-red-600 mt-1'>
-                        {errors.oauth2AuthorizeUrl.message}
-                      </p>
-                    )}
+                    <InputGroup>
+                      <InputGroupInput
+                        id='app-organization-authorize-url'
+                        placeholder='https://auth-server.com/oauth/authorize'
+                        aria-invalid={!!errors.oauth2AuthorizeUrl}
+                        {...register('oauth2AuthorizeUrl')}
+                      />
+                      <InputGroupAddon align='inline-end'>
+                        {errors.oauth2AuthorizeUrl && (
+                          <TooltipError text={errors.oauth2AuthorizeUrl.message ?? ''} />
+                        )}
+                        <TooltipExplanation
+                          text='The URL where users are redirected to grant authorization to your app.'
+                          side='right'
+                        />
+                      </InputGroupAddon>
+                    </InputGroup>
                   </Field>
                   <Field>
                     <FieldLabel htmlFor='app-organization-token-url'>Access token URL</FieldLabel>
-                    <Input
-                      id='app-organization-token-url'
-                      placeholder='https://auth-server.com/oauth/token'
-                      {...register('oauth2AccessTokenUrl')}
-                    />
-                    {errors.oauth2AccessTokenUrl && (
-                      <p className='text-sm text-red-600 mt-1'>
-                        {errors.oauth2AccessTokenUrl.message}
-                      </p>
-                    )}
+                    <InputGroup>
+                      <InputGroupInput
+                        id='app-organization-token-url'
+                        placeholder='https://auth-server.com/oauth/token'
+                        aria-invalid={!!errors.oauth2AccessTokenUrl}
+                        {...register('oauth2AccessTokenUrl')}
+                      />
+                      <InputGroupAddon align='inline-end'>
+                        {errors.oauth2AccessTokenUrl && (
+                          <TooltipError text={errors.oauth2AccessTokenUrl.message ?? ''} />
+                        )}
+                        <TooltipExplanation
+                          text='The URL used to exchange the authorization code for an access token.'
+                          side='right'
+                        />
+                      </InputGroupAddon>
+                    </InputGroup>
                   </Field>
                   <Field>
                     <FieldLabel htmlFor='app-organization-client-id'>Client ID</FieldLabel>

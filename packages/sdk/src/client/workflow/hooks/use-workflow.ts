@@ -117,6 +117,8 @@ export interface WorkflowOptionsInputProps<TSchema extends WorkflowSchema> {
   expand?: boolean
   /** Select trigger style: 'transparent' (default) or 'outline' */
   variant?: 'transparent' | 'outline'
+  /** Show loading skeleton while options are being fetched */
+  loading?: boolean
 }
 
 /**
@@ -367,6 +369,7 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
         options: props.options ?? metadata.options,
         expand: props.expand,
         variant: props.variant,
+        loading: props.loading,
       })
     },
     [serializedInputSchema]

@@ -101,6 +101,8 @@ export interface FieldOptions {
   multiSelect?: boolean
   /** For ENUM/SELECT type — SelectTrigger variant override */
   selectVariant?: 'transparent' | 'outline'
+  /** For ENUM/SELECT type — show loading skeleton while options are being fetched */
+  loading?: boolean
 }
 
 /**
@@ -129,6 +131,7 @@ export function getSpecificPropsForType(
       return {
         options: fieldOptions?.enum || fieldOptions?.options,
         selectVariant: fieldOptions?.selectVariant,
+        loading: fieldOptions?.loading,
       }
 
     case BaseType.DATE:

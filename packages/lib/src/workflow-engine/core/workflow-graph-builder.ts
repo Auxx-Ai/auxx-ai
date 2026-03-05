@@ -401,7 +401,9 @@ export class WorkflowGraphBuilder {
   private static extractNodeType(node: any): WorkflowNodeType {
     // App trigger nodes have triggerId + appId in data — route to app-trigger processor
     if (node.data?.triggerId && node.data?.appId) {
-      return WorkflowNodeType.APP_TRIGGER
+      return node.data?.config?.polling
+        ? WorkflowNodeType.APP_POLLING_TRIGGER
+        : WorkflowNodeType.APP_TRIGGER
     }
     return (node.data?.type || node.type) as WorkflowNodeType
   }

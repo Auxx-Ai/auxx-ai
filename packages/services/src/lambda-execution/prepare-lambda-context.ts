@@ -18,7 +18,7 @@ export function prepareLambdaContext(params: {
   installationId: string
   organizationId: string
   organizationHandle: string | null
-  userId: string
+  userId?: string
   userEmail: string | null
   userName: string | null
   userConnection?: any

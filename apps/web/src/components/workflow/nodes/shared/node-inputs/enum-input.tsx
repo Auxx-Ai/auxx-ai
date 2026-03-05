@@ -7,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 interface EnumOption {
@@ -26,6 +27,8 @@ interface EnumInputProps extends NodeInputProps {
   defaultValue?: string
   /** SelectTrigger variant override */
   selectVariant?: 'transparent' | 'outline'
+  /** Show loading skeleton while options are being fetched */
+  loading?: boolean
 }
 
 /**
@@ -43,6 +46,7 @@ export const EnumInput = createNodeInput<EnumInputProps>(
     placeholder,
     defaultValue,
     selectVariant,
+    loading,
   }) => {
     const value = (inputs?.[name] as string | undefined) ?? defaultValue ?? ''
     const error = errors?.[name]
@@ -63,6 +67,17 @@ export const EnumInput = createNodeInput<EnumInputProps>(
       .map((opt) => (typeof opt === 'string' ? { value: opt, label: opt } : opt))
       .filter((opt) => opt.value !== '')
     const placeholderText = placeholder || 'Select an option'
+
+    // Show skeleton placeholder while options are being fetched
+    if (loading) {
+      return (
+        <div
+          className={selectVariant === 'outline' ? 'mt-1' : 'ps-0 pe-1 min-h-8 flex items-center'}>
+          <Skeleton className='h-4 w-24' />
+        </div>
+      )
+    }
+
     // Return just the Select component without wrappers or error displays
     return (
       <Select value={value} onValueChange={handleChange} disabled={isLoading}>

@@ -20,7 +20,7 @@ const ConnectionDataSchema = z.object({
 export const ExecutionContextSchema = z.object({
   organizationId: z.string().min(1),
   organizationHandle: z.string().min(1),
-  userId: z.string().min(1),
+  userId: z.string().nullish(),
   userEmail: z.email().nullish(),
   userName: z.string().nullish(),
   appId: z.string().min(1),
