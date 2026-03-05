@@ -4,7 +4,7 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { HelpCircle } from 'lucide-react'
+import { CircleX, HelpCircle } from 'lucide-react'
 import { Tooltip as TooltipPrimitive } from 'radix-ui'
 import type * as React from 'react'
 
@@ -58,18 +58,43 @@ interface TooltipExplanationProps
   extends React.HTMLAttributes<HTMLDivElement>,
     VariantProps<typeof tooltipIconVariants> {
   text: string
+  side?: 'top' | 'right' | 'bottom' | 'left'
 }
 
 /**
  * Help icon with tooltip - displays a HelpCircle icon that shows explanatory text on hover
  */
-function TooltipExplanation({ text, size, className }: TooltipExplanationProps) {
+function TooltipExplanation({ text, size, side, className }: TooltipExplanationProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <HelpCircle className={cn('text-primary-400', tooltipIconVariants({ size }), className)} />
       </TooltipTrigger>
-      <TooltipContent>
+      <TooltipContent side={side}>
+        <div className='max-w-xs'>{text}</div>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+/** Props for TooltipError component */
+interface TooltipErrorProps
+  extends React.HTMLAttributes<HTMLDivElement>,
+    VariantProps<typeof tooltipIconVariants> {
+  text: string
+  side?: 'top' | 'right' | 'bottom' | 'left'
+}
+
+/**
+ * Error icon with tooltip - displays a CircleX icon that shows error text on hover
+ */
+function TooltipError({ text, size, side, className }: TooltipErrorProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <CircleX className={cn('text-destructive', tooltipIconVariants({ size }), className)} />
+      </TooltipTrigger>
+      <TooltipContent variant='destructive' side={side}>
         <div className='max-w-xs'>{text}</div>
       </TooltipContent>
     </Tooltip>
@@ -83,5 +108,6 @@ export {
   TooltipProvider,
   tooltipContentVariants,
   TooltipExplanation,
+  TooltipError,
 }
-export type { TooltipContentProps, TooltipExplanationProps }
+export type { TooltipContentProps, TooltipExplanationProps, TooltipErrorProps }

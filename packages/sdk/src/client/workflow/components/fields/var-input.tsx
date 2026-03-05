@@ -31,6 +31,8 @@ export interface VarInputProps {
   expand?: boolean
   /** Select trigger style variant (for select/options fields) */
   variant?: string
+  /** Show loading skeleton while options are being fetched */
+  loading?: boolean
 }
 
 /**

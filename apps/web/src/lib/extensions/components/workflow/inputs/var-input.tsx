@@ -39,6 +39,7 @@ export const VarInputInternal = ({
   multiline,
   expand: _expand,
   variant,
+  loading,
 }: {
   name: string
   type: string
@@ -50,6 +51,7 @@ export const VarInputInternal = ({
   multiline?: boolean
   expand?: boolean // consumed by parent WorkflowVarFieldGroup, ignored here
   variant?: string
+  loading?: boolean
 }) => {
   const { nodeId, nodeData, handleFieldChange, getFieldMode, schema, isTrigger } =
     useAppWorkflowFieldContext()
@@ -67,6 +69,7 @@ export const VarInputInternal = ({
     acceptsVariables: resolvedAcceptsVariables,
     variableTypes,
     variant,
+    loading,
   })
 
   // Dot-path access for nested fields

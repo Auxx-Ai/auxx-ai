@@ -111,14 +111,14 @@ interface RuntimeEnvironment {
   /** Display name of the organization */
   organizationName: string
 
-  /** Unique identifier of the current user */
-  userId: string
+  /** Unique identifier of the current user (nullish for system-level triggers like polling) */
+  userId?: string | null
 
-  /** Display name of the current user */
-  userName: string
+  /** Display name of the current user (nullish for system-level triggers like polling) */
+  userName?: string | null
 
   /** Email address of the current user */
-  userEmail: string
+  userEmail?: string | null
 
   /** Base URL for API requests (e.g., "https://api.auxx.ai") */
   apiUrl: string

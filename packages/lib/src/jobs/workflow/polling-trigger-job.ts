@@ -205,7 +205,7 @@ export async function executePollingTrigger(job: Job<PollingTriggerJobData>) {
     const connectionsResult = await resolveAppConnectionForRuntime({
       appId,
       organizationId,
-      userId: '', // Polling triggers run without a user context
+      userId: undefined, // Polling triggers run without a user context
       connectionId,
     })
 
@@ -216,9 +216,9 @@ export async function executePollingTrigger(job: Job<PollingTriggerJobData>) {
       installationId: installation.id,
       organizationId,
       organizationHandle: org.handle,
-      userId: '',
-      userEmail: '',
-      userName: '',
+      userId: undefined,
+      userEmail: undefined,
+      userName: undefined,
       userConnection: (connections as any).userConnection,
       organizationConnection: (connections as any).organizationConnection,
     })
