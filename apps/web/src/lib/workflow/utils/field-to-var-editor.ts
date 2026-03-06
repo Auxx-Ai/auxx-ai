@@ -49,6 +49,9 @@ export function mapFieldToVarEditorProps(params: {
   variableTypes?: string[]
   variant?: string
   loading?: boolean
+  multi?: boolean
+  canAdd?: boolean
+  canManage?: boolean
 }): VarEditorMappedProps {
   const { type, format, options, acceptsVariables, variableTypes, variant, loading } = params
 
@@ -161,7 +164,37 @@ export function mapFieldToVarEditorProps(params: {
         mode: VAR_MODE.PICKER,
         allowConstant,
         allowedTypes,
-        fieldOptions: { enum: normalizedOptions, selectVariant: variant, loading },
+        fieldOptions: {
+          enum: normalizedOptions,
+          selectVariant: variant,
+          loading,
+          multiSelect: params.multi,
+        },
+      }
+    }
+
+    case 'array': {
+      if (options && options.length > 0) {
+        const normalizedOptions = (options as any[]).map(normalizeOption)
+        return {
+          varType: BaseType.ARRAY,
+          mode: VAR_MODE.PICKER,
+          allowConstant,
+          allowedTypes,
+          fieldOptions: {
+            multiSelect: true,
+            enum: normalizedOptions,
+            canAdd: params.canAdd,
+            canManage: params.canManage,
+          },
+        }
+      }
+      return {
+        varType: BaseType.ARRAY,
+        mode: VAR_MODE.RICH,
+        allowConstant,
+        allowedTypes,
+        fieldOptions: undefined,
       }
     }
 

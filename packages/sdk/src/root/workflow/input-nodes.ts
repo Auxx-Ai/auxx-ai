@@ -50,7 +50,9 @@ export interface BooleanInputOptions extends BaseWorkflowFieldOptions {
  */
 export interface SelectInputOptions extends BaseWorkflowFieldOptions {
   options: readonly SelectOption[]
-  default?: string
+  default?: string | string[]
+  /** Allow selecting multiple options (default: false) */
+  multi?: boolean
 }
 
 /**
@@ -61,6 +63,12 @@ export interface ArrayInputOptions extends BaseWorkflowFieldOptions {
   minItems?: number
   maxItems?: number
   default?: any[]
+  /** Predefined options — renders as MultiSelect picker instead of plain ArrayInput */
+  options?: readonly SelectOption[]
+  /** Allow user to create new options at runtime (default: false) */
+  canAdd?: boolean
+  /** Allow user to edit/delete options at runtime (default: false) */
+  canManage?: boolean
 }
 
 /**
@@ -123,7 +131,7 @@ export class WorkflowBooleanNode extends WorkflowFieldNode<
  */
 export class WorkflowSelectNode<
   TOptions extends readonly SelectOption[] = readonly SelectOption[],
-> extends WorkflowFieldNode<'select', string, SelectInputOptions> {
+> extends WorkflowFieldNode<'select', string | string[], SelectInputOptions> {
   get type(): 'select' {
     return 'select'
   }
@@ -140,6 +148,9 @@ export class WorkflowSelectNode<
     const base = super.toJSON()
     if (!base._metadata) base._metadata = {}
     base._metadata.options = this._options.options as unknown as SelectOption[]
+    if (this._options.multi) {
+      base._metadata.multi = true
+    }
     return base
   }
 }
@@ -167,7 +178,14 @@ export class WorkflowArrayNode<
     if (base._metadata && 'items' in base._metadata) {
       delete base._metadata.items
     }
-    return { ...base, items: this._options.items.toJSON() }
+    const result: any = { ...base, items: this._options.items.toJSON() }
+    if (this._options.options) {
+      if (!result._metadata) result._metadata = {}
+      result._metadata.options = this._options.options as unknown as SelectOption[]
+      result._metadata.canAdd = this._options.canAdd ?? false
+      result._metadata.canManage = this._options.canManage ?? false
+    }
+    return result
   }
 
   /**

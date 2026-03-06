@@ -72,6 +72,9 @@ export interface MultiSelectPickerProps {
 
   /** Label for create button (default: "Create new") */
   createLabel?: string
+
+  /** When true, created options use the label text as value instead of a UUID */
+  useValueAsLabel?: boolean
 }
 
 /**
@@ -97,6 +100,7 @@ export function MultiSelectPicker({
   onSearchChange,
   onCreate,
   createLabel = 'Create new',
+  useValueAsLabel = false,
 }: MultiSelectPickerProps) {
   const editInputRef = useRef<HTMLInputElement>(null)
 
@@ -208,16 +212,24 @@ export function MultiSelectPicker({
       return
     }
 
-    // Generate random ID for value
-    const newId = crypto.randomUUID()
-    const newOption: SelectOption = { label: newLabel, value: newId }
+    // Use label as value when useValueAsLabel is true, otherwise generate UUID
+    const newValue = useValueAsLabel ? newLabel : crypto.randomUUID()
+    const newOption: SelectOption = { label: newLabel, value: newValue }
 
     // Update options and auto-select the new option
     updateOptions([...localOptions, newOption])
-    updateSelected([...localSelected, newId])
+    updateSelected([...localSelected, newValue])
 
     setSearchValue('')
-  }, [canAdd, searchValue, localOptions, localSelected, updateOptions, updateSelected])
+  }, [
+    canAdd,
+    searchValue,
+    localOptions,
+    localSelected,
+    updateOptions,
+    updateSelected,
+    useValueAsLabel,
+  ])
 
   /**
    * Delete an option

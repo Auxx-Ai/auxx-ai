@@ -230,6 +230,11 @@ function serializeFields(
       // Select options
       options: metadata.options,
 
+      // Multi-select
+      multi: metadata.multi,
+      canAdd: metadata.canAdd,
+      canManage: metadata.canManage,
+
       // Debug marker
       _fieldKind: kind,
     }
@@ -335,6 +340,9 @@ function serializeFieldsFromJSON(
       integer: metadata.integer,
       precision: metadata.precision,
       options: metadata.options,
+      multi: metadata.multi,
+      canAdd: metadata.canAdd,
+      canManage: metadata.canManage,
       _fieldKind: kind,
     }
 
@@ -384,6 +392,9 @@ function serializeNestedField(fieldJson: any, kind: 'input' | 'output'): any {
     integer: metadata.integer,
     precision: metadata.precision,
     options: metadata.options,
+    multi: metadata.multi,
+    canAdd: metadata.canAdd,
+    canManage: metadata.canManage,
     _fieldKind: kind,
   }
 

@@ -52,6 +52,7 @@ export function getInputComponent(type: BaseType, fieldOptions?: FieldOptions) {
     case BaseType.TIME:
       return DateTimeInput
     case BaseType.ENUM:
+      if (fieldOptions?.multiSelect) return MultiSelectInput
       return EnumInput
     case BaseType.FILE:
       return FileInput
@@ -99,6 +100,10 @@ export interface FieldOptions {
   actor?: { target?: 'user' | 'group' | 'both'; multiple?: boolean }
   /** For MULTI_SELECT type — triggers MultiSelectInput instead of ArrayInput */
   multiSelect?: boolean
+  /** Allow user to create new options (for multi-select) */
+  canAdd?: boolean
+  /** Allow user to edit/delete options (for multi-select) */
+  canManage?: boolean
   /** For ENUM/SELECT type — SelectTrigger variant override */
   selectVariant?: 'transparent' | 'outline'
   /** For ENUM/SELECT type — show loading skeleton while options are being fetched */
@@ -128,6 +133,9 @@ export function getSpecificPropsForType(
     // BaseType.PHONE uses dedicated PhoneInput component, no special props needed
 
     case BaseType.ENUM:
+      if (fieldOptions?.multiSelect) {
+        return { options: fieldOptions.enum || [] }
+      }
       return {
         options: fieldOptions?.enum || fieldOptions?.options,
         selectVariant: fieldOptions?.selectVariant,
@@ -180,7 +188,11 @@ export function getSpecificPropsForType(
 
     case BaseType.ARRAY:
       if (fieldOptions?.multiSelect) {
-        return { options: fieldOptions.enum || [] }
+        return {
+          options: fieldOptions.enum || [],
+          canAdd: fieldOptions.canAdd,
+          canManage: fieldOptions.canManage,
+        }
       }
       return {}
 
