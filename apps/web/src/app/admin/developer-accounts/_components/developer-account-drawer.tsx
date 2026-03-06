@@ -25,14 +25,16 @@ import {
 } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatDistanceToNow } from 'date-fns'
-import { Ban, Code, Download, MoreHorizontal, Trash2 } from 'lucide-react'
+import { Ban, Code, Download, MoreHorizontal, Trash2, Upload } from 'lucide-react'
 import Link from 'next/link'
+import { useState } from 'react'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
+import { ImportAppsDialog } from './import-apps-dialog'
 
 interface DeveloperAccount {
   id: string
@@ -76,6 +78,7 @@ export function DeveloperAccountDrawer({
   open,
   onOpenChange,
 }: DeveloperAccountDrawerProps) {
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
   const isDocked = useEffectiveDockState()
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
@@ -173,6 +176,16 @@ export function DeveloperAccountDrawer({
           title='Developer Account'
           actions={
             <>
+              <Tooltip content='Import apps from JSON'>
+                <Button
+                  variant='ghost'
+                  size='icon-sm'
+                  className='rounded-full'
+                  onClick={() => setImportDialogOpen(true)}
+                  tabIndex={-1}>
+                  <Upload />
+                </Button>
+              </Tooltip>
               <Tooltip content='Export apps as JSON'>
                 <Button
                   variant='ghost'
@@ -303,6 +316,15 @@ export function DeveloperAccountDrawer({
           </div>
         </ScrollArea>
       </DockableDrawer>
+      <ImportAppsDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        targetDeveloperAccountId={account?.id ?? ''}
+        onImportComplete={() => {
+          utils.admin.apps.getApps.invalidate()
+          utils.admin.getDeveloperAccounts.invalidate()
+        }}
+      />
     </>
   )
 }
