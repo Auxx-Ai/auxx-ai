@@ -15,6 +15,22 @@ import {
 import { App } from './app'
 import { DeveloperAccount } from './developer-account'
 
+/** A dynamic variable that organizations must provide when connecting */
+export type ConnectionVariable = {
+  /** Variable key matching {placeholder} in fields (e.g., "shop", "client_id") */
+  key: string
+  /** Human-readable label shown in the form (e.g., "Shop Subdomain") */
+  label: string
+  /** Help text (e.g., "Only the subdomain, e.g. my-store from my-store.myshopify.com") */
+  description?: string
+  /** Placeholder text for the input field */
+  placeholder?: string
+  /** Whether this variable is required (default: true) */
+  required?: boolean
+  /** Whether the input should be masked (for secrets like client_secret) */
+  secret?: boolean
+}
+
 /** OAuth2 feature flags and provider-specific configuration */
 export type OAuth2Features = {
   /** Enable PKCE with S256 (RFC 7636) */
@@ -29,6 +45,8 @@ export type OAuth2Features = {
   scopeSeparator?: string
   /** Callback query param names to capture and store as connection metadata */
   callbackMetadataParams?: string[]
+  /** Dynamic variables the org must provide before OAuth redirect */
+  connectionVariables?: ConnectionVariable[]
 }
 
 /** Drizzle table for ConnectionDefinition */

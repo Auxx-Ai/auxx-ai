@@ -3,6 +3,11 @@
 import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import type { ComponentType } from 'react'
 import { useMemo } from 'react'
+import { AppTriggerInput } from '~/components/workflow/nodes/shared/app-trigger-input'
+import {
+  registerDynamicTriggerInput,
+  unregisterDynamicTriggerInput,
+} from '~/components/workflow/nodes/trigger-registry'
 import type {
   NodeDefinition,
   NodePanelProps,
@@ -15,10 +20,40 @@ import { convertOutputFieldsToVariables } from '~/lib/workflow/utils/type-mappin
 import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 // import { AppWorkflowNode } from './components/app-workflow-node'
 import { AppWorkflowPanel } from './components/app-workflow-panel'
-import type { WorkflowBlock } from './types'
+import type { WorkflowBlock, WorkflowBlockOutput } from './types'
 
 // In-memory cache for loaded blocks
 const schemaCache = new Map<string, WorkflowBlock[]>()
+
+/**
+ * Builds a sample JSON object from schema output fields.
+ */
+function buildSampleData(outputs?: Record<string, WorkflowBlockOutput>): Record<string, unknown> {
+  if (!outputs) return {}
+  const sample: Record<string, unknown> = {}
+  for (const [key, field] of Object.entries(outputs)) {
+    switch (field.type) {
+      case 'string':
+        sample[key] = ''
+        break
+      case 'number':
+        sample[key] = 0
+        break
+      case 'boolean':
+        sample[key] = false
+        break
+      case 'array':
+        sample[key] = []
+        break
+      case 'object':
+        sample[key] = field.properties ? buildSampleData(field.properties) : {}
+        break
+      default:
+        sample[key] = null
+    }
+  }
+  return sample
+}
 
 /**
  * Converts app workflow blocks to ReactFlow node definitions
@@ -122,6 +157,30 @@ export class WorkflowBlockRegistry {
 
       this.nodeDefinitions.set(triggerKey, definition)
       nodeDefinitions.push(definition)
+
+      // Register dynamic trigger input so the Run panel's Input tab
+      // shows a JSON editor pre-filled with sample data from schema.outputs
+      const sampleData = buildSampleData(trigger.schema?.outputs)
+      registerDynamicTriggerInput(triggerKey, {
+        component: AppTriggerInput,
+        description: trigger.description || `Trigger data for ${trigger.label}`,
+        validate: (inputs: Record<string, any>) => {
+          if (typeof inputs.triggerData === 'string') {
+            try {
+              JSON.parse(inputs.triggerData)
+            } catch {
+              return {
+                isValid: false,
+                errors: [{ field: 'triggerData', message: 'Trigger data must be valid JSON' }],
+              }
+            }
+          }
+          return { isValid: true, errors: [] }
+        },
+        getDefaultInputs: () => ({
+          triggerData: JSON.stringify(sampleData, null, 2),
+        }),
+      })
     }
 
     return nodeDefinitions
@@ -136,6 +195,7 @@ export class WorkflowBlockRegistry {
       if (key.startsWith(`${appId}:`)) {
         this.blocks.delete(key)
         this.nodeDefinitions.delete(key)
+        unregisterDynamicTriggerInput(key)
       }
     }
   }
@@ -353,7 +413,7 @@ export class WorkflowBlockRegistry {
 
   /**
    * Create trigger panel component — renders AppWorkflowPanel with isTrigger flag.
-   * PollingIntervalSelector and AppTriggerTestSection are rendered inside AppWorkflowPanel.
+   * AppPollingSection and AppTriggerTestSection are rendered inside AppWorkflowPanel.
    */
   private createTriggerPanelComponent(
     appId: string,

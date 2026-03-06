@@ -3,25 +3,16 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { Play, Radio } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useAppTriggerTestListener } from '~/components/workflow/hooks/use-app-trigger-test-listener'
 import Section from '~/components/workflow/ui/section'
+import CodeEditor from '~/components/workflow/ui/structured-output-generator/code-editor'
 import type { WorkflowBlockOutput } from '~/lib/workflow/types'
 import { AppTriggerTestEvents } from './app-trigger-test-events'
 
-interface AppTriggerTestSectionProps {
-  installationId: string
-  triggerId: string
-  schema?: { outputs?: Record<string, WorkflowBlockOutput> }
-}
-
-/**
- * Builds a sample JSON object from schema output fields for the test editor.
- */
 function buildSampleData(outputs?: Record<string, WorkflowBlockOutput>): Record<string, unknown> {
   if (!outputs) return {}
   const sample: Record<string, unknown> = {}
@@ -47,6 +38,12 @@ function buildSampleData(outputs?: Record<string, WorkflowBlockOutput>): Record<
     }
   }
   return sample
+}
+
+interface AppTriggerTestSectionProps {
+  installationId: string
+  triggerId: string
+  schema?: { outputs?: Record<string, WorkflowBlockOutput> }
 }
 
 export function AppTriggerTestSection({
@@ -98,7 +95,7 @@ export function AppTriggerTestSection({
         <div className='flex items-center gap-2'>
           <div
             className={cn(
-              'h-2 w-2 rounded-full',
+              'size-2 rounded-full',
               connectionStatus === 'connected'
                 ? 'bg-green-500'
                 : connectionStatus === 'connecting'
@@ -141,12 +138,10 @@ export function AppTriggerTestSection({
 
         {showTestEditor && (
           <div className='space-y-2'>
-            <Textarea
+            <CodeEditor
               value={testData}
-              onChange={(e) => setTestData(e.target.value)}
-              placeholder='{"key": "value"}'
-              className='font-mono text-xs min-h-24'
-              rows={6}
+              onUpdate={setTestData}
+              className='h-40 rounded-lg border'
             />
             <Button
               variant='default'

@@ -121,7 +121,7 @@ export function ExecutionTracingView() {
           if (group.type === 'single') {
             // Single execution (not part of a grouped branch)
             const depth = (group.execution.executionMetadata as any)?.depth ?? 0
-            console.log(activeRun.status)
+
             // Check if this is a loop node
             if (group.execution.nodeType === 'loop') {
               const iterations = getLoopIterations(group.execution.nodeId)

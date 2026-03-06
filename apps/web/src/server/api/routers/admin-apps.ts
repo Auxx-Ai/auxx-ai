@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/admin-apps.ts
 
-import { database } from '@auxx/database'
+import { database, schema } from '@auxx/database'
 import { AdminService } from '@auxx/lib/admin'
 import {
   adminApproveDeployment,
@@ -8,6 +8,7 @@ import {
   adminDeprecateDeployment,
   adminRejectDeployment,
 } from '@auxx/services/app-versions'
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
 import { invalidateBuildCacheForDeveloperAccount } from '~/server/lib/invalidate-build-cache'
@@ -26,6 +27,7 @@ export const adminAppsRouter = createTRPCRouter({
         offset: z.number().min(0).default(0),
         search: z.string().optional(),
         publicationStatus: z.enum(['unpublished', 'published']).optional(),
+        developerAccountId: z.string().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -185,6 +187,20 @@ export const adminAppsRouter = createTRPCRouter({
     }),
 
   /**
+   * Export all apps for a developer account as portable JSON
+   */
+  exportByDeveloperAccount: superAdminProcedure
+    .input(
+      z.object({
+        developerAccountId: z.string(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const adminService = new AdminService(ctx.db)
+      return adminService.exportByDeveloperAccount(input.developerAccountId)
+    }),
+
+  /**
    * Toggle auto-approve for an app
    */
   toggleAutoApprove: superAdminProcedure
@@ -197,6 +213,24 @@ export const adminAppsRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const adminService = new AdminService(ctx.db)
       await adminService.toggleAutoApprove(input.appId, input.autoApprove)
+
+      return { success: true }
+    }),
+
+  /**
+   * Unpublish an app (set publication status to 'unpublished')
+   */
+  unpublishApp: superAdminProcedure
+    .input(
+      z.object({
+        appId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db
+        .update(schema.App)
+        .set({ publicationStatus: 'unpublished', updatedAt: new Date() })
+        .where(eq(schema.App.id, input.appId))
 
       return { success: true }
     }),

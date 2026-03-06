@@ -4,10 +4,10 @@ import { WEBAPP_URL } from '@auxx/config/urls'
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
+import { interpolateConnectionFields, saveAppConnection } from '@auxx/services/app-connections'
 
 const OAUTH_REDIRECT_BASE = process.env.NGROK_URL || WEBAPP_URL
 
-import { saveAppConnection } from '@auxx/services/app-connections'
 import { type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('oauth-callback')
@@ -122,11 +122,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const features = (connDef.oauth2Features as Record<string, any>) ?? {}
     const callbackBase = features.callbackBaseUrl || OAUTH_REDIRECT_BASE
 
+    // Interpolate connection fields with stored variables
+    const connectionVariables: Record<string, string> = metadata.connectionVariables ?? {}
+    const resolved = interpolateConnectionFields(connDef, connectionVariables)
+
     // Exchange authorization code for access token
     const tokenRequestBody: Record<string, string> = {
       code,
-      client_id: connDef.oauth2ClientId!,
-      client_secret: connDef.oauth2ClientSecret!,
+      client_id: resolved.clientId,
+      client_secret: resolved.clientSecret,
       redirect_uri: `${callbackBase}/api/apps/${slug}/oauth2/callback`,
       grant_type: 'authorization_code',
     }
@@ -151,9 +155,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     if (connDef.oauth2TokenRequestAuthMethod === 'basic-auth') {
-      const basicAuth = Buffer.from(
-        `${connDef.oauth2ClientId}:${connDef.oauth2ClientSecret}`
-      ).toString('base64')
+      const basicAuth = Buffer.from(`${resolved.clientId}:${resolved.clientSecret}`).toString(
+        'base64'
+      )
       tokenRequestHeaders['Authorization'] = `Basic ${basicAuth}`
       // Don't include client_id and client_secret in body for basic auth
       delete tokenRequestBody.client_id
@@ -167,7 +171,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       tokenUrl: connDef.oauth2AccessTokenUrl,
     })
 
-    const tokenResponse = await fetch(connDef.oauth2AccessTokenUrl!, {
+    const tokenResponse = await fetch(resolved.accessTokenUrl, {
       method: 'POST',
       headers: tokenRequestHeaders,
       body: new URLSearchParams(tokenRequestBody).toString(),
@@ -245,6 +249,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           scope: tokens.scope,
           tokenType: tokens.token_type,
           ...callbackMetadata,
+          ...(Object.keys(connectionVariables).length > 0 && { connectionVariables }),
         },
       },
       metadata.connectionId ? { connectionId: metadata.connectionId } : undefined

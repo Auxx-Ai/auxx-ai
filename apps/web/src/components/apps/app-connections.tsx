@@ -2,15 +2,24 @@
 
 'use client'
 
+import type { ConnectionVariable, OAuth2Features } from '@auxx/database'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@auxx/ui/components/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { Field, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
+import { Input } from '@auxx/ui/components/input'
 import {
   InputGroup,
   InputGroupAddon,
@@ -51,6 +60,9 @@ function AppConnections({ app }: Props) {
   const [secretDialogOpen, setSecretDialogOpen] = useState(false)
   const [secret, setSecret] = useState('')
   const [showSecret, setShowSecret] = useState(false)
+  const [variableDialogOpen, setVariableDialogOpen] = useState(false)
+  const [variableValues, setVariableValues] = useState<Record<string, string>>({})
+  const [reconnectConnectionId, setReconnectConnectionId] = useState<string | null>(null)
 
   const { data: installedResult } = api.apps.listInstalled.useQuery({})
   const { data: connectionsResult, refetch: refetchConnections } =
@@ -133,6 +145,52 @@ function AppConnections({ app }: Props) {
 
   const connectionType = connectionDefinition.global ? 'organization' : 'user'
   const isOAuth = connectionDefinition.connectionType === 'oauth2-code'
+  const connectionVarDefs: ConnectionVariable[] =
+    (connectionDefinition.oauth2Features as OAuth2Features | null)?.connectionVariables ?? []
+
+  const handleAddConnection = () => {
+    if (connectionVarDefs.length > 0) {
+      setReconnectConnectionId(null)
+      setVariableValues({})
+      setVariableDialogOpen(true)
+    } else if (addConnectionUrl) {
+      window.location.href = addConnectionUrl
+    }
+  }
+
+  const handleReconnect = (connectionId: string) => {
+    if (connectionVarDefs.length > 0) {
+      setReconnectConnectionId(connectionId)
+      setVariableValues({})
+      setVariableDialogOpen(true)
+    } else {
+      window.location.href = `/api/apps/${app.app.slug}/oauth2/authorize?installation=${installation.installationId}&type=${connectionType}&connectionId=${connectionId}`
+    }
+  }
+
+  const handleVariableSubmit = () => {
+    // Validate required variables
+    for (const varDef of connectionVarDefs) {
+      if (varDef.required !== false && !variableValues[varDef.key]?.trim()) {
+        toastError({
+          title: 'Missing required field',
+          description: `Please provide a value for "${varDef.label}".`,
+        })
+        return
+      }
+    }
+
+    const params = new URLSearchParams()
+    params.set('installation', installation.installationId)
+    params.set('type', connectionType)
+    if (reconnectConnectionId) {
+      params.set('connectionId', reconnectConnectionId)
+    }
+    for (const [key, value] of Object.entries(variableValues)) {
+      if (value) params.set(`var_${key}`, value)
+    }
+    window.location.href = `/api/apps/${app.app.slug}/oauth2/authorize?${params}`
+  }
 
   const handleDisconnect = async (credentialId: string, label: string | null) => {
     const confirmed = await confirm({
@@ -196,11 +254,9 @@ function AppConnections({ app }: Props) {
             </CardDescription>
           </div>
           {addConnectionUrl ? (
-            <Button variant='outline' size='sm' asChild>
-              <Link href={addConnectionUrl}>
-                <Plus />
-                Add Connection
-              </Link>
+            <Button variant='outline' size='sm' onClick={handleAddConnection}>
+              <Plus />
+              Add Connection
             </Button>
           ) : (
             connectionDefinition.connectionType === 'secret' && (
@@ -288,11 +344,8 @@ function AppConnections({ app }: Props) {
                       {(conn.connectionStatus === 'expired' ||
                         conn.connectionStatus === 'connected') &&
                         isOAuth && (
-                          <DropdownMenuItem asChild>
-                            <Link
-                              href={`/api/apps/${app.app.slug}/oauth2/authorize?installation=${installation.installationId}&type=${connectionType}&connectionId=${conn.id}`}>
-                              Reconnect
-                            </Link>
+                          <DropdownMenuItem onClick={() => handleReconnect(conn.id)}>
+                            Reconnect
                           </DropdownMenuItem>
                         )}
                       <DropdownMenuItem
@@ -322,6 +375,41 @@ function AppConnections({ app }: Props) {
             handleSaveSecret={handleSaveSecret}
             onClose={() => setSecretDialogOpen(false)}
           />
+        </DialogContent>
+      </Dialog>
+      <Dialog open={variableDialogOpen} onOpenChange={setVariableDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Connection Details</DialogTitle>
+            <DialogDescription>
+              Provide the following details to connect {app.app.title}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className='space-y-4'>
+            {connectionVarDefs.map((varDef) => (
+              <Field key={varDef.key}>
+                <FieldLabel>
+                  {varDef.label}
+                  {varDef.required !== false && <span className='text-destructive ml-1'>*</span>}
+                </FieldLabel>
+                <Input
+                  type={varDef.secret ? 'password' : 'text'}
+                  placeholder={varDef.placeholder}
+                  value={variableValues[varDef.key] ?? ''}
+                  onChange={(e) =>
+                    setVariableValues((prev) => ({ ...prev, [varDef.key]: e.target.value }))
+                  }
+                />
+                {varDef.description && <FieldDescription>{varDef.description}</FieldDescription>}
+              </Field>
+            ))}
+            <div className='flex justify-end gap-2 pt-2'>
+              <Button variant='ghost' onClick={() => setVariableDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleVariableSubmit}>Connect</Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
       <ConfirmDialog />

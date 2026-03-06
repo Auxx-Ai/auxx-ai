@@ -27,21 +27,18 @@ export async function executePollingTrigger(
 
   try {
     // Execute bundle to register workflow blocks
-    const codeWithReturn = bundleCode + '\nreturn { __AUXX_WORKFLOW_BLOCKS__ };'
+    // Return stdin_workflow_block_handlers_default which properly forwards all args,
+    // unlike __AUXX_WORKFLOW_BLOCKS__ which only forwards `input` in older bundles.
+    const codeWithReturn =
+      bundleCode + '\nreturn { __AUXX_WORKFLOW_BLOCKS__, stdin_workflow_block_handlers_default };'
     const fn = new Function(codeWithReturn)
     const result = fn()
+    const workflowBlockHandler = result.stdin_workflow_block_handlers_default
     const workflowBlocks = result.__AUXX_WORKFLOW_BLOCKS__
 
-    if (!workflowBlocks) {
-      throw new Error('Server bundle does not export workflow blocks')
-    }
-
-    const trigger = workflowBlocks[triggerId]
-    if (!trigger) {
+    // Verify trigger exists
+    if (!workflowBlocks?.[triggerId]) {
       throw new Error(`Polling trigger not found: ${triggerId}`)
-    }
-    if (typeof trigger.execute !== 'function') {
-      throw new Error(`Polling trigger ${triggerId} does not have an execute function`)
     }
 
     // Build polling context from the connection already resolved into the runtime context
@@ -54,8 +51,11 @@ export async function executePollingTrigger(
 
     const pollingContext = { state: pollingState, connection }
 
-    // Execute with timeout
-    const execPromise = trigger.execute(triggerInput, pollingContext)
+    // Execute with timeout — use stdin_workflow_block_handlers_default to properly
+    // forward all args (input + polling context) to the underlying execute function
+    const execPromise = workflowBlockHandler
+      ? workflowBlockHandler(triggerId, 'execute', [triggerInput, pollingContext])
+      : workflowBlocks[triggerId].execute(triggerInput, pollingContext)
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error(`Poll function timed out after ${timeout}ms`)), timeout)
     )

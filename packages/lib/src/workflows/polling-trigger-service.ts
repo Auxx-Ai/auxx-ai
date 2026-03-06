@@ -3,6 +3,7 @@
 import { getQueue, Queues } from '../jobs/queues'
 import { createScopedLogger } from '../logger'
 import { WorkflowTriggerType } from '../workflow-engine/core/types'
+import { extractUserInputs } from '../workflow-engine/nodes/trigger-nodes/extract-user-inputs'
 import type { WorkflowApp } from './types'
 
 const logger = createScopedLogger('polling-trigger-service')
@@ -69,7 +70,7 @@ export class PollingTriggerService {
             triggerId: workflowApp.publishedWorkflow.triggerTriggerId,
             installationId: workflowApp.publishedWorkflow.triggerInstallationId,
             connectionId: workflowApp.publishedWorkflow.triggerConnectionId,
-            triggerConfig: triggerNode.data.config,
+            triggerConfig: extractUserInputs(triggerNode.data),
           },
           opts: {
             attempts: 3,

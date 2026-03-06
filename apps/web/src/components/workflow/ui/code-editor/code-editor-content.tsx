@@ -27,6 +27,32 @@ const Editor = dynamic(() => import('@monaco-editor/react').then((m) => m.defaul
   ),
 })
 
+interface WorkflowContext {
+  getNodes: () => any[]
+  getNodeVariables: (targetNodeId: string) => any[]
+}
+
+/**
+ * Bridge component that safely calls ReactFlow/VarStore hooks
+ * Only rendered when nodeId is provided, avoiding conditional hook calls
+ */
+const WorkflowCompletionsBridge: React.FC<{
+  contextRef: React.MutableRefObject<WorkflowContext | null>
+}> = ({ contextRef }) => {
+  const reactFlowInstance = useReactFlow()
+  const varStore = useVarStore()
+
+  contextRef.current = {
+    getNodes: () => reactFlowInstance.getNodes(),
+    getNodeVariables: (targetNodeId: string) => {
+      const nodeCache = varStore.nodeOutputCache.get(targetNodeId)
+      return nodeCache?.variables || []
+    },
+  }
+
+  return null
+}
+
 /**
  * CodeEditor Content Component
  * Integrates Monaco Editor with resize functionality
@@ -59,10 +85,7 @@ const CodeEditorContent: React.FC = () => {
   const [isMounted, setIsMounted] = useState(false)
   const completionProviderRef = useRef<IDisposable | null>(null)
   const overflowContainerRef = useRef<HTMLElement | null>(null)
-
-  // Only use ReactFlow hooks if we're in a workflow context
-  const reactFlowInstance = nodeId ? useReactFlow() : null
-  const varStore = nodeId ? useVarStore() : null
+  const workflowContextRef = useRef<WorkflowContext | null>(null)
 
   // Calculate editor height
   // const editorHeight = isExpanded ? editorExpandHeight : contentHeight
@@ -119,15 +142,12 @@ const CodeEditorContent: React.FC = () => {
         nodeId &&
         enableWorkflowCompletions &&
         language === CodeLanguage.javascript &&
-        reactFlowInstance &&
-        varStore
+        workflowContextRef.current
       ) {
+        const wfContext = workflowContextRef.current
         const context = {
-          getNodes: () => reactFlowInstance.getNodes(),
-          getNodeVariables: (targetNodeId: string) => {
-            const nodeCache = varStore.nodeOutputCache.get(targetNodeId)
-            return nodeCache?.variables || []
-          },
+          getNodes: () => wfContext.getNodes(),
+          getNodeVariables: (targetNodeId: string) => wfContext.getNodeVariables(targetNodeId),
           getCurrentNodeId: () => nodeId,
         }
 
@@ -149,8 +169,6 @@ const CodeEditorContent: React.FC = () => {
       nodeId,
       enableWorkflowCompletions,
       language,
-      reactFlowInstance,
-      varStore,
       onMount,
     ]
   )
@@ -177,10 +195,15 @@ const CodeEditorContent: React.FC = () => {
     ...(overflowContainer && { overflowWidgetsDomNode: overflowContainer }),
   }
 
+  const bridgeElement = nodeId ? (
+    <WorkflowCompletionsBridge contextRef={workflowContextRef} />
+  ) : null
+
   // When expanded, use full height layout without resize wrapper
   if (isExpanded) {
     return (
       <>
+        {bridgeElement}
         {tip && <div className='px-1 py-0.5'>{tip}</div>}
         <div className='h-full pb-4 px-2 flex-1 min-h-0 flex'>
           <div className='relative h-full flex-1 pt-1'>
@@ -207,6 +230,7 @@ const CodeEditorContent: React.FC = () => {
   // Inline view with resize wrapper
   return (
     <>
+      {bridgeElement}
       {/* Tip section */}
       {tip && <div className='px-1 py-0.5'>{tip}</div>}
 

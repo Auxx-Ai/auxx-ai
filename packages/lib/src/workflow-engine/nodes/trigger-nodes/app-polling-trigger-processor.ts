@@ -4,6 +4,7 @@ import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
+import { extractUserInputs } from './extract-user-inputs'
 
 /**
  * Processor for extension app polling trigger nodes.
@@ -71,18 +72,32 @@ export class AppPollingTriggerProcessor extends BaseNodeProcessor {
       }
     }
 
-    // Map each trigger data field to a node variable for downstream access
+    // Expose configured trigger inputs (e.g., calendarId, triggerOn) as node variables
+    const configuredInputs = extractUserInputs(node.data)
+    for (const [key, value] of Object.entries(configuredInputs)) {
+      contextManager.setNodeVariable(node.nodeId, key, value)
+    }
+
+    // Map each trigger event data field to a node variable
+    // Event data takes precedence over configured inputs for same-named fields
     if (typeof triggerData === 'object' && triggerData !== null) {
       for (const [key, value] of Object.entries(triggerData)) {
+        if (key.startsWith('_')) continue
         contextManager.setNodeVariable(node.nodeId, key, value)
       }
     }
 
-    contextManager.setNodeVariable(node.nodeId, 'output', triggerData)
+    // Build clean output: configured inputs + event data
+    const eventOutput =
+      typeof triggerData === 'object' && triggerData !== null
+        ? Object.fromEntries(Object.entries(triggerData).filter(([k]) => !k.startsWith('_')))
+        : triggerData
+    const output = { ...configuredInputs, ...eventOutput }
+    contextManager.setNodeVariable(node.nodeId, 'output', output)
 
     return {
       status: NodeRunningStatus.Succeeded,
-      output: triggerData,
+      output,
       outputHandle: 'source',
     }
   }

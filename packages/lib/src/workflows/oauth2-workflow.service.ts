@@ -4,6 +4,7 @@ import { WEBAPP_URL } from '@auxx/config/server'
 import { CredentialService, CredentialTypeRegistry, configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { interpolateConnectionFields } from '@auxx/services/app-connections'
 import { URLTemplateService } from '@auxx/workflow-nodes/server'
 import type {
   OAuth2CallbackResult,
@@ -556,6 +557,7 @@ export class OAuth2WorkflowService {
           ),
           columns: {
             id: true,
+            oauth2AuthorizeUrl: true,
             oauth2AccessTokenUrl: true,
             oauth2ClientId: true,
             oauth2ClientSecret: true,
@@ -567,11 +569,15 @@ export class OAuth2WorkflowService {
           return { success: false, error: 'ConnectionDefinition not found' }
         }
 
+        // Interpolate connection fields with stored variables
+        const variables = (oauth2Data.metadata?.connectionVariables as Record<string, string>) ?? {}
+        const resolved = interpolateConnectionFields(connDef, variables)
+
         // Make refresh request to provider
         tokenData = await this.makeTokenRefreshRequest(
-          connDef.oauth2AccessTokenUrl,
-          connDef.oauth2ClientId!,
-          connDef.oauth2ClientSecret!,
+          resolved.accessTokenUrl,
+          resolved.clientId,
+          resolved.clientSecret,
           oauth2Data.refreshToken,
           connDef.oauth2TokenRequestAuthMethod || 'request-body'
         )

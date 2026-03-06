@@ -147,55 +147,56 @@ export default function AppsPage() {
             </div>
           ) : (
             <>
-              <div className='flex-1'>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>App Name</TableHead>
-                      <TableHead>Developer Account</TableHead>
-                      <TableHead>Version</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Created</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {apps.map((app) => (
-                      <TableRow
-                        key={app.id}
-                        className='cursor-pointer'
-                        onClick={() => handleRowClick(app.id)}>
-                        <TableCell>
-                          <div>
-                            <div className='font-medium'>{app.title}</div>
-                            <div className='text-sm text-muted-foreground'>@{app.slug}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {app.developerAccount ? (
-                            <div>{app.developerAccount.title}</div>
-                          ) : (
-                            <span className='text-muted-foreground'>-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {app.latestDeployment?.version || (
-                            <span className='text-muted-foreground'>-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={getStatusVariant(app.publicationStatus)}>
-                            {app.publicationStatus}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className='text-muted-foreground'>
-                          {formatDistanceToNow(new Date(app.createdAt), { addSuffix: true })}
-                        </TableCell>
+              <div className='flex-1 overflow-hidden flex flex-col min-h-0 relative'>
+                <div className='overflow-auto flex-1 relative'>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>App Name</TableHead>
+                        <TableHead>Developer Account</TableHead>
+                        <TableHead>Version</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Created</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {apps.map((app) => (
+                        <TableRow
+                          key={app.id}
+                          className='cursor-pointer'
+                          onClick={() => handleRowClick(app.id)}>
+                          <TableCell>
+                            <div>
+                              <div className='font-medium'>{app.title}</div>
+                              <div className='text-sm text-muted-foreground'>@{app.slug}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {app.developerAccount ? (
+                              <div>{app.developerAccount.title}</div>
+                            ) : (
+                              <span className='text-muted-foreground'>-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {app.latestDeployment?.version || (
+                              <span className='text-muted-foreground'>-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={getStatusVariant(app.publicationStatus)}>
+                              {app.publicationStatus}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className='text-muted-foreground'>
+                            {formatDistanceToNow(new Date(app.createdAt), { addSuffix: true })}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
-
               <div className='border-t py-1 px-2 flex items-center justify-between'>
                 <div className='text-sm text-muted-foreground'>
                   Showing {page * PAGE_SIZE + 1} to{' '}

@@ -240,6 +240,16 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
         finalInputs = formatManualTriggerInputs(inputs)
       }
 
+      // Transform inputs for app triggers — parse JSON triggerData and spread as top-level inputs
+      if (
+        triggerType === WorkflowTriggerType.APP_TRIGGER ||
+        triggerType === WorkflowTriggerType.APP_POLLING_TRIGGER
+      ) {
+        const raw = inputs.triggerData
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : (raw ?? {})
+        finalInputs = { ...parsed }
+      }
+
       // Transform inputs for RESOURCE_TRIGGER to match expected format
       if (triggerType === WorkflowTriggerType.RESOURCE_TRIGGER) {
         // Get resource type from the trigger node - read from ReactFlow's live store

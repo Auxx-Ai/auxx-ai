@@ -1,8 +1,9 @@
 // apps/web/src/components/workflow/ui/structured-output-generator/code-editor.tsx
 
 import { Spinner } from '@auxx/ui/components/spinner'
+import { useCopy } from '@auxx/ui/hooks/use-copy'
 import { cn } from '@auxx/ui/lib/utils'
-import { Clipboard, IndentIncrease } from 'lucide-react'
+import { Check, Clipboard, IndentIncrease } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useTheme } from 'next-themes'
 import React, { type FC, useCallback, useEffect, useRef } from 'react'
@@ -41,6 +42,7 @@ const CodeEditor: FC<CodeEditorProps> = ({
   const [isMounted, setIsMounted] = React.useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const { theme } = useTheme()
+  const { copy, copied } = useCopy({ toastMessage: 'Copied to clipboard' })
 
   const handleEditorDidMount = useCallback(
     (editor: any, monaco: any) => {
@@ -130,18 +132,18 @@ const CodeEditor: FC<CodeEditorProps> = ({
                 </button>
               </Tooltip>
             )}
-            <Tooltip content='Copy'>
+            <Tooltip content={copied ? 'Copied' : 'Copy'}>
               <button
                 type='button'
                 className='flex h-6 w-6 items-center justify-center'
-                onClick={() => navigator.clipboard.writeText(value)}>
-                <Clipboard className='h-4 w-4' />
+                onClick={() => copy(value)}>
+                {copied ? <Check className='h-4 w-4' /> : <Clipboard className='h-4 w-4' />}
               </button>
             </Tooltip>
           </div>
         </div>
       )}
-      <div className={cn('relative overflow-hidden', editorWrapperClassName)}>
+      <div className={cn('relative overflow-hidden flex-1', editorWrapperClassName)}>
         <Editor
           defaultLanguage='json'
           theme={
@@ -159,7 +161,7 @@ const CodeEditor: FC<CodeEditorProps> = ({
           options={{
             readOnly,
             stickyScroll: { enabled: false },
-            domReadOnly: true,
+            domReadOnly: readOnly,
             minimap: { enabled: false },
             tabSize: 2,
             scrollBeyondLastLine: false,
