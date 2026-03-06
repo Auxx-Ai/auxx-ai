@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.53](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.52...auxx-v0.1.53) (2026-03-06)
+
+
+### Features
+
+* implement ArrayInput component with drag-and-drop functionality… ([#180](https://github.com/Auxx-Ai/auxx-ai/issues/180)) ([9fd9de8](https://github.com/Auxx-Ai/auxx-ai/commit/9fd9de8e0df491a043769c26cca6e40e2be7437a))
+
 ## [0.1.52](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.51...auxx-v0.1.52) (2026-03-06)
 
 
