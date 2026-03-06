@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.52](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.51...auxx-v0.1.52) (2026-03-06)
+
+
+### Features
+
+* add Dockerfiles and health routes for homepage and docs ([#178](https://github.com/Auxx-Ai/auxx-ai/issues/178)) ([5120924](https://github.com/Auxx-Ai/auxx-ai/commit/512092486e1c80f08782e24b54f0b8391cd2c78e))
+
 ## [0.1.51](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.50...auxx-v0.1.51) (2026-03-06)
 
 
