@@ -274,6 +274,12 @@
       "import": "./dist/jobs/index.mjs",
       "default": "./src/jobs/index.ts"
     },
+    "./jobs/email/enqueue": {
+      "types": "./src/jobs/email/enqueue/index.ts",
+      "source": "./src/jobs/email/enqueue/index.ts",
+      "import": "./dist/jobs/email/enqueue/index.mjs",
+      "default": "./src/jobs/email/enqueue/index.ts"
+    },
     "./jobs/queues": {
       "types": "./src/jobs/queues/index.ts",
       "source": "./src/jobs/queues/index.ts",

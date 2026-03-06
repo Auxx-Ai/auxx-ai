@@ -624,6 +624,13 @@
       "when": 1772686045108,
       "tag": "0088_add_polling_trigger_state",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1772835684565,
+      "tag": "0089_add-user-ban-and-force-password-change",
+      "breakpoints": true
     }
   ]
 }

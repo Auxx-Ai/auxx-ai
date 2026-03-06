@@ -33,7 +33,7 @@ export function BuildNavMain({ accountSlug }: Props) {
   }
 
   return (
-    <>
+    <div className='space-y-4'>
       <SidebarGroup>
         <SidebarGroupLabel>Apps</SidebarGroupLabel>
         <SidebarMenu className=''>
@@ -110,6 +110,6 @@ export function BuildNavMain({ accountSlug }: Props) {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarGroup>
-    </>
+    </div>
   )
 }

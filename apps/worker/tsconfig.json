@@ -10,7 +10,7 @@
     "outDir": "./dist",
     "target": "ES2022",
     "rootDirs": ["."],
-    "jsx": "preserve"
+    "jsx": "react-jsx"
     // "paths": {
     //   "@auxx/lib": ["../../packages/lib"],
     //   "@auxx/database": ["../../packages/database"],

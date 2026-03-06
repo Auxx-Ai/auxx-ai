@@ -26,6 +26,11 @@ export default async function ProtectedLayout({ children }: ProtectedLayoutProps
     redirect('/login')
   }
 
+  // Force password change if flagged by admin
+  if ((session.user as any).forcePasswordChange) {
+    redirect('/change-password?forced=true')
+  }
+
   // Fetch dehydrated state on server with error handling
   const dehydrationService = new DehydrationService()
   let dehydratedState

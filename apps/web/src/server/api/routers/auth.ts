@@ -1,7 +1,9 @@
 // src/server/api/routers/auth.trpc.ts
 
+import { schema } from '@auxx/database'
 import { DehydrationService } from '@auxx/lib/dehydration'
 import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { auth } from '~/auth/server'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
@@ -29,4 +31,17 @@ export const authRouter = createTRPCRouter({
       return { success: true }
       // return result
     }),
+
+  /**
+   * Clear the forcePasswordChange flag for the current user.
+   * Called after the user successfully changes their password.
+   */
+  clearForcePasswordChange: protectedProcedure.mutation(async ({ ctx }) => {
+    await ctx.db
+      .update(schema.User)
+      .set({ forcePasswordChange: false, updatedAt: new Date() })
+      .where(eq(schema.User.id, ctx.session.userId))
+
+    return { success: true }
+  }),
 })

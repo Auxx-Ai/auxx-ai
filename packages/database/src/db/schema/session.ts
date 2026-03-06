@@ -23,6 +23,7 @@ export const session = pgTable(
     updatedAt: timestamp({ precision: 3 }).notNull(),
     ipAddress: text(),
     userAgent: text(),
+    impersonatedBy: text(),
   },
   (table) => [uniqueIndex('session_token_key').using('btree', table.token.asc().nullsLast())]
 )

@@ -47,6 +47,10 @@ export const User = pgTable(
     userType: userType().default('USER').notNull(),
     firstName: text(),
     lastName: text(),
+    banned: boolean().default(false).notNull(),
+    bannedReason: text(),
+    bannedAt: timestamp({ precision: 3 }),
+    forcePasswordChange: boolean().default(false).notNull(),
   },
   (table) => [
     uniqueIndex('User_avatarAssetId_key').using('btree', table.avatarAssetId.asc().nullsLast()),

@@ -28,6 +28,7 @@ export { SystemEmail, SystemText } from './general/system-email'
 // General templates
 export { WelcomeEmail, WelcomeText } from './general/welcome-email'
 // Organization templates
+export { DeveloperInviteEmail, DeveloperInviteText } from './invite/developer-invite-email'
 export { InviteEmail, InviteText } from './invite/invite-email'
 export { JoinOrganizationEmail, JoinOrganizationText } from './invite/join-organization-email'
 export { DataDeletionEmail, DataDeletionText } from './lifecycle/data-deletion-email'
