@@ -370,7 +370,7 @@ function serializeNestedField(fieldJson: any, kind: 'input' | 'output'): any {
   const metadata = fieldJson._metadata || {}
 
   const field: any = {
-    name: '',
+    name: metadata.label || 'item',
     label: metadata.label || '',
     type: fieldJson.type,
     description: metadata.description,
@@ -800,7 +800,7 @@ function serializeComputedOutputs(outputs: Record<string, any>): Record<string, 
     if (fieldNode && typeof fieldNode.toJSON === 'function') {
       const json = fieldNode.toJSON()
       const metadata = json._metadata || {}
-      result[key] = {
+      const field: any = {
         name: key,
         label: metadata.label || key,
         type: json.type || 'any',
@@ -808,6 +808,18 @@ function serializeComputedOutputs(outputs: Record<string, any>): Record<string, 
         required: metadata.required,
         _fieldKind: 'output' as const,
       }
+
+      // Handle struct/object: recursively serialize nested fields
+      if ((json.type === 'object' || json.type === 'struct') && json.fields) {
+        field.properties = serializeFieldsFromJSON(json.fields, 'output')
+      }
+
+      // Handle array: serialize item schema
+      if (json.type === 'array' && json.items) {
+        field.items = serializeNestedField(json.items, 'output')
+      }
+
+      result[key] = field
     } else if (fieldNode && typeof fieldNode === 'object' && fieldNode.type) {
       // Already serialized — pass through
       result[key] = { name: key, ...fieldNode }

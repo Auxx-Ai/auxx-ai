@@ -9,6 +9,11 @@ import type { TransformationContext } from './values/types.js'
 // ============================================================================
 
 /**
+ * Supported string formats for workflow string fields
+ */
+export type WorkflowStringFormat = 'date' | 'datetime' | 'time' | 'email' | 'url' | 'phone'
+
+/**
  * Options for string input fields
  */
 export interface StringInputOptions extends BaseWorkflowFieldOptions {
@@ -17,6 +22,8 @@ export interface StringInputOptions extends BaseWorkflowFieldOptions {
   maxLength?: number
   pattern?: string
   placeholder?: string
+  /** Format hint for specialized string types */
+  format?: WorkflowStringFormat
 }
 
 /**
@@ -286,6 +293,152 @@ export class WorkflowStructNode<
   }
 }
 
+/**
+ * Options for object input fields
+ */
+export interface ObjectInputOptions extends BaseWorkflowFieldOptions {
+  default?: Record<string, unknown>
+  placeholder?: string
+}
+
+/**
+ * Options for currency input fields
+ */
+export interface CurrencyInputOptions extends BaseWorkflowFieldOptions {
+  default?: number
+  /** ISO 4217 currency code (default: 'USD') */
+  currencyCode?: string
+  /** Number of decimal places (default: 2) */
+  decimalPlaces?: number
+  placeholder?: string
+}
+
+/**
+ * Options for secret input fields
+ */
+export interface SecretInputOptions extends BaseWorkflowFieldOptions {
+  default?: string
+  placeholder?: string
+}
+
+/**
+ * Options for file input fields
+ */
+export interface FileInputOptions
+  extends BaseWorkflowFieldOptions<WorkflowFileData | WorkflowFileData[]> {
+  /** Allow multiple file uploads (default: false) */
+  allowMultiple?: boolean
+  /** Maximum number of files when allowMultiple is true */
+  maxFiles?: number
+  /** Allowed MIME types or file extensions */
+  allowedFileTypes?: string[]
+  placeholder?: string
+}
+
+/**
+ * Structured file data in workflow context
+ */
+export interface WorkflowFileData {
+  id: string
+  fileId: string
+  assetId: string
+  versionId: string
+  filename: string
+  mimeType: string
+  size: number
+  url: string
+  nodeId: string
+  uploadedAt: Date
+  expiresAt?: Date
+}
+
+// ============================================================================
+// New Input Field Node Classes
+// ============================================================================
+
+/**
+ * Object input field node (arbitrary untyped object)
+ */
+export class WorkflowObjectNode extends WorkflowFieldNode<
+  'object',
+  Record<string, unknown>,
+  ObjectInputOptions
+> {
+  get type(): 'object' {
+    return 'object'
+  }
+
+  optional(): WorkflowObjectNode {
+    return new WorkflowObjectNode({ ...this._options, isOptional: true })
+  }
+}
+
+/**
+ * Currency input field node (integer cents)
+ */
+export class WorkflowCurrencyNode extends WorkflowFieldNode<
+  'currency',
+  number,
+  CurrencyInputOptions
+> {
+  get type(): 'currency' {
+    return 'currency'
+  }
+
+  optional(): WorkflowCurrencyNode {
+    return new WorkflowCurrencyNode({ ...this._options, isOptional: true })
+  }
+
+  toJSON() {
+    const base = super.toJSON()
+    if (!base._metadata) base._metadata = {}
+    if (this._options.currencyCode) base._metadata.currencyCode = this._options.currencyCode
+    if (this._options.decimalPlaces !== undefined)
+      base._metadata.decimalPlaces = this._options.decimalPlaces
+    return base
+  }
+}
+
+/**
+ * Secret input field node (masked sensitive value)
+ */
+export class WorkflowSecretNode extends WorkflowFieldNode<'secret', string, SecretInputOptions> {
+  get type(): 'secret' {
+    return 'secret'
+  }
+
+  optional(): WorkflowSecretNode {
+    return new WorkflowSecretNode({ ...this._options, isOptional: true })
+  }
+}
+
+/**
+ * File input field node
+ */
+export class WorkflowFileNode extends WorkflowFieldNode<
+  'file',
+  WorkflowFileData | WorkflowFileData[],
+  FileInputOptions
+> {
+  get type(): 'file' {
+    return 'file'
+  }
+
+  optional(): WorkflowFileNode {
+    return new WorkflowFileNode({ ...this._options, isOptional: true })
+  }
+
+  toJSON() {
+    const base = super.toJSON()
+    if (!base._metadata) base._metadata = {}
+    if (this._options.allowMultiple) base._metadata.allowMultiple = this._options.allowMultiple
+    if (this._options.maxFiles !== undefined) base._metadata.maxFiles = this._options.maxFiles
+    if (this._options.allowedFileTypes)
+      base._metadata.allowedFileTypes = this._options.allowedFileTypes
+    return base
+  }
+}
+
 // ============================================================================
 // Input Field Factory Functions
 // ============================================================================
@@ -304,6 +457,48 @@ export class WorkflowStructNode<
  */
 export function string(options?: StringInputOptions): WorkflowStringNode {
   return new WorkflowStringNode(options)
+}
+
+/**
+ * Create a date string input field (YYYY-MM-DD format)
+ */
+export function date(options?: Omit<StringInputOptions, 'format'>): WorkflowStringNode {
+  return new WorkflowStringNode({ ...options, format: 'date' })
+}
+
+/**
+ * Create a datetime string input field (ISO 8601 format)
+ */
+export function datetime(options?: Omit<StringInputOptions, 'format'>): WorkflowStringNode {
+  return new WorkflowStringNode({ ...options, format: 'datetime' })
+}
+
+/**
+ * Create a time string input field (HH:mm:ss format)
+ */
+export function time(options?: Omit<StringInputOptions, 'format'>): WorkflowStringNode {
+  return new WorkflowStringNode({ ...options, format: 'time' })
+}
+
+/**
+ * Create an email string input field
+ */
+export function email(options?: Omit<StringInputOptions, 'format'>): WorkflowStringNode {
+  return new WorkflowStringNode({ ...options, format: 'email' })
+}
+
+/**
+ * Create a URL string input field
+ */
+export function url(options?: Omit<StringInputOptions, 'format'>): WorkflowStringNode {
+  return new WorkflowStringNode({ ...options, format: 'url' })
+}
+
+/**
+ * Create a phone number string input field
+ */
+export function phone(options?: Omit<StringInputOptions, 'format'>): WorkflowStringNode {
+  return new WorkflowStringNode({ ...options, format: 'phone' })
 }
 
 /**
@@ -395,4 +590,67 @@ export function struct<TFields extends Record<string, WorkflowFieldNode>>(
   options?: Omit<StructInputOptions, 'fields'>
 ): WorkflowStructNode<TFields> {
   return new WorkflowStructNode<TFields>(fields, options)
+}
+
+/**
+ * Create an object input field for arbitrary key-value data
+ *
+ * @example
+ * ```typescript
+ * Workflow.object({
+ *   label: 'API Payload',
+ *   default: {},
+ * })
+ * ```
+ */
+export function object(options?: ObjectInputOptions): WorkflowObjectNode {
+  return new WorkflowObjectNode(options)
+}
+
+/**
+ * Create a currency input field (value in cents)
+ *
+ * @example
+ * ```typescript
+ * Workflow.currency({
+ *   label: 'Price',
+ *   currencyCode: 'USD',
+ *   decimalPlaces: 2,
+ * })
+ * ```
+ */
+export function currency(options?: CurrencyInputOptions): WorkflowCurrencyNode {
+  return new WorkflowCurrencyNode(options)
+}
+
+/**
+ * Create a secret input field (masked in UI, not logged)
+ *
+ * @example
+ * ```typescript
+ * Workflow.secret({
+ *   label: 'API Key',
+ *   placeholder: 'Enter your API key...',
+ * })
+ * ```
+ */
+export function secret(options?: SecretInputOptions): WorkflowSecretNode {
+  return new WorkflowSecretNode(options)
+}
+
+/**
+ * Create a file input field
+ *
+ * @example
+ * ```typescript
+ * Workflow.file({
+ *   label: 'Attachment',
+ *   allowMultiple: true,
+ *   maxFiles: 5,
+ *   allowedFileTypes: ['image/*', 'application/pdf'],
+ * })
+ * ```
+ */
+export function file(options?: FileInputOptions): WorkflowFileNode {
+  return new WorkflowFileNode(options)
 }

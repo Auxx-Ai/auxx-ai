@@ -22,8 +22,6 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc -b",
-    "generate": "tsx scripts/generate-frontend.ts",
-    "generate:watch": "tsx scripts/generate-frontend.ts --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 1000",
     "lint:fix": "eslint . --fix --max-warnings 1000",
@@ -45,8 +43,6 @@
     "@auxx/typescript-config": "workspace:*",
     "@vitejs/plugin-react": "^4.5.0",
     "eslint": "9.24.0",
-    "fs-extra": "^11.2.0",
-    "glob": "^10.3.10",
     "tsup": "^8.0.2",
     "tsx": "^4.7.1",
     "typescript": "5.9.2",

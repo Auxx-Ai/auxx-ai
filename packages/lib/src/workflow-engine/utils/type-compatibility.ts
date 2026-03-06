@@ -101,6 +101,17 @@ const TYPE_COMPATIBILITY_MAP: Record<BaseType, BaseType[]> = {
     BaseType.ARRAY, // Can serialize arrays to JSON
   ],
 
+  // CURRENCY accepts numeric types (stored as integer cents)
+  [BaseType.CURRENCY]: [
+    BaseType.ANY,
+    BaseType.CURRENCY,
+    BaseType.NUMBER, // Raw numbers
+    BaseType.STRING, // Parseable number strings
+  ],
+
+  // SECRET accepts secret and string types
+  [BaseType.SECRET]: [BaseType.ANY, BaseType.SECRET, BaseType.STRING],
+
   // OBJECT is strict - only accepts objects and ANY
   [BaseType.OBJECT]: [
     BaseType.ANY,

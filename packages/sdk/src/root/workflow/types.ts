@@ -20,11 +20,14 @@ export enum BaseType {
   // Specialized
   EMAIL = 'email',
   URL = 'url',
+  PHONE = 'phone',
   DATE = 'date',
   DATETIME = 'datetime',
   TIME = 'time',
   JSON = 'json',
   FILE = 'file',
+  CURRENCY = 'currency',
+  SECRET = 'secret',
 
   // References
   REFERENCE = 'reference',

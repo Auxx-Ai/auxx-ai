@@ -78,17 +78,8 @@ import { webhookDefinition } from './webhook'
 
 // import { variableDefinition } from './variable/schema'
 
-// Import app nodes
-import { APP_NODE_DEFINITIONS } from '../application'
 // Import input nodes
 import { INPUT_NODE_DEFINITIONS, INPUT_NODE_TYPES } from '../inputs'
-// import { ProfessionalNetworkNode } from '../application/professional-network'
-
-// Import auto-generated nodes
-import {
-  AUTO_GENERATED_NODE_DEFINITIONS,
-  AUTO_GENERATED_NODE_TYPES,
-} from '../application/auto-generated-registry'
 
 /**
  * All node definitions for the workflow system
@@ -140,10 +131,6 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   },
   // AppPlaceholder removed - using StandardNode fallback for unregistered app nodes instead
   ...INPUT_NODE_DEFINITIONS,
-  // App integration nodes
-  ...APP_NODE_DEFINITIONS,
-  // Auto-generated nodes
-  ...AUTO_GENERATED_NODE_DEFINITIONS,
 ]
 
 /**
@@ -180,8 +167,4 @@ export const NODE_TYPES: Record<string, ComponentType<NodeProps>> = {
   [NodeType.KNOWLEDGE_RETRIEVAL]: KnowledgeRetrievalNode as ComponentType<NodeProps>,
   // Add input node types
   ...INPUT_NODE_TYPES,
-  // Add app node types
-  // [NodeType.PROFESSIONAL_NETWORK]: ProfessionalNetworkNode as ComponentType<NodeProps>,
-  // Add auto-generated node types
-  ...AUTO_GENERATED_NODE_TYPES,
 }

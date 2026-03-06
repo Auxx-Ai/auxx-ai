@@ -34,6 +34,10 @@ export function getDefaultValueForType(type?: BaseType): any {
       return ''
     case BaseType.PHONE:
       return ''
+    case BaseType.CURRENCY:
+      return 0
+    case BaseType.SECRET:
+      return ''
     case BaseType.ARRAY:
       return []
     case BaseType.OBJECT:

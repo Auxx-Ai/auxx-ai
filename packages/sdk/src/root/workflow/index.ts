@@ -17,7 +17,12 @@ export type { SelectOption } from '../schema/select-node.js'
 import {
   WorkflowArrayNode,
   WorkflowBooleanNode,
+  WorkflowCurrencyNode,
+  type WorkflowFileData,
+  WorkflowFileNode,
   WorkflowNumberNode,
+  WorkflowObjectNode,
+  WorkflowSecretNode,
   WorkflowSelectNode,
   WorkflowStringNode,
   WorkflowStructNode,
@@ -27,10 +32,16 @@ import {
 export type {
   ArrayInputOptions,
   BooleanInputOptions,
+  CurrencyInputOptions,
+  FileInputOptions,
   NumberInputOptions,
+  ObjectInputOptions,
+  SecretInputOptions,
   SelectInputOptions,
   StringInputOptions,
   StructInputOptions,
+  WorkflowFileData,
+  WorkflowStringFormat,
 } from './input-nodes.js'
 
 // Re-export input field classes
@@ -41,14 +52,35 @@ export {
   WorkflowSelectNode,
   WorkflowArrayNode,
   WorkflowStructNode,
+  WorkflowObjectNode,
+  WorkflowCurrencyNode,
+  WorkflowSecretNode,
+  WorkflowFileNode,
 }
 
-// Import specialized string format helpers from schema
-import { date, datetime, email, type StringFormat, time, url } from '../schema/index.js'
+// Re-export StringFormat from schema for backwards compatibility
+import type { StringFormat } from '../schema/index.js'
 // Import and export AuxxRule field
 import { AuxxRuleReference, auxxRule, WorkflowAuxxRuleNode } from './auxx-rule-node.js'
 // Import input factories (not exported directly - only via Workflow namespace)
-import { array, boolean, number, select, string, struct } from './input-nodes.js'
+import {
+  array,
+  boolean,
+  currency,
+  date,
+  datetime,
+  email,
+  file,
+  number,
+  object,
+  phone,
+  secret,
+  select,
+  string,
+  struct,
+  time,
+  url,
+} from './input-nodes.js'
 export { auxxRule, AuxxRuleReference, WorkflowAuxxRuleNode }
 export type { AuxxRuleWorkflowFieldOptions } from './auxx-rule-node.js'
 export { createMockTransformationContext } from './values/mock-context.js'
@@ -96,11 +128,18 @@ export const Workflow = {
   time,
   email,
   url,
+  phone,
 
   // Complex types
   select,
   array,
   struct,
+
+  // Extended types
+  object,
+  currency,
+  secret,
+  file,
 } as const
 
 // Export StringFormat type for use in workflow definitions
@@ -120,6 +159,10 @@ export type WorkflowNode =
   | WorkflowSelectNode
   | WorkflowArrayNode
   | WorkflowStructNode
+  | WorkflowObjectNode
+  | WorkflowCurrencyNode
+  | WorkflowSecretNode
+  | WorkflowFileNode
   | WorkflowAuxxRuleNode
 
 /**
@@ -131,21 +174,29 @@ export type InferFieldType<T> = T extends WorkflowStringNode
     ? number
     : T extends WorkflowBooleanNode
       ? boolean
-      : T extends WorkflowSelectNode<infer TOptions>
-        ? TOptions extends readonly (infer U)[]
-          ? U extends string
-            ? U
-            : U extends { value: infer V }
-              ? V
-              : string
-          : string
-        : T extends WorkflowArrayNode<infer TItem>
-          ? InferFieldType<TItem>[]
-          : T extends WorkflowStructNode<infer TFields>
-            ? { [K in keyof TFields]: InferFieldType<TFields[K]> }
-            : T extends WorkflowFieldNode<any, infer TValue, any>
-              ? TValue
-              : never
+      : T extends WorkflowObjectNode
+        ? Record<string, unknown>
+        : T extends WorkflowCurrencyNode
+          ? number
+          : T extends WorkflowSecretNode
+            ? string
+            : T extends WorkflowFileNode
+              ? WorkflowFileData | WorkflowFileData[]
+              : T extends WorkflowSelectNode<infer TOptions>
+                ? TOptions extends readonly (infer U)[]
+                  ? U extends string
+                    ? U
+                    : U extends { value: infer V }
+                      ? V
+                      : string
+                  : string
+                : T extends WorkflowArrayNode<infer TItem>
+                  ? InferFieldType<TItem>[]
+                  : T extends WorkflowStructNode<infer TFields>
+                    ? { [K in keyof TFields]: InferFieldType<TFields[K]> }
+                    : T extends WorkflowFieldNode<any, infer TValue, any>
+                      ? TValue
+                      : never
 
 /**
  * Infer the input type from a workflow schema

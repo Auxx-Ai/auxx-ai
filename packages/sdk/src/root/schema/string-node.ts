@@ -12,6 +12,7 @@ export type StringFormat =
   | 'email' // Email address
   | 'url' // URL
   | 'uri' // URI
+  | 'phone' // Phone number
 
 /**
  * Options for string schema fields
@@ -168,5 +169,25 @@ export function url(options?: Omit<StringSchemaOptions, 'format'>): SchemaString
   return new SchemaStringNode({
     ...options,
     format: 'url',
+  })
+}
+
+/**
+ * Create a phone number string field
+ *
+ * @example
+ * ```typescript
+ * import { phone } from '@auxx/sdk/schema'
+ *
+ * const phoneField = phone({
+ *   label: 'Phone Number',
+ *   placeholder: '+1 (555) 123-4567'
+ * })
+ * ```
+ */
+export function phone(options?: Omit<StringSchemaOptions, 'format'>): SchemaStringNode {
+  return new SchemaStringNode({
+    ...options,
+    format: 'phone',
   })
 }

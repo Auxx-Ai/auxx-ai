@@ -42,7 +42,7 @@ export const VarInputInternal = ({
   loading,
 }: {
   name: string
-  type: string
+  type?: string
   placeholder?: string
   acceptsVariables?: boolean
   variableTypes?: string[]
@@ -56,15 +56,20 @@ export const VarInputInternal = ({
   const { nodeId, nodeData, handleFieldChange, getFieldMode, schema, isTrigger } =
     useAppWorkflowFieldContext()
 
+  // Resolve type and format from schema when not explicitly provided
+  const schemaField = schema?.inputs?.[name]
+  const resolvedType = type ?? schemaField?.type ?? 'string'
+  const resolvedFormat = format ?? schemaField?.format
+
   // Resolve options: explicit prop > schema metadata > empty
-  const resolvedOptions = options ?? schema?.inputs?.[name]?.options
+  const resolvedOptions = options ?? schemaField?.options
 
   // Resolve acceptsVariables: explicit prop > schema metadata (defaults to false when not set)
-  const resolvedAcceptsVariables = acceptsVariables ?? schema?.inputs?.[name]?.acceptsVariables
+  const resolvedAcceptsVariables = acceptsVariables ?? schemaField?.acceptsVariables
 
   const { varType, mode, allowConstant, allowedTypes, fieldOptions } = mapFieldToVarEditorProps({
-    type,
-    format,
+    type: resolvedType,
+    format: resolvedFormat,
     options: resolvedOptions,
     acceptsVariables: resolvedAcceptsVariables,
     variableTypes,

@@ -9,8 +9,8 @@ import type React from 'react'
 export interface VarInputProps {
   /** Field name from schema */
   name: string
-  /** Field type: 'string' | 'number' | 'boolean' | 'select' */
-  type: string
+  /** Field type — auto-resolved from schema when omitted */
+  type?: string
   /** Placeholder text */
   placeholder?: string
   /** Whether this field accepts variable references */

@@ -127,8 +127,8 @@ export interface WorkflowOptionsInputProps<TSchema extends WorkflowSchema> {
 export interface WorkflowVarInputProps {
   /** Field name */
   name: string
-  /** Field type: 'string' | 'number' | 'boolean' | 'select' */
-  type: string
+  /** Field type — auto-resolved from schema when omitted */
+  type?: string
   /** Placeholder text */
   placeholder?: string
   /** Whether field accepts variable references */
@@ -141,6 +141,20 @@ export interface WorkflowVarInputProps {
   options?: readonly (string | { label: string; value: string })[]
   /** Multiline mode for string type */
   multiline?: boolean
+  /** Expand to fill remaining space in a VarFieldGroup layout="row" */
+  expand?: boolean
+}
+
+/**
+ * Props for workflow currency input component.
+ */
+export interface WorkflowCurrencyInputProps<TSchema extends WorkflowSchema> {
+  /** Type-safe path to currency field in schema */
+  name: PathToField<TSchema['inputs'], 'currency'>
+  /** Whether field accepts variable references (overrides schema setting) */
+  acceptsVariables?: boolean
+  /** Allowed variable types (overrides schema setting) */
+  variableTypes?: string[]
   /** Expand to fill remaining space in a VarFieldGroup layout="row" */
   expand?: boolean
 }
@@ -179,6 +193,9 @@ export interface UseWorkflowApi<TSchema extends WorkflowSchema> {
 
   /** Boolean input — convenience wrapper for VarInput type="boolean". */
   BooleanInput: (props: WorkflowBooleanInputProps<TSchema>) => ReactElement
+
+  /** Currency input — convenience wrapper for VarInput type="currency". */
+  CurrencyInput: (props: WorkflowCurrencyInputProps<TSchema>) => ReactElement
 
   /** Select input — convenience wrapper for VarInput type="select". */
   SelectInput: (props: WorkflowSelectInputProps<TSchema>) => ReactElement
@@ -268,7 +285,7 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
 
       return createElement(VarInput, {
         name: props.name,
-        type: props.type,
+        type: props.type ?? fieldJson?.type,
         placeholder: props.placeholder ?? metadata.placeholder,
         acceptsVariables: props.acceptsVariables ?? fieldJson?.acceptsVariables,
         variableTypes: props.variableTypes ?? fieldJson?.variableTypes,
@@ -327,6 +344,22 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
       return createElement(VarInput, {
         name: props.name as string,
         type: 'boolean',
+        acceptsVariables: props.acceptsVariables ?? fieldJson?.acceptsVariables,
+        variableTypes: props.variableTypes ?? fieldJson?.variableTypes,
+        expand: props.expand,
+      })
+    },
+    [serializedInputSchema]
+  )
+
+  // CurrencyInput: VarInput type="currency" convenience wrapper
+  const WorkflowCurrencyInput = useCallback(
+    (props: WorkflowCurrencyInputProps<TSchema>): ReactElement => {
+      const fieldJson = get(serializedInputSchema, props.name as string)
+
+      return createElement(VarInput, {
+        name: props.name as string,
+        type: 'currency',
         acceptsVariables: props.acceptsVariables ?? fieldJson?.acceptsVariables,
         variableTypes: props.variableTypes ?? fieldJson?.variableTypes,
         expand: props.expand,
@@ -424,6 +457,7 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
     StringInput: WorkflowStringInput,
     NumberInput: WorkflowNumberInput,
     BooleanInput: WorkflowBooleanInput,
+    CurrencyInput: WorkflowCurrencyInput,
     SelectInput: WorkflowSelectInput,
     OptionsInput: WorkflowOptionsInput,
     FieldRow: WorkflowFieldRowComponent,

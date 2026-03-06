@@ -23,6 +23,7 @@ export {
   date,
   datetime,
   email,
+  phone,
   SchemaStringNode,
   type StringFormat,
   type StringSchemaOptions,
