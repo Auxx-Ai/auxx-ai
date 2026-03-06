@@ -8,9 +8,24 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, X } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
+
+/** Parse a raw stored value into a string array */
+const parseStoredValue = (raw: unknown): string[] => {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) return parsed
+    } catch {
+      return raw ? [raw] : []
+    }
+  }
+  return []
+}
 
 interface MultiSelectInputProps extends NodeInputProps {
   /** Field name */
@@ -19,6 +34,10 @@ interface MultiSelectInputProps extends NodeInputProps {
   options?: SelectOption[]
   /** Placeholder text */
   placeholder?: string
+  /** Allow user to create new options at runtime */
+  canAdd?: boolean
+  /** Allow user to edit/delete options at runtime */
+  canManage?: boolean
 }
 
 /**
@@ -26,57 +45,96 @@ interface MultiSelectInputProps extends NodeInputProps {
  * Uses MultiSelectPicker inside a Popover for selecting predefined options.
  */
 export const MultiSelectInput = createNodeInput<MultiSelectInputProps>(
-  ({ inputs, onChange, name, options = [], placeholder = 'Select options...' }) => {
+  ({
+    inputs,
+    onChange,
+    name,
+    options = [],
+    placeholder = 'Select options...',
+    canAdd = false,
+    canManage = false,
+  }) => {
     const [open, setOpen] = useState(false)
 
-    /** Get current value (array of option values) */
-    const value: string[] = useMemo(() => {
-      const raw = inputs[name]
-      if (!raw) return []
-      if (Array.isArray(raw)) return raw
-      if (typeof raw === 'string') {
-        try {
-          const parsed = JSON.parse(raw)
-          if (Array.isArray(parsed)) return parsed
-        } catch {
-          return raw ? [raw] : []
-        }
-      }
-      return []
-    }, [inputs, name])
+    /** Track custom options created via canAdd so they persist across popover open/close and page refresh */
+    const [customOptions, setCustomOptions] = useState<SelectOption[]>(() => {
+      if (!canAdd) return []
+      const stored = parseStoredValue(inputs[name])
+      const predefinedValues = new Set(options.map((o) => o.value))
+      return stored.filter((v) => !predefinedValues.has(v)).map((v) => ({ label: v, value: v }))
+    })
+
+    /** Merge prop options with custom options */
+    const mergedOptions = useMemo(() => {
+      if (customOptions.length === 0) return options
+      const propValues = new Set(options.map((o) => o.value))
+      const unique = customOptions.filter((o) => !propValues.has(o.value))
+      return [...options, ...unique]
+    }, [options, customOptions])
+
+    /** Parse the stored value into a string array */
+    const storedValue: string[] = useMemo(() => parseStoredValue(inputs[name]), [inputs, name])
+
+    /** Local selection state — always used for display, decoupled from store */
+    const [localValue, setLocalValue] = useState<string[]>(storedValue)
+    const localValueRef = useRef(localValue)
+    localValueRef.current = localValue
+
+    /** Sync local state when stored value changes externally (only while closed) */
+    const prevStoredRef = useRef(storedValue)
+    if (prevStoredRef.current !== storedValue && !open) {
+      prevStoredRef.current = storedValue
+      setLocalValue(storedValue)
+    }
 
     /** Get selected option objects for display */
     const selectedOptions = useMemo(
-      () => options.filter((opt) => value.includes(opt.value)),
-      [options, value]
+      () => mergedOptions.filter((opt) => localValue.includes(opt.value)),
+      [mergedOptions, localValue]
     )
 
-    /** Handle selection change from picker */
-    const handleChange = useCallback(
-      (selected: string[]) => {
-        onChange(name, selected)
+    /** Handle popover open/close — commit on close */
+    const handleOpenChange = useCallback(
+      (isOpen: boolean) => {
+        if (!isOpen) {
+          onChange(name, localValueRef.current)
+        }
+        setOpen(isOpen)
       },
       [onChange, name]
     )
 
-    /** Remove a single option from selection */
+    /** Handle selection change from picker — local only */
+    const handleChange = useCallback((selected: string[]) => {
+      setLocalValue(selected)
+    }, [])
+
+    /** Track options changes from picker (captures custom-created options) */
+    const handleOptionsChange = useCallback(
+      (newOptions: SelectOption[]) => {
+        const propValues = new Set(options.map((o) => o.value))
+        setCustomOptions(newOptions.filter((o) => !propValues.has(o.value)))
+      },
+      [options]
+    )
+
+    /** Remove a single option from selection (immediate commit) */
     const removeOption = useCallback(
       (optValue: string) => {
-        onChange(
-          name,
-          value.filter((v) => v !== optValue)
-        )
+        const newValue = localValue.filter((v) => v !== optValue)
+        setLocalValue(newValue)
+        onChange(name, newValue)
       },
-      [onChange, name, value]
+      [onChange, name, localValue]
     )
 
     return (
       <div className='flex flex-col gap-2 flex-1'>
-        <Popover open={open} onOpenChange={setOpen}>
+        <Popover open={open} onOpenChange={handleOpenChange}>
           <PopoverTrigger asChild>
             <div>
               {selectedOptions.length > 0 ? (
-                <div className='min-h-7 flex flex-row flex-wrap items-center gap-1'>
+                <div className='min-h-7 flex flex-row flex-wrap items-center gap-1 py-1.5'>
                   {selectedOptions.map((opt) => (
                     <Badge
                       key={opt.value}
@@ -111,11 +169,13 @@ export const MultiSelectInput = createNodeInput<MultiSelectInputProps>(
           </PopoverTrigger>
           <PopoverContent className='p-0 w-[250px]' align='start'>
             <MultiSelectPicker
-              options={options}
-              value={value}
+              options={mergedOptions}
+              value={localValue}
               onChange={handleChange}
-              canManage={false}
-              canAdd={false}
+              onOptionsChange={handleOptionsChange}
+              canManage={canManage}
+              canAdd={canAdd}
+              useValueAsLabel={canAdd}
               placeholder='Search options...'
             />
           </PopoverContent>

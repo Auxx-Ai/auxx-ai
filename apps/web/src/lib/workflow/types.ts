@@ -155,6 +155,15 @@ export interface WorkflowBlockField {
   /** Options for select/enum fields */
   options?: readonly (string | { value: string; label: string })[]
 
+  /** Whether this select field allows multiple selections */
+  multi?: boolean
+
+  /** Allow user to create new options (for array multi-select) */
+  canAdd?: boolean
+
+  /** Allow user to edit/delete options (for array multi-select) */
+  canManage?: boolean
+
   // ========================================
   // Nested Structures
   // ========================================

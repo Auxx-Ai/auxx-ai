@@ -67,6 +67,11 @@ export const VarInputInternal = ({
   // Resolve acceptsVariables: explicit prop > schema metadata (defaults to false when not set)
   const resolvedAcceptsVariables = acceptsVariables ?? schemaField?.acceptsVariables
 
+  // Resolve multi-select props from schema
+  const resolvedMulti = schemaField?.multi
+  const resolvedCanAdd = schemaField?.canAdd
+  const resolvedCanManage = schemaField?.canManage
+
   const { varType, mode, allowConstant, allowedTypes, fieldOptions } = mapFieldToVarEditorProps({
     type: resolvedType,
     format: resolvedFormat,
@@ -75,6 +80,9 @@ export const VarInputInternal = ({
     variableTypes,
     variant,
     loading,
+    multi: resolvedMulti,
+    canAdd: resolvedCanAdd,
+    canManage: resolvedCanManage,
   })
 
   // Dot-path access for nested fields
@@ -84,7 +92,7 @@ export const VarInputInternal = ({
   return (
     <VarEditor
       nodeId={nodeId}
-      value={typeof value === 'string' ? value : String(value)}
+      value={value ?? ''}
       onChange={(v, isConstant) => handleFieldChange(name, v, isConstant)}
       varType={varType}
       mode={mode}
