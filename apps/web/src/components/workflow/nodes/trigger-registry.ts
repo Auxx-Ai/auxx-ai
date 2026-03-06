@@ -64,6 +64,13 @@ export function registerDynamicTriggerInput(nodeType: string, config: TriggerInp
 }
 
 /**
+ * Unregister a dynamic trigger input configuration
+ */
+export function unregisterDynamicTriggerInput(nodeType: string): void {
+  delete dynamicTriggerRegistry[nodeType]
+}
+
+/**
  * Get trigger input configuration
  */
 export function getTriggerInputConfig(

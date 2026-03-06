@@ -1,9 +1,11 @@
 // apps/web/src/app/api/apps/[slug]/oauth2/authorize/route.ts
 
 import { WEBAPP_URL } from '@auxx/config/urls'
+import type { OAuth2Features } from '@auxx/database'
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
+import { interpolateConnectionFields } from '@auxx/services/app-connections'
 import crypto from 'crypto'
 
 const OAUTH_REDIRECT_BASE = process.env.NGROK_URL || WEBAPP_URL
@@ -111,12 +113,29 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const state = crypto.randomBytes(32).toString('hex')
 
     // PKCE support (RFC 7636)
-    const features = connDef.oauth2Features ?? {}
+    const features = (connDef.oauth2Features ?? {}) as OAuth2Features
     let codeVerifier: string | undefined
 
     if (features.pkce) {
       codeVerifier = crypto.randomBytes(96).toString('base64url')
     }
+
+    // Extract connection variables from query params (allowlisted by definitions)
+    const connectionVariables: Record<string, string> = {}
+    const connectionVarDefs = features.connectionVariables ?? []
+    for (const varDef of connectionVarDefs) {
+      const value = searchParams.get(`var_${varDef.key}`)
+      if (!value && varDef.required !== false) {
+        return NextResponse.json(
+          { error: `Missing required variable: ${varDef.label}` },
+          { status: 400 }
+        )
+      }
+      if (value) connectionVariables[varDef.key] = value
+    }
+
+    // Interpolate all connection fields with variables
+    const resolved = interpolateConnectionFields(connDef, connectionVariables)
 
     // Store state in Redis with metadata (expires in 10 minutes)
     const redis = await getRedisClient()
@@ -134,6 +153,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         ...(connectionId && { connectionId }),
         ...(codeVerifier && { codeVerifier }),
         ...(validReturnTo && { returnTo: validReturnTo }),
+        ...(Object.keys(connectionVariables).length > 0 && { connectionVariables }),
       })
     )
 
@@ -141,11 +161,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const callbackBase = features.callbackBaseUrl || OAUTH_REDIRECT_BASE
 
     const scopes = connDef.oauth2Scopes || []
-    const googleParams = getGoogleOfflineParams(connDef.oauth2AuthorizeUrl!)
+    const googleParams = getGoogleOfflineParams(resolved.authorizeUrl)
 
     // Build OAuth authorization URL
-    const authUrl = new URL(connDef.oauth2AuthorizeUrl!)
-    authUrl.searchParams.set('client_id', connDef.oauth2ClientId!)
+    const authUrl = new URL(resolved.authorizeUrl)
+    authUrl.searchParams.set('client_id', resolved.clientId)
     authUrl.searchParams.set('redirect_uri', `${callbackBase}/api/apps/${slug}/oauth2/callback`)
     const scopeSeparator = features.scopeSeparator || ' '
     authUrl.searchParams.set('scope', scopes.join(scopeSeparator))

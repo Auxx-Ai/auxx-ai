@@ -1,10 +1,16 @@
 // apps/web/src/app/admin/_components/admin-nav-main.tsx
 'use client'
 
-import { SidebarGroup, SidebarMenu, SidebarMenuItem } from '@auxx/ui/components/sidebar'
+import {
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuItem,
+} from '@auxx/ui/components/sidebar'
 import {
   Activity,
   Building2,
+  Code,
   CreditCard,
   LayoutDashboard,
   type LucideIcon,
@@ -27,56 +33,90 @@ interface NavItem {
 }
 
 /**
- * Admin navigation items
+ * Navigation group interface
  */
-const ADMIN_NAV_ITEMS: NavItem[] = [
+interface NavGroup {
+  label: string
+  items: NavItem[]
+}
+
+/**
+ * Admin navigation groups
+ */
+const ADMIN_NAV_GROUPS: NavGroup[] = [
   {
-    id: 'dashboard',
-    label: 'Dashboard',
-    slug: '',
-    icon: LayoutDashboard,
+    label: 'Overview',
+    items: [
+      {
+        id: 'dashboard',
+        label: 'Dashboard',
+        slug: '',
+        icon: LayoutDashboard,
+      },
+    ],
   },
   {
-    id: 'organizations',
-    label: 'Organizations',
-    slug: 'organizations',
-    icon: Building2,
+    label: 'People',
+    items: [
+      {
+        id: 'organizations',
+        label: 'Organizations',
+        slug: 'organizations',
+        icon: Building2,
+      },
+      {
+        id: 'users',
+        label: 'Users',
+        slug: 'users',
+        icon: Users,
+      },
+    ],
   },
   {
-    id: 'users',
-    label: 'Users',
-    slug: 'users',
-    icon: Users,
+    label: 'Platform',
+    items: [
+      {
+        id: 'apps',
+        label: 'Apps',
+        slug: 'apps',
+        icon: Package,
+      },
+      {
+        id: 'workflows',
+        label: 'Workflow Templates',
+        slug: 'workflows',
+        icon: Workflow,
+      },
+      {
+        id: 'developer-accounts',
+        label: 'Developer Accounts',
+        slug: 'developer-accounts',
+        icon: Code,
+      },
+    ],
   },
   {
-    id: 'apps',
-    label: 'Apps',
-    slug: 'apps',
-    icon: Package,
-  },
-  {
-    id: 'workflows',
-    label: 'Workflow Templates',
-    slug: 'workflows',
-    icon: Workflow,
-  },
-  {
-    id: 'plans',
-    label: 'Plans',
-    slug: 'plans',
-    icon: CreditCard,
-  },
-  {
-    id: 'config',
-    label: 'Config',
-    slug: 'config',
-    icon: Settings,
-  },
-  {
-    id: 'health',
-    label: 'Health',
-    slug: 'health',
-    icon: Activity,
+    label: 'System',
+    items: [
+      {
+        id: 'plans',
+        label: 'Plans',
+        slug: 'plans',
+        icon: CreditCard,
+      },
+      {
+        id: 'config',
+        label: 'Config',
+        slug: 'config',
+        icon: Settings,
+      },
+      {
+        id: 'health',
+        label: 'Health',
+        slug: 'health',
+        icon: Activity,
+      },
+    ],
   },
 ]
 
@@ -93,32 +133,35 @@ export function AdminNavMain() {
     const url = `/admin/${item.slug}`
 
     if (item.slug === '') {
-      // Dashboard - only active on exact match
       return pathname === '/admin' || pathname === '/admin/'
     }
 
-    // Other items - active if path starts with the URL
     return pathname.startsWith(url) || pathname === url
   }
 
   return (
-    <SidebarGroup>
-      <SidebarMenu>
-        {ADMIN_NAV_ITEMS.map((item) => {
-          const url = `/admin/${item.slug}`
-          return (
-            <SidebarMenuItem key={item.id}>
-              <SidebarItem
-                id={item.id}
-                name={item.label}
-                href={url}
-                icon={<item.icon />}
-                isActive={isActive(item)}
-              />
-            </SidebarMenuItem>
-          )
-        })}
-      </SidebarMenu>
-    </SidebarGroup>
+    <div className='space-y-4'>
+      {ADMIN_NAV_GROUPS.map((group) => (
+        <SidebarGroup key={group.label}>
+          <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+          <SidebarMenu>
+            {group.items.map((item) => {
+              const url = `/admin/${item.slug}`
+              return (
+                <SidebarMenuItem key={item.id}>
+                  <SidebarItem
+                    id={item.id}
+                    name={item.label}
+                    href={url}
+                    icon={<item.icon />}
+                    isActive={isActive(item)}
+                  />
+                </SidebarMenuItem>
+              )
+            })}
+          </SidebarMenu>
+        </SidebarGroup>
+      ))}
+    </div>
   )
 }

@@ -75,15 +75,17 @@ export async function executeAppTriggeredWorkflow(params: {
     const workflowRun = await executionService.createRun({
       workflowId: publishedWorkflow.id,
       inputs: {
-        trigger_type: 'app-trigger',
-        app_id: appId,
-        trigger_id: triggerId,
-        installation_id: installationId,
-        event_id: eventId,
-        triggered_at: new Date().toISOString(),
-        // The trigger data is passed as the triggerData input
-        // The AppWorkflowTriggerProcessor reads from context.triggerData
+        // App's trigger data becomes node output variables
         ...triggerData,
+        // Platform metadata nested under _meta to avoid polluting node outputs
+        _meta: {
+          trigger_type: 'app-trigger',
+          app_id: appId,
+          trigger_id: triggerId,
+          installation_id: installationId,
+          event_id: eventId,
+          triggered_at: new Date().toISOString(),
+        },
       },
       mode: 'production',
       userId: null,

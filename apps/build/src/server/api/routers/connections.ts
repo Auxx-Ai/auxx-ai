@@ -80,8 +80,8 @@ export const connectionsRouter = createTRPCRouter({
         connectionType: z.enum(['oauth2-code', 'secret', 'none']),
         label: z.string(),
         description: z.string().optional(),
-        oauth2AuthorizeUrl: z.url().optional(),
-        oauth2AccessTokenUrl: z.url().optional(),
+        oauth2AuthorizeUrl: z.string().optional(),
+        oauth2AccessTokenUrl: z.string().optional(),
         oauth2ClientId: z.string().optional(),
         oauth2ClientSecret: z.string().optional(),
         oauth2Scopes: z
@@ -105,6 +105,18 @@ export const connectionsRouter = createTRPCRouter({
             additionalTokenParams: z.record(z.string(), z.string()).optional(),
             scopeSeparator: z.string().optional(),
             callbackMetadataParams: z.array(z.string()).optional(),
+            connectionVariables: z
+              .array(
+                z.object({
+                  key: z.string(),
+                  label: z.string(),
+                  description: z.string().optional(),
+                  placeholder: z.string().optional(),
+                  required: z.boolean().optional(),
+                  secret: z.boolean().optional(),
+                })
+              )
+              .optional(),
           })
           .optional(),
       })

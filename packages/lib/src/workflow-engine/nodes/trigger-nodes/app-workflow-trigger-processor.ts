@@ -4,6 +4,7 @@ import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
+import { extractUserInputs } from './extract-user-inputs'
 
 /**
  * Processor for extension app trigger nodes.
@@ -75,20 +76,34 @@ export class AppWorkflowTriggerProcessor extends BaseNodeProcessor {
       }
     }
 
-    // Map each trigger data field to a node variable for downstream access
+    // Expose configured trigger inputs (e.g., calendarId, triggerOn) as node variables
+    // so downstream nodes can reference them via {{triggerNodeId.calendarId}}
+    const configuredInputs = extractUserInputs(node.data)
+    for (const [key, value] of Object.entries(configuredInputs)) {
+      contextManager.setNodeVariable(node.nodeId, key, value)
+    }
+
+    // Map each trigger event data field to a node variable for downstream access
     // e.g., {{triggerNodeId.orderId}}, {{triggerNodeId.customerEmail}}
+    // Event data takes precedence over configured inputs for same-named fields
     if (typeof triggerData === 'object' && triggerData !== null) {
       for (const [key, value] of Object.entries(triggerData)) {
+        if (key.startsWith('_')) continue
         contextManager.setNodeVariable(node.nodeId, key, value)
       }
     }
 
-    // Also set the full output for convenience
-    contextManager.setNodeVariable(node.nodeId, 'output', triggerData)
+    // Build clean output: configured inputs + event data (without platform metadata)
+    const eventOutput =
+      typeof triggerData === 'object' && triggerData !== null
+        ? Object.fromEntries(Object.entries(triggerData).filter(([k]) => !k.startsWith('_')))
+        : triggerData
+    const output = { ...configuredInputs, ...eventOutput }
+    contextManager.setNodeVariable(node.nodeId, 'output', output)
 
     return {
       status: NodeRunningStatus.Succeeded,
-      output: triggerData,
+      output,
       outputHandle: 'source',
     }
   }

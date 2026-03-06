@@ -1,9 +1,7 @@
-// apps/web/src/lib/workflow/components/polling-interval-selector.tsx
+// apps/web/src/lib/workflow/components/app-polling-section.tsx
 
 'use client'
 
-import { Label } from '@auxx/ui/components/label'
-import { Section } from '@auxx/ui/components/section'
 import {
   Select,
   SelectContent,
@@ -12,6 +10,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { useNodeDataUpdate } from '~/components/workflow/hooks/use-node-data-update'
+import Section from '~/components/workflow/ui/section'
 
 const INTERVAL_OPTIONS = [
   { value: '1', label: 'Every 1 minute' },
@@ -23,19 +22,19 @@ const INTERVAL_OPTIONS = [
   { value: '60', label: 'Every hour' },
 ]
 
-interface PollingIntervalSelectorProps {
+interface AppPollingSectionProps {
   nodeId: string
   data: any
   defaultInterval?: number
   minInterval?: number
 }
 
-export function PollingIntervalSelector({
+export function AppPollingSection({
   nodeId,
   data,
   defaultInterval = 5,
   minInterval = 1,
-}: PollingIntervalSelectorProps) {
+}: AppPollingSectionProps) {
   const { handleNodeDataUpdateWithSync } = useNodeDataUpdate()
 
   const currentInterval = data?.config?.polling?.intervalMinutes ?? defaultInterval
@@ -58,11 +57,13 @@ export function PollingIntervalSelector({
   }
 
   return (
-    <Section title='Polling'>
-      <div className='space-y-1.5'>
-        <Label>Check interval</Label>
+    <Section
+      title='Polling'
+      collapsible={false}
+      className='**:data-[slot=section]:pb-0'
+      actions={
         <Select value={String(currentInterval)} onValueChange={handleChange}>
-          <SelectTrigger>
+          <SelectTrigger variant='ghost' size='sm' className='w-auto'>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -73,7 +74,7 @@ export function PollingIntervalSelector({
             ))}
           </SelectContent>
         </Select>
-      </div>
-    </Section>
+      }
+    />
   )
 }

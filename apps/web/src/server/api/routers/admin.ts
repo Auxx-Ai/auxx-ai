@@ -2,7 +2,9 @@
 
 import { AdminBillingService, PlanAdminService, PlanService } from '@auxx/billing'
 import { WEBAPP_URL } from '@auxx/config/server'
+import { schema } from '@auxx/database'
 import { AdminService } from '@auxx/lib/admin'
+import { eq, ilike, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
 import { adminAppsRouter } from './admin-apps'
@@ -529,6 +531,52 @@ export const adminRouter = createTRPCRouter({
         }
       }),
   }),
+
+  /**
+   * Get developer accounts with app/member counts
+   */
+  getDeveloperAccounts: superAdminProcedure
+    .input(
+      z.object({
+        limit: z.number().min(1).max(100).optional(),
+        offset: z.number().min(0).optional(),
+        search: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { limit = 100, offset = 0, search } = input
+
+      const conditions = search
+        ? or(
+            ilike(schema.DeveloperAccount.title, `%${search}%`),
+            ilike(schema.DeveloperAccount.slug, `%${search}%`)
+          )
+        : undefined
+
+      const accounts = await ctx.db
+        .select({
+          id: schema.DeveloperAccount.id,
+          slug: schema.DeveloperAccount.slug,
+          title: schema.DeveloperAccount.title,
+          logoUrl: schema.DeveloperAccount.logoUrl,
+          createdAt: schema.DeveloperAccount.createdAt,
+          appCount: sql<number>`cast(count(distinct ${schema.App.id}) as int)`,
+          memberCount: sql<number>`cast(count(distinct ${schema.DeveloperAccountMember.id}) as int)`,
+        })
+        .from(schema.DeveloperAccount)
+        .leftJoin(schema.App, eq(schema.App.developerAccountId, schema.DeveloperAccount.id))
+        .leftJoin(
+          schema.DeveloperAccountMember,
+          eq(schema.DeveloperAccountMember.developerAccountId, schema.DeveloperAccount.id)
+        )
+        .where(conditions)
+        .groupBy(schema.DeveloperAccount.id)
+        .orderBy(schema.DeveloperAccount.createdAt)
+        .limit(limit)
+        .offset(offset)
+
+      return accounts
+    }),
 
   /**
    * Apps management router

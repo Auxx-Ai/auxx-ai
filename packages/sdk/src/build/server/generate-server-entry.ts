@@ -264,7 +264,7 @@ export async function generateServerEntry({
 
         for (const [blockId, handlers] of workflowModules.entries()) {
             __AUXX_WORKFLOW_BLOCKS__[blockId] = {
-                execute: async (input) => {
+                execute: async (...args) => {
                     const executeHandler = handlers.execute;
                     if (!executeHandler) {
                         throw new Error(\`No execute handler for block \${blockId}\`);
@@ -277,7 +277,7 @@ export async function generateServerEntry({
                     if (typeof func !== "function") {
                         throw new Error(\`Execute export in block \${blockId} is not a function\`);
                     }
-                    return await func(input);
+                    return await func(...args);
                 }
             };
         }

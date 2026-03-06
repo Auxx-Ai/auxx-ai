@@ -8,13 +8,16 @@ import type {
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
+import { useCopy } from '@auxx/ui/hooks/use-copy'
 import { cn } from '@auxx/ui/lib/utils'
 import {
   AlertCircle,
+  Check,
   CheckCircle,
   ChevronRight,
   Clock,
   Coins,
+  Copy,
   FileInput,
   FileOutput,
   FileText,
@@ -115,6 +118,8 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
   const [activeTab, setActiveTab] = useState<'outputs' | 'inputs' | 'process' | 'metadata'>(
     'outputs'
   )
+  const outputsCopy = useCopy({ toastMessage: 'Outputs copied to clipboard' })
+  const inputsCopy = useCopy({ toastMessage: 'Inputs copied to clipboard' })
 
   // Get node icon from registry
   const nodeIcon = unifiedNodeRegistry.getNodeIcon(execution.nodeType, 'h-4 w-4')
@@ -227,9 +232,23 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
           {activeTab === 'outputs' && (
             <div className='mt-3'>
               {execution.outputs && (
-                <pre className='p-3 bg-muted rounded-md text-xs overflow-auto max-h-[300px] font-mono'>
-                  {JSON.stringify(execution.outputs, null, 2)}
-                </pre>
+                <div className='relative group'>
+                  <Button
+                    variant='ghost'
+                    size='icon'
+                    className='absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground size-7'
+                    onClick={() => outputsCopy.copy(JSON.stringify(execution.outputs, null, 2))}
+                    aria-label='Copy outputs'>
+                    {outputsCopy.copied ? (
+                      <Check className='h-3.5 w-3.5' />
+                    ) : (
+                      <Copy className='h-3.5 w-3.5' />
+                    )}
+                  </Button>
+                  <pre className='p-3 bg-muted rounded-md text-xs overflow-auto max-h-[300px] font-mono'>
+                    {JSON.stringify(execution.outputs, null, 2)}
+                  </pre>
+                </div>
               )}
             </div>
           )}
@@ -237,9 +256,23 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
           {activeTab === 'inputs' && (
             <div className='mt-3'>
               {execution.inputs ? (
-                <pre className='p-3 bg-muted rounded-md text-xs overflow-auto max-h-[300px] font-mono'>
-                  {JSON.stringify(execution.inputs, null, 2)}
-                </pre>
+                <div className='relative group'>
+                  <Button
+                    variant='ghost'
+                    size='icon'
+                    className='absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground size-7'
+                    onClick={() => inputsCopy.copy(JSON.stringify(execution.inputs, null, 2))}
+                    aria-label='Copy inputs'>
+                    {inputsCopy.copied ? (
+                      <Check className='h-3.5 w-3.5' />
+                    ) : (
+                      <Copy className='h-3.5 w-3.5' />
+                    )}
+                  </Button>
+                  <pre className='p-3 bg-muted rounded-md text-xs overflow-auto max-h-[300px] font-mono'>
+                    {JSON.stringify(execution.inputs, null, 2)}
+                  </pre>
+                </div>
               ) : (
                 <p className='text-sm text-muted-foreground py-8 text-center'>No inputs provided</p>
               )}

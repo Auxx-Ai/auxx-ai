@@ -42,27 +42,29 @@ export function BuildNavMain({ accountSlug }: Props) {
               <div className='px-2 py-1.5 text-xs text-muted-foreground'>No apps yet</div>
             </SidebarMenuItem>
           ) : (
-            apps.map((app) => (
-              <SidebarMenuItem key={app.id}>
-                <SidebarItem
-                  id={app.id}
-                  name={app.title}
-                  href={`/${accountSlug}/apps/${app.slug}`}
-                  icon={
-                    app.avatarUrl ? (
-                      <img
-                        src={app.avatarUrl}
-                        alt={app.title}
-                        className='size-4 rounded-sm object-cover'
-                      />
-                    ) : (
-                      <Package />
-                    )
-                  }
-                  isActive={isActive(app.slug)}
-                />
-              </SidebarMenuItem>
-            ))
+            apps
+              .toSorted((a, b) => a.title.localeCompare(b.title))
+              .map((app) => (
+                <SidebarMenuItem key={app.id}>
+                  <SidebarItem
+                    id={app.id}
+                    name={app.title}
+                    href={`/${accountSlug}/apps/${app.slug}`}
+                    icon={
+                      app.avatarUrl ? (
+                        <img
+                          src={app.avatarUrl}
+                          alt={app.title}
+                          className='size-4 rounded-sm object-cover'
+                        />
+                      ) : (
+                        <Package />
+                      )
+                    }
+                    isActive={isActive(app.slug)}
+                  />
+                </SidebarMenuItem>
+              ))
           )}
           {apps.length > 0 && (
             <SidebarMenuItem>

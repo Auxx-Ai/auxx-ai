@@ -14,8 +14,8 @@ import type { WorkflowBlock } from '../types'
 import { computeOutputSignature, resolveAppBlockOutputFields } from '../utils/resolve-app-outputs'
 import { convertOutputFieldsToVariables } from '../utils/type-mapping'
 import { AppConnectionPicker } from './app-connection-picker'
+import { AppPollingSection } from './app-polling-section'
 import { AppWorkflowFieldContext } from './app-workflow-field-context'
-import { PollingIntervalSelector } from './polling-interval-selector'
 
 /**
  * Props for AppWorkflowPanel component
@@ -335,14 +335,14 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
           />
         )}
         {isTrigger && block.config?.polling && (
-          <PollingIntervalSelector
+          <AppPollingSection
             nodeId={nodeId}
             data={nodeData}
             defaultInterval={block.config.polling.intervalMinutes}
             minInterval={block.config.polling.minIntervalMinutes}
           />
         )}
-        {isTrigger && (
+        {isTrigger && !block.config?.polling && (
           <AppTriggerTestSection
             installationId={resolvedInstallationId}
             triggerId={block.id}

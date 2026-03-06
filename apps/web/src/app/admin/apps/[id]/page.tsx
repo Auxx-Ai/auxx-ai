@@ -354,243 +354,262 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className='grid lg:grid-cols-3'>
-            <Card className='border-none rounded-none shadow-none'>
-              <CardHeader>
-                <CardTitle>App Information</CardTitle>
-                <CardDescription>Details about this app</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className='overflow-hidden rounded-md border bg-background'>
-                  <Table>
-                    <TableBody>
-                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                        <TableCell className='bg-muted/50 py-2 font-medium'>
-                          Developer Account
-                        </TableCell>
-                        <TableCell className='py-2'>{app.developerAccount?.title || '-'}</TableCell>
-                      </TableRow>
-                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                        <TableCell className='bg-muted/50 py-2 font-medium'>Slug</TableCell>
-                        <TableCell className='py-2 font-mono text-sm'>{app.slug}</TableCell>
-                      </TableRow>
-                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                        <TableCell className='bg-muted/50 py-2 font-medium'>Category</TableCell>
-                        <TableCell className='py-2'>{app.category || '-'}</TableCell>
-                      </TableRow>
-                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                        <TableCell className='bg-muted/50 py-2 font-medium'>
-                          Publication Status
-                        </TableCell>
-                        <TableCell className='py-2'>
-                          <Badge variant={getPublicationStatusVariant(app.publicationStatus)}>
-                            {app.publicationStatus}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                        <TableCell className='bg-muted/50 py-2 font-medium'>Auto-Approve</TableCell>
-                        <TableCell className='py-2'>
-                          <div className='flex items-center gap-2'>
-                            <Switch
-                              checked={app.autoApprove || false}
-                              onCheckedChange={handleToggleAutoApprove}
-                              disabled={toggleAutoApprove.isPending}
-                            />
-                            <span className='text-sm text-muted-foreground'>
-                              {app.autoApprove ? 'Enabled' : 'Disabled'}
-                            </span>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                        <TableCell className='bg-muted/50 py-2 font-medium'>Website</TableCell>
-                        <TableCell className='py-2'>
-                          {app.websiteUrl ? (
-                            <Button variant='link' className='h-auto p-0' asChild>
-                              <a href={app.websiteUrl} target='_blank' rel='noopener noreferrer'>
-                                <ExternalLink />
-                                Link
-                              </a>
-                            </Button>
-                          ) : (
-                            '-'
-                          )}
-                        </TableCell>
-                      </TableRow>
-                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                        <TableCell className='bg-muted/50 py-2 font-medium'>
-                          Documentation
-                        </TableCell>
-                        <TableCell className='py-2'>
-                          {app.documentationUrl ? (
-                            <Button variant='link' className='h-auto p-0' asChild>
-                              <a
-                                href={app.documentationUrl}
-                                target='_blank'
-                                rel='noopener noreferrer'>
-                                <ExternalLink />
-                                Link
-                              </a>
-                            </Button>
-                          ) : (
-                            '-'
-                          )}
-                        </TableCell>
-                      </TableRow>
-                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                        <TableCell className='bg-muted/50 py-2 font-medium'>Support Site</TableCell>
-                        <TableCell className='py-2'>
-                          {app.supportSiteUrl ? (
-                            <Button variant='link' className='h-auto p-0' asChild>
-                              <a
-                                href={app.supportSiteUrl}
-                                target='_blank'
-                                rel='noopener noreferrer'>
-                                <ExternalLink />
-                                Link
-                              </a>
-                            </Button>
-                          ) : (
-                            '-'
-                          )}
-                        </TableCell>
-                      </TableRow>
-                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                        <TableCell className='bg-muted/50 py-2 font-medium'>Has OAuth</TableCell>
-                        <TableCell className='py-2'>{app.hasOauth ? 'Yes' : 'No'}</TableCell>
-                      </TableRow>
-                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                        <TableCell className='bg-muted/50 py-2 font-medium'>Has Bundle</TableCell>
-                        <TableCell className='py-2'>{app.hasBundle ? 'Yes' : 'No'}</TableCell>
-                      </TableRow>
-                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                        <TableCell className='bg-muted/50 py-2 font-medium'>Scopes</TableCell>
-                        <TableCell className='py-2'>
-                          {app.scopes.length > 0 ? app.scopes.join(', ') : '-'}
-                        </TableCell>
-                      </TableRow>
-                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                        <TableCell className='bg-muted/50 py-2 font-medium'>Created</TableCell>
-                        <TableCell className='py-2'>
-                          {formatDistanceToNow(new Date(app.createdAt), { addSuffix: true })}
-                        </TableCell>
-                      </TableRow>
-                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                        <TableCell className='bg-muted/50 py-2 font-medium'>Updated</TableCell>
-                        <TableCell className='py-2'>
-                          {formatDistanceToNow(new Date(app.updatedAt), { addSuffix: true })}
-                        </TableCell>
-                      </TableRow>
-                      {app.description && (
-                        <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                          <TableCell className='bg-muted/50 py-2 font-medium'>
-                            Description
-                          </TableCell>
-                          <TableCell className='py-2 text-sm'>{app.description}</TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className='col-span-2 border-none rounded-none shadow-none'>
-              <CardHeader>
-                <CardTitle>Deployments</CardTitle>
-                <CardDescription>Manage app deployments</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {app.deployments.length === 0 ? (
-                  <div className='flex h-40 items-center justify-center text-muted-foreground'>
-                    No deployments found
-                  </div>
-                ) : (
-                  <div className='rounded-md border'>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Deployment</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {app.deployments.map((deployment) => (
-                          <TableRow key={deployment.id}>
-                            <TableCell>
-                              <div>
-                                <div className='font-medium font-mono'>
-                                  {deployment.version || 'Development'}
-                                </div>
-                                <div className='text-xs text-muted-foreground'>
-                                  <Badge variant='outline' className='mr-2'>
-                                    {deployment.deploymentType}
-                                  </Badge>
-                                  {formatDistanceToNow(new Date(deployment.createdAt), {
-                                    addSuffix: true,
-                                  })}
-                                </div>
-                              </div>
+          <div className='flex-1 overflow-hidden flex flex-col min-h-0 relative'>
+            <div className='overflow-auto flex-1 relative'>
+              <div className='grid lg:grid-cols-3'>
+                <Card className='border-none rounded-none shadow-none'>
+                  <CardHeader>
+                    <CardTitle>App Information</CardTitle>
+                    <CardDescription>Details about this app</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className='overflow-hidden rounded-md border bg-background'>
+                      <Table>
+                        <TableBody>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>
+                              Developer Account
                             </TableCell>
-                            <TableCell>
-                              <Badge variant={getDeploymentStatusVariant(deployment.status)}>
-                                {deployment.status}
+                            <TableCell className='py-2'>
+                              {app.developerAccount?.title || '-'}
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>Slug</TableCell>
+                            <TableCell className='py-2 font-mono text-sm'>{app.slug}</TableCell>
+                          </TableRow>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>Category</TableCell>
+                            <TableCell className='py-2'>{app.category || '-'}</TableCell>
+                          </TableRow>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>
+                              Publication Status
+                            </TableCell>
+                            <TableCell className='py-2'>
+                              <Badge variant={getPublicationStatusVariant(app.publicationStatus)}>
+                                {app.publicationStatus}
                               </Badge>
                             </TableCell>
-                            <TableCell>
-                              <div className='flex gap-1 justify-between'>
-                                <div className='flex gap-0.5'>
-                                  {(deployment.status === 'pending-review' ||
-                                    deployment.status === 'in-review') && (
-                                    <>
-                                      <Button
-                                        size='sm'
-                                        variant='outline'
-                                        onClick={() => handleApproveDeployment(deployment.id)}
-                                        loading={approveDeployment.isPending}>
-                                        <CheckCircle />
-                                        Approve
-                                      </Button>
-                                      <Button
-                                        size='sm'
-                                        variant='outline'
-                                        onClick={() => handleRejectDeploymentClick(deployment.id)}
-                                        loading={rejectDeployment.isPending}>
-                                        <XCircle />
-                                        Reject
-                                      </Button>
-                                    </>
-                                  )}
-                                  {deployment.status === 'published' && (
-                                    <Button
-                                      size='sm'
-                                      variant='outline'
-                                      onClick={() => handleDeprecateDeployment(deployment.id)}
-                                      loading={deprecateDeployment.isPending}>
-                                      <Ban />
-                                      Deprecate
-                                    </Button>
-                                  )}
-                                </div>
-                                <Button
-                                  size='sm'
-                                  variant='destructive-hover'
-                                  onClick={() => handleDeleteDeployment(deployment.id)}
-                                  loading={deleteDeployment.isPending}>
-                                  <Trash2 />
-                                </Button>
+                          </TableRow>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>
+                              Auto-Approve
+                            </TableCell>
+                            <TableCell className='py-2'>
+                              <div className='flex items-center gap-2'>
+                                <Switch
+                                  checked={app.autoApprove || false}
+                                  onCheckedChange={handleToggleAutoApprove}
+                                  disabled={toggleAutoApprove.isPending}
+                                />
+                                <span className='text-sm text-muted-foreground'>
+                                  {app.autoApprove ? 'Enabled' : 'Disabled'}
+                                </span>
                               </div>
                             </TableCell>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>Website</TableCell>
+                            <TableCell className='py-2'>
+                              {app.websiteUrl ? (
+                                <Button variant='link' className='h-auto p-0' asChild>
+                                  <a
+                                    href={app.websiteUrl}
+                                    target='_blank'
+                                    rel='noopener noreferrer'>
+                                    <ExternalLink />
+                                    Link
+                                  </a>
+                                </Button>
+                              ) : (
+                                '-'
+                              )}
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>
+                              Documentation
+                            </TableCell>
+                            <TableCell className='py-2'>
+                              {app.documentationUrl ? (
+                                <Button variant='link' className='h-auto p-0' asChild>
+                                  <a
+                                    href={app.documentationUrl}
+                                    target='_blank'
+                                    rel='noopener noreferrer'>
+                                    <ExternalLink />
+                                    Link
+                                  </a>
+                                </Button>
+                              ) : (
+                                '-'
+                              )}
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>
+                              Support Site
+                            </TableCell>
+                            <TableCell className='py-2'>
+                              {app.supportSiteUrl ? (
+                                <Button variant='link' className='h-auto p-0' asChild>
+                                  <a
+                                    href={app.supportSiteUrl}
+                                    target='_blank'
+                                    rel='noopener noreferrer'>
+                                    <ExternalLink />
+                                    Link
+                                  </a>
+                                </Button>
+                              ) : (
+                                '-'
+                              )}
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>
+                              Has OAuth
+                            </TableCell>
+                            <TableCell className='py-2'>{app.hasOauth ? 'Yes' : 'No'}</TableCell>
+                          </TableRow>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>
+                              Has Bundle
+                            </TableCell>
+                            <TableCell className='py-2'>{app.hasBundle ? 'Yes' : 'No'}</TableCell>
+                          </TableRow>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>Scopes</TableCell>
+                            <TableCell className='py-2'>
+                              {app.scopes.length > 0 ? app.scopes.join(', ') : '-'}
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>Created</TableCell>
+                            <TableCell className='py-2'>
+                              {formatDistanceToNow(new Date(app.createdAt), { addSuffix: true })}
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>Updated</TableCell>
+                            <TableCell className='py-2'>
+                              {formatDistanceToNow(new Date(app.updatedAt), { addSuffix: true })}
+                            </TableCell>
+                          </TableRow>
+                          {app.description && (
+                            <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                              <TableCell className='bg-muted/50 py-2 font-medium'>
+                                Description
+                              </TableCell>
+                              <TableCell className='py-2 text-sm'>{app.description}</TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className='col-span-2 border-none rounded-none shadow-none'>
+                  <CardHeader>
+                    <CardTitle>Deployments</CardTitle>
+                    <CardDescription>Manage app deployments</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {app.deployments.length === 0 ? (
+                      <div className='flex h-40 items-center justify-center text-muted-foreground'>
+                        No deployments found
+                      </div>
+                    ) : (
+                      <div className='rounded-md border'>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Deployment</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {app.deployments.map((deployment) => (
+                              <TableRow key={deployment.id}>
+                                <TableCell>
+                                  <div>
+                                    <div className='font-medium font-mono'>
+                                      {deployment.version || 'Development'}
+                                    </div>
+                                    <div className='text-xs text-muted-foreground'>
+                                      <Badge variant='outline' className='mr-2'>
+                                        {deployment.deploymentType}
+                                      </Badge>
+                                      {formatDistanceToNow(new Date(deployment.createdAt), {
+                                        addSuffix: true,
+                                      })}
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={getDeploymentStatusVariant(deployment.status)}>
+                                    {deployment.status}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <div className='flex gap-1 justify-between'>
+                                    <div className='flex gap-0.5'>
+                                      {(deployment.status === 'pending-review' ||
+                                        deployment.status === 'in-review') && (
+                                        <>
+                                          <Button
+                                            size='sm'
+                                            variant='outline'
+                                            onClick={() => handleApproveDeployment(deployment.id)}
+                                            loading={approveDeployment.isPending}>
+                                            <CheckCircle />
+                                            Approve
+                                          </Button>
+                                          <Button
+                                            size='sm'
+                                            variant='outline'
+                                            onClick={() =>
+                                              handleRejectDeploymentClick(deployment.id)
+                                            }
+                                            loading={rejectDeployment.isPending}>
+                                            <XCircle />
+                                            Reject
+                                          </Button>
+                                        </>
+                                      )}
+                                      {deployment.status === 'published' && (
+                                        <Button
+                                          size='sm'
+                                          variant='outline'
+                                          onClick={() => handleDeprecateDeployment(deployment.id)}
+                                          loading={deprecateDeployment.isPending}>
+                                          <Ban />
+                                          Deprecate
+                                        </Button>
+                                      )}
+                                    </div>
+                                    <Button
+                                      size='sm'
+                                      variant='destructive-hover'
+                                      onClick={() => handleDeleteDeployment(deployment.id)}
+                                      loading={deleteDeployment.isPending}>
+                                      <Trash2 />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
           </div>
         </MainPageContent>
       </MainPage>

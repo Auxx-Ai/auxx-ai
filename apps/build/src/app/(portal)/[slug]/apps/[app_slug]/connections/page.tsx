@@ -1,6 +1,8 @@
 // apps/build/src/app/(portal)/[slug]/apps/[app_slug]/connections/page.tsx
 'use client'
 
+import type { ConnectionVariable } from '@auxx/database'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   Empty,
@@ -26,17 +28,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { Separator } from '@auxx/ui/components/separator'
 import { Switch } from '@auxx/ui/components/switch'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { TooltipError, TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { Loader2, X } from 'lucide-react'
+import { AlertTriangle, Loader2, Settings2, X } from 'lucide-react'
 import { useParams } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { toastError } from '~/components/global/toast'
 import { api } from '~/trpc/react'
+import { ConnectionVariableDialog } from './connection-variable-dialog'
 
 /** Connection form validation schema */
 const connectionFormSchema = z
@@ -48,16 +52,26 @@ const connectionFormSchema = z
     // OAuth2 fields - conditionally validated
     oauth2AuthorizeUrl: z
       .string()
-      .refine((val) => !val || val === '' || z.string().url().safeParse(val).success, {
-        message: 'Must be a valid URL',
-      })
+      .refine(
+        (val) => {
+          if (!val || val === '') return true
+          if (/\{[^}]+\}/.test(val)) return true
+          return z.string().url().safeParse(val).success
+        },
+        { message: 'Must be a valid URL or contain {variable} placeholders' }
+      )
       .optional()
       .or(z.literal('')),
     oauth2AccessTokenUrl: z
       .string()
-      .refine((val) => !val || val === '' || z.string().url().safeParse(val).success, {
-        message: 'Must be a valid URL',
-      })
+      .refine(
+        (val) => {
+          if (!val || val === '') return true
+          if (/\{[^}]+\}/.test(val)) return true
+          return z.string().url().safeParse(val).success
+        },
+        { message: 'Must be a valid URL or contain {variable} placeholders' }
+      )
       .optional()
       .or(z.literal('')),
     oauth2ClientId: z.string().optional().or(z.literal('')),
@@ -227,6 +241,9 @@ export default function ConnectionsPage() {
   } = form
 
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [connectionVariables, setConnectionVariables] = useState<ConnectionVariable[]>([])
+  const [variableDialogOpen, setVariableDialogOpen] = useState(false)
+  const [variablesDirty, setVariablesDirty] = useState(false)
 
   // Watch form fields - using watch instead of useWatch to avoid timing issues with reset
   const connectionType = watch('connectionType') || 'none'
@@ -264,6 +281,9 @@ export default function ConnectionsPage() {
           (features.callbackMetadataParams as string[])?.join(', ') ?? '',
       })
 
+      // Load connection variables from features
+      setConnectionVariables((features.connectionVariables as ConnectionVariable[]) ?? [])
+
       // Auto-open advanced section if any advanced field has a value
       if (
         features.pkce ||
@@ -284,6 +304,7 @@ export default function ConnectionsPage() {
   const upsertConnection = api.connections.upsert.useMutation({
     onSuccess: () => {
       hasLoadedConnection.current = false
+      setVariablesDirty(false)
       utils.connections.get.invalidate({
         appId: app?.id ?? '',
         version: 1,
@@ -300,6 +321,25 @@ export default function ConnectionsPage() {
 
   // Computed value for conditional rendering
   const isOAuth2 = connectionType === 'oauth2-code'
+
+  // Watch URL fields for placeholder auto-detection
+  const authorizeUrl = watch('oauth2AuthorizeUrl') || ''
+  const tokenUrl = watch('oauth2AccessTokenUrl') || ''
+  const clientId = watch('oauth2ClientId') || ''
+  const clientSecret = watch('oauth2ClientSecret') || ''
+
+  const detectedPlaceholders = useMemo(() => {
+    const allFields = [authorizeUrl, tokenUrl, clientId, clientSecret].join(' ')
+    const matches = allFields.match(/\{([^}]+)\}/g)
+    if (!matches) return []
+    const keys = [...new Set(matches.map((m) => m.slice(1, -1)))]
+    return keys.filter((k) => !connectionVariables.some((v) => v.key === k))
+  }, [authorizeUrl, tokenUrl, clientId, clientSecret, connectionVariables])
+
+  const handleVariablesChange = (vars: ConnectionVariable[]) => {
+    setConnectionVariables(vars)
+    setVariablesDirty(true)
+  }
 
   // Form submission handler
   const onSubmit = async (data: ConnectionFormData) => {
@@ -330,6 +370,7 @@ export default function ConnectionsPage() {
         oauth2TokenRequestAuthMethod: data.oauth2TokenRequestAuthMethod,
         oauth2RefreshTokenIntervalSeconds: refreshSeconds,
         oauth2Features: {
+          ...(connectionVariables.length > 0 && { connectionVariables }),
           ...(data.oauth2Pkce && { pkce: true }),
           ...(data.oauth2CallbackBaseUrl && { callbackBaseUrl: data.oauth2CallbackBaseUrl }),
           ...(data.oauth2ScopeSeparator && { scopeSeparator: data.oauth2ScopeSeparator }),
@@ -442,6 +483,61 @@ export default function ConnectionsPage() {
 
               {isOAuth2 && (
                 <FieldGroup>
+                  <Field>
+                    <FieldLabel className='flex items-center gap-1'>
+                      Dynamic Variables
+                      <TooltipExplanation
+                        text='Define variables that organizations must provide when connecting. Use {variable_name} placeholders in the Authorize URL, Token URL, Client ID, or Client Secret fields below.'
+                        side='right'
+                      />
+                    </FieldLabel>
+                    <div className='flex items-center gap-2'>
+                      <Button
+                        type='button'
+                        variant='outline'
+                        size='sm'
+                        onClick={() => setVariableDialogOpen(true)}>
+                        <Settings2 />
+                        Define Variables
+                      </Button>
+                      {connectionVariables.length > 0 && (
+                        <>
+                          <Separator orientation='vertical' className='h-5' />
+                          <div className='flex flex-wrap items-center gap-1'>
+                            {connectionVariables.map((v) => (
+                              <Badge key={v.key} variant='zinc' size='sm'>
+                                {`{${v.key}}`}
+                              </Badge>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <FieldDescription>
+                      Use these as placeholders in the fields below (e.g.{' '}
+                      <code className='text-xs'>
+                        {'https://{shop}.myshopify.com/admin/oauth/authorize'}
+                      </code>
+                      )
+                    </FieldDescription>
+                  </Field>
+
+                  {detectedPlaceholders.length > 0 && (
+                    <div className='flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800'>
+                      <AlertTriangle className='size-4 shrink-0' />
+                      <span>
+                        Unmatched placeholders detected:{' '}
+                        {detectedPlaceholders.map((p, i) => (
+                          <span key={p}>
+                            {i > 0 && ', '}
+                            <code className='font-mono'>{`{${p}}`}</code>
+                          </span>
+                        ))}
+                        . Define these as variables above.
+                      </span>
+                    </div>
+                  )}
+
                   <Field>
                     <FieldLabel htmlFor='app-organization-authorize-url'>Authorize URL</FieldLabel>
                     <InputGroup>
@@ -705,12 +801,19 @@ export default function ConnectionsPage() {
                 size='sm'
                 loading={upsertConnection.isPending}
                 loadingText='Saving...'
-                disabled={!isDirty || upsertConnection.isPending}>
+                disabled={(!isDirty && !variablesDirty) || upsertConnection.isPending}>
                 Save Connection
               </Button>
             </Field>
           </FieldGroup>
         </form>
+
+        <ConnectionVariableDialog
+          open={variableDialogOpen}
+          onOpenChange={setVariableDialogOpen}
+          variables={connectionVariables}
+          onChange={handleVariablesChange}
+        />
       </div>
     </div>
   )

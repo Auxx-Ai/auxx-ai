@@ -23,6 +23,7 @@ export async function getAppConnectionDefinition(appId: string, global: boolean)
         label: true,
         global: true,
         connectionType: true,
+        oauth2Features: true,
       },
     }),
     'get-connection-definition'
