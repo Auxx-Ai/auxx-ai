@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.54](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.53...auxx-v0.1.54) (2026-03-06)
+
+
+### Bug Fixes
+
+* update platform script reference and enhance Dockerfile for runt… ([#182](https://github.com/Auxx-Ai/auxx-ai/issues/182)) ([ca42a2f](https://github.com/Auxx-Ai/auxx-ai/commit/ca42a2fb7d6a7f0d61a6f639ff7bc59d2c6e8cbd))
+
 ## [0.1.53](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.52...auxx-v0.1.53) (2026-03-06)
 
 
