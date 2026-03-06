@@ -7,71 +7,125 @@ import type { ModelCapabilities } from './providers/types'
  * This is a pure utility - no state, no registry, just functions
  */
 export class ModelConfigService {
+  private static readonly GPT5_CONDITIONAL_SAMPLING_PARAMS = [
+    'temperature',
+    'top_p',
+    'logprobs',
+    'top_logprobs',
+  ]
+
+  private static readonly GPT5_1_5_2_PATTERN = /^gpt-5\.(1|2)(?:$|-)/
+
   /**
    * Filter parameters based on model's parameterRestrictions
    * @param capabilities The model capabilities (provider already has this)
    * @param parameters The user-provided parameters
+   * @param options Additional filtering options
    * @returns Filtered parameters safe for the model
    */
   static filterParameters(
     capabilities: ModelCapabilities | undefined,
-    parameters: Record<string, any>
+    parameters: Record<string, any>,
+    options?: {
+      enforceRuleAllowlist?: boolean
+    }
   ): Record<string, any> {
-    // If no capabilities or no restrictions, return as-is
-    if (!capabilities?.parameterRestrictions || !parameters) {
+    if (!parameters) {
+      return {}
+    }
+
+    // If no capabilities, return as-is (caller can choose fail-closed behavior)
+    if (!capabilities) {
       return parameters || {}
     }
 
-    const restrictions = capabilities.parameterRestrictions
     let filtered = { ...parameters }
+    const restrictions = capabilities.parameterRestrictions
 
-    // 1. Apply parameter mapping (e.g., max_tokens -> max_completion_tokens)
-    if (restrictions.parameterMapping) {
-      for (const [oldParam, newParam] of Object.entries(restrictions.parameterMapping)) {
-        if (filtered[oldParam] !== undefined) {
-          filtered[newParam] = filtered[oldParam]
-          delete filtered[oldParam]
+    if (restrictions) {
+      // 1. Apply parameter mapping (e.g., max_tokens -> max_completion_tokens)
+      if (restrictions.parameterMapping) {
+        for (const [oldParam, newParam] of Object.entries(restrictions.parameterMapping)) {
+          if (filtered[oldParam] !== undefined) {
+            filtered[newParam] = filtered[oldParam]
+            delete filtered[oldParam]
+          }
         }
       }
-    }
 
-    // 2. Remove unsupported parameters
-    if (restrictions.unsupportedParams) {
-      for (const param of restrictions.unsupportedParams) {
-        delete filtered[param]
-      }
-    }
-
-    // 3. Force default-only parameters to their default values
-    if (restrictions.defaultOnlyParams) {
-      for (const [param, defaultValue] of Object.entries(restrictions.defaultOnlyParams)) {
-        if (filtered[param] !== undefined && filtered[param] !== defaultValue) {
-          // Remove the parameter if it's not the default value
-          // The API will use its default
+      // 2. Remove unsupported parameters
+      if (restrictions.unsupportedParams) {
+        for (const param of restrictions.unsupportedParams) {
           delete filtered[param]
         }
       }
-    }
 
-    // 4. If supportedParams is defined, keep only those
-    if (restrictions.supportedParams) {
-      const supportedOnly: Record<string, any> = {}
-      for (const param of restrictions.supportedParams) {
-        if (filtered[param] !== undefined) {
-          supportedOnly[param] = filtered[param]
+      // 3. Force default-only parameters to their default values
+      if (restrictions.defaultOnlyParams) {
+        for (const [param, defaultValue] of Object.entries(restrictions.defaultOnlyParams)) {
+          if (filtered[param] !== undefined && filtered[param] !== defaultValue) {
+            // Remove the parameter if it's not the default value
+            // The API will use its default
+            delete filtered[param]
+          }
         }
       }
-      // Also keep any mapped parameters
-      Object.keys(filtered).forEach((key) => {
-        // If this key was created by mapping, keep it
-        if (Object.values(restrictions.parameterMapping || {}).includes(key)) {
-          supportedOnly[key] = filtered[key]
+
+      // 4. If supportedParams is defined, keep only those
+      if (restrictions.supportedParams) {
+        const supportedOnly: Record<string, any> = {}
+        for (const param of restrictions.supportedParams) {
+          if (filtered[param] !== undefined) {
+            supportedOnly[param] = filtered[param]
+          }
         }
-      })
-      filtered = supportedOnly
+        // Also keep any mapped parameters
+        Object.keys(filtered).forEach((key) => {
+          // If this key was created by mapping, keep it
+          if (Object.values(restrictions.parameterMapping || {}).includes(key)) {
+            supportedOnly[key] = filtered[key]
+          }
+        })
+        filtered = supportedOnly
+      }
     }
 
-    // 5. Validate parameters with options
+    // 5. GPT-5.1 / GPT-5.2 conditional compatibility logic.
+    // temperature/top_p/logprobs are only supported for effort=none.
+    if (ModelConfigService.requiresConditionalGpt5Compatibility(capabilities.modelId)) {
+      const reasoningEffort = String(filtered.reasoning_effort || '').toLowerCase()
+      const usesNoneReasoning = reasoningEffort === 'none'
+
+      if (!usesNoneReasoning) {
+        for (const param of ModelConfigService.GPT5_CONDITIONAL_SAMPLING_PARAMS) {
+          delete filtered[param]
+        }
+      }
+
+      // top_logprobs requires logprobs
+      if (filtered.logprobs === undefined) {
+        delete filtered.top_logprobs
+      }
+    }
+
+    // 6. Enforce allowlist from parameter rules if requested.
+    if (options?.enforceRuleAllowlist && capabilities.parameterRules) {
+      const allowedParams = new Set(capabilities.parameterRules.map((rule) => rule.name))
+
+      if (restrictions?.parameterMapping) {
+        for (const mappedParam of Object.values(restrictions.parameterMapping)) {
+          allowedParams.add(mappedParam)
+        }
+      }
+
+      for (const key of Object.keys(filtered)) {
+        if (!allowedParams.has(key)) {
+          delete filtered[key]
+        }
+      }
+    }
+
+    // 7. Validate parameters with options
     if (capabilities.parameterRules) {
       for (const rule of capabilities.parameterRules) {
         // If parameter has options and a value is provided, validate it
@@ -89,6 +143,10 @@ export class ModelConfigService {
     }
 
     return filtered
+  }
+
+  private static requiresConditionalGpt5Compatibility(modelId: string): boolean {
+    return ModelConfigService.GPT5_1_5_2_PATTERN.test(modelId) || modelId === 'gpt-5.2-chat-latest'
   }
 
   /**

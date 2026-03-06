@@ -7,3 +7,4 @@ export type {
   OrganizationWithMetrics,
 } from './admin-service'
 export { AdminService } from './admin-service'
+export type { ExportData, ImportResult, ImportValidation } from './import-apps'

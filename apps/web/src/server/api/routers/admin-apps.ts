@@ -13,6 +13,65 @@ import { z } from 'zod'
 import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
 import { invalidateBuildCacheForDeveloperAccount } from '~/server/lib/invalidate-build-cache'
 
+const connectionDefinitionSchema = z.object({
+  connectionType: z.string(),
+  label: z.string(),
+  description: z.string().nullable(),
+  global: z.boolean().nullable(),
+  major: z.number(),
+  oauth2AuthorizeUrl: z.string().nullable(),
+  oauth2AccessTokenUrl: z.string().nullable(),
+  oauth2ClientId: z.string().nullable(),
+  oauth2Scopes: z.array(z.string()).nullable(),
+  oauth2TokenRequestAuthMethod: z.string().nullable(),
+  oauth2RefreshTokenIntervalSeconds: z.number().nullable(),
+  oauth2Features: z.record(z.string(), z.unknown()).nullable(),
+})
+
+const appSchema = z.object({
+  slug: z.string(),
+  title: z.string(),
+  description: z.string().nullable(),
+  category: z.string().nullable(),
+  scopes: z.array(z.string()).nullable(),
+  hasOauth: z.boolean().nullable(),
+  hasBundle: z.boolean().nullable(),
+  publicationStatus: z.string(),
+  reviewStatus: z.string().nullable(),
+  autoApprove: z.boolean(),
+  overview: z.string().nullable(),
+  contentOverview: z.string().nullable(),
+  contentHowItWorks: z.string().nullable(),
+  contentConfigure: z.string().nullable(),
+  websiteUrl: z.string().nullable(),
+  documentationUrl: z.string().nullable(),
+  contactUrl: z.string().nullable(),
+  supportSiteUrl: z.string().nullable(),
+  termsOfServiceUrl: z.string().nullable(),
+  oauthExternalEntrypointUrl: z.string().nullable(),
+  oauthApplication: z
+    .object({
+      clientId: z.string(),
+      name: z.string(),
+      redirectURLs: z.string(),
+      type: z.string(),
+    })
+    .nullable(),
+  connectionDefinitions: z.array(connectionDefinitionSchema),
+  latestDeployment: z.any().nullable(),
+})
+
+const exportDataSchema = z.object({
+  exportVersion: z.string(),
+  exportedAt: z.string(),
+  developerAccount: z.object({
+    slug: z.string(),
+    title: z.string(),
+    featureFlags: z.record(z.string(), z.unknown()).nullable(),
+  }),
+  apps: z.array(appSchema),
+})
+
 /**
  * Admin apps router for managing marketplace apps
  */
@@ -215,6 +274,42 @@ export const adminAppsRouter = createTRPCRouter({
       await adminService.toggleAutoApprove(input.appId, input.autoApprove)
 
       return { success: true }
+    }),
+
+  /**
+   * Validate an export JSON for import (check slug availability)
+   */
+  validateImport: superAdminProcedure
+    .input(
+      z.object({
+        exportData: exportDataSchema,
+        targetDeveloperAccountId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const adminService = new AdminService(ctx.db)
+      return adminService.validateImport(input.exportData, input.targetDeveloperAccountId)
+    }),
+
+  /**
+   * Import apps from an export JSON with upsert logic
+   */
+  importApps: superAdminProcedure
+    .input(
+      z.object({
+        exportData: exportDataSchema,
+        targetDeveloperAccountId: z.string(),
+        selectedSlugs: z.array(z.string()),
+        slugOverrides: z.record(z.string(), z.string()),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const adminService = new AdminService(ctx.db)
+      return adminService.importApps(input.exportData, ctx.session.user.id, {
+        targetDeveloperAccountId: input.targetDeveloperAccountId,
+        selectedSlugs: input.selectedSlugs,
+        slugOverrides: input.slugOverrides,
+      })
     }),
 
   /**

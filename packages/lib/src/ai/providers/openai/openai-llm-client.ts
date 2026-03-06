@@ -3,20 +3,22 @@
 import type { Logger } from '@auxx/logger'
 import type OpenAI from 'openai'
 import { LLMClient } from '../../clients/base/llm-client'
-import type {
-  ClientConfig,
-  FunctionCall,
-  LLMInvokeParams,
-  LLMResponse,
-  LLMStreamChunk,
-  LLMStreamResult,
-  Message,
-  ModelCapabilities,
-  MultiModalContent,
-  ProcessedLLMParams,
-  Tool,
-  ToolCall,
-  UsageMetrics,
+import {
+  type ClientConfig,
+  type FunctionCall,
+  InvalidParameterError,
+  type LLMInvokeParams,
+  type LLMResponse,
+  type LLMStreamChunk,
+  type LLMStreamResult,
+  type Message,
+  type ModelCapabilities,
+  type MultiModalContent,
+  type ProcessedLLMParams,
+  StreamingError,
+  type Tool,
+  type ToolCall,
+  type UsageMetrics,
 } from '../../clients/base/types'
 import { TokenCalculator } from '../../clients/utils/token-calculator'
 import { ModelConfigService } from '../../model-config-service'
@@ -75,6 +77,11 @@ export class OpenAILLMClient extends LLMClient {
   async *streamInvoke(params: LLMInvokeParams): AsyncGenerator<LLMStreamChunk, LLMStreamResult> {
     this.validateLLMParams(params)
 
+    const modelCapabilities = this.getModelCapabilitiesFromRegistry(params.model)
+    if (modelCapabilities?.supports?.streaming === false) {
+      throw new InvalidParameterError(`Streaming is not supported for model: ${params.model}`)
+    }
+
     const processedParams = await this.preprocessParams(params)
     processedParams.stream = true
 
@@ -120,13 +127,14 @@ export class OpenAILLMClient extends LLMClient {
         }
       }
 
-      // Log full request for debugging
-      this.logger.info('OpenAI API Streaming Request', {
+      this.logger.debug('OpenAI API streaming request', {
         model: flattenedParams.model,
-        request: JSON.stringify(flattenedParams, null, 2),
+        keys: Object.keys(flattenedParams),
       })
 
-      const stream = await this.apiClient.chat.completions.create(flattenedParams)
+      const stream = await this.createWithReasoningFallback(flattenedParams, (payload) =>
+        this.apiClient.chat.completions.create(payload as any)
+      )
 
       for await (const chunk of stream) {
         // Handle usage information
@@ -236,13 +244,14 @@ export class OpenAILLMClient extends LLMClient {
       }
     }
 
-    // Log full request for debugging
-    this.logger.info('OpenAI API Request', {
+    this.logger.debug('OpenAI API request', {
       model: flattenedParams.model,
-      request: JSON.stringify(flattenedParams, null, 2),
+      keys: Object.keys(flattenedParams),
     })
 
-    const completion = await this.apiClient.chat.completions.create(flattenedParams)
+    const completion = await this.createWithReasoningFallback(flattenedParams, (payload) =>
+      this.apiClient.chat.completions.create(payload as any)
+    )
 
     // Check for refusal (OpenAI structured outputs feature)
     const message = completion.choices[0]?.message as any
@@ -284,7 +293,7 @@ export class OpenAILLMClient extends LLMClient {
     const modelCapabilities = this.getModelCapabilitiesFromRegistry(params.model)
 
     if (!modelCapabilities) {
-      this.logger.warn('Model not found in registry, parameter filtering disabled', {
+      this.logger.warn('Model not found in registry, dropping custom parameters', {
         model: params.model,
       })
     }
@@ -297,6 +306,8 @@ export class OpenAILLMClient extends LLMClient {
 
     // Apply model-specific parameter filtering using capabilities
     if (processedParams.parameters && modelCapabilities) {
+      const originalParams = { ...processedParams.parameters }
+
       // First apply defaults
       processedParams.parameters = ModelConfigService.applyDefaults(
         modelCapabilities,
@@ -312,16 +323,26 @@ export class OpenAILLMClient extends LLMClient {
       // Then filter based on restrictions
       processedParams.parameters = ModelConfigService.filterParameters(
         modelCapabilities,
-        processedParams.parameters
+        processedParams.parameters,
+        { enforceRuleAllowlist: true }
       )
 
       // Log filtered parameters for debugging
       this.logger.debug('Filtered parameters for model', {
         model: params.model,
-        originalParams: params.parameters,
+        droppedParams: Object.keys(originalParams).filter(
+          (key) => processedParams.parameters?.[key] === undefined
+        ),
+        finalParamKeys: Object.keys(processedParams.parameters || {}),
         filteredParams: processedParams.parameters,
         isReasoningModel: ModelConfigService.isReasoningModel(modelCapabilities),
       })
+    } else if (processedParams.parameters && Object.keys(processedParams.parameters).length > 0) {
+      this.logger.warn('Unknown model, clearing custom parameters before OpenAI request', {
+        model: params.model,
+        droppedParams: Object.keys(processedParams.parameters),
+      })
+      processedParams.parameters = {}
     }
 
     // Filter out unsupported features based on model capabilities
@@ -364,11 +385,7 @@ export class OpenAILLMClient extends LLMClient {
         return msg
       })
 
-      // Handle streaming for O1 models
-      if (processed.stream && baseModel.match(/^o1(-\d{4}-\d{2}-\d{2})?$/)) {
-        processed.block_as_stream = true
-        processed.stream = false
-      }
+      // Streaming is supported for current o1/o3 families, so no forced stream downgrade here.
     }
 
     // GPT-5 model specific handling (already handled by ModelConfigService, but kept for explicit clarity)
@@ -651,5 +668,37 @@ export class OpenAILLMClient extends LLMClient {
    */
   protected getModelCapabilitiesFromRegistry(model: string): any {
     return ProviderRegistry.getModelCapabilities(model)
+  }
+
+  private shouldRetryWithoutReasoningParams(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error)
+    return message.includes('Unrecognized request argument supplied: reasoning_effort')
+  }
+
+  private stripReasoningOnlyParams(params: Record<string, any>): Record<string, any> {
+    const cleaned = { ...params }
+    delete cleaned.reasoning_effort
+    delete cleaned.verbosity
+    return cleaned
+  }
+
+  private async createWithReasoningFallback<T>(
+    params: Record<string, any>,
+    requestFn: (requestParams: Record<string, any>) => Promise<T>
+  ): Promise<T> {
+    try {
+      return await requestFn(params)
+    } catch (error) {
+      if (!this.shouldRetryWithoutReasoningParams(error) || params.reasoning_effort === undefined) {
+        throw error
+      }
+
+      const retryParams = this.stripReasoningOnlyParams(params)
+      this.logger.warn('Retrying OpenAI request without reasoning-only parameters', {
+        model: params.model,
+        removedParams: ['reasoning_effort', 'verbosity'],
+      })
+      return requestFn(retryParams)
+    }
   }
 }

@@ -274,6 +274,7 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
         <ReactFlow
           nodes={nodes}
           edges={edges}
+          deleteKeyCode={null}
           // onNodesChange={}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
