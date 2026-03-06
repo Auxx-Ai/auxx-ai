@@ -20,6 +20,7 @@
 # any remaining occurrences.
 
 PLACEHOLDER="__RUNTIME_DOMAIN__"
+PLACEHOLDER_LOWER="__runtime_domain__"
 # Resolve relative to WORKDIR (set by each app's Dockerfile to /app/apps/<app>/)
 NEXT_DIR="$(pwd)/.next"
 
@@ -28,9 +29,14 @@ replace_in_next() {
   local replacement="$2"
   local label="$3"
 
+  # Derive lowercase variant of the pattern (turbopack may lowercase env values)
+  local pattern_lower
+  pattern_lower=$(echo "${pattern}" | tr '[:upper:]' '[:lower:]')
+
   echo "[entrypoint] Replacing '${label}' → ${replacement}"
-  find "${NEXT_DIR}" -name '*.js' -type f -exec sed -i \
+  find "${NEXT_DIR}" \( -name '*.js' -o -name '*.rsc' -o -name '*.html' \) -type f -exec sed -i \
     -e "s|${pattern}|${replacement}|g" \
+    -e "s|${pattern_lower}|${replacement}|g" \
     {} + 2>/dev/null || true
 }
 

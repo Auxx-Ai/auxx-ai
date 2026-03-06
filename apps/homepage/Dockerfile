@@ -30,6 +30,7 @@ ARG PROJECT_PATH
 ARG GIT_SHA
 ARG APP_VERSION
 ARG BUILD_TIME
+ARG DOMAIN=__RUNTIME_DOMAIN__
 
 WORKDIR /app
 
@@ -45,9 +46,10 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install \
   --filter "${PROJECT}..." \
   --ignore-scripts
 
-# Build the application
+# Build the application with runtime domain placeholder
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
   NEXT_TELEMETRY_DISABLED=1 \
+  DOMAIN=${DOMAIN} \
   pnpm turbo build --filter="${PROJECT}..."
 
 # Prune dev dependencies
@@ -79,10 +81,15 @@ COPY --from=builder --chown=nextjs:nodejs /app/${PROJECT_PATH}/.next/static ./${
 # Copy public directory (homepage has many images)
 COPY --from=builder --chown=nextjs:nodejs /app/${PROJECT_PATH}/public ./${PROJECT_PATH}/public
 
+# Copy the docker entrypoint for runtime env replacement
+COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
+
 USER nextjs
 
 WORKDIR /app/${PROJECT_PATH}
 
 EXPOSE 3001
 
+ENTRYPOINT ["../../docker-entrypoint.sh"]
 CMD ["node", "server.js"]

@@ -1,5 +1,5 @@
 // apps/homepage/src/app/_components/config.ts
-import { getAppVersion, getHomepageUrl, WEBAPP_URL } from '@auxx/config/client'
+import { DOCS_URL, getAppVersion, getHomepageUrl, WEBAPP_URL } from '@auxx/config/client'
 
 const buildAppUrl = (path: string) => {
   const normalized = path.startsWith('/') ? path : `/${path}`
@@ -25,6 +25,7 @@ export const config = {
     dashboard: buildAppUrl('/app/settings'),
     pricing: getHomepageUrl('/pricing'),
     demo: getHomepageUrl('/demo'),
+    docs: DOCS_URL,
   },
   mainNav: [
     {

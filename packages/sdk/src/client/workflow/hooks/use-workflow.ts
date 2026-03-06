@@ -9,6 +9,7 @@ import { FieldRow, type FieldRowProps } from '../components/fields/field-row.js'
 import { VarField, type VarFieldProps } from '../components/fields/var-field.js'
 import { VarFieldGroup, type VarFieldGroupProps } from '../components/fields/var-field-group.js'
 import { VarInput } from '../components/fields/var-input.js'
+import { ArrayInput, type ArrayInputProps } from '../components/inputs/array-input.js'
 import type { BooleanInputProps } from '../components/inputs/boolean-input.js'
 import type { NumberInputProps } from '../components/inputs/number-input.js'
 import type { SelectInputProps } from '../components/inputs/select-input.js'
@@ -96,6 +97,16 @@ export interface WorkflowSelectInputProps<TSchema extends WorkflowSchema>
   variableTypes?: string[]
   /** Expand to fill remaining space in a VarFieldGroup layout="row" */
   expand?: boolean
+}
+
+/**
+ * Props for workflow array input component.
+ * Uses Omit to reuse base ArrayInputProps and adds type-safe name field.
+ */
+export interface WorkflowArrayInputProps<TSchema extends WorkflowSchema>
+  extends Omit<ArrayInputProps, 'name'> {
+  /** Type-safe path to array field in schema */
+  name: PathToField<TSchema['inputs'], 'array'>
 }
 
 /**
@@ -202,6 +213,9 @@ export interface UseWorkflowApi<TSchema extends WorkflowSchema> {
 
   /** Options input — VarEditor-backed select with dynamic options support. */
   OptionsInput: (props: WorkflowOptionsInputProps<TSchema>) => ReactElement
+
+  /** Array input — repeatable list of structured fields using children as item template. */
+  ArrayInput: (props: WorkflowArrayInputProps<TSchema>) => ReactElement
 
   /** VarField — VarEditorFieldRow wrapper (title, description, type icon, clear button). */
   VarField: (props: VarFieldProps) => ReactElement
@@ -408,6 +422,17 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
     [serializedInputSchema]
   )
 
+  // ArrayInput: Structural container for array + struct fields
+  const WorkflowArrayInput = useCallback(
+    (props: WorkflowArrayInputProps<TSchema>): ReactElement => {
+      return createElement(ArrayInput, {
+        ...props,
+        name: props.name as string,
+      })
+    },
+    []
+  )
+
   // FieldDivider: Visual separator for row layout (no data binding)
   const WorkflowFieldDivider = useCallback((): ReactElement => {
     return createElement(FieldDivider, {})
@@ -460,6 +485,7 @@ export function useWorkflow<TSchema extends WorkflowSchema>(
     CurrencyInput: WorkflowCurrencyInput,
     SelectInput: WorkflowSelectInput,
     OptionsInput: WorkflowOptionsInput,
+    ArrayInput: WorkflowArrayInput,
     FieldRow: WorkflowFieldRowComponent,
     VarField: WorkflowVarField,
     VarFieldGroup: WorkflowVarFieldGroup,
