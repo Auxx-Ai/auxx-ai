@@ -1,5 +1,5 @@
 # apps/kb/Dockerfile
-ARG PROJECT="kb"
+ARG PROJECT="@auxx/kb"
 ARG PROJECT_PATH="apps/kb"
 
 FROM node:22.22-bookworm-slim AS slim
@@ -52,7 +52,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
   pnpm turbo build --filter="${PROJECT}..."
 
 # Prune dev dependencies
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm prune --prod --no-optional
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store CI=true pnpm prune --prod --no-optional --ignore-scripts
 
 FROM slim AS runner
 

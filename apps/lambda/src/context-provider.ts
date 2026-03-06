@@ -27,7 +27,9 @@ export function createRuntimeContext(execContext: ExecutionContext): RuntimeCont
       handle: execContext.organizationHandle,
     },
     user: {
-      id: execContext.userId,
+      // Some execution types do not provide userId (e.g. system/background calls).
+      // Keep RuntimeContext contract as string and normalize missing values.
+      id: execContext.userId ?? '',
       email: execContext.userEmail,
       name: execContext.userName,
     },

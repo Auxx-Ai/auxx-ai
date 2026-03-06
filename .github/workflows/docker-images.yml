@@ -34,6 +34,8 @@ on:
           - worker
           - lambda
           - lambda-server
+          - homepage
+          - docs
 
 permissions:
   contents: read
@@ -69,6 +71,12 @@ jobs:
           - name: lambda-server
             file: apps/lambda/Dockerfile.server
             image: ghcr.io/auxx-ai/lambda-server
+          - name: homepage
+            file: apps/homepage/Dockerfile
+            image: ghcr.io/auxx-ai/homepage
+          - name: docs
+            file: apps/docs/Dockerfile
+            image: ghcr.io/auxx-ai/docs
 
     steps:
       - name: Skip non-selected image
