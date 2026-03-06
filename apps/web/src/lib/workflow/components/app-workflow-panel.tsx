@@ -134,8 +134,9 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
         getFieldMode,
         schema: block.schema,
         isTrigger,
+        setInputs,
       }),
-      [nodeId, nodeData, handleFieldChange, getFieldMode, block.schema, isTrigger]
+      [nodeId, nodeData, handleFieldChange, getFieldMode, block.schema, isTrigger, setInputs]
     )
 
     /** Merged output variables (static + computed + inferred from execution) */
