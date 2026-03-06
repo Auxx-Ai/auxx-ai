@@ -23,6 +23,8 @@ export interface AppWorkflowFieldContextValue {
   schema: WorkflowBlock['schema'] | null
   /** Whether this node is a trigger node (no upstream variables available) */
   isTrigger: boolean
+  /** Raw setter for atomic multi-field updates (used by ArrayInputInternal) */
+  setInputs?: (data: Record<string, any>) => void
 }
 
 const AppWorkflowFieldContext = createContext<AppWorkflowFieldContextValue | null>(null)

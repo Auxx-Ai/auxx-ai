@@ -1,5 +1,6 @@
 // packages/sdk/src/client/workflow/components/index.ts
 
+export * from './inputs/array-input.js'
 export * from './inputs/boolean-input.js'
 export * from './inputs/number-input.js'
 export * from './inputs/select-input.js'

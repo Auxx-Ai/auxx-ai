@@ -13,6 +13,7 @@ import { SeparatorTag } from './separator-tag.js'
 import { TextBlockTag } from './text-block-tag.js'
 import { TypographyBodyTag, TypographyCaptionTag, TypographyTag } from './typography-tag.js'
 import { WorkflowAlertTag } from './workflow-alert-tag.js'
+import { WorkflowArrayInputTag } from './workflow-array-input-tag.js'
 import { WorkflowBadgeTag } from './workflow-badge-tag.js'
 import { WorkflowBooleanInputTag } from './workflow-boolean-input-tag.js'
 import { WorkflowConditionalRenderTag } from './workflow-conditional-render-tag.js'
@@ -65,6 +66,7 @@ export const TAG_REGISTRY: Record<string, new (props: Record<string, any>) => Ba
   auxxworkflowinputgroup: WorkflowInputGroupTag,
   auxxworkflowseparator: WorkflowSeparatorTag,
   auxxworkflowalert: WorkflowAlertTag,
+  auxxworkflowarrayinput: WorkflowArrayInputTag,
   auxxworkflowbadge: WorkflowBadgeTag,
   auxxworkflowconditionalrender: WorkflowConditionalRenderTag,
   auxxworkflowvariableinput: WorkflowVariableInputTag,
@@ -109,6 +111,7 @@ export { SeparatorTag } from './separator-tag.js'
 export { TextBlockTag } from './text-block-tag.js'
 export { TypographyBodyTag, TypographyCaptionTag, TypographyTag } from './typography-tag.js'
 export { WorkflowAlertTag } from './workflow-alert-tag.js'
+export { WorkflowArrayInputTag } from './workflow-array-input-tag.js'
 export { WorkflowBadgeTag } from './workflow-badge-tag.js'
 export { WorkflowBooleanInputTag } from './workflow-boolean-input-tag.js'
 export { WorkflowConditionalRenderTag } from './workflow-conditional-render-tag.js'

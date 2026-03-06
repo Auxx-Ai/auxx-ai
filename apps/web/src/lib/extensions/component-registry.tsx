@@ -41,6 +41,7 @@ import { WorkflowVarField } from './components/workflow/fields/var-field'
 import { WorkflowVarFieldGroup } from './components/workflow/fields/var-field-group'
 // Note: Old input components (StringInput, NumberInput, etc.) are still available from
 // './components/workflow/inputs' for settings panels where VarEditor isn't needed.
+import { ArrayInputInternal } from './components/workflow/inputs/array-input-internal'
 import { VarInputInternal } from './components/workflow/inputs/var-input'
 import {
   InputGroup,
@@ -276,6 +277,7 @@ export const componentRegistry = {
   BooleanInputInternal: VarInputInternal,
   OptionsInputInternal: VarInputInternal,
   SelectInputInternal: VarInputInternal, // Backward compat alias
+  ArrayInputInternal: ArrayInputInternal,
   // VarField wrappers
   WorkflowVarField: WorkflowVarField,
   WorkflowVarFieldGroup: WorkflowVarFieldGroup,
