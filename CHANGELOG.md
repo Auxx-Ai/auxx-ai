@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.51](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.50...auxx-v0.1.51) (2026-03-06)
+
+
+### Features
+
+* add dynamic trigger input registration and unregistration ([#174](https://github.com/Auxx-Ai/auxx-ai/issues/174)) ([e7a4dd3](https://github.com/Auxx-Ai/auxx-ai/commit/e7a4dd3c90a908f8562eb8dbbbd9a1d1975357e0))
+* add polling trigger functionality and related schema updates ([#172](https://github.com/Auxx-Ai/auxx-ai/issues/172)) ([4df0149](https://github.com/Auxx-Ai/auxx-ai/commit/4df0149604a84955397010ab3379228683d7cfe4))
+* enhance multi-select functionality with create and manage optio… ([#177](https://github.com/Auxx-Ai/auxx-ai/issues/177)) ([0309c92](https://github.com/Auxx-Ai/auxx-ai/commit/0309c928b342f686563709c710dd677a28148ea4))
+* implement import functionality for apps with validation and ups… ([#175](https://github.com/Auxx-Ai/auxx-ai/issues/175)) ([1c4d8a3](https://github.com/Auxx-Ai/auxx-ai/commit/1c4d8a3b78ff2495a0d0410fe89fd15975846cc4))
+* update API routes for SDK webhooks and settings ([#170](https://github.com/Auxx-Ai/auxx-ai/issues/170)) ([1d502c8](https://github.com/Auxx-Ai/auxx-ai/commit/1d502c80ba907a0597919699e1f8113c522d4641))
+
 ## [0.1.50](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.49...auxx-v0.1.50) (2026-03-04)
 
 
