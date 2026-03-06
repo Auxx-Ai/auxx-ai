@@ -1,6 +1,7 @@
 // packages/sdk/src/client/workflow/types/path-helpers.ts
 
 import type { WorkflowFieldNode } from '../../../root/workflow/base-node.js'
+import type { WorkflowArrayNode, WorkflowStructNode } from '../../../root/workflow/input-nodes.js'
 
 /**
  * Recursion depth limit (0-5)
@@ -90,17 +91,32 @@ type IsFieldNodeOfType<V, TT extends string> =
     : false
 
 /**
+ * Extract struct field names from a WorkflowArrayNode's items.
+ * When an array contains a struct, the struct's field names become valid
+ * paths for child inputs inside ArrayInput (which provides scoped context).
+ */
+type StructFieldNames<V, TType extends string> =
+  V extends WorkflowArrayNode<infer TItem>
+    ? TItem extends WorkflowStructNode<infer TFields>
+      ? PathToFieldInner<TFields, TType, 3>
+      : never
+    : never
+
+/**
  * Internal recursive type for PathToField.
  * Works with class instances (WorkflowStringNode, etc.) not inferred types.
+ * Also extracts struct field names from array nodes for use inside ArrayInput children.
  */
 type PathToFieldInner<T, TType extends string, D extends Depth> = {
   [K in Extract<keyof T, string>]: IsFieldNodeOfType<T[K], TType> extends true
     ? K
-    : D extends 0
-      ? never
-      : PlainObject<T[K]> extends true
-        ? `${K}.${PathToFieldInner<T[K], TType, PrevDepth[D]>}`
-        : never
+    : T[K] extends WorkflowFieldNode
+      ? StructFieldNames<T[K], TType>
+      : D extends 0
+        ? never
+        : PlainObject<T[K]> extends true
+          ? `${K}.${PathToFieldInner<T[K], TType, PrevDepth[D]>}`
+          : never
 }[Extract<keyof T, string>]
 
 /**
