@@ -4,6 +4,7 @@ import {
   sendApprovalReminderEmail,
   sendApprovalRequestEmail,
   sendBillingEmail,
+  sendDeveloperInviteEmail,
   sendEmailChangeVerificationEmail,
   sendGettingStartedEmail,
   sendInviteEmail,
@@ -211,6 +212,14 @@ const handlers: {
       amount: p.amount,
       nextRetryDate: p.nextRetryDate,
       billingPortalUrl: p.billingPortalUrl,
+    }),
+  'developer-invite': (p) =>
+    sendDeveloperInviteEmail({
+      email: p.recipient.email,
+      inviterName: p.inviterName,
+      accountName: p.accountName,
+      acceptLink: p.acceptLink,
+      role: p.role,
     }),
 }
 

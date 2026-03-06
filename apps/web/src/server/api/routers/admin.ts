@@ -121,6 +121,85 @@ export const adminRouter = createTRPCRouter({
     }),
 
   /**
+   * Verify user email
+   */
+  verifyUserEmail: superAdminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const adminService = new AdminService(ctx.db)
+      await adminService.verifyUserEmail(input.id)
+      return { success: true }
+    }),
+
+  /**
+   * Send password reset email to user
+   */
+  sendPasswordReset: superAdminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const adminService = new AdminService(ctx.db)
+      const user = await adminService.getUser(input.id)
+      if (!user?.email) {
+        throw new Error('User not found or has no email')
+      }
+      const { auth } = await import('~/auth/server')
+      await auth.api.requestPasswordReset({
+        body: { email: user.email, redirectTo: '/reset-password' },
+      })
+      return { success: true }
+    }),
+
+  /**
+   * Revoke all user sessions
+   */
+  revokeUserSessions: superAdminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const adminService = new AdminService(ctx.db)
+      await adminService.revokeAllSessions(input.id)
+      return { success: true }
+    }),
+
+  /**
+   * Disable user two-factor authentication
+   */
+  disableUserTwoFactor: superAdminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const adminService = new AdminService(ctx.db)
+      await adminService.disableTwoFactor(input.id)
+      return { success: true }
+    }),
+
+  /**
+   * Force user to change password on next login
+   */
+  forceUserPasswordChange: superAdminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const adminService = new AdminService(ctx.db)
+      await adminService.forcePasswordChange(input.id)
+      return { success: true }
+    }),
+
+  /**
+   * Ban or unban a user account
+   */
+  setUserBanned: superAdminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        banned: z.boolean(),
+        reason: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const adminService = new AdminService(ctx.db)
+      await adminService.setUserBanned(input.id, input.banned, input.reason)
+      return { success: true }
+    }),
+
+  /**
    * Update user super admin status
    */
   setUserSuperAdmin: superAdminProcedure

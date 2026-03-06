@@ -19,7 +19,7 @@ import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { useRouter } from 'next/navigation'
 import type React from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 
@@ -58,6 +58,7 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
   const utils = api.useUtils()
   const posthog = useAnalytics()
 
+  const nameInputRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [iconValue, setIconValue] = useState<IconPickerValue>(DEFAULT_ICON)
@@ -168,7 +169,13 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-[425px]' position='tc'>
+      <DialogContent
+        className='sm:max-w-[425px]'
+        position='tc'
+        onOpenAutoFocus={(e) => {
+          e.preventDefault()
+          nameInputRef.current?.focus()
+        }}>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{dialogTitle}</DialogTitle>
@@ -186,6 +193,7 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
                     className='size-6'></IconPicker>
                 </InputGroupAddon>
                 <InputGroupInput
+                  ref={nameInputRef}
                   id='name'
                   autoComplete='off'
                   value={name}
@@ -193,7 +201,6 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
                   placeholder='Enter workflow name'
                   disabled={isPending}
                   required
-                  autoFocus
                 />
               </InputGroup>
             </div>

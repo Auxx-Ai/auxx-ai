@@ -16,6 +16,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { passkey } from '@better-auth/passkey'
 import { betterAuth } from 'better-auth' // core lib
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { APIError } from 'better-auth/api'
 import { nextCookies } from 'better-auth/next-js'
 import { bearer, customSession, oidcProvider, phoneNumber, twoFactor } from 'better-auth/plugins'
 import { eq } from 'drizzle-orm'
@@ -214,15 +215,21 @@ export const auth = betterAuth({
       // },
     }),
     customSession(async ({ user, session }) => {
-      // logger.info('customSession', { user })
       // Cast user to include additional fields
       const extendedUser = user as typeof user & {
         defaultOrganizationId?: string | null
         avatarAssetId?: string | null
         phoneNumberVerified?: boolean
         isSuperAdmin: boolean
+        banned?: boolean
+        forcePasswordChange?: boolean
         lastLoginAt?: Date | null
         preferredTimezone?: string | null
+      }
+
+      // Block banned users from accessing the app
+      if (extendedUser.banned) {
+        throw new APIError('FORBIDDEN', { message: 'Account is deactivated' })
       }
 
       if (extendedUser && !extendedUser.defaultOrganizationId) {
@@ -307,6 +314,7 @@ export const auth = betterAuth({
           hasPassword,
           preferredTimezone: extendedUser.preferredTimezone || 'UTC',
           lastLoginAt: extendedUser.lastLoginAt,
+          forcePasswordChange: extendedUser.forcePasswordChange ?? false,
         },
       }
     }),

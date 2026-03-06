@@ -25,6 +25,7 @@ export const emailTypeSchema = z.enum([
   'trial-expired',
   'subscription-cancelled',
   'payment-failed',
+  'developer-invite',
 ])
 
 export type EmailType = z.infer<typeof emailTypeSchema>
@@ -133,6 +134,12 @@ export type EmailPayloadByType = {
     amount: string
     nextRetryDate?: string
     billingPortalUrl?: string
+  }>
+  'developer-invite': WithRecipient<{
+    inviterName: string
+    accountName: string
+    acceptLink: string
+    role: string
   }>
 }
 

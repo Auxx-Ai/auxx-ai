@@ -8,6 +8,8 @@ import {
   ApprovalRequestText,
   BillingEmail,
   BillingText,
+  DeveloperInviteEmail,
+  DeveloperInviteText,
   EmailChangeVerificationEmail,
   EmailChangeVerificationText,
   GettingStartedEmail,
@@ -310,6 +312,37 @@ export const sendSystemEmail = async ({
     })
   } catch (error) {
     logger.error(error, 'Error in sendSystemEmail')
+    throw error
+  }
+}
+
+export const sendDeveloperInviteEmail = async ({
+  email,
+  inviterName,
+  accountName,
+  acceptLink,
+  role,
+}: {
+  email: UserEmail
+  inviterName: string
+  accountName: string
+  acceptLink: string
+  role: string
+}): Promise<boolean> => {
+  try {
+    const html = await render(
+      await DeveloperInviteEmail({ inviterName, accountName, acceptLink, role })
+    )
+    const text = DeveloperInviteText({ inviterName, accountName, acceptLink, role })
+
+    return await sendEmail({
+      to: email,
+      subject: formatSubject(`You've been invited to join ${accountName}`),
+      html,
+      text,
+    })
+  } catch (error) {
+    logger.error(error, 'Error in sendDeveloperInviteEmail')
     throw error
   }
 }

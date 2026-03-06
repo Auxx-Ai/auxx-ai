@@ -57,6 +57,10 @@ export interface UserDetails {
   completedOnboarding: boolean
   twoFactorEnabled: boolean
   isSuperAdmin: boolean
+  banned: boolean
+  bannedReason: string | null
+  bannedAt: Date | null
+  forcePasswordChange: boolean
   lastActiveAt: Date | null
   createdAt: Date
   updatedAt: Date
@@ -639,6 +643,10 @@ export class AdminService {
       completedOnboarding: user.completedOnboarding ?? false,
       twoFactorEnabled: user.twoFactorEnabled ?? false,
       isSuperAdmin: user.isSuperAdmin,
+      banned: user.banned,
+      bannedReason: user.bannedReason,
+      bannedAt: user.bannedAt ? new Date(user.bannedAt) : null,
+      forcePasswordChange: user.forcePasswordChange,
       lastActiveAt: user.lastActiveAt ? new Date(user.lastActiveAt) : null,
       createdAt: new Date(user.createdAt),
       updatedAt: new Date(user.updatedAt),
@@ -761,6 +769,131 @@ export class AdminService {
     await this.db.delete(schema.User).where(eq(schema.User.id, id))
 
     logger.info(`Successfully deleted user ${id}`)
+  }
+
+  /**
+   * Verify a user's email address
+   * @param userId - User ID
+   * @throws Error if user not found or is a system user
+   */
+  async verifyUserEmail(userId: string): Promise<void> {
+    logger.info(`Admin verifying email for user ${userId}`)
+    await this.validateNonSystemUser(userId)
+
+    await this.db
+      .update(schema.User)
+      .set({ emailVerified: true, updatedAt: new Date() })
+      .where(eq(schema.User.id, userId))
+
+    logger.info(`Verified email for user ${userId}`)
+  }
+
+  /**
+   * Revoke all sessions for a user
+   * @param userId - User ID
+   * @throws Error if user not found or is a system user
+   */
+  async revokeAllSessions(userId: string): Promise<void> {
+    logger.info(`Admin revoking all sessions for user ${userId}`)
+    await this.validateNonSystemUser(userId)
+
+    await this.db.delete(schema.session).where(eq(schema.session.userId, userId))
+
+    logger.info(`Revoked all sessions for user ${userId}`)
+  }
+
+  /**
+   * Disable two-factor authentication for a user
+   * @param userId - User ID
+   * @throws Error if user not found or is a system user
+   */
+  async disableTwoFactor(userId: string): Promise<void> {
+    logger.info(`Admin disabling 2FA for user ${userId}`)
+    await this.validateNonSystemUser(userId)
+
+    await this.db.delete(schema.TwoFactor).where(eq(schema.TwoFactor.userId, userId))
+    await this.db
+      .update(schema.User)
+      .set({ twoFactorEnabled: false, updatedAt: new Date() })
+      .where(eq(schema.User.id, userId))
+
+    logger.info(`Disabled 2FA for user ${userId}`)
+  }
+
+  /**
+   * Force a user to change their password on next login
+   * @param userId - User ID
+   * @throws Error if user not found or is a system user
+   */
+  async forcePasswordChange(userId: string): Promise<void> {
+    logger.info(`Admin forcing password change for user ${userId}`)
+    await this.validateNonSystemUser(userId)
+
+    await this.db
+      .update(schema.User)
+      .set({ forcePasswordChange: true, updatedAt: new Date() })
+      .where(eq(schema.User.id, userId))
+
+    logger.info(`Forced password change for user ${userId}`)
+  }
+
+  /**
+   * Ban or unban a user account
+   * @param userId - User ID
+   * @param banned - Whether to ban or unban
+   * @param reason - Reason for banning (optional)
+   * @throws Error if user not found or is a system user
+   */
+  async setUserBanned(userId: string, banned: boolean, reason?: string): Promise<void> {
+    logger.info(`Admin ${banned ? 'banning' : 'unbanning'} user ${userId}`)
+    await this.validateNonSystemUser(userId)
+
+    if (banned) {
+      await this.db
+        .update(schema.User)
+        .set({
+          banned: true,
+          bannedReason: reason ?? null,
+          bannedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.User.id, userId))
+
+      await this.revokeAllSessions(userId)
+    } else {
+      await this.db
+        .update(schema.User)
+        .set({
+          banned: false,
+          bannedReason: null,
+          bannedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.User.id, userId))
+    }
+
+    logger.info(`${banned ? 'Banned' : 'Unbanned'} user ${userId}`)
+  }
+
+  /**
+   * Validate that a user exists and is not a system user
+   * @param userId - User ID to validate
+   * @throws Error if user not found or is a system user
+   */
+  private async validateNonSystemUser(userId: string): Promise<void> {
+    const [user] = await this.db
+      .select({ userType: schema.User.userType })
+      .from(schema.User)
+      .where(eq(schema.User.id, userId))
+      .limit(1)
+
+    if (!user) {
+      throw new Error(`User ${userId} not found`)
+    }
+
+    if (user.userType === 'SYSTEM') {
+      throw new Error(`Cannot perform this action on system user ${userId}`)
+    }
   }
 
   /**

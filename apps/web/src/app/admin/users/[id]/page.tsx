@@ -1,9 +1,11 @@
 // apps/web/src/app/admin/users/[id]/page.tsx
 'use client'
 
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { Input } from '@auxx/ui/components/input'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -25,6 +27,7 @@ import {
 import { toastError } from '@auxx/ui/components/toast'
 import { formatDistanceToNow } from 'date-fns'
 import {
+  AlertTriangle,
   ArrowLeft,
   Book,
   Building,
@@ -38,7 +41,7 @@ import {
   User,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { use } from 'react'
+import { use, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 /**
@@ -76,6 +79,42 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
       })
     },
   })
+
+  const invalidateUser = () => utils.admin.getUser.invalidate({ id })
+
+  const verifyEmail = api.admin.verifyUserEmail.useMutation({
+    onSuccess: invalidateUser,
+    onError: (error) => toastError({ title: 'Failed to verify email', description: error.message }),
+  })
+
+  const sendPasswordReset = api.admin.sendPasswordReset.useMutation({
+    onError: (error) =>
+      toastError({ title: 'Failed to send reset email', description: error.message }),
+  })
+
+  const revokeSessions = api.admin.revokeUserSessions.useMutation({
+    onError: (error) =>
+      toastError({ title: 'Failed to revoke sessions', description: error.message }),
+  })
+
+  const disableTwoFactor = api.admin.disableUserTwoFactor.useMutation({
+    onSuccess: invalidateUser,
+    onError: (error) => toastError({ title: 'Failed to disable 2FA', description: error.message }),
+  })
+
+  const forcePasswordChange = api.admin.forceUserPasswordChange.useMutation({
+    onSuccess: invalidateUser,
+    onError: (error) =>
+      toastError({ title: 'Failed to force password change', description: error.message }),
+  })
+
+  const setUserBanned = api.admin.setUserBanned.useMutation({
+    onSuccess: invalidateUser,
+    onError: (error) =>
+      toastError({ title: 'Failed to update account status', description: error.message }),
+  })
+
+  const [banReason, setBanReason] = useState('')
 
   /**
    * Handle delete user
@@ -335,6 +374,73 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                       </TableBody>
                     </Table>
                   </div>
+
+                  {/* Activate/Deactivate Section */}
+                  {user.banned ? (
+                    <div className='mt-4 space-y-3'>
+                      <Alert variant='destructive'>
+                        <AlertTriangle className='size-4' />
+                        <AlertTitle>Account Deactivated</AlertTitle>
+                        <AlertDescription>
+                          {user.bannedReason && <span>{user.bannedReason} — </span>}
+                          {user.bannedAt && formatDistanceToNow(user.bannedAt, { addSuffix: true })}
+                        </AlertDescription>
+                      </Alert>
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        loading={setUserBanned.isPending}
+                        loadingText='Activating...'
+                        onClick={async () => {
+                          const confirmed = await confirm({
+                            title: 'Activate account?',
+                            description:
+                              'This will restore access for this user. They will be able to log in again.',
+                            confirmText: 'Activate',
+                            cancelText: 'Cancel',
+                          })
+                          if (confirmed) setUserBanned.mutate({ id, banned: false })
+                        }}>
+                        Activate Account
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className='mt-4'>
+                      <div className='flex items-center gap-2'>
+                        <Input
+                          placeholder='Reason (optional)'
+                          value={banReason}
+                          onChange={(e) => setBanReason(e.target.value)}
+                          className='max-w-xs'
+                        />
+                        <Button
+                          variant='destructive'
+                          size='sm'
+                          loading={setUserBanned.isPending}
+                          loadingText='Deactivating...'
+                          onClick={async () => {
+                            const confirmed = await confirm({
+                              title: 'Deactivate account?',
+                              description:
+                                'The user will be immediately logged out and unable to sign in.',
+                              confirmText: 'Deactivate',
+                              cancelText: 'Cancel',
+                              destructive: true,
+                            })
+                            if (confirmed) {
+                              setUserBanned.mutate({
+                                id,
+                                banned: true,
+                                reason: banReason || undefined,
+                              })
+                              setBanReason('')
+                            }
+                          }}>
+                          Deactivate Account
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -353,9 +459,21 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                             Email Verified
                           </TableCell>
                           <TableCell className='py-2'>
-                            <Badge variant={user.emailVerified ? 'default' : 'outline'}>
-                              {user.emailVerified ? 'Yes' : 'No'}
-                            </Badge>
+                            <div className='flex items-center gap-2 justify-between'>
+                              <Badge variant={user.emailVerified ? 'default' : 'outline'}>
+                                {user.emailVerified ? 'Yes' : 'No'}
+                              </Badge>
+                              {!user.emailVerified && (
+                                <Button
+                                  variant='link'
+                                  size='sm'
+                                  loading={verifyEmail.isPending}
+                                  loadingText='Verifying...'
+                                  onClick={() => verifyEmail.mutate({ id })}>
+                                  Verify
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                         <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
@@ -363,9 +481,111 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                             Two-Factor Authentication
                           </TableCell>
                           <TableCell className='py-2'>
-                            <Badge variant={user.twoFactorEnabled ? 'default' : 'outline'}>
-                              {user.twoFactorEnabled ? 'Enabled' : 'Disabled'}
-                            </Badge>
+                            <div className='flex items-center gap-2 justify-between'>
+                              <Badge variant={user.twoFactorEnabled ? 'default' : 'outline'}>
+                                {user.twoFactorEnabled ? 'Enabled' : 'Disabled'}
+                              </Badge>
+                              {user.twoFactorEnabled && (
+                                <Button
+                                  variant='link'
+                                  size='sm'
+                                  loading={disableTwoFactor.isPending}
+                                  loadingText='Disabling...'
+                                  onClick={async () => {
+                                    const confirmed = await confirm({
+                                      title: 'Disable two-factor authentication?',
+                                      description:
+                                        'This will remove the TOTP setup for this user. They will need to re-enable it.',
+                                      confirmText: 'Disable',
+                                      cancelText: 'Cancel',
+                                      destructive: true,
+                                    })
+                                    if (confirmed) disableTwoFactor.mutate({ id })
+                                  }}>
+                                  Disable
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                        <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                          <TableCell className='bg-muted/50 py-2 font-medium'>
+                            Reset Password
+                          </TableCell>
+                          <TableCell className='py-2'>
+                            <Button
+                              variant='link'
+                              size='sm'
+                              loading={sendPasswordReset.isPending}
+                              loadingText='Sending...'
+                              onClick={async () => {
+                                const confirmed = await confirm({
+                                  title: 'Send password reset email?',
+                                  description: `A password reset email will be sent to ${user.email}.`,
+                                  confirmText: 'Send',
+                                  cancelText: 'Cancel',
+                                })
+                                if (confirmed) sendPasswordReset.mutate({ id })
+                              }}>
+                              Send reset email
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                        <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                          <TableCell className='bg-muted/50 py-2 font-medium'>
+                            Force Password Change
+                          </TableCell>
+                          <TableCell className='py-2'>
+                            <div className='flex items-center gap-2 justify-between'>
+                              <Badge variant={user.forcePasswordChange ? 'destructive' : 'outline'}>
+                                {user.forcePasswordChange ? 'Yes' : 'No'}
+                              </Badge>
+                              {!user.forcePasswordChange && (
+                                <Button
+                                  variant='link'
+                                  size='sm'
+                                  loading={forcePasswordChange.isPending}
+                                  loadingText='Forcing...'
+                                  onClick={async () => {
+                                    const confirmed = await confirm({
+                                      title: 'Force password change?',
+                                      description:
+                                        'The user will be required to change their password on next login.',
+                                      confirmText: 'Force',
+                                      cancelText: 'Cancel',
+                                      destructive: true,
+                                    })
+                                    if (confirmed) forcePasswordChange.mutate({ id })
+                                  }}>
+                                  Force
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                        <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                          <TableCell className='bg-muted/50 py-2 font-medium'>
+                            Revoke Sessions
+                          </TableCell>
+                          <TableCell className='py-2'>
+                            <Button
+                              variant='link'
+                              size='sm'
+                              loading={revokeSessions.isPending}
+                              loadingText='Revoking...'
+                              onClick={async () => {
+                                const confirmed = await confirm({
+                                  title: 'Revoke all sessions?',
+                                  description:
+                                    'The user will be logged out from all devices immediately.',
+                                  confirmText: 'Revoke',
+                                  cancelText: 'Cancel',
+                                  destructive: true,
+                                })
+                                if (confirmed) revokeSessions.mutate({ id })
+                              }}>
+                              Revoke all sessions
+                            </Button>
                           </TableCell>
                         </TableRow>
                         <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
