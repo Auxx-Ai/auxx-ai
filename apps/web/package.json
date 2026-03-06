@@ -4,8 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "generate:nodes": "pnpm --filter @auxx/workflow-nodes run generate",
-    "prebuild": "pnpm run generate:nodes && tsx scripts/postinstall-migrate.ts",
+    "prebuild": "tsx scripts/postinstall-migrate.ts",
     "postinstall": "tsx scripts/postinstall-migrate.ts",
     "build": "next build --turbopack",
     "build:prod": "next build",
@@ -14,7 +13,6 @@
     "build:opennext": "open-next build",
     "check:opennext": "pnpm run build:opennext",
     "dev": "next dev --turbopack",
-    "dev:with-generate": "pnpm run generate:nodes && next dev --turbopack",
     "clean": "rm -rf .next .open-next .turbo node_modules *.tsbuildinfo",
     "preview": "next build --turbopack && next start",
     "start": "next start",

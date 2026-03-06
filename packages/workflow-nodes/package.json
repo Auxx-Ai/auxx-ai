@@ -32,8 +32,6 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json --noCheck && tsc-esm-fix --target=dist",
     "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo",
-    "generate": "tsx scripts/generate-frontend.ts",
-    "generate:watch": "tsx scripts/generate-frontend.ts --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:ui": "vitest --ui",
@@ -50,8 +48,6 @@
   "devDependencies": {
     "@auxx/typescript-config": "workspace:*",
     "@vitejs/plugin-react": "catalog:",
-    "fs-extra": "^11.2.0",
-    "glob": "^10.3.10",
     "tsc-esm-fix": "catalog:",
     "tsup": "catalog:",
     "tsx": "catalog:",

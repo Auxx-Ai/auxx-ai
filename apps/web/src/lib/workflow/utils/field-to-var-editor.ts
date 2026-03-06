@@ -105,6 +105,14 @@ export function mapFieldToVarEditorProps(params: {
           allowedTypes,
           fieldOptions: undefined,
         }
+      case 'phone':
+        return {
+          varType: BaseType.PHONE,
+          mode: VAR_MODE.RICH,
+          allowConstant,
+          allowedTypes,
+          fieldOptions: undefined,
+        }
     }
   }
 
@@ -135,6 +143,15 @@ export function mapFieldToVarEditorProps(params: {
         allowConstant,
         allowedTypes,
         fieldOptions: { variant: 'switch' },
+      }
+
+    case 'currency':
+      return {
+        varType: BaseType.CURRENCY,
+        mode: VAR_MODE.PICKER,
+        allowConstant,
+        allowedTypes,
+        fieldOptions: undefined,
       }
 
     case 'select': {
@@ -181,12 +198,16 @@ export function mapFieldType(type?: string, format?: string): BaseType {
         return BaseType.DATETIME
       case 'time':
         return BaseType.TIME
+      case 'phone':
+        return BaseType.PHONE
     }
   }
 
   switch (type) {
     case 'string':
       return BaseType.STRING
+    case 'currency':
+      return BaseType.CURRENCY
     case 'number':
       return BaseType.NUMBER
     case 'boolean':
@@ -218,6 +239,8 @@ function mapStringToBaseType(typeStr: string): BaseType | null {
     time: BaseType.TIME,
     email: BaseType.EMAIL,
     url: BaseType.URL,
+    phone: BaseType.PHONE,
+    currency: BaseType.CURRENCY,
     file: BaseType.FILE,
     json: BaseType.JSON,
     any: BaseType.ANY,

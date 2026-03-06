@@ -536,12 +536,19 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
 
     switch (type) {
       case 'string':
+      case 'email':
+      case 'url':
+      case 'phone':
+      case 'secret':
         return String(value)
 
-      case 'number': {
-        const num = Number(value)
-        if (Number.isNaN(num)) {
-          throw new Error(`Cannot coerce "${value}" to number`)
+      case 'number':
+      case 'currency': {
+        if (typeof value === 'number' && Number.isFinite(value)) return value
+        const cleaned = typeof value === 'string' ? value.replace(/[$€£,\s]/g, '') : String(value)
+        const num = Number(cleaned)
+        if (Number.isNaN(num) || !Number.isFinite(num)) {
+          throw new Error(`Cannot coerce "${value}" to ${type}`)
         }
         return num
       }
@@ -556,14 +563,36 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
         return Boolean(value)
 
       case 'object':
+        if (typeof value === 'string') {
+          try {
+            const parsed = JSON.parse(value)
+            return typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+          } catch {
+            return {}
+          }
+        }
         return typeof value === 'object' && !Array.isArray(value) ? value : {}
 
       case 'array':
         return Array.isArray(value) ? value : []
 
       case 'date':
-      case 'datetime':
-        return value instanceof Date ? value : new Date(value)
+      case 'datetime': {
+        if (value instanceof Date) {
+          return Number.isNaN(value.getTime()) ? null : value.toISOString()
+        }
+        if (typeof value === 'string' || typeof value === 'number') {
+          const d = new Date(value)
+          return Number.isNaN(d.getTime()) ? null : d.toISOString()
+        }
+        return value
+      }
+
+      case 'time':
+        return typeof value === 'string' ? value : String(value)
+
+      case 'file':
+        return value
 
       default:
         return value

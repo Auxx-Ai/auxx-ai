@@ -59,6 +59,8 @@ export function mapFieldTypeToBaseType(fieldType: string | undefined): BaseType 
     case 'struct':
     case 'object':
       return BaseType.OBJECT
+    case 'currency':
+      return BaseType.CURRENCY
     case 'any':
       return BaseType.ANY
     default:
@@ -117,6 +119,9 @@ export function convertFieldToOutputVariable(
       case 'url':
       case 'uri':
         baseType = BaseType.URL
+        break
+      case 'phone':
+        baseType = BaseType.PHONE
         break
       // Other formats (if any) keep as STRING
     }

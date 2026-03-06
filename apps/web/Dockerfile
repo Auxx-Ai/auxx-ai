@@ -72,9 +72,6 @@ ENV REDIS_PORT="6379"
 # Copy full source of relevant packages
 COPY --from=pruner /app/out/full/ .
 
-# Generate workflow nodes frontend files
-RUN BUILDING_CONTAINER=true pnpm --filter="@auxx/workflow-nodes" run generate
-
 # Build all upstream dependencies (tsdown packages produce dist/*.mjs)
 RUN BUILDING_CONTAINER=true pnpm turbo build --filter="@auxx/web^..."
 

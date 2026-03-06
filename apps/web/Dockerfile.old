@@ -70,10 +70,6 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 ENV NODE_OPTIONS="--max-old-space-size=8192"
 ENV TURBO_TELEMETRY_DISABLED=1
 
-
-# Generate workflow nodes frontend files
-RUN BUILDING_CONTAINER=true pnpm --filter="@auxx/workflow-nodes" run generate
-
 # Build dependencies first 
 RUN BUILDING_CONTAINER=true pnpm turbo build --filter="@auxx/web^..."
 

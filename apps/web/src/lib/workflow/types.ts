@@ -80,7 +80,16 @@ export interface WorkflowBlockField {
   label: string
 
   /** Field type - maps directly to SDK field types */
-  type: 'string' | 'number' | 'boolean' | 'select' | 'array' | 'struct' | 'object' | 'any'
+  type:
+    | 'string'
+    | 'number'
+    | 'boolean'
+    | 'select'
+    | 'currency'
+    | 'array'
+    | 'struct'
+    | 'object'
+    | 'any'
 
   // ========================================
   // Metadata (Optional)
@@ -96,7 +105,7 @@ export interface WorkflowBlockField {
   default?: any
 
   /** Format hint for specialized string types (following JSON Schema spec) */
-  format?: 'date' | 'datetime' | 'time' | 'email' | 'url' | 'uri'
+  format?: 'date' | 'datetime' | 'time' | 'email' | 'url' | 'uri' | 'phone'
 
   // ========================================
   // Input-Specific (Ignored for outputs)

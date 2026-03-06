@@ -51,7 +51,7 @@ export const CREDENTIAL_REGISTRY: CredentialTypeMetadata[] = [
     category: 'auth',
     icon: PROVIDER_ICONS.google,
     credentialType: new GoogleOAuth2Api(),
-    compatibleNodeTypes: ['http', 'email', 'professional-network'],
+    compatibleNodeTypes: ['http', 'email'],
   },
   {
     id: 'app-connection',
@@ -60,7 +60,7 @@ export const CREDENTIAL_REGISTRY: CredentialTypeMetadata[] = [
     category: 'auth',
     icon: PROVIDER_ICONS.google,
     credentialType: new GoogleOAuth2Api(),
-    compatibleNodeTypes: ['http', 'email', 'professional-network'],
+    compatibleNodeTypes: ['http', 'email'],
   },
 
   {
