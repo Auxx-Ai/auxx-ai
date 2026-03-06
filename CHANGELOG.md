@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.55](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.54...auxx-v0.1.55) (2026-03-06)
+
+
+### Features
+
+* add user ban and force password change functionality and build … ([#184](https://github.com/Auxx-Ai/auxx-ai/issues/184)) ([007649c](https://github.com/Auxx-Ai/auxx-ai/commit/007649c7efe629543786f5d002d24a83353f0ac4))
+
 ## [0.1.54](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.53...auxx-v0.1.54) (2026-03-06)
 
 
