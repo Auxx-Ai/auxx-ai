@@ -1,6 +1,14 @@
-import type { NextConfig } from 'next'
+// apps/homepage/next.config.mjs
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const nextConfig: NextConfig = {
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  output: 'standalone',
+  outputFileTracingRoot: path.join(__dirname, '../../'),
   transpilePackages: ['@auxx/config'],
   images: {
     // Avoid requiring sharp in the server Lambda; rely on client-side <img> or our optimizer function
@@ -13,7 +21,6 @@ const nextConfig: NextConfig = {
       { protocol: 'http', hostname: 'localhost' },
     ],
   },
-  /* config options here */
 }
 
 export default nextConfig

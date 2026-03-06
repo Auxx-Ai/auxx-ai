@@ -171,6 +171,7 @@
             "npm:next-themes@~0.4.4",
             "npm:nuqs@^2.4.0",
             "npm:papaparse@^5.5.3",
+            "npm:prettier@^3.8.1",
             "npm:prosemirror-state@^1.4.3",
             "npm:radix-ui@^1.4.2",
             "npm:react-avatar@^5.0.3",
@@ -355,6 +356,13 @@
           ]
         }
       },
+      "packages/test-utils": {
+        "packageJson": {
+          "dependencies": [
+            "npm:@paralleldrive/cuid2@^3.3.0"
+          ]
+        }
+      },
       "packages/ui": {
         "packageJson": {
           "dependencies": [
@@ -391,14 +399,6 @@
           "dependencies": [
             "npm:date-fns-tz@^3.2.0",
             "npm:nanoid@^5.1.5"
-          ]
-        }
-      },
-      "packages/workflow-nodes": {
-        "packageJson": {
-          "dependencies": [
-            "npm:fs-extra@^11.2.0",
-            "npm:glob@^10.3.10"
           ]
         }
       }
