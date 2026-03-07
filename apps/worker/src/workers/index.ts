@@ -306,6 +306,20 @@ export async function setupSchedules() {
     )
   }
 
+  // Every day at 5 AM - Clean up orphaned app bundles (S3 + DB)
+  await maintenanceQueue.upsertJobScheduler(
+    'orphanedAppBundleCleanupJob',
+    { pattern: '0 5 * * *' },
+    {
+      data: { batchSize: 100, dryRun: false },
+      opts: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 10,
+      },
+    }
+  )
+
   // Dataset maintenance schedules
 
   // Every day at 3 AM - Clean up orphaned dataset data

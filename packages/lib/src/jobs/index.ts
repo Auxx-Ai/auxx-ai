@@ -38,6 +38,7 @@ export { type ExecutePlanJobProps, executePlanJob } from './import/execute-plan-
 export { type GeneratePlanJobProps, generatePlanJob } from './import/generate-plan-job'
 export { type ResolveValuesJobProps, resolveValuesJob } from './import/resolve-values-job'
 // Maintenance
+export { orphanedAppBundleCleanupJob } from './maintenance/app-bundle-cleanup-job'
 export {
   type CleanupStats,
   expiredTrialAccountCleanupJob,
