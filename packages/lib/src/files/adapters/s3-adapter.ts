@@ -903,8 +903,12 @@ export class S3Adapter extends BaseStorageAdapter {
   private createS3Client(auth?: ProviderAuth, config?: Partial<S3Config>): S3Client {
     // Create secure cache key without secret leakage
     const region = config?.region || (auth as any)?.region || configService.get<string>('S3_REGION')
-    const endpoint = config?.endpoint || (auth as any)?.endpoint || ''
-    const accessKeyIdPrefix = (auth as any)?.accessKeyId?.substring(0, 8) || ''
+    const endpoint =
+      config?.endpoint || (auth as any)?.endpoint || configService.get<string>('S3_ENDPOINT') || ''
+    const accessKeyIdPrefix =
+      (auth as any)?.accessKeyId?.substring(0, 8) ||
+      configService.get<string>('S3_ACCESS_KEY_ID')?.substring(0, 8) ||
+      ''
 
     const cacheKey = `${endpoint}|${region}|${accessKeyIdPrefix}`
 
@@ -926,12 +930,12 @@ export class S3Adapter extends BaseStorageAdapter {
     }
 
     // Set endpoint for S3-compatible services
-    if (config?.endpoint || (auth as any)?.endpoint) {
-      clientConfig.endpoint = config?.endpoint || (auth as any)?.endpoint
+    if (endpoint) {
+      clientConfig.endpoint = endpoint
       clientConfig.forcePathStyle = config?.forcePathStyle ?? true
     }
 
-    // Set credentials - AWS standard format only
+    // Set credentials — priority: explicit auth > config > env vars > IAM role (SDK default)
     if ((auth as any)?.accessKeyId && (auth as any)?.secretAccessKey) {
       clientConfig.credentials = {
         accessKeyId: (auth as any).accessKeyId,
@@ -940,10 +944,17 @@ export class S3Adapter extends BaseStorageAdapter {
       }
     } else if (config?.credentials) {
       clientConfig.credentials = config.credentials
-
-      // Config credentials in use
+    } else {
+      const envAccessKeyId = configService.get<string>('S3_ACCESS_KEY_ID')
+      const envSecretAccessKey = configService.get<string>('S3_SECRET_ACCESS_KEY')
+      if (envAccessKeyId && envSecretAccessKey) {
+        clientConfig.credentials = {
+          accessKeyId: envAccessKeyId,
+          secretAccessKey: envSecretAccessKey,
+        }
+      }
     }
-    // If no explicit credentials, SDK will use default credential chain
+    // If no credentials at all, SDK uses default credential chain (IAM roles, instance profiles)
 
     const client = new S3Client(clientConfig)
 
