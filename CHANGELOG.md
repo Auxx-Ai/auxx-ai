@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.56](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.55...auxx-v0.1.56) (2026-03-07)
+
+
+### Features
+
+* integrate Cloudflare Turnstile for enhanced security in signup … ([#186](https://github.com/Auxx-Ai/auxx-ai/issues/186)) ([e230559](https://github.com/Auxx-Ai/auxx-ai/commit/e230559b7e55e3e85f013e964be9cf710bb89960))
+
 ## [0.1.55](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.54...auxx-v0.1.55) (2026-03-06)
 
 
