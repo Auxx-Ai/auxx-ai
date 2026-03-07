@@ -16,9 +16,15 @@ import { createScopedLogger } from '@auxx/logger'
 import { passkey } from '@better-auth/passkey'
 import { betterAuth } from 'better-auth' // core lib
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { APIError } from 'better-auth/api'
 import { nextCookies } from 'better-auth/next-js'
-import { bearer, customSession, oidcProvider, phoneNumber, twoFactor } from 'better-auth/plugins'
+import {
+  bearer,
+  captcha,
+  customSession,
+  oidcProvider,
+  phoneNumber,
+  twoFactor,
+} from 'better-auth/plugins'
 import { eq } from 'drizzle-orm'
 import { isValidPhoneNumber } from 'libphonenumber-js'
 
@@ -169,7 +175,8 @@ export const auth = betterAuth({
       avatarAssetId: { type: 'string' },
       lastLoginAt: { type: 'date' },
       preferredTimezone: { type: 'string' },
-      // memberStatus: { type: 'string' },
+      banned: { type: 'boolean' },
+      forcePasswordChange: { type: 'boolean' },
     },
   },
   session: {
@@ -185,6 +192,14 @@ export const auth = betterAuth({
   plugins: [
     nextCookies(),
     bearer(),
+    ...(configService.get<string>('TURNSTILE_SECRET_KEY')
+      ? [
+          captcha({
+            provider: 'cloudflare-turnstile',
+            secretKey: configService.get<string>('TURNSTILE_SECRET_KEY')!,
+          }),
+        ]
+      : []),
     twoFactor({
       issuer: 'Auxx.Ai',
       otpOptions: {
@@ -225,11 +240,6 @@ export const auth = betterAuth({
         forcePasswordChange?: boolean
         lastLoginAt?: Date | null
         preferredTimezone?: string | null
-      }
-
-      // Block banned users from accessing the app
-      if (extendedUser.banned) {
-        throw new APIError('FORBIDDEN', { message: 'Account is deactivated' })
       }
 
       if (extendedUser && !extendedUser.defaultOrganizationId) {

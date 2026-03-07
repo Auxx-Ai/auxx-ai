@@ -1016,6 +1016,24 @@ export const CONFIG_VARIABLES = {
     isSensitive: false,
     isEnvOnly: true,
   },
+
+  // ── CAPTCHA ──────────────────────────────────────────────
+  TURNSTILE_SECRET_KEY: {
+    key: 'TURNSTILE_SECRET_KEY',
+    description: 'Cloudflare Turnstile secret key for captcha verification',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.CAPTCHA,
+    isSensitive: true,
+    isEnvOnly: false,
+  },
+  TURNSTILE_SITE_KEY: {
+    key: 'TURNSTILE_SITE_KEY',
+    description: 'Cloudflare Turnstile site key (public, sent to client for widget rendering)',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.CAPTCHA,
+    isSensitive: false,
+    isEnvOnly: false,
+  },
 } satisfies Record<string, ConfigVariableDefinition>
 
 /** Union of all known config variable keys. */
@@ -1097,6 +1115,11 @@ export const CONFIG_GROUP_META: Record<
     label: 'Frontend',
     description: 'URL constants and build info (NEXT_PUBLIC_ vars)',
     iconId: 'layout',
+  },
+  CAPTCHA: {
+    label: 'Captcha',
+    description: 'Cloudflare Turnstile bot protection for auth endpoints',
+    iconId: 'shield',
   },
 }
 

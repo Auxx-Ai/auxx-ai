@@ -26,6 +26,11 @@ export default async function ProtectedLayout({ children }: ProtectedLayoutProps
     redirect('/login')
   }
 
+  // Block banned users
+  if ((session.user as any).banned) {
+    redirect('/deactivated')
+  }
+
   // Force password change if flagged by admin
   if ((session.user as any).forcePasswordChange) {
     redirect('/change-password?forced=true')

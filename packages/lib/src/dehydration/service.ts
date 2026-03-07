@@ -51,6 +51,7 @@ export function buildEnvironment(): DehydratedEnvironment {
     docsUrl: DOCS_URL || '',
     devPortalUrl: DEV_PORTAL_URL || '',
     cdnUrl: configService.get<string>('CDN_URL') || '',
+    turnstileSiteKey: configService.get<string>('TURNSTILE_SITE_KEY') || '',
     stripe: {
       publishableKey: configService.get<string>('STRIPE_PUBLISHABLE_KEY') || '',
     },

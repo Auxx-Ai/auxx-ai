@@ -658,6 +658,26 @@ export const adminRouter = createTRPCRouter({
     }),
 
   /**
+   * Get members of a developer account
+   */
+  getDeveloperAccountMembers: superAdminProcedure
+    .input(z.object({ developerAccountId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const members = await ctx.db
+        .select({
+          id: schema.DeveloperAccountMember.id,
+          userId: schema.DeveloperAccountMember.userId,
+          emailAddress: schema.DeveloperAccountMember.emailAddress,
+          accessLevel: schema.DeveloperAccountMember.accessLevel,
+        })
+        .from(schema.DeveloperAccountMember)
+        .where(eq(schema.DeveloperAccountMember.developerAccountId, input.developerAccountId))
+        .orderBy(schema.DeveloperAccountMember.createdAt)
+
+      return members
+    }),
+
+  /**
    * Apps management router
    */
   apps: adminAppsRouter,

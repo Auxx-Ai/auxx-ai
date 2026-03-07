@@ -15,6 +15,7 @@ import {
 import { Input } from '@auxx/ui/components/input'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@auxx/ui/components/input-otp'
 import { toastSuccess } from '@auxx/ui/components/toast'
+import { Turnstile } from '@marsidev/react-turnstile'
 import { Lock } from 'lucide-react'
 
 import { AnimatePresence, motion } from 'motion/react'
@@ -27,6 +28,7 @@ import { client } from '~/auth/auth-client' // Use the cached auth
 import { PasswordInput } from '~/components/credentials/password-fields'
 import { GithubIcon, GoogleIcon } from '~/constants/icons'
 import { useAnalytics } from '~/hooks/use-analytics'
+import { useTurnstile } from '~/hooks/use-turnstile'
 import { useEnv } from '~/providers/dehydrated-state-provider'
 import { GeneralSubmitButton } from './submit-button'
 
@@ -50,7 +52,15 @@ export default function LoginForm({
   const router = useRouter()
   const posthog = useAnalytics()
   const env = useEnv()
-  const { homepageUrl } = env
+  const { homepageUrl, turnstileSiteKey } = env
+  const {
+    token: turnstileToken,
+    onSuccess: onTurnstileSuccess,
+    onExpire: onTurnstileExpire,
+    onError: onTurnstileError,
+    reset: resetTurnstile,
+    widgetRef: turnstileRef,
+  } = useTurnstile()
   const variants = {
     enter: { opacity: 0, x: 50 },
     center: { opacity: 1, x: 0 },
@@ -207,17 +217,27 @@ export default function LoginForm({
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+
+    if (turnstileSiteKey && !turnstileToken) {
+      setError('Please wait for the security check to complete.')
+      return
+    }
+
     setIsLoading(true)
 
     const { error: err } = await client.signIn.email({
       email: contact,
       password,
       callbackURL: redirectToPath,
+      fetchOptions: {
+        headers: turnstileToken ? { 'x-captcha-response': turnstileToken } : {},
+      },
     })
 
     if (err) {
       setError(err.message!)
       setIsLoading(false)
+      resetTurnstile()
       return
     }
 
@@ -314,296 +334,303 @@ export default function LoginForm({
   }
 
   return (
-    <div className='flex w-full flex-col gap-6'>
-      <Card className='shadow-md shadow-black/20 border-transparent'>
-        <CardHeader className='text-center'>
-          <CardTitle className='text-xl'>Welcome Back</CardTitle>
-          <CardDescription className='sr-only'>Sign in to your AuxxLift account</CardDescription>
-        </CardHeader>
-        <CardContent className='flex flex-col gap-4'>
-          <AnimatePresence mode='wait'>
-            {/* Display Login Errors */}
-            {/* Email/Password Form */}
-            {/* <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4"> */}
+    <>
+      <div className='flex w-full flex-col gap-6'>
+        <Card className='shadow-md shadow-black/20 border-transparent'>
+          <CardHeader className='text-center'>
+            <CardTitle className='text-xl'>Welcome Back</CardTitle>
+            <CardDescription className='sr-only'>Sign in to your AuxxLift account</CardDescription>
+          </CardHeader>
+          <CardContent className='flex flex-col gap-4'>
+            <AnimatePresence mode='wait'>
+              {/* Display Login Errors */}
+              {/* Email/Password Form */}
+              {/* <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4"> */}
 
-            {step === 'initial' && (
-              <motion.form
-                key='initial'
-                onSubmit={handleContinue}
-                initial='enter'
-                animate='center'
-                exit='exit'
-                variants={variants}
-                transition={{ duration: 0.3 }}>
-                <div className='space-y-2'>
-                  <Input
-                    placeholder='Email or phone'
-                    value={contact}
-                    autoComplete='username webauthn'
-                    onChange={(e) => setContact(e.target.value.trim())}
-                  />
-                  {error && (
-                    <p
-                      className='peer-aria-invalid:text-red-500 mt-2 text-xs text-red-500'
-                      role='alert'
-                      aria-live='polite'>
-                      {error}
-                    </p>
-                  )}
-                  <Button
-                    type='submit'
-                    variant='outline'
-                    className='w-full'
-                    loading={isLoading}
-                    loadingText='Logging in...'>
-                    Continue with Email or Phone
-                  </Button>
-                </div>
-                {/* Divider */}
-                <div className='relative my-4'>
-                  <div className='absolute inset-0 flex items-center'>
-                    <span className='w-full border-t' />
-                  </div>
-                  <div className='relative flex justify-center text-xs uppercase'>
-                    <span className='bg-background px-2 text-muted-foreground'>
-                      Or continue with
-                    </span>
-                  </div>
-                </div>
-
-                {/* OAuth Buttons */}
-                <div className='flex flex-col gap-3'>
-                  <GeneralSubmitButton
-                    icon={<GoogleIcon className='mr-2 size-4' />} // Add margin if needed
-                    width='w-full'
-                    variant='outline'
-                    text='Login with Google'
-                    onClick={() => {
-                      posthog?.capture('user_logged_in', { method: 'google' })
-                      setIsLoading(true)
-                      client.signIn.social({ provider: 'google', callbackURL: redirectToPath })
-                    }}
-                  />
-                  <GeneralSubmitButton
-                    icon={<GithubIcon className='mr-2 size-4 text-foreground' />} // Add margin if needed
-                    width='w-full'
-                    variant='outline'
-                    text='Login with Github'
-                    onClick={() => {
-                      posthog?.capture('user_logged_in', { method: 'github' })
-                      setIsLoading(true)
-                      client.signIn.social({ provider: 'github', callbackURL: redirectToPath })
-                    }}
-                  />
-                  <Button
-                    type='button'
-                    className='w-full'
-                    variant='outline'
-                    onClick={() => handleSSO()}>
-                    <Lock className='size-4' />
-                    Continue with SSO
-                  </Button>
-                </div>
-
-                {/* <button type="submit" style={{ width: '100%', padding: 10 }}>
-                  Continue
-                </button> */}
-              </motion.form>
-            )}
-
-            {step === 'otp' && (
-              <motion.form
-                key='otp'
-                onSubmit={handleVerifyOtp}
-                initial='enter'
-                animate='center'
-                exit='exit'
-                variants={variants}
-                transition={{ duration: 0.3 }}>
-                <div className='space-y-4'>
-                  <p>Enter the code we sent to {contact}</p>
-                  {error && <p style={{ color: 'red' }}>{error}</p>}
-                  <div className='flex items-center justify-center'>
-                    <InputOTP maxLength={6} value={otp} onChange={(value) => setOtp(value)}>
-                      <InputOTPGroup>
-                        <InputOTPSlot index={0} />
-                        <InputOTPSlot index={1} />
-                        <InputOTPSlot index={2} />
-                        <InputOTPSlot index={3} />
-                        <InputOTPSlot index={4} />
-                        <InputOTPSlot index={5} />
-                      </InputOTPGroup>
-                    </InputOTP>
-                  </div>
-
-                  <Button
-                    type='submit'
-                    className='w-full mt-4'
-                    disabled={isLoading || otp.length < 6}
-                    loadingText='Verifying...'>
-                    Verify Code
-                  </Button>
-                  <div className=''>
-                    <div className='text-sm text-muted-foreground'>
-                      Didn&apos;t receive the code?{' '}
-                      <Button
-                        variant='link'
-                        className='h-auto p-0 font-normal'
-                        disabled={resendTimeout > 0 || isLoading}
-                        onClick={async () => {
-                          setIsLoading(true)
-                          try {
-                            const { error } = await client.phoneNumber.sendOtp({
-                              phoneNumber: contact,
-                            })
-
-                            if (error) {
-                              setError(error.message!)
-                            } else {
-                              startResendTimeout()
-                              toastSuccess({
-                                title: 'Code Resent',
-                                description: 'A new verification code has been sent.',
-                              })
-                            }
-                          } catch (err: any) {
-                            setError(err.message || 'Failed to resend code.')
-                          } finally {
-                            setIsLoading(false)
-                          }
-                        }}>
-                        Resend
-                      </Button>
-                    </div>
-                    {resendTimeout > 0 && (
-                      <p className='text-sm text-muted-foreground'>
-                        New code will be available in {resendTimeout} seconds.
+              {step === 'initial' && (
+                <motion.form
+                  key='initial'
+                  onSubmit={handleContinue}
+                  initial='enter'
+                  animate='center'
+                  exit='exit'
+                  variants={variants}
+                  transition={{ duration: 0.3 }}>
+                  <div className='space-y-2'>
+                    <Input
+                      placeholder='Email or phone'
+                      value={contact}
+                      autoComplete='username webauthn'
+                      onChange={(e) => setContact(e.target.value.trim())}
+                    />
+                    {error && (
+                      <p
+                        className='peer-aria-invalid:text-red-500 mt-2 text-xs text-red-500'
+                        role='alert'
+                        aria-live='polite'>
+                        {error}
                       </p>
                     )}
+                    <Button
+                      type='submit'
+                      variant='outline'
+                      className='w-full'
+                      loading={isLoading}
+                      loadingText='Logging in...'>
+                      Continue with Email or Phone
+                    </Button>
                   </div>
-                </div>
-                <div className='text-right flex items-center justify-between mt-4'>
-                  <Button
-                    variant='link'
-                    size='sm'
-                    className='h-auto p-0 font-normal'
-                    onClick={() => setStep('initial')}>
-                    Back
-                  </Button>
-                </div>
-              </motion.form>
-            )}
-
-            {step === 'password' && (
-              <motion.form
-                key='password'
-                onSubmit={handleEmailSignIn}
-                initial='enter'
-                animate='center'
-                exit='exit'
-                variants={variants}
-                transition={{ duration: 0.3 }}>
-                <div className='space-y-4'>
-                  <div className='text-sm'>
-                    Sign in as{' '}
-                    <Badge variant='pill' size='sm'>
-                      {contact}
-                    </Badge>
+                  {/* Divider */}
+                  <div className='relative my-4'>
+                    <div className='absolute inset-0 flex items-center'>
+                      <span className='w-full border-t' />
+                    </div>
+                    <div className='relative flex justify-center text-xs uppercase'>
+                      <span className='bg-background px-2 text-muted-foreground'>
+                        Or continue with
+                      </span>
+                    </div>
                   </div>
-                  {error && <p className='text-xs text-red-500'>{error}</p>}
-                  <PasswordInput
-                    placeholder='Your password'
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete='current-password webauthn'
-                    value={password}
-                    required
-                  />
-                  {/* <Input
-                    type="password"
-                    placeholder="Your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="current-password webauthn"
-                    required
-                  /> */}
-                  <Button
-                    type='submit'
-                    className='w-full'
-                    loading={isLoading}
-                    loadingText='Signing in...'>
-                    Sign in
-                  </Button>
-                </div>
-                <div className='text-right flex items-center justify-between mt-4'>
-                  <Button
-                    variant='link'
-                    size='sm'
-                    className='h-auto p-0 font-normal'
-                    onClick={() => setStep('initial')}>
-                    Back
-                  </Button>
 
-                  <Button variant='link' size='sm' className='h-auto p-0 font-normal' asChild>
-                    <Link href='/forgot-password'>Forgot password?</Link>
-                  </Button>
-                </div>
-              </motion.form>
-            )}
+                  {/* OAuth Buttons */}
+                  <div className='flex flex-col gap-3'>
+                    <GeneralSubmitButton
+                      icon={<GoogleIcon className='mr-2 size-4' />} // Add margin if needed
+                      width='w-full'
+                      variant='outline'
+                      text='Login with Google'
+                      onClick={() => {
+                        posthog?.capture('user_logged_in', { method: 'google' })
+                        setIsLoading(true)
+                        client.signIn.social({ provider: 'google', callbackURL: redirectToPath })
+                      }}
+                    />
+                    <GeneralSubmitButton
+                      icon={<GithubIcon className='mr-2 size-4 text-foreground' />} // Add margin if needed
+                      width='w-full'
+                      variant='outline'
+                      text='Login with Github'
+                      onClick={() => {
+                        posthog?.capture('user_logged_in', { method: 'github' })
+                        setIsLoading(true)
+                        client.signIn.social({ provider: 'github', callbackURL: redirectToPath })
+                      }}
+                    />
+                    <Button
+                      type='button'
+                      className='w-full'
+                      variant='outline'
+                      onClick={() => handleSSO()}>
+                      <Lock className='size-4' />
+                      Continue with SSO
+                    </Button>
+                  </div>
 
-            {/* Consider adding a "Forgot Password?" link */}
+                  {/* <button type="submit" style={{ width: '100%', padding: 10 }}>
+                  Continue
+                </button> */}
+                </motion.form>
+              )}
 
-            {/* </form> */}
-          </AnimatePresence>
-        </CardContent>
-        <CardFooter className='flex flex-col items-center gap-2 text-center text-xs text-muted-foreground'>
-          <div className='flex flex-row items-center gap-2'>
-            <span>
-              Don&apos;t have an account?{' '}
-              <Button variant='link' className='h-auto p-0' asChild>
+              {step === 'otp' && (
+                <motion.form
+                  key='otp'
+                  onSubmit={handleVerifyOtp}
+                  initial='enter'
+                  animate='center'
+                  exit='exit'
+                  variants={variants}
+                  transition={{ duration: 0.3 }}>
+                  <div className='space-y-4'>
+                    <p>Enter the code we sent to {contact}</p>
+                    {error && <p style={{ color: 'red' }}>{error}</p>}
+                    <div className='flex items-center justify-center'>
+                      <InputOTP maxLength={6} value={otp} onChange={(value) => setOtp(value)}>
+                        <InputOTPGroup>
+                          <InputOTPSlot index={0} />
+                          <InputOTPSlot index={1} />
+                          <InputOTPSlot index={2} />
+                          <InputOTPSlot index={3} />
+                          <InputOTPSlot index={4} />
+                          <InputOTPSlot index={5} />
+                        </InputOTPGroup>
+                      </InputOTP>
+                    </div>
+
+                    <Button
+                      type='submit'
+                      className='w-full mt-4'
+                      disabled={isLoading || otp.length < 6}
+                      loadingText='Verifying...'>
+                      Verify Code
+                    </Button>
+                    <div className=''>
+                      <div className='text-sm text-muted-foreground'>
+                        Didn&apos;t receive the code?{' '}
+                        <Button
+                          variant='link'
+                          className='h-auto p-0 font-normal'
+                          disabled={resendTimeout > 0 || isLoading}
+                          onClick={async () => {
+                            setIsLoading(true)
+                            try {
+                              const { error } = await client.phoneNumber.sendOtp({
+                                phoneNumber: contact,
+                              })
+
+                              if (error) {
+                                setError(error.message!)
+                              } else {
+                                startResendTimeout()
+                                toastSuccess({
+                                  title: 'Code Resent',
+                                  description: 'A new verification code has been sent.',
+                                })
+                              }
+                            } catch (err: any) {
+                              setError(err.message || 'Failed to resend code.')
+                            } finally {
+                              setIsLoading(false)
+                            }
+                          }}>
+                          Resend
+                        </Button>
+                      </div>
+                      {resendTimeout > 0 && (
+                        <p className='text-sm text-muted-foreground'>
+                          New code will be available in {resendTimeout} seconds.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className='text-right flex items-center justify-between mt-4'>
+                    <Button
+                      variant='link'
+                      size='sm'
+                      className='h-auto p-0 font-normal'
+                      onClick={() => setStep('initial')}>
+                      Back
+                    </Button>
+                  </div>
+                </motion.form>
+              )}
+
+              {step === 'password' && (
+                <motion.form
+                  key='password'
+                  onSubmit={handleEmailSignIn}
+                  initial='enter'
+                  animate='center'
+                  exit='exit'
+                  variants={variants}
+                  transition={{ duration: 0.3 }}>
+                  <div className='space-y-4'>
+                    <div className='text-sm'>
+                      Sign in as{' '}
+                      <Badge variant='pill' size='sm'>
+                        {contact}
+                      </Badge>
+                    </div>
+                    {error && <p className='text-xs text-red-500'>{error}</p>}
+                    <PasswordInput
+                      placeholder='Your password'
+                      onChange={(e) => setPassword(e.target.value)}
+                      autoComplete='current-password webauthn'
+                      value={password}
+                      required
+                    />
+                    <Button
+                      type='submit'
+                      className='w-full'
+                      loading={isLoading}
+                      disabled={!!turnstileSiteKey && !turnstileToken}
+                      loadingText='Signing in...'>
+                      Sign in
+                    </Button>
+                  </div>
+                  <div className='text-right flex items-center justify-between mt-4'>
+                    <Button
+                      variant='link'
+                      size='sm'
+                      className='h-auto p-0 font-normal'
+                      onClick={() => setStep('initial')}>
+                      Back
+                    </Button>
+
+                    <Button variant='link' size='sm' className='h-auto p-0 font-normal' asChild>
+                      <Link href='/forgot-password'>Forgot password?</Link>
+                    </Button>
+                  </div>
+                </motion.form>
+              )}
+
+              {/* Consider adding a "Forgot Password?" link */}
+
+              {/* </form> */}
+            </AnimatePresence>
+          </CardContent>
+          <CardFooter className='flex flex-col items-center gap-2 text-center text-xs text-muted-foreground'>
+            <div className='flex flex-row items-center gap-2'>
+              <span>
+                Don&apos;t have an account?{' '}
+                <Button variant='link' className='h-auto p-0' asChild>
+                  <Link
+                    href={
+                      redirectToPath !== defaultRedirectPath
+                        ? `/signup?callbackUrl=${encodeURIComponent(redirectToPath)}`
+                        : '/signup'
+                    }>
+                    Sign up
+                  </Link>
+                </Button>
+              </span>
+              {step !== 'password' && (
+                <>
+                  |
+                  <span>
+                    <Button variant='link' className='h-auto p-0' asChild>
+                      <Link href='/forgot-password'>Forgot password?</Link>
+                    </Button>
+                  </span>
+                </>
+              )}
+            </div>
+            <span className=''>
+              By clicking continue, you agree to our{' '}
+              <Button variant='link' className='h-auto p-0 text-xs' asChild>
                 <Link
-                  href={
-                    redirectToPath !== defaultRedirectPath
-                      ? `/signup?callbackUrl=${encodeURIComponent(redirectToPath)}`
-                      : '/signup'
-                  }>
-                  Sign up
+                  href={`${homepageUrl}/terms-of-service`}
+                  target='_blank'
+                  rel='noopener noreferrer'>
+                  terms and service
+                </Link>
+              </Button>{' '}
+              and{' '}
+              <Button variant='link' className='h-auto p-0 text-xs' asChild>
+                <Link
+                  href={`${homepageUrl}/privacy-policy`}
+                  target='_blank'
+                  rel='noopener noreferrer'>
+                  privacy policy
                 </Link>
               </Button>
+              .
             </span>
-            {step !== 'password' && (
-              <>
-                |
-                <span>
-                  <Button variant='link' className='h-auto p-0' asChild>
-                    <Link href='/forgot-password'>Forgot password?</Link>
-                  </Button>
-                </span>
-              </>
-            )}
-          </div>
-          <span className=''>
-            By clicking continue, you agree to our{' '}
-            <Button variant='link' className='h-auto p-0 text-xs' asChild>
-              <Link
-                href={`${homepageUrl}/terms-of-service`}
-                target='_blank'
-                rel='noopener noreferrer'>
-                terms and service
-              </Link>
-            </Button>{' '}
-            and{' '}
-            <Button variant='link' className='h-auto p-0 text-xs' asChild>
-              <Link
-                href={`${homepageUrl}/privacy-policy`}
-                target='_blank'
-                rel='noopener noreferrer'>
-                privacy policy
-              </Link>
-            </Button>
-            .
-          </span>
-        </CardFooter>
-      </Card>
-    </div>
+          </CardFooter>
+        </Card>
+      </div>
+      {turnstileSiteKey && (
+        <div className='min-h-[75px]'>
+          <Turnstile
+            ref={turnstileRef}
+            siteKey={turnstileSiteKey}
+            onSuccess={onTurnstileSuccess}
+            onExpire={onTurnstileExpire}
+            onError={onTurnstileError}
+            options={{ size: 'invisible' }}
+          />
+        </div>
+      )}
+    </>
   )
 }

@@ -35,6 +35,9 @@ export interface DehydratedEnvironment {
   docsUrl: string
   devPortalUrl: string
   cdnUrl: string
+  // Captcha
+  turnstileSiteKey: string
+
   // External services
   stripe: {
     publishableKey: string

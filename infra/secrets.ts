@@ -242,6 +242,12 @@ export const secretsConfig = {
     description: 'Gravatar API key for avatar fetching',
   },
 
+  // Cloudflare Turnstile
+  TURNSTILE_SECRET_KEY: {
+    secret: new sst.Secret('TURNSTILE_SECRET_KEY'),
+    description: 'Cloudflare Turnstile secret key for captcha verification',
+  },
+
   // Admin Configuration
   SUPER_ADMIN_EMAIL: {
     secret: new sst.Secret('SUPER_ADMIN_EMAIL'),
